@@ -1,0 +1,2 @@
+ALTER TABLE `avatar_items` MODIFY COLUMN `avatar_slot` enum('HEAD','HAIR','EYES','TOP','BOTTOM','LEFT_HAND','RIGHT_HAND','SHOES','BACK','FLAG') NOT NULL;--> statement-breakpoint
+ALTER TABLE `student_equipped_items` MODIFY COLUMN `avatar_slot` enum('HEAD','HAIR','EYES','TOP','BOTTOM','LEFT_HAND','RIGHT_HAND','SHOES','BACK','FLAG') NOT NULL;
