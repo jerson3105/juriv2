@@ -13,6 +13,7 @@ export const ClassroomsPage = () => {
   const queryClient = useQueryClient();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [deletingClassroom, setDeletingClassroom] = useState<Classroom | null>(null);
   
   const { isActive, currentStep, nextStep } = useOnboardingStore();
 
@@ -71,9 +72,14 @@ export const ClassroomsPage = () => {
     setTimeout(() => setCopiedCode(null), 2000);
   };
 
-  const handleDelete = (id: string, name: string) => {
-    if (confirm(`¿Estás seguro de eliminar la clase "${name}"?`)) {
-      deleteMutation.mutate(id);
+  const handleDelete = (classroom: Classroom) => {
+    setDeletingClassroom(classroom);
+  };
+
+  const confirmDelete = () => {
+    if (deletingClassroom) {
+      deleteMutation.mutate(deletingClassroom.id);
+      setDeletingClassroom(null);
     }
   };
 
@@ -147,7 +153,7 @@ export const ClassroomsPage = () => {
               index={index}
               onCopyCode={copyCode}
               copiedCode={copiedCode}
-              onDelete={handleDelete}
+              onDelete={(id) => handleDelete(classrooms?.find(c => c.id === id)!)}
               onView={(id) => navigate(`/classroom/${id}`)}
             />
           ))}
@@ -161,6 +167,18 @@ export const ClassroomsPage = () => {
         onSubmit={(data) => createMutation.mutate(data)}
         isLoading={createMutation.isPending}
       />
+
+      {/* Modal de confirmación de eliminación */}
+      <AnimatePresence>
+        {deletingClassroom && (
+          <DeleteConfirmModal
+            classroomName={deletingClassroom.name}
+            onClose={() => setDeletingClassroom(null)}
+            onConfirm={confirmDelete}
+            isLoading={deleteMutation.isPending}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -178,7 +196,7 @@ const ClassroomCard = ({
   index: number;
   onCopyCode: (code: string) => void;
   copiedCode: string | null;
-  onDelete: (id: string, name: string) => void;
+  onDelete: (id: string) => void;
   onView: (id: string) => void;
 }) => {
   return (
@@ -201,7 +219,7 @@ const ClassroomCard = ({
         <button
           onClick={(e) => {
             e.stopPropagation();
-            onDelete(classroom.id, classroom.name);
+            onDelete(classroom.id);
           }}
           className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
         >
@@ -394,5 +412,73 @@ const CreateClassroomModal = ({
         </motion.div>
       </motion.div>
     </AnimatePresence>
+  );
+};
+
+// Modal de confirmación de eliminación
+const DeleteConfirmModal = ({
+  classroomName,
+  onClose,
+  onConfirm,
+  isLoading,
+}: {
+  classroomName: string;
+  onClose: () => void;
+  onConfirm: () => void;
+  isLoading: boolean;
+}) => {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-md shadow-xl"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Eliminar Clase</h2>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+
+        <div className="mb-6">
+          <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-4">
+            <Trash2 className="w-6 h-6 text-red-600 dark:text-red-400" />
+          </div>
+          <p className="text-gray-600 dark:text-gray-300 text-center">
+            ¿Estás seguro de que deseas eliminar la clase <strong className="text-gray-900 dark:text-white">"{classroomName}"</strong>?
+          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 text-center mt-2">
+            Esta acción no se puede deshacer. Se eliminarán todos los datos asociados a esta clase.
+          </p>
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors font-medium"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={isLoading}
+            className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 font-medium"
+          >
+            <Trash2 className="w-4 h-4" />
+            {isLoading ? 'Eliminando...' : 'Eliminar'}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
   );
 };
