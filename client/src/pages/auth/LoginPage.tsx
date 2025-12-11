@@ -136,6 +136,7 @@ export const LoginPage = () => {
             </Button>
           </form>
 
+          {/* Registro deshabilitado temporalmente
           <div className="mt-6 text-center">
             <p className="text-gray-600 dark:text-gray-400">
               ¿No tienes cuenta?{' '}
@@ -147,6 +148,7 @@ export const LoginPage = () => {
               </Link>
             </p>
           </div>
+          */}
         </motion.div>
 
         {/* Footer */}
