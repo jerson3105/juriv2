@@ -194,12 +194,21 @@ export const LoginPage = () => {
 
         {/* Footer */}
         <div className="text-center mt-6 space-y-2">
-          <Link
-            to="/about"
-            className="text-primary-300 hover:text-primary-100 text-sm font-medium transition-colors"
-          >
-            ¿Qué es Juried? →
-          </Link>
+          <div className="flex items-center justify-center gap-4">
+            <Link
+              to="/about"
+              className="text-primary-300 hover:text-primary-100 text-sm font-medium transition-colors"
+            >
+              ¿Qué es Juried?
+            </Link>
+            <span className="text-primary-500">•</span>
+            <Link
+              to="/privacy"
+              className="text-primary-300 hover:text-primary-100 text-sm font-medium transition-colors"
+            >
+              Política de Privacidad
+            </Link>
+          </div>
           <p className="text-primary-400 text-xs">
             © {new Date().getFullYear()} Juried. Todos los derechos reservados.
           </p>
