@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import * as authService from '../services/auth.service.js';
+import { config_app } from '../config/env.js';
 
 // Schemas de validación
 const registerSchema = z.object({
@@ -412,5 +413,33 @@ export const updateNotifications = async (req: Request, res: Response): Promise<
       success: false,
       message: 'Error interno del servidor',
     });
+  }
+};
+
+/**
+ * GET /api/auth/google/callback
+ * Callback de autenticación con Google
+ */
+export const googleCallback = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const user = req.user as any;
+    
+    if (!user) {
+      res.redirect(`${config_app.clientUrl}/login?error=google_auth_failed`);
+      return;
+    }
+
+    // Generar tokens JWT para el usuario
+    const tokens = await authService.generateTokensForUser(user.id);
+    
+    // Redirigir al frontend con los tokens en la URL
+    const redirectUrl = new URL(`${config_app.clientUrl}/auth/google/callback`);
+    redirectUrl.searchParams.set('accessToken', tokens.accessToken);
+    redirectUrl.searchParams.set('refreshToken', tokens.refreshToken);
+    
+    res.redirect(redirectUrl.toString());
+  } catch (error) {
+    console.error('Error en Google callback:', error);
+    res.redirect(`${config_app.clientUrl}/login?error=google_auth_failed`);
   }
 };

@@ -3,9 +3,11 @@ import { createServer } from 'http';
 import { Server as SocketServer } from 'socket.io';
 import path from 'path';
 import cors from 'cors';
+import passport from 'passport';
 import { config_app } from './config/env.js';
 import { connectDatabase } from './db/index.js';
 import { applySecurityMiddleware, corsOptions } from './middleware/security.js';
+import { configurePassport } from './config/passport.js';
 import routes from './routes/index.js';
 
 // Crear aplicación Express
@@ -20,6 +22,10 @@ const io = new SocketServer(httpServer, {
 // Middleware de parsing
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Configurar Passport para Google OAuth
+configurePassport();
+app.use(passport.initialize());
 
 // Servir archivos estáticos ANTES del middleware de seguridad (para evitar CORS issues)
 app.use('/badges', cors(), express.static(path.join(process.cwd(), 'public', 'badges')));

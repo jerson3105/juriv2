@@ -404,3 +404,24 @@ export const updateNotifications = async (
   
   return getProfile(userId);
 };
+
+/**
+ * Generar tokens para un usuario existente (usado en Google OAuth callback)
+ */
+export const generateTokensForUser = async (userId: string): Promise<{ accessToken: string; refreshToken: string }> => {
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+  });
+  
+  if (!user) {
+    throw new Error('Usuario no encontrado');
+  }
+  
+  const tokens = await generateTokenPair({
+    userId: user.id,
+    email: user.email,
+    role: user.role as UserRole,
+  });
+  
+  return tokens;
+};

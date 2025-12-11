@@ -2,9 +2,11 @@ import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import passport from 'passport';
 import * as authController from '../controllers/auth.controller.js';
 import { authenticate } from '../middleware/auth.js';
 import { authLimiter } from '../middleware/security.js';
+import { config_app } from '../config/env.js';
 
 const router = Router();
 
@@ -45,5 +47,25 @@ router.post('/upload-avatar', authenticate, avatarUpload.single('avatar'), authC
 router.put('/notifications', authenticate, authController.updateNotifications);
 router.post('/logout-all', authenticate, authController.logoutAll);
 router.put('/change-password', authenticate, authController.changePassword);
+
+// ==================== GOOGLE OAUTH ====================
+// Iniciar autenticación con Google
+router.get('/google', (req, res, next) => {
+  const role = req.query.role || 'TEACHER';
+  passport.authenticate('google', { 
+    scope: ['profile', 'email'],
+    session: false,
+    state: role as string, // Pasar el rol como state para recuperarlo en el callback
+  })(req, res, next);
+});
+
+// Callback de Google
+router.get('/google/callback', 
+  passport.authenticate('google', { 
+    session: false,
+    failureRedirect: `${config_app.clientUrl}/login?error=google_auth_failed`
+  }),
+  authController.googleCallback
+);
 
 export default router;

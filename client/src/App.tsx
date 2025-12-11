@@ -7,6 +7,7 @@ import { TimerProvider } from './contexts/TimerContext';
 // Pages
 import { LoginPage } from './pages/auth/LoginPage';
 import { RegisterPage } from './pages/auth/RegisterPage';
+import { GoogleCallbackPage } from './pages/auth/GoogleCallbackPage';
 import { AboutPage } from './pages/AboutPage';
 import { TeacherDashboard } from './pages/dashboard/TeacherDashboard';
 import { ClassroomsPage } from './pages/classrooms/ClassroomsPage';
@@ -156,6 +157,9 @@ function App() {
             }
           />
           <Route path="/about" element={<AboutPage />} />
+          
+          {/* Google OAuth Callback */}
+          <Route path="/auth/google/callback" element={<GoogleCallbackPage />} />
 
           {/* Protected Routes */}
           <Route
