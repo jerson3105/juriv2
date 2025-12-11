@@ -9,6 +9,7 @@ import { LoginPage } from './pages/auth/LoginPage';
 import { RegisterPage } from './pages/auth/RegisterPage';
 import { GoogleCallbackPage } from './pages/auth/GoogleCallbackPage';
 import { AboutPage } from './pages/AboutPage';
+import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { TeacherDashboard } from './pages/dashboard/TeacherDashboard';
 import { ClassroomsPage } from './pages/classrooms/ClassroomsPage';
 import { JoinClassPage } from './pages/student/JoinClassPage';
@@ -157,6 +158,7 @@ function App() {
             }
           />
           <Route path="/about" element={<AboutPage />} />
+          <Route path="/privacy" element={<PrivacyPolicyPage />} />
           
           {/* Google OAuth Callback */}
           <Route path="/auth/google/callback" element={<GoogleCallbackPage />} />
