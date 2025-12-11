@@ -493,7 +493,7 @@ function GradeModal({
 
 // Section Modal
 function SectionModal({ 
-  gradeId,
+  gradeId: _gradeId,
   section,
   onClose, 
   onSubmit, 

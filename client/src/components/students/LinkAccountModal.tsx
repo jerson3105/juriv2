@@ -30,7 +30,7 @@ export const LinkAccountModal = ({ isOpen, onClose, onSuccess }: Props) => {
     setError('');
 
     try {
-      await placeholderStudentApi.linkAccount(linkCode.trim().toUpperCase());
+      await placeholderStudentApi.linkAccount({ linkCode: linkCode.trim().toUpperCase() });
       setSuccess(true);
       toast.success('¡Cuenta vinculada exitosamente!');
       setTimeout(() => {
