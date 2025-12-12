@@ -18,6 +18,7 @@ import studentBossBattleRoutes from './studentBossBattle.routes.js';
 import missionRoutes from './mission.routes.js';
 import loginStreakRoutes from './loginStreak.routes.js';
 import schoolRoutes from './school.routes.js';
+import scrollRoutes from './scroll.routes.js';
 
 const router = Router();
 
@@ -50,5 +51,6 @@ router.use('/student-boss-battles', studentBossBattleRoutes);
 router.use('/missions', missionRoutes);
 router.use('/login-streak', loginStreakRoutes);
 router.use('/schools', schoolRoutes);
+router.use('/scrolls', scrollRoutes);
 
 export default router;

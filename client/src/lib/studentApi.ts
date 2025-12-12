@@ -129,7 +129,7 @@ export const studentApi = {
   },
 
   // Obtener mis clases como estudiante
-  getMyClasses: async (): Promise<(StudentProfile & { classroom: { id: string; name: string; code: string; clansEnabled?: boolean } })[]> => {
+  getMyClasses: async (): Promise<(StudentProfile & { classroom: { id: string; name: string; code: string; clansEnabled?: boolean; scrollsEnabled?: boolean; scrollsOpen?: boolean; scrollsRequireApproval?: boolean } })[]> => {
     const response = await api.get('/students/my-classes');
     return response.data.data;
   },

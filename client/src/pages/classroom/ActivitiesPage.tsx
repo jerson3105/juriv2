@@ -10,7 +10,8 @@ import {
   Zap,
   Lightbulb,
   Shield,
-  Timer
+  Timer,
+  ScrollText
 } from 'lucide-react';
 import { RandomPickerActivity } from '../../components/activities/RandomPickerActivity';
 import { RandomEventsActivity } from '../../components/activities/RandomEventsActivity';
@@ -18,6 +19,7 @@ import { BossBattleActivity } from '../../components/activities/BossBattleActivi
 import { ClanPickerActivity } from '../../components/activities/ClanPickerActivity';
 import { TimedActivitiesActivity } from '../../components/activities/TimedActivitiesActivity';
 import { AulaZenActivity } from '../../components/activities/AulaZenActivity';
+import { ScrollsActivity } from '../../components/activities/ScrollsActivity';
 import { useOutletContext, useParams } from 'react-router-dom';
 import BossBattleTypeModal from '../../components/modals/BossBattleTypeModal';
 
@@ -84,6 +86,15 @@ const activities: Activity[] = [
     icon: <Shield size={24} />,
     gradient: 'from-emerald-500 to-teal-600',
     shadowColor: 'shadow-emerald-500/25',
+    available: true,
+  },
+  {
+    id: 'scrolls',
+    name: 'Pergaminos del Aula',
+    description: 'Mural social donde los estudiantes envían mensajes de motivación y reconocimiento.',
+    icon: <ScrollText size={24} />,
+    gradient: 'from-amber-500 to-orange-500',
+    shadowColor: 'shadow-amber-500/25',
     available: true,
   },
   {
@@ -167,6 +178,15 @@ export const ActivitiesPage = () => {
   if (selectedActivity === 'noise-meter') {
     return (
       <AulaZenActivity 
+        classroom={classroom}
+        onBack={() => setSelectedActivity(null)}
+      />
+    );
+  }
+
+  if (selectedActivity === 'scrolls') {
+    return (
+      <ScrollsActivity 
         classroom={classroom}
         onBack={() => setSelectedActivity(null)}
       />

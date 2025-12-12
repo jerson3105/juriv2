@@ -18,6 +18,7 @@ import {
   Shield,
   Calendar,
   Building2,
+  ScrollText,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useStudentStore } from '../../store/studentStore';
@@ -291,6 +292,46 @@ export const MainLayout = () => {
               <span className={`text-sm font-medium ${location.pathname === '/my-attendance' ? '' : 'text-gray-700 dark:text-gray-300'}`}>
                 Mi Asistencia
               </span>
+            </Link>
+          )}
+
+          {/* Pergaminos del Aula - solo para estudiantes con scrolls habilitado */}
+          {!isTeacher && currentProfile?.classroom?.scrollsEnabled && (
+            <Link
+              to="/scrolls"
+              onClick={() => setSidebarOpen(false)}
+              className={`
+                flex items-center gap-3 px-3 py-2.5 rounded-xl
+                transition-all duration-200 group relative
+                ${location.pathname === '/scrolls'
+                  ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-md'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }
+              `}
+            >
+              <div className={`
+                w-8 h-8 rounded-lg flex items-center justify-center transition-all
+                ${location.pathname === '/scrolls'
+                  ? 'bg-white/20' 
+                  : 'bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-sm group-hover:scale-105'
+                }
+              `}>
+                <ScrollText size={16} />
+              </div>
+              <span className={`text-sm font-medium ${location.pathname === '/scrolls' ? '' : 'text-gray-700 dark:text-gray-300'}`}>
+                Pergaminos
+              </span>
+              {/* Indicador animado cuando el mural está abierto */}
+              {currentProfile?.classroom?.scrollsOpen && location.pathname !== '/scrolls' && (
+                <motion.span
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="absolute right-2 flex h-2.5 w-2.5"
+                >
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+                </motion.span>
+              )}
             </Link>
           )}
         </nav>

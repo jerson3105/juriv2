@@ -331,6 +331,12 @@ export const classrooms = mysqlTable('classrooms', {
     graceDays: number;
   }>(),
   
+  // Configuración de Pergaminos del Aula (mural social)
+  scrollsEnabled: boolean('scrolls_enabled').notNull().default(false),
+  scrollsOpen: boolean('scrolls_open').notNull().default(false), // Si los estudiantes pueden enviar mensajes
+  scrollsMaxPerDay: int('scrolls_max_per_day').notNull().default(3), // Límite de mensajes por día por estudiante
+  scrollsRequireApproval: boolean('scrolls_require_approval').notNull().default(true), // Requiere aprobación del profesor
+  
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
 }, (table) => ({
@@ -905,7 +911,7 @@ export const notifications = mysqlTable('notifications', {
   id: varchar('id', { length: 36 }).primaryKey(),
   userId: varchar('user_id', { length: 36 }).notNull(), // a quien va dirigida
   classroomId: varchar('classroom_id', { length: 36 }),
-  type: mysqlEnum('notification_type', ['ITEM_USED', 'GIFT_RECEIVED', 'BATTLE_STARTED', 'LEVEL_UP', 'POINTS', 'PURCHASE_APPROVED', 'PURCHASE_REJECTED', 'BADGE', 'MISSION_COMPLETED']).notNull(),
+  type: mysqlEnum('notification_type', ['ITEM_USED', 'GIFT_RECEIVED', 'BATTLE_STARTED', 'LEVEL_UP', 'POINTS', 'PURCHASE_APPROVED', 'PURCHASE_REJECTED', 'BADGE', 'MISSION_COMPLETED', 'SCROLL_RECEIVED', 'SCROLL_APPROVED', 'SCROLL_REJECTED']).notNull(),
   title: varchar('title', { length: 255 }).notNull(),
   message: text('message').notNull(),
   data: json('data'), // datos adicionales (itemId, studentId, etc)
@@ -1607,6 +1613,104 @@ export const studentStreaksRelations = relations(studentStreaks, ({ one }) => ({
   }),
 }));
 
+// ==================== PERGAMINOS DEL AULA (Mural Social) ====================
+
+export const scrollCategoryEnum = mysqlEnum('scroll_category', [
+  'CONGRATULATION', // Felicitación
+  'THANKS',         // Agradecimiento
+  'MOTIVATION',     // Motivación
+  'TEAMWORK',       // Trabajo en equipo
+  'FRIENDSHIP',     // Amistad
+  'ACHIEVEMENT',    // Logro
+  'CUSTOM'          // Personalizado
+]);
+
+export const scrollStatusEnum = mysqlEnum('scroll_status', [
+  'PENDING',   // Esperando aprobación
+  'APPROVED',  // Aprobado y visible
+  'REJECTED'   // Rechazado
+]);
+
+export const scrollRecipientTypeEnum = mysqlEnum('scroll_recipient_type', [
+  'STUDENT',   // Un estudiante específico
+  'MULTIPLE',  // Varios estudiantes
+  'CLAN',      // Un clan completo
+  'CLASS',     // Toda la clase
+  'TEACHER'    // Al profesor
+]);
+
+// Pergaminos (mensajes del mural)
+export const scrolls = mysqlTable('scrolls', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
+  
+  // Autor
+  authorId: varchar('author_id', { length: 36 }).notNull(), // studentProfileId del autor
+  
+  // Contenido
+  message: text('message').notNull(),
+  imageUrl: varchar('image_url', { length: 500 }), // Imagen adjunta opcional
+  category: scrollCategoryEnum.notNull().default('CUSTOM'),
+  
+  // Destinatario
+  recipientType: scrollRecipientTypeEnum.notNull(),
+  recipientIds: json('recipient_ids').$type<string[]>(), // IDs de estudiantes o clan
+  
+  // Estado de moderación
+  status: scrollStatusEnum.notNull().default('PENDING'),
+  rejectionReason: text('rejection_reason'), // Razón si fue rechazado
+  reviewedAt: datetime('reviewed_at'), // Cuándo fue revisado
+  reviewedBy: varchar('reviewed_by', { length: 36 }), // userId del profesor que revisó
+  
+  // Timestamps
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  classroomIdx: index('idx_scrolls_classroom').on(table.classroomId),
+  authorIdx: index('idx_scrolls_author').on(table.authorId),
+  statusIdx: index('idx_scrolls_status').on(table.status),
+  createdAtIdx: index('idx_scrolls_created_at').on(table.createdAt),
+}));
+
+export const scrollsRelations = relations(scrolls, ({ one, many }) => ({
+  classroom: one(classrooms, {
+    fields: [scrolls.classroomId],
+    references: [classrooms.id],
+  }),
+  author: one(studentProfiles, {
+    fields: [scrolls.authorId],
+    references: [studentProfiles.id],
+  }),
+  reactions: many(scrollReactions),
+}));
+
+// Reacciones a pergaminos
+export const scrollReactions = mysqlTable('scroll_reactions', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  scrollId: varchar('scroll_id', { length: 36 }).notNull(),
+  studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),
+  
+  // Tipo de reacción (emoji)
+  reactionType: varchar('reaction_type', { length: 20 }).notNull(), // 'heart', 'star', 'fire', 'clap', 'smile'
+  
+  createdAt: datetime('created_at').notNull(),
+}, (table) => ({
+  scrollIdx: index('idx_scroll_reactions_scroll').on(table.scrollId),
+  studentIdx: index('idx_scroll_reactions_student').on(table.studentProfileId),
+  uniqueReaction: unique('unique_scroll_reaction').on(table.scrollId, table.studentProfileId, table.reactionType),
+}));
+
+export const scrollReactionsRelations = relations(scrollReactions, ({ one }) => ({
+  scroll: one(scrolls, {
+    fields: [scrollReactions.scrollId],
+    references: [scrolls.id],
+  }),
+  student: one(studentProfiles, {
+    fields: [scrollReactions.studentProfileId],
+    references: [studentProfiles.id],
+  }),
+}));
+
 // Types
 export type Mission = typeof missions.$inferSelect;
 export type NewMission = typeof missions.$inferInsert;
@@ -1616,3 +1720,12 @@ export type StudentStreak = typeof studentStreaks.$inferSelect;
 export type MissionType = 'DAILY' | 'WEEKLY' | 'SPECIAL';
 export type MissionCategory = 'PARTICIPATION' | 'PROGRESS' | 'SOCIAL' | 'SHOP' | 'BATTLE' | 'STREAK' | 'CUSTOM';
 export type MissionStatus = 'ACTIVE' | 'COMPLETED' | 'EXPIRED' | 'CLAIMED';
+
+// Scroll types
+export type Scroll = typeof scrolls.$inferSelect;
+export type NewScroll = typeof scrolls.$inferInsert;
+export type ScrollReaction = typeof scrollReactions.$inferSelect;
+export type NewScrollReaction = typeof scrollReactions.$inferInsert;
+export type ScrollCategory = 'CONGRATULATION' | 'THANKS' | 'MOTIVATION' | 'TEAMWORK' | 'FRIENDSHIP' | 'ACHIEVEMENT' | 'CUSTOM';
+export type ScrollStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+export type ScrollRecipientType = 'STUDENT' | 'MULTIPLE' | 'CLAN' | 'CLASS' | 'TEACHER';

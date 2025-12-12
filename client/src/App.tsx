@@ -35,6 +35,7 @@ import { StudentBossBattlesPage } from './pages/classroom/StudentBossBattlesPage
 import { StudentBossBattlePage } from './pages/student/StudentBossBattlePage';
 import { MissionsPage } from './pages/classroom/MissionsPage';
 import { StudentMissionsPage } from './pages/student/StudentMissionsPage';
+import { StudentScrollsPage } from './pages/student/StudentScrollsPage';
 
 // Settings
 import { SettingsPage } from './pages/settings/SettingsPage';
@@ -204,6 +205,7 @@ function App() {
             <Route path="my-clan" element={<MyClanPage />} />
             <Route path="my-attendance" element={<StudentAttendancePage />} />
             <Route path="missions/:classroomId" element={<StudentMissionsPage />} />
+            <Route path="scrolls" element={<StudentScrollsPage />} />
             <Route path="student-battle/:classroomId" element={<StudentBossBattlePage />} />
             <Route path="student-battle/:classroomId/:battleId" element={<StudentBossBattlePage />} />
             
