@@ -488,16 +488,18 @@ export class ShopService {
       .set({ status: 'APPROVED' })
       .where(eq(purchases.id, purchaseId));
 
-    // Notificar al estudiante
-    await db.insert(notifications).values({
-      id: uuidv4(),
-      userId: student.userId,
-      type: 'PURCHASE_APPROVED',
-      title: '¡Compra aprobada!',
-      message: `Tu compra de ${item?.name || 'item'} ha sido aprobada`,
-      isRead: false,
-      createdAt: new Date(),
-    });
+    // Notificar al estudiante (solo si tiene cuenta vinculada)
+    if (student.userId) {
+      await db.insert(notifications).values({
+        id: uuidv4(),
+        userId: student.userId,
+        type: 'PURCHASE_APPROVED',
+        title: '¡Compra aprobada!',
+        message: `Tu compra de ${item?.name || 'item'} ha sido aprobada`,
+        isRead: false,
+        createdAt: new Date(),
+      });
+    }
 
     return { success: true, message: 'Compra aprobada exitosamente' };
   }
@@ -544,18 +546,20 @@ export class ShopService {
     // Obtener item para el mensaje
     const item = await this.getItemById(purchase.itemId);
 
-    // Notificar al estudiante
-    await db.insert(notifications).values({
-      id: uuidv4(),
-      userId: student.userId,
-      type: 'PURCHASE_REJECTED',
-      title: 'Compra rechazada',
-      message: reason 
-        ? `Tu compra de ${item?.name || 'item'} fue rechazada: ${reason}`
-        : `Tu compra de ${item?.name || 'item'} fue rechazada`,
-      isRead: false,
-      createdAt: new Date(),
-    });
+    // Notificar al estudiante (solo si tiene cuenta vinculada)
+    if (student.userId) {
+      await db.insert(notifications).values({
+        id: uuidv4(),
+        userId: student.userId,
+        type: 'PURCHASE_REJECTED',
+        title: 'Compra rechazada',
+        message: reason 
+          ? `Tu compra de ${item?.name || 'item'} fue rechazada: ${reason}`
+          : `Tu compra de ${item?.name || 'item'} fue rechazada`,
+        isRead: false,
+        createdAt: new Date(),
+      });
+    }
 
     return { success: true, message: 'Compra rechazada' };
   }

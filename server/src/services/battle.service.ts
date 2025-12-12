@@ -269,7 +269,7 @@ class BattleService {
         .from(studentProfiles)
         .where(eq(studentProfiles.id, studentId));
 
-      if (student) {
+      if (student?.userId) {
         await db.insert(notifications).values({
           id: uuidv4(),
           userId: student.userId,
@@ -546,20 +546,22 @@ class BattleService {
           );
         }
 
-        // Notificar resultado
-        await db.insert(notifications).values({
-          id: uuidv4(),
-          userId: student.userId,
-          classroomId: boss.classroomId,
-          type: 'BATTLE_STARTED',
-          title: isVictory ? '🏆 ¡Victoria!' : '💀 Derrota',
-          message: isVictory 
-            ? `Derrotaste a ${boss.bossName}. Ganaste ${xpEarned} XP y ${gpEarned} GP`
-            : `${boss.bossName} escapó. Ganaste ${xpEarned} XP de consolación`,
-          data: JSON.stringify({ battleId, xpEarned, gpEarned }),
-          isRead: false,
-          createdAt: now,
-        });
+        // Notificar resultado (solo si tiene cuenta vinculada)
+        if (student.userId) {
+          await db.insert(notifications).values({
+            id: uuidv4(),
+            userId: student.userId,
+            classroomId: boss.classroomId,
+            type: 'BATTLE_STARTED',
+            title: isVictory ? '🏆 ¡Victoria!' : '💀 Derrota',
+            message: isVictory 
+              ? `Derrotaste a ${boss.bossName}. Ganaste ${xpEarned} XP y ${gpEarned} GP`
+              : `${boss.bossName} escapó. Ganaste ${xpEarned} XP de consolación`,
+            data: JSON.stringify({ battleId, xpEarned, gpEarned }),
+            isRead: false,
+            createdAt: now,
+          });
+        }
       }
     }
 

@@ -109,7 +109,7 @@ export class ClanService {
             lastName: users.lastName,
           })
           .from(studentProfiles)
-          .innerJoin(users, eq(studentProfiles.userId, users.id))
+          .leftJoin(users, eq(studentProfiles.userId, users.id))
           .where(and(
             eq(studentProfiles.teamId, clan.id),
             eq(studentProfiles.isActive, true)

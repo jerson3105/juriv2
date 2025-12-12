@@ -265,8 +265,8 @@ export class BehaviorService {
         });
       }
 
-      // Preparar notificaciones para batch
-      if (classroom.notifyOnPoints) {
+      // Preparar notificaciones para batch (solo si el estudiante tiene userId vinculado)
+      if (classroom.notifyOnPoints && student.userId) {
         const actionText = behavior.isPositive ? 'recibiste' : 'perdiste';
         const parts: string[] = [];
         if (xpChange > 0) parts.push(`⚡${xpChange} XP`);
@@ -298,18 +298,21 @@ export class BehaviorService {
             isRead: false,
             createdAt: now,
           });
-          // Notificación para el profesor
-          notificationsBatch.push({
-            id: uuidv4(),
-            userId: data.teacherId,
-            classroomId: behavior.classroomId,
-            type: 'LEVEL_UP',
-            title: '🎉 ¡Estudiante subió de nivel!',
-            message: `${student.characterName || 'Un estudiante'} ha alcanzado el nivel ${newLevel}`,
-            isRead: false,
-            createdAt: now,
-          });
         }
+      }
+      
+      // Notificación de level up para el profesor (siempre, independiente del userId del estudiante)
+      if (classroom.notifyOnPoints && leveledUp) {
+        notificationsBatch.push({
+          id: uuidv4(),
+          userId: data.teacherId,
+          classroomId: behavior.classroomId,
+          type: 'LEVEL_UP',
+          title: '🎉 ¡Estudiante subió de nivel!',
+          message: `${student.characterName || 'Un estudiante'} ha alcanzado el nivel ${newLevel}`,
+          isRead: false,
+          createdAt: now,
+        });
       }
 
       results.push({ 

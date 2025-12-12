@@ -389,9 +389,9 @@ class BadgeService {
       await this.giveReward(studentProfileId, badge.rewardXp, badge.rewardGp);
     }
     
-    // Crear notificación para el estudiante
+    // Crear notificación para el estudiante (solo si tiene cuenta vinculada)
     const student = await db.select().from(studentProfiles).where(eq(studentProfiles.id, studentProfileId));
-    if (student.length > 0) {
+    if (student.length > 0 && student[0].userId) {
       const newCount = existingCount + 1;
       const countText = newCount > 1 ? ` (x${newCount})` : '';
       await db.insert(notifications).values({
@@ -440,16 +440,18 @@ class BadgeService {
     // Crear notificaciones
     const student = await db.select().from(studentProfiles).where(eq(studentProfiles.id, studentProfileId));
     if (student.length > 0) {
-      // Notificación para el estudiante
-      await db.insert(notifications).values({
-        id: uuid(),
-        userId: student[0].userId,
-        type: 'BADGE',
-        title: '🏅 ¡Nueva insignia desbloqueada!',
-        message: `Has obtenido la insignia "${badge.name}"`,
-        isRead: false,
-        createdAt: new Date(),
-      });
+      // Notificación para el estudiante (solo si tiene cuenta vinculada)
+      if (student[0].userId) {
+        await db.insert(notifications).values({
+          id: uuid(),
+          userId: student[0].userId,
+          type: 'BADGE',
+          title: '🏅 ¡Nueva insignia desbloqueada!',
+          message: `Has obtenido la insignia "${badge.name}"`,
+          isRead: false,
+          createdAt: new Date(),
+        });
+      }
       
       // Notificación para el profesor (obtener de la clase)
       const classroom = await db.query.classrooms.findFirst({
