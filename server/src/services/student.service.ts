@@ -290,13 +290,11 @@ export class StudentService {
     let awardedBadges: string[] = [];
     try {
       const earnedBadges = await badgeService.checkAndAwardBadges({
-        type: 'POINTS_EARNED',
+        type: 'POINTS_ADDED',
         data: {
           studentProfileId: data.studentId,
           classroomId: profile.classroomId,
-          pointType: data.pointType,
-          amount: data.amount,
-          isPositive: data.amount > 0,
+          totalXp: data.pointType === 'XP' ? data.amount : undefined,
         },
       });
       if (earnedBadges.length > 0) {

@@ -7,21 +7,6 @@ import { cache, CACHE_KEYS, CACHE_TTL } from '../utils/cache.js';
 
 type UserRole = 'ADMIN' | 'TEACHER' | 'STUDENT';
 
-// Extender Request para incluir usuario
-declare global {
-  namespace Express {
-    interface Request {
-      user?: {
-        id: string;
-        email: string;
-        role: UserRole;
-        firstName: string;
-        lastName: string;
-      };
-    }
-  }
-}
-
 // Payload del JWT
 interface JwtPayload {
   userId: string;
