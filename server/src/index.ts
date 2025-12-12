@@ -12,6 +12,10 @@ import routes from './routes/index.js';
 
 // Crear aplicación Express
 const app = express();
+
+// Confiar en el proxy (necesario para express-rate-limit detrás de nginx/reverse proxy)
+app.set('trust proxy', 1);
+
 const httpServer = createServer(app);
 
 // Configurar Socket.io
