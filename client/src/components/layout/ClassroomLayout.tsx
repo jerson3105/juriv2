@@ -143,6 +143,7 @@ export const ClassroomLayout = () => {
   ];
 
   const isActive = (path: string, exact?: boolean) => {
+    if (!path) return false; // Ignorar paths vacíos
     if (exact) {
       return location.pathname === path;
     }
