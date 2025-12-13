@@ -19,6 +19,12 @@ import {
   Upload,
   Send,
   X,
+  Coins,
+  Calendar,
+  BookOpen,
+  Target,
+  Award,
+  Zap,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -536,284 +542,614 @@ export const StudentExpeditionsPage = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
             onClick={() => {
               setShowPinModal(false);
               setSelectedPin(null);
             }}
           >
             <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white dark:bg-gray-800 rounded-xl w-full max-w-lg max-h-[80vh] overflow-hidden shadow-xl"
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl border border-gray-200 dark:border-gray-700"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Header */}
-              <div className={`p-4 bg-gradient-to-r ${PIN_TYPE_CONFIG[selectedPin.pinType].color} text-white`}>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-                    {getPinIcon(selectedPin.pinType)}
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-lg">{selectedPin.name}</h3>
-                    <p className="text-white/80 text-sm">{PIN_TYPE_CONFIG[selectedPin.pinType].label}</p>
-                  </div>
+              {/* Header mejorado con gradiente dinámico */}
+              <div className={`relative p-5 ${
+                selectedPin.pinType === 'INTRO' 
+                  ? 'bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500' 
+                  : selectedPin.pinType === 'FINAL'
+                    ? 'bg-gradient-to-br from-amber-500 via-orange-500 to-red-500'
+                    : 'bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-500'
+              } text-white overflow-hidden`}>
+                {/* Patrón decorativo de fondo */}
+                <div className="absolute inset-0 opacity-10">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-white rounded-full -translate-y-1/2 translate-x-1/2" />
+                  <div className="absolute bottom-0 left-0 w-24 h-24 bg-white rounded-full translate-y-1/2 -translate-x-1/2" />
                 </div>
+                
+                <div className="relative flex items-start justify-between">
+                  <div className="flex items-center gap-4">
+                    {/* Icono grande animado */}
+                    <motion.div 
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ delay: 0.1, type: 'spring' }}
+                      className="w-14 h-14 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg"
+                    >
+                      {selectedPin.pinType === 'INTRO' ? (
+                        <Home size={28} className="text-white" />
+                      ) : selectedPin.pinType === 'FINAL' ? (
+                        <Flag size={28} className="text-white" />
+                      ) : (
+                        <Target size={28} className="text-white" />
+                      )}
+                    </motion.div>
+                    <div>
+                      <motion.h3 
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.15 }}
+                        className="font-bold text-xl drop-shadow-sm"
+                      >
+                        {selectedPin.name}
+                      </motion.h3>
+                      <motion.p 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.2 }}
+                        className="text-white/80 text-sm flex items-center gap-1"
+                      >
+                        {PIN_TYPE_CONFIG[selectedPin.pinType].label}
+                      </motion.p>
+                    </div>
+                  </div>
+                  
+                  {/* Badge de recompensas en el header */}
+                  {(selectedPin.rewardXp > 0 || selectedPin.rewardGp > 0) && (
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: 0.25 }}
+                      className="flex flex-col gap-1"
+                    >
+                      {selectedPin.rewardXp > 0 && (
+                        <div className="flex items-center gap-1 bg-white/20 backdrop-blur-sm px-2 py-1 rounded-full text-xs font-semibold">
+                          <Zap size={12} />
+                          +{selectedPin.rewardXp} XP
+                        </div>
+                      )}
+                      {selectedPin.rewardGp > 0 && (
+                        <div className="flex items-center gap-1 bg-white/20 backdrop-blur-sm px-2 py-1 rounded-full text-xs font-semibold">
+                          <Coins size={12} />
+                          +{selectedPin.rewardGp} GP
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </div>
+
+                {/* Barra de progreso de la expedición */}
+                {expedition.pins && expedition.pins.length > 1 && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.3 }}
+                    className="mt-4 pt-3 border-t border-white/20"
+                  >
+                    <div className="flex items-center justify-between text-xs text-white/70 mb-2">
+                      <span>Progreso de la expedición</span>
+                      <span>
+                        Paso {(expedition.pins.findIndex(p => p.id === selectedPin.id) || 0) + 1} de {expedition.pins.length}
+                      </span>
+                    </div>
+                    <div className="flex gap-1">
+                      {expedition.pins.map((pin) => {
+                        const pinProgress = getPinProgress(pin.id);
+                        const isCompleted = pinProgress?.status === 'COMPLETED' || pinProgress?.status === 'PASSED';
+                        const isCurrent = pin.id === selectedPin.id;
+                        return (
+                          <div
+                            key={pin.id}
+                            className={`flex-1 h-2 rounded-full transition-all ${
+                              isCompleted 
+                                ? 'bg-white' 
+                                : isCurrent 
+                                  ? 'bg-white/60 animate-pulse' 
+                                  : 'bg-white/20'
+                            }`}
+                          />
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+                )}
               </div>
 
-              {/* Content */}
-              <div className="p-4 overflow-y-auto max-h-[50vh]">
-                {/* Status */}
+              {/* Content con scroll suave */}
+              <div className="p-5 overflow-y-auto max-h-[50vh] space-y-4 scroll-smooth">
+                {/* Status mejorado */}
                 {(() => {
                   const progress = getPinProgress(selectedPin.id);
                   if (progress) {
+                    const statusConfig = PROGRESS_STATUS_CONFIG[progress.status];
                     return (
-                      <div className={`mb-4 p-3 rounded-lg ${PROGRESS_STATUS_CONFIG[progress.status].bgColor}`}>
-                        <span className={`text-sm font-medium ${PROGRESS_STATUS_CONFIG[progress.status].color}`}>
-                          Estado: {PROGRESS_STATUS_CONFIG[progress.status].label}
+                      <motion.div 
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        className={`flex items-center gap-3 p-3 rounded-xl ${statusConfig.bgColor} border ${
+                          progress.status === 'COMPLETED' || progress.status === 'PASSED'
+                            ? 'border-green-200 dark:border-green-800'
+                            : progress.status === 'LOCKED'
+                              ? 'border-gray-200 dark:border-gray-700'
+                              : 'border-blue-200 dark:border-blue-800'
+                        }`}
+                      >
+                        {progress.status === 'COMPLETED' || progress.status === 'PASSED' ? (
+                          <CheckCircle size={20} className="text-green-500" />
+                        ) : progress.status === 'LOCKED' ? (
+                          <Lock size={20} className="text-gray-400" />
+                        ) : (
+                          <div className="w-5 h-5 rounded-full border-2 border-blue-500 border-t-transparent animate-spin" />
+                        )}
+                        <span className={`text-sm font-medium ${statusConfig.color}`}>
+                          {statusConfig.label}
                         </span>
-                      </div>
+                      </motion.div>
                     );
                   }
                   return null;
                 })()}
 
-                {/* Story */}
-                {selectedPin.storyContent && (
-                  <div className="mb-4">
-                    <h4 className="font-medium text-gray-800 dark:text-white mb-2 flex items-center gap-2">
-                      <FileText size={16} />
-                      Historia
-                    </h4>
-                    <p className="text-gray-600 dark:text-gray-300 text-sm whitespace-pre-wrap">
-                      {selectedPin.storyContent}
-                    </p>
-                  </div>
-                )}
-
-                {/* Task */}
-                {selectedPin.pinType === 'OBJECTIVE' && selectedPin.taskName && (
-                  <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                    <h4 className="font-medium text-blue-800 dark:text-blue-300 mb-2 flex items-center gap-2">
-                      <Upload size={16} />
-                      Tarea: {selectedPin.taskName}
-                    </h4>
-                    {selectedPin.taskContent && (
-                      <p className="text-blue-700 dark:text-blue-400 text-sm mb-3">
-                        {selectedPin.taskContent}
-                      </p>
-                    )}
+                {/* Story con diseño de pergamino */}
+                {(selectedPin.storyContent || (Array.isArray(selectedPin.storyFiles) && selectedPin.storyFiles.length > 0)) && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 }}
+                    className="relative"
+                  >
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                        <BookOpen size={16} className="text-amber-600 dark:text-amber-400" />
+                      </div>
+                      <h4 className="font-semibold text-gray-800 dark:text-white">Historia</h4>
+                    </div>
                     
-                    {selectedPin.requiresSubmission && (
-                      <div className="mt-3 pt-3 border-t border-blue-200 dark:border-blue-800">
-                        {(() => {
-                          const mySubmission = getMySubmission();
-                          const progress = getPinProgress(selectedPin.id);
-                          
-                          // Si ya entregó, mostrar estado
-                          if (mySubmission) {
-                            return (
-                              <div className="space-y-2">
-                                <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
-                                  <CheckCircle size={16} />
-                                  <span className="text-sm font-medium">Tarea entregada</span>
-                                </div>
-                                {(() => {
-                                  // files puede venir como string JSON o como array
-                                  const files = typeof mySubmission.files === 'string' 
-                                    ? JSON.parse(mySubmission.files) 
-                                    : mySubmission.files;
-                                  return Array.isArray(files) ? files.map((file: string, idx: number) => (
-                                    <a
-                                      key={idx}
-                                      href={file.startsWith('http') ? file : `${(import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace('/api', '')}${file}`}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="flex items-center gap-2 text-sm text-blue-600 hover:underline"
-                                    >
-                                      <FileText size={14} />
-                                      Ver archivo entregado
-                                    </a>
-                                  )) : null;
-                                })()}
-                                {progress?.status === 'IN_PROGRESS' && (
-                                  <p className="text-sm text-amber-600 dark:text-amber-400">
-                                    ⏳ Esperando revisión del profesor
-                                  </p>
-                                )}
-                                {progress?.status === 'PASSED' && (
-                                  <p className="text-sm text-green-600 dark:text-green-400">
-                                    ✅ ¡Aprobado por el profesor!
-                                  </p>
-                                )}
-                                {progress?.status === 'FAILED' && (
-                                  <p className="text-sm text-red-600 dark:text-red-400">
-                                    ❌ No aprobado - Puedes volver a intentar
-                                  </p>
-                                )}
-                              </div>
-                            );
-                          }
-                          
-                          // Si no ha entregado, mostrar formulario
-                          return (
-                            <div className="space-y-3">
-                              <p className="text-sm text-blue-600 dark:text-blue-400">
-                                📎 Sube hasta 3 archivos para completar esta tarea (máx. 5MB c/u)
-                              </p>
-                              
-                              {/* Input de archivo oculto */}
-                              <input
-                                type="file"
-                                id="task-file-input"
-                                accept="image/*,.pdf"
-                                onChange={handleFileSelect}
-                                multiple
-                                className="hidden"
-                              />
-                              
-                              {/* Lista de archivos seleccionados */}
-                              {selectedFiles.length > 0 && (
-                                <div className="space-y-2">
-                                  {selectedFiles.map((file, index) => (
-                                    <div key={index} className="flex items-center justify-between p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-                                      <div className="flex items-center gap-2">
-                                        <FileText size={16} className="text-blue-600" />
-                                        <span className="text-sm text-blue-800 dark:text-blue-200 truncate max-w-[180px]">
-                                          {file.name}
-                                        </span>
-                                      </div>
-                                      <button
-                                        onClick={() => handleRemoveFile(index)}
-                                        className="p-1 hover:bg-blue-200 dark:hover:bg-blue-800 rounded"
-                                      >
-                                        <X size={14} className="text-blue-600" />
-                                      </button>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                              
-                              {/* Área de selección de archivo */}
-                              {selectedFiles.length < 3 && (
-                                <label
-                                  htmlFor="task-file-input"
-                                  className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-blue-300 dark:border-blue-700 rounded-lg cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
-                                >
-                                  <Upload size={24} className="text-blue-400 mb-2" />
-                                  <span className="text-sm text-blue-600 dark:text-blue-400">
-                                    {selectedFiles.length === 0 ? 'Haz clic para seleccionar archivos' : 'Agregar más archivos'}
-                                  </span>
-                                  <span className="text-xs text-gray-500 mt-1">
-                                    Imágenes o PDF (máx. 5MB) - {3 - selectedFiles.length} restantes
-                                  </span>
-                                </label>
-                              )}
-                              
-                              {/* Comentario opcional */}
-                              <textarea
-                                value={submissionComment}
-                                onChange={(e) => setSubmissionComment(e.target.value)}
-                                placeholder="Comentario opcional..."
-                                rows={2}
-                                className="w-full px-3 py-2 text-sm rounded-lg border border-blue-200 dark:border-blue-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-blue-500"
-                              />
-                              
-                              {/* Botón de enviar */}
-                              <Button
-                                size="sm"
-                                onClick={handleSubmitTask}
-                                disabled={selectedFiles.length === 0 || isSubmitting}
-                                className="w-full bg-blue-500 hover:bg-blue-600 disabled:opacity-50"
-                              >
-                                {isSubmitting ? (
-                                  <>
-                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-                                    Enviando...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Send size={14} className="mr-1" />
-                                    Entregar tarea
-                                  </>
-                                )}
-                              </Button>
-                            </div>
-                          );
-                        })()}
+                    {selectedPin.storyContent && (
+                      <div className="relative p-4 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-900/10 dark:to-orange-900/10 rounded-xl border border-amber-200/50 dark:border-amber-800/30">
+                        {/* Decoración de esquina */}
+                        <div className="absolute top-2 left-2 w-3 h-3 border-l-2 border-t-2 border-amber-300 dark:border-amber-700 rounded-tl" />
+                        <div className="absolute top-2 right-2 w-3 h-3 border-r-2 border-t-2 border-amber-300 dark:border-amber-700 rounded-tr" />
+                        <div className="absolute bottom-2 left-2 w-3 h-3 border-l-2 border-b-2 border-amber-300 dark:border-amber-700 rounded-bl" />
+                        <div className="absolute bottom-2 right-2 w-3 h-3 border-r-2 border-b-2 border-amber-300 dark:border-amber-700 rounded-br" />
+                        
+                        <p className="text-gray-700 dark:text-gray-300 text-sm leading-relaxed whitespace-pre-wrap italic">
+                          {selectedPin.storyContent}
+                        </p>
                       </div>
                     )}
-                  </div>
+                    
+                    {/* Recursos adicionales (archivos, URLs, Genially) */}
+                    {Array.isArray(selectedPin.storyFiles) && selectedPin.storyFiles.length > 0 && (
+                      <div className="space-y-3 mt-4">
+                        {selectedPin.storyFiles.map((file: string, idx: number) => {
+                          const isGenially = file.includes('genial.ly') || file.includes('genially');
+                          const isImage = /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(file);
+                          const isPdf = /\.pdf$/i.test(file);
+                          
+                          if (isGenially) {
+                            return (
+                              <motion.div 
+                                key={idx} 
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={{ delay: 0.2 + idx * 0.1 }}
+                                className="rounded-xl overflow-hidden border-2 border-purple-200 dark:border-purple-800 shadow-lg"
+                              >
+                                <div className="bg-gradient-to-r from-purple-500 to-pink-500 px-3 py-1.5 flex items-center gap-2">
+                                  <Sparkles size={14} className="text-white" />
+                                  <span className="text-white text-xs font-medium">Contenido interactivo</span>
+                                </div>
+                                <iframe
+                                  src={file}
+                                  className="w-full aspect-video"
+                                  frameBorder="0"
+                                  allowFullScreen
+                                  title={`Genially ${idx + 1}`}
+                                />
+                              </motion.div>
+                            );
+                          } else if (isImage) {
+                            return (
+                              <motion.a
+                                key={idx}
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={{ delay: 0.2 + idx * 0.1 }}
+                                href={file.startsWith('http') ? file : `${(import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace('/api', '')}${file}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="block rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition-shadow"
+                              >
+                                <img
+                                  src={file.startsWith('http') ? file : `${(import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace('/api', '')}${file}`}
+                                  alt={`Recurso ${idx + 1}`}
+                                  className="w-full max-h-64 object-contain bg-gray-100 dark:bg-gray-800"
+                                />
+                              </motion.a>
+                            );
+                          } else if (isPdf) {
+                            return (
+                              <motion.a
+                                key={idx}
+                                initial={{ opacity: 0, x: -10 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ delay: 0.2 + idx * 0.1 }}
+                                href={file.startsWith('http') ? file : `${(import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace('/api', '')}${file}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-3 p-4 bg-gradient-to-r from-red-50 to-pink-50 dark:from-red-900/20 dark:to-pink-900/20 rounded-xl border border-red-200 dark:border-red-800 hover:shadow-md transition-all group"
+                              >
+                                <div className="w-10 h-10 rounded-lg bg-red-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                  <FileText size={20} className="text-white" />
+                                </div>
+                                <div>
+                                  <span className="text-sm font-medium text-red-700 dark:text-red-300">Documento PDF</span>
+                                  <p className="text-xs text-red-500 dark:text-red-400">Clic para abrir</p>
+                                </div>
+                              </motion.a>
+                            );
+                          } else {
+                            return (
+                              <motion.a
+                                key={idx}
+                                initial={{ opacity: 0, x: -10 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ delay: 0.2 + idx * 0.1 }}
+                                href={file}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border border-blue-200 dark:border-blue-800 hover:shadow-md transition-all group"
+                              >
+                                <div className="w-10 h-10 rounded-lg bg-blue-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                  <ChevronRight size={20} className="text-white" />
+                                </div>
+                                <span className="text-sm font-medium text-blue-700 dark:text-blue-300 truncate">{file}</span>
+                              </motion.a>
+                            );
+                          }
+                        })}
+                      </div>
+                    )}
+                  </motion.div>
                 )}
 
-                {/* Rewards */}
-                {(selectedPin.rewardXp > 0 || selectedPin.rewardGp > 0) && (
-                  <div className="flex items-center gap-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
-                    <Sparkles size={20} className="text-amber-500" />
-                    <div className="flex gap-4">
-                      {selectedPin.rewardXp > 0 && (
-                        <span className="text-sm font-medium text-amber-700 dark:text-amber-300">
-                          +{selectedPin.rewardXp} XP
-                        </span>
+                {/* Task mejorada */}
+                {selectedPin.pinType === 'OBJECTIVE' && selectedPin.taskName && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.2 }}
+                    className="relative"
+                  >
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                        <Target size={16} className="text-blue-600 dark:text-blue-400" />
+                      </div>
+                      <h4 className="font-semibold text-gray-800 dark:text-white">Misión</h4>
+                    </div>
+                    
+                    <div className="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border border-blue-200 dark:border-blue-800 shadow-sm">
+                      <div className="flex items-start gap-3 mb-3">
+                        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center flex-shrink-0">
+                          <Award size={20} className="text-white" />
+                        </div>
+                        <div>
+                          <h5 className="font-semibold text-blue-800 dark:text-blue-200">{selectedPin.taskName}</h5>
+                          {selectedPin.taskContent && (
+                            <p className="text-blue-600 dark:text-blue-400 text-sm mt-1">
+                              {selectedPin.taskContent}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Fecha límite si existe */}
+                      {selectedPin.dueDate && (
+                        <div className="flex items-center gap-2 mb-3 p-2 bg-white/50 dark:bg-gray-800/50 rounded-lg">
+                          <Calendar size={14} className="text-blue-500" />
+                          <span className="text-xs text-blue-700 dark:text-blue-300">
+                            Fecha límite: {new Date(selectedPin.dueDate).toLocaleDateString('es-ES', { 
+                              weekday: 'long', 
+                              year: 'numeric', 
+                              month: 'long', 
+                              day: 'numeric' 
+                            })}
+                          </span>
+                        </div>
                       )}
-                      {selectedPin.rewardGp > 0 && (
-                        <span className="text-sm font-medium text-amber-700 dark:text-amber-300">
-                          +{selectedPin.rewardGp} GP
-                        </span>
+                    
+                      {selectedPin.requiresSubmission && (
+                        <div className="mt-4 pt-4 border-t border-blue-200 dark:border-blue-700">
+                          {(() => {
+                            const mySubmission = getMySubmission();
+                            const progress = getPinProgress(selectedPin.id);
+                            
+                            // Si ya entregó, mostrar estado
+                            if (mySubmission) {
+                              return (
+                                <div className="space-y-3">
+                                  <div className={`flex items-center gap-3 p-3 rounded-xl ${
+                                    progress?.status === 'PASSED' 
+                                      ? 'bg-green-100 dark:bg-green-900/30 border border-green-200 dark:border-green-800'
+                                      : progress?.status === 'FAILED'
+                                        ? 'bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800'
+                                        : 'bg-amber-100 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800'
+                                  }`}>
+                                    {progress?.status === 'PASSED' ? (
+                                      <>
+                                        <CheckCircle size={20} className="text-green-500" />
+                                        <div>
+                                          <span className="text-sm font-medium text-green-700 dark:text-green-300">¡Aprobado!</span>
+                                          <p className="text-xs text-green-600 dark:text-green-400">El profesor ha revisado tu trabajo</p>
+                                        </div>
+                                      </>
+                                    ) : progress?.status === 'FAILED' ? (
+                                      <>
+                                        <X size={20} className="text-red-500" />
+                                        <div>
+                                          <span className="text-sm font-medium text-red-700 dark:text-red-300">No aprobado</span>
+                                          <p className="text-xs text-red-600 dark:text-red-400">Puedes volver a intentarlo</p>
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Clock size={20} className="text-amber-500" />
+                                        <div>
+                                          <span className="text-sm font-medium text-amber-700 dark:text-amber-300">Entregado</span>
+                                          <p className="text-xs text-amber-600 dark:text-amber-400">Esperando revisión del profesor</p>
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                  
+                                  {/* Archivos entregados */}
+                                  {(() => {
+                                    const files = typeof mySubmission.files === 'string' 
+                                      ? JSON.parse(mySubmission.files) 
+                                      : mySubmission.files;
+                                    return Array.isArray(files) && files.length > 0 && (
+                                      <div className="space-y-2">
+                                        <span className="text-xs text-gray-500 dark:text-gray-400">Archivos entregados:</span>
+                                        {files.map((file: string, idx: number) => (
+                                          <a
+                                            key={idx}
+                                            href={file.startsWith('http') ? file : `${(import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace('/api', '')}${file}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center gap-2 p-2 bg-white dark:bg-gray-800 rounded-lg text-sm text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                                          >
+                                            <FileText size={14} />
+                                            <span className="truncate">Archivo {idx + 1}</span>
+                                          </a>
+                                        ))}
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+                              );
+                            }
+                            
+                            // Si no ha entregado, mostrar formulario mejorado
+                            return (
+                              <div className="space-y-4">
+                                <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400">
+                                  <Upload size={16} />
+                                  <span>Sube hasta 3 archivos (máx. 5MB c/u)</span>
+                                </div>
+                                
+                                <input
+                                  type="file"
+                                  id="task-file-input"
+                                  accept="image/*,.pdf"
+                                  onChange={handleFileSelect}
+                                  multiple
+                                  className="hidden"
+                                />
+                                
+                                {/* Lista de archivos seleccionados */}
+                                {selectedFiles.length > 0 && (
+                                  <div className="space-y-2">
+                                    {selectedFiles.map((file, index) => (
+                                      <motion.div 
+                                        key={index} 
+                                        initial={{ opacity: 0, x: -10 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        className="flex items-center justify-between p-3 bg-white dark:bg-gray-800 rounded-xl border border-blue-200 dark:border-blue-700"
+                                      >
+                                        <div className="flex items-center gap-3">
+                                          <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                                            <FileText size={14} className="text-blue-600" />
+                                          </div>
+                                          <span className="text-sm text-gray-700 dark:text-gray-300 truncate max-w-[180px]">
+                                            {file.name}
+                                          </span>
+                                        </div>
+                                        <button
+                                          onClick={() => handleRemoveFile(index)}
+                                          className="p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-colors"
+                                        >
+                                          <X size={14} className="text-red-500" />
+                                        </button>
+                                      </motion.div>
+                                    ))}
+                                  </div>
+                                )}
+                                
+                                {/* Área de selección de archivo */}
+                                {selectedFiles.length < 3 && (
+                                  <label
+                                    htmlFor="task-file-input"
+                                    className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-blue-300 dark:border-blue-700 rounded-xl cursor-pointer hover:bg-white dark:hover:bg-gray-800 transition-all group"
+                                  >
+                                    <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                                      <Upload size={24} className="text-blue-500" />
+                                    </div>
+                                    <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                                      {selectedFiles.length === 0 ? 'Seleccionar archivos' : 'Agregar más'}
+                                    </span>
+                                    <span className="text-xs text-gray-500 mt-1">
+                                      {3 - selectedFiles.length} archivos restantes
+                                    </span>
+                                  </label>
+                                )}
+                                
+                                {/* Comentario opcional */}
+                                <textarea
+                                  value={submissionComment}
+                                  onChange={(e) => setSubmissionComment(e.target.value)}
+                                  placeholder="Añade un comentario (opcional)..."
+                                  rows={2}
+                                  className="w-full px-4 py-3 text-sm rounded-xl border border-blue-200 dark:border-blue-700 bg-white dark:bg-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                />
+                                
+                                {/* Botón de enviar mejorado */}
+                                <motion.button
+                                  whileHover={{ scale: 1.02 }}
+                                  whileTap={{ scale: 0.98 }}
+                                  onClick={handleSubmitTask}
+                                  disabled={selectedFiles.length === 0 || isSubmitting}
+                                  className={`w-full py-3 px-4 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-all ${
+                                    selectedFiles.length === 0 || isSubmitting
+                                      ? 'bg-gray-300 dark:bg-gray-700 cursor-not-allowed'
+                                      : 'bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 shadow-lg hover:shadow-xl'
+                                  }`}
+                                >
+                                  {isSubmitting ? (
+                                    <>
+                                      <div className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                                      Enviando...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Send size={18} />
+                                      Entregar tarea
+                                    </>
+                                  )}
+                                </motion.button>
+                              </div>
+                            );
+                          })()}
+                        </div>
                       )}
                     </div>
-                  </div>
+                  </motion.div>
                 )}
 
-                {/* Final pin celebration */}
+                {/* Final pin celebration mejorado */}
                 {selectedPin.pinType === 'FINAL' && getPinProgress(selectedPin.id)?.status === 'COMPLETED' && (
-                  <div className="mt-4 p-4 bg-gradient-to-r from-amber-100 to-yellow-100 dark:from-amber-900/30 dark:to-yellow-900/30 rounded-lg text-center">
-                    <Trophy size={32} className="mx-auto text-amber-500 mb-2" />
-                    <h4 className="font-bold text-amber-800 dark:text-amber-300">
-                      ¡Felicitaciones!
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.3, type: 'spring' }}
+                    className="relative overflow-hidden p-6 bg-gradient-to-br from-amber-100 via-yellow-100 to-orange-100 dark:from-amber-900/30 dark:via-yellow-900/30 dark:to-orange-900/30 rounded-2xl text-center"
+                  >
+                    {/* Confetti decorativo */}
+                    <div className="absolute inset-0 overflow-hidden">
+                      {[...Array(6)].map((_, i) => (
+                        <motion.div
+                          key={i}
+                          initial={{ y: -20, opacity: 0 }}
+                          animate={{ y: 0, opacity: 1 }}
+                          transition={{ delay: 0.4 + i * 0.1 }}
+                          className={`absolute w-2 h-2 rounded-full ${
+                            ['bg-amber-400', 'bg-yellow-400', 'bg-orange-400', 'bg-red-400', 'bg-pink-400', 'bg-purple-400'][i]
+                          }`}
+                          style={{
+                            left: `${15 + i * 15}%`,
+                            top: `${10 + (i % 3) * 20}%`,
+                          }}
+                        />
+                      ))}
+                    </div>
+                    
+                    <motion.div
+                      animate={{ rotate: [0, -10, 10, -10, 0] }}
+                      transition={{ delay: 0.5, duration: 0.5 }}
+                    >
+                      <Trophy size={48} className="mx-auto text-amber-500 mb-3 drop-shadow-lg" />
+                    </motion.div>
+                    <h4 className="font-bold text-xl text-amber-800 dark:text-amber-300 mb-1">
+                      ¡Felicitaciones! 🎉
                     </h4>
                     <p className="text-amber-700 dark:text-amber-400 text-sm">
-                      Has completado esta expedición
+                      Has completado esta expedición con éxito
                     </p>
-                  </div>
+                  </motion.div>
                 )}
               </div>
 
-              {/* Footer */}
-              <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+              {/* Footer mejorado */}
+              <div className="p-4 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-200 dark:border-gray-700">
                 {(() => {
                   const progress = getPinProgress(selectedPin.id);
+                  
+                  // Usar autoProgress del pin si existe, sino el de la expedición
+                  const pinAutoProgress = selectedPin.autoProgress ?? expedition?.autoProgress;
+                  
                   const canContinue = progress && 
-                    selectedExpedition?.autoProgress &&
+                    pinAutoProgress &&
                     (progress.status === 'UNLOCKED' || progress.status === 'IN_PROGRESS') &&
                     (selectedPin.pinType === 'INTRO' || selectedPin.pinType === 'FINAL' || !selectedPin.requiresSubmission);
                   
                   if (canContinue) {
                     return (
-                      <div className="flex gap-2">
+                      <div className="flex gap-3">
                         <Button
                           variant="secondary"
                           onClick={() => {
                             setShowPinModal(false);
                             setSelectedPin(null);
                           }}
-                          className="flex-1"
+                          className="flex-1 py-3"
                         >
                           Cerrar
                         </Button>
-                        <Button
+                        <motion.button
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
                           onClick={handleCompletePin}
                           disabled={isCompleting}
-                          className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-500"
+                          className={`flex-1 py-3 px-4 rounded-xl font-semibold text-white flex items-center justify-center gap-2 ${
+                            isCompleting 
+                              ? 'bg-gray-400 cursor-not-allowed' 
+                              : 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 shadow-lg hover:shadow-xl'
+                          } transition-all`}
                         >
-                          {isCompleting ? 'Avanzando...' : (
+                          {isCompleting ? (
                             <>
-                              <ChevronRight size={16} className="mr-1" />
-                              Continuar
+                              <div className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                              Avanzando...
+                            </>
+                          ) : (
+                            <>
+                              {selectedPin.pinType === 'FINAL' ? (
+                                <>
+                                  <Trophy size={18} />
+                                  Completar expedición
+                                </>
+                              ) : (
+                                <>
+                                  <ChevronRight size={18} />
+                                  Continuar aventura
+                                </>
+                              )}
                             </>
                           )}
-                        </Button>
+                        </motion.button>
                       </div>
                     );
                   }
@@ -825,7 +1161,7 @@ export const StudentExpeditionsPage = () => {
                         setShowPinModal(false);
                         setSelectedPin(null);
                       }}
-                      className="w-full"
+                      className="w-full py-3"
                     >
                       Cerrar
                     </Button>

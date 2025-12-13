@@ -237,6 +237,8 @@ export const updatePin = async (req: Request, res: Response) => {
     const { pinId } = req.params;
     const pinData = req.body;
     
+    console.log('updatePin - storyFiles received:', pinData.storyFiles);
+    
     // Convertir fechas de string a Date si existen y son válidas
     if (pinData.dueDate && pinData.dueDate !== '') {
       const date = new Date(pinData.dueDate);
@@ -473,6 +475,18 @@ export const getStudentExpeditionDetail = async (req: Request, res: Response) =>
   } catch (error) {
     console.error('Error getting student expedition detail:', error);
     res.status(500).json({ error: 'Error al obtener detalle de expedición' });
+  }
+};
+
+// Obtener estadísticas de expediciones para un classroom
+export const getClassroomStats = async (req: Request, res: Response) => {
+  try {
+    const { classroomId } = req.params;
+    const stats = await expeditionService.getClassroomStats(classroomId);
+    res.json(stats);
+  } catch (error) {
+    console.error('Error getting classroom stats:', error);
+    res.status(500).json({ error: 'Error al obtener estadísticas' });
   }
 };
 

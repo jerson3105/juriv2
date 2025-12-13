@@ -21,6 +21,11 @@ import {
   Calendar,
   Gift,
   Users,
+  Image,
+  FileUp,
+  Globe,
+  Code,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import {
@@ -65,12 +70,14 @@ export const ExpeditionEditor = ({ expeditionId, onBack }: ExpeditionEditorProps
     positionY: 50,
     name: '',
     storyContent: '',
+    storyFiles: [],
     taskName: '',
     taskContent: '',
     requiresSubmission: false,
     rewardXp: 0,
     rewardGp: 0,
   });
+  const [isUploadingStoryFile, setIsUploadingStoryFile] = useState(false);
   const [activeTab, setActiveTab] = useState<'story' | 'task' | 'config' | 'progress'>('story');
 
   // Query
@@ -230,6 +237,7 @@ export const ExpeditionEditor = ({ expeditionId, onBack }: ExpeditionEditorProps
         positionY: pin.positionY,
         name: pin.name,
         storyContent: pin.storyContent || '',
+        storyFiles: Array.isArray(pin.storyFiles) ? pin.storyFiles : [],
         taskName: pin.taskName || '',
         taskContent: pin.taskContent || '',
         requiresSubmission: pin.requiresSubmission,
@@ -737,9 +745,164 @@ export const ExpeditionEditor = ({ expeditionId, onBack }: ExpeditionEditorProps
                         value={pinForm.storyContent}
                         onChange={(e) => setPinForm({ ...pinForm, storyContent: e.target.value })}
                         placeholder="Escribe la historia que verán los estudiantes al llegar a este punto..."
-                        rows={6}
+                        rows={4}
                         className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-emerald-500"
                       />
+                    </div>
+
+                    {/* Archivos adjuntos / URLs / Embeds */}
+                    <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                        Recursos adicionales (máx. 2)
+                      </label>
+                      
+                      {/* Lista de recursos actuales */}
+                      {Array.isArray(pinForm.storyFiles) && pinForm.storyFiles.length > 0 && (
+                        <div className="space-y-2 mb-3">
+                          {pinForm.storyFiles.map((file, index) => (
+                            <div key={index} className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                              {file.includes('genial.ly') || file.includes('genially') ? (
+                                <Code size={16} className="text-purple-500 flex-shrink-0" />
+                              ) : file.startsWith('http') ? (
+                                <Globe size={16} className="text-blue-500 flex-shrink-0" />
+                              ) : (
+                                <FileUp size={16} className="text-emerald-500 flex-shrink-0" />
+                              )}
+                              <span className="flex-1 text-sm text-gray-600 dark:text-gray-400 truncate">
+                                {file.includes('genial.ly') || file.includes('genially') 
+                                  ? 'Genially embed' 
+                                  : file.startsWith('http') 
+                                    ? file 
+                                    : file.split('/').pop()}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newFiles = [...(pinForm.storyFiles || [])];
+                                  newFiles.splice(index, 1);
+                                  setPinForm({ ...pinForm, storyFiles: newFiles });
+                                }}
+                                className="p-1 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Botones para agregar recursos */}
+                      {(!Array.isArray(pinForm.storyFiles) || pinForm.storyFiles.length < 2) && (
+                        <div className="flex flex-wrap gap-2">
+                          {/* Subir archivo */}
+                          <label className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg cursor-pointer transition-colors">
+                            <input
+                              type="file"
+                              accept="image/*,.pdf"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                
+                                if (file.size > 5 * 1024 * 1024) {
+                                  toast.error('El archivo no puede superar 5MB');
+                                  return;
+                                }
+                                
+                                setIsUploadingStoryFile(true);
+                                try {
+                                  const formData = new FormData();
+                                  formData.append('file', file);
+                                  const response = await fetch(`${import.meta.env.VITE_API_URL}/expeditions/upload`, {
+                                    method: 'POST',
+                                    headers: {
+                                      'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+                                    },
+                                    body: formData,
+                                  });
+                                  
+                                  if (!response.ok) throw new Error('Error al subir archivo');
+                                  
+                                  const data = await response.json();
+                                  setPinForm({ 
+                                    ...pinForm, 
+                                    storyFiles: [...(pinForm.storyFiles || []), data.url] 
+                                  });
+                                  toast.success('Archivo subido');
+                                } catch (error) {
+                                  toast.error('Error al subir el archivo');
+                                } finally {
+                                  setIsUploadingStoryFile(false);
+                                  e.target.value = '';
+                                }
+                              }}
+                              disabled={isUploadingStoryFile}
+                            />
+                            {isUploadingStoryFile ? (
+                              <Loader2 size={16} className="animate-spin" />
+                            ) : (
+                              <Image size={16} />
+                            )}
+                            <span>Subir imagen/PDF</span>
+                          </label>
+
+                          {/* Agregar URL */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const url = prompt('Ingresa la URL del recurso:');
+                              if (url && url.trim()) {
+                                if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                                  toast.error('La URL debe comenzar con http:// o https://');
+                                  return;
+                                }
+                                setPinForm({ 
+                                  ...pinForm, 
+                                  storyFiles: [...(pinForm.storyFiles || []), url.trim()] 
+                                });
+                              }
+                            }}
+                            className="flex items-center gap-2 px-3 py-2 text-sm bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
+                          >
+                            <Globe size={16} />
+                            <span>Agregar URL</span>
+                          </button>
+
+                          {/* Agregar Genially */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const embedCode = prompt('Pega el código de embed de Genially (o la URL de compartir):');
+                              if (embedCode && embedCode.trim()) {
+                                // Extraer URL del iframe si es código embed
+                                let geniallyUrl = embedCode.trim();
+                                const srcMatch = embedCode.match(/src=["']([^"']+)["']/);
+                                if (srcMatch) {
+                                  geniallyUrl = srcMatch[1];
+                                }
+                                // Validar que sea de Genially
+                                if (!geniallyUrl.includes('genial.ly') && !geniallyUrl.includes('genially')) {
+                                  toast.error('El enlace debe ser de Genially');
+                                  return;
+                                }
+                                setPinForm({ 
+                                  ...pinForm, 
+                                  storyFiles: [...(pinForm.storyFiles || []), geniallyUrl] 
+                                });
+                                toast.success('Genially agregado');
+                              }
+                            }}
+                            className="flex items-center gap-2 px-3 py-2 text-sm bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-lg transition-colors"
+                          >
+                            <Code size={16} />
+                            <span>Insertar Genially</span>
+                          </button>
+                        </div>
+                      )}
+
+                      <p className="text-xs text-gray-400 mt-2">
+                        Puedes agregar imágenes, PDFs, URLs o presentaciones de Genially
+                      </p>
                     </div>
                   </div>
                 )}
@@ -889,7 +1052,8 @@ export const ExpeditionEditor = ({ expeditionId, onBack }: ExpeditionEditorProps
                                   </p>
                                 </div>
                               </div>
-                              {(progress.status === 'IN_PROGRESS' || (progress.status === 'UNLOCKED' && !expedition?.autoProgress)) && (
+                              {/* Solo mostrar botones de aprobar/rechazar si autoProgress está desactivado (del pin o de la expedición) */}
+                              {!(selectedPin?.autoProgress ?? expedition?.autoProgress) && (progress.status === 'IN_PROGRESS' || progress.status === 'UNLOCKED') && (
                                 <div className="flex gap-1">
                                   <button
                                     onClick={() => expeditionApi.setTeacherDecision(selectedPin.id, {

@@ -18,6 +18,9 @@ router.get('/:id', expeditionController.getExpedition);
 // Obtener expediciones de un classroom
 router.get('/classroom/:classroomId', expeditionController.getClassroomExpeditions);
 
+// Obtener estadísticas de expediciones de un classroom
+router.get('/classroom/:classroomId/stats', authorize('TEACHER'), expeditionController.getClassroomStats);
+
 // Actualizar expedición
 router.put('/:id', authorize('TEACHER'), expeditionController.updateExpedition);
 

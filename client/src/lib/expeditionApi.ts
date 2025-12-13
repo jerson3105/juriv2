@@ -151,6 +151,43 @@ export interface CreateSubmissionDto {
   comment?: string;
 }
 
+export interface ExpeditionStatsSummary {
+  totalExpeditions: number;
+  published: number;
+  draft: number;
+  archived: number;
+  totalStudents: number;
+  totalStarted: number;
+  totalCompleted: number;
+  totalPendingReviews: number;
+  overallCompletionRate: number;
+}
+
+export interface ExpeditionStatItem {
+  expeditionId: string;
+  name: string;
+  status: ExpeditionStatus;
+  mapImageUrl: string;
+  autoProgress: boolean;
+  publishedAt: string | null;
+  createdAt: string;
+  pinsCount: number;
+  totalStudents: number;
+  startedCount: number;
+  completedCount: number;
+  inProgressCount: number;
+  completionRate: number;
+  totalXp: number;
+  totalGp: number;
+  pendingReviews: number;
+  lastActivity: string | null;
+}
+
+export interface ExpeditionStats {
+  summary: ExpeditionStatsSummary;
+  expeditions: ExpeditionStatItem[];
+}
+
 export interface TeacherDecisionDto {
   studentProfileId: string;
   passed: boolean;
@@ -183,6 +220,12 @@ export const expeditionApi = {
   getByClassroom: async (classroomId: string, status?: ExpeditionStatus): Promise<Expedition[]> => {
     const params = status ? { status } : {};
     const response = await api.get(`/expeditions/classroom/${classroomId}`, { params });
+    return response.data;
+  },
+
+  // Obtener estadísticas de expediciones de un classroom
+  getClassroomStats: async (classroomId: string): Promise<ExpeditionStats> => {
+    const response = await api.get(`/expeditions/classroom/${classroomId}/stats`);
     return response.data;
   },
   

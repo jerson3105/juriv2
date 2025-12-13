@@ -34,6 +34,7 @@ import { QuestionBanksPage } from './pages/classroom/QuestionBanksPage';
 import { StudentBossBattlesPage } from './pages/classroom/StudentBossBattlesPage';
 import { StudentBossBattlePage } from './pages/student/StudentBossBattlePage';
 import { MissionsPage } from './pages/classroom/MissionsPage';
+import { ExpeditionsPage } from './pages/classroom/ExpeditionsPage';
 import { StudentMissionsPage } from './pages/student/StudentMissionsPage';
 import { StudentScrollsPage } from './pages/student/StudentScrollsPage';
 import { StudentExpeditionsPage } from './pages/student/StudentExpeditionsPage';
@@ -198,6 +199,7 @@ function App() {
               <Route path="question-banks" element={<QuestionBanksPage />} />
               <Route path="boss-battles/student" element={<StudentBossBattlesPage />} />
               <Route path="missions" element={<MissionsPage />} />
+              <Route path="expeditions" element={<ExpeditionsPage />} />
               <Route path="settings" element={<ClassroomSettingsPage />} />
               <Route path="student/:studentId" element={<StudentDetailPage />} />
             </Route>

@@ -59,10 +59,17 @@ export class ExpeditionService {
     if (!expedition) return null;
     
     // Obtener pines por separado
-    const pins = await db.select()
+    const pinsRaw = await db.select()
       .from(expeditionPins)
       .where(eq(expeditionPins.expeditionId, id))
       .orderBy(asc(expeditionPins.orderIndex));
+    
+    // Parsear campos JSON que pueden venir como string
+    const pins = pinsRaw.map(pin => ({
+      ...pin,
+      storyFiles: typeof pin.storyFiles === 'string' ? JSON.parse(pin.storyFiles) : pin.storyFiles,
+      taskFiles: typeof pin.taskFiles === 'string' ? JSON.parse(pin.taskFiles) : pin.taskFiles,
+    }));
     
     // Obtener conexiones por separado
     const connections = await db.select()
@@ -231,7 +238,16 @@ export class ExpeditionService {
     const results = await db.select()
       .from(expeditionPins)
       .where(eq(expeditionPins.id, id));
-    return results[0] || null;
+    
+    const pin = results[0];
+    if (!pin) return null;
+    
+    // Parsear campos JSON que pueden venir como string
+    return {
+      ...pin,
+      storyFiles: typeof pin.storyFiles === 'string' ? JSON.parse(pin.storyFiles) : pin.storyFiles,
+      taskFiles: typeof pin.taskFiles === 'string' ? JSON.parse(pin.taskFiles) : pin.taskFiles,
+    };
   }
   
   // Actualizar pin
@@ -752,6 +768,102 @@ export class ExpeditionService {
       ));
 
     return this.getPinProgressByStudent(pinId, studentProfileId);
+  }
+
+  // Obtener estadísticas de expediciones para un classroom
+  async getClassroomStats(classroomId: string) {
+    // Obtener todas las expediciones del classroom
+    const expeditionsList = await db.select()
+      .from(expeditions)
+      .where(eq(expeditions.classroomId, classroomId));
+
+    // Obtener conteo de estudiantes en el classroom
+    const studentsResult = await db.select({ count: sql<number>`count(*)` })
+      .from(studentProfiles)
+      .where(eq(studentProfiles.classroomId, classroomId));
+    const totalStudents = Number(studentsResult[0]?.count || 0);
+
+    // Estadísticas por expedición
+    const expeditionStats = await Promise.all(
+      expeditionsList.map(async (exp) => {
+        // Obtener progreso de estudiantes en esta expedición
+        const progressList = await db.select()
+          .from(expeditionStudentProgress)
+          .where(eq(expeditionStudentProgress.expeditionId, exp.id));
+
+        const completedCount = progressList.filter(p => p.isCompleted).length;
+        const inProgressCount = progressList.filter(p => !p.isCompleted).length;
+        const startedCount = progressList.length;
+
+        // Obtener pines de la expedición
+        const pinsList = await db.select()
+          .from(expeditionPins)
+          .where(eq(expeditionPins.expeditionId, exp.id));
+
+        // Calcular recompensas totales
+        const totalXp = pinsList.reduce((sum, pin) => sum + (pin.rewardXp || 0), 0);
+        const totalGp = pinsList.reduce((sum, pin) => sum + (pin.rewardGp || 0), 0);
+
+        // Obtener entregas pendientes de revisión
+        const pendingSubmissions = await db.select({ count: sql<number>`count(*)` })
+          .from(expeditionPinProgress)
+          .where(and(
+            eq(expeditionPinProgress.expeditionId, exp.id),
+            eq(expeditionPinProgress.status, 'IN_PROGRESS')
+          ));
+
+        // Última actividad
+        const lastActivity = progressList.length > 0
+          ? progressList.reduce((latest, p) => 
+              new Date(p.updatedAt) > new Date(latest.updatedAt) ? p : latest
+            ).updatedAt
+          : null;
+
+        return {
+          expeditionId: exp.id,
+          name: exp.name,
+          status: exp.status,
+          mapImageUrl: exp.mapImageUrl,
+          autoProgress: exp.autoProgress,
+          publishedAt: exp.publishedAt,
+          createdAt: exp.createdAt,
+          pinsCount: pinsList.length,
+          totalStudents,
+          startedCount,
+          completedCount,
+          inProgressCount,
+          completionRate: totalStudents > 0 ? Math.round((completedCount / totalStudents) * 100) : 0,
+          totalXp,
+          totalGp,
+          pendingReviews: Number(pendingSubmissions[0]?.count || 0),
+          lastActivity,
+        };
+      })
+    );
+
+    // Estadísticas generales
+    const published = expeditionsList.filter(e => e.status === 'PUBLISHED').length;
+    const draft = expeditionsList.filter(e => e.status === 'DRAFT').length;
+    const archived = expeditionsList.filter(e => e.status === 'ARCHIVED').length;
+
+    const totalCompleted = expeditionStats.reduce((sum, e) => sum + e.completedCount, 0);
+    const totalStarted = expeditionStats.reduce((sum, e) => sum + e.startedCount, 0);
+    const totalPendingReviews = expeditionStats.reduce((sum, e) => sum + e.pendingReviews, 0);
+
+    return {
+      summary: {
+        totalExpeditions: expeditionsList.length,
+        published,
+        draft,
+        archived,
+        totalStudents,
+        totalStarted,
+        totalCompleted,
+        totalPendingReviews,
+        overallCompletionRate: totalStarted > 0 ? Math.round((totalCompleted / totalStarted) * 100) : 0,
+      },
+      expeditions: expeditionStats,
+    };
   }
 }
 
