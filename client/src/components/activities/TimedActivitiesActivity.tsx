@@ -129,25 +129,25 @@ export const TimedActivitiesActivity = ({ classroom, onBack }: TimedActivitiesAc
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" onClick={onBack} className="p-2">
-            <ArrowLeft size={20} />
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Button variant="ghost" onClick={onBack} className="p-1.5 sm:p-2">
+            <ArrowLeft size={18} className="sm:w-5 sm:h-5" />
           </Button>
-          <div className="w-11 h-11 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-purple-500/30">
-            <Timer size={22} />
+          <div className="w-9 h-9 sm:w-11 sm:h-11 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-purple-500/30 flex-shrink-0">
+            <Timer size={18} className="sm:w-[22px] sm:h-[22px]" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-gray-800 dark:text-white">
+            <h1 className="text-base sm:text-lg font-bold text-gray-800 dark:text-white">
               Actividades de Tiempo
             </h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <p className="text-xs text-gray-500 dark:text-gray-400 hidden sm:block">
               Cronómetro, temporizador y modo bomba
             </p>
           </div>
         </div>
-        <Button onClick={() => setShowCreateModal(true)} className="gap-2">
-          <Plus size={18} />
+        <Button onClick={() => setShowCreateModal(true)} className="gap-2 w-full sm:w-auto">
+          <Plus size={16} className="sm:w-[18px] sm:h-[18px]" />
           Nueva Actividad
         </Button>
       </div>

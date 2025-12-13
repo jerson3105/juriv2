@@ -280,22 +280,22 @@ export const MissionsPage = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-500 flex items-center justify-center shadow-lg shadow-purple-500/30">
-            <Target className="text-white w-6 h-6" />
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-500 flex items-center justify-center shadow-lg shadow-purple-500/30 flex-shrink-0">
+            <Target className="text-white w-5 h-5 sm:w-6 sm:h-6" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-800 dark:text-white">
+            <h1 className="text-lg sm:text-2xl font-bold text-gray-800 dark:text-white">
               Misiones
             </h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 hidden sm:block">
               Crea y gestiona misiones para motivar a tus estudiantes
             </p>
           </div>
         </div>
-        <Button onClick={() => setShowModal(true)} className="gap-2">
-          <Plus className="w-5 h-5" />
+        <Button onClick={() => setShowModal(true)} className="gap-2 w-full sm:w-auto">
+          <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
           Nueva Misión
         </Button>
       </div>

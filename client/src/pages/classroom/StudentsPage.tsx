@@ -288,59 +288,59 @@ export const StudentsPage = () => {
           animate={{ opacity: 1, y: 0 }}
           className="bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-600 rounded-xl p-4 text-white shadow-lg"
         >
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             {/* Título */}
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-                <Trophy className="w-6 h-6" />
+              <div className="w-10 h-10 lg:w-12 lg:h-12 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                <Trophy className="w-5 h-5 lg:w-6 lg:h-6" />
               </div>
               <div>
-                <h2 className="text-xl font-bold">Resumen del Curso</h2>
-                <p className="text-indigo-200 text-sm">¡Sigue motivando a tus estudiantes!</p>
+                <h2 className="text-lg lg:text-xl font-bold">Resumen del Curso</h2>
+                <p className="text-indigo-200 text-xs lg:text-sm">¡Sigue motivando a tus estudiantes!</p>
               </div>
             </div>
 
             {/* Stats rápidos */}
-            <div className="flex items-center gap-8">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:flex lg:items-center gap-3 lg:gap-6">
               {/* XP Total */}
-              <div className="text-center">
+              <div className="text-center bg-white/10 rounded-lg p-2 lg:p-0 lg:bg-transparent">
                 <div className="flex items-center justify-center gap-1 text-emerald-300">
-                  <Sparkles size={18} />
-                  <span className="text-2xl font-bold">{totalXP.toLocaleString()}</span>
+                  <Sparkles size={16} className="lg:w-[18px] lg:h-[18px]" />
+                  <span className="text-xl lg:text-2xl font-bold">{totalXP.toLocaleString()}</span>
                 </div>
                 <p className="text-xs text-indigo-200">XP Total</p>
               </div>
 
               {/* Oro Total */}
-              <div className="text-center">
+              <div className="text-center bg-white/10 rounded-lg p-2 lg:p-0 lg:bg-transparent">
                 <div className="flex items-center justify-center gap-1 text-amber-300">
-                  <Coins size={18} />
-                  <span className="text-2xl font-bold">{totalGP.toLocaleString()}</span>
+                  <Coins size={16} className="lg:w-[18px] lg:h-[18px]" />
+                  <span className="text-xl lg:text-2xl font-bold">{totalGP.toLocaleString()}</span>
                 </div>
                 <p className="text-xs text-indigo-200">Oro Total</p>
               </div>
 
               {/* Nivel Promedio */}
-              <div className="text-center">
+              <div className="text-center bg-white/10 rounded-lg p-2 lg:p-0 lg:bg-transparent">
                 <div className="flex items-center justify-center gap-1 text-blue-300">
-                  <TrendingUp size={18} />
-                  <span className="text-2xl font-bold">{avgLevel}</span>
+                  <TrendingUp size={16} className="lg:w-[18px] lg:h-[18px]" />
+                  <span className="text-xl lg:text-2xl font-bold">{avgLevel}</span>
                 </div>
                 <p className="text-xs text-indigo-200">Nivel Promedio</p>
               </div>
 
               {/* Top Estudiante */}
               {topStudent && (
-                <div className="flex items-center gap-3 bg-white/10 rounded-xl px-4 py-2">
+                <div className="col-span-2 sm:col-span-3 lg:col-span-1 flex items-center justify-center lg:justify-start gap-3 bg-white/10 rounded-xl px-3 py-2">
                   <div className="relative">
-                    <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center text-xl">
+                    <div className="w-8 h-8 lg:w-10 lg:h-10 bg-white/20 rounded-lg flex items-center justify-center text-lg lg:text-xl">
                       {topStudentClass?.icon}
                     </div>
-                    <Crown className="w-4 h-4 text-yellow-400 absolute -top-2 -right-2" />
+                    <Crown className="w-3 h-3 lg:w-4 lg:h-4 text-yellow-400 absolute -top-1 -right-1 lg:-top-2 lg:-right-2" />
                   </div>
                   <div>
                     <p className="text-xs text-indigo-200">Líder en XP</p>
-                    <p className="font-bold">{getDisplayName(topStudent)}</p>
+                    <p className="font-bold text-sm lg:text-base">{getDisplayName(topStudent)}</p>
                     <p className="text-xs text-emerald-300">{topStudent.xp} XP</p>
                   </div>
                 </div>
@@ -351,13 +351,13 @@ export const StudentsPage = () => {
       )}
 
       {/* Header con acciones */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-500/30">
-            <Users size={22} />
+          <div className="w-10 h-10 sm:w-11 sm:h-11 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-500/30 flex-shrink-0">
+            <Users size={20} className="sm:w-[22px] sm:h-[22px]" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-gray-800 dark:text-white">
+            <h1 className="text-base sm:text-lg font-bold text-gray-800 dark:text-white">
               Lista de Estudiantes
             </h1>
             <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -367,8 +367,8 @@ export const StudentsPage = () => {
         </div>
 
         {students.length > 0 && (
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-500 dark:text-gray-400">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
               {selectedStudents.size} seleccionado{selectedStudents.size !== 1 ? 's' : ''}
             </span>
             <Button
@@ -377,10 +377,11 @@ export const StudentsPage = () => {
               onClick={() => openBehaviorModal('positive')}
               disabled={selectedStudents.size === 0}
               data-onboarding="give-points-btn"
-              className="!bg-green-500 hover:!bg-green-600 !text-white"
+              className="!bg-green-500 hover:!bg-green-600 !text-white text-xs sm:text-sm px-2 sm:px-3"
             >
-              <Zap size={16} className="mr-1" />
-              Dar puntos
+              <Zap size={14} className="sm:w-4 sm:h-4 mr-1" />
+              <span className="hidden sm:inline">Dar puntos</span>
+              <span className="sm:hidden">Dar</span>
             </Button>
             {classroom.allowNegativePoints !== false && (
               <Button
@@ -388,10 +389,11 @@ export const StudentsPage = () => {
                 size="sm"
                 onClick={() => openBehaviorModal('negative')}
                 disabled={selectedStudents.size === 0}
-                className="!bg-red-500 hover:!bg-red-600 !text-white"
+                className="!bg-red-500 hover:!bg-red-600 !text-white text-xs sm:text-sm px-2 sm:px-3"
               >
-                <Zap size={16} className="mr-1" />
-                Quitar puntos
+                <Zap size={14} className="sm:w-4 sm:h-4 mr-1" />
+                <span className="hidden sm:inline">Quitar puntos</span>
+                <span className="sm:hidden">Quitar</span>
               </Button>
             )}
             <Button
@@ -399,10 +401,11 @@ export const StudentsPage = () => {
               size="sm"
               onClick={() => setShowBadgeModal(true)}
               disabled={selectedStudents.size === 0}
-              className="!bg-amber-500 hover:!bg-amber-600 !text-white"
+              className="!bg-amber-500 hover:!bg-amber-600 !text-white text-xs sm:text-sm px-2 sm:px-3"
             >
-              <Medal size={16} className="mr-1" />
-              Dar insignia
+              <Medal size={14} className="sm:w-4 sm:h-4 mr-1" />
+              <span className="hidden sm:inline">Dar insignia</span>
+              <span className="sm:hidden">Insignia</span>
             </Button>
           </div>
         )}

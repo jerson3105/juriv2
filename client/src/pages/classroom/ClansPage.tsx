@@ -128,13 +128,13 @@ export const ClansPage = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center text-white shadow-lg">
-            <Users size={22} />
+          <div className="w-10 h-10 sm:w-11 sm:h-11 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center text-white shadow-lg flex-shrink-0">
+            <Users size={20} className="sm:w-[22px] sm:h-[22px]" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-gray-800 dark:text-white">
+            <h1 className="text-base sm:text-lg font-bold text-gray-800 dark:text-white">
               Gestión de Clanes
             </h1>
             <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -148,18 +148,20 @@ export const ClansPage = () => {
             <button
               onClick={() => randomAssignMutation.mutate()}
               disabled={randomAssignMutation.isPending}
-              className="flex items-center gap-2 px-3 py-2 bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors text-sm font-medium"
+              className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors text-xs sm:text-sm font-medium"
             >
-              <Shuffle size={16} />
-              Asignar Aleatorio
+              <Shuffle size={14} className="sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Asignar Aleatorio</span>
+              <span className="sm:hidden">Aleatorio</span>
             </button>
           )}
           <button
             onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors text-sm font-medium"
+            className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors text-xs sm:text-sm font-medium"
           >
-            <Plus size={16} />
-            Nuevo Clan
+            <Plus size={14} className="sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Nuevo Clan</span>
+            <span className="sm:hidden">Nuevo</span>
           </button>
         </div>
       </div>

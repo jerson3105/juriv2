@@ -271,50 +271,51 @@ export const RandomEventsActivity = ({ classroom, onBack }: RandomEventsActivity
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <button
             onClick={onBack}
-            className="p-2 hover:bg-white/50 rounded-xl transition-colors"
+            className="p-1.5 sm:p-2 hover:bg-white/50 rounded-xl transition-colors"
           >
-            <ArrowLeft size={20} className="text-gray-600" />
+            <ArrowLeft size={18} className="sm:w-5 sm:h-5 text-gray-600" />
           </button>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-pink-500 to-rose-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-pink-500/30">
-              <Sparkles size={20} />
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 bg-gradient-to-br from-pink-500 to-rose-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-pink-500/30 flex-shrink-0">
+              <Sparkles size={18} className="sm:w-5 sm:h-5" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-gray-800">
+              <h1 className="text-base sm:text-lg font-bold text-gray-800">
                 Eventos Aleatorios
               </h1>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-gray-500 hidden sm:block">
                 {classroom.students?.length || 0} estudiantes en la clase
               </p>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <button
             onClick={handleSpinRoulette}
             disabled={isSpinning}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white text-sm font-medium rounded-xl shadow-lg shadow-pink-500/25 transition-all disabled:opacity-50"
+            className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white text-xs sm:text-sm font-medium rounded-xl shadow-lg shadow-pink-500/25 transition-all disabled:opacity-50"
           >
-            <RotateCw size={16} className={isSpinning ? 'animate-spin' : ''} />
-            Girar Ruleta
+            <RotateCw size={14} className={`sm:w-4 sm:h-4 ${isSpinning ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Girar Ruleta</span>
+            <span className="sm:hidden">Girar</span>
           </button>
           <button
             onClick={() => setShowLibrary(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-white/90 hover:bg-white text-gray-700 text-sm font-medium rounded-xl shadow-lg transition-all"
+            className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 bg-white/90 hover:bg-white text-gray-700 text-xs sm:text-sm font-medium rounded-xl shadow-lg transition-all"
           >
-            <BookOpen size={16} />
-            Biblioteca
+            <BookOpen size={14} className="sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Biblioteca</span>
           </button>
           <button
             onClick={() => setShowHistory(!showHistory)}
-            className={`p-2 rounded-xl transition-colors ${showHistory ? 'bg-pink-100 text-pink-600' : 'hover:bg-white/50 text-gray-500'}`}
+            className={`p-1.5 sm:p-2 rounded-xl transition-colors ${showHistory ? 'bg-pink-100 text-pink-600' : 'hover:bg-white/50 text-gray-500'}`}
           >
-            <History size={18} />
+            <History size={16} className="sm:w-[18px] sm:h-[18px]" />
           </button>
         </div>
       </div>

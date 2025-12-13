@@ -87,21 +87,21 @@ export const BehaviorsPage = () => {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-emerald-500/30">
-            <Sparkles size={22} />
+          <div className="w-10 h-10 sm:w-11 sm:h-11 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-emerald-500/30 flex-shrink-0">
+            <Sparkles size={20} className="sm:w-[22px] sm:h-[22px]" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-gray-800 dark:text-white">
+            <h1 className="text-base sm:text-lg font-bold text-gray-800 dark:text-white">
               Comportamientos
             </h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <p className="text-xs text-gray-500 dark:text-gray-400 hidden sm:block">
               Configura acciones rápidas para dar o quitar puntos
             </p>
           </div>
         </div>
-        <Button leftIcon={<Plus size={16} />} onClick={openCreateModal}>
+        <Button leftIcon={<Plus size={16} />} onClick={openCreateModal} className="w-full sm:w-auto">
           Nuevo comportamiento
         </Button>
       </div>

@@ -134,41 +134,41 @@ export const AttendancePage = () => {
   return (
     <div className="space-y-6">
       {/* Header con fecha */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
+      <div className="bg-white dark:bg-gray-800 rounded-xl p-4 lg:p-6 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-500/30">
-              <Calendar size={22} />
+            <div className="w-10 h-10 lg:w-11 lg:h-11 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-500/30 flex-shrink-0">
+              <Calendar size={20} className="lg:w-[22px] lg:h-[22px]" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-gray-800 dark:text-white">
+              <h1 className="text-base lg:text-lg font-bold text-gray-800 dark:text-white">
                 Control de Asistencia
               </h1>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
+              <p className="text-xs text-gray-500 dark:text-gray-400 hidden sm:block">
                 Registra la asistencia diaria de tus estudiantes
               </p>
             </div>
           </div>
           
           {/* Selector de fecha */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-center sm:justify-end gap-1 sm:gap-2">
             <button
               onClick={() => changeDate(-1)}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              className="p-1.5 sm:p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
             >
-              <ChevronLeft className="w-5 h-5" />
+              <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
-            <div className="flex items-center gap-2 px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg">
-              <Calendar className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-              <span className="font-medium text-indigo-900 dark:text-indigo-200">
+            <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg">
+              <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600 dark:text-indigo-400 hidden sm:block" />
+              <span className="font-medium text-indigo-900 dark:text-indigo-200 text-xs sm:text-sm lg:text-base">
                 {selectedDate.toLocaleDateString('es-ES', { 
-                  weekday: 'long', 
+                  weekday: 'short', 
                   day: 'numeric', 
-                  month: 'long' 
+                  month: 'short' 
                 })}
               </span>
               {isToday && (
-                <span className="px-2 py-0.5 bg-indigo-600 text-white text-xs rounded-full">
+                <span className="px-1.5 sm:px-2 py-0.5 bg-indigo-600 text-white text-xs rounded-full">
                   Hoy
                 </span>
               )}
@@ -176,67 +176,69 @@ export const AttendancePage = () => {
             <button
               onClick={() => changeDate(1)}
               disabled={isToday}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <ChevronRight className="w-5 h-5" />
+              <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
           </div>
         </div>
 
         {/* Stats rápidas */}
-        <div className="grid grid-cols-4 gap-4">
-          <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 text-center">
-            <Users className="w-5 h-5 text-gray-500 dark:text-gray-400 mx-auto mb-1" />
-            <p className="text-2xl font-bold text-gray-900 dark:text-white">{students.length}</p>
+        <div className="grid grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-4">
+          <div className="hidden lg:block bg-gray-50 dark:bg-gray-700/50 rounded-lg p-2 sm:p-3 text-center">
+            <Users className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 dark:text-gray-400 mx-auto mb-1" />
+            <p className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-white">{students.length}</p>
             <p className="text-xs text-gray-500">Total</p>
           </div>
-          <div className="bg-green-50 dark:bg-green-900/30 rounded-lg p-3 text-center">
-            <Check className="w-5 h-5 text-green-600 dark:text-green-400 mx-auto mb-1" />
-            <p className="text-2xl font-bold text-green-600 dark:text-green-400">{presentCount}</p>
+          <div className="bg-green-50 dark:bg-green-900/30 rounded-lg p-2 sm:p-3 text-center">
+            <Check className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 dark:text-green-400 mx-auto mb-1" />
+            <p className="text-lg sm:text-2xl font-bold text-green-600 dark:text-green-400">{presentCount}</p>
             <p className="text-xs text-gray-500">Presentes</p>
           </div>
-          <div className="bg-red-50 dark:bg-red-900/30 rounded-lg p-3 text-center">
-            <X className="w-5 h-5 text-red-600 dark:text-red-400 mx-auto mb-1" />
-            <p className="text-2xl font-bold text-red-600 dark:text-red-400">{absentCount}</p>
+          <div className="bg-red-50 dark:bg-red-900/30 rounded-lg p-2 sm:p-3 text-center">
+            <X className="w-4 h-4 sm:w-5 sm:h-5 text-red-600 dark:text-red-400 mx-auto mb-1" />
+            <p className="text-lg sm:text-2xl font-bold text-red-600 dark:text-red-400">{absentCount}</p>
             <p className="text-xs text-gray-500">Ausentes</p>
           </div>
-          <div className="bg-amber-50 dark:bg-amber-900/30 rounded-lg p-3 text-center">
-            <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400 mx-auto mb-1" />
-            <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{lateCount}</p>
+          <div className="bg-amber-50 dark:bg-amber-900/30 rounded-lg p-2 sm:p-3 text-center">
+            <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600 dark:text-amber-400 mx-auto mb-1" />
+            <p className="text-lg sm:text-2xl font-bold text-amber-600 dark:text-amber-400">{lateCount}</p>
             <p className="text-xs text-gray-500">Tardanzas</p>
           </div>
         </div>
       </div>
 
       {/* Controles rápidos */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-600">Marcar todos como:</span>
+      <div className="bg-white dark:bg-gray-800 rounded-xl p-3 sm:p-4 shadow-sm">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+          {/* Botones de marcar todos */}
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+            <span className="text-xs sm:text-sm text-gray-600 w-full sm:w-auto mb-1 sm:mb-0">Marcar todos:</span>
             {Object.entries(STATUS_CONFIG).map(([status, config]) => {
               const Icon = config.icon;
               return (
                 <button
                   key={status}
                   onClick={() => setAllStatus(status as AttendanceStatus)}
-                  className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${config.bgColor} ${config.color} hover:opacity-80`}
+                  className={`flex items-center gap-1 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors ${config.bgColor} ${config.color} hover:opacity-80`}
                 >
-                  <Icon className="w-4 h-4" />
-                  {config.label}
+                  <Icon className="w-3 h-3 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">{config.label}</span>
                 </button>
               );
             })}
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-indigo-500" />
-              <span className="text-sm text-gray-600">XP por asistencia:</span>
+          {/* XP y Guardar */}
+          <div className="flex items-center justify-between sm:justify-end gap-2 sm:gap-4">
+            <div className="flex items-center gap-1 sm:gap-2">
+              <Sparkles className="w-3 h-3 sm:w-4 sm:h-4 text-indigo-500" />
+              <span className="text-xs sm:text-sm text-gray-600">XP:</span>
               <input
                 type="number"
                 value={xpForPresent}
                 onChange={(e) => setXpForPresent(parseInt(e.target.value) || 0)}
-                className="w-16 px-2 py-1 border border-gray-200 rounded-lg text-center"
+                className="w-12 sm:w-16 px-1 sm:px-2 py-1 border border-gray-200 rounded-lg text-center text-sm"
                 min={0}
               />
             </div>
@@ -244,7 +246,7 @@ export const AttendancePage = () => {
             <button
               onClick={() => saveMutation.mutate()}
               disabled={!hasChanges || saveMutation.isPending}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+              className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-sm font-medium transition-colors ${
                 hasChanges
                   ? 'bg-indigo-600 text-white hover:bg-indigo-700'
                   : 'bg-gray-100 text-gray-400 cursor-not-allowed'
@@ -255,7 +257,8 @@ export const AttendancePage = () => {
               ) : (
                 <Save className="w-4 h-4" />
               )}
-              Guardar Asistencia
+              <span className="hidden sm:inline">Guardar</span>
+              <span className="sm:hidden">Guardar</span>
             </button>
           </div>
         </div>
