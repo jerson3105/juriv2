@@ -34,6 +34,8 @@ app.use(passport.initialize());
 // Servir archivos estáticos ANTES del middleware de seguridad (para evitar CORS issues)
 app.use('/badges', cors(), express.static(path.join(process.cwd(), 'public', 'badges')));
 app.use('/avatars', cors(), express.static(path.join(process.cwd(), 'uploads', 'avatars')));
+app.use('/uploads/expeditions', cors(), express.static(path.join(process.cwd(), 'uploads', 'expeditions')));
+app.use('/uploads/maps', cors(), express.static(path.join(process.cwd(), 'uploads', 'maps')));
 
 // Aplicar middleware de seguridad
 applySecurityMiddleware(app);

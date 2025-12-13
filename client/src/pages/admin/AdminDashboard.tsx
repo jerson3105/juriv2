@@ -8,7 +8,8 @@ import {
   Shield,
   ChevronRight,
   LogOut,
-  Building2
+  Building2,
+  Map
 } from 'lucide-react';
 import { adminApi } from '../../lib/adminApi';
 import type { AdminStats } from '../../lib/adminApi';
@@ -97,6 +98,13 @@ export default function AdminDashboard() {
       icon: School,
       link: '/admin/classrooms',
       color: 'bg-green-100 text-green-600',
+    },
+    {
+      title: 'Mapas de Expediciones',
+      description: 'Gestionar mapas disponibles para expediciones',
+      icon: Map,
+      link: '/admin/expedition-maps',
+      color: 'bg-emerald-100 text-emerald-600',
     },
   ];
 

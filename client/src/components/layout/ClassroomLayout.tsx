@@ -27,6 +27,10 @@ import {
   Trophy,
   BookOpen,
   Target,
+  Map,
+  Lock,
+  Sparkles,
+  Rocket,
 } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
@@ -48,6 +52,7 @@ export const ClassroomLayout = () => {
   const [studentsMenuOpen, setStudentsMenuOpen] = useState(true);
   const [gamificationMenuOpen, setGamificationMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showExpeditionsModal, setShowExpeditionsModal] = useState(false);
   const { logout } = useAuthStore();
   const { openWelcomeModal, hasCompletedForClassroom, isActive: isOnboardingActive, currentStep } = useClassroomOnboardingStore();
 
@@ -101,8 +106,14 @@ export const ClassroomLayout = () => {
         { path: `/classroom/${id}/missions`, label: 'Misiones', icon: Target },
         { path: `/classroom/${id}/shop`, label: 'Tienda', icon: ShoppingBag, onboardingId: 'shop-menu' },
         { path: `/classroom/${id}/activities`, label: 'Actividades', icon: Dices },
-        { path: `/classroom/${id}/question-banks`, label: 'Banco de Preguntas', icon: BookOpen },
+        { path: '', label: 'Expediciones', icon: Map, locked: true, comingSoon: true },
       ],
+    },
+    { 
+      path: `/classroom/${id}/question-banks`, 
+      label: 'Banco de Preguntas', 
+      icon: BookOpen,
+      gradient: 'from-indigo-500 to-purple-500',
     },
     { 
       path: `/classroom/${id}/rankings`, 
@@ -307,6 +318,22 @@ export const ClassroomLayout = () => {
                       {item.subItems?.map((subItem) => {
                         const SubIcon = subItem.icon;
                         const subActive = isActive(subItem.path);
+                        const isLocked = (subItem as any).locked;
+                        
+                        // Item bloqueado (próximamente)
+                        if (isLocked) {
+                          return (
+                            <button
+                              key={subItem.label}
+                              onClick={() => setShowExpeditionsModal(true)}
+                              className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all duration-200 text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                            >
+                              <SubIcon size={14} />
+                              <span className="text-sm">{subItem.label}</span>
+                              <Lock size={12} className="ml-auto text-gray-400" />
+                            </button>
+                          );
+                        }
                         
                         return (
                           <Link
@@ -448,6 +475,145 @@ export const ClassroomLayout = () => {
       >
         <></>
       </ClassroomOnboardingProvider>
+
+      {/* Modal de Expediciones - Próximamente */}
+      <AnimatePresence>
+        {showExpeditionsModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            onClick={() => setShowExpeditionsModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.8, opacity: 0, y: 20 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="relative w-full max-w-lg bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500 rounded-3xl shadow-2xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Decoración de fondo */}
+              <div className="absolute inset-0 overflow-hidden">
+                <div className="absolute -top-20 -right-20 w-64 h-64 bg-white/10 rounded-full blur-3xl" />
+                <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-white/10 rounded-full blur-3xl" />
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-white/5 rounded-full blur-3xl" />
+              </div>
+
+              {/* Contenido */}
+              <div className="relative p-8 text-center text-white">
+                {/* Icono principal */}
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  transition={{ delay: 0.2, type: 'spring', damping: 15 }}
+                  className="w-24 h-24 mx-auto mb-6 bg-white/20 backdrop-blur-sm rounded-3xl flex items-center justify-center shadow-xl"
+                >
+                  <Map size={48} className="text-white" />
+                </motion.div>
+
+                {/* Badge de próximamente */}
+                <motion.div
+                  initial={{ y: -20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.3 }}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-white/20 backdrop-blur-sm rounded-full mb-4"
+                >
+                  <Sparkles size={16} className="text-yellow-300" />
+                  <span className="text-sm font-semibold uppercase tracking-wider">Próximamente</span>
+                  <Sparkles size={16} className="text-yellow-300" />
+                </motion.div>
+
+                {/* Título */}
+                <motion.h2
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.4 }}
+                  className="text-3xl font-bold mb-3"
+                >
+                  🗺️ Expediciones
+                </motion.h2>
+
+                {/* Descripción */}
+                <motion.p
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.5 }}
+                  className="text-white/90 text-lg mb-6 leading-relaxed"
+                >
+                  ¡Prepárate para una nueva forma de aprender! Las Expediciones transformarán tu clase en una aventura épica con mapas interactivos.
+                </motion.p>
+
+                {/* Beneficios */}
+                <motion.div
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.6 }}
+                  className="bg-white/10 backdrop-blur-sm rounded-2xl p-5 mb-6 text-left"
+                >
+                  <h3 className="font-semibold mb-3 flex items-center gap-2">
+                    <Rocket size={18} className="text-yellow-300" />
+                    ¿Qué podrás hacer?
+                  </h3>
+                  <ul className="space-y-2 text-sm text-white/90">
+                    <li className="flex items-start gap-2">
+                      <span className="text-yellow-300 mt-0.5">✨</span>
+                      <span>Crear mapas temáticos con pines de objetivos conectados</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-yellow-300 mt-0.5">🎯</span>
+                      <span>Asignar tareas, historias y recompensas en cada punto del mapa</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-yellow-300 mt-0.5">📊</span>
+                      <span>Seguir el progreso de cada estudiante en tiempo real</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-yellow-300 mt-0.5">🏆</span>
+                      <span>Otorgar XP, GP y contribuciones al clan automáticamente</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-yellow-300 mt-0.5">📁</span>
+                      <span>Recibir entregas de archivos y aprobar avances</span>
+                    </li>
+                  </ul>
+                </motion.div>
+
+                {/* Mensaje motivacional */}
+                <motion.p
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.7 }}
+                  className="text-white/80 text-sm mb-6"
+                >
+                  🚀 Estamos trabajando para traerte esta increíble funcionalidad muy pronto.
+                  <br />¡Mantente atento a las novedades!
+                </motion.p>
+
+                {/* Botón de cerrar */}
+                <motion.button
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.8 }}
+                  onClick={() => setShowExpeditionsModal(false)}
+                  className="px-8 py-3 bg-white text-emerald-600 font-semibold rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-200"
+                >
+                  ¡Entendido!
+                </motion.button>
+              </div>
+
+              {/* Botón X para cerrar */}
+              <button
+                onClick={() => setShowExpeditionsModal(false)}
+                className="absolute top-4 right-4 p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-full transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

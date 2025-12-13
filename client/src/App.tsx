@@ -36,6 +36,7 @@ import { StudentBossBattlePage } from './pages/student/StudentBossBattlePage';
 import { MissionsPage } from './pages/classroom/MissionsPage';
 import { StudentMissionsPage } from './pages/student/StudentMissionsPage';
 import { StudentScrollsPage } from './pages/student/StudentScrollsPage';
+import { StudentExpeditionsPage } from './pages/student/StudentExpeditionsPage';
 
 // Settings
 import { SettingsPage } from './pages/settings/SettingsPage';
@@ -46,6 +47,7 @@ import AdminAvatarItems from './pages/admin/AdminAvatarItems';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminClassrooms from './pages/admin/AdminClassrooms';
 import AdminSchools from './pages/admin/AdminSchools';
+import AdminExpeditionMaps from './pages/admin/AdminExpeditionMaps';
 
 // School pages (B2B)
 import MySchoolsPage from './pages/school/MySchoolsPage';
@@ -206,6 +208,7 @@ function App() {
             <Route path="my-attendance" element={<StudentAttendancePage />} />
             <Route path="missions/:classroomId" element={<StudentMissionsPage />} />
             <Route path="scrolls" element={<StudentScrollsPage />} />
+            <Route path="expeditions" element={<StudentExpeditionsPage />} />
             <Route path="student-battle/:classroomId" element={<StudentBossBattlePage />} />
             <Route path="student-battle/:classroomId/:battleId" element={<StudentBossBattlePage />} />
             
@@ -236,6 +239,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <AdminAvatarItems />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/expedition-maps"
+            element={
+              <ProtectedRoute>
+                <AdminExpeditionMaps />
               </ProtectedRoute>
             }
           />

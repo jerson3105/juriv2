@@ -19,6 +19,8 @@ import missionRoutes from './mission.routes.js';
 import loginStreakRoutes from './loginStreak.routes.js';
 import schoolRoutes from './school.routes.js';
 import scrollRoutes from './scroll.routes.js';
+import expeditionRoutes from './expedition.routes.js';
+import expeditionMapRoutes from './expeditionMap.routes.js';
 
 const router = Router();
 
@@ -52,5 +54,7 @@ router.use('/missions', missionRoutes);
 router.use('/login-streak', loginStreakRoutes);
 router.use('/schools', schoolRoutes);
 router.use('/scrolls', scrollRoutes);
+router.use('/expeditions', expeditionRoutes);
+router.use('/expedition-maps', expeditionMapRoutes);
 
 export default router;

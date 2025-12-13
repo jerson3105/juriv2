@@ -11,7 +11,8 @@ import {
   Lightbulb,
   Shield,
   Timer,
-  ScrollText
+  ScrollText,
+  Map
 } from 'lucide-react';
 import { RandomPickerActivity } from '../../components/activities/RandomPickerActivity';
 import { RandomEventsActivity } from '../../components/activities/RandomEventsActivity';
@@ -20,6 +21,7 @@ import { ClanPickerActivity } from '../../components/activities/ClanPickerActivi
 import { TimedActivitiesActivity } from '../../components/activities/TimedActivitiesActivity';
 import { AulaZenActivity } from '../../components/activities/AulaZenActivity';
 import { ScrollsActivity } from '../../components/activities/ScrollsActivity';
+import { ExpeditionsActivity } from '../../components/activities/ExpeditionsActivity';
 import { useOutletContext, useParams } from 'react-router-dom';
 import BossBattleTypeModal from '../../components/modals/BossBattleTypeModal';
 
@@ -95,6 +97,15 @@ const activities: Activity[] = [
     icon: <ScrollText size={24} />,
     gradient: 'from-amber-500 to-orange-500',
     shadowColor: 'shadow-amber-500/25',
+    available: true,
+  },
+  {
+    id: 'expeditions',
+    name: 'Expediciones',
+    description: 'Misiones con mapas interactivos. Crea rutas de aprendizaje gamificadas.',
+    icon: <Map size={24} />,
+    gradient: 'from-emerald-500 to-teal-500',
+    shadowColor: 'shadow-emerald-500/25',
     available: true,
   },
   {
@@ -187,6 +198,15 @@ export const ActivitiesPage = () => {
   if (selectedActivity === 'scrolls') {
     return (
       <ScrollsActivity 
+        classroom={classroom}
+        onBack={() => setSelectedActivity(null)}
+      />
+    );
+  }
+
+  if (selectedActivity === 'expeditions') {
+    return (
+      <ExpeditionsActivity 
         classroom={classroom}
         onBack={() => setSelectedActivity(null)}
       />
