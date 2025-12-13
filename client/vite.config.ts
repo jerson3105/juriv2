@@ -47,6 +47,7 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3 MB
+        navigateFallbackDenylist: [/^\/api/], // No interceptar rutas de API
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/api\..*/i,
