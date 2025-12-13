@@ -27,7 +27,6 @@ import {
   expeditionApi,
   type Expedition,
   type ExpeditionStatus,
-  type ExpeditionStats,
   type ExpeditionStatItem,
 } from '../../lib/expeditionApi';
 import { expeditionMapApi, type ExpeditionMap } from '../../lib/expeditionMapApi';
