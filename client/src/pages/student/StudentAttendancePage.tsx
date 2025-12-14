@@ -158,19 +158,19 @@ export const StudentAttendancePage = () => {
       <div>
         <button
           onClick={() => navigate('/dashboard')}
-          className="flex items-center gap-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 mb-4 transition-colors"
+          className="flex items-center gap-1.5 sm:gap-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 mb-3 sm:mb-4 transition-colors text-sm"
         >
-          <ArrowLeft className="w-5 h-5" />
+          <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
           Volver al dashboard
         </button>
         
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center ring-4 ring-indigo-200 dark:ring-indigo-800">
-            <Calendar className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center ring-2 sm:ring-4 ring-indigo-200 dark:ring-indigo-800 flex-shrink-0">
+            <Calendar className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600 dark:text-indigo-400" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Mi Asistencia</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white">Mi Asistencia</h1>
+            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
               Revisa tu historial y estadísticas de asistencia
             </p>
           </div>
@@ -178,23 +178,23 @@ export const StudentAttendancePage = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4">
         {/* Porcentaje de asistencia */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="col-span-2 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-5 text-white shadow-lg"
+          className="col-span-2 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl sm:rounded-2xl p-4 sm:p-5 text-white shadow-lg"
         >
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-indigo-100 text-sm font-medium">Asistencia</p>
-              <p className="text-4xl font-bold mt-1">{stats?.attendanceRate || 0}%</p>
-              <p className="text-indigo-200 text-xs mt-1">
+              <p className="text-indigo-100 text-xs sm:text-sm font-medium">Asistencia</p>
+              <p className="text-3xl sm:text-4xl font-bold mt-1">{stats?.attendanceRate || 0}%</p>
+              <p className="text-indigo-200 text-[10px] sm:text-xs mt-1">
                 {stats?.present || 0} de {stats?.total || 0} clases
               </p>
             </div>
-            <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
-              <TrendingUp className="w-8 h-8" />
+            <div className="w-12 h-12 sm:w-16 sm:h-16 bg-white/20 rounded-full flex items-center justify-center">
+              <TrendingUp className="w-6 h-6 sm:w-8 sm:h-8" />
             </div>
           </div>
         </motion.div>
@@ -204,13 +204,13 @@ export const StudentAttendancePage = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.05 }}
-          className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-lg border border-emerald-100 dark:border-emerald-900"
+          className="bg-white dark:bg-gray-800 rounded-xl p-3 sm:p-4 shadow-lg border border-emerald-100 dark:border-emerald-900"
         >
-          <div className="flex items-center gap-2 text-emerald-600 mb-2">
-            <Sparkles className="w-5 h-5" />
-            <span className="text-sm font-medium">XP Ganado</span>
+          <div className="flex items-center gap-1.5 sm:gap-2 text-emerald-600 mb-1 sm:mb-2">
+            <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-xs sm:text-sm font-medium">XP Ganado</span>
           </div>
-          <p className="text-2xl font-bold text-gray-800 dark:text-white">
+          <p className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white">
             +{stats?.totalXpEarned || 0}
           </p>
         </motion.div>
@@ -220,13 +220,13 @@ export const StudentAttendancePage = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-lg border border-orange-100 dark:border-orange-900"
+          className="bg-white dark:bg-gray-800 rounded-xl p-3 sm:p-4 shadow-lg border border-orange-100 dark:border-orange-900"
         >
-          <div className="flex items-center gap-2 text-orange-600 mb-2">
-            <Award className="w-5 h-5" />
-            <span className="text-sm font-medium">Racha Actual</span>
+          <div className="flex items-center gap-1.5 sm:gap-2 text-orange-600 mb-1 sm:mb-2">
+            <Award className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-xs sm:text-sm font-medium">Racha Actual</span>
           </div>
-          <p className="text-2xl font-bold text-gray-800 dark:text-white">
+          <p className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white">
             {stats?.currentStreak || 0} días
           </p>
         </motion.div>
@@ -236,13 +236,13 @@ export const StudentAttendancePage = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
-          className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-lg border border-amber-100 dark:border-amber-900"
+          className="bg-white dark:bg-gray-800 rounded-xl p-3 sm:p-4 shadow-lg border border-amber-100 dark:border-amber-900"
         >
-          <div className="flex items-center gap-2 text-amber-600 mb-2">
-            <Award className="w-5 h-5" />
-            <span className="text-sm font-medium">Mejor Racha</span>
+          <div className="flex items-center gap-1.5 sm:gap-2 text-amber-600 mb-1 sm:mb-2">
+            <Award className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-xs sm:text-sm font-medium">Mejor Racha</span>
           </div>
-          <p className="text-2xl font-bold text-gray-800 dark:text-white">
+          <p className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white">
             {stats?.bestStreak || 0} días
           </p>
         </motion.div>
@@ -252,80 +252,80 @@ export const StudentAttendancePage = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-lg border border-yellow-100 dark:border-yellow-900"
+          className="bg-white dark:bg-gray-800 rounded-xl p-3 sm:p-4 shadow-lg border border-yellow-100 dark:border-yellow-900"
         >
-          <div className="flex items-center gap-2 text-yellow-600 mb-2">
-            <Clock className="w-5 h-5" />
-            <span className="text-sm font-medium">Tardanzas</span>
+          <div className="flex items-center gap-1.5 sm:gap-2 text-yellow-600 mb-1 sm:mb-2">
+            <Clock className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="text-xs sm:text-sm font-medium">Tardanzas</span>
           </div>
-          <p className="text-2xl font-bold text-gray-800 dark:text-white">
+          <p className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white">
             {stats?.late || 0}
           </p>
         </motion.div>
       </div>
 
       {/* Resumen de estados */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="flex gap-2 sm:gap-3 overflow-x-auto pb-1 -mx-1 px-1">
         {Object.entries(STATUS_CONFIG).map(([status, config]) => {
           const count = stats?.[status.toLowerCase() as keyof AttendanceStats] as number || 0;
           const Icon = config.icon;
           return (
-            <div key={status} className={`${config.bgLight} rounded-xl p-3 flex items-center gap-3`}>
-              <div className={`w-10 h-10 ${config.color} rounded-lg flex items-center justify-center`}>
-                <Icon className="w-5 h-5 text-white" />
+            <div key={status} className={`${config.bgLight} rounded-xl p-2 sm:p-3 flex items-center gap-2 sm:gap-3 flex-shrink-0 min-w-[80px] sm:min-w-0 sm:flex-1`}>
+              <div className={`w-8 h-8 sm:w-10 sm:h-10 ${config.color} rounded-lg flex items-center justify-center flex-shrink-0`}>
+                <Icon className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
               </div>
               <div>
-                <p className="text-2xl font-bold text-gray-800">{count}</p>
-                <p className={`text-xs ${config.textColor} font-medium`}>{config.label}</p>
+                <p className="text-lg sm:text-2xl font-bold text-gray-800">{count}</p>
+                <p className={`text-[10px] sm:text-xs ${config.textColor} font-medium whitespace-nowrap`}>{config.label}</p>
               </div>
             </div>
           );
         })}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {/* Calendario */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25 }}
-          className="bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-lg"
+          className="bg-white dark:bg-gray-800 rounded-xl sm:rounded-2xl p-3 sm:p-5 shadow-lg"
         >
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-indigo-500" />
+          <div className="flex items-center justify-between mb-3 sm:mb-4">
+            <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-white flex items-center gap-1.5 sm:gap-2">
+              <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-500" />
               Calendario
             </h2>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2">
               <button
                 onClick={() => navigateMonth(-1)}
-                className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                className="p-1 sm:p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
               >
-                <ChevronLeft className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600 dark:text-gray-400" />
               </button>
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300 min-w-[120px] text-center">
+              <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 min-w-[100px] sm:min-w-[120px] text-center">
                 {MONTHS[currentMonth.getMonth()]} {currentMonth.getFullYear()}
               </span>
               <button
                 onClick={() => navigateMonth(1)}
-                className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                className="p-1 sm:p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
               >
-                <ChevronRight className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600 dark:text-gray-400" />
               </button>
             </div>
           </div>
 
           {/* Días de la semana */}
-          <div className="grid grid-cols-7 gap-1 mb-2">
+          <div className="grid grid-cols-7 gap-0.5 sm:gap-1 mb-1 sm:mb-2">
             {DAYS.map(day => (
-              <div key={day} className="text-center text-xs font-medium text-gray-500 py-2">
+              <div key={day} className="text-center text-[10px] sm:text-xs font-medium text-gray-500 py-1 sm:py-2">
                 {day}
               </div>
             ))}
           </div>
 
           {/* Días del mes */}
-          <div className="grid grid-cols-7 gap-1">
+          <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
             {calendarDays.map((day, index) => {
               if (!day) {
                 return <div key={`empty-${index}`} className="aspect-square" />;
@@ -339,7 +339,7 @@ export const StudentAttendancePage = () => {
               return (
                 <div
                   key={dateKey}
-                  className={`aspect-square rounded-lg flex items-center justify-center text-sm relative ${
+                  className={`aspect-square rounded-md sm:rounded-lg flex items-center justify-center text-xs sm:text-sm relative ${
                     isToday ? 'ring-2 ring-indigo-500' : ''
                   } ${
                     statusConfig ? statusConfig.color + ' text-white font-medium' : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
@@ -353,11 +353,11 @@ export const StudentAttendancePage = () => {
           </div>
 
           {/* Leyenda */}
-          <div className="flex flex-wrap gap-3 mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+          <div className="flex flex-wrap gap-2 sm:gap-3 mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-gray-100 dark:border-gray-700">
             {Object.entries(STATUS_CONFIG).map(([status, config]) => (
-              <div key={status} className="flex items-center gap-1.5">
-                <div className={`w-3 h-3 rounded ${config.color}`} />
-                <span className="text-xs text-gray-600 dark:text-gray-400">{config.label}</span>
+              <div key={status} className="flex items-center gap-1 sm:gap-1.5">
+                <div className={`w-2.5 h-2.5 sm:w-3 sm:h-3 rounded ${config.color}`} />
+                <span className="text-[10px] sm:text-xs text-gray-600 dark:text-gray-400">{config.label}</span>
               </div>
             ))}
           </div>
