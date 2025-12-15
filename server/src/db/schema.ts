@@ -2018,3 +2018,263 @@ export type ExpeditionSubmission = typeof expeditionSubmissions.$inferSelect;
 export type ExpeditionStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
 export type ExpeditionPinType = 'INTRO' | 'OBJECTIVE' | 'FINAL';
 export type ExpeditionProgressStatus = 'LOCKED' | 'UNLOCKED' | 'IN_PROGRESS' | 'PASSED' | 'FAILED' | 'COMPLETED';
+
+// ==================== CONQUISTA DE TERRITORIOS ====================
+
+// Enums para Conquista de Territorios
+export const territoryGameStatusEnum = mysqlEnum('territory_game_status', ['DRAFT', 'ACTIVE', 'PAUSED', 'FINISHED']);
+export const territoryStatusEnum = mysqlEnum('territory_status', ['NEUTRAL', 'OWNED', 'CONTESTED']);
+export const territoryChallengeTypeEnum = mysqlEnum('territory_challenge_type', ['CONQUEST', 'DEFENSE']);
+export const territoryChallengeResultEnum = mysqlEnum('territory_challenge_result', ['PENDING', 'CORRECT', 'INCORRECT']);
+
+// Mapas de territorios (plantillas reutilizables)
+export const territoryMaps = mysqlTable('territory_maps', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
+  name: varchar('name', { length: 100 }).notNull(),
+  description: text('description'),
+  // Configuración visual del mapa
+  backgroundImage: varchar('background_image', { length: 500 }), // Imagen de fondo opcional
+  gridCols: int('grid_cols').notNull().default(4), // Columnas del grid
+  gridRows: int('grid_rows').notNull().default(3), // Filas del grid
+  // Configuración de puntos
+  baseConquestPoints: int('base_conquest_points').notNull().default(100), // XP base por conquistar
+  baseDefensePoints: int('base_defense_points').notNull().default(50), // XP base por defender
+  bonusStreakPoints: int('bonus_streak_points').notNull().default(25), // Bonus por racha
+  // Estado
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  classroomIdx: index('idx_territory_maps_classroom').on(table.classroomId),
+}));
+
+export const territoryMapsRelations = relations(territoryMaps, ({ one, many }) => ({
+  classroom: one(classrooms, {
+    fields: [territoryMaps.classroomId],
+    references: [classrooms.id],
+  }),
+  territories: many(territories),
+  games: many(territoryGames),
+}));
+
+// Territorios individuales dentro de un mapa
+export const territories = mysqlTable('territories', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  mapId: varchar('map_id', { length: 36 }).notNull(),
+  name: varchar('name', { length: 100 }).notNull(),
+  description: text('description'),
+  // Posición en el grid
+  gridX: int('grid_x').notNull(), // Columna (0-indexed)
+  gridY: int('grid_y').notNull(), // Fila (0-indexed)
+  // Visuales
+  icon: varchar('icon', { length: 50 }).notNull().default('🏰'),
+  color: varchar('color', { length: 7 }).notNull().default('#6366f1'), // Color base
+  // Configuración especial
+  pointMultiplier: int('point_multiplier').notNull().default(100), // 100 = 1x, 150 = 1.5x
+  isStrategic: boolean('is_strategic').notNull().default(false), // Territorios clave
+  // Conexiones (territorios adyacentes para futuras mecánicas)
+  adjacentTerritories: json('adjacent_territories').$type<string[]>().default([]),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  mapIdx: index('idx_territories_map').on(table.mapId),
+  gridIdx: index('idx_territories_grid').on(table.mapId, table.gridX, table.gridY),
+}));
+
+export const territoriesRelations = relations(territories, ({ one, many }) => ({
+  map: one(territoryMaps, {
+    fields: [territories.mapId],
+    references: [territoryMaps.id],
+  }),
+  gameStates: many(territoryGameStates),
+  challenges: many(territoryChallenges),
+}));
+
+// Sesiones de juego de Conquista de Territorios
+export const territoryGames = mysqlTable('territory_games', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
+  mapId: varchar('map_id', { length: 36 }).notNull(),
+  name: varchar('name', { length: 100 }).notNull(),
+  // Bancos de preguntas asociados (JSON array de IDs)
+  questionBankIds: json('question_bank_ids').$type<string[]>().notNull(),
+  // Clanes participantes (JSON array de IDs)
+  participatingClanIds: json('participating_clan_ids').$type<string[]>().notNull(),
+  // Estado del juego
+  status: territoryGameStatusEnum.notNull().default('DRAFT'),
+  // Configuración de la sesión
+  maxRounds: int('max_rounds'), // null = sin límite
+  currentRound: int('current_round').notNull().default(0),
+  timePerQuestion: int('time_per_question').notNull().default(30), // segundos
+  // Estadísticas
+  totalChallenges: int('total_challenges').notNull().default(0),
+  // Timestamps
+  startedAt: datetime('started_at'),
+  finishedAt: datetime('finished_at'),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  classroomIdx: index('idx_territory_games_classroom').on(table.classroomId),
+  mapIdx: index('idx_territory_games_map').on(table.mapId),
+  statusIdx: index('idx_territory_games_status').on(table.status),
+}));
+
+export const territoryGamesRelations = relations(territoryGames, ({ one, many }) => ({
+  classroom: one(classrooms, {
+    fields: [territoryGames.classroomId],
+    references: [classrooms.id],
+  }),
+  map: one(territoryMaps, {
+    fields: [territoryGames.mapId],
+    references: [territoryMaps.id],
+  }),
+  states: many(territoryGameStates),
+  challenges: many(territoryChallenges),
+  clanScores: many(territoryGameClanScores),
+}));
+
+// Estado de cada territorio en una partida específica
+export const territoryGameStates = mysqlTable('territory_game_states', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  gameId: varchar('game_id', { length: 36 }).notNull(),
+  territoryId: varchar('territory_id', { length: 36 }).notNull(),
+  // Estado actual
+  status: territoryStatusEnum.notNull().default('NEUTRAL'),
+  ownerClanId: varchar('owner_clan_id', { length: 36 }), // null si neutral
+  // Historial
+  conqueredAt: datetime('conquered_at'),
+  timesContested: int('times_contested').notNull().default(0),
+  timesChanged: int('times_changed').notNull().default(0), // Veces que cambió de dueño
+  // Último clan que intentó conquistar/retar
+  lastChallengerId: varchar('last_challenger_id', { length: 36 }),
+  lastChallengeAt: datetime('last_challenge_at'),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  gameIdx: index('idx_territory_game_states_game').on(table.gameId),
+  territoryIdx: index('idx_territory_game_states_territory').on(table.territoryId),
+  ownerIdx: index('idx_territory_game_states_owner').on(table.ownerClanId),
+  uniqueGameTerritory: unique('unique_game_territory').on(table.gameId, table.territoryId),
+}));
+
+export const territoryGameStatesRelations = relations(territoryGameStates, ({ one }) => ({
+  game: one(territoryGames, {
+    fields: [territoryGameStates.gameId],
+    references: [territoryGames.id],
+  }),
+  territory: one(territories, {
+    fields: [territoryGameStates.territoryId],
+    references: [territories.id],
+  }),
+  ownerClan: one(teams, {
+    fields: [territoryGameStates.ownerClanId],
+    references: [teams.id],
+  }),
+}));
+
+// Puntajes de clanes en una partida
+export const territoryGameClanScores = mysqlTable('territory_game_clan_scores', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  gameId: varchar('game_id', { length: 36 }).notNull(),
+  clanId: varchar('clan_id', { length: 36 }).notNull(),
+  // Puntuación
+  totalPoints: int('total_points').notNull().default(0),
+  territoriesOwned: int('territories_owned').notNull().default(0),
+  territoriesConquered: int('territories_conquered').notNull().default(0), // Total conquistados (histórico)
+  territoriesLost: int('territories_lost').notNull().default(0),
+  successfulDefenses: int('successful_defenses').notNull().default(0),
+  failedDefenses: int('failed_defenses').notNull().default(0),
+  // Rachas
+  currentStreak: int('current_streak').notNull().default(0),
+  bestStreak: int('best_streak').notNull().default(0),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  gameIdx: index('idx_territory_clan_scores_game').on(table.gameId),
+  clanIdx: index('idx_territory_clan_scores_clan').on(table.clanId),
+  uniqueGameClan: unique('unique_game_clan').on(table.gameId, table.clanId),
+}));
+
+export const territoryGameClanScoresRelations = relations(territoryGameClanScores, ({ one }) => ({
+  game: one(territoryGames, {
+    fields: [territoryGameClanScores.gameId],
+    references: [territoryGames.id],
+  }),
+  clan: one(teams, {
+    fields: [territoryGameClanScores.clanId],
+    references: [teams.id],
+  }),
+}));
+
+// Desafíos/Retos de territorios (cada intento de conquista o defensa)
+export const territoryChallenges = mysqlTable('territory_challenges', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  gameId: varchar('game_id', { length: 36 }).notNull(),
+  territoryId: varchar('territory_id', { length: 36 }).notNull(),
+  questionId: varchar('question_id', { length: 36 }).notNull(),
+  // Tipo de desafío
+  challengeType: territoryChallengeTypeEnum.notNull(), // CONQUEST (neutral) o DEFENSE (owned)
+  // Clanes involucrados
+  challengerClanId: varchar('challenger_clan_id', { length: 36 }).notNull(), // Clan que intenta conquistar/retar
+  defenderClanId: varchar('defender_clan_id', { length: 36 }), // null si es territorio neutral
+  // Estudiante que respondió (para dar puntos individuales)
+  respondentStudentId: varchar('respondent_student_id', { length: 36 }),
+  // Resultado
+  result: territoryChallengeResultEnum.notNull().default('PENDING'),
+  // Puntos otorgados
+  pointsAwarded: int('points_awarded').notNull().default(0),
+  xpToStudent: int('xp_to_student').notNull().default(0), // XP dado al estudiante
+  xpToClan: int('xp_to_clan').notNull().default(0), // XP dado al clan
+  // Tiempo
+  timeSpent: int('time_spent'), // Segundos que tardó en responder
+  // Timestamps
+  startedAt: datetime('started_at').notNull(),
+  answeredAt: datetime('answered_at'),
+  createdAt: datetime('created_at').notNull(),
+}, (table) => ({
+  gameIdx: index('idx_territory_challenges_game').on(table.gameId),
+  territoryIdx: index('idx_territory_challenges_territory').on(table.territoryId),
+  challengerIdx: index('idx_territory_challenges_challenger').on(table.challengerClanId),
+  defenderIdx: index('idx_territory_challenges_defender').on(table.defenderClanId),
+}));
+
+export const territoryChallengesRelations = relations(territoryChallenges, ({ one }) => ({
+  game: one(territoryGames, {
+    fields: [territoryChallenges.gameId],
+    references: [territoryGames.id],
+  }),
+  territory: one(territories, {
+    fields: [territoryChallenges.territoryId],
+    references: [territories.id],
+  }),
+  question: one(questions, {
+    fields: [territoryChallenges.questionId],
+    references: [questions.id],
+  }),
+  challengerClan: one(teams, {
+    fields: [territoryChallenges.challengerClanId],
+    references: [teams.id],
+  }),
+  defenderClan: one(teams, {
+    fields: [territoryChallenges.defenderClanId],
+    references: [teams.id],
+  }),
+  respondentStudent: one(studentProfiles, {
+    fields: [territoryChallenges.respondentStudentId],
+    references: [studentProfiles.id],
+  }),
+}));
+
+// Types para Conquista de Territorios
+export type TerritoryMap = typeof territoryMaps.$inferSelect;
+export type NewTerritoryMap = typeof territoryMaps.$inferInsert;
+export type Territory = typeof territories.$inferSelect;
+export type NewTerritory = typeof territories.$inferInsert;
+export type TerritoryGame = typeof territoryGames.$inferSelect;
+export type NewTerritoryGame = typeof territoryGames.$inferInsert;
+export type TerritoryGameState = typeof territoryGameStates.$inferSelect;
+export type TerritoryGameClanScore = typeof territoryGameClanScores.$inferSelect;
+export type TerritoryChallenge = typeof territoryChallenges.$inferSelect;
+export type TerritoryGameStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'FINISHED';
+export type TerritoryStatus = 'NEUTRAL' | 'OWNED' | 'CONTESTED';
+export type TerritoryChallengeType = 'CONQUEST' | 'DEFENSE';
+export type TerritoryChallengeResult = 'PENDING' | 'CORRECT' | 'INCORRECT';

@@ -21,6 +21,7 @@ import schoolRoutes from './school.routes.js';
 import scrollRoutes from './scroll.routes.js';
 import expeditionRoutes from './expedition.routes.js';
 import expeditionMapRoutes from './expeditionMap.routes.js';
+import territoryRoutes from './territory.routes.js';
 
 const router = Router();
 
@@ -56,5 +57,6 @@ router.use('/schools', schoolRoutes);
 router.use('/scrolls', scrollRoutes);
 router.use('/expeditions', expeditionRoutes);
 router.use('/expedition-maps', expeditionMapRoutes);
+router.use('/territory', territoryRoutes);
 
 export default router;

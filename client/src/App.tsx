@@ -38,6 +38,7 @@ import { ExpeditionsPage } from './pages/classroom/ExpeditionsPage';
 import { StudentMissionsPage } from './pages/student/StudentMissionsPage';
 import { StudentScrollsPage } from './pages/student/StudentScrollsPage';
 import { StudentExpeditionsPage } from './pages/student/StudentExpeditionsPage';
+import { StudentTerritoryPage } from './pages/student/StudentTerritoryPage';
 
 // Settings
 import { SettingsPage } from './pages/settings/SettingsPage';
@@ -211,6 +212,7 @@ function App() {
             <Route path="missions/:classroomId" element={<StudentMissionsPage />} />
             <Route path="scrolls" element={<StudentScrollsPage />} />
             <Route path="expeditions" element={<StudentExpeditionsPage />} />
+            <Route path="territory" element={<StudentTerritoryPage />} />
             <Route path="student-battle/:classroomId" element={<StudentBossBattlePage />} />
             <Route path="student-battle/:classroomId/:battleId" element={<StudentBossBattlePage />} />
             

@@ -774,6 +774,11 @@ export class StudentService {
       .set(updateData)
       .where(eq(studentProfiles.id, profile.id));
 
+    // Asignar items por defecto según el género seleccionado
+    // Esto reemplaza cualquier item equipado anteriormente con los del género correcto
+    const finalGender = data.avatarGender || profile.avatarGender || 'MALE';
+    await avatarService.assignDefaultItems(profile.id, finalGender as AvatarGender);
+
     // Obtener datos de la clase
     const classroom = await db.query.classrooms.findFirst({
       where: eq(classrooms.id, profile.classroomId),
