@@ -11,6 +11,36 @@ export const api = axios.create({
   withCredentials: true,
 });
 
+let refreshPromise: Promise<{ accessToken: string; refreshToken: string }> | null = null;
+
+const runTokenRefresh = async () => {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    const refreshToken = localStorage.getItem('refreshToken');
+    if (!refreshToken) {
+      throw new Error('No refresh token');
+    }
+
+    const response = await axios.post(`${API_URL}/auth/refresh`, {
+      refreshToken,
+    });
+
+    const { accessToken, refreshToken: newRefreshToken } = response.data.data;
+
+    localStorage.setItem('accessToken', accessToken);
+    localStorage.setItem('refreshToken', newRefreshToken);
+
+    return { accessToken, refreshToken: newRefreshToken };
+  })();
+
+  try {
+    return await refreshPromise;
+  } finally {
+    refreshPromise = null;
+  }
+};
+
 // Interceptor para añadir token de autenticación
 api.interceptors.request.use(
   (config) => {
@@ -36,20 +66,9 @@ api.interceptors.response.use(
       originalRequest._retry = true;
 
       try {
-        const refreshToken = localStorage.getItem('refreshToken');
-        if (!refreshToken) {
-          throw new Error('No refresh token');
-        }
+        const { accessToken } = await runTokenRefresh();
 
-        const response = await axios.post(`${API_URL}/auth/refresh`, {
-          refreshToken,
-        });
-
-        const { accessToken, refreshToken: newRefreshToken } = response.data.data;
-        
-        localStorage.setItem('accessToken', accessToken);
-        localStorage.setItem('refreshToken', newRefreshToken);
-
+        originalRequest.headers = originalRequest.headers || {};
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;
         return api(originalRequest);
       } catch (refreshError) {

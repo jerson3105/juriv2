@@ -120,15 +120,20 @@ export const useAuthStore = create<AuthState>()(
             set({ user: response.data.data, isAuthenticated: true });
           }
         } catch (error) {
-          // Si falla, limpiar estado
-          localStorage.removeItem('accessToken');
-          localStorage.removeItem('refreshToken');
-          set({
-            user: null,
-            accessToken: null,
-            refreshToken: null,
-            isAuthenticated: false,
-          });
+          const status = (error as any)?.response?.status;
+
+          // Solo limpiar sesión si realmente no está autorizado.
+          // Evita desloguear por errores transitorios (red, 5xx, etc.).
+          if (status === 401 || status === 403) {
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
+            set({
+              user: null,
+              accessToken: null,
+              refreshToken: null,
+              isAuthenticated: false,
+            });
+          }
         } finally {
           set({ isLoading: false });
         }
