@@ -47,15 +47,25 @@ class AvatarService {
 
     const now = new Date();
 
-    // Equipar cada item por defecto
+    // Equipar cada item por defecto, uno por slot (evitar duplicados)
+    const equippedSlots = new Set<string>();
     for (const item of defaultItems) {
-      await db.insert(studentEquippedItems).values({
-        id: uuidv4(),
-        studentProfileId,
-        avatarItemId: item.id,
-        slot: item.slot,
-        equippedAt: now,
-      });
+      // Solo equipar un item por slot
+      if (equippedSlots.has(item.slot)) continue;
+      
+      try {
+        await db.insert(studentEquippedItems).values({
+          id: uuidv4(),
+          studentProfileId,
+          avatarItemId: item.id,
+          slot: item.slot,
+          equippedAt: now,
+        });
+        equippedSlots.add(item.slot);
+      } catch (error) {
+        // Si falla por duplicado, continuar con el siguiente item
+        console.error(`Error equipando item ${item.id} en slot ${item.slot}:`, error);
+      }
     }
   }
 
@@ -477,12 +487,18 @@ class AvatarService {
 
   // Asignar items por defecto a un estudiante (para configuración inicial B2B)
   async assignDefaultItems(studentProfileId: string, gender: AvatarGender) {
-    // Primero eliminar items equipados existentes (por si acaso)
-    await db.delete(studentEquippedItems)
-      .where(eq(studentEquippedItems.studentProfileId, studentProfileId));
+    try {
+      // Primero eliminar items equipados existentes (por si acaso)
+      await db.delete(studentEquippedItems)
+        .where(eq(studentEquippedItems.studentProfileId, studentProfileId));
 
-    // Equipar items por defecto
-    await this.equipDefaultItems(studentProfileId, gender);
+      // Equipar items por defecto
+      await this.equipDefaultItems(studentProfileId, gender);
+    } catch (error) {
+      console.error('Error asignando items por defecto:', error);
+      // No lanzar el error para no interrumpir el flujo de vinculación
+      // El estudiante podrá equipar items manualmente después
+    }
   }
 }
 
