@@ -466,7 +466,8 @@ export const ClassroomLayout = () => {
       {/* Panel de notificaciones */}
       <NotificationsPanel 
         isOpen={showNotifications} 
-        onClose={() => setShowNotifications(false)} 
+        onClose={() => setShowNotifications(false)}
+        classroomId={classroom.id}
       />
 
       {/* Onboarding de la clase */}

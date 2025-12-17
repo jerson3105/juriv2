@@ -59,10 +59,18 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
+    const status = error.response?.status;
+    const code = error.response?.data?.code;
+    const message = error.response?.data?.message as string | undefined;
+    const isAuthRoute = typeof originalRequest?.url === 'string' && originalRequest.url.includes('/auth/');
+
     // Si el token expiró, intentar refrescarlo
-    if (error.response?.status === 401 && 
-        error.response?.data?.code === 'TOKEN_EXPIRED' && 
-        !originalRequest._retry) {
+    if (
+      status === 401 &&
+      !isAuthRoute &&
+      !originalRequest._retry &&
+      (code === 'TOKEN_EXPIRED' || message === 'Token de acceso no proporcionado' || message === 'Token inválido')
+    ) {
       originalRequest._retry = true;
 
       try {

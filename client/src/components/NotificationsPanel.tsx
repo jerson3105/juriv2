@@ -8,14 +8,15 @@ import { useAuthStore } from '../store/authStore';
 interface NotificationsPanelProps {
   isOpen: boolean;
   onClose: () => void;
+  classroomId?: string; // Opcional: filtrar notificaciones por clase
 }
 
-export const NotificationsPanel = ({ isOpen, onClose }: NotificationsPanelProps) => {
+export const NotificationsPanel = ({ isOpen, onClose, classroomId }: NotificationsPanelProps) => {
   const queryClient = useQueryClient();
 
   const { data: notifications = [], isLoading } = useQuery({
-    queryKey: ['notifications'],
-    queryFn: () => shopApi.getNotifications(),
+    queryKey: ['notifications', classroomId],
+    queryFn: () => shopApi.getNotifications({ classroomId }),
     enabled: isOpen,
     refetchInterval: 30000, // Refrescar cada 30 segundos
   });

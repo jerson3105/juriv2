@@ -15,8 +15,8 @@ import {
   AlertTriangle,
   Users,
   Timer,
+  Sparkles,
 } from 'lucide-react';
-import { Button } from '../ui/Button';
 import { classroomApi } from '../../lib/classroomApi';
 import {
   timedActivityApi,
@@ -25,6 +25,46 @@ import {
 } from '../../lib/timedActivityApi';
 import toast from 'react-hot-toast';
 import confetti from 'canvas-confetti';
+
+// Colores y configuración por modo
+const MODE_THEMES = {
+  STOPWATCH: {
+    gradient: 'from-cyan-500 via-blue-500 to-indigo-600',
+    bgGradient: 'from-cyan-50 via-blue-50 to-indigo-50',
+    shadow: 'shadow-cyan-500/40',
+    ring: 'ring-cyan-400',
+    text: 'text-cyan-600',
+    icon: '⏱️',
+    particles: ['💨', '⚡', '✨', '🏃'],
+  },
+  TIMER: {
+    gradient: 'from-amber-500 via-orange-500 to-red-500',
+    bgGradient: 'from-amber-50 via-orange-50 to-red-50',
+    shadow: 'shadow-orange-500/40',
+    ring: 'ring-orange-400',
+    text: 'text-orange-600',
+    icon: '⏰',
+    particles: ['⏳', '🔥', '⚡', '💫'],
+  },
+  BOMB: {
+    gradient: 'from-red-500 via-rose-500 to-pink-600',
+    bgGradient: 'from-red-50 via-rose-50 to-pink-50',
+    shadow: 'shadow-red-500/40',
+    ring: 'ring-red-400',
+    text: 'text-red-600',
+    icon: '💣',
+    particles: ['💥', '🔥', '💀', '⚡'],
+  },
+  BOMB_RANDOM: {
+    gradient: 'from-purple-500 via-fuchsia-500 to-pink-600',
+    bgGradient: 'from-purple-50 via-fuchsia-50 to-pink-50',
+    shadow: 'shadow-purple-500/40',
+    ring: 'ring-purple-400',
+    text: 'text-purple-600',
+    icon: '🎲',
+    particles: ['💣', '🎲', '❓', '💥'],
+  },
+};
 
 interface TimedActivityRunnerProps {
   activity: TimedActivity;
@@ -220,66 +260,113 @@ export const TimedActivityRunner = ({ activity: initialActivity, classroom, onBa
   };
 
   const modeConfig = MODE_CONFIG[activity.mode];
+  const theme = MODE_THEMES[activity.mode] || MODE_THEMES.STOPWATCH;
   const timeDisplay = activity.mode === 'TIMER' ? formatTime(getRemainingTime()) : formatTime(elapsedSeconds);
 
   return (
-    <div className="min-h-[calc(100vh-200px)] flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+    <div className="space-y-5">
+      {/* Header Gamificado */}
+      <motion.div 
+        initial={{ y: -20, opacity: 0 }} 
+        animate={{ y: 0, opacity: 1 }} 
+        className="flex items-center justify-between"
+      >
         <div className="flex items-center gap-3">
-          <Button variant="ghost" onClick={onBack} className="p-2">
-            <ArrowLeft size={20} />
-          </Button>
-          <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-white shadow-lg ${
-            activity.mode === 'STOPWATCH' ? 'bg-gradient-to-br from-blue-500 to-cyan-500 shadow-blue-500/30' :
-            activity.mode === 'TIMER' ? 'bg-gradient-to-br from-amber-500 to-orange-500 shadow-amber-500/30' :
-            'bg-gradient-to-br from-red-500 to-pink-500 shadow-red-500/30'
-          }`}>
-            {activity.mode === 'STOPWATCH' ? <Timer size={22} /> :
-             activity.mode === 'TIMER' ? <Clock size={22} /> :
-             <Bomb size={22} />}
-          </div>
+          <button 
+            onClick={onBack} 
+            className="p-2.5 bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-xl transition-all border border-white/20"
+          >
+            <ArrowLeft size={20} className="text-gray-600" />
+          </button>
+          <motion.div 
+            animate={{ 
+              rotate: isRunning ? [0, 5, -5, 0] : 0,
+              scale: isRunning ? [1, 1.05, 1] : 1 
+            }} 
+            transition={{ duration: 1, repeat: isRunning ? Infinity : 0 }}
+            className={`w-12 h-12 bg-gradient-to-br ${theme.gradient} rounded-xl flex items-center justify-center text-white shadow-lg ${theme.shadow}`}
+          >
+            <span className="text-2xl">{theme.icon}</span>
+          </motion.div>
           <div>
-            <h1 className="text-lg font-bold text-gray-800 dark:text-white">
+            <h1 className="text-xl font-black text-gray-800 flex items-center gap-2">
               {activity.name}
+              {isRunning && (
+                <motion.span 
+                  animate={{ scale: [1, 1.2, 1], opacity: [1, 0.7, 1] }} 
+                  transition={{ duration: 0.5, repeat: Infinity }}
+                >
+                  <Sparkles size={16} className={theme.text} />
+                </motion.span>
+              )}
             </h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              {modeConfig.label}
-            </p>
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <span className={`flex items-center gap-1 px-2 py-0.5 bg-gradient-to-r ${theme.bgGradient} ${theme.text} rounded-full font-medium`}>
+                {modeConfig.label}
+              </span>
+              <span className="flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full font-medium">
+                <Trophy size={12} />
+                +{activity.basePoints} {activity.pointType}
+              </span>
+            </div>
           </div>
         </div>
 
         {/* Info badges */}
         <div className="flex gap-2">
-          <span className="flex items-center gap-1 px-3 py-1.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 rounded-full text-sm">
-            <Trophy size={14} />
-            +{activity.basePoints} {activity.pointType}
-          </span>
           {activity.useMultipliers && (
-            <span className="flex items-center gap-1 px-3 py-1.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded-full text-sm">
+            <motion.span 
+              animate={{ scale: [1, 1.05, 1] }}
+              transition={{ duration: 2, repeat: Infinity }}
+              className="flex items-center gap-1 px-3 py-1.5 bg-gradient-to-r from-purple-100 to-fuchsia-100 text-purple-700 rounded-full text-sm font-semibold shadow-sm"
+            >
               <Zap size={14} />
               Multiplicadores
-            </span>
+            </motion.span>
           )}
-          {activity.mode === 'BOMB' && (
-            <span className="flex items-center gap-1 px-3 py-1.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-full text-sm">
+          {(activity.mode === 'BOMB' || activity.mode === 'BOMB_RANDOM') && (
+            <motion.span 
+              animate={isRunning ? { scale: [1, 1.1, 1], opacity: [1, 0.8, 1] } : {}}
+              transition={{ duration: 0.5, repeat: Infinity }}
+              className="flex items-center gap-1 px-3 py-1.5 bg-gradient-to-r from-red-100 to-rose-100 text-red-700 rounded-full text-sm font-semibold shadow-sm"
+            >
               <AlertTriangle size={14} />
               -{activity.bombPenaltyPoints} {activity.bombPenaltyType}
-            </span>
+            </motion.span>
           )}
         </div>
-      </div>
+      </motion.div>
 
       {/* Main content */}
-      <div className="flex-1 grid lg:grid-cols-2 gap-6">
-        {/* Timer Display */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-8 flex flex-col items-center justify-center relative overflow-hidden">
-          {/* Background decoration */}
-          <div className={`absolute inset-0 opacity-5 ${
-            activity.mode === 'STOPWATCH' ? 'bg-gradient-to-br from-blue-500 to-cyan-500' :
-            activity.mode === 'TIMER' ? 'bg-gradient-to-br from-amber-500 to-orange-500' :
-            'bg-gradient-to-br from-red-500 to-pink-500'
-          }`} />
+      <div className="grid lg:grid-cols-3 gap-4">
+        {/* Timer Display - Gamificado */}
+        <motion.div 
+          initial={{ scale: 0.95, opacity: 0 }} 
+          animate={{ scale: 1, opacity: 1 }} 
+          className="lg:col-span-2 relative rounded-3xl min-h-[400px] overflow-hidden shadow-2xl"
+        >
+          {/* Fondo dinámico por modo */}
+          <div className={`absolute inset-0 bg-gradient-to-br ${theme.gradient}`}>
+            {/* Partículas flotantes */}
+            {[...Array(12)].map((_, i) => (
+              <motion.div
+                key={i}
+                className="absolute text-2xl opacity-30"
+                style={{ left: `${Math.random() * 100}%`, top: `${Math.random() * 100}%` }}
+                animate={{ 
+                  y: [0, -30, 0], 
+                  x: [0, Math.random() * 20 - 10, 0],
+                  opacity: [0.2, 0.5, 0.2],
+                  scale: [1, 1.2, 1] 
+                }}
+                transition={{ duration: 3 + Math.random() * 2, repeat: Infinity, delay: Math.random() * 2 }}
+              >
+                {theme.particles[i % theme.particles.length]}
+              </motion.div>
+            ))}
+            <div className="absolute top-10 left-10 w-40 h-40 bg-white/10 rounded-full blur-3xl" />
+            <div className="absolute bottom-10 right-10 w-56 h-56 bg-black/10 rounded-full blur-3xl" />
+          </div>
 
           {/* Explosion overlay */}
           <AnimatePresence>
@@ -288,23 +375,18 @@ export const TimedActivityRunner = ({ activity: initialActivity, classroom, onBa
                 initial={{ opacity: 0, scale: 0.5 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0 }}
-                className="absolute inset-0 z-20 flex items-center justify-center bg-gradient-to-br from-red-500/90 to-orange-500/90"
+                className="absolute inset-0 z-30 flex items-center justify-center bg-gradient-to-br from-red-600/95 via-orange-500/95 to-yellow-500/95"
               >
                 <motion.div
                   initial={{ scale: 0 }}
-                  animate={{ 
-                    scale: [0, 1.5, 1],
-                    rotate: [0, 10, -10, 0],
-                  }}
+                  animate={{ scale: [0, 1.5, 1], rotate: [0, 10, -10, 0] }}
                   transition={{ duration: 0.5 }}
                   className="text-center"
                 >
                   <motion.div
-                    animate={{ 
-                      scale: [1, 1.2, 1],
-                    }}
-                    transition={{ duration: 0.3, repeat: 3 }}
-                    className="text-9xl mb-4"
+                    animate={{ scale: [1, 1.3, 1] }}
+                    transition={{ duration: 0.3, repeat: 5 }}
+                    className="text-[150px] mb-4 drop-shadow-2xl"
                   >
                     💥
                   </motion.div>
@@ -312,32 +394,27 @@ export const TimedActivityRunner = ({ activity: initialActivity, classroom, onBa
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.3 }}
-                    className="text-4xl font-black text-white drop-shadow-lg"
+                    className="text-6xl font-black text-white drop-shadow-lg"
                   >
                     ¡BOOM!
                   </motion.h2>
                 </motion.div>
-                {/* Particles */}
-                {[...Array(20)].map((_, i) => (
+                {[...Array(25)].map((_, i) => (
                   <motion.div
                     key={i}
-                    initial={{ 
-                      x: 0, 
-                      y: 0, 
-                      opacity: 1,
-                      scale: 1,
-                    }}
+                    initial={{ x: 0, y: 0, opacity: 1, scale: 1 }}
                     animate={{ 
-                      x: (Math.random() - 0.5) * 400,
-                      y: (Math.random() - 0.5) * 400,
+                      x: (Math.random() - 0.5) * 500,
+                      y: (Math.random() - 0.5) * 500,
                       opacity: 0,
                       scale: 0,
+                      rotate: Math.random() * 360
                     }}
-                    transition={{ duration: 1, delay: Math.random() * 0.3 }}
-                    className="absolute text-2xl"
+                    transition={{ duration: 1.5, delay: Math.random() * 0.3 }}
+                    className="absolute text-3xl"
                     style={{ left: '50%', top: '50%' }}
                   >
-                    {['🔥', '💥', '✨', '⚡'][Math.floor(Math.random() * 4)]}
+                    {['🔥', '💥', '✨', '⚡', '💀', '☠️'][Math.floor(Math.random() * 6)]}
                   </motion.div>
                 ))}
               </motion.div>
@@ -345,245 +422,306 @@ export const TimedActivityRunner = ({ activity: initialActivity, classroom, onBa
           </AnimatePresence>
 
           {/* Timer content */}
-          <div className="relative z-10 text-center">
-            {/* Mode icon with animation */}
-            {activity.mode === 'BOMB' && (
-              <motion.div
-                animate={isRunning && !bombExploded ? {
-                  scale: [1, 1.1, 1],
-                  rotate: [0, -5, 5, 0],
-                } : {}}
-                transition={{ duration: 0.5, repeat: isRunning ? Infinity : 0 }}
-                className="mb-6"
-              >
-                <div className="relative inline-block">
+          <div className="relative z-10 flex flex-col items-center justify-center min-h-[400px] p-6">
+            {/* Icono principal animado */}
+            <motion.div
+              animate={isRunning && !bombExploded ? {
+                scale: [1, 1.08, 1],
+                rotate: activity.mode.includes('BOMB') ? [0, -3, 3, 0] : 0,
+              } : {}}
+              transition={{ duration: activity.mode.includes('BOMB') ? 0.4 : 1, repeat: isRunning ? Infinity : 0 }}
+              className="mb-4"
+            >
+              {/* Cronómetro */}
+              {activity.mode === 'STOPWATCH' && (
+                <div className="relative">
+                  <motion.div
+                    className="w-36 h-36 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-2xl border-4 border-white/30"
+                    animate={isRunning ? { boxShadow: ['0 0 30px rgba(255,255,255,0.3)', '0 0 60px rgba(255,255,255,0.5)', '0 0 30px rgba(255,255,255,0.3)'] } : {}}
+                    transition={{ duration: 1.5, repeat: Infinity }}
+                  >
+                    <motion.div
+                      animate={isRunning ? { rotate: 360 } : {}}
+                      transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                    >
+                      <Timer size={70} className="text-white drop-shadow-lg" />
+                    </motion.div>
+                  </motion.div>
+                  {isRunning && (
+                    <motion.div
+                      className="absolute -inset-2 rounded-full border-4 border-white/40 border-dashed"
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
+                    />
+                  )}
+                </div>
+              )}
+
+              {/* Temporizador */}
+              {activity.mode === 'TIMER' && (
+                <div className="relative w-40 h-40">
+                  <svg className="w-full h-full transform -rotate-90">
+                    <circle cx="80" cy="80" r="70" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="12" />
+                    <motion.circle
+                      cx="80" cy="80" r="70" fill="none"
+                      stroke={getProgress() > 75 ? '#ef4444' : getProgress() > 50 ? '#f59e0b' : '#10b981'}
+                      strokeWidth="12"
+                      strokeDasharray={2 * Math.PI * 70}
+                      strokeDashoffset={2 * Math.PI * 70 * (1 - getProgress() / 100)}
+                      strokeLinecap="round"
+                      className="transition-all duration-200 drop-shadow-lg"
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <motion.div
+                      animate={isRunning && getProgress() > 75 ? { scale: [1, 1.1, 1] } : {}}
+                      transition={{ duration: 0.5, repeat: Infinity }}
+                    >
+                      <Clock size={50} className={`drop-shadow-lg ${getProgress() > 75 ? 'text-red-200' : getProgress() > 50 ? 'text-amber-200' : 'text-white'}`} />
+                    </motion.div>
+                  </div>
+                </div>
+              )}
+
+              {/* Bomba Manual */}
+              {activity.mode === 'BOMB' && (
+                <div className="relative">
                   <motion.span 
-                    className="text-8xl block"
-                    animate={isRunning ? { 
-                      filter: ['brightness(1)', 'brightness(1.3)', 'brightness(1)']
+                    className="text-[120px] block drop-shadow-2xl"
+                    animate={isRunning && !bombExploded ? { 
+                      filter: ['brightness(1)', 'brightness(1.4)', 'brightness(1)']
                     } : {}}
-                    transition={{ duration: 0.5, repeat: Infinity }}
+                    transition={{ duration: 0.3, repeat: Infinity }}
                   >
                     {bombExploded ? '💥' : '💣'}
                   </motion.span>
                   {isRunning && !bombExploded && (
                     <>
-                      {/* Fuse sparks */}
                       <motion.div
-                        animate={{ 
-                          opacity: [0, 1, 0],
-                          scale: [0.5, 1, 0.5],
-                          y: [-10, -20, -10],
-                        }}
-                        transition={{ duration: 0.3, repeat: Infinity }}
-                        className="absolute -top-2 right-4 text-2xl"
-                      >
-                        ✨
-                      </motion.div>
+                        animate={{ opacity: [0, 1, 0], scale: [0.5, 1.2, 0.5], y: [-5, -25, -5] }}
+                        transition={{ duration: 0.25, repeat: Infinity }}
+                        className="absolute -top-4 right-6 text-4xl"
+                      >✨</motion.div>
                       <motion.div
-                        animate={{ 
-                          opacity: [1, 0, 1],
-                          scale: [1, 0.5, 1],
-                        }}
-                        transition={{ duration: 0.2, repeat: Infinity }}
-                        className="absolute -top-4 right-2 text-xl"
-                      >
-                        🔥
-                      </motion.div>
+                        animate={{ opacity: [1, 0.5, 1], scale: [1, 1.3, 1] }}
+                        transition={{ duration: 0.15, repeat: Infinity }}
+                        className="absolute -top-6 right-3 text-3xl"
+                      >🔥</motion.div>
                     </>
                   )}
                 </div>
-              </motion.div>
-            )}
+              )}
 
-            {activity.mode === 'STOPWATCH' && (
-              <div className="mb-6">
-                <motion.div
-                  animate={isRunning ? { rotate: 360 } : {}}
-                  transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-                  className="w-24 h-24 mx-auto rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/30"
-                >
-                  <Timer size={48} className="text-white" />
-                </motion.div>
-              </div>
-            )}
-
-            {activity.mode === 'TIMER' && (
-              <div className="mb-6 relative">
-                {/* Progress ring */}
-                <svg className="w-32 h-32 mx-auto transform -rotate-90">
-                  <circle
-                    cx="64"
-                    cy="64"
-                    r="58"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="8"
-                    className="text-gray-200 dark:text-gray-700"
-                  />
-                  <motion.circle
-                    cx="64"
-                    cy="64"
-                    r="58"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="8"
-                    strokeDasharray={2 * Math.PI * 58}
-                    strokeDashoffset={2 * Math.PI * 58 * (1 - getProgress() / 100)}
-                    className={`transition-all duration-100 ${
-                      getProgress() > 75 ? 'text-red-500' :
-                      getProgress() > 50 ? 'text-amber-500' :
-                      'text-emerald-500'
-                    }`}
-                    strokeLinecap="round"
-                  />
-                </svg>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <Clock size={40} className={`${
-                    getProgress() > 75 ? 'text-red-500' :
-                    getProgress() > 50 ? 'text-amber-500' :
-                    'text-emerald-500'
-                  }`} />
+              {/* Bomba Aleatoria */}
+              {activity.mode === 'BOMB_RANDOM' && (
+                <div className="relative">
+                  <motion.span 
+                    className="text-[120px] block drop-shadow-2xl"
+                    animate={isRunning && !bombExploded ? { 
+                      filter: ['brightness(1)', 'brightness(1.4)', 'brightness(1)'],
+                      rotate: [0, -5, 5, 0]
+                    } : {}}
+                    transition={{ duration: 0.4, repeat: Infinity }}
+                  >
+                    {bombExploded ? '💥' : '💣'}
+                  </motion.span>
+                  {isRunning && !bombExploded && (
+                    <>
+                      <motion.div
+                        animate={{ opacity: [0, 1, 0], scale: [0.5, 1.2, 0.5], y: [-5, -25, -5] }}
+                        transition={{ duration: 0.25, repeat: Infinity }}
+                        className="absolute -top-4 right-6 text-4xl"
+                      >✨</motion.div>
+                      <motion.div
+                        animate={{ opacity: [1, 0.5, 1], scale: [1, 1.3, 1] }}
+                        transition={{ duration: 0.15, repeat: Infinity }}
+                        className="absolute -top-6 right-3 text-3xl"
+                      >🔥</motion.div>
+                      <motion.div
+                        animate={{ rotate: [0, 360], opacity: [0.5, 1, 0.5] }}
+                        transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                        className="absolute -bottom-2 -left-2 text-3xl"
+                      >🎲</motion.div>
+                    </>
+                  )}
                 </div>
-              </div>
-            )}
+              )}
+            </motion.div>
 
             {/* Time display */}
             <motion.div
               key={timeDisplay}
-              initial={{ scale: 1 }}
               animate={isRunning ? { scale: [1, 1.02, 1] } : {}}
               transition={{ duration: 1, repeat: Infinity }}
               className="mb-4"
             >
-              <span className={`text-7xl font-mono font-black ${
-                activity.mode === 'TIMER' && getProgress() > 75 ? 'text-red-500' :
-                activity.mode === 'BOMB' && bombExploded ? 'text-red-500' :
-                'text-gray-800 dark:text-white'
+              <span className={`text-8xl font-mono font-black text-white drop-shadow-2xl tracking-wider ${
+                activity.mode === 'TIMER' && getProgress() > 75 ? 'animate-pulse' : ''
               }`}>
                 {timeDisplay}
               </span>
             </motion.div>
 
             {/* Status message */}
-            {activity.mode === 'BOMB' && isRunning && !bombExploded && (
-              <motion.p
-                animate={{ opacity: [0.5, 1, 0.5] }}
-                transition={{ duration: 1, repeat: Infinity }}
-                className="text-red-500 font-semibold mb-4"
+            {activity.mode.includes('BOMB') && isRunning && !bombExploded && (
+              <motion.div
+                animate={{ opacity: [0.6, 1, 0.6], y: [0, -3, 0] }}
+                transition={{ duration: 0.8, repeat: Infinity }}
+                className="flex items-center gap-2 px-4 py-2 bg-white/20 backdrop-blur-sm rounded-full mb-4"
               >
-                ⚠️ ¡La bomba puede explotar en cualquier momento!
-              </motion.p>
+                <AlertTriangle size={18} className="text-yellow-300" />
+                <span className="text-white font-semibold text-sm">
+                  {activity.mode === 'BOMB_RANDOM' ? '¡La bomba pasará aleatoriamente!' : '¡La bomba puede explotar en cualquier momento!'}
+                </span>
+              </motion.div>
             )}
             {bombExploded && (
-              <p className="text-red-600 font-bold text-xl mb-4">
+              <motion.p 
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                className="text-white font-black text-2xl mb-4 bg-black/30 px-6 py-2 rounded-full"
+              >
                 💥 ¡LA BOMBA EXPLOTÓ!
-              </p>
+              </motion.p>
             )}
 
             {/* Multiplier indicator */}
             {activity.useMultipliers && getCurrentMultiplier() > 100 && (
               <motion.div
-                animate={{ scale: [1, 1.1, 1] }}
+                animate={{ scale: [1, 1.1, 1], boxShadow: ['0 0 20px rgba(168,85,247,0.4)', '0 0 40px rgba(168,85,247,0.6)', '0 0 20px rgba(168,85,247,0.4)'] }}
                 transition={{ duration: 0.5, repeat: Infinity }}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-full mb-4"
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white/90 text-purple-600 rounded-full mb-4 font-bold shadow-xl"
               >
-                <Zap size={18} />
-                <span className="font-bold">x{(getCurrentMultiplier() / 100).toFixed(1)} Puntos</span>
+                <Zap size={20} className="fill-purple-500" />
+                <span>x{(getCurrentMultiplier() / 100).toFixed(1)} Puntos</span>
               </motion.div>
             )}
 
             {/* Controls */}
-            <div className="flex gap-3 justify-center mt-6">
+            <div className="flex gap-3 justify-center mt-4">
               {activity.status === 'DRAFT' && (
-                <Button
-                  size="lg"
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
                   onClick={() => startMutation.mutate()}
                   disabled={startMutation.isPending}
-                  className="gap-2 bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 shadow-lg shadow-emerald-500/30"
+                  className="flex items-center gap-3 px-8 py-4 bg-white text-gray-800 font-bold rounded-2xl shadow-xl hover:shadow-2xl transition-all disabled:opacity-50"
                 >
-                  <Play size={20} />
-                  Iniciar
-                </Button>
+                  <Play size={24} className="text-emerald-500" />
+                  <span className="text-lg">
+                    {activity.mode.includes('BOMB') ? '¡Iniciar Bomba!' : 'Iniciar'}
+                  </span>
+                </motion.button>
               )}
 
               {activity.status === 'ACTIVE' && !bombExploded && (
                 <>
-                  <Button
-                    size="lg"
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
                     onClick={() => pauseMutation.mutate()}
                     disabled={pauseMutation.isPending}
-                    className="gap-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 shadow-lg shadow-amber-500/30"
+                    className="flex items-center gap-2 px-6 py-3 bg-white/90 text-amber-600 font-bold rounded-xl shadow-lg transition-all disabled:opacity-50"
                   >
                     <Pause size={20} />
                     Pausar
-                  </Button>
-                  <Button
-                    size="lg"
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
                     onClick={() => completeMutation.mutate()}
                     disabled={completeMutation.isPending}
-                    variant="secondary"
-                    className="gap-2"
+                    className="flex items-center gap-2 px-6 py-3 bg-white/20 backdrop-blur-sm text-white font-bold rounded-xl border border-white/30 transition-all disabled:opacity-50"
                   >
                     <Square size={20} />
                     Finalizar
-                  </Button>
+                  </motion.button>
                 </>
               )}
 
               {activity.status === 'PAUSED' && (
                 <>
-                  <Button
-                    size="lg"
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
                     onClick={() => resumeMutation.mutate()}
                     disabled={resumeMutation.isPending}
-                    className="gap-2 bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 shadow-lg shadow-emerald-500/30"
+                    className="flex items-center gap-2 px-6 py-3 bg-white text-emerald-600 font-bold rounded-xl shadow-lg transition-all disabled:opacity-50"
                   >
                     <Play size={20} />
                     Reanudar
-                  </Button>
-                  <Button
-                    size="lg"
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
                     onClick={() => completeMutation.mutate()}
                     disabled={completeMutation.isPending}
-                    variant="secondary"
-                    className="gap-2"
+                    className="flex items-center gap-2 px-6 py-3 bg-white/20 backdrop-blur-sm text-white font-bold rounded-xl border border-white/30 transition-all disabled:opacity-50"
                   >
                     <Square size={20} />
                     Finalizar
-                  </Button>
+                  </motion.button>
                 </>
               )}
 
               {(activity.status === 'COMPLETED' || bombExploded) && (
-                <Button
-                  size="lg"
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
                   onClick={() => resetMutation.mutate()}
                   disabled={resetMutation.isPending}
-                  className="gap-2 bg-gradient-to-r from-gray-500 to-slate-500 hover:from-gray-600 hover:to-slate-600"
+                  className="flex items-center gap-2 px-6 py-3 bg-white text-gray-700 font-bold rounded-xl shadow-lg transition-all disabled:opacity-50"
                 >
                   <RotateCcw size={20} />
                   Reiniciar
-                </Button>
+                </motion.button>
               )}
             </div>
           </div>
-        </div>
 
-        {/* Student List */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
+          {/* Borde decorativo */}
+          <div className="absolute inset-0 rounded-3xl border-2 border-white/20 pointer-events-none" />
+        </motion.div>
+
+        {/* Student List - Gamificado */}
+        <motion.div 
+          initial={{ x: 20, opacity: 0 }} 
+          animate={{ x: 0, opacity: 1 }} 
+          transition={{ delay: 0.1 }}
+          className="bg-white rounded-2xl shadow-xl p-5 border border-gray-100 flex flex-col"
+        >
+          {/* Header con progreso */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <Users size={20} className="text-gray-500" />
-              <span className="font-bold text-gray-800 dark:text-white">Estudiantes</span>
+              <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${theme.gradient} flex items-center justify-center shadow-md`}>
+                <Users size={18} className="text-white" />
+              </div>
+              <div>
+                <span className="font-bold text-gray-800 block text-sm">Progreso</span>
+                <span className="text-xs text-gray-500">{students.length} estudiantes</span>
+              </div>
             </div>
-            <span className="text-sm text-gray-500 bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded-full">
-              {completedStudentIds.size}/{students.length} completaron
-            </span>
+            <div className="flex items-center gap-2">
+              <div className="text-right">
+                <span className="text-2xl font-black text-gray-800">{completedStudentIds.size}</span>
+                <span className="text-gray-400">/{students.length}</span>
+              </div>
+            </div>
           </div>
 
-          <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2">
-            {students.map((student) => {
+          {/* Barra de progreso */}
+          <div className="h-2 bg-gray-100 rounded-full mb-4 overflow-hidden">
+            <motion.div 
+              className={`h-full bg-gradient-to-r ${theme.gradient} rounded-full`}
+              initial={{ width: 0 }}
+              animate={{ width: `${(completedStudentIds.size / Math.max(students.length, 1)) * 100}%` }}
+              transition={{ duration: 0.5 }}
+            />
+          </div>
+
+          {/* Lista de estudiantes */}
+          <div className="space-y-2 flex-1 overflow-y-auto max-h-[320px] pr-1">
+            {students.map((student, index) => {
               const isCompleted = completedStudentIds.has(student.id);
               const isExploded = explodedStudentIds.has(student.id);
               const result = activity.results?.find(r => r.studentProfileId === student.id);
@@ -593,39 +731,47 @@ export const TimedActivityRunner = ({ activity: initialActivity, classroom, onBa
                   key={student.id}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.03 }}
                   className={`flex items-center justify-between gap-3 p-3 rounded-xl transition-all ${
                     isCompleted
-                      ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800'
+                      ? 'bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200'
                       : isExploded
-                      ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
-                      : 'bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      ? 'bg-gradient-to-r from-red-50 to-rose-50 border border-red-200'
+                      : 'bg-gray-50 hover:bg-gray-100 border border-transparent'
                   }`}
                 >
                   <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0 ${
-                      isCompleted ? 'bg-gradient-to-br from-emerald-400 to-green-500' :
-                      isExploded ? 'bg-gradient-to-br from-red-400 to-pink-500' :
-                      'bg-gradient-to-br from-gray-400 to-gray-500'
-                    }`}>
+                    <motion.div 
+                      className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0 shadow-md ${
+                        isCompleted ? 'bg-gradient-to-br from-emerald-400 to-green-500' :
+                        isExploded ? 'bg-gradient-to-br from-red-400 to-pink-500' :
+                        'bg-gradient-to-br from-gray-400 to-gray-500'
+                      }`}
+                      animate={isCompleted ? { scale: [1, 1.1, 1] } : {}}
+                      transition={{ duration: 0.3 }}
+                    >
                       {isCompleted ? <Check size={18} /> :
                        isExploded ? <Bomb size={18} /> :
                        (student.characterName?.[0] || student.realName?.[0] || '?')}
-                    </div>
+                    </motion.div>
                     <div className="min-w-0">
-                      <p className="font-medium text-gray-800 dark:text-white truncate">
+                      <p className="font-semibold text-gray-800 truncate text-sm">
                         {student.characterName || student.realName || 'Sin nombre'}
                       </p>
                       {result && (
                         <p className="text-xs">
                           {isCompleted && (
-                            <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                            <span className="text-emerald-600 font-semibold flex items-center gap-1">
+                              <Trophy size={10} />
                               +{result.pointsAwarded} {activity.pointType}
-                              {result.multiplierApplied > 100 && ` (x${(result.multiplierApplied / 100).toFixed(1)})`}
+                              {result.multiplierApplied > 100 && (
+                                <span className="text-purple-500 ml-1">x{(result.multiplierApplied / 100).toFixed(1)}</span>
+                              )}
                             </span>
                           )}
                           {isExploded && (
-                            <span className="text-red-600 dark:text-red-400 font-medium">
-                              -{result.penaltyApplied} {activity.bombPenaltyType}
+                            <span className="text-red-600 font-semibold">
+                              💥 -{result.penaltyApplied} {activity.bombPenaltyType}
                             </span>
                           )}
                         </p>
@@ -636,33 +782,42 @@ export const TimedActivityRunner = ({ activity: initialActivity, classroom, onBa
                   {/* Actions */}
                   {!isCompleted && !isExploded && (activity.status === 'ACTIVE' || activity.status === 'PAUSED' || bombExploded) && (
                     <div className="flex gap-2 flex-shrink-0">
-                      <Button
-                        size="sm"
+                      <motion.button
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
                         onClick={() => markCompleteMutation.mutate({ studentId: student.id })}
                         disabled={markCompleteMutation.isPending}
-                        className="gap-1 bg-emerald-500 hover:bg-emerald-600 text-xs px-3"
+                        className="flex items-center gap-1 px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-green-500 text-white text-xs font-semibold rounded-lg shadow-md hover:shadow-lg transition-all disabled:opacity-50"
                       >
                         <Check size={14} />
                         Completó
-                      </Button>
-                      {activity.mode === 'BOMB' && bombExploded && (
-                        <Button
-                          size="sm"
+                      </motion.button>
+                      {(activity.mode === 'BOMB' || activity.mode === 'BOMB_RANDOM') && bombExploded && (
+                        <motion.button
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.95 }}
                           onClick={() => markExplodedMutation.mutate({ studentId: student.id })}
                           disabled={markExplodedMutation.isPending}
-                          className="gap-1 bg-red-500 hover:bg-red-600 text-xs px-3"
+                          className="flex items-center gap-1 px-3 py-1.5 bg-gradient-to-r from-red-500 to-rose-500 text-white text-xs font-semibold rounded-lg shadow-md hover:shadow-lg transition-all disabled:opacity-50"
                         >
                           <Bomb size={14} />
                           Explotó
-                        </Button>
+                        </motion.button>
                       )}
                     </div>
                   )}
                 </motion.div>
               );
             })}
+
+            {students.length === 0 && (
+              <div className="text-center py-8 text-gray-400">
+                <Users size={40} className="mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No hay estudiantes en esta clase</p>
+              </div>
+            )}
           </div>
-        </div>
+        </motion.div>
       </div>
     </div>
   );

@@ -199,14 +199,26 @@ export const loginStreakService = {
       randomItem: null,
     };
 
+    // Obtener estudiante y configuración de clase para calcular nivel
+    const [student] = await db.select().from(studentProfiles).where(eq(studentProfiles.id, studentProfileId));
+    if (!student) {
+      throw new Error('Estudiante no encontrado');
+    }
+    
+    const xpPerLevel = classroom?.xpPerLevel || 100;
+    
+    // Función para calcular nivel
+    const calculateLevel = (totalXp: number, xpPerLvl: number): number => {
+      const level = Math.floor((1 + Math.sqrt(1 + (8 * totalXp) / xpPerLvl)) / 2);
+      return Math.max(1, level);
+    };
+    
+    let totalXpToAdd = 0;
+    let totalGpToAdd = 0;
+    
     // Otorgar XP diario
     if (config.dailyXp > 0) {
-      await db
-        .update(studentProfiles)
-        .set({
-          xp: sql`${studentProfiles.xp} + ${config.dailyXp}`,
-        })
-        .where(eq(studentProfiles.id, studentProfileId));
+      totalXpToAdd += config.dailyXp;
       
       // Contribuir XP al clan si aplica
       await clanService.contributeXpToClan(studentProfileId, config.dailyXp, 'Racha de login diaria');
@@ -223,14 +235,8 @@ export const loginStreakService = {
       rewards.milestoneXp = milestone.xp;
       rewards.milestoneGp = milestone.gp;
 
-      // Otorgar recompensas del milestone
-      await db
-        .update(studentProfiles)
-        .set({
-          xp: sql`${studentProfiles.xp} + ${milestone.xp}`,
-          gp: sql`${studentProfiles.gp} + ${milestone.gp}`,
-        })
-        .where(eq(studentProfiles.id, studentProfileId));
+      totalXpToAdd += milestone.xp;
+      totalGpToAdd += milestone.gp;
       
       // Contribuir XP del milestone al clan si aplica
       if (milestone.xp > 0) {
@@ -265,6 +271,36 @@ export const loginStreakService = {
           type: 'BADGE',
           title: `🔥 ¡Racha de ${milestone.day} días!`,
           message: `Has mantenido tu racha por ${milestone.day} días. Recompensa: +${milestone.xp} XP${milestone.gp > 0 ? `, +${milestone.gp} GP` : ''}${milestone.randomItem ? ' + Item sorpresa' : ''}`,
+          isRead: false,
+          createdAt: now,
+        });
+      }
+    }
+    
+    // Actualizar XP, GP y nivel del estudiante
+    if (totalXpToAdd > 0 || totalGpToAdd > 0) {
+      const newXp = student.xp + totalXpToAdd;
+      const newLevel = totalXpToAdd > 0 ? calculateLevel(newXp, xpPerLevel) : student.level;
+      const leveledUp = newLevel > student.level;
+      
+      await db.update(studentProfiles)
+        .set({
+          xp: newXp,
+          gp: student.gp + totalGpToAdd,
+          level: newLevel,
+          updatedAt: now,
+        })
+        .where(eq(studentProfiles.id, studentProfileId));
+      
+      // Notificar subida de nivel si aplica
+      if (leveledUp && student.userId) {
+        await db.insert(notifications).values({
+          id: uuidv4(),
+          userId: student.userId,
+          classroomId: student.classroomId,
+          type: 'LEVEL_UP',
+          title: '🎉 ¡Subiste de nivel!',
+          message: `¡Felicidades! Has alcanzado el nivel ${newLevel}`,
           isRead: false,
           createdAt: now,
         });

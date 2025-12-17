@@ -10,8 +10,8 @@ import {
   AlertTriangle,
   Users,
   Shuffle,
+  Sparkles,
 } from 'lucide-react';
-import { Button } from '../ui/Button';
 import { classroomApi } from '../../lib/classroomApi';
 import {
   timedActivityApi,
@@ -19,6 +19,14 @@ import {
 } from '../../lib/timedActivityApi';
 import toast from 'react-hot-toast';
 import confetti from 'canvas-confetti';
+
+// Tema para Bomba Aleatoria
+const BOMB_RANDOM_THEME = {
+  gradient: 'from-purple-500 via-fuchsia-500 to-pink-600',
+  bgGradient: 'from-purple-50 via-fuchsia-50 to-pink-50',
+  shadow: 'shadow-purple-500/40',
+  particles: ['💣', '🎲', '❓', '💥', '✨', '🔥'],
+};
 
 interface Student {
   id: string;
@@ -54,6 +62,7 @@ export const BombRandomRunner = ({ activity: initialActivity, classroom, onBack 
   const [remainingStudents, setRemainingStudents] = useState<Student[]>([]);
   const [completedStudents, setCompletedStudents] = useState<Student[]>([]);
   const [currentStudent, setCurrentStudent] = useState<Student | null>(null);
+  const [explodedStudent, setExplodedStudent] = useState<Student | null>(null);
   const [isSelectingNext, setIsSelectingNext] = useState(false);
   
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -105,6 +114,7 @@ export const BombRandomRunner = ({ activity: initialActivity, classroom, onBack 
       setShowExplosion(false);
       setGameStarted(false);
       setCurrentStudent(null);
+      setExplodedStudent(null);
       setCompletedStudents([]);
       setRemainingStudents([]);
       toast.success('Actividad reiniciada');
@@ -212,8 +222,9 @@ export const BombRandomRunner = ({ activity: initialActivity, classroom, onBack 
           setShowExplosion(true);
           setIsRunning(false);
           
-          // Marcar al estudiante actual como explotado
+          // Guardar y marcar al estudiante actual como explotado
           if (currentStudent) {
+            setExplodedStudent(currentStudent);
             markExplodedMutation.mutate({ studentId: currentStudent.id });
           }
           
@@ -272,51 +283,104 @@ export const BombRandomRunner = ({ activity: initialActivity, classroom, onBack 
     return 0; // Low
   }, [elapsedSeconds, activity.actualBombTime]);
 
+  const theme = BOMB_RANDOM_THEME;
+
   return (
-    <div className="min-h-[calc(100vh-200px)] flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+    <div className="space-y-5">
+      {/* Header Gamificado */}
+      <motion.div 
+        initial={{ y: -20, opacity: 0 }} 
+        animate={{ y: 0, opacity: 1 }} 
+        className="flex items-center justify-between"
+      >
         <div className="flex items-center gap-3">
-          <Button variant="ghost" onClick={onBack} className="p-2">
-            <ArrowLeft size={20} />
-          </Button>
-          <div className="w-11 h-11 rounded-xl flex items-center justify-center text-white shadow-lg bg-gradient-to-br from-pink-500 to-rose-500 shadow-pink-500/30">
-            <Shuffle size={22} />
-          </div>
+          <button 
+            onClick={onBack} 
+            className="p-2.5 bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-xl transition-all border border-white/20"
+          >
+            <ArrowLeft size={20} className="text-gray-600" />
+          </button>
+          <motion.div 
+            animate={{ 
+              rotate: isRunning ? [0, 5, -5, 0] : 0,
+              scale: isRunning ? [1, 1.05, 1] : 1 
+            }} 
+            transition={{ duration: 1, repeat: isRunning ? Infinity : 0 }}
+            className={`w-12 h-12 bg-gradient-to-br ${theme.gradient} rounded-xl flex items-center justify-center text-white shadow-lg ${theme.shadow}`}
+          >
+            <span className="text-2xl">🎲</span>
+          </motion.div>
           <div>
-            <h1 className="text-lg font-bold text-gray-800 dark:text-white">
+            <h1 className="text-xl font-black text-gray-800 flex items-center gap-2">
               {activity.name}
+              {isRunning && (
+                <motion.span 
+                  animate={{ scale: [1, 1.2, 1], opacity: [1, 0.7, 1] }} 
+                  transition={{ duration: 0.5, repeat: Infinity }}
+                >
+                  <Sparkles size={16} className="text-purple-500" />
+                </motion.span>
+              )}
             </h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Bomba Aleatoria - Turnos al azar
-            </p>
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <span className={`flex items-center gap-1 px-2 py-0.5 bg-gradient-to-r ${theme.bgGradient} text-purple-600 rounded-full font-medium`}>
+                <Shuffle size={12} />
+                Bomba Aleatoria
+              </span>
+              <span className="flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full font-medium">
+                <Trophy size={12} />
+                +{activity.basePoints} {activity.pointType}
+              </span>
+            </div>
           </div>
         </div>
 
         {/* Info badges */}
-        <div className="flex gap-2">
-          <span className="flex items-center gap-1 px-3 py-1.5 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 rounded-full text-sm">
-            <Trophy size={14} />
-            +{activity.basePoints} {activity.pointType}
-          </span>
-          <span className="flex items-center gap-1 px-3 py-1.5 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-full text-sm">
-            <AlertTriangle size={14} />
-            -{activity.bombPenaltyPoints} {activity.bombPenaltyType}
-          </span>
-        </div>
-      </div>
+        <motion.span 
+          animate={isRunning ? { scale: [1, 1.1, 1], opacity: [1, 0.8, 1] } : {}}
+          transition={{ duration: 0.5, repeat: Infinity }}
+          className="flex items-center gap-1 px-3 py-1.5 bg-gradient-to-r from-red-100 to-rose-100 text-red-700 rounded-full text-sm font-semibold shadow-sm"
+        >
+          <AlertTriangle size={14} />
+          -{activity.bombPenaltyPoints} {activity.bombPenaltyType}
+        </motion.span>
+      </motion.div>
 
       {/* Main content */}
-      <div className="flex-1 grid lg:grid-cols-3 gap-6">
+      <div className="grid lg:grid-cols-3 gap-4">
         {/* Bomb & Current Student - Main Area */}
-        <div className="lg:col-span-2 bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-8 flex flex-col items-center justify-center relative overflow-hidden">
-          {/* Background gradient based on urgency */}
-          <div className={`absolute inset-0 transition-all duration-500 ${
-            urgencyLevel === 3 ? 'bg-gradient-to-br from-red-500/20 to-orange-500/20' :
-            urgencyLevel === 2 ? 'bg-gradient-to-br from-orange-500/10 to-amber-500/10' :
-            urgencyLevel === 1 ? 'bg-gradient-to-br from-amber-500/5 to-yellow-500/5' :
-            'bg-gradient-to-br from-pink-500/5 to-rose-500/5'
-          }`} />
+        <motion.div 
+          initial={{ scale: 0.95, opacity: 0 }} 
+          animate={{ scale: 1, opacity: 1 }} 
+          className="lg:col-span-2 relative rounded-3xl min-h-[450px] overflow-hidden shadow-2xl"
+        >
+          {/* Fondo dinámico */}
+          <div className={`absolute inset-0 bg-gradient-to-br ${
+            urgencyLevel >= 3 ? 'from-red-500 via-rose-500 to-orange-500' :
+            urgencyLevel >= 2 ? 'from-orange-500 via-amber-500 to-yellow-500' :
+            urgencyLevel >= 1 ? 'from-amber-500 via-yellow-500 to-orange-400' :
+            theme.gradient
+          } transition-all duration-500`}>
+            {/* Partículas flotantes */}
+            {[...Array(12)].map((_, i) => (
+              <motion.div
+                key={i}
+                className="absolute text-2xl opacity-30"
+                style={{ left: `${Math.random() * 100}%`, top: `${Math.random() * 100}%` }}
+                animate={{ 
+                  y: [0, -30, 0], 
+                  x: [0, Math.random() * 20 - 10, 0],
+                  opacity: [0.2, 0.5, 0.2],
+                  scale: [1, 1.2, 1] 
+                }}
+                transition={{ duration: 3 + Math.random() * 2, repeat: Infinity, delay: Math.random() * 2 }}
+              >
+                {theme.particles[i % theme.particles.length]}
+              </motion.div>
+            ))}
+            <div className="absolute top-10 left-10 w-40 h-40 bg-white/10 rounded-full blur-3xl" />
+            <div className="absolute bottom-10 right-10 w-56 h-56 bg-black/10 rounded-full blur-3xl" />
+          </div>
 
           {/* Explosion overlay */}
           <AnimatePresence>
@@ -382,58 +446,84 @@ export const BombRandomRunner = ({ activity: initialActivity, classroom, onBack 
           </AnimatePresence>
 
           {/* Content */}
-          <div className="relative z-10 text-center w-full max-w-md">
+          <div className="relative z-10 flex flex-col items-center justify-center min-h-[450px] p-6">
             {!gameStarted ? (
-              // Start screen
+              // Start screen - Gamificado
               <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="space-y-6"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="text-center space-y-6"
               >
-                <div className="text-8xl mb-6">💣</div>
-                <h2 className="text-2xl font-bold text-gray-800 dark:text-white">
-                  Bomba Aleatoria
-                </h2>
-                <p className="text-gray-500 dark:text-gray-400">
-                  La bomba pasará de estudiante en estudiante al azar.
-                  <br />
-                  ¡El que tenga la bomba cuando explote pierde HP!
-                </p>
-                <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
-                  <Users size={16} />
-                  {students.length} estudiantes participarán
+                {/* Bomba animada */}
+                <motion.div
+                  animate={{ 
+                    scale: [1, 1.1, 1],
+                    rotate: [0, -5, 5, 0]
+                  }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                  className="relative inline-block"
+                >
+                  <span className="text-[120px] block drop-shadow-2xl">💣</span>
+                  <motion.div
+                    animate={{ opacity: [0, 1, 0], y: [-10, -30, -10] }}
+                    transition={{ duration: 1, repeat: Infinity }}
+                    className="absolute -top-4 right-4 text-4xl"
+                  >✨</motion.div>
+                  <motion.div
+                    animate={{ rotate: [0, 360] }}
+                    transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+                    className="absolute -bottom-2 -left-2 text-3xl"
+                  >🎲</motion.div>
+                </motion.div>
+
+                <div>
+                  <h2 className="text-4xl font-black text-white drop-shadow-lg mb-2">
+                    Bomba Aleatoria
+                  </h2>
+                  <p className="text-white/80 text-lg max-w-sm mx-auto">
+                    La bomba pasará de estudiante en estudiante al azar.
+                    <br />
+                    <span className="text-yellow-200 font-semibold">¡El que tenga la bomba cuando explote pierde HP!</span>
+                  </p>
                 </div>
-                <Button
-                  size="lg"
+
+                <div className="flex items-center justify-center gap-2 px-4 py-2 bg-white/20 backdrop-blur-sm rounded-full">
+                  <Users size={18} className="text-white" />
+                  <span className="text-white font-semibold">{students.length} estudiantes participarán</span>
+                </div>
+
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
                   onClick={startGame}
                   disabled={startMutation.isPending || students.length === 0}
-                  className="gap-2 bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 shadow-lg shadow-pink-500/30 px-8"
+                  className="flex items-center gap-3 px-8 py-4 bg-white text-gray-800 font-bold rounded-2xl shadow-xl hover:shadow-2xl transition-all disabled:opacity-50 mx-auto"
                 >
-                  <Play size={20} />
-                  ¡Iniciar Bomba!
-                </Button>
+                  <Play size={24} className="text-purple-500" />
+                  <span className="text-lg">¡Iniciar Bomba!</span>
+                </motion.button>
               </motion.div>
             ) : (
-              // Game in progress
-              <div className="space-y-6">
-                {/* Bomb with animation */}
+              // Game in progress - Centrado
+              <div className="text-center space-y-4">
+                {/* Bomba grande con animaciones - Similar a TimedActivityRunner */}
                 <motion.div
                   animate={isRunning && !bombExploded ? {
-                    scale: [1, 1.05, 1],
-                    rotate: [0, -3, 3, 0],
+                    scale: [1, 1.08, 1],
+                    rotate: [0, -5, 5, 0],
                   } : {}}
-                  transition={{ duration: 0.4, repeat: isRunning ? Infinity : 0 }}
+                  transition={{ duration: 0.5, repeat: isRunning ? Infinity : 0 }}
                   className="relative inline-block"
                 >
                   <motion.span
-                    className="text-7xl block"
+                    className="text-[100px] block drop-shadow-2xl"
                     animate={isRunning ? {
                       filter: urgencyLevel >= 2 
                         ? ['brightness(1)', 'brightness(1.5)', 'brightness(1)']
                         : ['brightness(1)', 'brightness(1.2)', 'brightness(1)'],
                     } : {}}
                     transition={{ 
-                      duration: urgencyLevel >= 3 ? 0.2 : urgencyLevel >= 2 ? 0.3 : 0.5, 
+                      duration: urgencyLevel >= 3 ? 0.15 : urgencyLevel >= 2 ? 0.25 : 0.4, 
                       repeat: Infinity 
                     }}
                   >
@@ -442,67 +532,101 @@ export const BombRandomRunner = ({ activity: initialActivity, classroom, onBack 
                   {isRunning && !bombExploded && (
                     <>
                       <motion.div
-                        animate={{ opacity: [0, 1, 0], scale: [0.5, 1, 0.5], y: [-5, -15, -5] }}
-                        transition={{ duration: 0.2, repeat: Infinity }}
-                        className="absolute -top-1 right-2 text-xl"
+                        animate={{ opacity: [0, 1, 0], scale: [0.5, 1.2, 0.5], y: [-10, -30, -10] }}
+                        transition={{ duration: 0.3, repeat: Infinity }}
+                        className="absolute -top-2 right-4 text-3xl"
                       >
                         ✨
                       </motion.div>
                       <motion.div
-                        animate={{ opacity: [1, 0.5, 1], scale: [1, 1.2, 1] }}
-                        transition={{ duration: 0.15, repeat: Infinity }}
-                        className="absolute -top-3 right-0 text-lg"
+                        animate={{ opacity: [1, 0.5, 1], scale: [1, 1.3, 1] }}
+                        transition={{ duration: 0.2, repeat: Infinity }}
+                        className="absolute -top-4 right-0 text-2xl"
                       >
                         🔥
+                      </motion.div>
+                      <motion.div
+                        animate={{ opacity: [0.5, 1, 0.5], y: [-5, -15, -5] }}
+                        transition={{ duration: 0.25, repeat: Infinity, delay: 0.1 }}
+                        className="absolute -top-6 left-4 text-xl"
+                      >
+                        💥
                       </motion.div>
                     </>
                   )}
                 </motion.div>
 
-                {/* Timer */}
+                {/* Timer grande - Estilo consistente */}
                 <motion.div
-                  animate={urgencyLevel >= 2 ? { scale: [1, 1.02, 1] } : {}}
-                  transition={{ duration: 0.5, repeat: Infinity }}
-                  className={`text-5xl font-mono font-black ${
-                    urgencyLevel >= 3 ? 'text-red-500' :
-                    urgencyLevel >= 2 ? 'text-orange-500' :
-                    urgencyLevel >= 1 ? 'text-amber-500' :
-                    'text-gray-800 dark:text-white'
-                  }`}
+                  animate={urgencyLevel >= 2 ? { scale: [1, 1.03, 1] } : {}}
+                  transition={{ duration: 0.4, repeat: Infinity }}
+                  className="relative"
                 >
-                  {formatTime(elapsedSeconds)}
+                  <span className={`text-7xl font-black tracking-wider drop-shadow-lg ${
+                    urgencyLevel >= 3 ? 'text-white' :
+                    urgencyLevel >= 2 ? 'text-white' :
+                    'text-white'
+                  }`}>
+                    {formatTime(elapsedSeconds)}
+                  </span>
+                  {/* Mensaje de estado */}
+                  <motion.p 
+                    animate={{ opacity: [0.7, 1, 0.7] }}
+                    transition={{ duration: 1.5, repeat: Infinity }}
+                    className="text-white/80 text-sm mt-2 font-medium"
+                  >
+                    {urgencyLevel >= 3 ? '🔥 ¡PELIGRO! ¡Va a explotar!' :
+                     urgencyLevel >= 2 ? '⚠️ ¡Cuidado! El tiempo se acaba' :
+                     '💣 ¡Puede explotar en cualquier momento!'}
+                  </motion.p>
                 </motion.div>
 
-                {/* Current student */}
+                {/* Current student - Tarjeta mejorada */}
                 {currentStudent && !bombExploded && (
                   <motion.div
                     key={currentStudent.id}
                     initial={{ opacity: 0, scale: 0.8, y: 20 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
-                    className={`bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-700 dark:to-gray-800 rounded-2xl p-6 shadow-lg border-2 ${
+                    className={`bg-white/95 backdrop-blur-sm rounded-2xl p-5 shadow-2xl border-2 max-w-sm mx-auto ${
                       isSelectingNext 
-                        ? 'border-amber-400 animate-pulse' 
+                        ? 'border-amber-400' 
                         : urgencyLevel >= 2 
                           ? 'border-red-400' 
-                          : 'border-pink-400'
+                          : 'border-purple-400'
                     }`}
                   >
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 uppercase tracking-wider">
-                      {isSelectingNext ? '🎲 Seleccionando...' : '💣 Tiene la bomba'}
-                    </p>
+                    <div className="flex items-center gap-1 justify-center mb-3">
+                      <span className={`w-2 h-2 rounded-full ${isSelectingNext ? 'bg-amber-500 animate-pulse' : 'bg-purple-500'}`}></span>
+                      <p className="text-xs text-gray-600 uppercase tracking-wider font-semibold">
+                        {isSelectingNext ? 'Seleccionando...' : 'Tiene la bomba'}
+                      </p>
+                    </div>
                     <div className="flex items-center justify-center gap-4">
-                      <motion.img
-                        src={getAvatarUrl(currentStudent)}
-                        alt="Avatar"
-                        className="w-20 h-20 rounded-full border-4 border-white dark:border-gray-600 shadow-lg"
+                      <motion.div
                         animate={isSelectingNext ? { rotate: [0, 10, -10, 0] } : {}}
                         transition={{ duration: 0.2, repeat: isSelectingNext ? Infinity : 0 }}
-                      />
+                        className="relative"
+                      >
+                        <img
+                          src={getAvatarUrl(currentStudent)}
+                          alt="Avatar"
+                          className="w-16 h-16 rounded-full border-4 border-purple-200 shadow-lg"
+                        />
+                        {!isSelectingNext && (
+                          <motion.div 
+                            animate={{ scale: [1, 1.2, 1] }}
+                            transition={{ duration: 0.5, repeat: Infinity }}
+                            className="absolute -top-1 -right-1 text-lg"
+                          >
+                            💣
+                          </motion.div>
+                        )}
+                      </motion.div>
                       <div className="text-left">
-                        <h3 className="text-xl font-bold text-gray-800 dark:text-white">
+                        <h3 className="text-lg font-bold text-gray-800">
                           {currentStudent.characterName || currentStudent.realName}
                         </h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">
+                        <p className="text-sm text-gray-500">
                           {getClassInfo(currentStudent.characterClass).icon} {getClassInfo(currentStudent.characterClass).name} • Nivel {currentStudent.level}
                         </p>
                       </div>
@@ -510,135 +634,236 @@ export const BombRandomRunner = ({ activity: initialActivity, classroom, onBack 
                   </motion.div>
                 )}
 
-                {/* Action buttons */}
+                {/* Action button - Estilo mejorado */}
                 {!bombExploded && currentStudent && (
-                  <div className="flex gap-3 justify-center">
-                    <Button
-                      size="lg"
-                      onClick={selectNextStudent}
-                      disabled={isSelectingNext || markCompleteMutation.isPending}
-                      className="gap-2 bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 shadow-lg shadow-emerald-500/30"
-                    >
-                      <Check size={20} />
-                      ¡Correcto! Pasar bomba
-                    </Button>
-                  </div>
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={selectNextStudent}
+                    disabled={isSelectingNext || markCompleteMutation.isPending}
+                    className="flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-emerald-500 to-green-500 text-white font-bold rounded-2xl shadow-xl hover:shadow-2xl transition-all disabled:opacity-50 mx-auto"
+                  >
+                    <Check size={22} />
+                    <span className="text-lg">¡Correcto! Pasar bomba</span>
+                  </motion.button>
                 )}
 
-                {/* Game over */}
+                {/* Game over - Mostrar quién perdió */}
                 {bombExploded && (
                   <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
                     className="space-y-4"
                   >
-                    <p className="text-red-500 font-bold text-xl">
+                    <p className="text-white font-black text-2xl drop-shadow-lg">
                       💥 ¡La bomba explotó!
                     </p>
-                    <Button
-                      size="lg"
+                    
+                    {/* Mostrar estudiante que perdió */}
+                    {explodedStudent && (
+                      <motion.div
+                        initial={{ scale: 0.8, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        transition={{ delay: 0.2 }}
+                        className="bg-white/95 backdrop-blur-sm rounded-2xl p-4 shadow-2xl border-2 border-red-400 max-w-sm mx-auto"
+                      >
+                        <div className="flex items-center gap-1 justify-center mb-2">
+                          <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                          <p className="text-xs text-red-600 uppercase tracking-wider font-semibold">
+                            Le explotó la bomba
+                          </p>
+                        </div>
+                        <div className="flex items-center justify-center gap-3">
+                          <div className="relative">
+                            <img
+                              src={getAvatarUrl(explodedStudent)}
+                              alt="Avatar"
+                              className="w-14 h-14 rounded-full border-4 border-red-200 shadow-lg"
+                            />
+                            <motion.div 
+                              animate={{ scale: [1, 1.3, 1] }}
+                              transition={{ duration: 0.5, repeat: Infinity }}
+                              className="absolute -top-1 -right-1 text-lg"
+                            >
+                              💥
+                            </motion.div>
+                          </div>
+                          <div className="text-left">
+                            <h3 className="text-lg font-bold text-gray-800">
+                              {explodedStudent.characterName || explodedStudent.realName}
+                            </h3>
+                            <p className="text-sm text-red-500 font-semibold">
+                              -{activity.bombPenaltyPoints} {activity.bombPenaltyType}
+                            </p>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                    
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
                       onClick={() => resetMutation.mutate()}
                       disabled={resetMutation.isPending}
-                      className="gap-2 bg-gradient-to-r from-gray-500 to-slate-500 hover:from-gray-600 hover:to-slate-600"
+                      className="flex items-center gap-2 px-6 py-3 bg-white text-gray-800 font-bold rounded-xl shadow-xl hover:shadow-2xl transition-all disabled:opacity-50 mx-auto"
                     >
                       <RotateCcw size={20} />
                       Jugar de nuevo
-                    </Button>
+                    </motion.button>
                   </motion.div>
                 )}
               </div>
             )}
           </div>
-        </div>
 
-        {/* Sidebar - Students list */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6">
+          {/* Borde decorativo */}
+          <div className="absolute inset-0 rounded-3xl border-2 border-white/20 pointer-events-none" />
+        </motion.div>
+
+        {/* Sidebar - Students list - Homologado con TimedActivityRunner */}
+        <motion.div 
+          initial={{ x: 20, opacity: 0 }} 
+          animate={{ x: 0, opacity: 1 }} 
+          transition={{ delay: 0.1 }}
+          className="bg-white rounded-2xl shadow-xl p-5 border border-gray-100 flex flex-col"
+        >
+          {/* Header con progreso */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <Users size={20} className="text-gray-500" />
-              <span className="font-bold text-gray-800 dark:text-white">Progreso</span>
+              <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${theme.gradient} flex items-center justify-center shadow-md`}>
+                <Users size={18} className="text-white" />
+              </div>
+              <div>
+                <span className="font-bold text-gray-800 block text-sm">Progreso</span>
+                <span className="text-xs text-gray-500">{students.length} estudiantes</span>
+              </div>
             </div>
-            <span className="text-sm text-gray-500 bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded-full">
-              {completedStudents.length}/{students.length}
-            </span>
+            <div className="flex items-center gap-2">
+              <div className="text-right">
+                <span className="text-2xl font-black text-gray-800">{completedStudents.length}</span>
+                <span className="text-gray-400">/{students.length}</span>
+              </div>
+            </div>
           </div>
 
-          {/* Completed students */}
-          {completedStudents.length > 0 && (
-            <div className="mb-4">
-              <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium mb-2 uppercase tracking-wider">
-                ✓ Completaron
-              </p>
-              <div className="space-y-2 max-h-40 overflow-y-auto">
-                {completedStudents.map((student) => (
-                  <motion.div
-                    key={student.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="flex items-center gap-2 p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg"
-                  >
-                    <img
-                      src={getAvatarUrl(student)}
-                      alt=""
-                      className="w-8 h-8 rounded-full"
-                    />
-                    <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300 truncate">
-                      {student.characterName || student.realName}
-                    </span>
-                    <Check size={14} className="text-emerald-500 ml-auto flex-shrink-0" />
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Barra de progreso */}
+          <div className="h-2 bg-gray-100 rounded-full mb-4 overflow-hidden">
+            <motion.div 
+              className={`h-full bg-gradient-to-r ${theme.gradient} rounded-full`}
+              initial={{ width: 0 }}
+              animate={{ width: `${(completedStudents.length / Math.max(students.length, 1)) * 100}%` }}
+              transition={{ duration: 0.5 }}
+            />
+          </div>
 
-          {/* Remaining students */}
-          {remainingStudents.length > 0 && (
-            <div>
-              <p className="text-xs text-gray-500 font-medium mb-2 uppercase tracking-wider">
-                ⏳ Esperando ({remainingStudents.length})
-              </p>
-              <div className="space-y-2 max-h-60 overflow-y-auto">
-                {remainingStudents.map((student) => (
-                  <div
-                    key={student.id}
-                    className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg"
+          {/* Lista de estudiantes */}
+          <div className="space-y-2 flex-1 overflow-y-auto max-h-[320px] pr-1">
+            {/* Exploded student - Mostrar primero si existe */}
+            {explodedStudent && (
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="flex items-center justify-between gap-3 p-3 rounded-xl bg-gradient-to-r from-red-50 to-rose-50 border border-red-200"
+              >
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <motion.div 
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0 shadow-md bg-gradient-to-br from-red-400 to-rose-500"
+                    animate={{ scale: [1, 1.1, 1] }}
+                    transition={{ duration: 0.5, repeat: Infinity }}
                   >
-                    <img
-                      src={getAvatarUrl(student)}
-                      alt=""
-                      className="w-8 h-8 rounded-full opacity-60"
-                    />
-                    <span className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                      {student.characterName || student.realName}
+                    💥
+                  </motion.div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-800 truncate text-sm">
+                      {explodedStudent.characterName || explodedStudent.realName}
+                    </p>
+                    <span className="text-red-600 font-semibold flex items-center gap-1 text-xs">
+                      💥 -{activity.bombPenaltyPoints} {activity.bombPenaltyType}
                     </span>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Not started yet */}
-          {!gameStarted && students.length > 0 && (
-            <div className="space-y-2 max-h-[400px] overflow-y-auto">
-              {students.map((student) => (
-                <div
-                  key={student.id}
-                  className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-700/50 rounded-lg"
-                >
-                  <img
-                    src={getAvatarUrl(student)}
-                    alt=""
-                    className="w-8 h-8 rounded-full"
-                  />
-                  <span className="text-sm text-gray-600 dark:text-gray-300 truncate">
-                    {student.characterName || student.realName}
-                  </span>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              </motion.div>
+            )}
+
+            {/* Completed students */}
+            {completedStudents.map((student, index) => (
+              <motion.div
+                key={student.id}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.03 }}
+                className="flex items-center justify-between gap-3 p-3 rounded-xl bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200"
+              >
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <motion.div 
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0 shadow-md bg-gradient-to-br from-emerald-400 to-green-500"
+                    animate={{ scale: [1, 1.1, 1] }}
+                    transition={{ duration: 0.3 }}
+                  >
+                    <Check size={18} />
+                  </motion.div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-800 truncate text-sm">
+                      {student.characterName || student.realName}
+                    </p>
+                    <span className="text-emerald-600 font-semibold flex items-center gap-1 text-xs">
+                      <Trophy size={10} />
+                      +{activity.basePoints} {activity.pointType}
+                    </span>
+                  </div>
+                </div>
+                <span className="text-emerald-500 text-lg">✓</span>
+              </motion.div>
+            ))}
+
+            {/* Remaining students (waiting) */}
+            {gameStarted && remainingStudents.map((student, index) => (
+              <motion.div
+                key={student.id}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.03 }}
+                className="flex items-center justify-between gap-3 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 border border-transparent"
+              >
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0 shadow-md bg-gradient-to-br from-gray-400 to-gray-500">
+                    {student.characterName?.[0] || student.realName?.[0] || '?'}
+                  </div>
+                  <p className="font-semibold text-gray-800 truncate text-sm">
+                    {student.characterName || student.realName}
+                  </p>
+                </div>
+              </motion.div>
+            ))}
+
+            {/* Not started yet - show all students */}
+            {!gameStarted && students.map((student, index) => (
+              <motion.div
+                key={student.id}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.03 }}
+                className="flex items-center justify-between gap-3 p-3 rounded-xl bg-gray-50 hover:bg-gray-100 border border-transparent"
+              >
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0 shadow-md bg-gradient-to-br from-gray-400 to-gray-500">
+                    {student.characterName?.[0] || student.realName?.[0] || '?'}
+                  </div>
+                  <p className="font-semibold text-gray-800 truncate text-sm">
+                    {student.characterName || student.realName}
+                  </p>
+                </div>
+              </motion.div>
+            ))}
+
+            {students.length === 0 && (
+              <div className="text-center py-8 text-gray-400">
+                <Users size={40} className="mx-auto mb-2 opacity-50" />
+                <p className="text-sm">No hay estudiantes en esta clase</p>
+              </div>
+            )}
+          </div>
+        </motion.div>
       </div>
     </div>
   );

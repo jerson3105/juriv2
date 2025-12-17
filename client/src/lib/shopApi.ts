@@ -321,8 +321,12 @@ export const shopApi = {
 
   // ==================== NOTIFICACIONES ====================
 
-  getNotifications: async (unreadOnly = false): Promise<Notification[]> => {
-    const { data } = await api.get(`/shop/notifications${unreadOnly ? '?unread=true' : ''}`);
+  getNotifications: async (options?: { unreadOnly?: boolean; classroomId?: string }): Promise<Notification[]> => {
+    const params = new URLSearchParams();
+    if (options?.unreadOnly) params.append('unread', 'true');
+    if (options?.classroomId) params.append('classroomId', options.classroomId);
+    const queryString = params.toString();
+    const { data } = await api.get(`/shop/notifications${queryString ? `?${queryString}` : ''}`);
     // Manejar respuesta paginada o array directo
     return Array.isArray(data) ? data : data.data;
   },

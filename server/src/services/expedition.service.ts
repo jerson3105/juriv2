@@ -487,16 +487,16 @@ export class ExpeditionService {
     const expedition = await this.getById(pin.expeditionId);
     const reason = `Expedición "${expedition?.name || 'Desconocida'}" - Pin: ${pin.name}`;
     
+    // Obtener configuración del aula
+    const [classroom] = await db.select().from(classrooms)
+      .where(eq(classrooms.id, student.classroomId));
+    
     // Calcular XP para el clan (si aplica)
     let xpForStudent = pin.rewardXp;
     let xpForClan = 0;
     
     // Verificar si el estudiante tiene clan y si el aula tiene clanes habilitados
     if (student.teamId) {
-      // Obtener configuración del aula
-      const [classroom] = await db.select().from(classrooms)
-        .where(eq(classrooms.id, student.classroomId));
-      
       if (classroom?.clansEnabled && classroom.clanXpPercentage > 0) {
         // Calcular porcentaje para el clan
         xpForClan = Math.floor(pin.rewardXp * (classroom.clanXpPercentage / 100));
@@ -524,14 +524,42 @@ export class ExpeditionService {
       }
     }
     
+    // Calcular nuevo nivel si se otorga XP
+    const newXp = student.xp + xpForStudent;
+    const xpPerLevel = classroom?.xpPerLevel || 100;
+    
+    // Calcular nuevo nivel usando la fórmula progresiva
+    const calculateLevel = (totalXp: number, xpPerLvl: number): number => {
+      const level = Math.floor((1 + Math.sqrt(1 + (8 * totalXp) / xpPerLvl)) / 2);
+      return Math.max(1, level);
+    };
+    
+    const newLevel = xpForStudent > 0 ? calculateLevel(newXp, xpPerLevel) : student.level;
+    const leveledUp = newLevel > student.level;
+    
     // Actualizar puntos del estudiante
     await db.update(studentProfiles)
       .set({
-        xp: student.xp + xpForStudent,
+        xp: newXp,
         gp: student.gp + pin.rewardGp,
+        level: newLevel,
         updatedAt: now,
       })
       .where(eq(studentProfiles.id, studentProfileId));
+    
+    // Notificar subida de nivel si aplica
+    if (leveledUp && student.userId) {
+      await db.insert(notifications).values({
+        id: uuidv4(),
+        userId: student.userId,
+        classroomId: student.classroomId,
+        type: 'LEVEL_UP',
+        title: '🎉 ¡Subiste de nivel!',
+        message: `¡Felicidades! Has alcanzado el nivel ${newLevel}`,
+        isRead: false,
+        createdAt: now,
+      });
+    }
     
     // Registrar en pointLogs
     if (xpForStudent > 0) {

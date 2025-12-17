@@ -357,8 +357,9 @@ export class ShopController {
       const unreadOnly = req.query.unread === 'true';
       const limit = parseInt(req.query.limit as string) || 50;
       const offset = parseInt(req.query.offset as string) || 0;
+      const classroomId = req.query.classroomId as string | undefined;
       
-      const result = await shopService.getNotifications(userId, { unreadOnly, limit, offset });
+      const result = await shopService.getNotifications(userId, { unreadOnly, limit, offset, classroomId });
       res.json(result);
     } catch (error) {
       console.error('Error getting notifications:', error);

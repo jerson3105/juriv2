@@ -842,10 +842,14 @@ export class ShopService {
 
   // ==================== NOTIFICACIONES ====================
 
-  async getNotifications(userId: string, options?: { unreadOnly?: boolean; limit?: number; offset?: number }) {
+  async getNotifications(userId: string, options?: { unreadOnly?: boolean; limit?: number; offset?: number; classroomId?: string }) {
     const conditions = [eq(notifications.userId, userId)];
     if (options?.unreadOnly) {
       conditions.push(eq(notifications.isRead, false));
+    }
+    // Filtrar por classroomId si se proporciona
+    if (options?.classroomId) {
+      conditions.push(eq(notifications.classroomId, options.classroomId));
     }
 
     const limit = Math.min(options?.limit || 50, 100); // Max 100

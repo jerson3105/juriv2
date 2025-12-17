@@ -617,7 +617,16 @@ class BadgeService {
     const result = await db.select()
       .from(pointLogs)
       .where(and(...conditions));
-    return result.length;
+    
+    // Contar aplicaciones únicas por timestamp (un comportamiento puede generar múltiples logs)
+    // Agrupamos por createdAt redondeado al segundo para considerar logs del mismo momento
+    const uniqueApplications = new Set<string>();
+    for (const log of result) {
+      // Usar timestamp truncado al segundo como identificador único
+      const timestamp = new Date(log.createdAt).toISOString().slice(0, 19);
+      uniqueApplications.add(timestamp);
+    }
+    return uniqueApplications.size;
   }
   
   private async countBehaviorsByCategory(
@@ -645,7 +654,14 @@ class BadgeService {
     const result = await db.select()
       .from(pointLogs)
       .where(and(...conditions));
-    return result.length;
+    
+    // Contar aplicaciones únicas por behaviorId + timestamp
+    const uniqueApplications = new Set<string>();
+    for (const log of result) {
+      const timestamp = new Date(log.createdAt).toISOString().slice(0, 19);
+      uniqueApplications.add(`${log.behaviorId}-${timestamp}`);
+    }
+    return uniqueApplications.size;
   }
   
   private async countAllBehaviors(studentProfileId: string, sinceDate?: Date): Promise<number> {
@@ -658,7 +674,16 @@ class BadgeService {
     const result = await db.select()
       .from(pointLogs)
       .where(and(...conditions));
-    return result.filter((r: { behaviorId: string | null }) => r.behaviorId).length;
+    
+    // Contar aplicaciones únicas por behaviorId + timestamp
+    const uniqueApplications = new Set<string>();
+    for (const log of result) {
+      if (log.behaviorId) {
+        const timestamp = new Date(log.createdAt).toISOString().slice(0, 19);
+        uniqueApplications.add(`${log.behaviorId}-${timestamp}`);
+      }
+    }
+    return uniqueApplications.size;
   }
   
   private async giveReward(studentProfileId: string, xp: number, gp: number): Promise<void> {
@@ -668,12 +693,45 @@ class BadgeService {
     if (student.length === 0) return;
     
     const current = student[0];
+    const newXp = current.xp + xp;
+    
+    // Obtener configuración de la clase para calcular nivel
+    const classroom = await db.query.classrooms.findFirst({
+      where: eq(classrooms.id, current.classroomId),
+    });
+    
+    const xpPerLevel = classroom?.xpPerLevel || 100;
+    
+    // Calcular nuevo nivel usando la fórmula progresiva
+    const calculateLevel = (totalXp: number, xpPerLvl: number): number => {
+      const level = Math.floor((1 + Math.sqrt(1 + (8 * totalXp) / xpPerLvl)) / 2);
+      return Math.max(1, level);
+    };
+    
+    const newLevel = xp > 0 ? calculateLevel(newXp, xpPerLevel) : current.level;
+    const leveledUp = newLevel > current.level;
+    
     await db.update(studentProfiles)
       .set({
-        xp: current.xp + xp,
+        xp: newXp,
         gp: current.gp + gp,
+        level: newLevel,
       })
       .where(eq(studentProfiles.id, studentProfileId));
+    
+    // Notificar subida de nivel si aplica
+    if (leveledUp && current.userId) {
+      await db.insert(notifications).values({
+        id: uuid(),
+        userId: current.userId,
+        classroomId: current.classroomId,
+        type: 'LEVEL_UP',
+        title: '🎉 ¡Subiste de nivel!',
+        message: `¡Felicidades! Has alcanzado el nivel ${newLevel}`,
+        isRead: false,
+        createdAt: new Date(),
+      });
+    }
   }
   
   // ═══════════════════════════════════════════════════════════

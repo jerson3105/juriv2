@@ -24,6 +24,10 @@ export interface ActivityLogEntry {
     gpEarned?: number;
     damageDealt?: number;
     isVictory?: boolean;
+    // Puntos combinados (cuando un comportamiento tiene XP+HP+GP)
+    xpAmount?: number;
+    hpAmount?: number;
+    gpAmount?: number;
   };
 }
 

@@ -122,6 +122,31 @@ export const HistoryPage = () => {
         const isAdd = entry.details.action === 'ADD';
         const sign = isAdd ? '+' : '-';
         const color = isAdd ? 'text-emerald-600' : 'text-red-600';
+        
+        // Manejar puntos combinados (MIXED) cuando un comportamiento tiene XP+HP+GP
+        if (entry.details.pointType === 'MIXED') {
+          return (
+            <span>
+              <span className="font-medium">{studentName}</span>
+              {' '}
+              {entry.details.xpAmount && (
+                <span className="font-bold text-emerald-500">{sign}{entry.details.xpAmount} XP</span>
+              )}
+              {entry.details.xpAmount && (entry.details.hpAmount || entry.details.gpAmount) && ', '}
+              {entry.details.hpAmount && (
+                <span className="font-bold text-rose-500">{sign}{entry.details.hpAmount} HP</span>
+              )}
+              {entry.details.hpAmount && entry.details.gpAmount && ', '}
+              {entry.details.gpAmount && (
+                <span className="font-bold text-amber-500">{sign}{entry.details.gpAmount} GP</span>
+              )}
+              {entry.details.reason && (
+                <span className="text-gray-500"> • {entry.details.reason}</span>
+              )}
+            </span>
+          );
+        }
+        
         return (
           <span>
             <span className="font-medium">{studentName}</span>

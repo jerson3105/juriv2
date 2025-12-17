@@ -8,6 +8,7 @@ import {
   studentProfiles,
   pointLogs,
   notifications,
+  classrooms,
   type Mission,
   type StudentMission,
   type StudentStreak,
@@ -405,14 +406,47 @@ class MissionService {
         .where(eq(studentProfiles.id, studentMission.studentMission.studentProfileId));
 
       if (student) {
+        // Obtener configuración de la clase para calcular nivel
+        const missionClassroom = await db.query.classrooms.findFirst({
+          where: eq(classrooms.id, student.classroomId),
+        });
+        
+        const newXp = student.xp + rewards.xp;
+        const xpPerLevel = missionClassroom?.xpPerLevel || 100;
+        const maxHp = missionClassroom?.maxHp || 100;
+        
+        // Calcular nuevo nivel usando la fórmula progresiva
+        const calculateLevel = (totalXp: number, xpPerLvl: number): number => {
+          const level = Math.floor((1 + Math.sqrt(1 + (8 * totalXp) / xpPerLvl)) / 2);
+          return Math.max(1, level);
+        };
+        
+        const newLevel = rewards.xp > 0 ? calculateLevel(newXp, xpPerLevel) : student.level;
+        const leveledUp = newLevel > student.level;
+        
         await db.update(studentProfiles)
           .set({
-            xp: student.xp + rewards.xp,
+            xp: newXp,
             gp: student.gp + rewards.gp,
-            hp: Math.min(student.hp + rewards.hp, 100), // Asumiendo maxHp = 100
+            hp: Math.min(student.hp + rewards.hp, maxHp),
+            level: newLevel,
             updatedAt: new Date(),
           })
           .where(eq(studentProfiles.id, student.id));
+        
+        // Notificar subida de nivel si aplica
+        if (leveledUp && student.userId) {
+          await db.insert(notifications).values({
+            id: uuidv4(),
+            userId: student.userId,
+            classroomId: student.classroomId,
+            type: 'LEVEL_UP',
+            title: '🎉 ¡Subiste de nivel!',
+            message: `¡Felicidades! Has alcanzado el nivel ${newLevel}`,
+            isRead: false,
+            createdAt: new Date(),
+          });
+        }
 
         // Registrar en pointLogs
         if (rewards.xp > 0) {
@@ -585,13 +619,45 @@ class MissionService {
       .where(eq(studentProfiles.id, studentProfileId));
 
     if (student) {
+      // Obtener configuración de la clase para calcular nivel
+      const classroom = await db.query.classrooms.findFirst({
+        where: eq(classrooms.id, student.classroomId),
+      });
+      
+      const newXp = student.xp + milestoneReward.xp;
+      const xpPerLevel = classroom?.xpPerLevel || 100;
+      
+      // Calcular nuevo nivel usando la fórmula progresiva
+      const calculateLevel = (totalXp: number, xpPerLvl: number): number => {
+        const level = Math.floor((1 + Math.sqrt(1 + (8 * totalXp) / xpPerLvl)) / 2);
+        return Math.max(1, level);
+      };
+      
+      const newLevel = milestoneReward.xp > 0 ? calculateLevel(newXp, xpPerLevel) : student.level;
+      const leveledUp = newLevel > student.level;
+      
       await db.update(studentProfiles)
         .set({
-          xp: student.xp + milestoneReward.xp,
+          xp: newXp,
           gp: student.gp + milestoneReward.gp,
+          level: newLevel,
           updatedAt: new Date(),
         })
         .where(eq(studentProfiles.id, student.id));
+      
+      // Notificar subida de nivel si aplica
+      if (leveledUp && student.userId) {
+        await db.insert(notifications).values({
+          id: uuidv4(),
+          userId: student.userId,
+          classroomId: student.classroomId,
+          type: 'LEVEL_UP',
+          title: '🎉 ¡Subiste de nivel!',
+          message: `¡Felicidades! Has alcanzado el nivel ${newLevel}`,
+          isRead: false,
+          createdAt: new Date(),
+        });
+      }
 
       // Registrar en pointLogs
       if (milestoneReward.xp > 0) {

@@ -37,6 +37,10 @@ export interface ActivityLogEntry {
     gpEarned?: number;
     damageDealt?: number;
     isVictory?: boolean;
+    // Puntos combinados (cuando un comportamiento tiene XP+HP+GP)
+    xpAmount?: number;
+    hpAmount?: number;
+    gpAmount?: number;
   };
 }
 
@@ -80,6 +84,7 @@ class HistoryService {
         .select({
           id: pointLogs.id,
           studentId: pointLogs.studentId,
+          behaviorId: pointLogs.behaviorId,
           pointType: pointLogs.pointType,
           action: pointLogs.action,
           amount: pointLogs.amount,
@@ -95,23 +100,83 @@ class HistoryService {
             : sql`${pointLogs.studentId} IN (${sql.join(studentIds.map((id: string) => sql`${id}`), sql`, `)})`
         )
         .orderBy(desc(pointLogs.createdAt))
-        .limit(limit * 2); // Obtener más para combinar
+        .limit(limit * 3); // Obtener más para agrupar
+
+      // Agrupar logs del mismo comportamiento aplicado al mismo estudiante en el mismo momento
+      // Un comportamiento con XP+HP+GP genera 3 logs, pero deben mostrarse como 1 entrada
+      const groupedLogs = new Map<string, {
+        id: string;
+        studentId: string;
+        createdAt: Date;
+        action: string;
+        reason: string | null;
+        behaviorName: string | null;
+        xpAmount: number;
+        hpAmount: number;
+        gpAmount: number;
+      }>();
 
       for (const log of pointLogsData) {
-        const student = studentMap.get(log.studentId);
+        // Crear clave única: behaviorId (o visibleId si no hay behavior) + studentId + timestamp al segundo
+        const timestampKey = new Date(log.createdAt).toISOString().slice(0, 19);
+        const groupKey = log.behaviorId 
+          ? `${log.behaviorId}-${log.studentId}-${timestampKey}`
+          : `manual-${log.id}`; // Logs manuales no se agrupan
+
+        const existing = groupedLogs.get(groupKey);
+        if (existing) {
+          // Agregar al grupo existente
+          if (log.pointType === 'XP') existing.xpAmount = log.amount;
+          else if (log.pointType === 'HP') existing.hpAmount = log.amount;
+          else if (log.pointType === 'GP') existing.gpAmount = log.amount;
+        } else {
+          // Crear nuevo grupo
+          groupedLogs.set(groupKey, {
+            id: log.id,
+            studentId: log.studentId,
+            createdAt: log.createdAt,
+            action: log.action,
+            reason: log.reason,
+            behaviorName: log.behaviorName,
+            xpAmount: log.pointType === 'XP' ? log.amount : 0,
+            hpAmount: log.pointType === 'HP' ? log.amount : 0,
+            gpAmount: log.pointType === 'GP' ? log.amount : 0,
+          });
+        }
+      }
+
+      // Convertir grupos a entradas de log
+      for (const [, group] of groupedLogs) {
+        const student = studentMap.get(group.studentId);
+        
+        // Construir descripción de puntos combinados
+        const pointParts: string[] = [];
+        if (group.xpAmount > 0) pointParts.push(`${group.xpAmount} XP`);
+        if (group.hpAmount > 0) pointParts.push(`${group.hpAmount} HP`);
+        if (group.gpAmount > 0) pointParts.push(`${group.gpAmount} GP`);
+        
+        // Si solo hay un tipo de punto, usar formato simple
+        const isSingleType = pointParts.length === 1;
+        const primaryType = group.xpAmount > 0 ? 'XP' : group.hpAmount > 0 ? 'HP' : 'GP';
+        const primaryAmount = group.xpAmount || group.hpAmount || group.gpAmount;
+
         logs.push({
-          id: log.id,
+          id: group.id,
           type: 'POINTS',
-          timestamp: log.createdAt,
-          studentId: log.studentId,
+          timestamp: group.createdAt,
+          studentId: group.studentId,
           studentName: student?.characterName || null,
           studentClass: student?.characterClass || 'GUARDIAN',
           details: {
-            pointType: log.pointType,
-            action: log.action,
-            amount: log.amount,
-            reason: log.reason || log.behaviorName || undefined,
-          },
+            pointType: isSingleType ? primaryType : 'MIXED',
+            action: group.action,
+            amount: isSingleType ? primaryAmount : 0,
+            reason: group.reason || group.behaviorName || undefined,
+            // Campos adicionales para puntos combinados
+            xpAmount: group.xpAmount > 0 ? group.xpAmount : undefined,
+            hpAmount: group.hpAmount > 0 ? group.hpAmount : undefined,
+            gpAmount: group.gpAmount > 0 ? group.gpAmount : undefined,
+          } as ActivityLogEntry['details'],
         });
       }
     }

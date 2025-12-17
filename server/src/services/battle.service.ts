@@ -9,6 +9,7 @@ import {
   battleResults,
   studentProfiles,
   notifications,
+  classrooms,
   type BattleStatus,
   type QuestionType,
 } from '../db/schema.js';
@@ -523,10 +524,28 @@ class BattleService {
         .where(eq(studentProfiles.id, participant.studentId));
 
       if (student) {
+        // Obtener configuración de la clase para calcular nivel
+        const classroom = await db.query.classrooms.findFirst({
+          where: eq(classrooms.id, boss.classroomId),
+        });
+        
+        const newXp = student.xp + xpEarned;
+        const xpPerLevel = classroom?.xpPerLevel || 100;
+        
+        // Calcular nuevo nivel usando la fórmula progresiva
+        const calculateLevel = (totalXp: number, xpPerLvl: number): number => {
+          const level = Math.floor((1 + Math.sqrt(1 + (8 * totalXp) / xpPerLvl)) / 2);
+          return Math.max(1, level);
+        };
+        
+        const newLevel = xpEarned > 0 ? calculateLevel(newXp, xpPerLevel) : student.level;
+        const leveledUp = newLevel > student.level;
+        
         // Actualizar puntos y victorias
         const updateData: any = {
-          xp: student.xp + xpEarned,
+          xp: newXp,
           gp: student.gp + gpEarned,
+          level: newLevel,
         };
         
         // Incrementar victorias si ganaron
@@ -536,6 +555,20 @@ class BattleService {
         
         await db.update(studentProfiles).set(updateData)
           .where(eq(studentProfiles.id, participant.studentId));
+        
+        // Notificar subida de nivel si aplica
+        if (leveledUp && student.userId) {
+          await db.insert(notifications).values({
+            id: uuidv4(),
+            userId: student.userId,
+            classroomId: boss.classroomId,
+            type: 'LEVEL_UP',
+            title: '🎉 ¡Subiste de nivel!',
+            message: `¡Felicidades! Has alcanzado el nivel ${newLevel}`,
+            isRead: false,
+            createdAt: now,
+          });
+        }
 
         // Contribuir XP al clan si el estudiante pertenece a uno
         if (xpEarned > 0) {

@@ -708,7 +708,17 @@ export const DashboardPage = () => {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-gray-700 dark:text-gray-200 truncate">
                       <span className="font-medium">{activity.studentName}</span>
-                      {activity.type === 'POINTS' && ` ${activity.details.action === 'ADD' ? 'ganó' : 'perdió'} ${activity.details.amount} ${activity.details.pointType}`}
+                      {activity.type === 'POINTS' && activity.details.pointType === 'MIXED' && (
+                        <>
+                          {` ${activity.details.action === 'ADD' ? 'ganó' : 'perdió'} `}
+                          {activity.details.xpAmount && <span className="text-emerald-500 font-medium">+{activity.details.xpAmount} XP</span>}
+                          {activity.details.xpAmount && (activity.details.hpAmount || activity.details.gpAmount) && ', '}
+                          {activity.details.hpAmount && <span className="text-rose-500 font-medium">+{activity.details.hpAmount} HP</span>}
+                          {activity.details.hpAmount && activity.details.gpAmount && ', '}
+                          {activity.details.gpAmount && <span className="text-amber-500 font-medium">+{activity.details.gpAmount} GP</span>}
+                        </>
+                      )}
+                      {activity.type === 'POINTS' && activity.details.pointType !== 'MIXED' && ` ${activity.details.action === 'ADD' ? 'ganó' : 'perdió'} ${activity.details.amount} ${activity.details.pointType}`}
                       {activity.type === 'PURCHASE' && ` compró ${activity.details.itemName}`}
                       {activity.type === 'LEVEL_UP' && ` subió al nivel ${activity.details.newLevel}`}
                     </p>
