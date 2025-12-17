@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Heart, Swords, Zap, Clock, ChevronRight, Users, Sparkles, Coins, Crown, Target, Check, X, Shield, Flame } from 'lucide-react';
+import { ArrowLeft, Heart, Swords, Zap, Clock, ChevronRight, Users, Sparkles, Coins, Crown, Check, X, Shield, Flame, Volume2, VolumeX } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { battleApi, type BattleState, type BattleQuestion, type BattleResult, type BattleQuestionType, type MatchingPair } from '../../lib/battleApi';
 import toast from 'react-hot-toast';
@@ -22,38 +22,95 @@ const fireDamageParticles = (el: HTMLElement | null, dmg: number) => {
   if (!el) return;
   const r = el.getBoundingClientRect();
   const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  
+  // Flash rojo en toda la pantalla - más largo
+  const flash = document.createElement('div');
+  flash.style.cssText = `position:fixed;inset:0;pointer-events:none;z-index:9997;background:radial-gradient(circle at ${cx}px ${cy}px, rgba(239,68,68,0.7) 0%, rgba(239,68,68,0.4) 30%, transparent 70%);animation:boss-damage-flash 0.8s ease-out forwards;`;
+  document.body.appendChild(flash);
+  setTimeout(() => flash.remove(), 800);
+  
+  // Número de daño grande y dramático - más largo
   const txt = document.createElement('div');
   txt.textContent = `-${dmg}`;
-  txt.style.cssText = `position:fixed;left:${cx}px;top:${cy-20}px;font-size:48px;font-weight:900;color:#ef4444;text-shadow:0 0 20px #ef4444;pointer-events:none;z-index:9999;animation:dmg-float 1s ease-out forwards;`;
+  txt.style.cssText = `position:fixed;left:${cx}px;top:${cy-40}px;font-size:80px;font-weight:900;color:#fff;text-shadow:0 0 10px #ef4444, 0 0 20px #ef4444, 0 0 40px #ef4444, 0 4px 0 #b91c1c;pointer-events:none;z-index:9999;animation:dmg-float 2s ease-out forwards;font-family:system-ui,-apple-system,sans-serif;`;
   document.body.appendChild(txt);
-  setTimeout(() => txt.remove(), 1000);
-  const syms = ['⚔️', '💥', '✨', '🔥', '💫'];
-  for (let i = 0; i < 8; i++) {
+  setTimeout(() => txt.remove(), 2000);
+  
+  // Texto "¡DAÑO CRÍTICO!" arriba del número - más largo
+  const label = document.createElement('div');
+  label.textContent = '⚔️ ¡DAÑO! ⚔️';
+  label.style.cssText = `position:fixed;left:${cx}px;top:${cy-110}px;font-size:28px;font-weight:900;color:#fbbf24;text-shadow:0 0 10px #f59e0b, 0 0 20px #f59e0b;pointer-events:none;z-index:9999;animation:dmg-label 1.5s ease-out forwards;transform:translateX(-50%);letter-spacing:3px;`;
+  document.body.appendChild(label);
+  setTimeout(() => label.remove(), 1500);
+  
+  // Más partículas y más grandes - más largas
+  const syms = ['⚔️', '💥', '✨', '🔥', '💫', '⭐', '💢', '🗡️'];
+  for (let i = 0; i < 16; i++) {
     const p = document.createElement('div');
-    const a = (Math.PI * 2 * i) / 8, d = 70 + Math.random() * 50;
+    const a = (Math.PI * 2 * i) / 16, d = 120 + Math.random() * 100;
     p.textContent = syms[Math.floor(Math.random() * syms.length)];
-    p.style.cssText = `position:fixed;font-size:24px;pointer-events:none;z-index:9999;left:${cx}px;top:${cy}px;animation:particle-burst 0.6s ease-out forwards;--tx:${Math.cos(a)*d}px;--ty:${Math.sin(a)*d}px;`;
+    p.style.cssText = `position:fixed;font-size:${36 + Math.random() * 20}px;pointer-events:none;z-index:9999;left:${cx}px;top:${cy}px;animation:particle-burst 1.2s ease-out forwards;--tx:${Math.cos(a)*d}px;--ty:${Math.sin(a)*d}px;`;
     document.body.appendChild(p);
-    setTimeout(() => p.remove(), 600);
+    setTimeout(() => p.remove(), 1200);
+  }
+  
+  // Ondas de impacto - más largas
+  for (let i = 0; i < 4; i++) {
+    const wave = document.createElement('div');
+    wave.style.cssText = `position:fixed;left:${cx}px;top:${cy}px;width:50px;height:50px;border:5px solid rgba(239,68,68,0.9);border-radius:50%;pointer-events:none;z-index:9998;transform:translate(-50%,-50%);animation:impact-wave 1.2s ease-out forwards;animation-delay:${i * 0.15}s;`;
+    document.body.appendChild(wave);
+    setTimeout(() => wave.remove(), 1500);
   }
 };
 
 const fireStudentDamage = () => {
-  const o = document.createElement('div');
-  o.style.cssText = `position:fixed;inset:0;pointer-events:none;z-index:9998;background:radial-gradient(circle,transparent 20%,rgba(239,68,68,0.4) 100%);animation:damage-flash 0.4s ease-out forwards;`;
-  document.body.appendChild(o);
-  setTimeout(() => o.remove(), 400);
+  // Flash rojo de pantalla completa
+  const flash = document.createElement('div');
+  flash.style.cssText = `position:fixed;inset:0;pointer-events:none;z-index:9998;background:radial-gradient(circle,rgba(239,68,68,0.6) 0%,rgba(239,68,68,0.8) 100%);animation:student-damage-flash 0.8s ease-out forwards;`;
+  document.body.appendChild(flash);
+  setTimeout(() => flash.remove(), 800);
+  
+  // Texto de daño en el centro
+  const txt = document.createElement('div');
+  txt.innerHTML = '💔 ¡DAÑO RECIBIDO! 💔';
+  txt.style.cssText = `position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);font-size:48px;font-weight:900;color:#fff;text-shadow:0 0 20px #ef4444, 0 0 40px #ef4444;pointer-events:none;z-index:9999;animation:student-damage-text 1.5s ease-out forwards;white-space:nowrap;`;
+  document.body.appendChild(txt);
+  setTimeout(() => txt.remove(), 1500);
+  
+  // Corazones rotos cayendo
+  const hearts = ['💔', '❤️‍🩹', '🩸', '😵', '⚡'];
+  for (let i = 0; i < 12; i++) {
+    const h = document.createElement('div');
+    h.textContent = hearts[Math.floor(Math.random() * hearts.length)];
+    const startX = Math.random() * window.innerWidth;
+    h.style.cssText = `position:fixed;left:${startX}px;top:-50px;font-size:${40 + Math.random() * 30}px;pointer-events:none;z-index:9999;animation:heart-fall 2s ease-in forwards;--endX:${startX + (Math.random() - 0.5) * 200}px;`;
+    document.body.appendChild(h);
+    setTimeout(() => h.remove(), 2000);
+  }
+  
+  // Borde rojo pulsante
+  const border = document.createElement('div');
+  border.style.cssText = `position:fixed;inset:0;pointer-events:none;z-index:9997;border:8px solid transparent;animation:damage-border 1s ease-out forwards;`;
+  document.body.appendChild(border);
+  setTimeout(() => border.remove(), 1000);
 };
 
 if (typeof document !== 'undefined' && !document.getElementById('battle-styles')) {
   const s = document.createElement('style');
   s.id = 'battle-styles';
   s.textContent = `
-    @keyframes dmg-float{0%{transform:translate(-50%,0)scale(.5);opacity:0}20%{transform:translate(-50%,-20px)scale(1.2);opacity:1}100%{transform:translate(-50%,-80px)scale(.8);opacity:0}}
-    @keyframes particle-burst{0%{transform:translate(-50%,-50%)scale(0);opacity:1}100%{transform:translate(calc(-50% + var(--tx)),calc(-50% + var(--ty)))scale(1.5);opacity:0}}
+    @keyframes dmg-float{0%{transform:translate(-50%,0)scale(0.3);opacity:0}10%{transform:translate(-50%,-30px)scale(1.4);opacity:1}25%{transform:translate(-50%,-50px)scale(1.1);opacity:1}50%{transform:translate(-50%,-60px)scale(1);opacity:1}100%{transform:translate(-50%,-150px)scale(0.5);opacity:0}}
+    @keyframes dmg-label{0%{transform:translateX(-50%) scale(0);opacity:0}15%{transform:translateX(-50%) scale(1.3);opacity:1}35%{transform:translateX(-50%) scale(1);opacity:1}70%{transform:translateX(-50%) scale(1);opacity:1}100%{transform:translateX(-50%) translateY(-40px);opacity:0}}
+    @keyframes particle-burst{0%{transform:translate(-50%,-50%)scale(0);opacity:1}50%{opacity:1}100%{transform:translate(calc(-50% + var(--tx)),calc(-50% + var(--ty)))scale(2);opacity:0}}
     @keyframes damage-flash{0%{opacity:1}100%{opacity:0}}
+    @keyframes boss-damage-flash{0%{opacity:1}50%{opacity:0.8}100%{opacity:0}}
+    @keyframes impact-wave{0%{width:50px;height:50px;opacity:1;border-width:5px}50%{opacity:0.8}100%{width:400px;height:400px;opacity:0;border-width:2px}}
     @keyframes boss-idle{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
     @keyframes glow-pulse{0%,100%{box-shadow:0 0 20px rgba(239,68,68,.5)}50%{box-shadow:0 0 40px rgba(239,68,68,.8)}}
+    @keyframes student-damage-flash{0%{opacity:0}10%{opacity:1}30%{opacity:0.7}50%{opacity:1}100%{opacity:0}}
+    @keyframes student-damage-text{0%{transform:translate(-50%,-50%) scale(0);opacity:0}15%{transform:translate(-50%,-50%) scale(1.3);opacity:1}30%{transform:translate(-50%,-50%) scale(1);opacity:1}70%{transform:translate(-50%,-50%) scale(1);opacity:1}100%{transform:translate(-50%,-50%) scale(0.8);opacity:0}}
+    @keyframes heart-fall{0%{transform:translateY(0) rotate(0deg);opacity:1}100%{transform:translateY(${window.innerHeight + 100}px) rotate(720deg);opacity:0}}
+    @keyframes damage-border{0%{border-color:rgba(239,68,68,0)}20%{border-color:rgba(239,68,68,1)}40%{border-color:rgba(239,68,68,0.5)}60%{border-color:rgba(239,68,68,1)}100%{border-color:rgba(239,68,68,0)}}
   `;
   document.head.appendChild(s);
 }
@@ -73,7 +130,65 @@ export const BossBattleLive = ({ bossId, onBack }: Props) => {
   const [timeLeft, setTimeLeft] = useState(0);
   const [showRes, setShowRes] = useState(false);
   const [shaking, setShaking] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
   const bossRef = useRef<HTMLDivElement>(null);
+  const bgMusicRef = useRef<HTMLAudioElement | null>(null);
+  const damageBoss1Ref = useRef<HTMLAudioElement | null>(null);
+  const damageBoss2Ref = useRef<HTMLAudioElement | null>(null);
+  const damageStudentRef = useRef<HTMLAudioElement | null>(null);
+
+  // Inicializar audio
+  useEffect(() => {
+    bgMusicRef.current = new Audio('/sounds/boss_music1.mp3');
+    bgMusicRef.current.loop = true;
+    bgMusicRef.current.volume = 0.4;
+    damageBoss1Ref.current = new Audio('/sounds/damage_boss1.mp3');
+    damageBoss1Ref.current.volume = 0.7;
+    damageBoss2Ref.current = new Audio('/sounds/damage_boss2.mp3');
+    damageBoss2Ref.current.volume = 0.7;
+    damageStudentRef.current = new Audio('/sounds/damage_student.mp3');
+    damageStudentRef.current.volume = 0.7;
+
+    // Iniciar música de fondo
+    bgMusicRef.current.play().catch(() => {});
+
+    return () => {
+      if (bgMusicRef.current) {
+        bgMusicRef.current.pause();
+        bgMusicRef.current = null;
+      }
+    };
+  }, []);
+
+  // Manejar mute/unmute
+  useEffect(() => {
+    if (bgMusicRef.current) {
+      if (isMuted) {
+        bgMusicRef.current.pause();
+      } else {
+        bgMusicRef.current.play().catch(() => {});
+      }
+    }
+  }, [isMuted]);
+
+  // Función para reproducir SFX de daño al boss (random)
+  const playBossDamageSfx = useCallback(() => {
+    if (isMuted) return;
+    const sfx = Math.random() < 0.5 ? damageBoss1Ref.current : damageBoss2Ref.current;
+    if (sfx) {
+      sfx.currentTime = 0;
+      sfx.play().catch(() => {});
+    }
+  }, [isMuted]);
+
+  // Función para reproducir SFX de daño al estudiante
+  const playStudentDamageSfx = useCallback(() => {
+    if (isMuted) return;
+    if (damageStudentRef.current) {
+      damageStudentRef.current.currentTime = 0;
+      damageStudentRef.current.play().catch(() => {});
+    }
+  }, [isMuted]);
 
   const { data: bs, refetch } = useQuery({ queryKey: ['battle-state', bossId], queryFn: () => battleApi.getBattleState(bossId), refetchInterval: showQ ? 2000 : false });
   const { data: results } = useQuery({ queryKey: ['battle-results', bossId], queryFn: () => battleApi.getBattleResults(bossId), enabled: showRes });
@@ -85,8 +200,16 @@ export const BossBattleLive = ({ bossId, onBack }: Props) => {
   useEffect(() => { if (!showQ || timeLeft <= 0) return; const t = setInterval(() => setTimeLeft(p => Math.max(0, p - 1)), 1000); return () => clearInterval(t); }, [showQ, timeLeft]);
 
   const handleDmg = (dmg: number, hasWrong: boolean) => {
-    if (dmg > 0) { setShaking(true); fireDamageParticles(bossRef.current, dmg); setTimeout(() => setShaking(false), 500); }
-    if (hasWrong) fireStudentDamage();
+    if (dmg > 0) { 
+      setShaking(true); 
+      fireDamageParticles(bossRef.current, dmg); 
+      playBossDamageSfx();
+      setTimeout(() => setShaking(false), 500); 
+    }
+    if (hasWrong) {
+      fireStudentDamage();
+      playStudentDamageSfx();
+    }
     refetch().then(() => { if (bs && bs.currentHp - dmg <= 0) { setShowRes(true); fireVictoryConfetti(); } });
   };
 
@@ -114,7 +237,22 @@ export const BossBattleLive = ({ bossId, onBack }: Props) => {
         <motion.div initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2">
           <Swords size={16} className="text-amber-400" /><span className="text-white font-bold">Pregunta {qIdx + 1}/{bs.questions.length}</span>
         </motion.div>
-        <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-3 py-2"><Users size={14} className="text-purple-400" /><span className="text-white text-sm">{bs.participants.length}</span></div>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-3 py-2"><Users size={14} className="text-purple-400" /><span className="text-white text-sm">{bs.participants.length}</span></div>
+          <motion.button
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            onClick={() => setIsMuted(!isMuted)}
+            className={`p-2 rounded-full backdrop-blur-sm transition-all ${
+              isMuted 
+                ? 'bg-red-500/30 text-red-300' 
+                : 'bg-emerald-500/30 text-emerald-300'
+            }`}
+            title={isMuted ? 'Activar sonido' : 'Silenciar'}
+          >
+            {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+          </motion.button>
+        </div>
       </div>
 
       {/* Main Layout */}
@@ -181,27 +319,119 @@ export const BossBattleLive = ({ bossId, onBack }: Props) => {
         <div className="flex-1 flex items-center justify-center min-h-0">
           <AnimatePresence mode="wait">
             {!showQ ? (
-              <motion.div key="preview" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="w-full max-w-xl">
-                <div className="bg-slate-800/90 backdrop-blur-md rounded-2xl p-6 border border-purple-500/30 shadow-2xl text-center">
-                  {curQ ? (
-                    <>
-                      <motion.div animate={{ rotate: [0, 5, -5, 0] }} transition={{ duration: 2, repeat: Infinity }} className="inline-block mb-4">
-                        <div className="w-14 h-14 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg"><Target size={28} className="text-white" /></div>
-                      </motion.div>
-                      <h3 className="text-white text-lg font-bold mb-3">{curQ.question}</h3>
-                      {curQ.imageUrl && <img src={curQ.imageUrl} alt="" className="max-h-28 mx-auto rounded-xl mb-3" />}
-                      <div className="flex justify-center gap-4 text-sm mb-5">
-                        <div className="flex items-center gap-2 bg-amber-500/20 rounded-full px-3 py-1.5"><Zap size={14} className="text-amber-400" /><span className="text-amber-300 font-bold">{curQ.damage} daño</span></div>
-                        <div className="flex items-center gap-2 bg-blue-500/20 rounded-full px-3 py-1.5"><Clock size={14} className="text-blue-400" /><span className="text-blue-300 font-bold">{curQ.timeLimit}s</span></div>
+              <motion.div key="preview" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="w-full max-w-2xl px-4">
+                {curQ ? (
+                  <div className="relative">
+                    {/* Fondo decorativo */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-purple-600/20 via-pink-600/20 to-orange-600/20 rounded-3xl blur-xl" />
+                    
+                    <div className="relative bg-slate-800/95 backdrop-blur-xl rounded-3xl p-8 border border-purple-500/40 shadow-2xl">
+                      {/* Header con número de pregunta */}
+                      <div className="flex items-center justify-center gap-3 mb-6">
+                        <motion.div 
+                          animate={{ rotate: [0, 10, -10, 0], scale: [1, 1.1, 1] }} 
+                          transition={{ duration: 2, repeat: Infinity }}
+                          className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 via-orange-500 to-red-500 flex items-center justify-center shadow-xl shadow-orange-500/30"
+                        >
+                          <Swords size={32} className="text-white" />
+                        </motion.div>
                       </div>
-                      <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                        <Button onClick={startQ} className="bg-gradient-to-r from-purple-500 via-pink-500 to-red-500 text-lg px-8 py-3 shadow-lg" leftIcon={<Swords size={18} />}>¡Iniciar Ataque!</Button>
+                      
+                      {/* Título de la pregunta */}
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.1 }}
+                        className="text-center mb-6"
+                      >
+                        <span className="text-purple-400 text-sm font-semibold uppercase tracking-wider">Pregunta {qIdx + 1}</span>
+                        <h3 className="text-white text-2xl font-bold mt-2 leading-relaxed">{curQ.question}</h3>
                       </motion.div>
-                    </>
-                  ) : (
-                    <div className="py-6"><div className="text-5xl mb-3">⚔️</div><p className="text-white/70 mb-3">No hay más preguntas</p><Button onClick={() => endMut.mutate('DEFEAT')} className="bg-red-500">Finalizar</Button></div>
-                  )}
-                </div>
+                      
+                      {/* Imagen si existe */}
+                      {curQ.imageUrl && (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          className="mb-6"
+                        >
+                          <img src={curQ.imageUrl} alt="" className="max-h-40 mx-auto rounded-2xl shadow-lg border border-white/10" />
+                        </motion.div>
+                      )}
+                      
+                      {/* Stats de la pregunta */}
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.2 }}
+                        className="flex justify-center gap-4 mb-8"
+                      >
+                        <div className="flex items-center gap-2 bg-gradient-to-r from-amber-500/20 to-orange-500/20 rounded-xl px-5 py-3 border border-amber-500/30">
+                          <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ duration: 1, repeat: Infinity }}>
+                            <Zap size={20} className="text-amber-400" />
+                          </motion.div>
+                          <div className="text-left">
+                            <span className="text-amber-300 font-black text-lg">{curQ.damage}</span>
+                            <span className="text-amber-400/70 text-sm ml-1">daño</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 rounded-xl px-5 py-3 border border-blue-500/30">
+                          <motion.div animate={{ rotate: [0, 360] }} transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}>
+                            <Clock size={20} className="text-blue-400" />
+                          </motion.div>
+                          <div className="text-left">
+                            <span className="text-blue-300 font-black text-lg">{curQ.timeLimit}</span>
+                            <span className="text-blue-400/70 text-sm ml-1">segundos</span>
+                          </div>
+                        </div>
+                      </motion.div>
+                      
+                      {/* Botón de iniciar */}
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.3 }}
+                        className="text-center"
+                      >
+                        <motion.button
+                          onClick={startQ}
+                          whileHover={{ scale: 1.03, boxShadow: '0 0 40px rgba(168, 85, 247, 0.4)' }}
+                          whileTap={{ scale: 0.97 }}
+                          className="relative overflow-hidden bg-gradient-to-r from-purple-500 via-pink-500 to-red-500 text-white text-xl font-bold px-10 py-4 rounded-2xl shadow-xl shadow-purple-500/30 flex items-center gap-3 mx-auto"
+                        >
+                          <motion.div
+                            animate={{ x: [0, 5, 0] }}
+                            transition={{ duration: 1, repeat: Infinity }}
+                          >
+                            <Swords size={24} />
+                          </motion.div>
+                          ¡Iniciar Ataque!
+                          <motion.div
+                            className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+                            animate={{ x: ['-100%', '100%'] }}
+                            transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                          />
+                        </motion.button>
+                        <p className="text-white/40 text-sm mt-3">Los estudiantes verán la pregunta cuando inicies</p>
+                      </motion.div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-slate-800/90 backdrop-blur-md rounded-3xl p-8 border border-purple-500/30 shadow-2xl text-center">
+                    <motion.div 
+                      animate={{ rotate: [0, 10, -10, 0] }}
+                      transition={{ duration: 2, repeat: Infinity }}
+                      className="text-6xl mb-4"
+                    >
+                      ⚔️
+                    </motion.div>
+                    <h3 className="text-white text-xl font-bold mb-2">¡Batalla completada!</h3>
+                    <p className="text-white/60 mb-6">No hay más preguntas disponibles</p>
+                    <Button onClick={() => endMut.mutate('DEFEAT')} className="bg-gradient-to-r from-red-500 to-rose-500 px-6 py-3 shadow-lg">
+                      Finalizar Batalla
+                    </Button>
+                  </div>
+                )}
               </motion.div>
             ) : (
               <motion.div key="question" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="w-full max-w-2xl">
@@ -286,6 +516,184 @@ const QuestionDisplay = ({ question, timeLeft, participants, bossId, onDamageDea
   );
 };
 
+// Matching Question Component - Con líneas interactivas
+const MatchingQuestion = ({ pairs, shuffled, showAnswer }: { pairs: MatchingPair[]; shuffled: MatchingPair[]; showAnswer: boolean }) => {
+  const [selectedLeft, setSelectedLeft] = useState<number | null>(null);
+  const [connections, setConnections] = useState<Map<number, number>>(new Map());
+  const containerRef = useRef<HTMLDivElement>(null);
+  
+  const handleLeftClick = (index: number) => {
+    if (showAnswer) return;
+    setSelectedLeft(selectedLeft === index ? null : index);
+  };
+  
+  const handleRightClick = (rightIndex: number) => {
+    if (showAnswer || selectedLeft === null) return;
+    
+    // Crear conexión
+    const newConnections = new Map(connections);
+    // Remover conexión previa de este lado izquierdo si existe
+    newConnections.set(selectedLeft, rightIndex);
+    setConnections(newConnections);
+    setSelectedLeft(null);
+  };
+  
+  const removeConnection = (leftIndex: number) => {
+    if (showAnswer) return;
+    const newConnections = new Map(connections);
+    newConnections.delete(leftIndex);
+    setConnections(newConnections);
+  };
+  
+  // Verificar si una conexión es correcta
+  const isConnectionCorrect = (leftIndex: number, rightIndex: number) => {
+    const leftItem = pairs[leftIndex];
+    const rightItem = shuffled[rightIndex];
+    return leftItem && rightItem && leftItem.right === rightItem.right;
+  };
+  
+  // Obtener el índice correcto del lado derecho para un lado izquierdo
+  const getCorrectRightIndex = (leftIndex: number) => {
+    const leftItem = pairs[leftIndex];
+    return shuffled.findIndex(s => s.right === leftItem.right);
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      <div className="grid grid-cols-2 gap-8">
+        {/* Columna izquierda */}
+        <div className="space-y-3">
+          {pairs.map((p, i) => {
+            const isSelected = selectedLeft === i;
+            const hasConnection = connections.has(i);
+            const connectedTo = connections.get(i);
+            
+            return (
+              <motion.div
+                key={i}
+                whileHover={!showAnswer ? { scale: 1.02 } : {}}
+                whileTap={!showAnswer ? { scale: 0.98 } : {}}
+                onClick={() => hasConnection ? removeConnection(i) : handleLeftClick(i)}
+                className={`p-3 rounded-xl flex items-center gap-3 cursor-pointer transition-all ${
+                  showAnswer 
+                    ? 'bg-blue-500/30 border-2 border-blue-400'
+                    : isSelected 
+                      ? 'bg-purple-500/40 border-2 border-purple-400 ring-2 ring-purple-400/50' 
+                      : hasConnection
+                        ? 'bg-green-500/20 border-2 border-green-400'
+                        : 'bg-white/10 border-2 border-transparent hover:border-purple-400/50'
+                }`}
+              >
+                <span className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-white flex items-center justify-center text-sm font-bold shadow-lg">
+                  {i + 1}
+                </span>
+                <span className="text-white text-sm flex-1">{p.left}</span>
+                {hasConnection && !showAnswer && (
+                  <motion.span 
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="text-green-400 text-xs font-bold"
+                  >
+                    → {String.fromCharCode(97 + connectedTo!)}
+                  </motion.span>
+                )}
+                {showAnswer && (
+                  <span className="text-blue-300 text-xs font-bold">
+                    → {String.fromCharCode(97 + getCorrectRightIndex(i))}
+                  </span>
+                )}
+              </motion.div>
+            );
+          })}
+        </div>
+        
+        {/* Columna derecha */}
+        <div className="space-y-3">
+          {shuffled.map((p, i) => {
+            const isConnectedFrom = Array.from(connections.entries()).find(([_, v]) => v === i);
+            const isCorrectConnection = isConnectedFrom && isConnectionCorrect(isConnectedFrom[0], i);
+            
+            return (
+              <motion.div
+                key={i}
+                whileHover={!showAnswer && selectedLeft !== null ? { scale: 1.02 } : {}}
+                whileTap={!showAnswer && selectedLeft !== null ? { scale: 0.98 } : {}}
+                onClick={() => handleRightClick(i)}
+                className={`p-3 rounded-xl flex items-center gap-3 transition-all ${
+                  showAnswer
+                    ? 'bg-green-500/30 border-2 border-green-400'
+                    : selectedLeft !== null
+                      ? 'bg-white/10 border-2 border-transparent hover:border-orange-400 cursor-pointer'
+                      : isConnectedFrom
+                        ? isCorrectConnection 
+                          ? 'bg-green-500/20 border-2 border-green-400'
+                          : 'bg-orange-500/20 border-2 border-orange-400'
+                        : 'bg-white/10 border-2 border-transparent'
+                }`}
+              >
+                <span className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 text-white flex items-center justify-center text-sm font-bold shadow-lg">
+                  {String.fromCharCode(97 + i)}
+                </span>
+                <span className="text-white text-sm flex-1">{p.right}</span>
+                {isConnectedFrom && !showAnswer && (
+                  <motion.span 
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="text-green-400 text-xs font-bold"
+                  >
+                    ← {isConnectedFrom[0] + 1}
+                  </motion.span>
+                )}
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
+      
+      {/* Instrucciones */}
+      {!showAnswer && (
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="mt-4 text-center"
+        >
+          {selectedLeft !== null ? (
+            <p className="text-purple-300 text-sm animate-pulse">
+              👆 Ahora selecciona la opción correcta de la derecha
+            </p>
+          ) : connections.size < pairs.length ? (
+            <p className="text-white/50 text-sm">
+              👈 Selecciona un elemento de la izquierda para unir
+            </p>
+          ) : (
+            <p className="text-green-400 text-sm font-medium">
+              ✓ Todas las conexiones realizadas
+            </p>
+          )}
+        </motion.div>
+      )}
+      
+      {/* Mostrar respuestas correctas */}
+      {showAnswer && (
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-4 p-3 bg-green-500/20 rounded-xl border border-green-500/30"
+        >
+          <p className="text-green-400 text-sm font-bold text-center mb-2">✓ Respuestas correctas:</p>
+          <div className="flex flex-wrap gap-2 justify-center">
+            {pairs.map((_p, i) => (
+              <span key={i} className="text-white/80 text-xs bg-white/10 px-2 py-1 rounded">
+                {i + 1} → {String.fromCharCode(97 + getCorrectRightIndex(i))}
+              </span>
+            ))}
+          </div>
+        </motion.div>
+      )}
+    </div>
+  );
+};
+
 // Render Options
 const renderOpts = (q: BattleQuestion, show: boolean, sel: UserSelection, onSel: (i: number) => void, shuffled: MatchingPair[], qType: BattleQuestionType) => {
   const opts = Array.isArray(q.options) ? q.options : [];
@@ -293,35 +701,312 @@ const renderOpts = (q: BattleQuestion, show: boolean, sel: UserSelection, onSel:
   const pairs = safeJsonParse(q.pairs) || [];
   const getStyle = (i: number, isC: boolean) => { const isSel = Array.isArray(sel) ? sel.includes(i) : sel === i; if (show) { if (isC) return 'bg-gradient-to-r from-green-500 to-emerald-500 text-white ring-2 ring-green-300'; if (isSel) return 'bg-gradient-to-r from-red-500 to-red-600 text-white ring-2 ring-red-300'; return 'bg-white/10 text-white/60'; } return isSel ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white ring-2 ring-purple-300' : 'bg-white/10 text-white hover:bg-white/20 cursor-pointer'; };
   if (qType === 'TRUE_FALSE') return <div className="grid grid-cols-2 gap-3">{['Verdadero', 'Falso'].map((o, i) => <motion.button key={i} onClick={() => onSel(i)} disabled={show} whileHover={!show ? { scale: 1.03 } : {}} whileTap={!show ? { scale: 0.97 } : {}} className={`p-4 rounded-xl font-bold text-lg transition-all ${getStyle(i, q.correctIndex === i)}`}>{i === 0 ? '✓' : '✗'} {o}</motion.button>)}</div>;
-  if (qType === 'MATCHING' && pairs.length > 0) return <div className="grid grid-cols-2 gap-3"><div className="space-y-2">{pairs.map((p: MatchingPair, i: number) => <div key={i} className={`p-3 rounded-xl flex items-center gap-2 ${show ? 'bg-blue-500/20 border border-blue-400/50' : 'bg-white/10'}`}><span className="w-6 h-6 rounded-full bg-blue-500 text-white flex items-center justify-center text-sm font-bold">{i + 1}</span><span className="text-white text-sm">{p.left}</span></div>)}</div><div className="space-y-2">{shuffled.map((p: MatchingPair, i: number) => { const oi = pairs.findIndex((x: MatchingPair) => x.right === p.right); return <div key={i} className={`p-3 rounded-xl flex items-center gap-2 ${show ? 'bg-green-500/20 border border-green-400/50' : 'bg-white/10'}`}><span className="w-6 h-6 rounded-full bg-orange-500 text-white flex items-center justify-center text-sm font-bold">{String.fromCharCode(97 + i)}</span><span className="text-white text-sm flex-1">{p.right}</span>{show && <span className="text-green-400 text-xs">→{oi + 1}</span>}</div>; })}</div></div>;
+  if (qType === 'MATCHING' && pairs.length > 0) return <MatchingQuestion pairs={pairs} shuffled={shuffled} showAnswer={show} />;
   if (qType === 'MULTIPLE_CHOICE') { const sa = Array.isArray(sel) ? sel : []; return <div className="grid grid-cols-2 gap-2">{opts.map((o: string, i: number) => { const isC = ci.includes(i), isSel = sa.includes(i); let st = 'bg-white/10 text-white'; if (show) { if (isC) st = 'bg-gradient-to-r from-green-500 to-emerald-500 text-white ring-2 ring-green-300'; else if (isSel) st = 'bg-gradient-to-r from-red-500 to-red-600 text-white ring-2 ring-red-300'; } else if (isSel) st = 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white ring-2 ring-purple-300'; else st = 'bg-white/10 text-white hover:bg-white/20 cursor-pointer'; return <motion.button key={i} onClick={() => onSel(i)} disabled={show} whileHover={!show ? { scale: 1.02 } : {}} className={`p-3 rounded-xl text-sm font-medium transition-all ${st}`}><span className="font-bold mr-1">{String.fromCharCode(65 + i)}.</span>{o}{show && isC && ' ✓'}{show && !isC && isSel && ' ✗'}</motion.button>; })}</div>; }
   return <div className="grid grid-cols-2 gap-2">{opts.map((o: string, i: number) => <motion.button key={i} onClick={() => onSel(i)} disabled={show} whileHover={!show ? { scale: 1.02 } : {}} className={`p-3 rounded-xl text-sm font-medium transition-all ${getStyle(i, i === q.correctIndex)}`}><span className="font-bold mr-1">{String.fromCharCode(65 + i)}.</span>{o}{show && i === q.correctIndex && ' ✓'}{show && i !== q.correctIndex && sel === i && ' ✗'}</motion.button>)}</div>;
 };
 
-// Results View
+// Results View - Animación tipo Kahoot
 const BattleResultsView = ({ battleState, results, onBack }: { battleState: BattleState; results: BattleResult[]; onBack: () => void }) => {
+  const [phase, setPhase] = useState<'intro' | 'podium' | 'table'>('intro');
+  const [revealedPlaces, setRevealedPlaces] = useState<number[]>([]);
   const vic = battleState.status === 'VICTORY';
+  
+  // Obtener top 3
+  const top3 = results.slice(0, 3);
+  const hasTop3 = top3.length >= 3;
+  
+  // Secuencia de animación tipo Kahoot
+  useEffect(() => {
+    if (phase === 'intro') {
+      // Mostrar intro por 2 segundos, luego ir al podio
+      const timer = setTimeout(() => {
+        if (hasTop3) {
+          setPhase('podium');
+        } else {
+          setPhase('table');
+        }
+      }, 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [phase, hasTop3]);
+  
+  useEffect(() => {
+    if (phase === 'podium' && hasTop3) {
+      // Revelar 3°, luego 2°, luego 1° con delays
+      const timers: ReturnType<typeof setTimeout>[] = [];
+      timers.push(setTimeout(() => setRevealedPlaces([3]), 800));
+      timers.push(setTimeout(() => setRevealedPlaces([3, 2]), 2300));
+      timers.push(setTimeout(() => {
+        setRevealedPlaces([3, 2, 1]);
+        fireVictoryConfetti();
+      }, 3800));
+      timers.push(setTimeout(() => setPhase('table'), 6000));
+      return () => timers.forEach(clearTimeout);
+    }
+  }, [phase, hasTop3]);
+
+  // Fase de introducción
+  if (phase === 'intro') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 -m-6 p-6 flex flex-col items-center justify-center">
+        <motion.div 
+          initial={{ scale: 0, rotate: -180 }} 
+          animate={{ scale: 1, rotate: 0 }} 
+          transition={{ type: 'spring', damping: 12, duration: 0.8 }}
+          className="text-center"
+        >
+          <motion.div 
+            animate={{ 
+              rotate: vic ? [0, 10, -10, 0] : [0, 5, -5, 0], 
+              y: [0, -15, 0],
+              scale: [1, 1.1, 1]
+            }} 
+            transition={{ duration: 1.5, repeat: Infinity }}
+            className="text-[120px] mb-4"
+          >
+            {vic ? '🏆' : '💀'}
+          </motion.div>
+          <motion.h1 
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className={`text-6xl font-black mb-3 ${vic ? 'text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500' : 'text-red-400'}`}
+          >
+            {vic ? '¡VICTORIA!' : 'DERROTA'}
+          </motion.h1>
+          <motion.p 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.6 }}
+            className="text-white/70 text-xl"
+          >
+            {vic ? `¡Derrotaron a ${battleState.bossName}!` : `${battleState.bossName} escapó...`}
+          </motion.p>
+          {hasTop3 && (
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: [0, 1, 0.5, 1] }}
+              transition={{ delay: 1.5, duration: 1 }}
+              className="text-purple-400 mt-6 text-lg font-medium"
+            >
+              Preparando el podio...
+            </motion.p>
+          )}
+        </motion.div>
+      </div>
+    );
+  }
+
+  // Fase del podio (tipo Kahoot)
+  if (phase === 'podium' && hasTop3) {
+    const podiumConfig = [
+      { place: 2, height: 'h-32', color: 'from-gray-400 to-gray-500', bgColor: 'bg-gray-500/20', delay: 1, emoji: '🥈' },
+      { place: 1, height: 'h-44', color: 'from-amber-400 to-yellow-500', bgColor: 'bg-amber-500/20', delay: 2, emoji: '🥇' },
+      { place: 3, height: 'h-24', color: 'from-orange-500 to-orange-600', bgColor: 'bg-orange-500/20', delay: 0, emoji: '🥉' },
+    ];
+    
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 -m-6 p-6 flex flex-col items-center justify-center overflow-hidden">
+        {/* Título */}
+        <motion.div
+          initial={{ opacity: 0, y: -50 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center mb-8"
+        >
+          <h1 className="text-4xl font-black text-white mb-2">🏆 Top 3 Héroes 🏆</h1>
+          <p className="text-white/60">Los mejores guerreros de la batalla</p>
+        </motion.div>
+        
+        {/* Podio */}
+        <div className="flex items-end justify-center gap-4 mb-8">
+          {podiumConfig.map((config, idx) => {
+            const result = top3[config.place - 1];
+            const isRevealed = revealedPlaces.includes(config.place);
+            const order = idx === 0 ? 'order-1' : idx === 1 ? 'order-2' : 'order-3';
+            
+            return (
+              <div key={config.place} className={`flex flex-col items-center ${order}`}>
+                {/* Avatar y nombre */}
+                <AnimatePresence>
+                  {isRevealed && result && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -100, scale: 0 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      transition={{ type: 'spring', damping: 12, delay: 0.2 }}
+                      className="text-center mb-3"
+                    >
+                      <motion.div
+                        animate={config.place === 1 ? { 
+                          scale: [1, 1.1, 1],
+                          rotate: [0, 5, -5, 0]
+                        } : {}}
+                        transition={{ duration: 2, repeat: Infinity }}
+                        className="relative"
+                      >
+                        <div className={`w-20 h-20 rounded-full bg-gradient-to-br ${config.color} flex items-center justify-center text-white text-3xl font-black shadow-2xl border-4 border-white/30`}>
+                          {result.characterName?.[0] || '?'}
+                        </div>
+                        <motion.div
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          transition={{ delay: 0.5, type: 'spring' }}
+                          className="absolute -top-2 -right-2 text-3xl"
+                        >
+                          {config.emoji}
+                        </motion.div>
+                      </motion.div>
+                      <motion.p
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.4 }}
+                        className="text-white font-bold mt-2 text-lg max-w-[120px] truncate"
+                      >
+                        {result.characterName}
+                      </motion.p>
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.6 }}
+                        className="flex items-center justify-center gap-1 text-amber-400"
+                      >
+                        <Zap size={14} />
+                        <span className="font-bold">{result.damageDealt}</span>
+                      </motion.div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                
+                {/* Pedestal */}
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={isRevealed ? { height: 'auto', opacity: 1 } : { height: 0, opacity: 0 }}
+                  transition={{ duration: 0.5, delay: 0.1 }}
+                  className={`w-28 ${config.height} bg-gradient-to-t ${config.color} rounded-t-xl flex items-center justify-center shadow-2xl border-2 border-white/20`}
+                >
+                  <span className="text-white text-5xl font-black drop-shadow-lg">{config.place}</span>
+                </motion.div>
+              </div>
+            );
+          })}
+        </div>
+        
+        {/* Mensaje de espera */}
+        {revealedPlaces.length < 3 && (
+          <motion.p
+            animate={{ opacity: [0.5, 1, 0.5] }}
+            transition={{ duration: 1, repeat: Infinity }}
+            className="text-white/60 text-lg"
+          >
+            {revealedPlaces.length === 0 ? 'Y en tercer lugar...' : 
+             revealedPlaces.length === 1 ? 'En segundo lugar...' : 
+             '¡Y el primer lugar es...!'}
+          </motion.p>
+        )}
+      </div>
+    );
+  }
+
+  // Fase de tabla completa
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 -m-6 p-6 flex flex-col items-center justify-center">
-      <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', damping: 15 }} className="text-center mb-6">
-        <motion.div animate={{ rotate: vic ? [0, 10, -10, 0] : 0, y: vic ? [0, -10, 0] : 0 }} transition={{ duration: 1, repeat: Infinity }} className="text-7xl mb-3">{vic ? '🏆' : '💀'}</motion.div>
-        <h1 className={`text-4xl font-black ${vic ? 'text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-yellow-500' : 'text-red-400'}`}>{vic ? '¡VICTORIA!' : 'DERROTA'}</h1>
-        <p className="text-white/70 mt-2">{vic ? `¡Derrotaron a ${battleState.bossName}!` : `${battleState.bossName} escapó...`}</p>
+      {/* Header con resultado */}
+      <motion.div 
+        initial={{ scale: 0.8, opacity: 0 }} 
+        animate={{ scale: 1, opacity: 1 }} 
+        className="text-center mb-6"
+      >
+        <motion.div 
+          animate={{ rotate: vic ? [0, 5, -5, 0] : 0 }} 
+          transition={{ duration: 2, repeat: Infinity }}
+          className="text-6xl mb-2"
+        >
+          {vic ? '🏆' : '💀'}
+        </motion.div>
+        <h1 className={`text-3xl font-black ${vic ? 'text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-yellow-500' : 'text-red-400'}`}>
+          {vic ? '¡VICTORIA!' : 'DERROTA'}
+        </h1>
+        <p className="text-white/70 text-sm mt-1">
+          {vic ? `¡Derrotaron a ${battleState.bossName}!` : `${battleState.bossName} escapó...`}
+        </p>
       </motion.div>
-      <div className="bg-slate-800/90 backdrop-blur-md rounded-2xl p-5 border border-purple-500/30 max-w-md w-full mb-4 max-h-[400px] overflow-y-auto">
-        <h2 className="text-white font-bold text-center mb-4 flex items-center justify-center gap-2"><Crown className="text-amber-400" size={20} /> Tabla de Héroes</h2>
+      
+      {/* Tabla de resultados */}
+      <motion.div 
+        initial={{ y: 50, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.2 }}
+        className="bg-slate-800/90 backdrop-blur-md rounded-2xl p-5 border border-purple-500/30 max-w-md w-full mb-4 max-h-[400px] overflow-y-auto"
+      >
+        <h2 className="text-white font-bold text-center mb-4 flex items-center justify-center gap-2">
+          <Crown className="text-amber-400" size={20} /> Tabla de Héroes
+        </h2>
         <div className="space-y-2">
           {results.map((r, i) => (
-            <motion.div key={r.id} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }} className={`flex items-center gap-3 p-3 rounded-xl ${i === 0 ? 'bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-amber-500/50' : i === 1 ? 'bg-gray-400/20 border border-gray-400/50' : i === 2 ? 'bg-orange-500/20 border border-orange-500/50' : 'bg-white/5'}`}>
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${i === 0 ? 'bg-gradient-to-br from-amber-400 to-yellow-500 text-white' : i === 1 ? 'bg-gray-400 text-white' : i === 2 ? 'bg-orange-500 text-white' : 'bg-white/20 text-white/70'}`}>{i + 1}</div>
-              <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-purple-400 to-indigo-500 flex items-center justify-center text-white font-bold shadow-lg">{r.characterName?.[0] || '?'}</div>
-              <div className="flex-1 min-w-0"><p className="text-white font-medium text-sm truncate">{r.characterName}</p><p className="text-red-400 text-xs flex items-center gap-1"><Target size={10} />{r.damageDealt}</p></div>
-              <div className="text-right text-xs"><div className="text-blue-400 flex items-center gap-1 justify-end"><Sparkles size={10} />+{r.xpEarned}</div><div className="text-amber-400 flex items-center gap-1 justify-end"><Coins size={10} />+{r.gpEarned}</div></div>
+            <motion.div 
+              key={r.id} 
+              initial={{ opacity: 0, x: -30 }} 
+              animate={{ opacity: 1, x: 0 }} 
+              transition={{ delay: i * 0.08 }}
+              className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
+                i === 0 ? 'bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-amber-500/50' : 
+                i === 1 ? 'bg-gradient-to-r from-gray-400/20 to-gray-500/20 border border-gray-400/50' : 
+                i === 2 ? 'bg-gradient-to-r from-orange-500/20 to-orange-600/20 border border-orange-500/50' : 
+                'bg-white/5 border border-transparent'
+              }`}
+            >
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
+                i === 0 ? 'bg-gradient-to-br from-amber-400 to-yellow-500 text-white shadow-lg shadow-amber-500/30' : 
+                i === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-400 text-white' : 
+                i === 2 ? 'bg-gradient-to-br from-orange-400 to-orange-500 text-white' : 
+                'bg-white/20 text-white/70'
+              }`}>
+                {i + 1}
+              </div>
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold shadow-lg ${
+                i === 0 ? 'bg-gradient-to-br from-amber-400 to-yellow-500' :
+                i === 1 ? 'bg-gradient-to-br from-gray-400 to-gray-500' :
+                i === 2 ? 'bg-gradient-to-br from-orange-400 to-orange-500' :
+                'bg-gradient-to-br from-purple-400 to-indigo-500'
+              }`}>
+                {r.characterName?.[0] || '?'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-white font-medium text-sm truncate">{r.characterName}</p>
+                <p className="text-amber-400 text-xs flex items-center gap-1">
+                  <Zap size={10} /> {r.damageDealt} daño
+                </p>
+              </div>
+              <div className="text-right text-xs">
+                <div className="text-blue-400 flex items-center gap-1 justify-end">
+                  <Sparkles size={10} />+{r.xpEarned}
+                </div>
+                <div className="text-amber-400 flex items-center gap-1 justify-end">
+                  <Coins size={10} />+{r.gpEarned}
+                </div>
+              </div>
             </motion.div>
           ))}
+          {results.length === 0 && (
+            <div className="text-center py-8 text-white/50">
+              <Users size={40} className="mx-auto mb-2 opacity-50" />
+              <p>No hay participantes</p>
+            </div>
+          )}
         </div>
-      </div>
-      <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}><Button onClick={onBack} className="bg-gradient-to-r from-purple-500 to-pink-500 shadow-lg" leftIcon={<ArrowLeft size={16} />}>Volver</Button></motion.div>
+      </motion.div>
+      
+      <motion.div 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.5 }}
+        whileHover={{ scale: 1.05 }} 
+        whileTap={{ scale: 0.95 }}
+      >
+        <Button onClick={onBack} className="bg-gradient-to-r from-purple-500 to-pink-500 shadow-lg" leftIcon={<ArrowLeft size={16} />}>
+          Volver
+        </Button>
+      </motion.div>
     </div>
   );
 };

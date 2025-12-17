@@ -16,6 +16,8 @@ import {
   Users,
   Timer,
   Sparkles,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { classroomApi } from '../../lib/classroomApi';
 import {
@@ -79,8 +81,68 @@ export const TimedActivityRunner = ({ activity: initialActivity, classroom, onBa
   const [isRunning, setIsRunning] = useState(initialActivity.status === 'ACTIVE');
   const [bombExploded, setBombExploded] = useState(false);
   const [showExplosion, setShowExplosion] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number | null>(null);
+  const bgMusicRef = useRef<HTMLAudioElement | null>(null);
+  const explosionSfxRef = useRef<HTMLAudioElement | null>(null);
+
+  // Inicializar audio para modo bomba
+  useEffect(() => {
+    if (activity.mode === 'BOMB') {
+      bgMusicRef.current = new Audio('/sounds/music_bomb.mp3');
+      bgMusicRef.current.loop = true;
+      bgMusicRef.current.volume = 0.5;
+      explosionSfxRef.current = new Audio('/sounds/bomb_explota.mp3');
+      explosionSfxRef.current.volume = 0.8;
+    }
+    return () => {
+      if (bgMusicRef.current) {
+        bgMusicRef.current.pause();
+        bgMusicRef.current = null;
+      }
+      if (explosionSfxRef.current) {
+        explosionSfxRef.current = null;
+      }
+    };
+  }, [activity.mode]);
+
+  // Función para fadeout de música
+  const fadeOutMusic = useCallback(() => {
+    if (!bgMusicRef.current) return;
+    const audio = bgMusicRef.current;
+    const fadeInterval = setInterval(() => {
+      if (audio.volume > 0.05) {
+        audio.volume = Math.max(0, audio.volume - 0.05);
+      } else {
+        audio.volume = 0;
+        audio.pause();
+        clearInterval(fadeInterval);
+      }
+    }, 50);
+  }, []);
+
+  // Iniciar música cuando empieza la bomba
+  useEffect(() => {
+    if (activity.mode === 'BOMB' && isRunning && !bombExploded && bgMusicRef.current && !isMuted) {
+      bgMusicRef.current.currentTime = 0;
+      bgMusicRef.current.volume = 0.5;
+      bgMusicRef.current.play().catch(() => {});
+    } else if (!isRunning && bgMusicRef.current) {
+      bgMusicRef.current.pause();
+    }
+  }, [isRunning, activity.mode, bombExploded, isMuted]);
+
+  // Manejar mute/unmute
+  useEffect(() => {
+    if (bgMusicRef.current) {
+      if (isMuted) {
+        bgMusicRef.current.pause();
+      } else if (isRunning && !bombExploded && activity.mode === 'BOMB') {
+        bgMusicRef.current.play().catch(() => {});
+      }
+    }
+  }, [isMuted, isRunning, bombExploded, activity.mode]);
 
   // Obtener estudiantes de la clase
   const { data: classroomData } = useQuery({
@@ -208,6 +270,14 @@ export const TimedActivityRunner = ({ activity: initialActivity, classroom, onBa
           setBombExploded(true);
           setShowExplosion(true);
           setIsRunning(false);
+          
+          // Fadeout música y reproducir SFX de explosión
+          fadeOutMusic();
+          if (explosionSfxRef.current && !isMuted) {
+            explosionSfxRef.current.currentTime = 0;
+            explosionSfxRef.current.play().catch(() => {});
+          }
+          
           // Trigger explosion effect
           setTimeout(() => setShowExplosion(false), 2000);
         }
@@ -225,7 +295,7 @@ export const TimedActivityRunner = ({ activity: initialActivity, classroom, onBa
         clearInterval(intervalRef.current);
       }
     };
-  }, [isRunning, activity.mode, activity.actualBombTime, activity.timeLimitSeconds, bombExploded]);
+  }, [isRunning, activity.mode, activity.actualBombTime, activity.timeLimitSeconds, bombExploded, fadeOutMusic, isMuted]);
 
   // Format time display
   const formatTime = useCallback((seconds: number) => {
@@ -313,7 +383,7 @@ export const TimedActivityRunner = ({ activity: initialActivity, classroom, onBa
         </div>
 
         {/* Info badges */}
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           {activity.useMultipliers && (
             <motion.span 
               animate={{ scale: [1, 1.05, 1] }}
@@ -325,14 +395,30 @@ export const TimedActivityRunner = ({ activity: initialActivity, classroom, onBa
             </motion.span>
           )}
           {(activity.mode === 'BOMB' || activity.mode === 'BOMB_RANDOM') && (
-            <motion.span 
-              animate={isRunning ? { scale: [1, 1.1, 1], opacity: [1, 0.8, 1] } : {}}
-              transition={{ duration: 0.5, repeat: Infinity }}
-              className="flex items-center gap-1 px-3 py-1.5 bg-gradient-to-r from-red-100 to-rose-100 text-red-700 rounded-full text-sm font-semibold shadow-sm"
-            >
-              <AlertTriangle size={14} />
-              -{activity.bombPenaltyPoints} {activity.bombPenaltyType}
-            </motion.span>
+            <>
+              <motion.span 
+                animate={isRunning ? { scale: [1, 1.1, 1], opacity: [1, 0.8, 1] } : {}}
+                transition={{ duration: 0.5, repeat: Infinity }}
+                className="flex items-center gap-1 px-3 py-1.5 bg-gradient-to-r from-red-100 to-rose-100 text-red-700 rounded-full text-sm font-semibold shadow-sm"
+              >
+                <AlertTriangle size={14} />
+                -{activity.bombPenaltyPoints} {activity.bombPenaltyType}
+              </motion.span>
+              {/* Botón de mute para modo bomba */}
+              <motion.button
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => setIsMuted(!isMuted)}
+                className={`p-2 rounded-full transition-all shadow-sm ${
+                  isMuted 
+                    ? 'bg-gray-200 text-gray-500' 
+                    : 'bg-gradient-to-r from-emerald-100 to-teal-100 text-emerald-700'
+                }`}
+                title={isMuted ? 'Activar sonido' : 'Silenciar'}
+              >
+                {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+              </motion.button>
+            </>
           )}
         </div>
       </motion.div>

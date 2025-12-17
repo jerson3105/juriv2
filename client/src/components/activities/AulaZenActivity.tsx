@@ -564,7 +564,7 @@ export const AulaZenActivity = ({ classroom, onBack }: AulaZenActivityProps) => 
     );
   }
 
-  // Pantalla de resultados
+  // Pantalla de resultados - Animación tipo Kahoot
   if (gameState === 'finished') {
     const zenPercentage = Math.round((stats.timeInZen / config.duration) * 100);
     const grade = zenPercentage >= 90 ? 'S' : zenPercentage >= 75 ? 'A' : zenPercentage >= 60 ? 'B' : zenPercentage >= 40 ? 'C' : 'D';
@@ -575,171 +575,284 @@ export const AulaZenActivity = ({ classroom, onBack }: AulaZenActivityProps) => 
       'C': 'from-orange-400 to-red-500',
       'D': 'from-gray-400 to-gray-500',
     };
+    const gradeEmoji: Record<string, string> = {
+      'S': '🏆',
+      'A': '🌟',
+      'B': '👍',
+      'C': '💪',
+      'D': '🎯',
+    };
+    const gradeMessage: Record<string, string> = {
+      'S': '¡PERFECCIÓN ABSOLUTA!',
+      'A': '¡Excelente trabajo!',
+      'B': '¡Buen esfuerzo!',
+      'C': 'Pueden mejorar',
+      'D': 'A practicar más',
+    };
 
     return (
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="text-center">
-          <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ type: 'spring', duration: 0.5 }}
-            className={`w-24 h-24 mx-auto bg-gradient-to-br ${gradeColors[grade]} rounded-full flex items-center justify-center text-white shadow-2xl mb-4`}
-          >
-            <span className="text-4xl font-bold">{grade}</span>
-          </motion.div>
-          <h1 className="text-2xl font-bold text-gray-800 dark:text-white">
-            ¡Sesión Completada!
-          </h1>
-          <p className="text-gray-500 dark:text-gray-400">
-            {zenPercentage >= 75 ? '¡Excelente trabajo manteniendo la calma!' : 'Pueden mejorar la próxima vez'}
-          </p>
+      <div className="min-h-[calc(100vh-200px)] relative overflow-hidden">
+        {/* Fondo animado de celebración */}
+        <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 0.3 }}
+            className={`absolute inset-0 bg-gradient-to-br ${gradeColors[grade]}`}
+          />
+          {/* Confetti de emojis */}
+          {grade === 'S' || grade === 'A' ? (
+            [...Array(20)].map((_, i) => (
+              <motion.div
+                key={i}
+                className="absolute text-3xl"
+                initial={{ 
+                  x: Math.random() * (typeof window !== 'undefined' ? window.innerWidth : 800), 
+                  y: -50,
+                  rotate: 0
+                }}
+                animate={{ 
+                  y: (typeof window !== 'undefined' ? window.innerHeight : 600) + 100,
+                  rotate: 360 * (Math.random() > 0.5 ? 1 : -1)
+                }}
+                transition={{ 
+                  duration: 4 + Math.random() * 3,
+                  repeat: Infinity,
+                  delay: i * 0.3,
+                  ease: 'linear'
+                }}
+              >
+                {['🧘', '🍃', '✨', '🌟', '💫', '🎉'][Math.floor(Math.random() * 6)]}
+              </motion.div>
+            ))
+          ) : null}
         </div>
 
-        {/* Estadísticas */}
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-200 dark:border-gray-700 shadow-lg">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="text-center p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
-              <Trophy className="w-8 h-8 mx-auto text-emerald-500 mb-2" />
-              <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
-                {stats.totalPoints}
+        <div className="space-y-6 relative z-10">
+          {/* Header con animación dramática */}
+          <div className="text-center py-8">
+            <motion.div
+              initial={{ scale: 0, rotate: -180 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ type: 'spring', damping: 10, duration: 0.8 }}
+              className="relative inline-block"
+            >
+              {/* Glow de fondo */}
+              <motion.div
+                className={`absolute inset-0 rounded-full blur-2xl bg-gradient-to-br ${gradeColors[grade]}`}
+                animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0.8, 0.5] }}
+                transition={{ duration: 2, repeat: Infinity }}
+              />
+              <div className={`relative w-32 h-32 mx-auto bg-gradient-to-br ${gradeColors[grade]} rounded-full flex items-center justify-center text-white shadow-2xl border-4 border-white/30`}>
+                <motion.span 
+                  className="text-6xl font-black"
+                  animate={{ scale: [1, 1.1, 1] }}
+                  transition={{ duration: 1.5, repeat: Infinity }}
+                >
+                  {grade}
+                </motion.span>
               </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Puntos totales</div>
-            </div>
-            <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
-              <Leaf className="w-8 h-8 mx-auto text-blue-500 mb-2" />
-              <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                {zenPercentage}%
-              </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Tiempo en zen</div>
-            </div>
-            <div className="text-center p-4 bg-purple-50 dark:bg-purple-900/20 rounded-xl">
-              <Flame className="w-8 h-8 mx-auto text-purple-500 mb-2" />
-              <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                {formatTime(stats.longestStreak)}
-              </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Racha más larga</div>
-            </div>
-            <div className="text-center p-4 bg-orange-50 dark:bg-orange-900/20 rounded-xl">
-              <TrendingUp className="w-8 h-8 mx-auto text-orange-500 mb-2" />
-              <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                {stats.peakNoise}%
-              </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Pico máximo</div>
-            </div>
-          </div>
-
-          {stats.chaosCount > 0 && (
-            <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg text-center">
-              <span className="text-sm text-red-600 dark:text-red-400">
-                ⚠️ Momentos de caos: {stats.chaosCount}
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Sección de recompensas */}
-        {!showRewardModal ? (
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => setShowRewardModal(true)}
-            className="w-full py-4 bg-gradient-to-r from-amber-400 to-yellow-500 text-white rounded-xl font-semibold shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50 transition-all flex items-center justify-center gap-3"
-          >
-            <Gift size={20} />
-            Dar recompensas a la clase
-            <Users size={18} />
-          </motion.button>
-        ) : (
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-amber-200 dark:border-amber-800 shadow-lg">
-            <h3 className="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
-              <Gift className="text-amber-500" size={20} />
-              Recompensas para la clase
-            </h3>
+            </motion.div>
             
-            <div className="grid grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">
-                  <Star size={14} className="inline mr-1 text-purple-500" />
-                  XP por estudiante
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={rewardXP}
-                  onChange={(e) => setRewardXP(Math.max(0, Number(e.target.value)))}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-center text-lg font-bold"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">
-                  <Coins size={14} className="inline mr-1 text-yellow-500" />
-                  GP por estudiante
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={rewardGP}
-                  onChange={(e) => setRewardGP(Math.max(0, Number(e.target.value)))}
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-center text-lg font-bold"
-                />
-              </div>
-            </div>
-
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 text-center">
-              Se dará a {classroom?.students?.length || 0} estudiantes
-            </p>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowRewardModal(false)}
-                className="flex-1 py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={giveRewardsToClass}
-                disabled={isGivingRewards || (rewardXP === 0 && rewardGP === 0)}
-                className="flex-1 py-2.5 bg-gradient-to-r from-amber-400 to-yellow-500 text-white rounded-xl font-medium hover:from-amber-500 hover:to-yellow-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {isGivingRewards ? (
-                  <>
-                    <Loader2 size={18} className="animate-spin" />
-                    Entregando...
-                  </>
-                ) : (
-                  <>
-                    <Gift size={18} />
-                    Entregar
-                  </>
-                )}
-              </button>
-            </div>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="mt-6"
+            >
+              <div className="text-5xl mb-3">{gradeEmoji[grade]}</div>
+              <h1 className="text-3xl font-black text-gray-800 dark:text-white mb-2">
+                {gradeMessage[grade]}
+              </h1>
+              <p className="text-gray-500 dark:text-gray-400 text-lg">
+                Sesión de Aula Zen completada
+              </p>
+            </motion.div>
           </div>
-        )}
 
-        {/* Acciones */}
-        <div className="flex gap-3">
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={resetGame}
-            className="flex-1 py-3 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-all flex items-center justify-center gap-2"
+          {/* Estadísticas con animación escalonada */}
+          <motion.div 
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.8 }}
+            className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-md rounded-3xl p-6 border border-white/20 shadow-2xl"
           >
-            <RotateCcw size={18} />
+            <div className="grid grid-cols-2 gap-4">
+              {[
+                { icon: Trophy, color: 'emerald', value: stats.totalPoints, label: 'Puntos totales', delay: 1 },
+                { icon: Leaf, color: 'blue', value: `${zenPercentage}%`, label: 'Tiempo en zen', delay: 1.2 },
+                { icon: Flame, color: 'purple', value: formatTime(stats.longestStreak), label: 'Racha más larga', delay: 1.4 },
+                { icon: TrendingUp, color: 'orange', value: `${stats.peakNoise}%`, label: 'Pico máximo', delay: 1.6 },
+              ].map((stat, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, scale: 0.8, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  transition={{ delay: stat.delay, type: 'spring' }}
+                  whileHover={{ scale: 1.05 }}
+                  className={`text-center p-5 bg-${stat.color}-50 dark:bg-${stat.color}-900/20 rounded-2xl border border-${stat.color}-200 dark:border-${stat.color}-800/50 shadow-lg`}
+                >
+                  <motion.div
+                    animate={{ rotate: [0, 10, -10, 0] }}
+                    transition={{ duration: 2, repeat: Infinity, delay: i * 0.2 }}
+                  >
+                    <stat.icon className={`w-10 h-10 mx-auto text-${stat.color}-500 mb-2`} />
+                  </motion.div>
+                  <motion.div 
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ delay: stat.delay + 0.2, type: 'spring' }}
+                    className={`text-3xl font-black text-${stat.color}-600 dark:text-${stat.color}-400`}
+                  >
+                    {stat.value}
+                  </motion.div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 font-medium mt-1">{stat.label}</div>
+                </motion.div>
+              ))}
+            </div>
+
+            {stats.chaosCount > 0 && (
+              <motion.div 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 2 }}
+                className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-xl text-center border border-red-200 dark:border-red-800/50"
+              >
+                <span className="text-sm text-red-600 dark:text-red-400 font-medium">
+                  ⚠️ Momentos de caos: {stats.chaosCount}
+                </span>
+              </motion.div>
+            )}
+          </motion.div>
+
+        {/* Sección de recompensas - Mejorada */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 2 }}
+        >
+          {!showRewardModal ? (
+            <motion.button
+              whileHover={{ scale: 1.02, boxShadow: '0 0 30px rgba(245, 158, 11, 0.5)' }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setShowRewardModal(true)}
+              className="w-full py-5 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-white rounded-2xl font-bold text-lg shadow-xl shadow-amber-500/30 transition-all flex items-center justify-center gap-3 relative overflow-hidden"
+            >
+              <motion.div
+                className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+                animate={{ x: ['-100%', '100%'] }}
+                transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+              />
+              <Gift size={24} className="relative z-10" />
+              <span className="relative z-10">🎁 Dar recompensas a la clase</span>
+              <Users size={20} className="relative z-10" />
+            </motion.button>
+          ) : (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white/95 dark:bg-gray-800/95 backdrop-blur-md rounded-3xl p-6 border-2 border-amber-300 dark:border-amber-700 shadow-2xl"
+            >
+              <h3 className="font-black text-xl text-gray-800 dark:text-white mb-5 flex items-center justify-center gap-2">
+                <motion.div animate={{ rotate: [0, 10, -10, 0] }} transition={{ duration: 1, repeat: Infinity }}>
+                  <Gift className="text-amber-500" size={28} />
+                </motion.div>
+                Recompensas para la clase
+              </h3>
+              
+              <div className="grid grid-cols-2 gap-4 mb-5">
+                <div className="bg-purple-50 dark:bg-purple-900/20 rounded-2xl p-4 border border-purple-200 dark:border-purple-800">
+                  <label className="block text-sm text-purple-600 dark:text-purple-400 mb-2 font-medium text-center">
+                    <Star size={16} className="inline mr-1" />
+                    XP por estudiante
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={rewardXP}
+                    onChange={(e) => setRewardXP(Math.max(0, Number(e.target.value)))}
+                    className="w-full px-4 py-3 rounded-xl border-2 border-purple-300 dark:border-purple-700 bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-center text-2xl font-black focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all"
+                  />
+                </div>
+                <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-2xl p-4 border border-yellow-200 dark:border-yellow-800">
+                  <label className="block text-sm text-yellow-600 dark:text-yellow-400 mb-2 font-medium text-center">
+                    <Coins size={16} className="inline mr-1" />
+                    GP por estudiante
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={rewardGP}
+                    onChange={(e) => setRewardGP(Math.max(0, Number(e.target.value)))}
+                    className="w-full px-4 py-3 rounded-xl border-2 border-yellow-300 dark:border-yellow-700 bg-white dark:bg-gray-700 text-gray-800 dark:text-white text-center text-2xl font-black focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all"
+                  />
+                </div>
+              </div>
+
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-5 text-center bg-gray-100 dark:bg-gray-700/50 rounded-xl py-2">
+                👥 Se dará a <span className="font-bold text-gray-700 dark:text-gray-300">{classroom?.students?.length || 0}</span> estudiantes
+              </p>
+
+              <div className="flex gap-3">
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setShowRewardModal(false)}
+                  className="flex-1 py-3 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                >
+                  Cancelar
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={giveRewardsToClass}
+                  disabled={isGivingRewards || (rewardXP === 0 && rewardGP === 0)}
+                  className="flex-1 py-3 bg-gradient-to-r from-amber-400 to-yellow-500 text-white rounded-xl font-semibold hover:from-amber-500 hover:to-yellow-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg"
+                >
+                  {isGivingRewards ? (
+                    <>
+                      <Loader2 size={20} className="animate-spin" />
+                      Entregando...
+                    </>
+                  ) : (
+                    <>
+                      <Gift size={20} />
+                      ¡Entregar! 🎉
+                    </>
+                  )}
+                </motion.button>
+              </div>
+            </motion.div>
+          )}
+        </motion.div>
+
+        {/* Acciones - Mejoradas */}
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 2.2 }}
+          className="flex gap-4"
+        >
+          <motion.button
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={resetGame}
+            className="flex-1 py-4 bg-white/80 dark:bg-gray-700/80 backdrop-blur-md text-gray-700 dark:text-gray-300 rounded-2xl font-semibold hover:bg-white dark:hover:bg-gray-600 transition-all flex items-center justify-center gap-2 shadow-lg border border-gray-200 dark:border-gray-600"
+          >
+            <RotateCcw size={20} />
             Repetir
           </motion.button>
           <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
+            whileHover={{ scale: 1.03, boxShadow: '0 0 30px rgba(16, 185, 129, 0.5)' }}
+            whileTap={{ scale: 0.97 }}
             onClick={onBack}
-            className="flex-1 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-medium shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 transition-all flex items-center justify-center gap-2"
+            className="flex-1 py-4 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-2xl font-semibold shadow-xl shadow-emerald-500/30 transition-all flex items-center justify-center gap-2"
           >
-            <Check size={18} />
-            Finalizar
+            <Check size={20} />
+            Finalizar ✓
           </motion.button>
+        </motion.div>
         </div>
       </div>
     );
@@ -747,190 +860,353 @@ export const AulaZenActivity = ({ classroom, onBack }: AulaZenActivityProps) => 
 
   // Pantalla de juego
   return (
-    <div className="space-y-4">
-      {/* Header con controles */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+    <div className="min-h-[calc(100vh-200px)] relative">
+      {/* Fondo animado según estado */}
+      <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
+        <motion.div 
+          animate={{ 
+            opacity: zenState === 'zen' ? 0.3 : zenState === 'calm' ? 0.2 : zenState === 'alert' ? 0.15 : 0.1
+          }}
+          className={`absolute inset-0 bg-gradient-to-br ${currentStyle.gradient}`}
+        />
+        {/* Partículas flotantes */}
+        {gameState === 'playing' && zenState !== 'chaos' && (
+          <>
+            {[...Array(8)].map((_, i) => (
+              <motion.div
+                key={i}
+                className="absolute text-4xl opacity-20"
+                initial={{ 
+                  x: Math.random() * window.innerWidth, 
+                  y: window.innerHeight + 50 
+                }}
+                animate={{ 
+                  y: -100,
+                  x: Math.random() * window.innerWidth
+                }}
+                transition={{ 
+                  duration: 8 + Math.random() * 4,
+                  repeat: Infinity,
+                  delay: i * 1.5,
+                  ease: 'linear'
+                }}
+              >
+                {zenState === 'zen' ? '🧘' : '🍃'}
+              </motion.div>
+            ))}
+          </>
+        )}
+        {/* Efectos de caos */}
+        {zenState === 'chaos' && (
           <motion.div
-            animate={{ 
-              scale: gameState === 'playing' ? [1, 1.1, 1] : 1,
-              rotate: zenState === 'chaos' ? [0, -5, 5, 0] : 0
-            }}
-            transition={{ duration: 0.5, repeat: gameState === 'playing' ? Infinity : 0 }}
-            className={`w-12 h-12 bg-gradient-to-br ${currentStyle.gradient} rounded-xl flex items-center justify-center text-white shadow-lg ${currentStyle.glow}`}
+            animate={{ opacity: [0.1, 0.3, 0.1] }}
+            transition={{ duration: 0.3, repeat: Infinity }}
+            className="absolute inset-0 bg-red-500"
+          />
+        )}
+      </div>
+
+      <div className="space-y-4 relative z-10">
+        {/* Header con controles - Mejorado */}
+        <div className="flex items-center justify-between bg-white/80 dark:bg-gray-800/80 backdrop-blur-md rounded-2xl p-4 shadow-lg border border-white/20">
+          <div className="flex items-center gap-4">
+            <motion.div
+              animate={{ 
+                scale: gameState === 'playing' ? [1, 1.15, 1] : 1,
+                rotate: zenState === 'chaos' ? [0, -10, 10, -10, 0] : 0,
+                boxShadow: zenState === 'zen' 
+                  ? ['0 0 20px rgba(16, 185, 129, 0.5)', '0 0 40px rgba(16, 185, 129, 0.8)', '0 0 20px rgba(16, 185, 129, 0.5)']
+                  : zenState === 'chaos'
+                    ? ['0 0 20px rgba(239, 68, 68, 0.5)', '0 0 40px rgba(239, 68, 68, 0.8)', '0 0 20px rgba(239, 68, 68, 0.5)']
+                    : '0 0 20px rgba(0,0,0,0.1)'
+              }}
+              transition={{ duration: zenState === 'chaos' ? 0.2 : 1, repeat: gameState === 'playing' ? Infinity : 0 }}
+              className={`w-14 h-14 bg-gradient-to-br ${currentStyle.gradient} rounded-2xl flex items-center justify-center text-white shadow-xl`}
+            >
+              <ZenIcon size={28} />
+            </motion.div>
+            <div>
+              <motion.h1 
+                key={zenState}
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-2xl font-black text-gray-800 dark:text-white"
+              >
+                {currentStyle.label}
+              </motion.h1>
+              <motion.p 
+                key={`msg-${zenState}`}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="text-gray-500 dark:text-gray-400 text-sm"
+              >
+                {currentStyle.message}
+              </motion.p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={togglePause}
+              className="p-3 bg-gray-100 dark:bg-gray-700 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors shadow-md"
+              title={gameState === 'playing' ? 'Pausar' : 'Reanudar'}
+            >
+              {gameState === 'playing' ? <Pause size={22} /> : <Play size={22} />}
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={() => setShowFinishConfirm(true)}
+              className="p-3 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors shadow-md"
+              title="Finalizar"
+            >
+              <StopCircle size={22} />
+            </motion.button>
+          </div>
+        </div>
+
+        {/* Timer y puntos - Mejorado */}
+        <div className="grid grid-cols-3 gap-3">
+          <motion.div 
+            className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-md rounded-2xl p-4 text-center border border-white/20 shadow-lg"
+            animate={timeRemaining <= 30 ? { scale: [1, 1.02, 1] } : {}}
+            transition={{ duration: 0.5, repeat: timeRemaining <= 30 ? Infinity : 0 }}
           >
-            <ZenIcon size={24} />
+            <motion.div
+              animate={timeRemaining <= 30 ? { color: ['#ef4444', '#f59e0b', '#ef4444'] } : {}}
+              transition={{ duration: 1, repeat: Infinity }}
+            >
+              <Clock size={24} className={`mx-auto mb-1 ${timeRemaining <= 30 ? 'text-red-500' : 'text-blue-500'}`} />
+            </motion.div>
+            <div className={`text-3xl font-black ${timeRemaining <= 30 ? 'text-red-500' : 'text-gray-800 dark:text-white'}`}>
+              {formatTime(timeRemaining)}
+            </div>
+            <div className="text-xs text-gray-500 font-medium">Tiempo</div>
           </motion.div>
-          <div>
-            <h1 className="text-xl font-bold text-gray-800 dark:text-white">
-              {currentStyle.label}
-            </h1>
-            <p className="text-gray-500 dark:text-gray-400 text-sm">
-              {currentStyle.message}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <motion.button
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-            onClick={togglePause}
-            className="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-            title={gameState === 'playing' ? 'Pausar' : 'Reanudar'}
+          
+          <motion.div 
+            className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-md rounded-2xl p-4 text-center border border-white/20 shadow-lg relative overflow-hidden"
+            whileHover={{ scale: 1.02 }}
           >
-            {gameState === 'playing' ? <Pause size={20} /> : <Play size={20} />}
-          </motion.button>
-          <motion.button
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-            onClick={() => setShowFinishConfirm(true)}
-            className="p-2 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
-            title="Finalizar"
+            <motion.div
+              className="absolute inset-0 bg-gradient-to-t from-yellow-500/20 to-transparent"
+              animate={{ opacity: [0.3, 0.6, 0.3] }}
+              transition={{ duration: 2, repeat: Infinity }}
+            />
+            <Trophy size={24} className="mx-auto text-yellow-500 mb-1 relative z-10" />
+            <motion.div 
+              key={stats.totalPoints}
+              initial={{ scale: 1.3 }}
+              animate={{ scale: 1 }}
+              className="text-3xl font-black text-gray-800 dark:text-white relative z-10"
+            >
+              {stats.totalPoints}
+            </motion.div>
+            <div className="text-xs text-gray-500 font-medium relative z-10">Puntos</div>
+          </motion.div>
+          
+          <motion.div 
+            className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-md rounded-2xl p-4 text-center border border-white/20 shadow-lg relative overflow-hidden"
+            animate={stats.currentStreak >= 10 ? { 
+              boxShadow: ['0 0 0 rgba(168, 85, 247, 0)', '0 0 20px rgba(168, 85, 247, 0.5)', '0 0 0 rgba(168, 85, 247, 0)']
+            } : {}}
+            transition={{ duration: 1.5, repeat: Infinity }}
           >
-            <StopCircle size={20} />
-          </motion.button>
+            <Sparkles size={24} className="mx-auto text-purple-500 mb-1" />
+            <div className="text-3xl font-black text-gray-800 dark:text-white">
+              x{(1 + Math.floor(stats.currentStreak / 10) * config.streakMultiplier).toFixed(1)}
+            </div>
+            <div className="text-xs text-gray-500 font-medium">Multiplicador</div>
+          </motion.div>
         </div>
-      </div>
 
-      {/* Timer y puntos */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 text-center border border-gray-200 dark:border-gray-700">
-          <Clock size={20} className="mx-auto text-gray-400 mb-1" />
-          <div className="text-2xl font-bold text-gray-800 dark:text-white">
-            {formatTime(timeRemaining)}
-          </div>
-          <div className="text-xs text-gray-500">Tiempo</div>
-        </div>
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 text-center border border-gray-200 dark:border-gray-700">
-          <Trophy size={20} className="mx-auto text-yellow-500 mb-1" />
-          <div className="text-2xl font-bold text-gray-800 dark:text-white">
-            {stats.totalPoints}
-          </div>
-          <div className="text-xs text-gray-500">Puntos</div>
-        </div>
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-4 text-center border border-gray-200 dark:border-gray-700">
-          <Sparkles size={20} className="mx-auto text-purple-500 mb-1" />
-          <div className="text-2xl font-bold text-gray-800 dark:text-white">
-            x{(1 + Math.floor(stats.currentStreak / 10) * config.streakMultiplier).toFixed(1)}
-          </div>
-          <div className="text-xs text-gray-500">Multiplicador</div>
-        </div>
-      </div>
-
-      {/* Medidor principal */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 border border-gray-200 dark:border-gray-700 shadow-lg">
+      {/* Medidor principal - Mejorado */}
+      <motion.div 
+        className={`bg-white/90 dark:bg-gray-800/90 backdrop-blur-md rounded-3xl p-8 border-2 shadow-2xl transition-colors duration-500 ${
+          zenState === 'zen' ? 'border-emerald-400/50' :
+          zenState === 'calm' ? 'border-green-400/50' :
+          zenState === 'alert' ? 'border-yellow-400/50' :
+          'border-red-400/50'
+        }`}
+        animate={zenState === 'chaos' ? { x: [-2, 2, -2, 2, 0] } : {}}
+        transition={{ duration: 0.3, repeat: zenState === 'chaos' ? Infinity : 0 }}
+      >
         <div className="flex flex-col items-center">
-          {/* Círculo del medidor */}
-          <div className="relative w-56 h-56 mb-4">
-            <svg className="w-full h-full transform -rotate-90">
+          {/* Círculo del medidor - Más grande y dramático */}
+          <div className="relative w-72 h-72 mb-6">
+            {/* Glow de fondo */}
+            <motion.div
+              className={`absolute inset-4 rounded-full blur-2xl ${currentStyle.bg}`}
+              animate={{ opacity: [0.2, 0.4, 0.2], scale: [0.9, 1, 0.9] }}
+              transition={{ duration: 2, repeat: Infinity }}
+            />
+            
+            <svg className="w-full h-full transform -rotate-90 relative z-10">
+              {/* Fondo del círculo */}
               <circle
-                cx="112"
-                cy="112"
-                r="100"
+                cx="144"
+                cy="144"
+                r="120"
                 fill="none"
                 stroke="currentColor"
-                strokeWidth="12"
+                strokeWidth="16"
                 className="text-gray-200 dark:text-gray-700"
               />
+              {/* Progreso del ruido */}
               <motion.circle
-                cx="112"
-                cy="112"
-                r="100"
+                cx="144"
+                cy="144"
+                r="120"
                 fill="none"
-                stroke="currentColor"
-                strokeWidth="12"
+                stroke="url(#noiseGradient)"
+                strokeWidth="16"
                 strokeLinecap="round"
-                strokeDasharray={`${noiseLevel * 6.28} 628`}
-                className={`transition-colors duration-300 ${currentStyle.text}`}
+                strokeDasharray={`${noiseLevel * 7.54} 754`}
+                style={{ filter: 'drop-shadow(0 0 8px currentColor)' }}
               />
-              {/* Línea del umbral */}
+              {/* Marcador del umbral */}
               <circle
-                cx="112"
-                cy="112"
-                r="100"
+                cx="144"
+                cy="144"
+                r="120"
                 fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeDasharray="4 4"
-                strokeDashoffset={`${-config.maxThreshold * 6.28}`}
-                className="text-red-400 dark:text-red-500"
+                stroke="#ef4444"
+                strokeWidth="3"
+                strokeDasharray={`${config.maxThreshold * 7.54} 754`}
+                opacity="0.5"
               />
+              {/* Gradiente dinámico */}
+              <defs>
+                <linearGradient id="noiseGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stopColor={zenState === 'chaos' ? '#ef4444' : zenState === 'alert' ? '#f59e0b' : '#10b981'} />
+                  <stop offset="100%" stopColor={zenState === 'chaos' ? '#dc2626' : zenState === 'alert' ? '#d97706' : '#059669'} />
+                </linearGradient>
+              </defs>
             </svg>
             
+            {/* Centro del medidor */}
             <div className="absolute inset-0 flex flex-col items-center justify-center">
               <motion.div
                 animate={{ 
-                  scale: gameState === 'playing' ? [1, 1.05, 1] : 1
+                  scale: gameState === 'playing' ? [1, 1.1, 1] : 1,
+                  rotate: zenState === 'chaos' ? [0, -5, 5, 0] : 0
                 }}
-                transition={{ duration: 1, repeat: Infinity }}
+                transition={{ duration: zenState === 'chaos' ? 0.2 : 1.5, repeat: Infinity }}
+                className={`p-4 rounded-full ${zenState === 'chaos' ? 'bg-red-100 dark:bg-red-900/30' : 'bg-emerald-100 dark:bg-emerald-900/30'}`}
               >
                 {gameState === 'playing' ? (
-                  <Mic size={36} className={currentStyle.text} />
+                  <Mic size={48} className={currentStyle.text} />
                 ) : (
-                  <MicOff size={36} className="text-gray-400" />
+                  <MicOff size={48} className="text-gray-400" />
                 )}
               </motion.div>
-              <span className={`text-4xl font-bold mt-2 ${currentStyle.text}`}>
+              <motion.span 
+                key={noiseLevel}
+                initial={{ scale: 1.2 }}
+                animate={{ scale: 1 }}
+                className={`text-6xl font-black mt-3 ${currentStyle.text}`}
+              >
                 {noiseLevel}%
-              </span>
+              </motion.span>
+              <span className="text-sm text-gray-500 dark:text-gray-400 mt-1">Nivel de ruido</span>
             </div>
           </div>
 
-          {/* Barra de progreso */}
-          <div className="w-full max-w-md">
-            <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-              <span>Silencio</span>
-              <span className="text-red-500">Umbral ({config.maxThreshold}%)</span>
+          {/* Barra de progreso mejorada */}
+          <div className="w-full max-w-lg">
+            <div className="flex justify-between text-sm text-gray-500 dark:text-gray-400 mb-2 font-medium">
+              <span className="flex items-center gap-1">
+                <Leaf size={14} className="text-emerald-500" />
+                Silencio
+              </span>
+              <span className="flex items-center gap-1 text-red-500">
+                <Flame size={14} />
+                Umbral ({config.maxThreshold}%)
+              </span>
             </div>
-            <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden relative">
-              <div 
-                className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10"
+            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden relative shadow-inner">
+              {/* Marcador del umbral */}
+              <motion.div 
+                className="absolute top-0 bottom-0 w-1 bg-red-500 z-20 rounded-full"
                 style={{ left: `${config.maxThreshold}%` }}
+                animate={{ opacity: [0.5, 1, 0.5] }}
+                transition={{ duration: 1, repeat: Infinity }}
               />
+              {/* Barra de progreso */}
               <motion.div
-                className={`h-full rounded-full ${currentStyle.bg}`}
+                className={`h-full rounded-full bg-gradient-to-r ${currentStyle.gradient} shadow-lg`}
                 animate={{ width: `${noiseLevel}%` }}
                 transition={{ duration: 0.1 }}
+                style={{ boxShadow: `0 0 20px ${zenState === 'chaos' ? 'rgba(239,68,68,0.5)' : 'rgba(16,185,129,0.5)'}` }}
               />
             </div>
           </div>
 
-          {/* Mini gráfico de historial */}
-          <div className="w-full max-w-md mt-4 h-16 flex items-end gap-0.5">
-            {noiseHistory.map((level, i) => (
-              <motion.div
-                key={i}
-                className={`flex-1 rounded-t ${getZenState(level) === 'chaos' ? 'bg-red-400' : getZenState(level) === 'alert' ? 'bg-yellow-400' : 'bg-emerald-400'}`}
-                initial={{ height: 0 }}
-                animate={{ height: `${Math.max(4, level)}%` }}
-                transition={{ duration: 0.1 }}
-              />
-            ))}
+          {/* Mini gráfico de historial mejorado */}
+          <div className="w-full max-w-lg mt-6">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">Historial de ruido</span>
+              <span className="text-xs text-gray-400">Últimos 60 segundos</span>
+            </div>
+            <div className="h-20 flex items-end gap-0.5 bg-gray-100 dark:bg-gray-700/50 rounded-xl p-2">
+              {noiseHistory.map((level, i) => (
+                <motion.div
+                  key={i}
+                  className={`flex-1 rounded-t-sm ${
+                    getZenState(level) === 'chaos' ? 'bg-gradient-to-t from-red-500 to-red-400' : 
+                    getZenState(level) === 'alert' ? 'bg-gradient-to-t from-yellow-500 to-yellow-400' : 
+                    'bg-gradient-to-t from-emerald-500 to-emerald-400'
+                  }`}
+                  initial={{ height: 0 }}
+                  animate={{ height: `${Math.max(8, level)}%` }}
+                  transition={{ duration: 0.1 }}
+                />
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+      </motion.div>
 
-      {/* Racha actual */}
+      {/* Racha actual - Mejorada */}
       {stats.currentStreak > 5 && (
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-gradient-to-r from-emerald-500 to-teal-600 rounded-xl p-4 text-white text-center"
+          initial={{ opacity: 0, y: 20, scale: 0.9 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          className="bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 rounded-2xl p-5 text-white text-center shadow-xl shadow-emerald-500/30 relative overflow-hidden"
         >
-          <div className="flex items-center justify-center gap-2">
-            <Flame size={20} />
-            <span className="font-semibold">
-              ¡Racha de {formatTime(stats.currentStreak)}!
-            </span>
-            {stats.currentStreak >= 10 && (
-              <span className="bg-white/20 px-2 py-0.5 rounded text-xs">
-                +{Math.floor(stats.currentStreak / 10) * 10}% bonus
+          {/* Efecto de brillo */}
+          <motion.div
+            className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+            animate={{ x: ['-100%', '100%'] }}
+            transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+          />
+          <div className="flex items-center justify-center gap-3 relative z-10">
+            <motion.div
+              animate={{ scale: [1, 1.2, 1], rotate: [0, 10, -10, 0] }}
+              transition={{ duration: 1, repeat: Infinity }}
+            >
+              <Flame size={28} />
+            </motion.div>
+            <div>
+              <span className="font-black text-xl">
+                ¡Racha de {formatTime(stats.currentStreak)}!
               </span>
-            )}
+              {stats.currentStreak >= 10 && (
+                <motion.span 
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="ml-3 bg-white/30 px-3 py-1 rounded-full text-sm font-bold"
+                >
+                  🔥 +{Math.floor(stats.currentStreak / 10) * 10}% bonus
+                </motion.span>
+              )}
+            </div>
           </div>
         </motion.div>
       )}
+      </div>
 
       {/* Estado pausado */}
       {gameState === 'paused' && (

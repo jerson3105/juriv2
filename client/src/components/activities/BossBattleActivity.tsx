@@ -1170,18 +1170,55 @@ const QuestionsModal = ({
                         </div>
                         <p className="text-sm text-gray-800 font-medium">{q.question}</p>
                         <div className="flex flex-wrap gap-1 mt-2">
-                          {(Array.isArray(q.options) ? q.options : []).map((opt: string, i: number) => (
-                            <span
-                              key={i}
-                              className={`text-xs px-2 py-1 rounded ${
-                                i === q.correctIndex
-                                  ? 'bg-green-100 text-green-700 font-medium'
-                                  : 'bg-gray-200 text-gray-600'
-                              }`}
-                            >
-                              {opt}
-                            </span>
-                          ))}
+                          {q.battleQuestionType === 'MATCHING' ? (
+                            // Para MATCHING, mostrar los pares
+                            (() => {
+                              const parsedPairs = (() => {
+                                try {
+                                  if (Array.isArray(q.pairs)) return q.pairs;
+                                  if (typeof q.pairs === 'string') return JSON.parse(q.pairs);
+                                  return [];
+                                } catch { return []; }
+                              })();
+                              return parsedPairs.length > 0 ? (
+                                <div className="flex flex-col gap-1 w-full">
+                                  {parsedPairs.map((pair: { left: string; right: string }, i: number) => (
+                                    <span key={i} className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700">
+                                      {i + 1}. {pair.left} → {pair.right}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-gray-400">Sin pares</span>
+                              );
+                            })()
+                          ) : (
+                            // Para otros tipos, mostrar opciones
+                            (Array.isArray(q.options) ? q.options : []).map((_opt: string, i: number) => {
+                              const parsedCorrectIndices = (() => {
+                                try {
+                                  if (Array.isArray(q.correctIndices)) return q.correctIndices;
+                                  if (typeof q.correctIndices === 'string') return JSON.parse(q.correctIndices);
+                                  return [];
+                                } catch { return []; }
+                              })();
+                              const isCorrect = q.battleQuestionType === 'MULTIPLE_CHOICE' 
+                                ? parsedCorrectIndices.includes(i)
+                                : i === q.correctIndex;
+                              return (
+                                <span
+                                  key={i}
+                                  className={`text-xs px-2 py-1 rounded ${
+                                    isCorrect
+                                      ? 'bg-green-100 text-green-700 font-medium'
+                                      : 'bg-gray-200 text-gray-600'
+                                  }`}
+                                >
+                                  {String.fromCharCode(65 + i)}
+                                </span>
+                              );
+                            })
+                          )}
                         </div>
                       </div>
                       <div className="flex gap-1">
@@ -1673,7 +1710,7 @@ const QuestionFormModal = ({
     } else if (battleQuestionType === 'SINGLE_CHOICE') {
       const validOptions = options.filter(o => o.trim());
       if (validOptions.length < 2) {
-        toast.error('Necesitas al menos 2 opciones');
+        toast.error('Escribe al menos 2 opciones de respuesta');
         return;
       }
       data.options = validOptions;
@@ -1681,11 +1718,11 @@ const QuestionFormModal = ({
     } else if (battleQuestionType === 'MULTIPLE_CHOICE') {
       const validOptions = options.filter(o => o.trim());
       if (validOptions.length < 2) {
-        toast.error('Necesitas al menos 2 opciones');
+        toast.error('Escribe al menos 2 opciones de respuesta');
         return;
       }
-      if (correctIndices.length === 0) {
-        toast.error('Selecciona al menos una respuesta correcta');
+      if (correctIndices.length < 2) {
+        toast.error('Selecciona al menos 2 respuestas correctas (es múltiple)');
         return;
       }
       data.options = validOptions;
@@ -1770,9 +1807,9 @@ const QuestionFormModal = ({
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
           onClick={(e) => e.stopPropagation()}
-          className="bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden border border-slate-700"
+          className="bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto border border-slate-700"
         >
-          <div className="flex items-center justify-between p-4 border-b border-slate-700 bg-gradient-to-r from-indigo-600 to-purple-600">
+          <div className="flex items-center justify-between p-4 border-b border-slate-700 bg-gradient-to-r from-indigo-600 to-purple-600 flex-shrink-0">
             <h2 className="text-lg font-bold text-white">
               {question ? '✏️ Editar pregunta' : '➕ Nueva pregunta'}
             </h2>
@@ -1781,7 +1818,7 @@ const QuestionFormModal = ({
             </button>
           </div>
 
-          <form onSubmit={handleSubmit} className="p-4 space-y-4 overflow-y-auto max-h-[70vh]">
+          <form onSubmit={handleSubmit} className="p-4 space-y-4">
             {/* Tipo de pregunta de batalla */}
             <div>
               <label className="block text-sm font-medium mb-2 text-gray-300">
