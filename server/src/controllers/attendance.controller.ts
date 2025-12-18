@@ -263,25 +263,35 @@ export const attendanceController = {
         new Date()
       );
 
-      // Función para obtener fecha local en formato YYYY-MM-DD
-      const getLocalDateString = (date: Date): string => {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
+      // Función para obtener fecha en formato YYYY-MM-DD
+      // La fecha viene de MySQL como UTC, necesitamos ajustarla
+      const getDateString = (date: Date): string => {
+        // Si la fecha viene como string de MySQL, puede tener offset
+        // Usamos UTC para consistencia ya que MySQL almacena en UTC
+        const year = date.getUTCFullYear();
+        const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(date.getUTCDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
       };
+
+      console.log('=== DEBUG PDF ATTENDANCE ===');
+      console.log('Total records:', allRecords.length);
+      allRecords.slice(0, 5).forEach(r => {
+        console.log('Record date:', r.date, '-> getDateString:', getDateString(r.date), '-> toISOString:', r.date.toISOString());
+      });
 
       // Obtener fechas únicas ordenadas
       const uniqueDatesSet = new Set<string>();
       allRecords.forEach(r => {
-        uniqueDatesSet.add(getLocalDateString(r.date));
+        uniqueDatesSet.add(getDateString(r.date));
       });
       const uniqueDates = Array.from(uniqueDatesSet).sort();
+      console.log('Unique dates:', uniqueDates);
 
       // Crear mapa de asistencia por estudiante y fecha
       const attendanceMap: Record<string, Record<string, string>> = {};
       allRecords.forEach(r => {
-        const dateKey = getLocalDateString(r.date);
+        const dateKey = getDateString(r.date);
         if (!attendanceMap[r.studentProfileId]) {
           attendanceMap[r.studentProfileId] = {};
         }

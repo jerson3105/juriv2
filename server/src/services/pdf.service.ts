@@ -467,8 +467,11 @@ export class PDFService {
       datesToShow.forEach((date) => {
         doc.rect(currentX, tableY, dateColWidth, headerHeight).fill('#2563eb').stroke('#1e40af');
         
-        const d = new Date(date);
-        const dayNum = d.getDate().toString();
+        // Parsear fecha manualmente para evitar problemas de zona horaria
+        const [year, month, day] = date.split('-').map(Number);
+        const dayNum = day.toString();
+        // Crear fecha con hora del mediodía para evitar problemas de zona horaria
+        const d = new Date(year, month - 1, day, 12, 0, 0);
         const dayName = d.toLocaleDateString('es-ES', { weekday: 'short' }).charAt(0).toUpperCase();
         
         doc.fontSize(7).fillColor('#ffffff').font('Helvetica-Bold')
@@ -519,9 +522,11 @@ export class PDFService {
 
           datesToShow.forEach((date) => {
             doc.rect(currentX, rowY, dateColWidth, headerHeight).fill('#2563eb').stroke('#1e40af');
-            const d = new Date(date);
+            // Parsear fecha manualmente para evitar problemas de zona horaria
+            const [year, month, day] = date.split('-').map(Number);
+            const d = new Date(year, month - 1, day, 12, 0, 0);
             doc.fontSize(7).fillColor('#ffffff').font('Helvetica-Bold')
-              .text(d.getDate().toString(), currentX, rowY + 8, { width: dateColWidth, align: 'center' });
+              .text(day.toString(), currentX, rowY + 8, { width: dateColWidth, align: 'center' });
             doc.fontSize(6).fillColor('#bfdbfe').font('Helvetica')
               .text(d.toLocaleDateString('es-ES', { weekday: 'short' }).charAt(0).toUpperCase(), currentX, rowY + 20, { width: dateColWidth, align: 'center' });
             currentX += dateColWidth;
@@ -627,7 +632,9 @@ export class PDFService {
 
   // Formatear fecha corta
   private formatDateShort(dateStr: string): string {
-    const d = new Date(dateStr);
+    // Parsear fecha manualmente para evitar problemas de zona horaria
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const d = new Date(year, month - 1, day, 12, 0, 0);
     return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
   }
 
