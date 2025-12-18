@@ -94,4 +94,44 @@ export const attendanceApi = {
     const response = await api.get(`/attendance/student/${studentProfileId}/stats`);
     return response.data.data;
   },
+
+  // Descargar PDF de reporte de asistencia general
+  async downloadAttendanceReportPDF(classroomId: string, startDate?: string, endDate?: string): Promise<void> {
+    const params = new URLSearchParams();
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
+    
+    const response = await api.get(
+      `/attendance/classroom/${classroomId}/pdf?${params.toString()}`,
+      { responseType: 'blob' }
+    );
+    
+    const blob = new Blob([response.data], { type: 'application/pdf' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `reporte-asistencia.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  },
+
+  // Descargar PDF de asistencia de un estudiante
+  async downloadStudentAttendanceReportPDF(studentProfileId: string, studentName: string): Promise<void> {
+    const response = await api.get(
+      `/attendance/student/${studentProfileId}/pdf`,
+      { responseType: 'blob' }
+    );
+    
+    const blob = new Blob([response.data], { type: 'application/pdf' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `asistencia-${studentName}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  },
 };

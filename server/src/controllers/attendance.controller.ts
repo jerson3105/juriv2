@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
 import { attendanceService } from '../services/attendance.service.js';
+import { pdfService } from '../services/pdf.service.js';
 import { db } from '../db/index.js';
-import { studentProfiles } from '../db/schema.js';
+import { studentProfiles, classrooms } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 
 export const attendanceController = {
@@ -230,6 +231,185 @@ export const attendanceController = {
     } catch (error) {
       console.error('Error getting my attendance:', error);
       res.status(500).json({ success: false, message: 'Error al obtener asistencia' });
+    }
+  },
+
+  // Generar PDF de reporte de asistencia general
+  async downloadAttendanceReportPDF(req: Request, res: Response) {
+    try {
+      const { classroomId } = req.params;
+      const { startDate, endDate } = req.query;
+
+      // Obtener información de la clase
+      const [classroom] = await db
+        .select()
+        .from(classrooms)
+        .where(eq(classrooms.id, classroomId));
+
+      if (!classroom) {
+        return res.status(404).json({ success: false, message: 'Clase no encontrada' });
+      }
+
+      // Obtener todos los estudiantes de la clase
+      const students = await db
+        .select()
+        .from(studentProfiles)
+        .where(eq(studentProfiles.classroomId, classroomId));
+
+      // Obtener todos los registros de asistencia
+      const allRecords = await attendanceService.getAttendanceByDateRange(
+        classroomId,
+        new Date('2020-01-01'),
+        new Date()
+      );
+
+      // Función para obtener fecha local en formato YYYY-MM-DD
+      const getLocalDateString = (date: Date): string => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+
+      // Obtener fechas únicas ordenadas
+      const uniqueDatesSet = new Set<string>();
+      allRecords.forEach(r => {
+        uniqueDatesSet.add(getLocalDateString(r.date));
+      });
+      const uniqueDates = Array.from(uniqueDatesSet).sort();
+
+      // Crear mapa de asistencia por estudiante y fecha
+      const attendanceMap: Record<string, Record<string, string>> = {};
+      allRecords.forEach(r => {
+        const dateKey = getLocalDateString(r.date);
+        if (!attendanceMap[r.studentProfileId]) {
+          attendanceMap[r.studentProfileId] = {};
+        }
+        attendanceMap[r.studentProfileId][dateKey] = r.status;
+      });
+
+      // Preparar datos de estudiantes con asistencia por fecha
+      const studentData = students.map(student => {
+        const attendance: Record<string, string> = attendanceMap[student.id] || {};
+        let present = 0, absent = 0, late = 0;
+        
+        uniqueDates.forEach(date => {
+          const status = attendance[date];
+          if (status === 'PRESENT') present++;
+          else if (status === 'ABSENT') absent++;
+          else if (status === 'LATE') late++;
+        });
+
+        const total = present + absent + late;
+        const rate = total > 0 ? Math.round((present / total) * 100) : 0;
+
+        return {
+          id: student.id,
+          name: student.characterName || student.displayName || 'Sin nombre',
+          attendance,
+          present,
+          absent,
+          late,
+          rate,
+        };
+      });
+
+      // Ordenar por nombre
+      studentData.sort((a, b) => a.name.localeCompare(b.name));
+
+      // Generar PDF
+      const pdfBuffer = await pdfService.generateAttendanceReport(
+        classroom.name,
+        studentData,
+        uniqueDates
+      );
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename=control-asistencia-${classroom.name}.pdf`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error('Error generating attendance report PDF:', error);
+      res.status(500).json({ success: false, message: 'Error al generar reporte PDF' });
+    }
+  },
+
+  // Generar PDF de asistencia de un estudiante específico
+  async downloadStudentAttendanceReportPDF(req: Request, res: Response) {
+    try {
+      const { studentProfileId } = req.params;
+
+      // Obtener información del estudiante
+      const [student] = await db
+        .select()
+        .from(studentProfiles)
+        .where(eq(studentProfiles.id, studentProfileId));
+
+      if (!student) {
+        return res.status(404).json({ success: false, message: 'Estudiante no encontrado' });
+      }
+
+      // Obtener información de la clase
+      const [classroom] = await db
+        .select()
+        .from(classrooms)
+        .where(eq(classrooms.id, student.classroomId));
+
+      // Obtener estadísticas del estudiante
+      const stats = await attendanceService.getStudentAttendanceStats(studentProfileId);
+
+      // Obtener historial completo
+      const history = await attendanceService.getStudentAttendanceHistory(studentProfileId, 365);
+
+      // Calcular rachas
+      let currentStreak = 0;
+      let bestStreak = 0;
+      let tempStreak = 0;
+      
+      const sortedHistory = [...history].sort((a, b) => 
+        new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+
+      for (const record of sortedHistory) {
+        if (record.status === 'PRESENT') {
+          tempStreak++;
+          if (tempStreak > bestStreak) bestStreak = tempStreak;
+        } else {
+          if (currentStreak === 0) currentStreak = tempStreak;
+          tempStreak = 0;
+        }
+      }
+      if (currentStreak === 0) currentStreak = tempStreak;
+      if (tempStreak > bestStreak) bestStreak = tempStreak;
+
+      const studentName = student.characterName || student.displayName || 'Estudiante';
+
+      // Generar PDF
+      const pdfBuffer = await pdfService.generateStudentAttendanceReport(
+        studentName,
+        classroom?.name || 'Clase',
+        {
+          total: stats.total,
+          present: stats.present,
+          absent: stats.absent,
+          late: stats.late,
+          excused: stats.excused,
+          rate: stats.attendanceRate,
+          currentStreak,
+          bestStreak,
+        },
+        history.map(h => ({
+          date: h.date.toISOString(),
+          status: h.status as 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED',
+          xpAwarded: h.xpAwarded || 0,
+        }))
+      );
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename=asistencia-${studentName}.pdf`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error('Error generating student attendance report PDF:', error);
+      res.status(500).json({ success: false, message: 'Error al generar reporte PDF' });
     }
   },
 };

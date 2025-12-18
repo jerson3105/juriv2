@@ -106,7 +106,7 @@ export const ClassroomLayout = () => {
         { path: `/classroom/${id}/missions`, label: 'Misiones', icon: Target },
         { path: `/classroom/${id}/shop`, label: 'Tienda', icon: ShoppingBag, onboardingId: 'shop-menu' },
         { path: `/classroom/${id}/activities`, label: 'Actividades', icon: Dices },
-        { path: `/classroom/${id}/expeditions`, label: 'Expediciones', icon: Map, locked: true },
+        { path: `/classroom/${id}/expeditions`, label: 'Expediciones', icon: Map },
       ],
     },
     { 

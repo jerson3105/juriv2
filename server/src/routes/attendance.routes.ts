@@ -14,6 +14,10 @@ router.get('/classroom/:classroomId', authorize('TEACHER'), attendanceController
 router.get('/classroom/:classroomId/stats', authorize('TEACHER'), attendanceController.getClassroomStats);
 router.get('/classroom/:classroomId/range', authorize('TEACHER'), attendanceController.getAttendanceByRange);
 
+// Rutas de PDF (profesor)
+router.get('/classroom/:classroomId/pdf', authorize('TEACHER'), attendanceController.downloadAttendanceReportPDF);
+router.get('/student/:studentProfileId/pdf', authorize('TEACHER'), attendanceController.downloadStudentAttendanceReportPDF);
+
 // Rutas de estudiante (pueden ver su propio historial)
 router.get('/student/:studentProfileId/history', attendanceController.getStudentHistory);
 router.get('/student/:studentProfileId/stats', attendanceController.getStudentStats);

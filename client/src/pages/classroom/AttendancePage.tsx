@@ -13,6 +13,7 @@ import {
   Save,
   Sparkles,
   Users,
+  FileText,
   TrendingUp,
 } from 'lucide-react';
 import { classroomApi, type Classroom } from '../../lib/classroomApi';
@@ -34,6 +35,7 @@ export const AttendancePage = () => {
   const [attendanceData, setAttendanceData] = useState<Record<string, AttendanceStatus>>({});
   const [xpForPresent, setXpForPresent] = useState(5);
   const [hasChanges, setHasChanges] = useState(false);
+  const [downloadingPDF, setDownloadingPDF] = useState(false);
 
   const dateString = selectedDate.toISOString().split('T')[0];
 
@@ -131,6 +133,19 @@ export const AttendancePage = () => {
 
   const isToday = selectedDate.toDateString() === new Date().toDateString();
 
+  // Descargar PDF de reporte general
+  const handleDownloadPDF = async () => {
+    setDownloadingPDF(true);
+    try {
+      await attendanceApi.downloadAttendanceReportPDF(classroom.id);
+      toast.success('PDF descargado');
+    } catch (error) {
+      toast.error('Error al descargar PDF');
+    } finally {
+      setDownloadingPDF(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header con fecha */}
@@ -150,36 +165,54 @@ export const AttendancePage = () => {
             </div>
           </div>
           
-          {/* Selector de fecha */}
-          <div className="flex items-center justify-center sm:justify-end gap-1 sm:gap-2">
+          {/* Selector de fecha y botón PDF */}
+          <div className="flex items-center justify-center sm:justify-end gap-2 sm:gap-3">
+            {/* Botón descargar PDF */}
             <button
-              onClick={() => changeDate(-1)}
-              className="p-1.5 sm:p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              onClick={handleDownloadPDF}
+              disabled={downloadingPDF}
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-lg transition-colors disabled:opacity-50"
+              title="Descargar reporte PDF"
             >
-              <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
-            </button>
-            <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg">
-              <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600 dark:text-indigo-400 hidden sm:block" />
-              <span className="font-medium text-indigo-900 dark:text-indigo-200 text-xs sm:text-sm lg:text-base">
-                {selectedDate.toLocaleDateString('es-ES', { 
-                  weekday: 'short', 
-                  day: 'numeric', 
-                  month: 'short' 
-                })}
-              </span>
-              {isToday && (
-                <span className="px-1.5 sm:px-2 py-0.5 bg-indigo-600 text-white text-xs rounded-full">
-                  Hoy
-                </span>
+              {downloadingPDF ? (
+                <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <FileText size={16} />
               )}
-            </div>
-            <button
-              onClick={() => changeDate(1)}
-              disabled={isToday}
-              className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="hidden sm:inline">Reporte PDF</span>
             </button>
+
+            {/* Selector de fecha */}
+            <div className="flex items-center gap-1 sm:gap-2">
+              <button
+                onClick={() => changeDate(-1)}
+                className="p-1.5 sm:p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
+              <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 bg-indigo-50 dark:bg-indigo-900/30 rounded-lg">
+                <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600 dark:text-indigo-400 hidden sm:block" />
+                <span className="font-medium text-indigo-900 dark:text-indigo-200 text-xs sm:text-sm lg:text-base">
+                  {selectedDate.toLocaleDateString('es-ES', { 
+                    weekday: 'short', 
+                    day: 'numeric', 
+                    month: 'short' 
+                  })}
+                </span>
+                {isToday && (
+                  <span className="px-1.5 sm:px-2 py-0.5 bg-indigo-600 text-white text-xs rounded-full">
+                    Hoy
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={() => changeDate(1)}
+                disabled={isToday}
+                className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
+              </button>
+            </div>
           </div>
         </div>
 

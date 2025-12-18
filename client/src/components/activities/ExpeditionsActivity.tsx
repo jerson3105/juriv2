@@ -73,7 +73,7 @@ export const ExpeditionsActivity = ({ classroom, onBack }: ExpeditionsActivityPr
   const createMutation = useMutation({
     mutationFn: expeditionApi.create,
     onSuccess: (expedition) => {
-      queryClient.invalidateQueries({ queryKey: ['expeditions', classroom.id] });
+      queryClient.invalidateQueries({ queryKey: ['expedition-stats', classroom.id] });
       setSelectedExpedition(expedition);
       setView('edit');
       setCreateForm({ name: '', selectedMap: '' });
@@ -85,7 +85,7 @@ export const ExpeditionsActivity = ({ classroom, onBack }: ExpeditionsActivityPr
   const deleteMutation = useMutation({
     mutationFn: expeditionApi.delete,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['expeditions', classroom.id] });
+      queryClient.invalidateQueries({ queryKey: ['expedition-stats', classroom.id] });
       setDeleteConfirm({ isOpen: false, expedition: null });
       toast.success('Expedición eliminada');
     },
@@ -95,7 +95,7 @@ export const ExpeditionsActivity = ({ classroom, onBack }: ExpeditionsActivityPr
   const publishMutation = useMutation({
     mutationFn: expeditionApi.publish,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['expeditions', classroom.id] });
+      queryClient.invalidateQueries({ queryKey: ['expedition-stats', classroom.id] });
       toast.success('¡Expedición publicada!');
     },
     onError: () => toast.error('Error al publicar'),
@@ -104,7 +104,7 @@ export const ExpeditionsActivity = ({ classroom, onBack }: ExpeditionsActivityPr
   const archiveMutation = useMutation({
     mutationFn: expeditionApi.archive,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['expeditions', classroom.id] });
+      queryClient.invalidateQueries({ queryKey: ['expedition-stats', classroom.id] });
       toast.success('Expedición archivada');
     },
     onError: () => toast.error('Error al archivar'),
@@ -167,7 +167,7 @@ export const ExpeditionsActivity = ({ classroom, onBack }: ExpeditionsActivityPr
         onBack={() => {
           setView('list');
           setSelectedExpedition(null);
-          queryClient.invalidateQueries({ queryKey: ['expeditions', classroom.id] });
+          queryClient.invalidateQueries({ queryKey: ['expedition-stats', classroom.id] });
         }}
       />
     );
