@@ -21,6 +21,7 @@ export const getPool = () => {
       queueLimit: 0,
       enableKeepAlive: true,
       keepAliveInitialDelay: 0,
+      timezone: 'local', // Usar zona horaria local para fechas
     });
   }
   return pool;

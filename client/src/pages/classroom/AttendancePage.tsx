@@ -37,7 +37,8 @@ export const AttendancePage = () => {
   const [hasChanges, setHasChanges] = useState(false);
   const [downloadingPDF, setDownloadingPDF] = useState(false);
 
-  const dateString = selectedDate.toISOString().split('T')[0];
+  // Usar fecha local para evitar problemas de zona horaria
+  const dateString = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`;
 
   const { data: classroomData } = useQuery({
     queryKey: ['classroom', classroom.id],

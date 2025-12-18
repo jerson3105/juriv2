@@ -5,6 +5,12 @@ import { db } from '../db/index.js';
 import { studentProfiles, classrooms } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 
+// Parsear fecha string YYYY-MM-DD a Date en hora local
+const parseLocalDate = (dateStr: string): Date => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day, 12, 0, 0); // Mediodía para evitar problemas de zona horaria
+};
+
 export const attendanceController = {
   // Registrar asistencia individual
   async recordAttendance(req: Request, res: Response) {
@@ -15,7 +21,7 @@ export const attendanceController = {
       const result = await attendanceService.recordAttendance(
         classroomId,
         studentProfileId,
-        new Date(date),
+        parseLocalDate(date),
         status,
         notes,
         xpAwarded
@@ -40,7 +46,7 @@ export const attendanceController = {
 
       const results = await attendanceService.recordBulkAttendance(
         classroomId,
-        new Date(date),
+        parseLocalDate(date),
         attendanceData,
         xpForPresent
       );
@@ -64,7 +70,7 @@ export const attendanceController = {
 
       const attendance = await attendanceService.getAttendanceByDate(
         classroomId,
-        new Date(date as string)
+        parseLocalDate(date as string)
       );
 
       res.json({
@@ -264,21 +270,15 @@ export const attendanceController = {
       );
 
       // Función para obtener fecha en formato YYYY-MM-DD
-      // La fecha viene de MySQL como UTC, necesitamos ajustarla
+      // La fecha viene de MySQL y necesitamos extraer la fecha LOCAL
+      // ya que se guardó con setHours(0,0,0,0) en hora local
       const getDateString = (date: Date): string => {
-        // Si la fecha viene como string de MySQL, puede tener offset
-        // Usamos UTC para consistencia ya que MySQL almacena en UTC
-        const year = date.getUTCFullYear();
-        const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-        const day = String(date.getUTCDate()).padStart(2, '0');
+        // Usar hora local ya que así se guardó la fecha
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
       };
-
-      console.log('=== DEBUG PDF ATTENDANCE ===');
-      console.log('Total records:', allRecords.length);
-      allRecords.slice(0, 5).forEach(r => {
-        console.log('Record date:', r.date, '-> getDateString:', getDateString(r.date), '-> toISOString:', r.date.toISOString());
-      });
 
       // Obtener fechas únicas ordenadas
       const uniqueDatesSet = new Set<string>();
@@ -286,7 +286,6 @@ export const attendanceController = {
         uniqueDatesSet.add(getDateString(r.date));
       });
       const uniqueDates = Array.from(uniqueDatesSet).sort();
-      console.log('Unique dates:', uniqueDates);
 
       // Crear mapa de asistencia por estudiante y fecha
       const attendanceMap: Record<string, Record<string, string>> = {};
