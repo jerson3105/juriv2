@@ -9,7 +9,8 @@ import {
   ChevronRight,
   LogOut,
   Building2,
-  Map
+  Map,
+  Bug
 } from 'lucide-react';
 import { adminApi } from '../../lib/adminApi';
 import type { AdminStats } from '../../lib/adminApi';
@@ -105,6 +106,13 @@ export default function AdminDashboard() {
       icon: Map,
       link: '/admin/expedition-maps',
       color: 'bg-emerald-100 text-emerald-600',
+    },
+    {
+      title: 'Reportes de Bugs',
+      description: 'Ver y gestionar reportes de bugs enviados por profesores',
+      icon: Bug,
+      link: '/admin/bug-reports',
+      color: 'bg-orange-100 text-orange-600',
     },
   ];
 

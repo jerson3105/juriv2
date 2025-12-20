@@ -22,6 +22,7 @@ import scrollRoutes from './scroll.routes.js';
 import expeditionRoutes from './expedition.routes.js';
 import expeditionMapRoutes from './expeditionMap.routes.js';
 import territoryRoutes from './territory.routes.js';
+import bugReportRoutes from './bugReport.routes.js';
 
 const router = Router();
 
@@ -58,5 +59,6 @@ router.use('/scrolls', scrollRoutes);
 router.use('/expeditions', expeditionRoutes);
 router.use('/expedition-maps', expeditionMapRoutes);
 router.use('/territory', territoryRoutes);
+router.use('/bug-reports', bugReportRoutes);
 
 export default router;

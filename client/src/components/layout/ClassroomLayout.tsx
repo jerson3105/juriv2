@@ -38,6 +38,7 @@ import { useClassroomOnboardingStore } from '../../store/classroomOnboardingStor
 import { classroomApi } from '../../lib/classroomApi';
 import { NotificationsBell, NotificationsPanel } from '../NotificationsPanel';
 import { ThemeToggle } from '../ui/ThemeToggle';
+import { BugReportButton } from '../BugReportButton';
 import { ClassroomOnboardingProvider } from '../onboarding';
 import { HelpCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -617,6 +618,8 @@ export const ClassroomLayout = () => {
         )}
       </AnimatePresence>
 
+      {/* Botón de reporte de bugs (siempre visible para profesores en ClassroomLayout) */}
+      <BugReportButton />
     </div>
   );
 };

@@ -2278,3 +2278,41 @@ export type TerritoryGameStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'FINISHED';
 export type TerritoryStatus = 'NEUTRAL' | 'OWNED' | 'CONTESTED';
 export type TerritoryChallengeType = 'CONQUEST' | 'DEFENSE';
 export type TerritoryChallengeResult = 'PENDING' | 'CORRECT' | 'INCORRECT';
+
+// ==================== REPORTES DE BUGS ====================
+
+export const bugReports = mysqlTable('bug_reports', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  userId: varchar('user_id', { length: 36 }).notNull().references(() => users.id),
+  title: varchar('title', { length: 255 }).notNull(),
+  description: text('description').notNull(),
+  category: mysqlEnum('category', ['UI', 'FUNCTIONALITY', 'PERFORMANCE', 'DATA', 'OTHER']).notNull().default('OTHER'),
+  priority: mysqlEnum('priority', ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).notNull().default('MEDIUM'),
+  status: mysqlEnum('status', ['PENDING', 'IN_PROGRESS', 'RESOLVED', 'CLOSED']).notNull().default('PENDING'),
+  currentUrl: varchar('current_url', { length: 500 }),
+  browserInfo: text('browser_info'),
+  screenshotUrl: varchar('screenshot_url', { length: 500 }),
+  adminNotes: text('admin_notes'),
+  resolvedAt: datetime('resolved_at'),
+  resolvedBy: varchar('resolved_by', { length: 36 }).references(() => users.id),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+});
+
+export const bugReportsRelations = relations(bugReports, ({ one }) => ({
+  user: one(users, {
+    fields: [bugReports.userId],
+    references: [users.id],
+  }),
+  resolver: one(users, {
+    fields: [bugReports.resolvedBy],
+    references: [users.id],
+  }),
+}));
+
+// Types para Bug Reports
+export type BugReport = typeof bugReports.$inferSelect;
+export type NewBugReport = typeof bugReports.$inferInsert;
+export type BugReportCategory = 'UI' | 'FUNCTIONALITY' | 'PERFORMANCE' | 'DATA' | 'OTHER';
+export type BugReportPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+export type BugReportStatus = 'PENDING' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';

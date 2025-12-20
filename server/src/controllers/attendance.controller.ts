@@ -5,10 +5,11 @@ import { db } from '../db/index.js';
 import { studentProfiles, classrooms } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 
-// Parsear fecha string YYYY-MM-DD a Date en hora local
+// Parsear fecha string YYYY-MM-DD a Date en UTC medianoche
+// Esto garantiza consistencia independiente de la zona horaria del servidor
 const parseLocalDate = (dateStr: string): Date => {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  return new Date(year, month - 1, day, 12, 0, 0); // Mediodía para evitar problemas de zona horaria
+  // Crear fecha UTC directamente para evitar problemas de zona horaria del servidor
+  return new Date(`${dateStr}T12:00:00.000Z`);
 };
 
 export const attendanceController = {
@@ -270,13 +271,11 @@ export const attendanceController = {
       );
 
       // Función para obtener fecha en formato YYYY-MM-DD
-      // La fecha viene de MySQL y necesitamos extraer la fecha LOCAL
-      // ya que se guardó con setHours(0,0,0,0) en hora local
+      // La fecha se guarda en UTC, así que usamos UTC para leerla
       const getDateString = (date: Date): string => {
-        // Usar hora local ya que así se guardó la fecha
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
+        const year = date.getUTCFullYear();
+        const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(date.getUTCDate()).padStart(2, '0');
         return `${year}-${month}-${day}`;
       };
 

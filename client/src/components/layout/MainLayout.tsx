@@ -28,6 +28,7 @@ import { studentApi, CHARACTER_CLASSES } from '../../lib/studentApi';
 import { expeditionApi } from '../../lib/expeditionApi';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { NotificationsBell, NotificationsPanel } from '../NotificationsPanel';
+import { BugReportButton } from '../BugReportButton';
 
 const teacherNavItems = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, gradient: 'from-blue-500 to-indigo-500' },
@@ -567,6 +568,9 @@ export const MainLayout = () => {
           onClose={() => setShowNotifications(false)}
         />
       )}
+
+      {/* Botón de reporte de bugs (solo para profesores) */}
+      {isTeacher && <BugReportButton />}
     </div>
   );
 };

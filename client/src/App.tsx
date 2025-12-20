@@ -50,6 +50,7 @@ import AdminUsers from './pages/admin/AdminUsers';
 import AdminClassrooms from './pages/admin/AdminClassrooms';
 import AdminSchools from './pages/admin/AdminSchools';
 import AdminExpeditionMaps from './pages/admin/AdminExpeditionMaps';
+import { AdminBugReports } from './pages/admin/AdminBugReports';
 
 // School pages (B2B)
 import MySchoolsPage from './pages/school/MySchoolsPage';
@@ -267,6 +268,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <AdminClassrooms />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/bug-reports"
+            element={
+              <ProtectedRoute>
+                <AdminBugReports />
               </ProtectedRoute>
             }
           />
