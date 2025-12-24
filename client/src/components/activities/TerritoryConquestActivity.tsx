@@ -66,6 +66,183 @@ const EMBLEM_ICONS: Record<string, string> = {
   wave: '🌊',
 };
 
+// Tipo para pares de matching
+interface MatchingPair {
+  left: string;
+  right: string;
+}
+
+// Componente para preguntas de unión interactivas
+const MatchingQuestion = ({ 
+  pairs, 
+  shuffledPairs, 
+  showAnswer 
+}: { 
+  pairs: MatchingPair[]; 
+  shuffledPairs: MatchingPair[]; 
+  showAnswer: boolean;
+}) => {
+  const [selectedLeft, setSelectedLeft] = useState<number | null>(null);
+  const [connections, setConnections] = useState<globalThis.Map<number, number>>(new globalThis.Map());
+  
+  const handleLeftClick = (index: number) => {
+    if (showAnswer) return;
+    setSelectedLeft(selectedLeft === index ? null : index);
+  };
+  
+  const handleRightClick = (rightIndex: number) => {
+    if (showAnswer || selectedLeft === null) return;
+    const newConnections = new globalThis.Map(connections);
+    newConnections.set(selectedLeft, rightIndex);
+    setConnections(newConnections);
+    setSelectedLeft(null);
+  };
+  
+  const removeConnection = (leftIndex: number) => {
+    if (showAnswer) return;
+    const newConnections = new globalThis.Map(connections);
+    newConnections.delete(leftIndex);
+    setConnections(newConnections);
+  };
+  
+  const getCorrectRightIndex = (leftIndex: number) => {
+    const leftItem = pairs[leftIndex];
+    return shuffledPairs.findIndex(s => s.right === leftItem.right);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        {/* Columna izquierda */}
+        <div className="space-y-2">
+          {pairs.map((p, i) => {
+            const isSelected = selectedLeft === i;
+            const hasConnection = connections.has(i);
+            const connectedTo = connections.get(i);
+            
+            return (
+              <motion.div
+                key={i}
+                whileHover={!showAnswer ? { scale: 1.02 } : {}}
+                whileTap={!showAnswer ? { scale: 0.98 } : {}}
+                onClick={() => hasConnection ? removeConnection(i) : handleLeftClick(i)}
+                className={`p-3 rounded-xl flex items-center gap-2 cursor-pointer transition-all ${
+                  showAnswer 
+                    ? 'bg-blue-100 dark:bg-blue-900/30 border-2 border-blue-400'
+                    : isSelected 
+                      ? 'bg-purple-100 dark:bg-purple-900/30 border-2 border-purple-400 ring-2 ring-purple-400/50' 
+                      : hasConnection
+                        ? 'bg-green-100 dark:bg-green-900/30 border-2 border-green-400'
+                        : 'bg-gray-100 dark:bg-gray-800 border-2 border-transparent hover:border-purple-400/50'
+                }`}
+              >
+                <span className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-white flex items-center justify-center text-xs font-bold shadow">
+                  {i + 1}
+                </span>
+                <span className="text-gray-800 dark:text-white text-sm flex-1">{p.left}</span>
+                {hasConnection && !showAnswer && (
+                  <motion.span 
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="text-green-600 dark:text-green-400 text-xs font-bold"
+                  >
+                    → {String.fromCharCode(97 + connectedTo!)}
+                  </motion.span>
+                )}
+                {showAnswer && (
+                  <span className="text-blue-600 dark:text-blue-400 text-xs font-bold">
+                    → {String.fromCharCode(97 + getCorrectRightIndex(i))}
+                  </span>
+                )}
+              </motion.div>
+            );
+          })}
+        </div>
+        
+        {/* Columna derecha */}
+        <div className="space-y-2">
+          {shuffledPairs.map((p, i) => {
+            const isConnectedFrom = Array.from(connections.entries()).find(([_, v]) => v === i);
+            
+            return (
+              <motion.div
+                key={i}
+                whileHover={!showAnswer && selectedLeft !== null ? { scale: 1.02 } : {}}
+                whileTap={!showAnswer && selectedLeft !== null ? { scale: 0.98 } : {}}
+                onClick={() => handleRightClick(i)}
+                className={`p-3 rounded-xl flex items-center gap-2 transition-all ${
+                  showAnswer
+                    ? 'bg-green-100 dark:bg-green-900/30 border-2 border-green-400'
+                    : selectedLeft !== null
+                      ? 'bg-gray-100 dark:bg-gray-800 border-2 border-transparent hover:border-orange-400 cursor-pointer'
+                      : isConnectedFrom
+                        ? 'bg-green-100 dark:bg-green-900/30 border-2 border-green-400'
+                        : 'bg-gray-100 dark:bg-gray-800 border-2 border-transparent'
+                }`}
+              >
+                <span className="w-7 h-7 rounded-full bg-gradient-to-br from-orange-500 to-orange-600 text-white flex items-center justify-center text-xs font-bold shadow">
+                  {String.fromCharCode(97 + i)}
+                </span>
+                <span className="text-gray-800 dark:text-white text-sm flex-1">{p.right}</span>
+                {isConnectedFrom && !showAnswer && (
+                  <motion.span 
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    className="text-green-600 dark:text-green-400 text-xs font-bold"
+                  >
+                    ← {isConnectedFrom[0] + 1}
+                  </motion.span>
+                )}
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
+      
+      {/* Instrucciones */}
+      {!showAnswer && (
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="text-center"
+        >
+          {selectedLeft !== null ? (
+            <p className="text-purple-600 dark:text-purple-400 text-sm animate-pulse">
+              👆 Ahora selecciona la opción correcta de la derecha
+            </p>
+          ) : connections.size < pairs.length ? (
+            <p className="text-gray-500 dark:text-gray-400 text-sm">
+              👈 Selecciona un elemento de la izquierda para unir
+            </p>
+          ) : (
+            <p className="text-green-600 dark:text-green-400 text-sm font-medium">
+              ✓ Todas las conexiones realizadas
+            </p>
+          )}
+        </motion.div>
+      )}
+      
+      {/* Mostrar respuestas correctas */}
+      {showAnswer && (
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-3 bg-green-100 dark:bg-green-900/30 rounded-xl border border-green-400"
+        >
+          <p className="text-green-700 dark:text-green-400 text-sm font-bold text-center mb-2">✓ Respuestas correctas:</p>
+          <div className="flex flex-wrap gap-2 justify-center">
+            {pairs.map((_p, i) => (
+              <span key={i} className="text-gray-700 dark:text-gray-300 text-xs bg-white dark:bg-gray-800 px-2 py-1 rounded shadow-sm">
+                {i + 1} → {String.fromCharCode(97 + getCorrectRightIndex(i))}
+              </span>
+            ))}
+          </div>
+        </motion.div>
+      )}
+    </div>
+  );
+};
+
 export const TerritoryConquestActivity = ({ classroom, onBack }: TerritoryConquestActivityProps) => {
   const queryClient = useQueryClient();
   const [viewMode, setViewMode] = useState<ViewMode>('list');
@@ -76,6 +253,7 @@ export const TerritoryConquestActivity = ({ classroom, onBack }: TerritoryConque
   const [showAnswer, setShowAnswer] = useState(false);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [selectedAnswers, setSelectedAnswers] = useState<number[]>([]);
+  const [shuffledMatchingPairs, setShuffledMatchingPairs] = useState<MatchingPair[]>([]);
   const [timer, setTimer] = useState<number>(0);
   const [timerActive, setTimerActive] = useState(false);
   
@@ -168,6 +346,11 @@ export const TerritoryConquestActivity = ({ classroom, onBack }: TerritoryConque
     const pending = gameState?.pendingChallenge;
     if (pending && !currentChallenge && viewMode === 'game' && pending.challengeId !== processedChallengeId) {
       setCurrentChallenge(pending);
+      // Shuffle matching pairs if it's a matching question
+      const parsedQ = parseQuestionData(pending.question as any);
+      if (parsedQ.type === 'MATCHING' && Array.isArray(parsedQ.pairs)) {
+        setShuffledMatchingPairs([...parsedQ.pairs].sort(() => Math.random() - 0.5));
+      }
       setTimer(selectedGame?.timePerQuestion || 30);
       setTimerActive(true);
     }
@@ -249,6 +432,11 @@ export const TerritoryConquestActivity = ({ classroom, onBack }: TerritoryConque
         setShowAnswer(false);
         setSelectedAnswer(null);
         setSelectedAnswers([]);
+        // Shuffle matching pairs if it's a matching question
+        const parsedQ = parseQuestionData(challenge.question as any);
+        if (parsedQ.type === 'MATCHING' && Array.isArray(parsedQ.pairs)) {
+          setShuffledMatchingPairs([...parsedQ.pairs].sort(() => Math.random() - 0.5));
+        }
         setTimer(selectedGame?.timePerQuestion || 30);
         setTimerActive(true);
       }, 2500);
@@ -278,6 +466,11 @@ export const TerritoryConquestActivity = ({ classroom, onBack }: TerritoryConque
         setShowAnswer(false);
         setSelectedAnswer(null);
         setSelectedAnswers([]);
+        // Shuffle matching pairs if it's a matching question
+        const parsedQ = parseQuestionData(challenge.question as any);
+        if (parsedQ.type === 'MATCHING' && Array.isArray(parsedQ.pairs)) {
+          setShuffledMatchingPairs([...parsedQ.pairs].sort(() => Math.random() - 0.5));
+        }
         setTimer(selectedGame?.timePerQuestion || 30);
         setTimerActive(true);
       }, 2500);
@@ -1531,21 +1724,19 @@ export const TerritoryConquestActivity = ({ classroom, onBack }: TerritoryConque
                         );
                       }
 
-                      // MATCHING - mostrar pares
+                      // MATCHING - componente interactivo
                       if (questionType === 'MATCHING') {
-                        const pairs = parsedQuestion.pairs;
-                        return (
-                          <div className="space-y-2">
-                            <p className="text-sm text-gray-500 mb-2">Pregunta de unir pares</p>
-                            {showAnswer && Array.isArray(pairs) && pairs.map((pair: any, idx: number) => (
-                              <div key={idx} className="flex items-center gap-2 p-2 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                                <span className="font-medium">{pair.left}</span>
-                                <span className="text-gray-400">→</span>
-                                <span className="text-green-600 dark:text-green-400">{pair.right}</span>
-                              </div>
-                            ))}
-                          </div>
-                        );
+                        const pairs = parsedQuestion.pairs as MatchingPair[];
+                        if (Array.isArray(pairs) && pairs.length > 0) {
+                          return (
+                            <MatchingQuestion 
+                              pairs={pairs} 
+                              shuffledPairs={shuffledMatchingPairs.length > 0 ? shuffledMatchingPairs : pairs} 
+                              showAnswer={showAnswer} 
+                            />
+                          );
+                        }
+                        return null;
                       }
 
                       return null;
