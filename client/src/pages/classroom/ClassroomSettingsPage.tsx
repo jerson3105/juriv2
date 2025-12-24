@@ -28,6 +28,8 @@ import { classroomApi, type Classroom, type UpdateClassroomSettings } from '../.
 import { studentApi } from '../../lib/studentApi';
 import toast from 'react-hot-toast';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
+import { placeholderStudentApi } from '../../lib/placeholderStudentApi';
+import { AddPlaceholderStudentsModal } from '../../components/students/AddPlaceholderStudentsModal';
 
 export const ClassroomSettingsPage = () => {
   const { classroom, refetch } = useOutletContext<{ classroom: Classroom; refetch: () => void }>();
@@ -37,6 +39,27 @@ export const ClassroomSettingsPage = () => {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showDemoDeleteConfirm, setShowDemoDeleteConfirm] = useState(false);
+  const [showAddPlaceholderModal, setShowAddPlaceholderModal] = useState(false);
+
+  // Query para estudiantes placeholder
+  const { data: placeholderStudents = [] } = useQuery({
+    queryKey: ['placeholder-students', classroom.id],
+    queryFn: () => placeholderStudentApi.getAll(classroom.id),
+  });
+
+  // Función para descargar PDFs
+  const downloadAllPDFs = async () => {
+    if (placeholderStudents.length === 0) {
+      toast.error('No hay estudiantes sin vincular');
+      return;
+    }
+    try {
+      await placeholderStudentApi.downloadAllCardsPDF(classroom.id);
+      toast.success('PDF descargado');
+    } catch {
+      toast.error('Error al descargar PDF');
+    }
+  };
   
   // Estado del formulario
   const [formData, setFormData] = useState<UpdateClassroomSettings>({
@@ -859,6 +882,56 @@ export const ClassroomSettingsPage = () => {
             </div>
           </motion.div>
 
+          {/* Gestión de Estudiantes */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.45 }}
+            className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5"
+          >
+            <h2 className="font-semibold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
+              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
+                <Users size={16} className="text-white" />
+              </div>
+              Gestión de Estudiantes
+            </h2>
+            
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Añade estudiantes sin cuenta que podrán vincular después, o descarga las tarjetas de vinculación.
+              </p>
+              
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => setShowAddPlaceholderModal(true)}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 rounded-xl text-sm font-medium hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
+                >
+                  <Plus size={16} />
+                  Añadir estudiantes sin cuenta
+                </button>
+                
+                {placeholderStudents.length > 0 && (
+                  <button
+                    onClick={downloadAllPDFs}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-400 rounded-xl text-sm font-medium hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
+                  >
+                    <Copy size={16} />
+                    Descargar tarjetas PDF
+                    <span className="text-xs bg-blue-200 dark:bg-blue-800 px-1.5 py-0.5 rounded-full">
+                      {placeholderStudents.length}
+                    </span>
+                  </button>
+                )}
+              </div>
+              
+              {placeholderStudents.length > 0 && (
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Tienes {placeholderStudents.length} estudiante{placeholderStudents.length !== 1 ? 's' : ''} sin vincular
+                </p>
+              )}
+            </div>
+          </motion.div>
+
           {/* Zona de peligro */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -988,6 +1061,17 @@ export const ClassroomSettingsPage = () => {
         confirmText="Eliminar"
         variant="warning"
         isLoading={deleteDemoMutation.isPending}
+      />
+
+      {/* Modal para añadir estudiantes placeholder */}
+      <AddPlaceholderStudentsModal
+        isOpen={showAddPlaceholderModal}
+        onClose={() => setShowAddPlaceholderModal(false)}
+        classroomId={classroom.id}
+        onStudentsCreated={() => {
+          queryClient.invalidateQueries({ queryKey: ['classroom', classroom.id] });
+          queryClient.invalidateQueries({ queryKey: ['placeholder-students', classroom.id] });
+        }}
       />
     </div>
   );

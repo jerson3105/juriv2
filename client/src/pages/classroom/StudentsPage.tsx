@@ -10,20 +10,17 @@ import {
   Check,
   X,
   Zap,
-  Trophy,
   TrendingUp,
   Crown,
-  Swords,
   Star,
   Search,
   LayoutGrid,
   List,
   Eye,
   Medal,
-  UserPlus,
-  Download,
   Link2,
   Copy,
+  ChevronLeft,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -50,6 +47,7 @@ export const StudentsPage = () => {
   const [behaviorType, setBehaviorType] = useState<'positive' | 'negative'>('positive');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards');
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   
   // Estado para animación de subida de nivel
   const [, setLevelUpQueue] = useState<Array<{ studentName: string; newLevel: number }>>([]);
@@ -220,19 +218,6 @@ export const StudentsPage = () => {
     toast.success('Código copiado al portapapeles');
   };
 
-  const downloadAllPDFs = async () => {
-    if (placeholderStudents.length === 0) {
-      toast.error('No hay estudiantes sin vincular');
-      return;
-    }
-    try {
-      await placeholderStudentApi.downloadAllCardsPDF(classroom.id);
-      toast.success('PDF descargado');
-    } catch (error) {
-      toast.error('Error al descargar PDF');
-    }
-  };
-
   // Verificar si un estudiante es placeholder (tiene linkCode)
   const getStudentLinkCode = (studentId: string): string | null => {
     const placeholder = placeholderStudents.find(p => p.id === studentId);
@@ -248,7 +233,6 @@ export const StudentsPage = () => {
   const topStudent = students.length > 0 
     ? [...students].sort((a, b) => b.xp - a.xp)[0]
     : null;
-  const topStudentClass = topStudent ? CHARACTER_CLASSES[topStudent.characterClass] : null;
 
   if (isLoading) {
     return (
@@ -281,134 +265,113 @@ export const StudentsPage = () => {
         />
       )}
 
-      {/* Banner de estadísticas del curso */}
-      {students.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-600 rounded-xl p-4 text-white shadow-lg"
-        >
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-            {/* Título */}
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 lg:w-12 lg:h-12 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
-                <Trophy className="w-5 h-5 lg:w-6 lg:h-6" />
-              </div>
-              <div>
-                <h2 className="text-lg lg:text-xl font-bold">Resumen del Curso</h2>
-                <p className="text-indigo-200 text-xs lg:text-sm">¡Sigue motivando a tus estudiantes!</p>
-              </div>
+      {/* Header compacto: Stats + Toggle vista */}
+      <div className="flex items-center justify-between gap-2 bg-white dark:bg-gray-800 rounded-xl px-3 sm:px-4 py-2.5 border border-gray-200 dark:border-gray-700 shadow-sm">
+        {/* Izquierda: Label + Stats del curso */}
+        <div className="flex items-center gap-2 sm:gap-4 text-sm flex-1 min-w-0 overflow-x-auto">
+          <span className="hidden sm:inline text-xs font-medium text-gray-500 dark:text-gray-400 pr-2 border-r border-gray-200 dark:border-gray-600">
+            Resumen de la clase
+          </span>
+          <div className="flex items-center gap-1.5" title="XP Total">
+            <Sparkles size={14} className="text-emerald-500" />
+            <span className="font-bold text-gray-700 dark:text-gray-200">{totalXP.toLocaleString()}</span>
+            <span className="text-xs text-gray-400">XP</span>
+          </div>
+          <div className="flex items-center gap-1.5" title="Oro Total">
+            <Coins size={14} className="text-amber-500" />
+            <span className="font-bold text-gray-700 dark:text-gray-200">{totalGP.toLocaleString()}</span>
+            <span className="text-xs text-gray-400">GP</span>
+          </div>
+          <div className="flex items-center gap-1.5" title="Nivel Promedio">
+            <TrendingUp size={14} className="text-blue-500" />
+            <span className="font-bold text-gray-700 dark:text-gray-200">{avgLevel}</span>
+            <span className="text-xs text-gray-400">Nv</span>
+          </div>
+          {topStudent && (
+            <div className="flex items-center gap-1.5 pl-3 border-l border-gray-200 dark:border-gray-600" title="Líder en XP">
+              <Crown size={14} className="text-amber-500" />
+              <span className="text-xs text-gray-600 dark:text-gray-300 truncate max-w-[120px]">{getDisplayName(topStudent)}</span>
             </div>
-
-            {/* Stats rápidos */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:flex lg:items-center gap-3 lg:gap-6">
-              {/* XP Total */}
-              <div className="text-center bg-white/10 rounded-lg p-2 lg:p-0 lg:bg-transparent">
-                <div className="flex items-center justify-center gap-1 text-emerald-300">
-                  <Sparkles size={16} className="lg:w-[18px] lg:h-[18px]" />
-                  <span className="text-xl lg:text-2xl font-bold">{totalXP.toLocaleString()}</span>
-                </div>
-                <p className="text-xs text-indigo-200">XP Total</p>
-              </div>
-
-              {/* Oro Total */}
-              <div className="text-center bg-white/10 rounded-lg p-2 lg:p-0 lg:bg-transparent">
-                <div className="flex items-center justify-center gap-1 text-amber-300">
-                  <Coins size={16} className="lg:w-[18px] lg:h-[18px]" />
-                  <span className="text-xl lg:text-2xl font-bold">{totalGP.toLocaleString()}</span>
-                </div>
-                <p className="text-xs text-indigo-200">Oro Total</p>
-              </div>
-
-              {/* Nivel Promedio */}
-              <div className="text-center bg-white/10 rounded-lg p-2 lg:p-0 lg:bg-transparent">
-                <div className="flex items-center justify-center gap-1 text-blue-300">
-                  <TrendingUp size={16} className="lg:w-[18px] lg:h-[18px]" />
-                  <span className="text-xl lg:text-2xl font-bold">{avgLevel}</span>
-                </div>
-                <p className="text-xs text-indigo-200">Nivel Promedio</p>
-              </div>
-
-              {/* Top Estudiante */}
-              {topStudent && (
-                <div className="col-span-2 sm:col-span-3 lg:col-span-1 flex items-center justify-center lg:justify-start gap-3 bg-white/10 rounded-xl px-3 py-2">
-                  <div className="relative">
-                    <div className="w-8 h-8 lg:w-10 lg:h-10 bg-white/20 rounded-lg flex items-center justify-center text-lg lg:text-xl">
-                      {topStudentClass?.icon}
-                    </div>
-                    <Crown className="w-3 h-3 lg:w-4 lg:h-4 text-yellow-400 absolute -top-1 -right-1 lg:-top-2 lg:-right-2" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-indigo-200">Líder en XP</p>
-                    <p className="font-bold text-sm lg:text-base">{getDisplayName(topStudent)}</p>
-                    <p className="text-xs text-emerald-300">{topStudent.xp} XP</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* Header con acciones */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 sm:w-11 sm:h-11 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-500/30 flex-shrink-0">
-            <Users size={20} className="sm:w-[22px] sm:h-[22px]" />
-          </div>
-          <div>
-            <h1 className="text-base sm:text-lg font-bold text-gray-800 dark:text-white">
-              Lista de Estudiantes
-            </h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              {students.length} estudiante{students.length !== 1 ? 's' : ''} en la clase
-            </p>
-          </div>
+          )}
         </div>
 
-        {students.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-              {selectedStudents.size} seleccionado{selectedStudents.size !== 1 ? 's' : ''}
-            </span>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => openBehaviorModal('positive')}
-              disabled={selectedStudents.size === 0}
-              data-onboarding="give-points-btn"
-              className="!bg-green-500 hover:!bg-green-600 !text-white text-xs sm:text-sm px-2 sm:px-3"
-            >
-              <Zap size={14} className="sm:w-4 sm:h-4 mr-1" />
-              <span className="hidden sm:inline">Dar puntos</span>
-              <span className="sm:hidden">Dar</span>
-            </Button>
-            {classroom.allowNegativePoints !== false && (
+        {/* Derecha: Acciones masivas + Toggle vista */}
+        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+          {/* Acciones masivas - Solo en vista lista, ocultas en móvil */}
+          {viewMode === 'list' && students.length > 0 && (
+            <div className="hidden sm:flex items-center gap-2">
+              {/* Seleccionar todos */}
+              <button
+                onClick={selectAll}
+                className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium flex items-center gap-1.5"
+              >
+                <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+                  selectedStudents.size === students.length && students.length > 0 ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300 dark:border-gray-500'
+                }`}>
+                  {selectedStudents.size === students.length && students.length > 0 && <Check size={10} className="text-white" />}
+                </div>
+                <span className="hidden md:inline">{selectedStudents.size > 0 ? `${selectedStudents.size}` : 'Todos'}</span>
+              </button>
+
+              {/* Botones de acción - Solo iconos en pantallas pequeñas */}
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => openBehaviorModal('negative')}
+                onClick={() => openBehaviorModal('positive')}
                 disabled={selectedStudents.size === 0}
-                className="!bg-red-500 hover:!bg-red-600 !text-white text-xs sm:text-sm px-2 sm:px-3"
+                data-onboarding="give-points-btn"
+                className="!bg-green-500 hover:!bg-green-600 !text-white text-xs px-2 py-1.5"
               >
-                <Zap size={14} className="sm:w-4 sm:h-4 mr-1" />
-                <span className="hidden sm:inline">Quitar puntos</span>
-                <span className="sm:hidden">Quitar</span>
+                <Zap size={14} />
+                <span className="hidden lg:inline ml-1">Dar puntos</span>
               </Button>
-            )}
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setShowBadgeModal(true)}
-              disabled={selectedStudents.size === 0}
-              className="!bg-amber-500 hover:!bg-amber-600 !text-white text-xs sm:text-sm px-2 sm:px-3"
+              {classroom.allowNegativePoints !== false && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => openBehaviorModal('negative')}
+                  disabled={selectedStudents.size === 0}
+                  className="!bg-red-500 hover:!bg-red-600 !text-white text-xs px-2 py-1.5"
+                >
+                  <Zap size={14} />
+                  <span className="hidden lg:inline ml-1">Quitar</span>
+                </Button>
+              )}
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowBadgeModal(true)}
+                disabled={selectedStudents.size === 0}
+                className="!bg-amber-500 hover:!bg-amber-600 !text-white text-xs px-2 py-1.5"
+              >
+                <Medal size={14} />
+                <span className="hidden lg:inline ml-1">Insignia</span>
+              </Button>
+            </div>
+          )}
+
+          {/* Toggle de vista - Siempre visible, al final */}
+          <div className="flex items-center bg-indigo-100 dark:bg-indigo-900/30 rounded-lg p-0.5 border border-indigo-200 dark:border-indigo-800">
+            <button
+              onClick={() => setViewMode('cards')}
+              className={`p-2 rounded-md transition-colors ${
+                viewMode === 'cards' ? 'bg-white dark:bg-gray-700 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-indigo-400 dark:text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-300'
+              }`}
+              title="Vista de tarjetas"
             >
-              <Medal size={14} className="sm:w-4 sm:h-4 mr-1" />
-              <span className="hidden sm:inline">Dar insignia</span>
-              <span className="sm:hidden">Insignia</span>
-            </Button>
+              <LayoutGrid size={18} />
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-2 rounded-md transition-colors ${
+                viewMode === 'list' ? 'bg-white dark:bg-gray-700 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-indigo-400 dark:text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-300'
+              }`}
+              title="Vista de lista"
+            >
+              <List size={18} />
+            </button>
           </div>
-        )}
+        </div>
       </div>
 
       {/* Lista de estudiantes - Grid de Cards RPG */}
@@ -438,92 +401,6 @@ export const StudentsPage = () => {
         </Card>
       ) : (
         <>
-          {/* Toolbar con búsqueda */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 bg-white/80 dark:bg-gray-800/80 backdrop-blur rounded-xl p-3 shadow-sm border border-gray-100 dark:border-gray-700">
-            {/* Búsqueda */}
-            <div className="relative flex-1 max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Buscar estudiante..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              />
-            </div>
-
-            {/* Seleccionar todos */}
-            <button
-              onClick={selectAll}
-              className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium flex items-center gap-2"
-            >
-              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                selectedStudents.size === students.length && students.length > 0 ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300 dark:border-gray-500'
-              }`}>
-                {selectedStudents.size === students.length && students.length > 0 && <Check size={12} className="text-white" />}
-              </div>
-              {selectedStudents.size === students.length && students.length > 0 ? 'Deseleccionar' : 'Seleccionar todos'}
-            </button>
-
-            {/* Toggle de vista */}
-            <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
-              <button
-                onClick={() => setViewMode('cards')}
-                className={`p-1.5 rounded-md transition-colors ${
-                  viewMode === 'cards' ? 'bg-white dark:bg-gray-600 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                }`}
-                title="Vista de tarjetas"
-              >
-                <LayoutGrid size={18} />
-              </button>
-              <button
-                onClick={() => setViewMode('list')}
-                className={`p-1.5 rounded-md transition-colors ${
-                  viewMode === 'list' ? 'bg-white dark:bg-gray-600 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-                }`}
-                title="Vista de lista"
-              >
-                <List size={18} />
-              </button>
-            </div>
-
-            {/* Contador */}
-            <div className="flex items-center gap-2">
-              <Swords className="w-4 h-4 text-gray-400" />
-              <span className="text-sm text-gray-500 dark:text-gray-400">
-                {students.length === allStudents.length 
-                  ? `${students.length} héroes` 
-                  : `${students.length} de ${allStudents.length} héroes`
-                }
-              </span>
-            </div>
-
-            {/* Botones para estudiantes placeholder */}
-            <div className="flex items-center gap-2 ml-auto">
-              {placeholderStudents.length > 0 && (
-                <button
-                  onClick={downloadAllPDFs}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-lg transition-colors"
-                  title="Descargar tarjetas de vinculación"
-                >
-                  <Download size={16} />
-                  <span className="hidden sm:inline">Tarjetas PDF</span>
-                  <span className="text-xs bg-blue-200 dark:bg-blue-800 px-1.5 py-0.5 rounded-full">
-                    {placeholderStudents.length}
-                  </span>
-                </button>
-              )}
-              <button
-                onClick={() => setShowAddPlaceholderModal(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 rounded-lg transition-colors"
-                title="Añadir estudiantes sin cuenta"
-              >
-                <UserPlus size={16} />
-                <span className="hidden sm:inline">Añadir sin cuenta</span>
-              </button>
-            </div>
-          </div>
-
           {/* Mensaje cuando no hay resultados de búsqueda */}
           {students.length === 0 && searchQuery.trim() && (
             <div className="text-center py-12 bg-white/50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
@@ -543,212 +420,271 @@ export const StudentsPage = () => {
             </div>
           )}
 
-          {/* Vista de Cards */}
-          {viewMode === 'cards' && students.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {students.map((student, index) => {
-              const classInfo = CHARACTER_CLASSES[student.characterClass];
-              const isSelected = selectedStudents.has(student.id);
-              // Calcular XP para el nivel actual y siguiente (sistema progresivo)
-              const xpPerLevel = (classroom as any).xpPerLevel || 100;
-              const lvl = student.level;
-              const xpForCurrentLevel = (xpPerLevel * lvl * (lvl - 1)) / 2;
-              const xpForNextLevel = (xpPerLevel * (lvl + 1) * lvl) / 2;
-              const xpInLevel = student.xp - xpForCurrentLevel;
-              const xpNeeded = xpForNextLevel - xpForCurrentLevel;
-              const xpProgress = Math.min((xpInLevel / xpNeeded) * 100, 100);
-              const hpPercent = Math.min((student.hp / (classroom.maxHp || 100)) * 100, 100);
-              const isTopStudent = topStudent?.id === student.id;
+          {/* Vista de Cards - Layout Dividido */}
+          {viewMode === 'cards' && students.length > 0 && (() => {
+            // Obtener estudiante seleccionado para el panel de detalle
+            const detailStudent = selectedStudentId 
+              ? students.find(s => s.id === selectedStudentId) || students[0]
+              : students[0];
+            const detailClassInfo = detailStudent ? CHARACTER_CLASSES[detailStudent.characterClass] : null;
+            const xpPerLevel = (classroom as any).xpPerLevel || 100;
+            const lvl = detailStudent?.level || 1;
+            const xpForCurrentLevel = (xpPerLevel * lvl * (lvl - 1)) / 2;
+            const xpForNextLevel = (xpPerLevel * (lvl + 1) * lvl) / 2;
+            const xpInLevel = (detailStudent?.xp || 0) - xpForCurrentLevel;
+            const xpNeeded = xpForNextLevel - xpForCurrentLevel;
+            const xpProgress = Math.min((xpInLevel / xpNeeded) * 100, 100);
+            const hpPercent = detailStudent ? Math.min((detailStudent.hp / (classroom.maxHp || 100)) * 100, 100) : 100;
+            const isTopStudent = topStudent?.id === detailStudent?.id;
 
-              return (
-                <motion.div
-                  key={student.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                  onClick={() => toggleStudent(student.id)}
-                  data-onboarding={index === 0 ? 'student-card' : undefined}
-                  className={`
-                    relative cursor-pointer rounded-2xl overflow-hidden transition-all duration-300
-                    ${isSelected 
-                      ? 'ring-2 ring-indigo-500 ring-offset-2 shadow-lg shadow-indigo-500/20' 
-                      : 'hover:shadow-lg hover:-translate-y-1'
-                    }
-                  `}
-                >
-                  {/* Card Background con gradiente según clase */}
-                  <div className={`
-                    absolute inset-0 bg-gradient-to-br
-                    ${student.characterClass === 'GUARDIAN' ? 'from-blue-500/10 to-cyan-500/10' : ''}
-                    ${student.characterClass === 'ARCANE' ? 'from-purple-500/10 to-pink-500/10' : ''}
-                    ${student.characterClass === 'EXPLORER' ? 'from-green-500/10 to-emerald-500/10' : ''}
-                    ${student.characterClass === 'ALCHEMIST' ? 'from-amber-500/10 to-orange-500/10' : ''}
-                  `} />
+            return (
+              <div className="flex flex-col lg:flex-row gap-4 h-[calc(100vh-200px)] min-h-[400px] lg:min-h-[500px]">
+                {/* Sidebar izquierda - Lista compacta (oculta en móvil si hay estudiante seleccionado) */}
+                <div className={`${selectedStudentId ? 'hidden lg:flex' : 'flex'} w-full lg:w-64 flex-shrink-0 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex-col`}>
+                  {/* Búsqueda en sidebar */}
+                  <div className="p-2 border-b border-gray-200 dark:border-gray-700">
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Buscar..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-y-auto">
+                    {students.map((student) => {
+                      const classInfo = CHARACTER_CLASSES[student.characterClass];
+                      const isActive = detailStudent?.id === student.id;
+                      
+                      return (
+                        <div
+                          key={student.id}
+                          onClick={() => setSelectedStudentId(student.id)}
+                          className={`flex items-center gap-2 px-3 py-2.5 cursor-pointer border-l-4 transition-all ${
+                            isActive 
+                              ? 'bg-indigo-50 dark:bg-indigo-900/30 border-l-indigo-500' 
+                              : 'border-l-transparent hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                          }`}
+                        >
+                          {/* Info del estudiante */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-sm">{classInfo?.icon}</span>
+                              <span className={`text-sm font-medium truncate ${isActive ? 'text-indigo-700 dark:text-indigo-300' : 'text-gray-700 dark:text-gray-200'}`}>
+                                {getDisplayName(student)}
+                              </span>
+                              {topStudent?.id === student.id && <Crown size={12} className="text-amber-500 flex-shrink-0" />}
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                              <span>Nv.{student.level}</span>
+                              <span>•</span>
+                              <span className="text-emerald-600">{student.xp} XP</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
 
-                  <div className="relative bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border border-gray-100 dark:border-gray-700 rounded-2xl p-4">
-                    {/* Checkbox de selección */}
-                    <div className="absolute top-3 left-3 z-10">
-                      <div className={`
-                        w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all
-                        ${isSelected
-                          ? 'bg-indigo-600 border-indigo-600 shadow-lg shadow-indigo-500/30'
-                          : 'border-gray-300 bg-white/80 hover:border-indigo-400'
-                        }
-                      `}>
-                        {isSelected && <Check size={14} className="text-white" />}
-                      </div>
+                {/* Panel central - Detalle del estudiante */}
+                {detailStudent && (
+                  <div className="flex-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col">
+                    {/* Header con gradiente */}
+                    <div className={`relative h-32 bg-gradient-to-br ${
+                      detailStudent.characterClass === 'GUARDIAN' ? 'from-blue-500 to-cyan-600' :
+                      detailStudent.characterClass === 'ARCANE' ? 'from-purple-500 to-pink-600' :
+                      detailStudent.characterClass === 'EXPLORER' ? 'from-green-500 to-emerald-600' :
+                      'from-amber-500 to-orange-600'
+                    }`}>
+                      {/* Botón volver en móvil */}
+                      <button
+                        onClick={() => setSelectedStudentId(null)}
+                        className="lg:hidden absolute top-3 left-3 flex items-center gap-1 bg-white/20 backdrop-blur text-white text-xs font-bold px-2 py-1 rounded-full hover:bg-white/30 transition-colors"
+                      >
+                        <ChevronLeft size={14} />
+                        <span>Lista</span>
+                      </button>
+                      {isTopStudent && (
+                        <div className="absolute top-3 right-3 flex items-center gap-1 bg-white/20 backdrop-blur text-white text-xs font-bold px-2 py-1 rounded-full">
+                          <Crown size={12} />
+                          <span>Líder en XP</span>
+                        </div>
+                      )}
                     </div>
 
-                    {/* Badge de líder */}
-                    {isTopStudent && (
-                      <div className="absolute top-3 right-3 z-10">
-                        <div className="flex items-center gap-1 bg-gradient-to-r from-amber-400 to-orange-500 text-white text-xs font-bold px-2 py-1 rounded-full shadow-lg">
-                          <Crown size={12} />
-                          <span>Líder</span>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Layout horizontal: Avatar izquierda, Info derecha */}
-                    <div className="flex gap-4 pt-6">
-                      {/* Avatar del estudiante - Izquierda */}
-                      <div className="flex-shrink-0">
-                        <div className={`
-                          relative w-[120px] h-[210px] rounded-xl overflow-hidden
-                          bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50
-                          border-2 ${isSelected ? 'border-indigo-400' : 'border-gray-200'}
-                        `}>
-                          <StudentAvatarMini
-                            studentProfileId={student.id}
-                            gender={student.avatarGender || 'MALE'}
-                            size="xl"
-                            className="absolute top-0 left-1/2 -translate-x-1/2 scale-[0.47] origin-top"
-                          />
-                          {/* Nivel badge */}
-                          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10">
-                            <div className="flex items-center gap-0.5 bg-black/80 text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-lg">
-                              <Star size={12} className="text-amber-400 fill-amber-400" />
-                              <span>Nv.{student.level}</span>
+                    {/* Contenido principal */}
+                    <div className="flex-1 p-4 lg:p-6 -mt-16 overflow-hidden">
+                      <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 h-full">
+                        {/* Avatar grande + código de vinculación - Responsive */}
+                        <div className="flex-shrink-0 flex flex-col items-center">
+                          <div className="relative w-[160px] h-[280px] 2xl:w-[220px] 2xl:h-[390px] rounded-xl overflow-hidden bg-gradient-to-br from-white to-gray-100 dark:from-gray-700 dark:to-gray-800 border-4 border-white dark:border-gray-700 shadow-xl">
+                            <StudentAvatarMini
+                              studentProfileId={detailStudent.id}
+                              gender={detailStudent.avatarGender || 'MALE'}
+                              size="xl"
+                              className="absolute top-0 left-1/2 -translate-x-1/2 scale-[0.62] 2xl:scale-[0.85] origin-top"
+                            />
+                            <div className="absolute bottom-2 left-1/2 -translate-x-1/2">
+                              <div className="flex items-center gap-1 bg-black/80 text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-lg whitespace-nowrap">
+                                <Star size={12} className="text-amber-400 fill-amber-400" />
+                                <span>Nv.{detailStudent.level}</span>
+                              </div>
                             </div>
                           </div>
+                          {/* Código de vinculación debajo del avatar */}
+                          {getStudentLinkCode(detailStudent.id) && (
+                            <button
+                              onClick={() => copyLinkCode(getStudentLinkCode(detailStudent.id)!)}
+                              className="mt-2 flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg text-xs font-mono font-bold hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
+                              title="Clic para copiar"
+                            >
+                              <Link2 size={12} />
+                              {getStudentLinkCode(detailStudent.id)}
+                              <Copy size={10} className="opacity-50" />
+                            </button>
+                          )}
                         </div>
-                      </div>
 
-                      {/* Información del estudiante - Derecha */}
-                      <div className="flex-1 flex flex-col justify-between min-w-0">
-                        {/* Nombre y clase */}
-                        <div className="mb-3">
-                          <h3 className="font-bold text-gray-800 dark:text-white text-lg truncate">
-                            {getDisplayName(student)}
-                          </h3>
-                          <div className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
-                            <span className="text-base">{classInfo?.icon}</span>
-                            <span>{classInfo?.name}</span>
-                          </div>
-                          {/* Clan del estudiante */}
-                          {classroom.clansEnabled && (
-                            <div className="mt-1">
-                              {(student as any).clanName ? (
+                        {/* Info del estudiante */}
+                        <div className="flex-1 pt-4 lg:pt-16 overflow-y-auto">
+                          {/* Nombre y clase */}
+                          <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-1">
+                            {getDisplayName(detailStudent)}
+                          </h2>
+                          <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300 mb-4">
+                            <span className="text-xl">{detailClassInfo?.icon}</span>
+                            <span className="font-medium">{detailClassInfo?.name}</span>
+                            {classroom.clansEnabled && (detailStudent as any).clanName && (
+                              <>
+                                <span className="text-gray-300 dark:text-gray-600">•</span>
                                 <span 
-                                  className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full text-white"
-                                  style={{ backgroundColor: (student as any).clanColor || '#6366f1' }}
+                                  className="px-2 py-0.5 rounded-full text-white text-sm"
+                                  style={{ backgroundColor: (detailStudent as any).clanColor || '#6366f1' }}
                                 >
-                                  🛡️ {(student as any).clanName}
+                                  🛡️ {(detailStudent as any).clanName}
                                 </span>
-                              ) : (
-                                <span className="text-xs text-gray-400 italic">Sin clan</span>
-                              )}
+                              </>
+                            )}
+                          </div>
+
+                          {/* Stats con barras */}
+                          <div className="space-y-4 mb-6">
+                            {/* HP */}
+                            <div>
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="flex items-center gap-2 text-red-600 font-semibold">
+                                  <Heart size={18} className="fill-red-500" />
+                                  HP
+                                </span>
+                                <span className="text-lg font-bold text-gray-700 dark:text-gray-200">
+                                  {detailStudent.hp} <span className="text-sm font-normal text-gray-400">/ {classroom.maxHp || 100}</span>
+                                </span>
+                              </div>
+                              <div className="h-3 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
+                                <motion.div
+                                  initial={{ width: 0 }}
+                                  animate={{ width: `${hpPercent}%` }}
+                                  className="h-full rounded-full bg-gradient-to-r from-red-400 to-red-600"
+                                />
+                              </div>
                             </div>
-                          )}
-                          {/* Código de vinculación para estudiantes placeholder */}
-                          {getStudentLinkCode(student.id) && (
-                            <div className="mt-1.5">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  copyLinkCode(getStudentLinkCode(student.id)!);
-                                }}
-                                className="inline-flex items-center gap-1.5 text-xs px-2 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
-                                title="Clic para copiar código"
+
+                            {/* XP */}
+                            <div>
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="flex items-center gap-2 text-indigo-600 font-semibold">
+                                  <Sparkles size={18} />
+                                  XP
+                                </span>
+                                <span className="text-lg font-bold text-gray-700 dark:text-gray-200">
+                                  {detailStudent.xp} <span className="text-sm font-normal text-gray-400">({Math.round(xpInLevel)}/{xpNeeded})</span>
+                                </span>
+                              </div>
+                              <div className="h-3 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
+                                <motion.div
+                                  initial={{ width: 0 }}
+                                  animate={{ width: `${xpProgress}%` }}
+                                  className="h-full bg-gradient-to-r from-indigo-400 to-purple-500 rounded-full"
+                                />
+                              </div>
+                            </div>
+
+                            {/* GP */}
+                            <div className="flex items-center justify-between">
+                              <span className="flex items-center gap-2 text-amber-600 font-semibold">
+                                <Coins size={18} />
+                                GP
+                              </span>
+                              <span className="text-lg font-bold text-gray-700 dark:text-gray-200">
+                                {detailStudent.gp}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Botones de acción rápida */}
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => { setSelectedStudents(new Set([detailStudent.id])); setBehaviorType('positive'); setShowBehaviorModal(true); }}
+                              className="!bg-green-500 hover:!bg-green-600 !text-white"
+                            >
+                              <Zap size={14} className="mr-1" /> Dar puntos
+                            </Button>
+                            {classroom.allowNegativePoints !== false && (
+                              <Button
+                                size="sm"
+                                onClick={() => { setSelectedStudents(new Set([detailStudent.id])); setBehaviorType('negative'); setShowBehaviorModal(true); }}
+                                className="!bg-red-500 hover:!bg-red-600 !text-white"
                               >
-                                <Link2 size={12} />
-                                <span className="font-mono font-bold tracking-wider">{getStudentLinkCode(student.id)}</span>
-                                <Copy size={10} className="opacity-50" />
-                              </button>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Barras de stats */}
-                        <div className="space-y-2">
-                          {/* HP Bar */}
-                          <div>
-                            <div className="flex items-center justify-between text-xs mb-0.5">
-                              <span className="flex items-center gap-1 text-red-600 font-medium">
-                                <Heart size={11} className="fill-red-500" />
-                                HP
-                              </span>
-                              <span className="text-gray-500 dark:text-gray-400 text-[10px]">{student.hp}/{classroom.maxHp || 100}</span>
-                            </div>
-                            <div className="h-2 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
-                              <motion.div
-                                initial={{ width: 0 }}
-                                animate={{ width: `${hpPercent}%` }}
-                                className={`h-full rounded-full ${
-                                  hpPercent > 50 ? 'bg-gradient-to-r from-green-400 to-emerald-500' :
-                                  hpPercent > 25 ? 'bg-gradient-to-r from-yellow-400 to-amber-500' :
-                                  'bg-gradient-to-r from-red-400 to-red-600'
-                                }`}
-                              />
-                            </div>
-                          </div>
-
-                          {/* XP Bar */}
-                          <div>
-                            <div className="flex items-center justify-between text-xs mb-0.5">
-                              <span className="flex items-center gap-1 text-indigo-600 font-medium">
-                                <Sparkles size={11} />
-                                XP
-                              </span>
-                              <span className="text-gray-500 dark:text-gray-400 text-[10px]">{xpInLevel}/{xpNeeded}</span>
-                            </div>
-                            <div className="h-2 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
-                              <motion.div
-                                initial={{ width: 0 }}
-                                animate={{ width: `${xpProgress}%` }}
-                                className="h-full bg-gradient-to-r from-indigo-400 to-purple-500 rounded-full"
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Stats numéricos */}
-                        <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
-                          <div className="flex items-center gap-1">
-                            <Sparkles size={14} className="text-indigo-500" />
-                            <span className="font-bold text-gray-700 dark:text-gray-200">{student.xp}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Coins size={14} className="text-amber-500" />
-                            <span className="font-bold text-gray-700 dark:text-gray-200">{student.gp}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Heart size={14} className="text-red-500" />
-                            <span className="font-bold text-gray-700 dark:text-gray-200">{student.hp}</span>
+                                <Zap size={14} className="mr-1" /> Quitar
+                              </Button>
+                            )}
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => { setSelectedStudents(new Set([detailStudent.id])); setShowBadgeModal(true); }}
+                              className="!bg-amber-500 hover:!bg-amber-600 !text-white"
+                            >
+                              <Medal size={14} className="mr-1" /> Insignia
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => navigate(`/classroom/${classroom.id}/student/${detailStudent.id}`)}
+                              className="!bg-indigo-500 hover:!bg-indigo-600 !text-white"
+                            >
+                              <Eye size={14} className="mr-1" /> Ver perfil
+                            </Button>
                           </div>
                         </div>
                       </div>
                     </div>
                   </div>
-                </motion.div>
-              );
-            })}
-          </div>
-          )}
+                )}
+              </div>
+            );
+          })()}
 
           {/* Vista de Lista */}
           {viewMode === 'list' && students.length > 0 && (
             <Card className="overflow-hidden">
+              {/* Barra de búsqueda */}
+              <div className="p-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                <div className="relative max-w-xs">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Buscar estudiante..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
               <div className="overflow-x-auto">
               <table className="w-full min-w-[700px]">
                 <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
@@ -844,12 +780,10 @@ export const StudentsPage = () => {
                         {/* HP */}
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
-                            <Heart size={14} className="text-red-500 flex-shrink-0" />
+                            <Heart size={14} className="text-red-500 fill-red-500 flex-shrink-0" />
                             <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden max-w-[80px]">
                               <div 
-                                className={`h-full rounded-full ${
-                                  hpPercent > 50 ? 'bg-green-500' : hpPercent > 25 ? 'bg-amber-500' : 'bg-red-500'
-                                }`}
+                                className="h-full rounded-full bg-red-500"
                                 style={{ width: `${hpPercent}%` }}
                               />
                             </div>

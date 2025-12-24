@@ -240,13 +240,14 @@ export const QuestionBanksPage = () => {
                 <motion.div
                   key={bank.id}
                   whileHover={{ scale: 1.02 }}
-                  className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm hover:shadow-md transition-all cursor-pointer group"
+                  className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm hover:shadow-md transition-all cursor-pointer group border-l-4"
+                  style={{ borderLeftColor: bank.color }}
                   onClick={() => handleSelectBank(bank)}
                 >
                   <div className="flex items-start justify-between mb-4">
                     <div 
                       className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
-                      style={{ backgroundColor: bank.color + '20' }}
+                      style={{ backgroundColor: bank.color + '30' }}
                     >
                       {getBankEmoji(bank.icon)}
                     </div>
@@ -479,20 +480,20 @@ interface BankModalProps {
 }
 
 const BankModal = ({ isOpen, onClose, onSubmit, onDelete, initialData, isLoading }: BankModalProps) => {
-  const [name, setName] = useState(initialData?.name || '');
-  const [description, setDescription] = useState(initialData?.description || '');
-  const [color, setColor] = useState(initialData?.color || BANK_COLORS[0]);
-  const [icon, setIcon] = useState(initialData?.icon || 'book');
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [color, setColor] = useState(BANK_COLORS[0]);
+  const [icon, setIcon] = useState('book');
 
-  // Reset form when modal opens/closes
-  useState(() => {
+  // Reset form when modal opens or initialData changes
+  useEffect(() => {
     if (isOpen) {
       setName(initialData?.name || '');
       setDescription(initialData?.description || '');
       setColor(initialData?.color || BANK_COLORS[0]);
       setIcon(initialData?.icon || 'book');
     }
-  });
+  }, [isOpen, initialData]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

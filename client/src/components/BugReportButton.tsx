@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import ReactDOM from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useMutation } from '@tanstack/react-query';
 import { useLocation } from 'react-router-dom';
@@ -20,7 +21,11 @@ import {
 } from '../lib/bugReportApi';
 import toast from 'react-hot-toast';
 
-export const BugReportButton = () => {
+interface BugReportButtonProps {
+  variant?: 'floating' | 'icon';
+}
+
+export const BugReportButton = ({ variant = 'floating' }: BugReportButtonProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const location = useLocation();
@@ -80,43 +85,54 @@ export const BugReportButton = () => {
 
   return (
     <>
-      {/* Botón flotante */}
-      <motion.button
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-300 group"
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 1 }}
-      >
-        <Bug size={20} />
-        <span className="hidden sm:inline font-medium">Reportar Bug</span>
-        <motion.div
-          className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full"
-          animate={{ scale: [1, 1.2, 1] }}
-          transition={{ repeat: Infinity, duration: 2 }}
-        />
-      </motion.button>
+      {/* Botón - Flotante o Icono según variant */}
+      {variant === 'floating' ? (
+        <motion.button
+          onClick={() => setIsOpen(true)}
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-full shadow-lg hover:shadow-xl transition-all duration-300 group"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 1 }}
+        >
+          <Bug size={20} />
+          <span className="hidden sm:inline font-medium">Reportar Bug</span>
+          <motion.div
+            className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full"
+            animate={{ scale: [1, 1.2, 1] }}
+            transition={{ repeat: Infinity, duration: 2 }}
+          />
+        </motion.button>
+      ) : (
+        <button
+          onClick={() => setIsOpen(true)}
+          className="p-2 text-gray-500 dark:text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          title="Reportar Bug"
+        >
+          <Bug size={20} />
+        </button>
+      )}
 
-      {/* Modal */}
-      <AnimatePresence>
-        {isOpen && (
+      {/* Modal - Usando portal para asegurar que esté al frente */}
+      {isOpen && ReactDOM.createPortal(
+        <AnimatePresence>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={handleClose}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+            style={{ zIndex: 99999 }}
+          >
+            {/* Modal Content */}
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={handleClose}
-              className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-lg bg-white dark:bg-gray-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
             >
-              {/* Modal Content */}
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                onClick={(e) => e.stopPropagation()}
-                className="w-full max-w-lg bg-white dark:bg-gray-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
-              >
               {/* Header */}
               <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-orange-500 to-red-500">
                 <div className="flex items-center gap-3 text-white">
@@ -285,9 +301,10 @@ export const BugReportButton = () => {
                 </div>
               )}
               </motion.div>
-            </motion.div>
-        )}
-      </AnimatePresence>
+          </motion.div>
+        </AnimatePresence>,
+        document.body
+      )}
     </>
   );
 };

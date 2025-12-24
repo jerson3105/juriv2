@@ -436,6 +436,9 @@ export const ClassroomLayout = () => {
             >
               <HelpCircle size={18} />
             </button>
+
+            {/* Botón de reportar bug */}
+            <BugReportButton variant="icon" />
             
             {/* Toggle de tema */}
             <ThemeToggle />
@@ -617,9 +620,6 @@ export const ClassroomLayout = () => {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Botón de reporte de bugs (siempre visible para profesores en ClassroomLayout) */}
-      <BugReportButton />
     </div>
   );
 };

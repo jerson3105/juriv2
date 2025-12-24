@@ -343,6 +343,16 @@ class MissionService {
       if (isCompleted) {
         await this.updateStreak(studentProfileId, mission.classroomId);
         
+        // Trackear COMPLETE_MISSIONS para otras misiones que lo requieran
+        // (solo si el objetivo actual NO es COMPLETE_MISSIONS para evitar recursión infinita)
+        if (objectiveType !== 'COMPLETE_MISSIONS') {
+          try {
+            await this.updateMissionProgress(studentProfileId, 'COMPLETE_MISSIONS', 1);
+          } catch (error) {
+            console.error('Error tracking COMPLETE_MISSIONS:', error);
+          }
+        }
+        
         // Crear notificación para el estudiante
         const [profile] = await db.select().from(studentProfiles)
           .where(eq(studentProfiles.id, studentProfileId));

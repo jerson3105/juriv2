@@ -370,25 +370,7 @@ export const ScrollsActivity = ({ classroom: initialClassroom, onBack }: Scrolls
           </div>
         </div>
 
-        {/* Toggle Open/Close */}
-        <Button
-          onClick={() => toggleOpenMutation.mutate(!classroom.scrollsOpen)}
-          disabled={toggleOpenMutation.isPending}
-          variant={classroom.scrollsOpen ? 'primary' : 'secondary'}
-          className="flex items-center gap-2"
-        >
-          {classroom.scrollsOpen ? (
-            <>
-              <Eye size={18} />
-              <span>Mural Abierto</span>
-            </>
-          ) : (
-            <>
-              <EyeOff size={18} />
-              <span>Mural Cerrado</span>
-            </>
-          )}
-        </Button>
+
       </div>
 
       {/* Stats Cards */}
