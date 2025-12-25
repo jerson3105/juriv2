@@ -1037,17 +1037,25 @@ class TournamentService {
     const match = await this.getMatch(matchId);
     if (!match) throw new Error('Match no encontrado');
 
+    // Obtener tipo de torneo
+    const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, match.tournamentId));
+    if (!tournament) throw new Error('Torneo no encontrado');
+
+    const isLeague = tournament.type === 'LEAGUE';
+    const isTie = match.participant1Score === match.participant2Score;
+
     // Determinar ganador por puntuación
     let winnerId: string | null = null;
     if (match.participant1Score > match.participant2Score) {
       winnerId = match.participant1Id;
     } else if (match.participant2Score > match.participant1Score) {
       winnerId = match.participant2Id;
-    } else {
-      // Empate: gana el que respondió más rápido en promedio
+    } else if (!isLeague) {
+      // Empate en eliminación: desempate por tiempo promedio de respuesta
       // Por simplicidad, elegimos al participante 1
       winnerId = match.participant1Id;
     }
+    // En Liga, empate = winnerId queda null
 
     await db.update(tournamentMatches)
       .set({
@@ -1059,7 +1067,24 @@ class TournamentService {
       .where(eq(tournamentMatches.id, matchId));
 
     // Actualizar estadísticas de participantes
-    if (winnerId) {
+    if (isTie && isLeague) {
+      // Empate en Liga: ambos ganan 1 punto (matchesDrawn)
+      await db.update(tournamentParticipants)
+        .set({
+          matchesDrawn: sql`matches_drawn + 1`,
+          updatedAt: new Date(),
+        })
+        .where(eq(tournamentParticipants.id, match.participant1Id));
+
+      if (match.participant2Id) {
+        await db.update(tournamentParticipants)
+          .set({
+            matchesDrawn: sql`matches_drawn + 1`,
+            updatedAt: new Date(),
+          })
+          .where(eq(tournamentParticipants.id, match.participant2Id));
+      }
+    } else if (winnerId) {
       const loserId = winnerId === match.participant1Id ? match.participant2Id : match.participant1Id;
 
       await db.update(tournamentParticipants)
@@ -1073,16 +1098,16 @@ class TournamentService {
         await db.update(tournamentParticipants)
           .set({
             matchesLost: sql`matches_lost + 1`,
-            isEliminated: true,
-            eliminatedInRound: match.round,
+            isEliminated: !isLeague, // Solo eliminar en torneos de eliminación
+            eliminatedInRound: !isLeague ? match.round : null,
             updatedAt: new Date(),
           })
           .where(eq(tournamentParticipants.id, loserId));
       }
     }
 
-    // Avanzar ganador a la siguiente ronda
-    if (winnerId) {
+    // Avanzar ganador a la siguiente ronda (solo en eliminación)
+    if (winnerId && !isLeague) {
       await this.advanceWinner(matchId, winnerId);
     }
 

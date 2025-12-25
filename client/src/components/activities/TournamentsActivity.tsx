@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   Trophy, Plus, Users, Swords, Play, Clock, Medal, Crown, CheckCircle, Star,
-  ChevronRight, ChevronLeft, Trash2, Shuffle, X, Check, Target, Award, UserPlus, LayoutGrid,
+  ChevronRight, ChevronLeft, Trash2, Shuffle, X, Check, Target, Award, UserPlus, LayoutGrid, ListChecks,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
@@ -1523,7 +1523,8 @@ const CreateTournamentModal = ({ isOpen, onClose, onSubmit, questionBanks, isLoa
             <div><label className="block text-sm font-medium mb-2">Participantes</label>
               <select value={form.participantType} onChange={e => setForm(p => ({ ...p, participantType: e.target.value as TournamentParticipantType }))}
                 className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700">
-                {Object.entries(PARTICIPANT_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
+                {/* Por ahora solo Individual - Clanes no está completamente implementado */}
+                <option value="INDIVIDUAL">{PARTICIPANT_TYPE_LABELS.INDIVIDUAL}</option></select></div>
           </div>
           <div className="grid md:grid-cols-2 gap-4">
             <div><label className="block text-sm font-medium mb-2">Máx. participantes</label>
@@ -2630,12 +2631,122 @@ const MatchControls = ({ match, onMatchUpdate, onMatchComplete, p1AvatarUrl, p2A
     );
   }
 
-  // RENDER: Estado COMPLETED
+  // RENDER: Estado COMPLETED - Mostrar resumen del match
   if (match.status === 'COMPLETED') {
+    const p1 = match.participant1;
+    const p2 = match.participant2;
+    const p1Name = p1?.student?.displayName || p1?.clan?.name || 'Participante 1';
+    const p2Name = p2?.student?.displayName || p2?.clan?.name || 'Participante 2';
+    const isTie = match.participant1Score === match.participant2Score;
+    const winner = match.winnerId === match.participant1Id ? p1Name : match.winnerId === match.participant2Id ? p2Name : null;
+
+    // Agrupar respuestas por pregunta
+    const answersByQuestion: Record<number, { p1?: any; p2?: any }> = {};
+    match.answers?.forEach((a: any) => {
+      const qIdx = a.questionIndex;
+      if (!answersByQuestion[qIdx]) answersByQuestion[qIdx] = {};
+      if (a.participantId === match.participant1Id) answersByQuestion[qIdx].p1 = a;
+      else answersByQuestion[qIdx].p2 = a;
+    });
+
     return (
-      <div className="text-center py-8">
-        <CheckCircle size={48} className="mx-auto text-green-500 mb-2" />
-        <p className="text-lg font-medium">Match Completado</p>
+      <div className="space-y-6">
+        {/* Header con resultado */}
+        <div className="text-center">
+          <CheckCircle size={40} className="mx-auto text-green-500 mb-2" />
+          <h3 className="text-xl font-bold text-gray-800 dark:text-white">Match Completado</h3>
+          {isTie ? (
+            <p className="text-lg text-gray-600 dark:text-gray-400 mt-1">
+              ⚖️ Empate {match.participant1Score} - {match.participant2Score}
+            </p>
+          ) : (
+            <p className="text-lg text-gray-600 dark:text-gray-400 mt-1">
+              🏆 Ganador: <span className="font-bold text-green-600">{winner}</span>
+            </p>
+          )}
+        </div>
+
+        {/* VS Card con scores */}
+        <div className="flex items-center justify-center gap-6 p-4 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-xl">
+          <div className="text-center">
+            <ParticipantAvatar 
+              name={p1Name}
+              avatarUrl={p1?.student?.avatarUrl}
+              studentId={p1?.student?.id}
+              avatarGender={p1?.student?.avatarGender}
+              color={p1?.clan?.color}
+              size={56}
+            />
+            <p className="font-bold text-gray-800 dark:text-white mt-2">{p1Name.split(' ')[0]}</p>
+            <p className={`text-2xl font-black ${match.winnerId === match.participant1Id ? 'text-green-500' : isTie ? 'text-gray-600' : 'text-red-400'}`}>
+              {match.participant1Score}
+            </p>
+          </div>
+          <span className="text-2xl font-bold text-gray-400">vs</span>
+          <div className="text-center">
+            <ParticipantAvatar 
+              name={p2Name}
+              avatarUrl={p2?.student?.avatarUrl}
+              studentId={p2?.student?.id}
+              avatarGender={p2?.student?.avatarGender}
+              color={p2?.clan?.color}
+              size={56}
+            />
+            <p className="font-bold text-gray-800 dark:text-white mt-2">{p2Name.split(' ')[0]}</p>
+            <p className={`text-2xl font-black ${match.winnerId === match.participant2Id ? 'text-green-500' : isTie ? 'text-gray-600' : 'text-red-400'}`}>
+              {match.participant2Score}
+            </p>
+          </div>
+        </div>
+
+        {/* Historial de respuestas */}
+        {Object.keys(answersByQuestion).length > 0 && (
+          <div className="space-y-3">
+            <h4 className="font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <ListChecks size={18} />
+              Historial de Respuestas
+            </h4>
+            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+              {Object.entries(answersByQuestion).sort(([a], [b]) => Number(a) - Number(b)).map(([qIdx, data]) => (
+                <div key={qIdx} className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg text-sm">
+                  <span className="w-8 h-8 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center font-bold text-xs">
+                    P{Number(qIdx) + 1}
+                  </span>
+                  <div className="flex-1 flex items-center gap-4">
+                    <div className="flex-1 flex items-center gap-2">
+                      <span className="font-medium text-gray-700 dark:text-gray-300">{p1Name.split(' ')[0]}:</span>
+                      {data.p1 ? (
+                        data.p1.isCorrect ? 
+                          <span className="text-green-600 flex items-center gap-1"><Check size={14} /> +{data.p1.pointsEarned}</span> :
+                          <span className="text-red-500 flex items-center gap-1"><X size={14} /> 0</span>
+                      ) : <span className="text-gray-400">-</span>}
+                    </div>
+                    <div className="flex-1 flex items-center gap-2">
+                      <span className="font-medium text-gray-700 dark:text-gray-300">{p2Name.split(' ')[0]}:</span>
+                      {data.p2 ? (
+                        data.p2.isCorrect ? 
+                          <span className="text-green-600 flex items-center gap-1"><Check size={14} /> +{data.p2.pointsEarned}</span> :
+                          <span className="text-red-500 flex items-center gap-1"><X size={14} /> 0</span>
+                      ) : <span className="text-gray-400">-</span>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Stats */}
+        <div className="grid grid-cols-2 gap-4 text-center">
+          <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-xl">
+            <p className="text-2xl font-bold text-green-600">{match.answers?.filter((a: any) => a.participantId === match.participant1Id && a.isCorrect).length || 0}</p>
+            <p className="text-xs text-gray-500">{p1Name.split(' ')[0]} correctas</p>
+          </div>
+          <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-xl">
+            <p className="text-2xl font-bold text-green-600">{match.answers?.filter((a: any) => a.participantId === match.participant2Id && a.isCorrect).length || 0}</p>
+            <p className="text-xs text-gray-500">{p2Name.split(' ')[0]} correctas</p>
+          </div>
+        </div>
       </div>
     );
   }

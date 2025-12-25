@@ -2404,6 +2404,7 @@ export const tournamentParticipants = mysqlTable('tournament_participants', {
   totalPoints: int('total_points').notNull().default(0),
   matchesWon: int('matches_won').notNull().default(0),
   matchesLost: int('matches_lost').notNull().default(0),
+  matchesDrawn: int('matches_drawn').notNull().default(0),
   questionsCorrect: int('questions_correct').notNull().default(0),
   questionsTotal: int('questions_total').notNull().default(0),
   
