@@ -10,6 +10,7 @@ import {
   ScrollText,
   Map,
   Target,
+  Trophy,
 } from 'lucide-react';
 import { RandomPickerActivity } from '../../components/activities/RandomPickerActivity';
 import { RandomEventsActivity } from '../../components/activities/RandomEventsActivity';
@@ -19,6 +20,7 @@ import { TimedActivitiesActivity } from '../../components/activities/TimedActivi
 import { AulaZenActivity } from '../../components/activities/AulaZenActivity';
 import { ScrollsActivity } from '../../components/activities/ScrollsActivity';
 import { TerritoryConquestActivity } from '../../components/activities/TerritoryConquestActivity';
+import { TournamentsActivity } from '../../components/activities/TournamentsActivity';
 import { useOutletContext, useParams } from 'react-router-dom';
 import BossBattleTypeModal from '../../components/modals/BossBattleTypeModal';
 import RouletteOfDestinyModal from '../../components/modals/RouletteOfDestinyModal';
@@ -116,6 +118,20 @@ const activities: Activity[] = [
     shadowColor: 'shadow-indigo-500/30',
     glowColor: 'indigo',
     available: true,
+  },
+  {
+    id: 'tournaments',
+    name: 'Torneos',
+    description: 'Competencias de bracket eliminatorio. ¡Estudiantes o clanes compiten respondiendo preguntas!',
+    icon: <Trophy size={28} />,
+    emoji: '🏆',
+    gradient: 'from-amber-500 via-yellow-500 to-orange-500',
+    bgGradient: 'from-amber-500/10 via-yellow-500/5 to-orange-500/10',
+    shadowColor: 'shadow-amber-500/30',
+    glowColor: 'amber',
+    available: true,
+    tag: '🆕 Nuevo',
+    tagColor: 'from-green-400 to-emerald-500',
   },
 ];
 
@@ -233,6 +249,15 @@ export const ActivitiesPage = () => {
   if (selectedActivity === 'territory-conquest') {
     return (
       <TerritoryConquestActivity 
+        classroom={classroom}
+        onBack={() => setSelectedActivity(null)}
+      />
+    );
+  }
+
+  if (selectedActivity === 'tournaments') {
+    return (
+      <TournamentsActivity 
         classroom={classroom}
         onBack={() => setSelectedActivity(null)}
       />

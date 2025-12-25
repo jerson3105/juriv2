@@ -9,8 +9,6 @@ import {
   X,
   Trash2,
   MessageSquare,
-  Eye,
-  EyeOff,
   AlertCircle,
   Calendar,
 } from 'lucide-react';
@@ -100,16 +98,6 @@ export const ScrollsActivity = ({ classroom: initialClassroom, onBack }: Scrolls
       toast.success('Pergamino eliminado');
     },
     onError: () => toast.error('Error al eliminar'),
-  });
-
-  const toggleOpenMutation = useMutation({
-    mutationFn: (isOpen: boolean) => scrollApi.toggleOpen(classroom.id, isOpen),
-    onSuccess: (_, isOpen) => {
-      queryClient.invalidateQueries({ queryKey: ['classroom', classroom.id] });
-      queryClient.invalidateQueries({ queryKey: ['classrooms'] });
-      toast.success(isOpen ? 'Mural abierto' : 'Mural cerrado');
-    },
-    onError: () => toast.error('Error al cambiar estado'),
   });
 
   const updateConfigMutation = useMutation({

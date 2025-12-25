@@ -518,6 +518,8 @@ export class TerritoryService {
         text: question.questionText,
         type: question.type,
         options: question.options,
+        correctAnswer: question.correctAnswer,
+        pairs: question.pairs,
         imageUrl: question.imageUrl,
         difficulty: question.difficulty,
       },
@@ -597,6 +599,8 @@ export class TerritoryService {
         text: question.questionText,
         type: question.type,
         options: question.options,
+        correctAnswer: question.correctAnswer,
+        pairs: question.pairs,
         imageUrl: question.imageUrl,
         difficulty: question.difficulty,
       },
@@ -1009,6 +1013,42 @@ export class TerritoryService {
       const defenderClan = challenge.defenderClanId ? game.clans.find(c => c.id === challenge.defenderClanId) : null;
       
       if (question[0] && territory && challengerClan) {
+        // Helper para parsear JSON (maneja doble serialización y strings)
+        const parseJsonField = (value: any): any => {
+          if (value === null || value === undefined) return null;
+          // Si ya es un objeto o array, devolverlo
+          if (typeof value === 'object') return value;
+          // Si es boolean o number, devolverlo
+          if (typeof value === 'boolean' || typeof value === 'number') return value;
+          // Si es string, intentar parsear
+          if (typeof value === 'string') {
+            // Manejar strings "true"/"false" directamente
+            if (value === 'true') return true;
+            if (value === 'false') return false;
+            try {
+              let parsed = JSON.parse(value);
+              // Si sigue siendo string, intentar parsear de nuevo
+              while (typeof parsed === 'string') {
+                if (parsed === 'true') return true;
+                if (parsed === 'false') return false;
+                parsed = JSON.parse(parsed);
+              }
+              return parsed;
+            } catch {
+              return value;
+            }
+          }
+          return value;
+        };
+
+        // Parsear campos JSON de la pregunta
+        const parsedQuestion = {
+          ...question[0],
+          options: parseJsonField(question[0].options),
+          correctAnswer: parseJsonField(question[0].correctAnswer),
+          pairs: parseJsonField(question[0].pairs),
+        };
+
         pendingChallenge = {
           challengeId: challenge.id,
           challengeType: challenge.challengeType,
@@ -1029,7 +1069,7 @@ export class TerritoryService {
             color: defenderClan.color,
             emblem: defenderClan.emblem,
           } : null,
-          question: question[0],
+          question: parsedQuestion,
         };
       }
     }

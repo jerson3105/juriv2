@@ -2316,3 +2316,240 @@ export type NewBugReport = typeof bugReports.$inferInsert;
 export type BugReportCategory = 'UI' | 'FUNCTIONALITY' | 'PERFORMANCE' | 'DATA' | 'OTHER';
 export type BugReportPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 export type BugReportStatus = 'PENDING' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+
+// ==================== SISTEMA DE TORNEOS ====================
+
+// Enums para Torneos
+export const tournamentTypeEnum = mysqlEnum('tournament_type', ['BRACKET', 'LEAGUE', 'QUICKFIRE']);
+export const tournamentStatusEnum = mysqlEnum('tournament_status', ['DRAFT', 'READY', 'ACTIVE', 'PAUSED', 'FINISHED']);
+export const tournamentParticipantTypeEnum = mysqlEnum('tournament_participant_type', ['INDIVIDUAL', 'CLAN']);
+export const tournamentMatchStatusEnum = mysqlEnum('tournament_match_status', ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'BYE']);
+
+// Definición del torneo
+export const tournaments = mysqlTable('tournaments', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
+  
+  // Info básica
+  name: varchar('name', { length: 100 }).notNull(),
+  description: text('description'),
+  icon: varchar('icon', { length: 50 }).notNull().default('🏆'),
+  
+  // Tipo y configuración
+  type: tournamentTypeEnum.notNull().default('BRACKET'),
+  participantType: tournamentParticipantTypeEnum.notNull().default('INDIVIDUAL'),
+  
+  // Bancos de preguntas (JSON array de IDs)
+  questionBankIds: json('question_bank_ids').$type<string[]>().notNull(),
+  
+  // Configuración del torneo
+  maxParticipants: int('max_participants').notNull().default(16), // 4, 8, 16, 32
+  timePerQuestion: int('time_per_question').notNull().default(30), // segundos
+  questionsPerMatch: int('questions_per_match').notNull().default(3), // preguntas por enfrentamiento
+  pointsPerCorrect: int('points_per_correct').notNull().default(100), // puntos por respuesta correcta
+  bonusTimePoints: int('bonus_time_points').notNull().default(10), // bonus por responder rápido
+  
+  // Recompensas (XP y GP)
+  rewardXpFirst: int('reward_xp_first').notNull().default(100),
+  rewardXpSecond: int('reward_xp_second').notNull().default(50),
+  rewardXpThird: int('reward_xp_third').notNull().default(25),
+  rewardGpFirst: int('reward_gp_first').notNull().default(50),
+  rewardGpSecond: int('reward_gp_second').notNull().default(25),
+  rewardGpThird: int('reward_gp_third').notNull().default(10),
+  rewardXpParticipation: int('reward_xp_participation').notNull().default(10), // XP por participar
+  
+  // Estado
+  status: tournamentStatusEnum.notNull().default('DRAFT'),
+  currentRound: int('current_round').notNull().default(0),
+  totalRounds: int('total_rounds').notNull().default(0), // Calculado al iniciar
+  
+  // Ganadores (se llenan al finalizar)
+  firstPlaceId: varchar('first_place_id', { length: 36 }),
+  secondPlaceId: varchar('second_place_id', { length: 36 }),
+  thirdPlaceId: varchar('third_place_id', { length: 36 }),
+  
+  // Timestamps
+  startedAt: datetime('started_at'),
+  finishedAt: datetime('finished_at'),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  classroomIdx: index('idx_tournaments_classroom').on(table.classroomId),
+  statusIdx: index('idx_tournaments_status').on(table.status),
+  typeIdx: index('idx_tournaments_type').on(table.type),
+}));
+
+export const tournamentsRelations = relations(tournaments, ({ one, many }) => ({
+  classroom: one(classrooms, {
+    fields: [tournaments.classroomId],
+    references: [classrooms.id],
+  }),
+  participants: many(tournamentParticipants),
+  matches: many(tournamentMatches),
+}));
+
+// Participantes del torneo
+export const tournamentParticipants = mysqlTable('tournament_participants', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  tournamentId: varchar('tournament_id', { length: 36 }).notNull(),
+  
+  // Participante (estudiante o clan según el tipo de torneo)
+  studentProfileId: varchar('student_profile_id', { length: 36 }), // null si es torneo de clanes
+  clanId: varchar('clan_id', { length: 36 }), // null si es torneo individual
+  
+  // Posición en el bracket (seed)
+  seed: int('seed').notNull().default(0),
+  
+  // Estadísticas
+  totalPoints: int('total_points').notNull().default(0),
+  matchesWon: int('matches_won').notNull().default(0),
+  matchesLost: int('matches_lost').notNull().default(0),
+  questionsCorrect: int('questions_correct').notNull().default(0),
+  questionsTotal: int('questions_total').notNull().default(0),
+  
+  // Estado en el torneo
+  isEliminated: boolean('is_eliminated').notNull().default(false),
+  eliminatedInRound: int('eliminated_in_round'),
+  finalPosition: int('final_position'), // 1, 2, 3, etc. (se llena al finalizar)
+  
+  // Timestamps
+  joinedAt: datetime('joined_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  tournamentIdx: index('idx_tournament_participants_tournament').on(table.tournamentId),
+  studentIdx: index('idx_tournament_participants_student').on(table.studentProfileId),
+  clanIdx: index('idx_tournament_participants_clan').on(table.clanId),
+  uniqueTournamentStudent: unique('unique_tournament_student').on(table.tournamentId, table.studentProfileId),
+  uniqueTournamentClan: unique('unique_tournament_clan').on(table.tournamentId, table.clanId),
+}));
+
+export const tournamentParticipantsRelations = relations(tournamentParticipants, ({ one, many }) => ({
+  tournament: one(tournaments, {
+    fields: [tournamentParticipants.tournamentId],
+    references: [tournaments.id],
+  }),
+  student: one(studentProfiles, {
+    fields: [tournamentParticipants.studentProfileId],
+    references: [studentProfiles.id],
+  }),
+  clan: one(teams, {
+    fields: [tournamentParticipants.clanId],
+    references: [teams.id],
+  }),
+  matchesAsParticipant1: many(tournamentMatches, { relationName: 'participant1' }),
+  matchesAsParticipant2: many(tournamentMatches, { relationName: 'participant2' }),
+  answers: many(tournamentAnswers),
+}));
+
+// Enfrentamientos del torneo
+export const tournamentMatches = mysqlTable('tournament_matches', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  tournamentId: varchar('tournament_id', { length: 36 }).notNull(),
+  
+  // Posición en el bracket
+  round: int('round').notNull(), // 1 = primera ronda, 2 = cuartos, etc.
+  matchNumber: int('match_number').notNull(), // Número del match en la ronda
+  bracketPosition: varchar('bracket_position', { length: 20 }), // Ej: "R1M1", "QF1", "SF1", "FINAL"
+  
+  // Participantes
+  participant1Id: varchar('participant_1_id', { length: 36 }), // null si es BYE o aún no definido
+  participant2Id: varchar('participant_2_id', { length: 36 }), // null si es BYE o aún no definido
+  
+  // Puntuaciones
+  participant1Score: int('participant_1_score').notNull().default(0),
+  participant2Score: int('participant_2_score').notNull().default(0),
+  
+  // Preguntas usadas en este match (JSON array de IDs)
+  questionIds: json('question_ids').$type<string[]>(),
+  currentQuestionIndex: int('current_question_index').notNull().default(0),
+  
+  // Resultado
+  winnerId: varchar('winner_id', { length: 36 }), // ID del participante ganador
+  status: tournamentMatchStatusEnum.notNull().default('PENDING'),
+  
+  // Timestamps
+  startedAt: datetime('started_at'),
+  completedAt: datetime('completed_at'),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  tournamentIdx: index('idx_tournament_matches_tournament').on(table.tournamentId),
+  roundIdx: index('idx_tournament_matches_round').on(table.round),
+  statusIdx: index('idx_tournament_matches_status').on(table.status),
+  participant1Idx: index('idx_tournament_matches_p1').on(table.participant1Id),
+  participant2Idx: index('idx_tournament_matches_p2').on(table.participant2Id),
+}));
+
+export const tournamentMatchesRelations = relations(tournamentMatches, ({ one, many }) => ({
+  tournament: one(tournaments, {
+    fields: [tournamentMatches.tournamentId],
+    references: [tournaments.id],
+  }),
+  participant1: one(tournamentParticipants, {
+    fields: [tournamentMatches.participant1Id],
+    references: [tournamentParticipants.id],
+    relationName: 'participant1',
+  }),
+  participant2: one(tournamentParticipants, {
+    fields: [tournamentMatches.participant2Id],
+    references: [tournamentParticipants.id],
+    relationName: 'participant2',
+  }),
+  winner: one(tournamentParticipants, {
+    fields: [tournamentMatches.winnerId],
+    references: [tournamentParticipants.id],
+  }),
+  answers: many(tournamentAnswers),
+}));
+
+// Respuestas en el torneo
+export const tournamentAnswers = mysqlTable('tournament_answers', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  matchId: varchar('match_id', { length: 36 }).notNull(),
+  participantId: varchar('participant_id', { length: 36 }).notNull(),
+  questionId: varchar('question_id', { length: 36 }).notNull(),
+  
+  // Respuesta
+  answer: text('answer'), // La respuesta dada
+  isCorrect: boolean('is_correct').notNull().default(false),
+  
+  // Puntuación
+  pointsEarned: int('points_earned').notNull().default(0),
+  timeSpent: int('time_spent'), // Segundos que tardó en responder
+  
+  // Timestamp
+  answeredAt: datetime('answered_at').notNull(),
+}, (table) => ({
+  matchIdx: index('idx_tournament_answers_match').on(table.matchId),
+  participantIdx: index('idx_tournament_answers_participant').on(table.participantId),
+  questionIdx: index('idx_tournament_answers_question').on(table.questionId),
+}));
+
+export const tournamentAnswersRelations = relations(tournamentAnswers, ({ one }) => ({
+  match: one(tournamentMatches, {
+    fields: [tournamentAnswers.matchId],
+    references: [tournamentMatches.id],
+  }),
+  participant: one(tournamentParticipants, {
+    fields: [tournamentAnswers.participantId],
+    references: [tournamentParticipants.id],
+  }),
+  question: one(questions, {
+    fields: [tournamentAnswers.questionId],
+    references: [questions.id],
+  }),
+}));
+
+// Types para Torneos
+export type Tournament = typeof tournaments.$inferSelect;
+export type NewTournament = typeof tournaments.$inferInsert;
+export type TournamentParticipant = typeof tournamentParticipants.$inferSelect;
+export type NewTournamentParticipant = typeof tournamentParticipants.$inferInsert;
+export type TournamentMatch = typeof tournamentMatches.$inferSelect;
+export type NewTournamentMatch = typeof tournamentMatches.$inferInsert;
+export type TournamentAnswer = typeof tournamentAnswers.$inferSelect;
+export type NewTournamentAnswer = typeof tournamentAnswers.$inferInsert;
+export type TournamentType = 'BRACKET' | 'LEAGUE' | 'QUICKFIRE';
+export type TournamentStatus = 'DRAFT' | 'READY' | 'ACTIVE' | 'PAUSED' | 'FINISHED';
+export type TournamentParticipantType = 'INDIVIDUAL' | 'CLAN';
+export type TournamentMatchStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'BYE';

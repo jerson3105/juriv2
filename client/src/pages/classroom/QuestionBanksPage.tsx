@@ -13,6 +13,8 @@ import {
   HelpCircle,
   CheckCircle,
   ArrowLeftRight,
+  Sparkles,
+  Copy,
   ListChecks,
   X,
 } from 'lucide-react';
@@ -52,6 +54,10 @@ export const QuestionBanksPage = () => {
   const [editingBank, setEditingBank] = useState<QuestionBank | null>(null);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<{ type: 'bank' | 'question'; id: string } | null>(null);
+  const [importingCSV, setImportingCSV] = useState(false);
+  const [csvPreview, setCsvPreview] = useState<{ questions: CreateQuestionData[]; errors: string[] } | null>(null);
+  const [showAIImportModal, setShowAIImportModal] = useState(false);
+  const [csvTextInput, setCsvTextInput] = useState('');
 
   // Fetch banks
   const { data: banks = [], isLoading: loadingBanks } = useQuery({
@@ -146,6 +152,204 @@ export const QuestionBanksPage = () => {
     setSelectedBank(null);
   };
 
+  // Confirm and import questions
+  const handleConfirmImport = async () => {
+    if (!csvPreview || !selectedBank) return;
+    
+    setImportingCSV(true);
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const questionData of csvPreview.questions) {
+      try {
+        await questionBankApi.createQuestion(selectedBank.id, questionData);
+        successCount++;
+      } catch (err) {
+        errorCount++;
+        console.error('Error al crear pregunta:', err);
+      }
+    }
+
+    queryClient.invalidateQueries({ queryKey: ['questions', selectedBank.id] });
+    queryClient.invalidateQueries({ queryKey: ['questionBanks', classroom.id] });
+    
+    if (successCount > 0) {
+      toast.success(`${successCount} preguntas importadas correctamente`);
+    }
+    if (errorCount > 0) {
+      toast.error(`${errorCount} preguntas con errores`);
+    }
+
+    setCsvPreview(null);
+    setImportingCSV(false);
+  };
+
+  // Process pasted CSV text from AI
+  const handleProcessCSVText = () => {
+    if (!csvTextInput.trim() || !selectedBank) return;
+    
+    const text = csvTextInput;
+    const normalizedText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const lines = normalizedText.split('\n').filter(line => line.trim());
+    
+    if (lines.length < 2) {
+      toast.error('El texto CSV está vacío o no tiene datos');
+      return;
+    }
+
+    // Detect delimiter
+    const firstLine = lines[0];
+    const commaCount = (firstLine.match(/,/g) || []).length;
+    const semicolonCount = (firstLine.match(/;/g) || []).length;
+    const delimiter = semicolonCount > commaCount ? ';' : ',';
+
+    // Parse header
+    const rawHeaders = parseCSVLine(lines[0], delimiter);
+    const headers = rawHeaders.map(h => h.toLowerCase().trim().replace(/[^a-z]/g, ''));
+    
+    const requiredHeaders = ['type', 'questiontext'];
+    const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
+    
+    if (missingHeaders.length > 0) {
+      toast.error(`Faltan columnas requeridas: ${missingHeaders.join(', ')}`);
+      return;
+    }
+
+    // Parse rows for preview
+    const parsedQuestions: CreateQuestionData[] = [];
+    const errors: string[] = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      try {
+        const values = parseCSVLine(lines[i], delimiter);
+        const row: Record<string, string> = {};
+        headers.forEach((h, idx) => { row[h] = values[idx] || ''; });
+
+        const questionData: CreateQuestionData = {
+          type: (row.type?.toUpperCase() || 'SINGLE_CHOICE') as BankQuestionType,
+          difficulty: (row.difficulty?.toUpperCase() || 'MEDIUM') as QuestionDifficulty,
+          points: parseInt(row.points) || 10,
+          questionText: row.questiontext || '',
+          timeLimitSeconds: parseInt(row.timelimitseconds) || 30,
+          explanation: row.explanation || undefined,
+        };
+
+        // Parse type-specific fields
+        if (questionData.type === 'TRUE_FALSE') {
+          questionData.correctAnswer = row.correctanswer?.toLowerCase() === 'true';
+        } else if (questionData.type === 'SINGLE_CHOICE' || questionData.type === 'MULTIPLE_CHOICE') {
+          if (row.options) {
+            try {
+              questionData.options = JSON.parse(row.options);
+            } catch {
+              errors.push(`Línea ${i + 1}: Error al parsear opciones JSON`);
+              questionData.options = [];
+            }
+          }
+        } else if (questionData.type === 'MATCHING') {
+          if (row.pairs) {
+            try {
+              questionData.pairs = JSON.parse(row.pairs);
+            } catch {
+              errors.push(`Línea ${i + 1}: Error al parsear pares JSON`);
+              questionData.pairs = [];
+            }
+          }
+        }
+
+        // Validate question
+        if (!questionData.questionText) {
+          errors.push(`Línea ${i + 1}: Falta el texto de la pregunta`);
+        } else if (!['TRUE_FALSE', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'MATCHING'].includes(questionData.type)) {
+          errors.push(`Línea ${i + 1}: Tipo de pregunta inválido "${questionData.type}"`);
+        } else {
+          parsedQuestions.push(questionData);
+        }
+      } catch (err) {
+        errors.push(`Línea ${i + 1}: Error de formato`);
+      }
+    }
+
+    // Show preview modal
+    setCsvPreview({ questions: parsedQuestions, errors });
+    setShowAIImportModal(false);
+    setCsvTextInput('');
+  };
+
+  // Helper to parse CSV line - handles Excel format with quoted fields containing JSON
+  const parseCSVLine = (line: string, delimiter: string = ','): string[] => {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    
+    // Remove BOM if present
+    if (line.charCodeAt(0) === 0xFEFF) {
+      line = line.substring(1);
+    }
+    
+    // Remove trailing carriage return if present
+    line = line.replace(/\r$/, '');
+    
+    // Fix Excel bug: if entire line is wrapped in quotes, unwrap it
+    if (line.startsWith('"') && line.endsWith('"') && !line.startsWith('""')) {
+      // Check if this looks like a fully-quoted line (Excel sometimes does this)
+      const testUnwrap = line.slice(1, -1).replace(/""/g, '"');
+      // If unwrapped version has the expected number of delimiters, use it
+      const delimCount = (testUnwrap.match(new RegExp(delimiter, 'g')) || []).length;
+      if (delimCount >= 3) {
+        line = testUnwrap;
+        console.log('Unwrapped Excel-quoted line');
+      }
+    }
+    
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      const nextChar = line[i + 1];
+      
+      // Only toggle quotes if it's at start of field or after delimiter
+      if (char === '"') {
+        if (inQuotes && nextChar === '"') {
+          // Escaped quote ("") - add single quote and skip next
+          current += '"';
+          i++;
+        } else {
+          // Toggle quote state
+          inQuotes = !inQuotes;
+        }
+      } else if (char === delimiter && !inQuotes) {
+        // Field separator - only when not in quotes
+        result.push(cleanCSVValue(current));
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    // Don't forget last field
+    result.push(cleanCSVValue(current));
+    
+    // Debug: if only 1 field, something went wrong
+    if (result.length === 1 && line.includes(delimiter)) {
+      console.warn('CSV Parse warning: Line has delimiter but parsed as 1 field');
+      console.warn('inQuotes ended as:', inQuotes);
+      console.warn('Line preview:', line.substring(0, 100));
+    }
+    
+    console.log('Parsed line into', result.length, 'fields:', result.map(r => r.substring(0, 30)));
+    return result;
+  };
+
+  // Clean CSV value - remove surrounding quotes and unescape
+  const cleanCSVValue = (value: string): string => {
+    let cleaned = value.trim();
+    // Remove surrounding quotes if present
+    if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+      cleaned = cleaned.slice(1, -1);
+    }
+    // Replace escaped quotes (Excel format)
+    cleaned = cleaned.replace(/""/g, '"');
+    return cleaned;
+  };
+
   const filteredBanks = banks.filter(b => 
     b.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -183,13 +387,24 @@ export const QuestionBanksPage = () => {
           </div>
         </div>
 
-        <button
-          onClick={() => viewMode === 'banks' ? setShowBankModal(true) : setShowQuestionModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl font-medium hover:from-indigo-600 hover:to-purple-700 transition-colors shadow-lg"
-        >
-          <Plus size={18} />
-          {viewMode === 'banks' ? 'Nuevo Banco' : 'Nueva Pregunta'}
-        </button>
+        <div className="flex items-center gap-2">
+          {viewMode === 'questions' && (
+            <button
+              onClick={() => setShowAIImportModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-medium hover:from-emerald-600 hover:to-teal-700 transition-colors shadow-lg"
+            >
+              <Sparkles size={18} />
+              Generar con IA
+            </button>
+          )}
+          <button
+            onClick={() => viewMode === 'banks' ? setShowBankModal(true) : setShowQuestionModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl font-medium hover:from-indigo-600 hover:to-purple-700 transition-colors shadow-lg"
+          >
+            <Plus size={18} />
+            {viewMode === 'banks' ? 'Nuevo Banco' : 'Nueva Pregunta'}
+          </button>
+        </div>
       </div>
 
       {/* Search */}
@@ -458,6 +673,319 @@ export const QuestionBanksPage = () => {
                   >
                     Eliminar
                   </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* CSV Import Preview Modal */}
+      <AnimatePresence>
+        {csvPreview && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={() => setCsvPreview(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center">
+                      <CheckCircle className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-gray-800 dark:text-white">Vista Previa de Importación</h2>
+                      <p className="text-sm text-gray-500">
+                        {csvPreview.questions.length} preguntas listas para importar
+                        {csvPreview.errors.length > 0 && ` • ${csvPreview.errors.length} errores`}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setCsvPreview(null)}
+                    className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+                  >
+                    <X className="w-5 h-5 text-gray-500" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Errors */}
+              {csvPreview.errors.length > 0 && (
+                <div className="px-6 py-3 bg-red-50 dark:bg-red-900/20 border-b border-red-200 dark:border-red-800">
+                  <p className="text-sm font-medium text-red-700 dark:text-red-400 mb-1">⚠️ Errores encontrados:</p>
+                  <ul className="text-xs text-red-600 dark:text-red-400 space-y-0.5 max-h-20 overflow-y-auto">
+                    {csvPreview.errors.map((err, i) => (
+                      <li key={i}>• {err}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Questions Preview */}
+              <div className="flex-1 overflow-y-auto p-6">
+                {csvPreview.questions.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500">
+                    <HelpCircle className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <p>No se encontraron preguntas válidas en el archivo</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {csvPreview.questions.map((q, i) => (
+                      <div
+                        key={i}
+                        className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl border border-gray-200 dark:border-gray-600"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold ${
+                            q.type === 'TRUE_FALSE' ? 'bg-blue-500' :
+                            q.type === 'SINGLE_CHOICE' ? 'bg-green-500' :
+                            q.type === 'MULTIPLE_CHOICE' ? 'bg-purple-500' :
+                            'bg-orange-500'
+                          }`}>
+                            {i + 1}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                q.type === 'TRUE_FALSE' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                                q.type === 'SINGLE_CHOICE' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                                q.type === 'MULTIPLE_CHOICE' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' :
+                                'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+                              }`}>
+                                {QUESTION_TYPE_LABELS[q.type]}
+                              </span>
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${DIFFICULTY_COLORS[q.difficulty || 'MEDIUM']}`}>
+                                {DIFFICULTY_LABELS[q.difficulty || 'MEDIUM']}
+                              </span>
+                              <span className="text-xs text-gray-500">{q.points} pts • {q.timeLimitSeconds}s</span>
+                            </div>
+                            <p className="text-gray-800 dark:text-white font-medium">{q.questionText}</p>
+                            
+                            {/* Options preview */}
+                            {q.type === 'TRUE_FALSE' && (
+                              <p className="text-sm text-gray-500 mt-1">
+                                Respuesta: <span className={q.correctAnswer ? 'text-green-600' : 'text-red-600'}>
+                                  {q.correctAnswer ? 'Verdadero' : 'Falso'}
+                                </span>
+                              </p>
+                            )}
+                            {(q.type === 'SINGLE_CHOICE' || q.type === 'MULTIPLE_CHOICE') && q.options && (
+                              <div className="mt-2 flex flex-wrap gap-1">
+                                {(q.options as any[]).map((opt: any, j: number) => (
+                                  <span
+                                    key={j}
+                                    className={`text-xs px-2 py-1 rounded ${
+                                      opt.isCorrect 
+                                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' 
+                                        : 'bg-gray-100 text-gray-600 dark:bg-gray-600 dark:text-gray-300'
+                                    }`}
+                                  >
+                                    {opt.isCorrect && '✓ '}{opt.text}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            {q.type === 'MATCHING' && q.pairs && (
+                              <div className="mt-2 flex flex-wrap gap-1">
+                                {(q.pairs as any[]).map((pair: any, j: number) => (
+                                  <span key={j} className="text-xs px-2 py-1 rounded bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+                                    {pair.left} ↔ {pair.right}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="p-6 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-gray-500">
+                    Las preguntas se agregarán al banco <strong>{selectedBank?.name}</strong>
+                  </p>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setCsvPreview(null)}
+                      className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={handleConfirmImport}
+                      disabled={csvPreview.questions.length === 0 || importingCSV}
+                      className="px-6 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl hover:from-green-600 hover:to-emerald-700 disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {importingCSV ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          Importando...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="w-4 h-4" />
+                          Importar {csvPreview.questions.length} preguntas
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* AI Import Modal */}
+      <AnimatePresence>
+        {showAIImportModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={() => setShowAIImportModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center">
+                      <Sparkles className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-gray-800 dark:text-white">Generar Preguntas con IA</h2>
+                      <p className="text-sm text-gray-500">Usa ChatGPT, Gemini o Claude para crear preguntas</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowAIImportModal(false)}
+                    className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+                  >
+                    <X className="w-5 h-5 text-gray-500" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {/* Step 1: Prompt */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 bg-emerald-500 text-white rounded-full flex items-center justify-center text-sm font-bold">1</div>
+                    <h3 className="font-semibold text-gray-800 dark:text-white">Copia este prompt y pégalo en tu IA favorita</h3>
+                  </div>
+                  <div className="relative">
+                    <pre className="bg-gray-100 dark:bg-gray-900 p-4 rounded-xl text-sm text-gray-700 dark:text-gray-300 overflow-x-auto whitespace-pre-wrap border border-gray-200 dark:border-gray-700">
+{`Genera [CANTIDAD] preguntas sobre [TEMA] para estudiantes de [NIVEL]. 
+
+Usa EXACTAMENTE este formato CSV (no agregues explicaciones, solo el CSV):
+
+type,difficulty,points,questionText,options,correctAnswer,pairs,explanation,timeLimitSeconds
+TRUE_FALSE,EASY,10,"[Pregunta de verdadero/falso]",,true,,"[Explicación]",20
+SINGLE_CHOICE,MEDIUM,15,"[Pregunta de opción única]","[{""text"":""Opción 1"",""isCorrect"":false},{""text"":""Opción 2"",""isCorrect"":true},{""text"":""Opción 3"",""isCorrect"":false}]",,,"[Explicación]",30
+MULTIPLE_CHOICE,HARD,20,"[Pregunta de múltiples respuestas correctas]","[{""text"":""Opción 1"",""isCorrect"":true},{""text"":""Opción 2"",""isCorrect"":false},{""text"":""Opción 3"",""isCorrect"":true}]",,,"[Explicación]",45
+MATCHING,MEDIUM,25,"[Pregunta de relacionar]",,,"[{""left"":""Elemento 1"",""right"":""Pareja 1""},{""left"":""Elemento 2"",""right"":""Pareja 2""}]","[Explicación]",40
+
+IMPORTANTE:
+- Tipos válidos: TRUE_FALSE, SINGLE_CHOICE, MULTIPLE_CHOICE, MATCHING
+- Dificultades: EASY, MEDIUM, HARD
+- Las comillas dentro del JSON deben ser dobles ("")
+- Varía los tipos de preguntas
+- Incluye explicaciones educativas`}
+                    </pre>
+                    <button
+                      onClick={() => {
+                        const prompt = `Genera [CANTIDAD] preguntas sobre [TEMA] para estudiantes de [NIVEL]. 
+
+Usa EXACTAMENTE este formato CSV (no agregues explicaciones, solo el CSV):
+
+type,difficulty,points,questionText,options,correctAnswer,pairs,explanation,timeLimitSeconds
+TRUE_FALSE,EASY,10,"[Pregunta de verdadero/falso]",,true,,"[Explicación]",20
+SINGLE_CHOICE,MEDIUM,15,"[Pregunta de opción única]","[{""text"":""Opción 1"",""isCorrect"":false},{""text"":""Opción 2"",""isCorrect"":true},{""text"":""Opción 3"",""isCorrect"":false}]",,,"[Explicación]",30
+MULTIPLE_CHOICE,HARD,20,"[Pregunta de múltiples respuestas correctas]","[{""text"":""Opción 1"",""isCorrect"":true},{""text"":""Opción 2"",""isCorrect"":false},{""text"":""Opción 3"",""isCorrect"":true}]",,,"[Explicación]",45
+MATCHING,MEDIUM,25,"[Pregunta de relacionar]",,,"[{""left"":""Elemento 1"",""right"":""Pareja 1""},{""left"":""Elemento 2"",""right"":""Pareja 2""}]","[Explicación]",40
+
+IMPORTANTE:
+- Tipos válidos: TRUE_FALSE, SINGLE_CHOICE, MULTIPLE_CHOICE, MATCHING
+- Dificultades: EASY, MEDIUM, HARD
+- Las comillas dentro del JSON deben ser dobles ("")
+- Varía los tipos de preguntas
+- Incluye explicaciones educativas`;
+                        navigator.clipboard.writeText(prompt);
+                        toast.success('Prompt copiado al portapapeles');
+                      }}
+                      className="absolute top-2 right-2 p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                    >
+                      <Copy className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Step 2: Paste result */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 bg-emerald-500 text-white rounded-full flex items-center justify-center text-sm font-bold">2</div>
+                    <h3 className="font-semibold text-gray-800 dark:text-white">Pega aquí el resultado de la IA</h3>
+                  </div>
+                  <textarea
+                    value={csvTextInput}
+                    onChange={(e) => setCsvTextInput(e.target.value)}
+                    placeholder="Pega aquí el CSV generado por la IA..."
+                    rows={10}
+                    className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none font-mono text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="p-6 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-gray-500">
+                    Las preguntas se agregarán al banco <strong>{selectedBank?.name}</strong>
+                  </p>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => {
+                        setShowAIImportModal(false);
+                        setCsvTextInput('');
+                      }}
+                      className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      onClick={handleProcessCSVText}
+                      disabled={!csvTextInput.trim()}
+                      className="px-6 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50 flex items-center gap-2"
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                      Procesar CSV
+                    </button>
+                  </div>
                 </div>
               </div>
             </motion.div>

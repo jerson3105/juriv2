@@ -1587,7 +1587,33 @@ export const TerritoryConquestActivity = ({ classroom, onBack }: TerritoryConque
                       const parsedQuestion = parseQuestionData(currentChallenge.question as any);
                       const questionType = parsedQuestion.type;
                       const options = parsedQuestion.options;
-                      const correctAnswer = parsedQuestion.correctAnswer;
+                      const pairs = parsedQuestion.pairs;
+                      
+                      // Obtener correctAnswer
+                      const rawQuestion = currentChallenge.question as any;
+                      let correctAnswer: any = rawQuestion.correctAnswer;
+                      
+                      // Helper para parsear correctAnswer de forma robusta
+                      const parseCorrectAnswer = (val: any): any => {
+                        if (val === null || val === undefined) return null;
+                        if (typeof val === 'boolean') return val;
+                        if (typeof val === 'number') return val === 1;
+                        if (typeof val === 'string') {
+                          // Caso: "true" o "false" directo
+                          if (val.toLowerCase() === 'true') return true;
+                          if (val.toLowerCase() === 'false') return false;
+                          // Caso: JSON string (puede estar doblemente serializado)
+                          try {
+                            let parsed = JSON.parse(val);
+                            return parseCorrectAnswer(parsed); // Recursivo para doble serialización
+                          } catch {
+                            return val;
+                          }
+                        }
+                        return val;
+                      };
+                      
+                      correctAnswer = parseCorrectAnswer(correctAnswer);
 
                       // MULTIPLE_CHOICE (permite seleccionar múltiples)
                       if (questionType === 'MULTIPLE_CHOICE' && Array.isArray(options) && options.length > 0) {
@@ -1685,7 +1711,18 @@ export const TerritoryConquestActivity = ({ classroom, onBack }: TerritoryConque
 
                       // TRUE_FALSE
                       if (questionType === 'TRUE_FALSE') {
-                        const isCorrectTrue = correctAnswer === true || correctAnswer === 'true';
+                        // Determinar si la respuesta correcta es TRUE
+                        // correctAnswer puede ser: true, "true", '"true"', 1, etc.
+                        let isCorrectTrue = false;
+                        if (correctAnswer === true) {
+                          isCorrectTrue = true;
+                        } else if (correctAnswer === 1) {
+                          isCorrectTrue = true;
+                        } else if (typeof correctAnswer === 'string') {
+                          // Limpiar comillas y espacios
+                          const cleaned = correctAnswer.replace(/"/g, '').trim().toLowerCase();
+                          isCorrectTrue = cleaned === 'true';
+                        }
                         return (
                           <div className="flex gap-4 justify-center">
                             <button
@@ -1726,7 +1763,6 @@ export const TerritoryConquestActivity = ({ classroom, onBack }: TerritoryConque
 
                       // MATCHING - componente interactivo
                       if (questionType === 'MATCHING') {
-                        const pairs = parsedQuestion.pairs as MatchingPair[];
                         if (Array.isArray(pairs) && pairs.length > 0) {
                           return (
                             <MatchingQuestion 
