@@ -1563,20 +1563,10 @@ const AddParticipantsModal = ({ isOpen, onClose, onSubmit, tournament, students,
   const existingIds = tournament?.participants?.map((p: any) => isIndividual ? p.studentProfileId : p.clanId) || [];
   const available = items.filter((i: any) => !existingIds.includes(i.id));
   const toggle = (id: string) => {
-    console.log('Toggle student ID:', id, 'Name:', items.find((i: any) => i.id === id)?.characterName);
     setSelected(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]);
   };
   const selectAll = () => setSelected(available.map((i: any) => i.id));
   
-  // Debug: Log students when modal opens
-  useEffect(() => {
-    if (isOpen && isIndividual) {
-      console.log('=== AddParticipantsModal Debug ===');
-      console.log('Tournament classroomId:', tournament?.classroomId);
-      console.log('Students received:', students.length);
-      students.forEach((s: any) => console.log(`  - ${s.id}: ${s.characterName || s.realName}`));
-    }
-  }, [isOpen, students, tournament, isIndividual]);
   
   if (!isOpen) return null;
   return (
@@ -1626,8 +1616,8 @@ const MatchControls = ({ match, onMatchUpdate, onMatchComplete, p1AvatarUrl, p2A
   const [p2Answer, setP2Answer] = useState<number | null>(null);
   const [p1MultiAnswers, setP1MultiAnswers] = useState<number[]>([]);
   const [p2MultiAnswers, setP2MultiAnswers] = useState<number[]>([]);
-  const [, setP1MatchingAnswers] = useState<{ left: string; right: string }[]>([]);
-  const [, setP2MatchingAnswers] = useState<{ left: string; right: string }[]>([]);
+  const [p1MatchingAnswers, setP1MatchingAnswers] = useState<{ left: string; right: string }[]>([]);
+  const [p2MatchingAnswers, setP2MatchingAnswers] = useState<{ left: string; right: string }[]>([]);
   const [showResult, setShowResult] = useState(false);
   const [resultAwarded, setResultAwarded] = useState(false);
   const [, setQuestionKey] = useState(0);
@@ -1762,7 +1752,6 @@ const MatchControls = ({ match, onMatchUpdate, onMatchComplete, p1AvatarUrl, p2A
       // Verificar isCorrect como boolean o string
       if (o.isCorrect === true || o.isCorrect === 'true') indices.push(i);
     });
-    console.log('getCorrectIndices:', indices, 'from options:', opts);
     return indices.length > 0 ? indices : [0];
   };
 
@@ -1840,6 +1829,15 @@ const MatchControls = ({ match, onMatchUpdate, onMatchComplete, p1AvatarUrl, p2A
       p2Correct = correctIndices.length > 0 && 
         correctIndices.every(i => p2Set.has(i)) && 
         p2MultiAnswers.every(i => correctSet.has(i));
+    } else if (qType === 'MATCHING') {
+      // Para MATCHING, verificar que todos los pares coincidan
+      const pairs = getPairs();
+      const checkMatching = (answers: { left: string; right: string }[]) => {
+        if (!answers || answers.length !== pairs.length) return false;
+        return answers.every(a => pairs.some(p => p.left === a.left && p.right === a.right));
+      };
+      p1Correct = checkMatching(p1MatchingAnswers);
+      p2Correct = checkMatching(p2MatchingAnswers);
     } else {
       p1Correct = p1Answer === correctIdx;
       p2Correct = p2Answer === correctIdx;
@@ -2654,13 +2652,14 @@ const MatchingPanel = ({ pairs, disabled, onComplete, showResult }: {
 }) => {
   const [selectedLeft, setSelectedLeft] = useState<string | null>(null);
   const [matches, setMatches] = useState<{ left: string; right: string }[]>([]);
-  const [shuffledRight, setShuffledRight] = useState<string[]>([]);
-
-  useEffect(() => {
-    // Mezclar las opciones de la derecha
-    const rights = pairs.map(p => p.right).sort(() => Math.random() - 0.5);
-    setShuffledRight(rights);
-  }, [pairs]);
+  
+  // Usar useMemo para mezclar solo una vez cuando cambia el contenido real de pairs
+  const shuffledRight = useMemo(() => {
+    if (!pairs || pairs.length === 0) return [];
+    // Crear una copia y mezclar
+    return [...pairs.map(p => p.right)].sort(() => Math.random() - 0.5);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(pairs)]);
 
   const handleLeftClick = (left: string) => {
     if (disabled || matches.some(m => m.left === left)) return;

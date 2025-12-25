@@ -73,9 +73,9 @@ export const RouletteOfDestinyModal = ({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
           >
-            <div className="relative w-full max-w-lg bg-white dark:bg-gray-800 rounded-3xl shadow-2xl overflow-hidden">
+            <div className="relative w-full max-w-lg bg-white dark:bg-gray-800 rounded-3xl shadow-2xl overflow-hidden pointer-events-auto" onClick={(e) => e.stopPropagation()}>
               {/* Header con gradiente */}
               <div className="relative bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 p-6 pb-8">
                 {/* Partículas decorativas */}
@@ -100,9 +100,9 @@ export const RouletteOfDestinyModal = ({
                 {/* Botón cerrar */}
                 <button
                   onClick={onClose}
-                  className="absolute top-4 right-4 w-8 h-8 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center transition-colors"
+                  className="absolute top-3 right-3 w-10 h-10 bg-white/20 hover:bg-white/40 rounded-full flex items-center justify-center transition-colors z-10"
                 >
-                  <X size={18} className="text-white" />
+                  <X size={22} className="text-white" />
                 </button>
 
                 {/* Título */}

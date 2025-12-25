@@ -222,20 +222,52 @@ const MatchingQuestion = ({
         </motion.div>
       )}
       
-      {/* Mostrar respuestas correctas */}
+      {/* Mostrar respuesta del estudiante y respuestas correctas */}
       {showAnswer && (
         <motion.div 
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="p-3 bg-green-100 dark:bg-green-900/30 rounded-xl border border-green-400"
+          className="space-y-3"
         >
-          <p className="text-green-700 dark:text-green-400 text-sm font-bold text-center mb-2">✓ Respuestas correctas:</p>
-          <div className="flex flex-wrap gap-2 justify-center">
-            {pairs.map((_p, i) => (
-              <span key={i} className="text-gray-700 dark:text-gray-300 text-xs bg-white dark:bg-gray-800 px-2 py-1 rounded shadow-sm">
-                {i + 1} → {String.fromCharCode(97 + getCorrectRightIndex(i))}
-              </span>
-            ))}
+          {/* Respuesta del estudiante */}
+          {connections.size > 0 && (
+            <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-xl border border-blue-400">
+              <p className="text-blue-700 dark:text-blue-400 text-sm font-bold text-center mb-2">📝 Respuesta del estudiante:</p>
+              <div className="flex flex-wrap gap-2 justify-center">
+                {pairs.map((_p, i) => {
+                  const studentAnswer = connections.get(i);
+                  const correctAnswer = getCorrectRightIndex(i);
+                  const isCorrect = studentAnswer === correctAnswer;
+                  return (
+                    <span 
+                      key={i} 
+                      className={`text-xs px-2 py-1 rounded shadow-sm ${
+                        studentAnswer !== undefined
+                          ? isCorrect 
+                            ? 'bg-green-200 dark:bg-green-800 text-green-700 dark:text-green-300'
+                            : 'bg-red-200 dark:bg-red-800 text-red-700 dark:text-red-300'
+                          : 'bg-gray-200 dark:bg-gray-700 text-gray-500'
+                      }`}
+                    >
+                      {i + 1} → {studentAnswer !== undefined ? String.fromCharCode(97 + studentAnswer) : '?'}
+                      {studentAnswer !== undefined && (isCorrect ? ' ✓' : ' ✗')}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          
+          {/* Respuestas correctas */}
+          <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-xl border border-green-400">
+            <p className="text-green-700 dark:text-green-400 text-sm font-bold text-center mb-2">✓ Respuestas correctas:</p>
+            <div className="flex flex-wrap gap-2 justify-center">
+              {pairs.map((_p, i) => (
+                <span key={i} className="text-gray-700 dark:text-gray-300 text-xs bg-white dark:bg-gray-800 px-2 py-1 rounded shadow-sm">
+                  {i + 1} → {String.fromCharCode(97 + getCorrectRightIndex(i))}
+                </span>
+              ))}
+            </div>
           </div>
         </motion.div>
       )}

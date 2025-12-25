@@ -355,15 +355,8 @@ class TournamentService {
     if (!tournament) throw new Error('Torneo no encontrado');
     
     // Validar que todos los participantes pertenezcan al mismo classroom del torneo
-    console.log('=== addMultipleParticipants DEBUG ===');
-    console.log('Tournament ID:', tournamentId);
-    console.log('Tournament classroomId:', tournament.classroomId);
-    console.log('Participant IDs received:', participantIds);
-    console.log('isIndividual:', isIndividual);
-    
     const validIds: string[] = [];
     for (const participantId of participantIds) {
-      console.log(`Processing participant: ${participantId}`);
       if (isIndividual) {
         const [student] = await db.select({ 
           classroomId: studentProfiles.classroomId, 
@@ -374,38 +367,18 @@ class TournamentService {
           .from(studentProfiles)
           .where(eq(studentProfiles.id, participantId));
         
-        console.log(`Student found:`, student);
-        
-        if (!student) {
-          console.warn(`Estudiante ${participantId} no encontrado, omitiendo`);
-          continue;
-        }
-        if (student.classroomId !== tournament.classroomId) {
-          console.warn(`Estudiante ${participantId} (${student.displayName}) no pertenece a la clase del torneo (${student.classroomId} vs ${tournament.classroomId}), omitiendo`);
-          continue;
-        }
-        if (student.isActive === false) {
-          console.warn(`Estudiante ${participantId} no está activo, omitiendo`);
-          continue;
-        }
-        if (student.isDemo === true) {
-          console.warn(`Estudiante ${participantId} es demo, omitiendo`);
-          continue;
-        }
+        if (!student) continue;
+        if (student.classroomId !== tournament.classroomId) continue;
+        if (student.isActive === false) continue;
+        if (student.isDemo === true) continue;
         validIds.push(participantId);
       } else {
         const [clan] = await db.select({ classroomId: teams.classroomId })
           .from(teams)
           .where(eq(teams.id, participantId));
         
-        if (!clan) {
-          console.warn(`Clan ${participantId} no encontrado, omitiendo`);
-          continue;
-        }
-        if (clan.classroomId !== tournament.classroomId) {
-          console.warn(`Clan ${participantId} no pertenece a la clase del torneo, omitiendo`);
-          continue;
-        }
+        if (!clan) continue;
+        if (clan.classroomId !== tournament.classroomId) continue;
         validIds.push(participantId);
       }
     }
@@ -427,9 +400,6 @@ class TournamentService {
     
     // Limitar la cantidad a añadir según los slots disponibles
     const idsToAdd = validIds.slice(0, availableSlots);
-    if (idsToAdd.length < validIds.length) {
-      console.log(`Solo se añadirán ${idsToAdd.length} de ${validIds.length} participantes por límite del torneo`);
-    }
 
     const now = new Date();
     const participants: TournamentParticipant[] = [];
@@ -799,12 +769,23 @@ class TournamentService {
           }
         }
 
+        // Parsear pairs si viene como string JSON (para MATCHING)
+        let parsedPairs = q.pairs;
+        if (typeof q.pairs === 'string') {
+          try {
+            parsedPairs = JSON.parse(q.pairs);
+          } catch {
+            parsedPairs = [];
+          }
+        }
+
         currentQuestion = {
           id: q.id,
           question: q.questionText,
           questionType: q.type,
           options: parsedOptions,
           correctAnswer: parsedCorrectAnswer,
+          pairs: parsedPairs,
           imageUrl: q.imageUrl,
         };
       }
@@ -869,7 +850,6 @@ class TournamentService {
     }
     
     if (!Array.isArray(parsedBankIds) || parsedBankIds.length === 0) {
-      console.log('selectRandomQuestions: No hay bancos de preguntas válidos');
       return [];
     }
 
@@ -878,12 +858,9 @@ class TournamentService {
       .from(questions)
       .where(inArray(questions.bankId, parsedBankIds));
 
-    console.log(`selectRandomQuestions: Encontradas ${allQuestions.length} preguntas, seleccionando ${count}`);
-
     // Mezclar y seleccionar
     const shuffled = allQuestions.sort(() => Math.random() - 0.5);
     const selected = shuffled.slice(0, count).map(q => q.id);
-    console.log(`selectRandomQuestions: Seleccionadas ${selected.length} preguntas`);
     return selected;
   }
 

@@ -18,6 +18,9 @@ import {
   Sparkles,
   Volume2,
   VolumeX,
+  ChevronLeft,
+  ChevronRight,
+  Search,
 } from 'lucide-react';
 import { classroomApi } from '../../lib/classroomApi';
 import {
@@ -82,6 +85,9 @@ export const TimedActivityRunner = ({ activity: initialActivity, classroom, onBa
   const [bombExploded, setBombExploded] = useState(false);
   const [showExplosion, setShowExplosion] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState('');
+  const studentsPerPage = 8;
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number | null>(null);
   const bgMusicRef = useRef<HTMLAudioElement | null>(null);
@@ -805,104 +811,159 @@ export const TimedActivityRunner = ({ activity: initialActivity, classroom, onBa
             />
           </div>
 
-          {/* Lista de estudiantes */}
-          <div className="space-y-2 flex-1 overflow-y-auto max-h-[320px] pr-1">
-            {students.map((student, index) => {
-              const isCompleted = completedStudentIds.has(student.id);
-              const isExploded = explodedStudentIds.has(student.id);
-              const result = activity.results?.find(r => r.studentProfileId === student.id);
+          {/* Búsqueda de estudiantes */}
+          <div className="relative mb-3">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Buscar estudiante..."
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+              className="w-full pl-9 pr-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 transition-all"
+            />
+          </div>
 
-              return (
-                <motion.div
-                  key={student.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.03 }}
-                  className={`flex items-center justify-between gap-3 p-3 rounded-xl transition-all ${
-                    isCompleted
-                      ? 'bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200'
-                      : isExploded
-                      ? 'bg-gradient-to-r from-red-50 to-rose-50 border border-red-200'
-                      : 'bg-gray-50 hover:bg-gray-100 border border-transparent'
-                  }`}
-                >
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <motion.div 
-                      className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0 shadow-md ${
-                        isCompleted ? 'bg-gradient-to-br from-emerald-400 to-green-500' :
-                        isExploded ? 'bg-gradient-to-br from-red-400 to-pink-500' :
-                        'bg-gradient-to-br from-gray-400 to-gray-500'
-                      }`}
-                      animate={isCompleted ? { scale: [1, 1.1, 1] } : {}}
-                      transition={{ duration: 0.3 }}
-                    >
-                      {isCompleted ? <Check size={18} /> :
-                       isExploded ? <Bomb size={18} /> :
-                       (student.characterName?.[0] || student.realName?.[0] || '?')}
-                    </motion.div>
-                    <div className="min-w-0">
-                      <p className="font-semibold text-gray-800 truncate text-sm">
-                        {student.characterName || student.realName || 'Sin nombre'}
-                      </p>
-                      {result && (
-                        <p className="text-xs">
-                          {isCompleted && (
-                            <span className="text-emerald-600 font-semibold flex items-center gap-1">
-                              <Trophy size={10} />
-                              +{result.pointsAwarded} {activity.pointType}
-                              {result.multiplierApplied > 100 && (
-                                <span className="text-purple-500 ml-1">x{(result.multiplierApplied / 100).toFixed(1)}</span>
-                              )}
-                            </span>
-                          )}
-                          {isExploded && (
-                            <span className="text-red-600 font-semibold">
-                              💥 -{result.penaltyApplied} {activity.bombPenaltyType}
-                            </span>
-                          )}
-                        </p>
-                      )}
-                    </div>
-                  </div>
+          {/* Lista de estudiantes con paginación */}
+          {(() => {
+            const filteredStudents = students.filter(s => 
+              (s.characterName || s.realName || '').toLowerCase().includes(searchQuery.toLowerCase())
+            );
+            const totalPages = Math.ceil(filteredStudents.length / studentsPerPage);
+            const startIndex = (currentPage - 1) * studentsPerPage;
+            const paginatedStudents = filteredStudents.slice(startIndex, startIndex + studentsPerPage);
 
-                  {/* Actions */}
-                  {!isCompleted && !isExploded && (activity.status === 'ACTIVE' || activity.status === 'PAUSED' || bombExploded) && (
-                    <div className="flex gap-2 flex-shrink-0">
-                      <motion.button
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        onClick={() => markCompleteMutation.mutate({ studentId: student.id })}
-                        disabled={markCompleteMutation.isPending}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-green-500 text-white text-xs font-semibold rounded-lg shadow-md hover:shadow-lg transition-all disabled:opacity-50"
+            return (
+              <>
+                <div className="space-y-2 flex-1 pr-1">
+                  {paginatedStudents.map((student, index) => {
+                    const isCompleted = completedStudentIds.has(student.id);
+                    const isExploded = explodedStudentIds.has(student.id);
+                    const result = activity.results?.find(r => r.studentProfileId === student.id);
+
+                    return (
+                      <motion.div
+                        key={student.id}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.03 }}
+                        className={`flex items-center justify-between gap-3 p-3 rounded-xl transition-all ${
+                          isCompleted
+                            ? 'bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200'
+                            : isExploded
+                            ? 'bg-gradient-to-r from-red-50 to-rose-50 border border-red-200'
+                            : 'bg-gray-50 hover:bg-gray-100 border border-transparent'
+                        }`}
                       >
-                        <Check size={14} />
-                        Completó
-                      </motion.button>
-                      {(activity.mode === 'BOMB' || activity.mode === 'BOMB_RANDOM') && bombExploded && (
-                        <motion.button
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => markExplodedMutation.mutate({ studentId: student.id })}
-                          disabled={markExplodedMutation.isPending}
-                          className="flex items-center gap-1 px-3 py-1.5 bg-gradient-to-r from-red-500 to-rose-500 text-white text-xs font-semibold rounded-lg shadow-md hover:shadow-lg transition-all disabled:opacity-50"
-                        >
-                          <Bomb size={14} />
-                          Explotó
-                        </motion.button>
-                      )}
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <motion.div 
+                            className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0 shadow-md ${
+                              isCompleted ? 'bg-gradient-to-br from-emerald-400 to-green-500' :
+                              isExploded ? 'bg-gradient-to-br from-red-400 to-pink-500' :
+                              'bg-gradient-to-br from-gray-400 to-gray-500'
+                            }`}
+                            animate={isCompleted ? { scale: [1, 1.1, 1] } : {}}
+                            transition={{ duration: 0.3 }}
+                          >
+                            {isCompleted ? <Check size={18} /> :
+                             isExploded ? <Bomb size={18} /> :
+                             (student.characterName?.[0] || student.realName?.[0] || '?')}
+                          </motion.div>
+                          <div className="min-w-0">
+                            <p className="font-semibold text-gray-800 truncate text-sm">
+                              {student.characterName || student.realName || 'Sin nombre'}
+                            </p>
+                            {result && (
+                              <p className="text-xs">
+                                {isCompleted && (
+                                  <span className="text-emerald-600 font-semibold flex items-center gap-1">
+                                    <Trophy size={10} />
+                                    +{result.pointsAwarded} {activity.pointType}
+                                    {result.multiplierApplied > 100 && (
+                                      <span className="text-purple-500 ml-1">x{(result.multiplierApplied / 100).toFixed(1)}</span>
+                                    )}
+                                  </span>
+                                )}
+                                {isExploded && (
+                                  <span className="text-red-600 font-semibold">
+                                    💥 -{result.penaltyApplied} {activity.bombPenaltyType}
+                                  </span>
+                                )}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        {!isCompleted && !isExploded && (activity.status === 'ACTIVE' || activity.status === 'PAUSED' || bombExploded) && (
+                          <div className="flex gap-2 flex-shrink-0">
+                            <motion.button
+                              whileHover={{ scale: 1.05 }}
+                              whileTap={{ scale: 0.95 }}
+                              onClick={() => markCompleteMutation.mutate({ studentId: student.id })}
+                              disabled={markCompleteMutation.isPending}
+                              className="flex items-center gap-1 px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-green-500 text-white text-xs font-semibold rounded-lg shadow-md hover:shadow-lg transition-all disabled:opacity-50"
+                            >
+                              <Check size={14} />
+                              Completó
+                            </motion.button>
+                            {(activity.mode === 'BOMB' || activity.mode === 'BOMB_RANDOM') && bombExploded && (
+                              <motion.button
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                onClick={() => markExplodedMutation.mutate({ studentId: student.id })}
+                                disabled={markExplodedMutation.isPending}
+                                className="flex items-center gap-1 px-3 py-1.5 bg-gradient-to-r from-red-500 to-rose-500 text-white text-xs font-semibold rounded-lg shadow-md hover:shadow-lg transition-all disabled:opacity-50"
+                              >
+                                <Bomb size={14} />
+                                Explotó
+                              </motion.button>
+                            )}
+                          </div>
+                        )}
+                      </motion.div>
+                    );
+                  })}
+
+                  {filteredStudents.length === 0 && (
+                    <div className="text-center py-8 text-gray-400">
+                      <Users size={40} className="mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">
+                        {searchQuery ? 'No se encontraron estudiantes' : 'No hay estudiantes en esta clase'}
+                      </p>
                     </div>
                   )}
-                </motion.div>
-              );
-            })}
+                </div>
 
-            {students.length === 0 && (
-              <div className="text-center py-8 text-gray-400">
-                <Users size={40} className="mx-auto mb-2 opacity-50" />
-                <p className="text-sm">No hay estudiantes en esta clase</p>
-              </div>
-            )}
-          </div>
+                {/* Controles de paginación */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                    <span className="text-xs text-gray-500">
+                      {startIndex + 1}-{Math.min(startIndex + studentsPerPage, filteredStudents.length)} de {filteredStudents.length}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <ChevronLeft size={18} className="text-gray-600" />
+                      </button>
+                      <span className="text-xs font-medium text-gray-600 px-2">
+                        {currentPage} / {totalPages}
+                      </span>
+                      <button
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                        className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <ChevronRight size={18} className="text-gray-600" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </motion.div>
       </div>
     </div>

@@ -101,6 +101,7 @@ export const QuestionBanksPage = () => {
       queryClient.invalidateQueries({ queryKey: ['questionBanks', classroom.id] });
       toast.success('Banco eliminado');
       setShowDeleteConfirm(null);
+      setEditingBank(null); // Cerrar modal de edición
       if (selectedBank) {
         setSelectedBank(null);
         setViewMode('banks');
@@ -327,14 +328,6 @@ export const QuestionBanksPage = () => {
     // Don't forget last field
     result.push(cleanCSVValue(current));
     
-    // Debug: if only 1 field, something went wrong
-    if (result.length === 1 && line.includes(delimiter)) {
-      console.warn('CSV Parse warning: Line has delimiter but parsed as 1 field');
-      console.warn('inQuotes ended as:', inQuotes);
-      console.warn('Line preview:', line.substring(0, 100));
-    }
-    
-    console.log('Parsed line into', result.length, 'fields:', result.map(r => r.substring(0, 30)));
     return result;
   };
 

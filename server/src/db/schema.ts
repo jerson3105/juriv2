@@ -2346,8 +2346,8 @@ export const tournaments = mysqlTable('tournaments', {
   maxParticipants: int('max_participants').notNull().default(16), // 4, 8, 16, 32
   timePerQuestion: int('time_per_question').notNull().default(30), // segundos
   questionsPerMatch: int('questions_per_match').notNull().default(3), // preguntas por enfrentamiento
-  pointsPerCorrect: int('points_per_correct').notNull().default(100), // puntos por respuesta correcta
-  bonusTimePoints: int('bonus_time_points').notNull().default(10), // bonus por responder rápido
+  pointsPerCorrect: int('points_per_correct').notNull().default(1), // puntos por respuesta correcta
+  bonusTimePoints: int('bonus_time_points').notNull().default(0), // bonus por responder rápido
   
   // Recompensas (XP y GP)
   rewardXpFirst: int('reward_xp_first').notNull().default(100),
