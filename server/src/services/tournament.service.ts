@@ -1069,12 +1069,14 @@ class TournamentService {
     // Actualizar estadísticas de participantes
     if (isTie && isLeague) {
       // Empate en Liga: ambos ganan 1 punto (matchesDrawn)
-      await db.update(tournamentParticipants)
-        .set({
-          matchesDrawn: sql`matches_drawn + 1`,
-          updatedAt: new Date(),
-        })
-        .where(eq(tournamentParticipants.id, match.participant1Id));
+      if (match.participant1Id) {
+        await db.update(tournamentParticipants)
+          .set({
+            matchesDrawn: sql`matches_drawn + 1`,
+            updatedAt: new Date(),
+          })
+          .where(eq(tournamentParticipants.id, match.participant1Id));
+      }
 
       if (match.participant2Id) {
         await db.update(tournamentParticipants)
