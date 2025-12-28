@@ -4,13 +4,15 @@ import { Server as SocketServer } from 'socket.io';
 import path from 'path';
 import cors from 'cors';
 import passport from 'passport';
+import jwt from 'jsonwebtoken';
 import { config_app } from './config/env.js';
-import { connectDatabase } from './db/index.js';
+import { connectDatabase, db, users } from './db/index.js';
 import { applySecurityMiddleware, corsOptions } from './middleware/security.js';
 import { configurePassport } from './config/passport.js';
 import routes from './routes/index.js';
 import { logger, replaceConsole } from './utils/logger.js';
 import { AppError } from './utils/errors.js';
+import { eq } from 'drizzle-orm';
 
 // Crear aplicación Express
 const app = express();
@@ -90,23 +92,108 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
   });
 });
 
-// Socket.io eventos básicos
+// Middleware de autenticación para Socket.io
+io.use(async (socket, next) => {
+  try {
+    const token = socket.handshake.auth.token;
+    
+    if (!token) {
+      logger.warn('Socket.io: Intento de conexión sin token', {
+        socketId: socket.id,
+        ip: socket.handshake.address,
+      });
+      return next(new Error('Authentication error: No token provided'));
+    }
+    
+    // Verificar token JWT
+    const decoded = jwt.verify(token, config_app.jwt.secret) as {
+      userId: string;
+      email: string;
+      role: string;
+    };
+    
+    // Verificar que el usuario existe y está activo
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, decoded.userId),
+    });
+    
+    if (!user || !user.isActive) {
+      logger.warn('Socket.io: Usuario inválido o inactivo', {
+        userId: decoded.userId,
+        socketId: socket.id,
+      });
+      return next(new Error('Authentication error: Invalid user'));
+    }
+    
+    // Guardar datos del usuario en el socket
+    socket.data.user = {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      firstName: user.firstName,
+      lastName: user.lastName,
+    };
+    
+    logger.info('Socket.io: Usuario autenticado', {
+      userId: user.id,
+      socketId: socket.id,
+      role: user.role,
+    });
+    
+    next();
+  } catch (error) {
+    logger.error('Socket.io: Error de autenticación', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      socketId: socket.id,
+    });
+    next(new Error('Authentication error'));
+  }
+});
+
+// Socket.io eventos con autenticación
 io.on('connection', (socket) => {
-  console.log(`🔌 Cliente conectado: ${socket.id}`);
-  
-  socket.on('disconnect', () => {
-    console.log(`🔌 Cliente desconectado: ${socket.id}`);
+  const user = socket.data.user;
+  logger.info(`🔌 Cliente conectado autenticado`, {
+    socketId: socket.id,
+    userId: user.id,
+    role: user.role,
   });
   
-  // Unirse a sala de aula
-  socket.on('join-classroom', (classroomId: string) => {
-    socket.join(`classroom:${classroomId}`);
-    console.log(`📚 Socket ${socket.id} se unió al aula ${classroomId}`);
+  socket.on('disconnect', () => {
+    logger.info(`🔌 Cliente desconectado`, {
+      socketId: socket.id,
+      userId: user.id,
+    });
+  });
+  
+  // Unirse a sala de aula (con validación de permisos)
+  socket.on('join-classroom', async (classroomId: string) => {
+    try {
+      // TODO: Verificar que el usuario tiene acceso a esta clase
+      // Por ahora permitimos el acceso si está autenticado
+      socket.join(`classroom:${classroomId}`);
+      logger.info(`📚 Usuario se unió al aula`, {
+        socketId: socket.id,
+        userId: user.id,
+        classroomId,
+      });
+    } catch (error) {
+      logger.error('Error al unirse a sala de aula', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        userId: user.id,
+        classroomId,
+      });
+    }
   });
   
   // Salir de sala de aula
   socket.on('leave-classroom', (classroomId: string) => {
     socket.leave(`classroom:${classroomId}`);
+    logger.info(`📚 Usuario salió del aula`, {
+      socketId: socket.id,
+      userId: user.id,
+      classroomId,
+    });
   });
 });
 

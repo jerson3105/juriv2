@@ -128,10 +128,16 @@ export const cache = new MemoryCache();
 export const CACHE_KEYS = {
   user: (userId: string) => `user:${userId}`,
   classroom: (classroomId: string) => `classroom:${classroomId}`,
+  classroomConfig: (classroomId: string) => `classroom:${classroomId}:config`,
   classroomStudents: (classroomId: string) => `classroom:${classroomId}:students`,
   studentProfile: (studentId: string) => `student:${studentId}`,
+  studentStats: (studentId: string) => `student:${studentId}:stats`,
   behaviors: (classroomId: string) => `behaviors:${classroomId}`,
   shopItems: (classroomId: string) => `shop:${classroomId}`,
+  clans: (classroomId: string) => `clans:${classroomId}`,
+  missions: (classroomId: string) => `missions:${classroomId}`,
+  badges: (classroomId: string) => `badges:${classroomId}`,
+  leaderboard: (classroomId: string) => `leaderboard:${classroomId}`,
 };
 
 // TTL comunes en segundos

@@ -3,10 +3,18 @@ import { z } from 'zod';
 import * as authService from '../services/auth.service.js';
 import { config_app } from '../config/env.js';
 
+// Schema de validación de contraseña robusta
+const passwordSchema = z.string()
+  .min(8, 'La contraseña debe tener al menos 8 caracteres')
+  .regex(/[A-Z]/, 'Debe contener al menos una letra mayúscula')
+  .regex(/[a-z]/, 'Debe contener al menos una letra minúscula')
+  .regex(/[0-9]/, 'Debe contener al menos un número')
+  .regex(/[^A-Za-z0-9]/, 'Debe contener al menos un carácter especial (@$!%*?&#)');
+
 // Schemas de validación
 const registerSchema = z.object({
   email: z.string().email('Email inválido'),
-  password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres'),
+  password: passwordSchema,
   firstName: z.string().min(2, 'El nombre debe tener al menos 2 caracteres'),
   lastName: z.string().min(2, 'El apellido debe tener al menos 2 caracteres'),
   role: z.enum(['TEACHER', 'STUDENT']),
@@ -23,7 +31,7 @@ const refreshSchema = z.object({
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, 'Contraseña actual requerida'),
-  newPassword: z.string().min(8, 'La nueva contraseña debe tener al menos 8 caracteres'),
+  newPassword: passwordSchema,
 });
 
 const updateProfileSchema = z.object({
