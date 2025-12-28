@@ -55,3 +55,5 @@ client/public/avatars/female/Superior/f8402882-17e0-4b52-9d6d-aefa25600c3b.png
 client/public/avatars/female/Superior/72ba8ff3-4166-4773-aa97-8e9c2cbb3fb4.png
 client/public/avatars/female/Ojos/4f0271c8-7ea1-49ce-b2e8-f329089bf2b3.png
 client/public/avatars/female/Inferior/870f8af8-8e6a-4906-8473-5703154503be.png
+server/.env.production.example
+scripts/deploy-production.sh

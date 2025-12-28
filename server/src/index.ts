@@ -9,6 +9,8 @@ import { connectDatabase } from './db/index.js';
 import { applySecurityMiddleware, corsOptions } from './middleware/security.js';
 import { configurePassport } from './config/passport.js';
 import routes from './routes/index.js';
+import { logger, replaceConsole } from './utils/logger.js';
+import { AppError } from './utils/errors.js';
 
 // Crear aplicación Express
 const app = express();
@@ -63,10 +65,28 @@ app.use((req, res) => {
 
 // Manejo de errores global
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Error:', err);
+  // Log del error
+  logger.error('Error capturado:', {
+    error: err.message,
+    stack: err.stack,
+    url: req.url,
+    method: req.method,
+    ip: req.ip,
+    userId: (req as any).user?.id,
+  });
+
+  // Si es un error operacional conocido
+  if (err instanceof AppError) {
+    return res.status(err.statusCode).json({
+      success: false,
+      message: err.message,
+    });
+  }
+
+  // Error no controlado
   res.status(500).json({
     success: false,
-    message: config_app.isDev ? err.message : 'Error interno del servidor',
+    message: config_app.isProd ? 'Error interno del servidor' : err.message,
   });
 });
 
@@ -96,12 +116,35 @@ export { io };
 // Iniciar servidor
 const startServer = async () => {
   try {
+    // Reemplazar console.log con logger en producción
+    if (config_app.isProd) {
+      replaceConsole();
+    }
+
     // Conectar a la base de datos
     await connectDatabase();
+
+    // Importar y configurar limpieza de tokens
+    const { cleanExpiredTokens } = await import('./utils/jwt.js');
+    
+    // Limpiar tokens expirados cada 24 horas
+    setInterval(async () => {
+      try {
+        await cleanExpiredTokens();
+        logger.info('✅ Tokens expirados limpiados');
+      } catch (error) {
+        logger.error('❌ Error limpiando tokens expirados:', { error });
+      }
+    }, 24 * 60 * 60 * 1000); // 24 horas
+
+    // Ejecutar limpieza inicial al iniciar
+    cleanExpiredTokens().catch(err => 
+      logger.error('Error en limpieza inicial de tokens:', { error: err })
+    );
     
     // Iniciar servidor HTTP
     httpServer.listen(config_app.port, () => {
-      console.log(`
+      logger.info(`
 🎮 ═══════════════════════════════════════════════════
    JURIED - Plataforma de Gamificación Educativa
 ═══════════════════════════════════════════════════════
@@ -113,7 +156,7 @@ const startServer = async () => {
       `);
     });
   } catch (error) {
-    console.error('❌ Error al iniciar el servidor:', error);
+    logger.error('❌ Error al iniciar el servidor:', { error });
     process.exit(1);
   }
 };

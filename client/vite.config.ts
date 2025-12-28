@@ -70,4 +70,27 @@ export default defineConfig({
       }
     })
   ],
+  build: {
+    // Optimización de bundle
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-ui': ['framer-motion', 'lucide-react'],
+          'vendor-data': ['@tanstack/react-query', 'axios', 'zustand'],
+          'vendor-charts': ['recharts'],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 1000,
+    // Minificación con terser para eliminar console.log
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true, // Eliminar console.log en producción
+        drop_debugger: true, // Eliminar debugger
+        pure_funcs: ['console.log', 'console.info', 'console.debug'], // Funciones a eliminar
+      },
+    },
+  },
 })
