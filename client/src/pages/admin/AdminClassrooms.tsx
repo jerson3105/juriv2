@@ -12,10 +12,11 @@ import {
   ToggleRight
 } from 'lucide-react';
 import { adminApi } from '../../lib/adminApi';
-import type { AdminClassroom } from '../../lib/adminApi';
+import type { AdminClassroom, AdminClassroomDetails } from '../../lib/adminApi';
 import { useAuthStore } from '../../store/authStore';
 import { Navigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { AdminClassroomDetailsModal } from '../../components/admin/AdminClassroomDetailsModal';
 
 export default function AdminClassrooms() {
   const user = useAuthStore((state) => state.user);
@@ -23,6 +24,9 @@ export default function AdminClassrooms() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('');
+  const [selectedClassroomId, setSelectedClassroomId] = useState<string | null>(null);
+  const [classroomDetails, setClassroomDetails] = useState<AdminClassroomDetails | null>(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
 
   useEffect(() => {
     loadClassrooms();
@@ -44,6 +48,26 @@ export default function AdminClassrooms() {
   const copyCode = (code: string) => {
     navigator.clipboard.writeText(code);
     toast.success('Código copiado al portapapeles');
+  };
+
+  const handleViewClassroom = async (classroomId: string) => {
+    setSelectedClassroomId(classroomId);
+    setLoadingDetails(true);
+    try {
+      const details = await adminApi.getClassroomDetails(classroomId);
+      setClassroomDetails(details);
+    } catch (error) {
+      console.error('Error loading classroom details:', error);
+      toast.error('Error al cargar detalles de la clase');
+      setSelectedClassroomId(null);
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
+
+  const handleCloseModal = () => {
+    setSelectedClassroomId(null);
+    setClassroomDetails(null);
   };
 
   // Verificar rol de admin
@@ -213,19 +237,27 @@ export default function AdminClassrooms() {
                 </div>
 
                 <div className="mt-4 pt-4 border-t border-gray-100 flex justify-end">
-                  <Link
-                    to={`/classroom/${classroom.id}/dashboard`}
-                    className="flex items-center gap-1 text-sm text-purple-600 hover:text-purple-700 font-medium"
+                  <button
+                    onClick={() => handleViewClassroom(classroom.id)}
+                    className="flex items-center gap-1 text-sm text-purple-600 hover:text-purple-700 font-medium transition-colors"
                   >
-                    Ver clase
+                    Ver detalles
                     <ExternalLink className="w-4 h-4" />
-                  </Link>
+                  </button>
                 </div>
               </motion.div>
             ))}
           </div>
         )}
       </div>
+
+      {/* Modal de detalles */}
+      <AdminClassroomDetailsModal
+        isOpen={selectedClassroomId !== null}
+        onClose={handleCloseModal}
+        details={classroomDetails}
+        loading={loadingDetails}
+      />
     </div>
   );
 }

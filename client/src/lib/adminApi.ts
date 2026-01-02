@@ -52,6 +52,82 @@ export interface AdminClassroom {
   };
 }
 
+export interface AdminClassroomStudent {
+  id: string;
+  characterName: string | null;
+  displayName: string | null;
+  level: number;
+  xp: number;
+  gp: number;
+  hp: number;
+  avatarGender: 'MALE' | 'FEMALE';
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface AdminClassroomActivity {
+  id: string;
+  name: string;
+  status: string;
+  createdAt: string;
+  mode?: string;
+  type?: string;
+}
+
+export interface AdminQuestionBank {
+  id: string;
+  name: string;
+  description: string | null;
+  questionCount: number;
+  createdAt: string;
+}
+
+export interface AdminClassroomDetails {
+  classroom: {
+    id: string;
+    name: string;
+    code: string;
+    isActive: boolean;
+    createdAt: string;
+    updatedAt: string;
+    teacher: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      createdAt: string;
+    };
+  };
+  teacherClassroomsCount: number;
+  stats: {
+    students: {
+      total: number;
+      active: number;
+      inactive: number;
+    };
+    questionBanks: number;
+    activities: {
+      total: number;
+      byType: {
+        timer: number;
+        tournament: number;
+        expedition: number;
+        mission: number;
+      };
+      completed: number;
+    };
+    lastActivity: string | null;
+  };
+  students: AdminClassroomStudent[];
+  activities: {
+    timed: AdminClassroomActivity[];
+    tournaments: AdminClassroomActivity[];
+    expeditions: AdminClassroomActivity[];
+    missions: AdminClassroomActivity[];
+  };
+  questionBanks: AdminQuestionBank[];
+}
+
 export const adminApi = {
   // Dashboard
   async getStats(): Promise<AdminStats> {
@@ -97,6 +173,11 @@ export const adminApi = {
   // Classrooms
   async getClassrooms(): Promise<AdminClassroom[]> {
     const response = await api.get('/admin/classrooms');
+    return response.data.data;
+  },
+
+  async getClassroomDetails(classroomId: string): Promise<AdminClassroomDetails> {
+    const response = await api.get(`/admin/classrooms/${classroomId}/details`);
     return response.data.data;
   },
 };
