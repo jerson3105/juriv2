@@ -42,6 +42,18 @@ interface ExpeditionsActivityProps {
   onBack: () => void;
 }
 
+// Helper para construir URLs de archivos estáticos
+const getStaticUrl = (url: string) => {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+  // Si la URL ya tiene /api, no duplicar
+  if (url.startsWith('/api')) {
+    return `${baseUrl.replace('/api', '')}${url}`;
+  }
+  return `${baseUrl}${url}`;
+};
+
 export const ExpeditionsActivity = ({ classroom, onBack }: ExpeditionsActivityProps) => {
   const queryClient = useQueryClient();
   const [view, setView] = useState<'list' | 'create' | 'edit'>('list');
@@ -271,9 +283,7 @@ export const ExpeditionsActivity = ({ classroom, onBack }: ExpeditionsActivityPr
                     </div>
                   ) : (
                     availableMaps.map((map: ExpeditionMap) => {
-                      const mapUrl = map.imageUrl.startsWith('http') 
-                        ? map.imageUrl 
-                        : `${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001'}${map.imageUrl}`;
+                      const mapUrl = getStaticUrl(map.imageUrl);
                       return (
                         <button
                           key={map.id}
@@ -474,7 +484,7 @@ export const ExpeditionsActivity = ({ classroom, onBack }: ExpeditionsActivityPr
                         {/* Imagen del mapa */}
                         <div className="relative aspect-video">
                           <img
-                            src={expedition.mapImageUrl}
+                            src={getStaticUrl(expedition.mapImageUrl)}
                             alt={expedition.name}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                             onError={(e) => {

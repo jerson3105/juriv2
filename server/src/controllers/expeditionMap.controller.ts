@@ -141,7 +141,7 @@ export const uploadImage = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'No se proporcionó ningún archivo' });
     }
     
-    const imageUrl = `/uploads/maps/${req.file.filename}`;
+    const imageUrl = `/api/uploads/maps/${req.file.filename}`;
     res.json({ url: imageUrl });
   } catch (error) {
     console.error('Error uploading map image:', error);

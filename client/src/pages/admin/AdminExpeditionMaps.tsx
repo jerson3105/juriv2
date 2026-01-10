@@ -205,7 +205,12 @@ export default function AdminExpeditionMaps() {
 
   const getImageUrl = (url: string) => {
     if (url.startsWith('http')) return url;
-    return `${import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001'}${url}`;
+    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+    // Si la URL ya tiene /api, no duplicar
+    if (url.startsWith('/api')) {
+      return `${baseUrl.replace('/api', '')}${url}`;
+    }
+    return `${baseUrl}${url}`;
   };
 
   return (

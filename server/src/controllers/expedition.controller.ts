@@ -53,7 +53,7 @@ export const handleExpeditionUpload = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'No se recibió ningún archivo' });
     }
 
-    const fileUrl = `/uploads/expeditions/${req.file.filename}`;
+    const fileUrl = `/api/uploads/expeditions/${req.file.filename}`;
     res.json({ url: fileUrl, filename: req.file.filename });
   } catch (error) {
     console.error('Error uploading expedition file:', error);

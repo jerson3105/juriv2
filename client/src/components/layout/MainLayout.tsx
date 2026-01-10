@@ -453,7 +453,7 @@ export const MainLayout = () => {
           <div className="flex items-center gap-3 p-2 rounded-xl bg-gray-50 dark:bg-gray-700 mb-2">
             {user?.avatarUrl ? (
               <img 
-                src={user.avatarUrl.startsWith('http') ? user.avatarUrl : `${(import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace('/api', '')}${user.avatarUrl}`}
+                src={user.avatarUrl.startsWith('http') ? user.avatarUrl : `${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}${user.avatarUrl.startsWith('/api') ? user.avatarUrl.replace('/api', '') : user.avatarUrl}`}
                 alt="Avatar"
                 className="w-9 h-9 rounded-xl object-cover shadow-md"
               />
@@ -526,7 +526,7 @@ export const MainLayout = () => {
               >
                 {user?.avatarUrl ? (
                   <img 
-                    src={user.avatarUrl.startsWith('http') ? user.avatarUrl : `${(import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace('/api', '')}${user.avatarUrl}`}
+                    src={user.avatarUrl.startsWith('http') ? user.avatarUrl : `${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}${user.avatarUrl.startsWith('/api') ? user.avatarUrl.replace('/api', '') : user.avatarUrl}`}
                     alt="Avatar"
                     className="w-8 h-8 rounded-xl object-cover shadow-sm"
                   />

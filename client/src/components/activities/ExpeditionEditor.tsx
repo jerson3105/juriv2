@@ -40,6 +40,17 @@ import {
 } from '../../lib/expeditionApi';
 import toast from 'react-hot-toast';
 
+// Helper para construir URLs de archivos estáticos
+const getStaticUrl = (url: string) => {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+  if (url.startsWith('/api')) {
+    return `${baseUrl.replace('/api', '')}${url}`;
+  }
+  return `${baseUrl}${url}`;
+};
+
 interface ExpeditionEditorProps {
   expeditionId: string;
   onBack: () => void;
@@ -563,7 +574,7 @@ export const ExpeditionEditor = ({ expeditionId, onBack }: ExpeditionEditorProps
         >
           {/* Map image */}
           <img
-            src={expedition.mapImageUrl}
+            src={getStaticUrl(expedition.mapImageUrl)}
             alt={expedition.name}
             className="w-full h-full object-contain"
             draggable={false}

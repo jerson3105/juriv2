@@ -350,7 +350,7 @@ export const uploadFile = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'No se proporcionó ningún archivo' });
     }
 
-    const fileUrl = `/uploads/missions/${req.file.filename}`;
+    const fileUrl = `/api/uploads/missions/${req.file.filename}`;
     
     res.json({
       url: fileUrl,

@@ -359,7 +359,7 @@ export const uploadAvatar = async (req: Request, res: Response): Promise<void> =
       return;
     }
     
-    const avatarUrl = `/avatars/${req.file.filename}`;
+    const avatarUrl = `/api/avatars/${req.file.filename}`;
     const updatedUser = await authService.updateProfile(req.user.id, { avatarUrl });
     
     res.json({

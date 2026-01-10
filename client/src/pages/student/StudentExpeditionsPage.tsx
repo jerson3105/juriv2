@@ -40,6 +40,17 @@ import {
 import { useStudentStore } from '../../store/studentStore';
 import toast from 'react-hot-toast';
 
+// Helper para construir URLs de archivos estáticos
+const getStaticUrl = (url: string) => {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+  if (url.startsWith('/api')) {
+    return `${baseUrl.replace('/api', '')}${url}`;
+  }
+  return `${baseUrl}${url}`;
+};
+
 export const StudentExpeditionsPage = () => {
   const queryClient = useQueryClient();
   const { selectedClassIndex } = useStudentStore();
@@ -321,7 +332,7 @@ export const StudentExpeditionsPage = () => {
                     {/* Map preview */}
                     <div className="relative aspect-video">
                       <img
-                        src={expedition.mapImageUrl}
+                        src={getStaticUrl(expedition.mapImageUrl)}
                         alt={expedition.name}
                         className="w-full h-full object-cover"
                       />
@@ -454,7 +465,7 @@ export const StudentExpeditionsPage = () => {
         >
           {/* Map image */}
           <img
-            src={expedition.mapImageUrl}
+            src={getStaticUrl(expedition.mapImageUrl)}
             alt={expedition.name}
             className="w-full h-full object-contain"
             draggable={false}
