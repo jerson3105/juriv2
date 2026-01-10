@@ -28,6 +28,7 @@ import { studentApi, CHARACTER_CLASSES } from '../../lib/studentApi';
 import { avatarApi } from '../../lib/avatarApi';
 import { shopApi } from '../../lib/shopApi';
 import { StudentShopPage } from './StudentShopPage';
+import { studentBossBattleApi } from '../../lib/studentBossBattleApi';
 import { StudentBattleView } from '../../components/student/StudentBattleView';
 import { StudentProgressView } from '../../components/student/StudentProgressView';
 import { ClanRankingView } from '../../components/student/ClanRankingView';
@@ -76,9 +77,7 @@ export const StudentDashboard = () => {
   // Student Boss Battles disponibles (nuevo sistema)
   const { data: studentBossBattles = [] } = useQuery({
     queryKey: ['student-boss-battles-available', currentProfile?.classroomId, currentProfile?.id],
-    queryFn: () => import('../../lib/studentBossBattleApi').then(m => 
-      m.studentBossBattleApi.getAvailableForStudent(currentProfile!.classroomId, currentProfile!.id)
-    ),
+    queryFn: () => studentBossBattleApi.getAvailableForStudent(currentProfile!.classroomId, currentProfile!.id),
     enabled: !!currentProfile?.classroomId && !!currentProfile?.id,
     staleTime: 30000,
   });

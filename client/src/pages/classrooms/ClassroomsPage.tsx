@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Users, Copy, Check, Trash2, X, GraduationCap, Sparkles } from 'lucide-react';
-import { classroomApi, type Classroom } from '../../lib/classroomApi';
+import { Plus, Users, Copy, Check, Trash2, X, GraduationCap, Sparkles, BookOpen } from 'lucide-react';
+import { classroomApi, type Classroom, type CreateClassroomData } from '../../lib/classroomApi';
 import { getMySchools } from '../../api/schoolApi';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import toast from 'react-hot-toast';
@@ -298,22 +298,42 @@ const CreateClassroomModal = ({
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: { name: string; description?: string; gradeLevel?: string }) => void;
+  onSubmit: (data: CreateClassroomData) => void;
   isLoading: boolean;
 }) => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [gradeLevel, setGradeLevel] = useState('');
+  const [useCompetencies, setUseCompetencies] = useState(false);
+  const [selectedAreaId, setSelectedAreaId] = useState('');
+  const [gradeScaleType, setGradeScaleType] = useState<'PERU_LETTERS' | 'PERU_VIGESIMAL' | 'CENTESIMAL' | 'USA_LETTERS'>('PERU_LETTERS');
+
+  // Cargar áreas curriculares
+  const { data: curriculumAreas = [] } = useQuery({
+    queryKey: ['curriculum-areas'],
+    queryFn: () => classroomApi.getCurriculumAreas('PE'),
+    enabled: useCompetencies,
+  });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({ name, description: description || undefined, gradeLevel: gradeLevel || undefined });
+    onSubmit({ 
+      name, 
+      description: description || undefined, 
+      gradeLevel: gradeLevel || undefined,
+      useCompetencies,
+      curriculumAreaId: useCompetencies ? selectedAreaId || null : null,
+      gradeScaleType: useCompetencies ? gradeScaleType : null,
+    });
   };
 
   const handleClose = () => {
     setName('');
     setDescription('');
     setGradeLevel('');
+    setUseCompetencies(false);
+    setSelectedAreaId('');
+    setGradeScaleType('PERU_LETTERS');
     onClose();
   };
 
@@ -333,7 +353,7 @@ const CreateClassroomModal = ({
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
           onClick={(e: React.MouseEvent) => e.stopPropagation()}
-          className="bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md p-6 border border-gray-800"
+          className="bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md p-6 border border-gray-800 max-h-[90vh] overflow-y-auto"
         >
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-lg font-bold text-white">
@@ -388,8 +408,97 @@ const CreateClassroomModal = ({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-xl border border-gray-700 bg-gray-800 text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none placeholder-gray-500 resize-none"
-                rows={3}
+                rows={2}
               />
+            </div>
+
+            {/* Toggle de Competencias */}
+            <div className="border-t border-gray-700 pt-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <BookOpen size={18} className="text-violet-400" />
+                  <div>
+                    <p className="text-sm font-medium text-white">Usar Competencias</p>
+                    <p className="text-xs text-gray-500">Habilita calificaciones por competencias</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setUseCompetencies(!useCompetencies)}
+                  className={`relative w-11 h-6 rounded-full transition-colors ${
+                    useCompetencies ? 'bg-violet-500' : 'bg-gray-700'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                      useCompetencies ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Opciones de Competencias */}
+              <AnimatePresence>
+                {useCompetencies && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-4 space-y-3 p-3 bg-gray-800/50 rounded-xl border border-gray-700">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-400 mb-1">
+                          Área Curricular
+                        </label>
+                        <select
+                          value={selectedAreaId}
+                          onChange={(e) => setSelectedAreaId(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-gray-600 bg-gray-700 text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
+                        >
+                          <option value="">Selecciona un área...</option>
+                          {curriculumAreas.map((area) => (
+                            <option key={area.id} value={area.id}>
+                              {area.name} ({area.competencies.length} competencias)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-gray-400 mb-1">
+                          Sistema de Calificación
+                        </label>
+                        <select
+                          value={gradeScaleType}
+                          onChange={(e) => setGradeScaleType(e.target.value as any)}
+                          className="w-full px-3 py-2 rounded-lg border border-gray-600 bg-gray-700 text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
+                        >
+                          <option value="PERU_LETTERS">Perú - Letras (AD, A, B, C)</option>
+                          <option value="PERU_VIGESIMAL">Perú - Vigesimal (0-20)</option>
+                          <option value="CENTESIMAL">Centesimal (0-100)</option>
+                          <option value="USA_LETTERS">USA - Letras (A, B, C, D, F)</option>
+                        </select>
+                      </div>
+
+                      {selectedAreaId && (
+                        <div className="text-xs text-gray-400 bg-gray-700/50 p-2 rounded-lg">
+                          <p className="font-medium text-violet-400 mb-1">Competencias incluidas:</p>
+                          <ul className="space-y-0.5">
+                            {curriculumAreas
+                              .find(a => a.id === selectedAreaId)
+                              ?.competencies.map((c, i) => (
+                                <li key={c.id} className="truncate" title={c.name}>
+                                  {i + 1}. {c.name}
+                                </li>
+                              ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             <div className="flex gap-2 pt-2">
@@ -402,7 +511,7 @@ const CreateClassroomModal = ({
               </button>
               <button
                 type="submit"
-                disabled={!name.trim() || isLoading}
+                disabled={!name.trim() || isLoading || (useCompetencies && !selectedAreaId)}
                 className="flex-1 px-4 py-2.5 bg-gradient-to-r from-violet-500 to-purple-500 text-white rounded-xl text-sm font-medium shadow-lg shadow-violet-500/25 disabled:opacity-50"
               >
                 {isLoading ? 'Creando...' : 'Crear Clase'}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -25,6 +25,9 @@ import {
   Crown,
   Target,
   Users,
+  Award,
+  Shield,
+  AlertTriangle,
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
@@ -40,7 +43,9 @@ import {
 } from '../../lib/questionBankApi';
 import toast from 'react-hot-toast';
 import { BossBattleLive } from './BossBattleLive';
+import { BossBattleBvJ } from './BossBattleBvJ';
 import { ConfirmModal } from '../ui/ConfirmModal';
+import { classroomApi } from '../../lib/classroomApi';
 
 interface Props {
   classroom: any;
@@ -62,6 +67,15 @@ export const BossBattleActivity = ({ classroom, onBack }: Props) => {
     queryKey: ['bosses', classroom.id],
     queryFn: () => battleApi.getBossesByClassroom(classroom.id),
   });
+
+  // Obtener competencias si la clase las usa
+  const { data: curriculumAreas = [] } = useQuery({
+    queryKey: ['curriculum-areas'],
+    queryFn: () => classroomApi.getCurriculumAreas('PE'),
+    enabled: classroom?.useCompetencies,
+  });
+  
+  const classroomCompetencies = curriculumAreas.find((a: any) => a.id === classroom?.curriculumAreaId)?.competencies || [];
 
   const createMutation = useMutation({
     mutationFn: battleApi.createBoss,
@@ -102,8 +116,25 @@ export const BossBattleActivity = ({ classroom, onBack }: Props) => {
     onError: () => toast.error('Error al duplicar'),
   });
 
-  // Si hay una batalla activa, mostrar la vista de batalla
+  // Si hay una batalla activa, mostrar la vista de batalla según el modo
   if (activeBattle) {
+    const activeBoss = bosses.find(b => b.id === activeBattle);
+    
+    // Si es modo BvJ, usar el componente BossBattleBvJ
+    if (activeBoss?.battleMode === 'BVJ') {
+      return (
+        <BossBattleBvJ
+          bossId={activeBattle}
+          students={classroom.students || []}
+          onBack={() => {
+            setActiveBattle(null);
+            queryClient.invalidateQueries({ queryKey: ['bosses', classroom.id] });
+          }}
+        />
+      );
+    }
+    
+    // Modo clásico
     return (
       <BossBattleLive
         bossId={activeBattle}
@@ -130,7 +161,30 @@ export const BossBattleActivity = ({ classroom, onBack }: Props) => {
     setShowQuestionsModal(true);
   };
 
-  const handleStartBattle = (boss: Boss) => {
+  const handleStartBattle = async (boss: Boss) => {
+    // Para BvJ, iniciar directamente con todos los estudiantes elegibles
+    if (boss.battleMode === 'BVJ') {
+      const eligibleStudents = (classroom.students || [])
+        .filter((s: any) => (s.currentHp || s.hp || 100) > 0)
+        .map((s: any) => s.id);
+      
+      if (eligibleStudents.length === 0) {
+        toast.error('No hay estudiantes con HP disponible');
+        return;
+      }
+      
+      try {
+        await battleApi.startBattle(boss.id, eligibleStudents);
+        queryClient.invalidateQueries({ queryKey: ['bosses', classroom.id] });
+        setActiveBattle(boss.id);
+        toast.success('¡Batalla BvJ iniciada!');
+      } catch {
+        toast.error('Error al iniciar batalla');
+      }
+      return;
+    }
+    
+    // Para modo clásico, mostrar modal de selección
     setSelectedBoss(boss);
     setShowStartModal(true);
   };
@@ -289,6 +343,8 @@ export const BossBattleActivity = ({ classroom, onBack }: Props) => {
         }}
         boss={editingBoss}
         classroomId={classroom.id}
+        competencies={classroomCompetencies}
+        useCompetencies={classroom?.useCompetencies || false}
         onSave={(data) => {
           if (editingBoss) {
             updateMutation.mutate({ id: editingBoss.id, data });
@@ -322,6 +378,7 @@ export const BossBattleActivity = ({ classroom, onBack }: Props) => {
           }}
           boss={selectedBoss}
           students={classroom.students || []}
+          clansEnabled={classroom.clansEnabled}
           onStart={() => {
             setShowStartModal(false);
             setActiveBattle(selectedBoss.id);
@@ -552,6 +609,16 @@ const BossCard = ({
   const hpPercentage = Math.round((boss.currentHp / boss.bossHp) * 100);
   const isActive = boss.status === 'ACTIVE';
   const isDraft = boss.status === 'DRAFT';
+  const isBvJ = boss.battleMode === 'BVJ';
+
+  // Colores según modo de batalla
+  const modeGradient = isBvJ 
+    ? 'from-orange-500 via-amber-500 to-yellow-500' 
+    : 'from-purple-500 via-indigo-500 to-blue-500';
+  const modeRing = isBvJ ? 'ring-orange-500' : 'ring-purple-500';
+  const modeButtonGradient = isBvJ
+    ? 'from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600'
+    : 'from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600';
 
   return (
     <motion.div
@@ -561,150 +628,178 @@ const BossCard = ({
       className="relative group"
     >
       <div className={`
-        bg-white rounded-xl overflow-hidden shadow-lg
-        ${isActive ? 'ring-2 ring-green-500 ring-offset-2' : ''}
-        hover:shadow-xl transition-shadow
+        bg-white rounded-2xl overflow-hidden shadow-lg border border-gray-100
+        ${isActive ? `ring-2 ${modeRing} ring-offset-2` : ''}
+        hover:shadow-xl hover:-translate-y-1 transition-all duration-300
       `}>
         {/* Header con imagen */}
-        <div className="relative h-32 bg-gradient-to-br from-red-500 via-orange-500 to-amber-500 overflow-hidden">
+        <div className={`relative h-36 bg-gradient-to-br ${modeGradient} overflow-hidden`}>
           {boss.bossImageUrl ? (
             <img
               src={boss.bossImageUrl}
               alt={boss.bossName}
-              className="w-full h-full object-cover"
+              className="w-full h-full object-cover mix-blend-overlay opacity-80"
             />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-6xl">🐉</span>
+              <span className="text-7xl drop-shadow-lg">🐉</span>
             </div>
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+          
+          {/* Badge de modo arriba a la izquierda */}
+          <div className="absolute top-3 left-3">
+            <span className={`
+              text-xs font-bold px-2.5 py-1 rounded-full shadow-lg
+              ${isBvJ 
+                ? 'bg-orange-500 text-white' 
+                : 'bg-purple-500 text-white'
+              }
+            `}>
+              {isBvJ ? '⚔️ 1 vs 1' : '👥 Clásico'}
+            </span>
+          </div>
+          
+          {/* Status badge arriba a la derecha */}
+          <div className="absolute top-3 right-3">
+            {getStatusBadge(boss.status)}
+          </div>
           
           {/* Nombre del boss */}
           <div className="absolute bottom-3 left-3 right-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-white font-bold text-lg drop-shadow-lg">
-                  {boss.bossName}
-                </h3>
-                <p className="text-white/80 text-xs">{boss.name}</p>
-              </div>
-              {getStatusBadge(boss.status)}
+            <h3 className="text-white font-bold text-xl drop-shadow-lg leading-tight">
+              {boss.bossName}
+            </h3>
+            <p className="text-white/70 text-sm">{boss.name}</p>
+          </div>
+        </div>
+
+        {/* Contenido */}
+        <div className="p-4 space-y-3">
+          {/* Barra de HP */}
+          <div>
+            <div className="flex items-center justify-between text-xs mb-1.5">
+              <span className="text-gray-500 flex items-center gap-1 font-medium">
+                <Heart size={12} className="text-red-500" />
+                HP
+              </span>
+              <span className="font-bold text-gray-700">
+                {boss.currentHp.toLocaleString()} / {boss.bossHp.toLocaleString()}
+              </span>
+            </div>
+            <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${hpPercentage}%` }}
+                transition={{ duration: 0.5, delay: index * 0.1 }}
+                className={`h-full rounded-full ${
+                  hpPercentage > 50 ? 'bg-gradient-to-r from-green-400 to-emerald-500' :
+                  hpPercentage > 25 ? 'bg-gradient-to-r from-yellow-400 to-orange-500' :
+                  'bg-gradient-to-r from-red-400 to-red-500'
+                }`}
+              />
             </div>
           </div>
-        </div>
 
-        {/* Barra de HP */}
-        <div className="px-4 pt-3">
-          <div className="flex items-center justify-between text-xs mb-1">
-            <span className="text-gray-500 flex items-center gap-1">
-              <Heart size={12} className="text-red-500" />
-              HP
-            </span>
-            <span className="font-bold text-gray-700">
-              {boss.currentHp} / {boss.bossHp}
-            </span>
+          {/* Recompensas */}
+          <div className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-xl">
+            <div className="flex items-center gap-1.5">
+              <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
+                <Sparkles size={12} className="text-blue-600" />
+              </div>
+              <span className="text-sm font-semibold text-gray-700">{boss.xpReward} XP</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-6 h-6 bg-amber-100 rounded-full flex items-center justify-center">
+                <Coins size={12} className="text-amber-600" />
+              </div>
+              <span className="text-sm font-semibold text-gray-700">{boss.gpReward} GP</span>
+            </div>
+            {isBvJ && boss.participantBonus > 0 && (
+              <div className="flex items-center gap-1.5">
+                <div className="w-6 h-6 bg-orange-100 rounded-full flex items-center justify-center">
+                  <Target size={12} className="text-orange-600" />
+                </div>
+                <span className="text-sm font-semibold text-gray-700">+{boss.participantBonus}</span>
+              </div>
+            )}
           </div>
-          <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: `${hpPercentage}%` }}
-              transition={{ duration: 0.5, delay: index * 0.1 }}
-              className={`h-full rounded-full ${
-                hpPercentage > 50 ? 'bg-gradient-to-r from-green-400 to-green-500' :
-                hpPercentage > 25 ? 'bg-gradient-to-r from-yellow-400 to-orange-500' :
-                'bg-gradient-to-r from-red-400 to-red-500'
-              }`}
-            />
-          </div>
-        </div>
 
-        {/* Recompensas */}
-        <div className="px-4 py-3 flex items-center gap-4">
-          <div className="flex items-center gap-1 text-sm">
-            <Sparkles size={14} className="text-blue-500" />
-            <span className="text-gray-600">{boss.xpReward} XP</span>
-          </div>
-          <div className="flex items-center gap-1 text-sm">
-            <Coins size={14} className="text-amber-500" />
-            <span className="text-gray-600">{boss.gpReward} GP</span>
-          </div>
-        </div>
-
-        {/* Acciones */}
-        <div className="px-4 pb-4 flex items-center gap-2">
-          {isActive ? (
-            <Button
-              onClick={() => onContinueBattle(boss)}
-              className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500"
-              leftIcon={<Play size={16} />}
-            >
-              Continuar batalla
-            </Button>
-          ) : isDraft ? (
-            <>
+          {/* Acciones */}
+          <div className="flex items-center gap-2 pt-1">
+            {isActive ? (
               <Button
-                onClick={() => onManageQuestions(boss)}
-                variant="secondary"
-                className="flex-1"
-                leftIcon={<HelpCircle size={16} />}
-              >
-                Preguntas
-              </Button>
-              <Button
-                onClick={() => onStartBattle(boss)}
-                className="flex-1 bg-gradient-to-r from-red-500 to-orange-500"
+                onClick={() => onContinueBattle(boss)}
+                className={`flex-1 bg-gradient-to-r ${modeButtonGradient}`}
                 leftIcon={<Play size={16} />}
               >
-                Iniciar
+                Continuar batalla
               </Button>
-            </>
-          ) : (
-            <div className="flex flex-col gap-2 w-full">
-              <Button
-                onClick={() => onViewResults(boss)}
-                variant="secondary"
-                className="w-full"
-                leftIcon={<BarChart3 size={16} />}
-              >
-                Ver resultados
-              </Button>
-              <div className="flex gap-2">
+            ) : isDraft ? (
+              <>
                 <Button
-                  onClick={() => onDuplicate(boss)}
+                  onClick={() => onManageQuestions(boss)}
                   variant="secondary"
                   className="flex-1"
-                  leftIcon={<Copy size={16} />}
+                  leftIcon={<HelpCircle size={16} />}
                 >
-                  Duplicar para reusar
+                  Preguntas
                 </Button>
+                <Button
+                  onClick={() => onStartBattle(boss)}
+                  className={`flex-1 bg-gradient-to-r ${modeButtonGradient}`}
+                  leftIcon={<Play size={16} />}
+                >
+                  Iniciar
+                </Button>
+              </>
+            ) : (
+              <div className="flex flex-col gap-2 w-full">
+                <Button
+                  onClick={() => onViewResults(boss)}
+                  variant="secondary"
+                  className="w-full"
+                  leftIcon={<BarChart3 size={16} />}
+                >
+                  Ver resultados
+                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => onDuplicate(boss)}
+                    variant="secondary"
+                    className="flex-1"
+                    leftIcon={<Copy size={16} />}
+                  >
+                    Duplicar
+                  </Button>
+                  <button
+                    onClick={() => onDelete(boss)}
+                    className="p-2.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                    title="Eliminar boss"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            {isDraft && (
+              <div className="flex gap-1">
+                <button
+                  onClick={() => onEdit(boss)}
+                  className="p-2.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors"
+                >
+                  <Edit2 size={16} />
+                </button>
                 <button
                   onClick={() => onDelete(boss)}
-                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                  title="Eliminar boss"
+                  className="p-2.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"
                 >
                   <Trash2 size={16} />
                 </button>
               </div>
-            </div>
-          )}
-          
-          {isDraft && (
-            <div className="flex gap-1">
-              <button
-                onClick={() => onEdit(boss)}
-                className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-              >
-                <Edit2 size={16} />
-              </button>
-              <button
-                onClick={() => onDelete(boss)}
-                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-              >
-                <Trash2 size={16} />
-              </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </motion.div>
@@ -717,6 +812,8 @@ const CreateBossModal = ({
   onClose,
   boss,
   classroomId,
+  competencies,
+  useCompetencies,
   onSave,
   isLoading,
 }: {
@@ -724,9 +821,12 @@ const CreateBossModal = ({
   onClose: () => void;
   boss: Boss | null;
   classroomId: string;
+  competencies: any[];
+  useCompetencies: boolean;
   onSave: (data: any) => void;
   isLoading: boolean;
 }) => {
+  const [battleMode, setBattleMode] = useState<'CLASSIC' | 'BVJ'>(boss?.battleMode || 'CLASSIC');
   const [name, setName] = useState(boss?.name || '');
   const [description, setDescription] = useState(boss?.description || '');
   const [bossName, setBossName] = useState(boss?.bossName || '');
@@ -734,6 +834,36 @@ const CreateBossModal = ({
   const [bossImageUrl, setBossImageUrl] = useState(boss?.bossImageUrl || '');
   const [xpReward, setXpReward] = useState(boss?.xpReward || 50);
   const [gpReward, setGpReward] = useState(boss?.gpReward || 20);
+  const [participantBonus, setParticipantBonus] = useState(boss?.participantBonus || 10);
+  const [competencyId, setCompetencyId] = useState(boss?.competencyId || '');
+
+  // Sincronizar estados cuando cambia el boss (para edición)
+  useEffect(() => {
+    if (boss) {
+      setBattleMode(boss.battleMode || 'CLASSIC');
+      setName(boss.name || '');
+      setDescription(boss.description || '');
+      setBossName(boss.bossName || '');
+      setBossHp(boss.bossHp || 1000);
+      setBossImageUrl(boss.bossImageUrl || '');
+      setXpReward(boss.xpReward || 50);
+      setGpReward(boss.gpReward || 20);
+      setParticipantBonus(boss.participantBonus || 10);
+      setCompetencyId(boss.competencyId || '');
+    } else {
+      // Reset para nuevo boss
+      setBattleMode('CLASSIC');
+      setName('');
+      setDescription('');
+      setBossName('');
+      setBossHp(1000);
+      setBossImageUrl('');
+      setXpReward(50);
+      setGpReward(20);
+      setParticipantBonus(10);
+      setCompetencyId('');
+    }
+  }, [boss]);
 
   const bossEmojis = ['🐉', '👹', '🧟', '👻', '🦖', '🦑', '🕷️', '🦂', '🐺', '🦁', '🐻', '🦇'];
 
@@ -741,6 +871,7 @@ const CreateBossModal = ({
     e.preventDefault();
     onSave({
       classroomId,
+      battleMode,
       name,
       description: description || undefined,
       bossName,
@@ -748,6 +879,8 @@ const CreateBossModal = ({
       bossImageUrl: bossImageUrl || undefined,
       xpReward,
       gpReward,
+      participantBonus: battleMode === 'BVJ' ? participantBonus : undefined,
+      competencyId: competencyId || undefined,
     });
   };
 
@@ -779,6 +912,45 @@ const CreateBossModal = ({
           </div>
 
           <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto max-h-[75vh]">
+            {/* Modo de batalla */}
+            <div>
+              <label className="block text-sm font-medium mb-2 text-gray-700">
+                Modo de batalla
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setBattleMode('CLASSIC')}
+                  className={`p-3 rounded-xl border-2 transition-all text-left ${
+                    battleMode === 'CLASSIC'
+                      ? 'border-red-500 bg-red-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xl">⚔️</span>
+                    <span className="font-semibold text-gray-800">Clásico</span>
+                  </div>
+                  <p className="text-xs text-gray-500">Toda la clase vs el Boss</p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBattleMode('BVJ')}
+                  className={`p-3 rounded-xl border-2 transition-all text-left ${
+                    battleMode === 'BVJ'
+                      ? 'border-orange-500 bg-orange-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-xl">🎯</span>
+                    <span className="font-semibold text-gray-800">Boss vs Jugador</span>
+                  </div>
+                  <p className="text-xs text-gray-500">1 vs 1 por turnos aleatorios</p>
+                </button>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-2 text-gray-700">
@@ -857,7 +1029,7 @@ const CreateBossModal = ({
               <div>
                 <label className="block text-sm font-medium mb-2 text-gray-700">
                   <Sparkles size={14} className="inline mr-1 text-blue-500" />
-                  XP Recompensa
+                  XP Recompensa {battleMode === 'BVJ' && <span className="text-xs text-gray-400">(toda la clase)</span>}
                 </label>
                 <input
                   type="number"
@@ -870,7 +1042,7 @@ const CreateBossModal = ({
               <div>
                 <label className="block text-sm font-medium mb-2 text-gray-700">
                   <Coins size={14} className="inline mr-1 text-amber-500" />
-                  GP Recompensa
+                  GP Recompensa {battleMode === 'BVJ' && <span className="text-xs text-gray-400">(toda la clase)</span>}
                 </label>
                 <input
                   type="number"
@@ -881,6 +1053,55 @@ const CreateBossModal = ({
                 />
               </div>
             </div>
+
+            {/* Bonus para participantes (solo BvJ) */}
+            {battleMode === 'BVJ' && (
+              <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+                <label className="block text-sm font-medium mb-2 text-orange-800">
+                  <Target size={14} className="inline mr-1" />
+                  Bonus extra para participantes
+                </label>
+                <p className="text-xs text-orange-600 mb-2">
+                  XP/GP adicional que ganan los estudiantes que participaron directamente
+                </p>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-orange-700">+</span>
+                  <input
+                    type="number"
+                    value={participantBonus}
+                    onChange={(e) => setParticipantBonus(parseInt(e.target.value) || 0)}
+                    min={0}
+                    className="w-24 px-3 py-2 rounded-lg border border-orange-300 bg-white text-gray-800"
+                  />
+                  <span className="text-sm text-orange-700">XP/GP</span>
+                </div>
+              </div>
+            )}
+
+            {/* Selector de Competencia (opcional) */}
+            {useCompetencies && competencies.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium mb-2 text-gray-700 flex items-center gap-2">
+                  <Award size={14} className="text-emerald-500" />
+                  Competencia a evaluar (opcional)
+                </label>
+                <select
+                  value={competencyId}
+                  onChange={(e) => setCompetencyId(e.target.value)}
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-800 focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                >
+                  <option value="">Sin competencia (solo gamificación)</option>
+                  {competencies.map((c: any) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Si seleccionas una competencia, el desempeño contribuirá a la calificación.
+                </p>
+              </div>
+            )}
 
             {/* Imagen del boss */}
             <div>
@@ -920,6 +1141,80 @@ const CreateBossModal = ({
         </motion.div>
       </motion.div>
     </AnimatePresence>
+  );
+};
+
+// Componente de advertencia de daño vs HP (solo para BvJ)
+const DamageVsHpWarning = ({
+  questions,
+  boss,
+  onAdjustHp,
+}: {
+  questions: BattleQuestion[];
+  boss: Boss;
+  onAdjustHp: (newHp: number) => Promise<void>;
+}) => {
+  const [isAdjusting, setIsAdjusting] = useState(false);
+  const totalDamage = questions.reduce((sum, q) => sum + (q.damage || 0), 0);
+  const bossHp = boss.bossHp;
+  const isInsufficient = totalDamage < bossHp;
+  const suggestedHp = Math.floor(totalDamage * 0.8);
+
+  const handleAdjust = async () => {
+    setIsAdjusting(true);
+    try {
+      await onAdjustHp(suggestedHp);
+    } finally {
+      setIsAdjusting(false);
+    }
+  };
+
+  return (
+    <div className={`mb-4 p-4 rounded-xl border ${
+      isInsufficient 
+        ? 'bg-amber-50 border-amber-300' 
+        : 'bg-green-50 border-green-300'
+    }`}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="text-center">
+            <p className="text-xs text-gray-500 uppercase font-medium">Daño total</p>
+            <p className="text-2xl font-bold text-purple-600">{totalDamage}</p>
+          </div>
+          <div className="text-gray-400">vs</div>
+          <div className="text-center">
+            <p className="text-xs text-gray-500 uppercase font-medium">HP Boss</p>
+            <p className="text-2xl font-bold text-red-600">{bossHp}</p>
+          </div>
+        </div>
+        
+        {isInsufficient ? (
+          <div className="flex items-center gap-2">
+            <div className="text-right">
+              <p className="text-sm font-medium text-amber-700 flex items-center gap-1">
+                <AlertTriangle size={16} />
+                Victoria imposible
+              </p>
+              <p className="text-xs text-amber-600">El daño no alcanza para derrotar al boss</p>
+            </div>
+            <Button
+              onClick={handleAdjust}
+              size="sm"
+              className="bg-amber-500 hover:bg-amber-600 text-white"
+              isLoading={isAdjusting}
+              disabled={isAdjusting}
+            >
+              Ajustar a {suggestedHp} HP
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-green-600">
+            <Check size={20} />
+            <span className="text-sm font-medium">Victoria posible</span>
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 
@@ -1126,6 +1421,23 @@ const QuestionsModal = ({
                 Importar del banco
               </Button>
             </div>
+
+            {/* Validación de daño vs HP (solo para BvJ) */}
+            {boss.battleMode === 'BVJ' && questions.length > 0 && (
+              <DamageVsHpWarning 
+                questions={questions} 
+                boss={boss} 
+                onAdjustHp={async (newHp) => {
+                  try {
+                    await battleApi.updateBoss(boss.id, { bossHp: newHp, currentHp: newHp });
+                    queryClient.invalidateQueries({ queryKey: ['bosses'] });
+                    toast.success(`HP del boss ajustado a ${newHp}`);
+                  } catch {
+                    toast.error('Error al ajustar HP');
+                  }
+                }}
+              />
+            )}
 
             {/* Lista de preguntas */}
             {isLoading ? (
@@ -2097,16 +2409,19 @@ const StartBattleModal = ({
   onClose,
   boss,
   students,
+  clansEnabled,
   onStart,
 }: {
   isOpen: boolean;
   onClose: () => void;
   boss: Boss;
   students: any[];
+  clansEnabled?: boolean;
   onStart: (studentIds: string[]) => void;
 }) => {
   const queryClient = useQueryClient();
   const [selectedStudents, setSelectedStudents] = useState<string[]>([]);
+  const [viewMode, setViewMode] = useState<'all' | 'clans'>('all');
 
   const { data: questions = [] } = useQuery({
     queryKey: ['battle-questions', boss.id],
@@ -2137,10 +2452,44 @@ const StartBattleModal = ({
     setSelectedStudents(eligibleStudents.map(s => s.id));
   };
 
+  const selectClan = (clanId: string | null) => {
+    const clanStudents = students.filter(s => 
+      s.teamId === clanId && (s.currentHp || s.hp || 100) > 0
+    );
+    const clanStudentIds = clanStudents.map(s => s.id);
+    const allSelected = clanStudentIds.every(id => selectedStudents.includes(id));
+    
+    if (allSelected) {
+      setSelectedStudents(prev => prev.filter(id => !clanStudentIds.includes(id)));
+    } else {
+      setSelectedStudents(prev => [...new Set([...prev, ...clanStudentIds])]);
+    }
+  };
+
+  // Agrupar estudiantes por clan
+  const studentsByClan = useMemo(() => {
+    const groups: Record<string, { clanName: string; clanColor: string; students: any[] }> = {};
+    const noClan: any[] = [];
+    
+    students.forEach(s => {
+      if (s.teamId && s.clanName) {
+        if (!groups[s.teamId]) {
+          groups[s.teamId] = { clanName: s.clanName, clanColor: s.clanColor || '#6366f1', students: [] };
+        }
+        groups[s.teamId].students.push(s);
+      } else {
+        noClan.push(s);
+      }
+    });
+    
+    return { groups, noClan };
+  }, [students]);
+
   if (!isOpen) return null;
 
   const canStart = selectedStudents.length > 0 && questions.length > 0;
   const eligibleCount = students.filter(s => (s.currentHp || s.hp || 100) > 0).length;
+  const hasClans = Object.keys(studentsByClan.groups).length > 0;
 
   return (
     <AnimatePresence>
@@ -2210,12 +2559,137 @@ const StartBattleModal = ({
                   Seleccionar todos ({eligibleCount})
                 </button>
               </div>
+
+              {/* Tabs: Todos / Por Clanes */}
+              {clansEnabled && hasClans && (
+                <div className="flex gap-2 mb-3">
+                  <button
+                    onClick={() => setViewMode('all')}
+                    className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
+                      viewMode === 'all'
+                        ? 'bg-purple-500 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    <Users size={14} className="inline mr-1" />
+                    Todos
+                  </button>
+                  <button
+                    onClick={() => setViewMode('clans')}
+                    className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
+                      viewMode === 'clans'
+                        ? 'bg-purple-500 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    <Shield size={14} className="inline mr-1" />
+                    Por Clanes
+                  </button>
+                </div>
+              )}
               
               {students.length === 0 ? (
                 <p className="text-gray-500 text-sm text-center py-4">
                   No hay estudiantes en la clase
                 </p>
+              ) : viewMode === 'clans' && hasClans ? (
+                /* Vista por clanes */
+                <div className="space-y-3 max-h-64 overflow-y-auto">
+                  {Object.entries(studentsByClan.groups).map(([clanId, clan]) => {
+                    const clanEligible = clan.students.filter(s => (s.currentHp || s.hp || 100) > 0);
+                    const allSelected = clanEligible.length > 0 && clanEligible.every(s => selectedStudents.includes(s.id));
+                    const someSelected = clanEligible.some(s => selectedStudents.includes(s.id));
+                    
+                    return (
+                      <div key={clanId} className="border rounded-xl overflow-hidden" style={{ borderColor: clan.clanColor + '50' }}>
+                        <button
+                          onClick={() => selectClan(clanId)}
+                          className="w-full flex items-center gap-2 p-2 transition-all hover:bg-gray-50"
+                          style={{ backgroundColor: clan.clanColor + '10' }}
+                        >
+                          <div 
+                            className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold"
+                            style={{ backgroundColor: clan.clanColor }}
+                          >
+                            {clan.clanName[0]}
+                          </div>
+                          <span className="font-medium text-gray-800 flex-1 text-left">{clan.clanName}</span>
+                          <span className="text-xs text-gray-500">{clanEligible.length} disponibles</span>
+                          <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                            allSelected ? 'bg-purple-500 border-purple-500' : someSelected ? 'bg-purple-200 border-purple-400' : 'border-gray-300'
+                          }`}>
+                            {allSelected && <Check size={12} className="text-white" />}
+                            {someSelected && !allSelected && <div className="w-2 h-2 bg-purple-500 rounded-sm" />}
+                          </div>
+                        </button>
+                        <div className="grid grid-cols-2 gap-1 p-2 bg-white">
+                          {clan.students.map((student) => {
+                            const hp = student.currentHp ?? student.hp ?? 100;
+                            const maxHp = student.maxHp ?? 100;
+                            const isDisabled = hp <= 0;
+                            const isSelected = selectedStudents.includes(student.id);
+                            
+                            return (
+                              <button
+                                key={student.id}
+                                onClick={() => toggleStudent(student.id, hp)}
+                                disabled={isDisabled}
+                                className={`flex items-center gap-2 p-2 rounded-lg text-xs transition-all ${
+                                  isDisabled ? 'opacity-40 cursor-not-allowed' :
+                                  isSelected ? 'bg-purple-100 border border-purple-400' : 'hover:bg-gray-100 border border-transparent'
+                                }`}
+                              >
+                                <div className={`w-6 h-6 rounded flex items-center justify-center text-white text-[10px] font-bold ${
+                                  isDisabled ? 'bg-gray-400' : 'bg-gradient-to-br from-purple-400 to-indigo-500'
+                                }`}>
+                                  {student.characterName?.[0] || '?'}
+                                </div>
+                                <span className="truncate flex-1 text-left">{student.characterName?.split(' ')[0]}</span>
+                                {isSelected && <Check size={12} className="text-purple-500" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {studentsByClan.noClan.length > 0 && (
+                    <div className="border rounded-xl overflow-hidden border-gray-200">
+                      <div className="flex items-center gap-2 p-2 bg-gray-50">
+                        <div className="w-8 h-8 rounded-lg bg-gray-400 flex items-center justify-center text-white text-sm">?</div>
+                        <span className="font-medium text-gray-600">Sin clan</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1 p-2 bg-white">
+                        {studentsByClan.noClan.map((student) => {
+                          const hp = student.currentHp ?? student.hp ?? 100;
+                          const isDisabled = hp <= 0;
+                          const isSelected = selectedStudents.includes(student.id);
+                          
+                          return (
+                            <button
+                              key={student.id}
+                              onClick={() => toggleStudent(student.id, hp)}
+                              disabled={isDisabled}
+                              className={`flex items-center gap-2 p-2 rounded-lg text-xs transition-all ${
+                                isDisabled ? 'opacity-40' : isSelected ? 'bg-purple-100 border border-purple-400' : 'hover:bg-gray-100'
+                              }`}
+                            >
+                              <div className={`w-6 h-6 rounded flex items-center justify-center text-white text-[10px] font-bold ${
+                                isDisabled ? 'bg-gray-400' : 'bg-gradient-to-br from-purple-400 to-indigo-500'
+                              }`}>
+                                {student.characterName?.[0] || '?'}
+                              </div>
+                              <span className="truncate flex-1 text-left">{student.characterName?.split(' ')[0]}</span>
+                              {isSelected && <Check size={12} className="text-purple-500" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
               ) : (
+                /* Vista de todos */
                 <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto">
                   {students.map((student) => {
                     const hp = student.currentHp ?? student.hp ?? 100;

@@ -16,6 +16,7 @@ export interface Behavior {
   icon: string | null;
   isActive: boolean;
   createdAt: string;
+  competencyId: string | null;
 }
 
 export interface CreateBehaviorData {
@@ -29,6 +30,7 @@ export interface CreateBehaviorData {
   gpValue?: number;
   isPositive: boolean;
   icon?: string;
+  competencyId?: string;
 }
 
 export interface ApplyBehaviorData {

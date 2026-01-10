@@ -51,6 +51,20 @@ export interface Classroom {
     graceDays: number;
   } | null;
   
+  // Configuración de competencias
+  useCompetencies: boolean;
+  curriculumAreaId: string | null;
+  gradeScaleType: 'PERU_LETTERS' | 'PERU_VIGESIMAL' | 'CENTESIMAL' | 'USA_LETTERS' | 'CUSTOM' | null;
+  gradeScaleConfig: {
+    ranges: Array<{
+      label: string;
+      minPercent: number;
+      maxPercent: number;
+      xpReward: number;
+      gpReward: number;
+    }>;
+  } | null;
+  
   studentCount?: number;
   createdAt: string;
   updatedAt: string;
@@ -74,6 +88,27 @@ export interface CreateClassroomData {
   name: string;
   description?: string;
   gradeLevel?: string;
+  useCompetencies?: boolean;
+  curriculumAreaId?: string | null;
+  gradeScaleType?: 'PERU_LETTERS' | 'PERU_VIGESIMAL' | 'CENTESIMAL' | 'USA_LETTERS' | 'CUSTOM' | null;
+}
+
+export interface CurriculumCompetency {
+  id: string;
+  areaId: string;
+  name: string;
+  shortName: string | null;
+  description: string | null;
+  displayOrder: number;
+}
+
+export interface CurriculumArea {
+  id: string;
+  countryCode: string;
+  name: string;
+  shortName: string | null;
+  displayOrder: number;
+  competencies: CurriculumCompetency[];
 }
 
 export interface UpdateClassroomSettings {
@@ -133,6 +168,12 @@ export interface JoinClassroomData {
 }
 
 export const classroomApi = {
+  // Obtener áreas curriculares
+  getCurriculumAreas: async (countryCode: string = 'PE'): Promise<CurriculumArea[]> => {
+    const response = await api.get(`/classrooms/curriculum-areas?country=${countryCode}`);
+    return response.data.data;
+  },
+
   // Obtener mis clases (profesor)
   getMyClassrooms: async (): Promise<Classroom[]> => {
     const response = await api.get('/classrooms/my');
@@ -165,6 +206,12 @@ export const classroomApi = {
   // Resetear puntos de todos los estudiantes
   resetAllPoints: async (id: string): Promise<void> => {
     await api.post(`/classrooms/${id}/reset-points`);
+  },
+
+  // Sincronizar competencias del classroom con el área curricular
+  syncCompetencies: async (id: string): Promise<{ created: number; total: number }> => {
+    const response = await api.post(`/classrooms/${id}/sync-competencies`);
+    return response.data.data;
   },
 
   // Unirse a clase (estudiante)

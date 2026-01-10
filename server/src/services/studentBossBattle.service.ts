@@ -33,6 +33,7 @@ interface CreateBattleDto {
   startDate?: Date | null;
   endDate?: Date | null;
   startImmediately?: boolean;
+  competencyId?: string;
 }
 
 interface UpdateBattleDto extends Partial<CreateBattleDto> {
@@ -91,6 +92,7 @@ class StudentBossBattleService {
       status,
       startDate: data.startDate ? new Date(data.startDate) : null,
       endDate: data.endDate ? new Date(data.endDate) : null,
+      competencyId: data.competencyId || null,
       createdAt: now,
       updatedAt: now,
     });

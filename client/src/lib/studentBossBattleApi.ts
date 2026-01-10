@@ -22,6 +22,7 @@ export interface StudentBossBattle {
   status: StudentBossBattleStatus;
   startDate: string | null;
   endDate: string | null;
+  competencyId: string | null;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
@@ -82,6 +83,7 @@ export interface CreateBattleDto {
   startDate?: string | null;
   endDate?: string | null;
   startImmediately?: boolean;
+  competencyId?: string;
 }
 
 export interface AvailableBattle extends StudentBossBattle {

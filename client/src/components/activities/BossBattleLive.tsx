@@ -289,27 +289,69 @@ export const BossBattleLive = ({ bossId, onBack }: Props) => {
               <Shield size={16} className="text-purple-400" />
               <span className="text-white font-medium text-sm">Héroes en batalla ({bs.participants.length})</span>
             </div>
-            <div className="max-h-[120px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-purple-500/50">
-              <div className="grid grid-cols-4 gap-1.5">
-                {bs.participants.map((p, i) => (
-                  <motion.div 
-                    key={p.id} 
-                    initial={{ scale: 0 }} 
-                    animate={{ scale: 1 }} 
-                    transition={{ delay: Math.min(i * 0.02, 0.5) }}
-                    className="bg-gradient-to-br from-purple-500/30 to-indigo-500/30 rounded-lg p-1.5 flex flex-col items-center border border-white/10 hover:border-purple-400/50 transition-colors"
-                    title={`${p.characterName}: ${p.totalDamage} daño`}
-                  >
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-400 to-indigo-500 flex items-center justify-center text-white text-sm font-bold shadow-lg">
-                      {p.characterName?.[0] || '?'}
-                    </div>
-                    <span className="text-white/90 text-[10px] font-medium mt-1 truncate w-full text-center">{p.characterName?.split(' ')[0] || '?'}</span>
-                    <div className="flex items-center gap-0.5 text-amber-400">
-                      <Zap size={10} />
-                      <span className="text-[10px] font-bold">{p.totalDamage}</span>
-                    </div>
-                  </motion.div>
-                ))}
+            <div className="max-h-[160px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-purple-500/50">
+              <div className="grid grid-cols-3 gap-2">
+                {bs.participants.map((p: any, i: number) => {
+                  const hpPercent = p.maxHp > 0 ? Math.round((p.currentHp / p.maxHp) * 100) : 100;
+                  const isKO = p.currentHp <= 0;
+                  const hpColor = hpPercent > 60 ? 'bg-green-500' : hpPercent > 30 ? 'bg-yellow-500' : 'bg-red-500';
+                  
+                  return (
+                    <motion.div 
+                      key={p.id} 
+                      initial={{ scale: 0 }} 
+                      animate={{ scale: 1 }} 
+                      transition={{ delay: Math.min(i * 0.02, 0.5) }}
+                      className={`relative rounded-xl p-2 flex flex-col items-center border transition-all ${
+                        isKO 
+                          ? 'bg-gray-800/50 border-gray-600/50 opacity-60' 
+                          : 'bg-gradient-to-br from-purple-500/30 to-indigo-500/30 border-white/10 hover:border-purple-400/50'
+                      }`}
+                      title={`${p.characterName}: ${p.totalDamage} daño | HP: ${p.currentHp}/${p.maxHp}`}
+                    >
+                      {isKO && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-xl z-10">
+                          <span className="text-red-400 text-xs font-bold">💀 K.O.</span>
+                        </div>
+                      )}
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-lg ${
+                        isKO ? 'bg-gray-600' : 'bg-gradient-to-br from-purple-400 to-indigo-500'
+                      }`}>
+                        {p.characterName?.[0] || '?'}
+                      </div>
+                      <span className="text-white/90 text-[11px] font-medium mt-1 truncate w-full text-center">
+                        {p.characterName?.split(' ')[0] || '?'}
+                      </span>
+                      
+                      {/* HP Bar */}
+                      <div className="w-full mt-1.5">
+                        <div className="flex items-center justify-between text-[9px] mb-0.5">
+                          <span className="text-red-400 flex items-center gap-0.5">
+                            <Heart size={8} />
+                            HP
+                          </span>
+                          <span className={isKO ? 'text-red-400' : 'text-white/70'}>
+                            {p.currentHp}/{p.maxHp}
+                          </span>
+                        </div>
+                        <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                          <motion.div 
+                            className={`h-full ${hpColor} rounded-full`}
+                            initial={{ width: '100%' }}
+                            animate={{ width: `${hpPercent}%` }}
+                            transition={{ duration: 0.5 }}
+                          />
+                        </div>
+                      </div>
+                      
+                      {/* Damage dealt */}
+                      <div className="flex items-center gap-1 mt-1 text-amber-400">
+                        <Zap size={10} />
+                        <span className="text-[10px] font-bold">{p.totalDamage}</span>
+                      </div>
+                    </motion.div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -907,86 +949,192 @@ const BattleResultsView = ({ battleState, results, onBack }: { battleState: Batt
     );
   }
 
-  // Fase de tabla completa
+  // Fase de tabla completa - Estadísticas de batalla
+  const totalDamage = results.reduce((sum, r) => sum + r.damageDealt, 0);
+  const totalXpEarned = results.reduce((sum, r) => sum + r.xpEarned, 0);
+  const totalGpEarned = results.reduce((sum, r) => sum + r.gpEarned, 0);
+  const avgDamage = results.length > 0 ? Math.round(totalDamage / results.length) : 0;
+  const topDamager = results[0];
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 -m-6 p-6 flex flex-col items-center justify-center">
-      {/* Header con resultado */}
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 -m-6 p-6 flex flex-col items-center justify-center overflow-y-auto">
+      {/* Header con resultado épico */}
       <motion.div 
-        initial={{ scale: 0.8, opacity: 0 }} 
+        initial={{ scale: 0.5, opacity: 0 }} 
         animate={{ scale: 1, opacity: 1 }} 
         className="text-center mb-6"
       >
         <motion.div 
-          animate={{ rotate: vic ? [0, 5, -5, 0] : 0 }} 
+          animate={{ 
+            rotate: vic ? [0, 5, -5, 0] : 0,
+            scale: vic ? [1, 1.1, 1] : 1,
+          }} 
           transition={{ duration: 2, repeat: Infinity }}
-          className="text-6xl mb-2"
+          className="text-8xl mb-4"
         >
           {vic ? '🏆' : '💀'}
         </motion.div>
-        <h1 className={`text-3xl font-black ${vic ? 'text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-yellow-500' : 'text-red-400'}`}>
-          {vic ? '¡VICTORIA!' : 'DERROTA'}
-        </h1>
-        <p className="text-white/70 text-sm mt-1">
-          {vic ? `¡Derrotaron a ${battleState.bossName}!` : `${battleState.bossName} escapó...`}
-        </p>
+        <motion.h1 
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.2 }}
+          className={`text-5xl font-black mb-2 ${vic ? 'text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 drop-shadow-lg' : 'text-red-400'}`}
+        >
+          {vic ? '¡VICTORIA ÉPICA!' : 'DERROTA'}
+        </motion.h1>
+        <motion.p 
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.3 }}
+          className="text-white/80 text-lg"
+        >
+          {vic ? `¡Los héroes derrotaron a ${battleState.bossName}!` : `${battleState.bossName} escapó...`}
+        </motion.p>
       </motion.div>
+
+      {/* Stats de la batalla */}
+      <motion.div 
+        initial={{ y: 30, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.4 }}
+        className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6 max-w-2xl w-full"
+      >
+        <div className="bg-gradient-to-br from-purple-500/30 to-indigo-500/30 rounded-xl p-4 border border-purple-500/30 text-center">
+          <Users className="mx-auto text-purple-400 mb-1" size={24} />
+          <p className="text-2xl font-bold text-white">{results.length}</p>
+          <p className="text-xs text-white/60">Héroes</p>
+        </div>
+        <div className="bg-gradient-to-br from-amber-500/30 to-orange-500/30 rounded-xl p-4 border border-amber-500/30 text-center">
+          <Zap className="mx-auto text-amber-400 mb-1" size={24} />
+          <p className="text-2xl font-bold text-white">{totalDamage.toLocaleString()}</p>
+          <p className="text-xs text-white/60">Daño Total</p>
+        </div>
+        <div className="bg-gradient-to-br from-blue-500/30 to-cyan-500/30 rounded-xl p-4 border border-blue-500/30 text-center">
+          <Sparkles className="mx-auto text-blue-400 mb-1" size={24} />
+          <p className="text-2xl font-bold text-white">{totalXpEarned.toLocaleString()}</p>
+          <p className="text-xs text-white/60">XP Ganado</p>
+        </div>
+        <div className="bg-gradient-to-br from-yellow-500/30 to-amber-500/30 rounded-xl p-4 border border-yellow-500/30 text-center">
+          <Coins className="mx-auto text-yellow-400 mb-1" size={24} />
+          <p className="text-2xl font-bold text-white">{totalGpEarned.toLocaleString()}</p>
+          <p className="text-xs text-white/60">GP Ganado</p>
+        </div>
+      </motion.div>
+
+      {/* MVP Card */}
+      {topDamager && (
+        <motion.div 
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ delay: 0.5 }}
+          className="bg-gradient-to-br from-amber-500/20 via-yellow-500/20 to-orange-500/20 rounded-2xl p-5 border-2 border-amber-500/50 max-w-md w-full mb-4 relative overflow-hidden"
+        >
+          <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-amber-400/20 to-transparent rounded-full blur-2xl" />
+          <div className="relative">
+            <div className="flex items-center gap-4">
+              <div className="relative">
+                <motion.div 
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+                  className="absolute inset-0 border-2 border-dashed border-amber-400/50 rounded-full"
+                />
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-amber-400 via-yellow-400 to-orange-400 flex items-center justify-center text-white text-2xl font-black shadow-xl shadow-amber-500/30">
+                  {topDamager.characterName?.[0] || '?'}
+                </div>
+                <div className="absolute -top-1 -right-1 w-6 h-6 bg-gradient-to-br from-amber-400 to-yellow-500 rounded-full flex items-center justify-center text-xs shadow-lg">
+                  👑
+                </div>
+              </div>
+              <div className="flex-1">
+                <p className="text-amber-400 text-xs font-bold uppercase tracking-wider mb-1">⭐ MVP de la Batalla ⭐</p>
+                <p className="text-white text-xl font-bold">{topDamager.characterName}</p>
+                <div className="flex items-center gap-3 mt-1 text-sm">
+                  <span className="text-amber-400 flex items-center gap-1"><Zap size={14} />{topDamager.damageDealt}</span>
+                  <span className="text-blue-400 flex items-center gap-1"><Sparkles size={14} />+{topDamager.xpEarned}</span>
+                  <span className="text-yellow-400 flex items-center gap-1"><Coins size={14} />+{topDamager.gpEarned}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
       
-      {/* Tabla de resultados */}
+      {/* Tabla de resultados completa */}
       <motion.div 
         initial={{ y: 50, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.2 }}
-        className="bg-slate-800/90 backdrop-blur-md rounded-2xl p-5 border border-purple-500/30 max-w-md w-full mb-4 max-h-[400px] overflow-y-auto"
+        transition={{ delay: 0.6 }}
+        className="bg-slate-800/90 backdrop-blur-md rounded-2xl p-5 border border-purple-500/30 max-w-lg w-full mb-4 max-h-[350px] overflow-y-auto"
       >
         <h2 className="text-white font-bold text-center mb-4 flex items-center justify-center gap-2">
           <Crown className="text-amber-400" size={20} /> Tabla de Héroes
         </h2>
         <div className="space-y-2">
-          {results.map((r, i) => (
-            <motion.div 
-              key={r.id} 
-              initial={{ opacity: 0, x: -30 }} 
-              animate={{ opacity: 1, x: 0 }} 
-              transition={{ delay: i * 0.08 }}
-              className={`flex items-center gap-3 p-3 rounded-xl transition-all ${
-                i === 0 ? 'bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-amber-500/50' : 
-                i === 1 ? 'bg-gradient-to-r from-gray-400/20 to-gray-500/20 border border-gray-400/50' : 
-                i === 2 ? 'bg-gradient-to-r from-orange-500/20 to-orange-600/20 border border-orange-500/50' : 
-                'bg-white/5 border border-transparent'
-              }`}
-            >
-              <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
-                i === 0 ? 'bg-gradient-to-br from-amber-400 to-yellow-500 text-white shadow-lg shadow-amber-500/30' : 
-                i === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-400 text-white' : 
-                i === 2 ? 'bg-gradient-to-br from-orange-400 to-orange-500 text-white' : 
-                'bg-white/20 text-white/70'
-              }`}>
-                {i + 1}
-              </div>
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold shadow-lg ${
-                i === 0 ? 'bg-gradient-to-br from-amber-400 to-yellow-500' :
-                i === 1 ? 'bg-gradient-to-br from-gray-400 to-gray-500' :
-                i === 2 ? 'bg-gradient-to-br from-orange-400 to-orange-500' :
-                'bg-gradient-to-br from-purple-400 to-indigo-500'
-              }`}>
-                {r.characterName?.[0] || '?'}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-white font-medium text-sm truncate">{r.characterName}</p>
-                <p className="text-amber-400 text-xs flex items-center gap-1">
-                  <Zap size={10} /> {r.damageDealt} daño
-                </p>
-              </div>
-              <div className="text-right text-xs">
-                <div className="text-blue-400 flex items-center gap-1 justify-end">
-                  <Sparkles size={10} />+{r.xpEarned}
+          {results.map((r, i) => {
+            const damagePercent = totalDamage > 0 ? Math.round((r.damageDealt / totalDamage) * 100) : 0;
+            return (
+              <motion.div 
+                key={r.id} 
+                initial={{ opacity: 0, x: -30 }} 
+                animate={{ opacity: 1, x: 0 }} 
+                transition={{ delay: 0.6 + i * 0.05 }}
+                className={`relative p-3 rounded-xl transition-all overflow-hidden ${
+                  i === 0 ? 'bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-amber-500/50' : 
+                  i === 1 ? 'bg-gradient-to-r from-gray-400/20 to-gray-500/20 border border-gray-400/50' : 
+                  i === 2 ? 'bg-gradient-to-r from-orange-500/20 to-orange-600/20 border border-orange-500/50' : 
+                  'bg-white/5 border border-white/10'
+                }`}
+              >
+                {/* Progress bar background */}
+                <div 
+                  className={`absolute inset-0 opacity-20 ${
+                    i === 0 ? 'bg-gradient-to-r from-amber-400 to-transparent' :
+                    i === 1 ? 'bg-gradient-to-r from-gray-400 to-transparent' :
+                    i === 2 ? 'bg-gradient-to-r from-orange-400 to-transparent' :
+                    'bg-gradient-to-r from-purple-400 to-transparent'
+                  }`}
+                  style={{ width: `${damagePercent}%` }}
+                />
+                
+                <div className="relative flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
+                    i === 0 ? 'bg-gradient-to-br from-amber-400 to-yellow-500 text-white shadow-lg shadow-amber-500/30' : 
+                    i === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-400 text-white' : 
+                    i === 2 ? 'bg-gradient-to-br from-orange-400 to-orange-500 text-white' : 
+                    'bg-white/20 text-white/70'
+                  }`}>
+                    {i + 1}
+                  </div>
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold shadow-lg ${
+                    i === 0 ? 'bg-gradient-to-br from-amber-400 to-yellow-500' :
+                    i === 1 ? 'bg-gradient-to-br from-gray-400 to-gray-500' :
+                    i === 2 ? 'bg-gradient-to-br from-orange-400 to-orange-500' :
+                    'bg-gradient-to-br from-purple-400 to-indigo-500'
+                  }`}>
+                    {r.characterName?.[0] || '?'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white font-medium text-sm truncate">{r.characterName}</p>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-amber-400 flex items-center gap-1">
+                        <Zap size={10} /> {r.damageDealt}
+                      </span>
+                      <span className="text-white/40">|</span>
+                      <span className="text-white/60">{damagePercent}% del daño</span>
+                    </div>
+                  </div>
+                  <div className="text-right text-xs space-y-0.5">
+                    <div className="text-blue-400 flex items-center gap-1 justify-end">
+                      <Sparkles size={10} />+{r.xpEarned}
+                    </div>
+                    <div className="text-amber-400 flex items-center gap-1 justify-end">
+                      <Coins size={10} />+{r.gpEarned}
+                    </div>
+                  </div>
                 </div>
-                <div className="text-amber-400 flex items-center gap-1 justify-end">
-                  <Coins size={10} />+{r.gpEarned}
-                </div>
-              </div>
-            </motion.div>
-          ))}
+              </motion.div>
+            );
+          })}
           {results.length === 0 && (
             <div className="text-center py-8 text-white/50">
               <Users size={40} className="mx-auto mb-2 opacity-50" />

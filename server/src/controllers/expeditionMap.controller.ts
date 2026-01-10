@@ -6,7 +6,8 @@ import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 
 // Configuración de multer para subir imágenes de mapas
-const uploadsDir = path.join(process.cwd(), 'uploads', 'maps');
+const baseUploadDir = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
+const uploadsDir = path.join(baseUploadDir, 'maps');
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }

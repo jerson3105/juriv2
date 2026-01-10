@@ -103,6 +103,7 @@ router.post('/classroom/:classroomId', authenticate, async (req, res) => {
       rewardXp: req.body.rewardXp,
       rewardGp: req.body.rewardGp,
       isSecret: req.body.isSecret,
+      competencyId: req.body.competencyId,
     };
     
     const badge = await badgeService.createBadge(data, userId);

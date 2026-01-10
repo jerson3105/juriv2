@@ -9,6 +9,7 @@ import {
   pointLogs,
   notifications,
   classrooms,
+  activityCompetencies,
   type Mission,
   type StudentMission,
   type StudentStreak,
@@ -44,6 +45,7 @@ export interface CreateMissionDto {
   maxCompletions?: number;
   autoAssign?: boolean; // Auto-asignar a todos los estudiantes
   autoExpire?: boolean; // Calcular expiración automática según tipo
+  competencyIds?: string[];
 }
 
 export interface UpdateMissionDto extends Partial<CreateMissionDto> {
@@ -109,6 +111,19 @@ class MissionService {
       createdAt: now,
       updatedAt: now,
     });
+
+    // Guardar competencias asociadas si existen
+    if (data.competencyIds && data.competencyIds.length > 0) {
+      const competencyValues = data.competencyIds.map(competencyId => ({
+        id: uuidv4(),
+        activityType: 'MISSION' as const,
+        activityId: id,
+        competencyId,
+        weight: 100,
+        createdAt: now,
+      }));
+      await db.insert(activityCompetencies).values(competencyValues);
+    }
 
     const [mission] = await db.select().from(missions).where(eq(missions.id, id));
 

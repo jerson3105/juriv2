@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useOutletContext } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -18,6 +18,7 @@ import {
   Coins,
   X,
   Skull,
+  Award,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import {
@@ -27,11 +28,13 @@ import {
   STATUS_CONFIG,
 } from '../../lib/studentBossBattleApi';
 import { questionBankApi } from '../../lib/questionBankApi';
+import { classroomApi, type Classroom } from '../../lib/classroomApi';
 import toast from 'react-hot-toast';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
 
 export const StudentBossBattlesPage = () => {
   const { id: classroomId } = useParams<{ id: string }>();
+  const { classroom } = useOutletContext<{ classroom: Classroom }>();
   const queryClient = useQueryClient();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingBattle, setEditingBattle] = useState<StudentBossBattle | null>(null);
@@ -51,6 +54,15 @@ export const StudentBossBattlesPage = () => {
     queryFn: () => questionBankApi.getBanks(classroomId!),
     enabled: !!classroomId,
   });
+
+  // Obtener competencias si la clase las usa
+  const { data: curriculumAreas = [] } = useQuery({
+    queryKey: ['curriculum-areas'],
+    queryFn: () => classroomApi.getCurriculumAreas('PE'),
+    enabled: classroom?.useCompetencies,
+  });
+  
+  const classroomCompetencies = curriculumAreas.find((a: any) => a.id === classroom?.curriculumAreaId)?.competencies || [];
 
   // Mutations
   const createMutation = useMutation({
@@ -277,6 +289,8 @@ export const StudentBossBattlesPage = () => {
           <BattleFormModal
             battle={editingBattle}
             questionBanks={questionBanks}
+            competencies={classroomCompetencies}
+            useCompetencies={classroom?.useCompetencies || false}
             onClose={() => {
               setShowCreateModal(false);
               setEditingBattle(null);
@@ -328,12 +342,14 @@ export const StudentBossBattlesPage = () => {
 interface BattleFormModalProps {
   battle: StudentBossBattle | null;
   questionBanks: any[];
+  competencies: any[];
+  useCompetencies: boolean;
   onClose: () => void;
   onSubmit: (data: CreateBattleDto) => void;
   isLoading: boolean;
 }
 
-const BattleFormModal = ({ battle, questionBanks, onClose, onSubmit, isLoading }: BattleFormModalProps) => {
+const BattleFormModal = ({ battle, questionBanks, competencies, useCompetencies, onClose, onSubmit, isLoading }: BattleFormModalProps) => {
   const [formData, setFormData] = useState<CreateBattleDto>({
     bossName: battle?.bossName || '',
     bossImageUrl: battle?.bossImageUrl || '',
@@ -344,6 +360,7 @@ const BattleFormModal = ({ battle, questionBanks, onClose, onSubmit, isLoading }
     damageToStudentOnWrong: battle?.damageToStudentOnWrong || 5,
     maxAttempts: battle?.maxAttempts || 1,
     xpPerCorrectAnswer: battle?.xpPerCorrectAnswer || 10,
+    competencyId: (battle as any)?.competencyId || '',
     gpPerCorrectAnswer: battle?.gpPerCorrectAnswer || 5,
     bonusXpOnVictory: battle?.bonusXpOnVictory || 50,
     bonusGpOnVictory: battle?.bonusGpOnVictory || 25,
@@ -467,6 +484,31 @@ const BattleFormModal = ({ battle, questionBanks, onClose, onSubmit, isLoading }
               ))}
             </select>
           </div>
+
+          {/* Selector de Competencia (opcional) */}
+          {useCompetencies && competencies.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
+                <Award size={16} className="text-emerald-500" />
+                Competencia a evaluar (opcional)
+              </label>
+              <select
+                value={formData.competencyId || ''}
+                onChange={(e) => setFormData({ ...formData, competencyId: e.target.value || undefined })}
+                className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+              >
+                <option value="">Sin competencia (solo gamificación)</option>
+                {competencies.map((c: any) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Si seleccionas una competencia, el desempeño en esta batalla contribuirá a la calificación del estudiante.
+              </p>
+            </div>
+          )}
 
           {/* Configuración de batalla */}
           <div className="bg-purple-50 dark:bg-purple-900/20 rounded-xl p-4">

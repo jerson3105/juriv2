@@ -18,12 +18,10 @@ import { MyClanPage } from './pages/student/MyClanPage';
 import { StudentAttendancePage } from './pages/student/StudentAttendancePage';
 
 // Classroom pages (teacher)
-import { DashboardPage } from './pages/classroom/DashboardPage';
 import { StudentsPage } from './pages/classroom/StudentsPage';
 import { BehaviorsPage } from './pages/classroom/BehaviorsPage';
 import { ShopPage } from './pages/classroom/ShopPage';
 import { ActivitiesPage } from './pages/classroom/ActivitiesPage';
-import { HistoryPage } from './pages/classroom/HistoryPage';
 import { ClassroomSettingsPage } from './pages/classroom/ClassroomSettingsPage';
 import { AttendancePage } from './pages/classroom/AttendancePage';
 import { StudentDetailPage } from './pages/classroom/StudentDetailPage';
@@ -35,8 +33,10 @@ import { StudentBossBattlesPage } from './pages/classroom/StudentBossBattlesPage
 import { StudentBossBattlePage } from './pages/student/StudentBossBattlePage';
 import { MissionsPage } from './pages/classroom/MissionsPage';
 import { ExpeditionsPage } from './pages/classroom/ExpeditionsPage';
+import { ReportsPage } from './pages/classroom/ReportsPage';
 import { StudentMissionsPage } from './pages/student/StudentMissionsPage';
 import { StudentScrollsPage } from './pages/student/StudentScrollsPage';
+import { StudentGradesPage } from './pages/student/StudentGradesPage';
 import { StudentExpeditionsPage } from './pages/student/StudentExpeditionsPage';
 import { StudentTerritoryPage } from './pages/student/StudentTerritoryPage';
 
@@ -187,13 +187,15 @@ function App() {
             {/* Rutas de clase específica con su propio layout */}
             <Route path="classroom/:id" element={<ClassroomLayout />}>
               <Route index element={<Navigate to="students" replace />} />
-              <Route path="statistics" element={<DashboardPage />} />
-              <Route path="dashboard" element={<Navigate to="../statistics" replace />} />
+              <Route path="reports" element={<ReportsPage />} />
+              <Route path="statistics" element={<Navigate to="../reports" replace />} />
+              <Route path="dashboard" element={<Navigate to="../reports" replace />} />
+              <Route path="history" element={<Navigate to="../reports" replace />} />
+              <Route path="gradebook" element={<Navigate to="../reports" replace />} />
               <Route path="students" element={<StudentsPage />} />
               <Route path="behaviors" element={<BehaviorsPage />} />
               <Route path="shop" element={<ShopPage />} />
               <Route path="activities" element={<ActivitiesPage />} />
-              <Route path="history" element={<HistoryPage />} />
               <Route path="attendance" element={<AttendancePage />} />
               <Route path="badges" element={<BadgesPage />} />
               <Route path="clans" element={<ClansPage />} />
@@ -212,6 +214,7 @@ function App() {
             <Route path="my-attendance" element={<StudentAttendancePage />} />
             <Route path="missions/:classroomId" element={<StudentMissionsPage />} />
             <Route path="scrolls" element={<StudentScrollsPage />} />
+            <Route path="my-grades" element={<StudentGradesPage />} />
             <Route path="expeditions" element={<StudentExpeditionsPage />} />
             <Route path="territory" element={<StudentTerritoryPage />} />
             <Route path="student-battle/:classroomId" element={<StudentBossBattlePage />} />

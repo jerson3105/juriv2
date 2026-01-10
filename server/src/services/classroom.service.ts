@@ -28,7 +28,9 @@ import {
   studentBossBattles,
   studentBossBattleParticipants,
   studentBossBattleAttempts,
-  clanLogs
+  clanLogs,
+  classroomCompetencies,
+  curriculumCompetencies
 } from '../db/schema.js';
 import { eq, and, desc, inArray, sql, count } from 'drizzle-orm';
 import { generateClassCode } from '../utils/helpers.js';
@@ -42,6 +44,9 @@ interface CreateClassroomData {
   description?: string;
   teacherId: string;
   gradeLevel?: string;
+  useCompetencies?: boolean;
+  curriculumAreaId?: string | null;
+  gradeScaleType?: 'PERU_LETTERS' | 'PERU_VIGESIMAL' | 'CENTESIMAL' | 'USA_LETTERS' | 'CUSTOM' | null;
 }
 
 interface UpdateClassroomData {
@@ -96,6 +101,9 @@ export class ClassroomService {
       teacherId: data.teacherId,
       gradeLevel: data.gradeLevel || null,
       code,
+      useCompetencies: data.useCompetencies || false,
+      curriculumAreaId: data.curriculumAreaId || null,
+      gradeScaleType: data.gradeScaleType || null,
       createdAt: now,
       updatedAt: now,
     });
@@ -201,6 +209,50 @@ export class ClassroomService {
       .where(eq(classrooms.id, classroomId));
 
     return this.getById(classroomId);
+  }
+
+  /**
+   * Sincroniza las competencias del classroom con el área curricular seleccionada
+   */
+  async syncClassroomCompetencies(classroomId: string, curriculumAreaId: string) {
+    console.log('[ClassroomService] Syncing competencies for classroom:', classroomId, 'area:', curriculumAreaId);
+    
+    // Obtener competencias del área curricular
+    const areaCompetencies = await db.select()
+      .from(curriculumCompetencies)
+      .where(eq(curriculumCompetencies.areaId, curriculumAreaId));
+
+    console.log('[ClassroomService] Found competencies in area:', areaCompetencies.length);
+
+    if (areaCompetencies.length === 0) return;
+
+    const now = new Date();
+
+    // Verificar cuáles ya existen
+    const existingCompetencies = await db.select()
+      .from(classroomCompetencies)
+      .where(eq(classroomCompetencies.classroomId, classroomId));
+
+    const existingIds = new Set(existingCompetencies.map(c => c.competencyId));
+
+    // Crear las que faltan
+    const toCreate = areaCompetencies.filter(c => !existingIds.has(c.id));
+
+    if (toCreate.length > 0) {
+      await db.insert(classroomCompetencies).values(
+        toCreate.map(c => ({
+          id: uuidv4(),
+          classroomId,
+          competencyId: c.id,
+          weight: 100,
+          isActive: true,
+          createdAt: now,
+        }))
+      );
+      console.log('[ClassroomService] Created classroom competencies:', toCreate.length);
+    }
+
+    return { created: toCreate.length, total: areaCompetencies.length };
   }
 
   async delete(classroomId: string, teacherId: string) {

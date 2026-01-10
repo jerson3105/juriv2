@@ -14,10 +14,13 @@ import {
   Users,
   CheckCircle,
   ArrowLeft,
+  Award,
+  Check,
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { behaviorApi } from '../../lib/behaviorApi';
+import { classroomApi } from '../../lib/classroomApi';
 import {
   timedActivityApi,
   type TimedActivity,
@@ -312,6 +315,7 @@ export const TimedActivitiesActivity = ({ classroom, onBack }: TimedActivitiesAc
           <ActivityFormModal
             activity={editingActivity}
             behaviors={behaviors}
+            classroom={classroom}
             onClose={() => {
               setShowCreateModal(false);
               setEditingActivity(null);
@@ -352,13 +356,14 @@ export const TimedActivitiesActivity = ({ classroom, onBack }: TimedActivitiesAc
 interface ActivityFormModalProps {
   activity: TimedActivity | null;
   behaviors: any[];
+  classroom: any;
   onClose: () => void;
-  onSubmit: (data: CreateTimedActivityDto) => void;
+  onSubmit: (data: CreateTimedActivityDto & { competencyIds?: string[] }) => void;
   isLoading: boolean;
 }
 
-const ActivityFormModal = ({ activity, behaviors, onClose, onSubmit, isLoading }: ActivityFormModalProps) => {
-  const [formData, setFormData] = useState<CreateTimedActivityDto>({
+const ActivityFormModal = ({ activity, behaviors, classroom, onClose, onSubmit, isLoading }: ActivityFormModalProps) => {
+  const [formData, setFormData] = useState<CreateTimedActivityDto & { competencyIds: string[] }>({
     name: activity?.name || '',
     description: activity?.description || '',
     mode: activity?.mode || 'STOPWATCH',
@@ -374,7 +379,26 @@ const ActivityFormModal = ({ activity, behaviors, onClose, onSubmit, isLoading }
     negativeBehaviorId: activity?.negativeBehaviorId || undefined,
     bombPenaltyPoints: activity?.bombPenaltyPoints || 10,
     bombPenaltyType: (activity?.bombPenaltyType as 'XP' | 'HP' | 'GP') || 'HP',
+    competencyIds: [],
   });
+
+  // Cargar competencias si la clase las usa
+  const { data: curriculumAreas = [] } = useQuery({
+    queryKey: ['curriculum-areas'],
+    queryFn: () => classroomApi.getCurriculumAreas('PE'),
+    enabled: classroom?.useCompetencies,
+  });
+  
+  const classroomCompetencies = curriculumAreas.find((a: any) => a.id === classroom?.curriculumAreaId)?.competencies || [];
+  
+  const toggleCompetency = (id: string) => {
+    setFormData(p => ({
+      ...p,
+      competencyIds: p.competencyIds.includes(id) 
+        ? p.competencyIds.filter(x => x !== id) 
+        : [...p.competencyIds, id]
+    }));
+  };
 
   const positiveBehaviors = behaviors.filter((b: any) => b.isPositive);
   const negativeBehaviors = behaviors.filter((b: any) => !b.isPositive);
@@ -667,6 +691,30 @@ const ActivityFormModal = ({ activity, behaviors, onClose, onSubmit, isLoading }
                   ))}
                 </select>
               </div>
+            </div>
+          )}
+
+          {/* Selector de Competencias */}
+          {classroom?.useCompetencies && classroomCompetencies.length > 0 && (
+            <div className="border-t pt-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
+                <Award size={16} className="text-emerald-500" />
+                Competencias que evalúa
+              </label>
+              <div className="grid grid-cols-1 gap-2 max-h-28 overflow-y-auto p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                {classroomCompetencies.map((c: any) => (
+                  <button key={c.id} type="button" onClick={() => toggleCompetency(c.id)}
+                    className={`p-2 rounded-lg text-left text-sm ${formData.competencyIds.includes(c.id) ? 'bg-emerald-200 dark:bg-emerald-800 ring-2 ring-emerald-500' : 'bg-white dark:bg-gray-800 hover:bg-emerald-100'}`}>
+                    <div className="flex items-center gap-2">
+                      {formData.competencyIds.includes(c.id) && <Check size={14} className="text-emerald-600" />}
+                      <span className="truncate">{c.name}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                {formData.competencyIds.length === 0 ? 'Opcional' : `${formData.competencyIds.length} seleccionada(s)`}
+              </p>
             </div>
           )}
 

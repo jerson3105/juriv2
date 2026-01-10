@@ -1,13 +1,21 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, Lock, User, GraduationCap, Users, X } from 'lucide-react';
+import { Mail, Lock, User, GraduationCap, Users, X, Check, AlertCircle } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { useAuthStore } from '../../store/authStore';
 import toast from 'react-hot-toast';
 
 type UserRole = 'TEACHER' | 'STUDENT';
+
+// Validación de requisitos de contraseña
+const validatePassword = (password: string) => ({
+  minLength: password.length >= 8,
+  hasUppercase: /[A-Z]/.test(password),
+  hasLowercase: /[a-z]/.test(password),
+  hasSpecial: /[!@#$%^&*(),.?":{}|<>]/.test(password),
+});
 
 export const RegisterPage = () => {
   const navigate = useNavigate();
@@ -28,6 +36,19 @@ export const RegisterPage = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  // Validar contraseña en tiempo real
+  const passwordValidation = useMemo(() => 
+    validatePassword(formData.password), 
+    [formData.password]
+  );
+  
+  const isPasswordValid = useMemo(() => 
+    passwordValidation.minLength && 
+    passwordValidation.hasUppercase && 
+    passwordValidation.hasSpecial,
+    [passwordValidation]
+  );
+
   const selectRole = (role: UserRole) => {
     setFormData({ ...formData, role });
     setStep(2);
@@ -46,8 +67,8 @@ export const RegisterPage = () => {
       return;
     }
 
-    if (formData.password.length < 8) {
-      toast.error('La contraseña debe tener al menos 8 caracteres');
+    if (!isPasswordValid) {
+      toast.error('La contraseña no cumple con los requisitos');
       return;
     }
 
@@ -230,16 +251,42 @@ export const RegisterPage = () => {
                   required
                 />
 
-                <Input
-                  label="Contraseña"
-                  type="password"
-                  name="password"
-                  placeholder="Mínimo 8 caracteres"
-                  value={formData.password}
-                  onChange={handleChange}
-                  leftIcon={<Lock size={18} />}
-                  required
-                />
+                <div>
+                  <Input
+                    label="Contraseña"
+                    type="password"
+                    name="password"
+                    placeholder="Crea una contraseña segura"
+                    value={formData.password}
+                    onChange={handleChange}
+                    leftIcon={<Lock size={18} />}
+                    required
+                  />
+                  {/* Requisitos de contraseña */}
+                  {formData.password.length > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      className="mt-2 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-1"
+                    >
+                      <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+                        Requisitos de contraseña:
+                      </p>
+                      <div className={`flex items-center gap-2 text-xs ${passwordValidation.minLength ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                        {passwordValidation.minLength ? <Check size={14} /> : <AlertCircle size={14} />}
+                        <span>Mínimo 8 caracteres</span>
+                      </div>
+                      <div className={`flex items-center gap-2 text-xs ${passwordValidation.hasUppercase ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                        {passwordValidation.hasUppercase ? <Check size={14} /> : <AlertCircle size={14} />}
+                        <span>Al menos una letra mayúscula (A-Z)</span>
+                      </div>
+                      <div className={`flex items-center gap-2 text-xs ${passwordValidation.hasSpecial ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                        {passwordValidation.hasSpecial ? <Check size={14} /> : <AlertCircle size={14} />}
+                        <span>Al menos un carácter especial (!@#$%^&*)</span>
+                      </div>
+                    </motion.div>
+                  )}
+                </div>
 
                 <Input
                   label="Confirmar contraseña"

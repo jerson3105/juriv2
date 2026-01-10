@@ -20,6 +20,8 @@ import {
   TrendingUp,
   Filter,
   BarChart3,
+  Award,
+  Check,
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
@@ -30,6 +32,7 @@ import {
   type ExpeditionStatItem,
 } from '../../lib/expeditionApi';
 import { expeditionMapApi, type ExpeditionMap } from '../../lib/expeditionMapApi';
+import { classroomApi } from '../../lib/classroomApi';
 import { ExpeditionEditor } from './ExpeditionEditor';
 import toast from 'react-hot-toast';
 import { ConfirmModal } from '../ui/ConfirmModal';
@@ -50,7 +53,26 @@ export const ExpeditionsActivity = ({ classroom, onBack }: ExpeditionsActivityPr
   const [createForm, setCreateForm] = useState({
     name: '',
     selectedMap: '',
+    competencyIds: [] as string[],
   });
+
+  // Cargar competencias si la clase las usa
+  const { data: curriculumAreas = [] } = useQuery({
+    queryKey: ['curriculum-areas'],
+    queryFn: () => classroomApi.getCurriculumAreas('PE'),
+    enabled: classroom?.useCompetencies,
+  });
+  
+  const classroomCompetencies = curriculumAreas.find((a: any) => a.id === classroom?.curriculumAreaId)?.competencies || [];
+  
+  const toggleCompetency = (id: string) => {
+    setCreateForm(p => ({
+      ...p,
+      competencyIds: p.competencyIds.includes(id) 
+        ? p.competencyIds.filter(x => x !== id) 
+        : [...p.competencyIds, id]
+    }));
+  };
 
   // Query estadísticas de expediciones
   const { data: stats, isLoading } = useQuery({
@@ -76,7 +98,7 @@ export const ExpeditionsActivity = ({ classroom, onBack }: ExpeditionsActivityPr
       queryClient.invalidateQueries({ queryKey: ['expedition-stats', classroom.id] });
       setSelectedExpedition(expedition);
       setView('edit');
-      setCreateForm({ name: '', selectedMap: '' });
+      setCreateForm({ name: '', selectedMap: '', competencyIds: [] });
       toast.success('Expedición creada');
     },
     onError: () => toast.error('Error al crear expedición'),
@@ -287,13 +309,37 @@ export const ExpeditionsActivity = ({ classroom, onBack }: ExpeditionsActivityPr
                 </div>
               </div>
 
+              {/* Selector de Competencias */}
+              {classroom?.useCompetencies && classroomCompetencies.length > 0 && (
+                <div className="mt-6 max-w-md mx-auto">
+                  <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2 text-center uppercase tracking-wide flex items-center justify-center gap-2">
+                    <Award size={16} className="text-emerald-500" />
+                    Competencias que evalúa
+                  </label>
+                  <div className="grid grid-cols-1 gap-2 max-h-32 overflow-y-auto p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                    {classroomCompetencies.map((c: any) => (
+                      <button key={c.id} type="button" onClick={() => toggleCompetency(c.id)}
+                        className={`p-2 rounded-lg text-left text-sm ${createForm.competencyIds.includes(c.id) ? 'bg-emerald-200 dark:bg-emerald-800 ring-2 ring-emerald-500' : 'bg-white dark:bg-gray-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/50'}`}>
+                        <div className="flex items-center gap-2">
+                          {createForm.competencyIds.includes(c.id) && <Check size={14} className="text-emerald-600" />}
+                          <span className="truncate">{c.name}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500 text-center mt-1">
+                    {createForm.competencyIds.length === 0 ? 'Selecciona competencias (opcional)' : `${createForm.competencyIds.length} competencia(s)`}
+                  </p>
+                </div>
+              )}
+
               {/* Botones */}
               <div className="flex justify-center gap-3 mt-8">
                 <Button
                   variant="secondary"
                   onClick={() => {
                     setView('list');
-                    setCreateForm({ name: '', selectedMap: '' });
+                    setCreateForm({ name: '', selectedMap: '', competencyIds: [] });
                   }}
                 >
                   Cancelar

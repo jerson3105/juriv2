@@ -33,6 +33,13 @@ export interface StudentProfile {
     name: string;
     code: string;
     schoolId?: string; // Para identificar si es B2B
+    clansEnabled?: boolean;
+    scrollsEnabled?: boolean;
+    scrollsOpen?: boolean;
+    scrollsRequireApproval?: boolean;
+    useCompetencies?: boolean;
+    curriculumAreaId?: string;
+    gradeScaleType?: string;
   };
 }
 

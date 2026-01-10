@@ -1,11 +1,17 @@
 import type { Request, Response } from 'express';
 import { classroomService } from '../services/classroom.service.js';
+import { db } from '../db/index.js';
+import { curriculumAreas, curriculumCompetencies } from '../db/schema.js';
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 
 const createClassroomSchema = z.object({
   name: z.string().min(2).max(255),
   description: z.string().max(1000).optional(),
   gradeLevel: z.string().max(20).optional(),
+  useCompetencies: z.boolean().optional().default(false),
+  curriculumAreaId: z.string().max(36).optional().nullable(),
+  gradeScaleType: z.enum(['PERU_LETTERS', 'PERU_VIGESIMAL', 'CENTESIMAL', 'USA_LETTERS', 'CUSTOM']).optional().nullable(),
 });
 
 const updateClassroomSchema = z.object({
@@ -198,6 +204,41 @@ export class ClassroomController {
     }
   }
 
+  async syncCompetencies(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const classroom = await classroomService.getById(id);
+      
+      if (!classroom || classroom.teacherId !== req.user!.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'No tienes permiso para esta clase',
+        });
+      }
+
+      if (!classroom.useCompetencies || !classroom.curriculumAreaId) {
+        return res.status(400).json({
+          success: false,
+          message: 'La clase no tiene competencias habilitadas o no tiene área curricular',
+        });
+      }
+
+      const result = await classroomService.syncClassroomCompetencies(id, classroom.curriculumAreaId);
+
+      res.json({
+        success: true,
+        message: `Competencias sincronizadas: ${result?.created || 0} creadas de ${result?.total || 0}`,
+        data: result,
+      });
+    } catch (error) {
+      console.error('Error syncing competencies:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error al sincronizar competencias',
+      });
+    }
+  }
+
   async delete(req: Request, res: Response) {
     try {
       const { id } = req.params;
@@ -278,6 +319,45 @@ export class ClassroomController {
       res.status(500).json({
         success: false,
         message: 'Error al unirse a la clase',
+      });
+    }
+  }
+
+  async getCurriculumAreas(req: Request, res: Response) {
+    try {
+      const countryCode = (req.query.country as string) || 'PE';
+      
+      // Obtener áreas
+      const areas = await db
+        .select()
+        .from(curriculumAreas)
+        .where(eq(curriculumAreas.countryCode, countryCode))
+        .orderBy(curriculumAreas.displayOrder);
+
+      // Obtener competencias para cada área
+      const areasWithCompetencies = await Promise.all(
+        areas.map(async (area) => {
+          const competencies = await db
+            .select()
+            .from(curriculumCompetencies)
+            .where(eq(curriculumCompetencies.areaId, area.id))
+            .orderBy(curriculumCompetencies.displayOrder);
+          return {
+            ...area,
+            competencies,
+          };
+        })
+      );
+
+      res.json({
+        success: true,
+        data: areasWithCompetencies,
+      });
+    } catch (error) {
+      console.error('Error getting curriculum areas:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error al obtener áreas curriculares',
       });
     }
   }

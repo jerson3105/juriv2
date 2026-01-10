@@ -23,6 +23,8 @@ import {
   Plus,
   X,
   Gift,
+  BookOpen,
+  Award,
 } from 'lucide-react';
 import { classroomApi, type Classroom, type UpdateClassroomSettings } from '../../lib/classroomApi';
 import { studentApi } from '../../lib/studentApi';
@@ -882,11 +884,85 @@ export const ClassroomSettingsPage = () => {
             </div>
           </motion.div>
 
+          {/* Sección de Competencias - Solo si está habilitado */}
+          {classroom.useCompetencies && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.45 }}
+              className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5"
+            >
+              <h2 className="font-semibold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
+                <div className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center">
+                  <BookOpen size={16} className="text-white" />
+                </div>
+                Sistema de Calificaciones por Competencias
+              </h2>
+              
+              <div className="space-y-4">
+                {/* Info del área curricular */}
+                <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-200 dark:border-emerald-800">
+                  <div className="flex items-center gap-3">
+                    <Award size={20} className="text-emerald-600 dark:text-emerald-400" />
+                    <div>
+                      <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
+                        Área Curricular Configurada
+                      </p>
+                      <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                        Sistema: {classroom.gradeScaleType === 'PERU_LETTERS' ? 'Perú - Letras (AD, A, B, C)' : 
+                                  classroom.gradeScaleType === 'PERU_VIGESIMAL' ? 'Perú - Vigesimal (0-20)' :
+                                  classroom.gradeScaleType === 'CENTESIMAL' ? 'Centesimal (0-100)' :
+                                  classroom.gradeScaleType === 'USA_LETTERS' ? 'USA - Letras (A-F)' : 'Personalizado'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Configuración de rangos de calificación */}
+                <div>
+                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-3">
+                    Rangos de Calificación y Recompensas
+                  </h3>
+                  <div className="space-y-2">
+                    {(classroom.gradeScaleType === 'PERU_LETTERS' ? [
+                      { label: 'AD - Logro Destacado', minPercent: 90, maxPercent: 100, xpReward: 50, gpReward: 20 },
+                      { label: 'A - Logrado', minPercent: 70, maxPercent: 89, xpReward: 30, gpReward: 10 },
+                      { label: 'B - En Proceso', minPercent: 50, maxPercent: 69, xpReward: 15, gpReward: 5 },
+                      { label: 'C - En Inicio', minPercent: 0, maxPercent: 49, xpReward: 5, gpReward: 0 },
+                    ] : classroom.gradeScaleConfig?.ranges || []).map((range, index) => (
+                      <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-800 dark:text-white">{range.label}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {range.minPercent}% - {range.maxPercent}%
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <div className="text-center">
+                            <p className="text-xs text-gray-500 dark:text-gray-400">XP</p>
+                            <p className="text-sm font-bold text-violet-600 dark:text-violet-400">+{range.xpReward}</p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-xs text-gray-500 dark:text-gray-400">GP</p>
+                            <p className="text-sm font-bold text-amber-600 dark:text-amber-400">+{range.gpReward}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                    Las recompensas se otorgan automáticamente al publicar las calificaciones.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
           {/* Gestión de Estudiantes */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.45 }}
+            transition={{ delay: 0.5 }}
             className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5"
           >
             <h2 className="font-semibold text-gray-800 dark:text-white mb-4 flex items-center gap-2">

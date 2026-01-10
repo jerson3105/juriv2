@@ -6,9 +6,10 @@ import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 
 // Configurar multer para archivos de expediciones (máximo 5MB)
+const baseUploadDir = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
 const expeditionStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = path.join(process.cwd(), 'uploads', 'expeditions');
+    const uploadDir = path.join(baseUploadDir, 'expeditions');
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }

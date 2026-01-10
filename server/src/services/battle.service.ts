@@ -1,4 +1,4 @@
-import { eq, and, desc, asc, sql } from 'drizzle-orm';
+import { eq, and, desc, asc, sql, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import {
@@ -11,6 +11,7 @@ import {
   notifications,
   classrooms,
   type BattleStatus,
+  type BattleMode,
   type QuestionType,
 } from '../db/schema.js';
 import { clanService } from './clan.service.js';
@@ -20,6 +21,7 @@ class BattleService {
 
   async createBoss(data: {
     classroomId: string;
+    battleMode?: BattleMode;
     name: string;
     description?: string;
     bossName: string;
@@ -27,6 +29,8 @@ class BattleService {
     bossImageUrl?: string;
     xpReward?: number;
     gpReward?: number;
+    participantBonus?: number;
+    competencyId?: string;
   }) {
     const id = uuidv4();
     const now = new Date();
@@ -34,6 +38,7 @@ class BattleService {
     await db.insert(bossBattles).values({
       id,
       classroomId: data.classroomId,
+      battleMode: data.battleMode || 'CLASSIC',
       name: data.name,
       description: data.description || null,
       bossName: data.bossName,
@@ -42,6 +47,10 @@ class BattleService {
       bossImageUrl: data.bossImageUrl || null,
       xpReward: data.xpReward || 50,
       gpReward: data.gpReward || 20,
+      participantBonus: data.participantBonus || 10,
+      competencyId: data.competencyId || null,
+      currentRound: 1,
+      usedStudentIds: JSON.stringify([]),
       status: 'DRAFT',
       createdAt: now,
       updatedAt: now,
@@ -98,6 +107,9 @@ class BattleService {
     bossImageUrl?: string;
     xpReward?: number;
     gpReward?: number;
+    participantBonus?: number;
+    battleMode?: BattleMode;
+    competencyId?: string | null;
   }) {
     const updateData: any = { updatedAt: new Date() };
     
@@ -111,6 +123,9 @@ class BattleService {
     if (data.bossImageUrl !== undefined) updateData.bossImageUrl = data.bossImageUrl;
     if (data.xpReward !== undefined) updateData.xpReward = data.xpReward;
     if (data.gpReward !== undefined) updateData.gpReward = data.gpReward;
+    if (data.participantBonus !== undefined) updateData.participantBonus = data.participantBonus;
+    if (data.battleMode !== undefined) updateData.battleMode = data.battleMode;
+    if (data.competencyId !== undefined) updateData.competencyId = data.competencyId || null;
 
     await db.update(bossBattles).set(updateData).where(eq(bossBattles.id, id));
     return this.getBossById(id);
@@ -244,6 +259,20 @@ class BattleService {
 
     const now = new Date();
 
+    // Filtrar estudiantes con HP > 0
+    const eligibleStudents = await db
+      .select({ id: studentProfiles.id, hp: studentProfiles.hp })
+      .from(studentProfiles)
+      .where(inArray(studentProfiles.id, studentIds));
+    
+    const validStudentIds = eligibleStudents
+      .filter(s => s.hp > 0)
+      .map(s => s.id);
+
+    if (validStudentIds.length === 0) {
+      throw new Error('No hay estudiantes elegibles con HP disponible');
+    }
+
     // Actualizar estado del boss
     await db.update(bossBattles).set({
       status: 'ACTIVE',
@@ -252,8 +281,8 @@ class BattleService {
       updatedAt: now,
     }).where(eq(bossBattles.id, battleId));
 
-    // Agregar participantes
-    for (const studentId of studentIds) {
+    // Agregar participantes (solo los que tienen HP > 0)
+    for (const studentId of validStudentIds) {
       await db.insert(battleParticipants).values({
         id: uuidv4(),
         battleId,
@@ -292,8 +321,14 @@ class BattleService {
     const boss = await this.getBossById(battleId);
     if (!boss) return null;
 
+    // Obtener maxHp del classroom
+    const [classroom] = await db
+      .select({ maxHp: classrooms.maxHp })
+      .from(classrooms)
+      .where(eq(classrooms.id, boss.classroomId));
+
     const questions = await this.getQuestionsByBattle(battleId);
-    const participants = await db
+    const participantsRaw = await db
       .select({
         id: battleParticipants.id,
         studentId: battleParticipants.studentId,
@@ -302,10 +337,17 @@ class BattleService {
         wrongAnswers: battleParticipants.wrongAnswers,
         characterName: studentProfiles.characterName,
         avatarUrl: studentProfiles.avatarUrl,
+        hp: studentProfiles.hp,
       })
       .from(battleParticipants)
       .innerJoin(studentProfiles, eq(battleParticipants.studentId, studentProfiles.id))
       .where(eq(battleParticipants.battleId, battleId));
+
+    const participants = participantsRaw.map(p => ({
+      ...p,
+      currentHp: p.hp,
+      maxHp: classroom?.maxHp || 100,
+    }));
 
     return {
       ...boss,
@@ -692,6 +734,219 @@ class BattleService {
     }
 
     return newBoss;
+  }
+
+  // ==================== MODO BVJ (Boss vs Jugador) ====================
+
+  async selectRandomChallenger(battleId: string, studentIds: string[]) {
+    const boss = await this.getBossById(battleId);
+    if (!boss || boss.battleMode !== 'BVJ') {
+      throw new Error('Esta batalla no es de modo BvJ');
+    }
+
+    // Parsear estudiantes ya usados en la ronda actual
+    let usedStudentIds: string[] = [];
+    if (boss.usedStudentIds) {
+      try {
+        const parsed = typeof boss.usedStudentIds === 'string' 
+          ? JSON.parse(boss.usedStudentIds) 
+          : boss.usedStudentIds;
+        usedStudentIds = Array.isArray(parsed) ? parsed : [];
+      } catch { usedStudentIds = []; }
+    }
+
+    // Filtrar estudiantes disponibles (no usados en esta ronda y con HP > 0)
+    const eligibleStudents = await db
+      .select({ id: studentProfiles.id, hp: studentProfiles.hp })
+      .from(studentProfiles)
+      .where(inArray(studentProfiles.id, studentIds));
+
+    const availableStudents = eligibleStudents.filter(
+      s => !usedStudentIds.includes(s.id) && s.hp > 0
+    );
+
+    if (availableStudents.length === 0) {
+      return { needsNewRound: true, challenger: null };
+    }
+
+    // Seleccionar uno aleatorio
+    const randomIndex = Math.floor(Math.random() * availableStudents.length);
+    const challenger = availableStudents[randomIndex];
+
+    // Agregar a usados y actualizar boss
+    usedStudentIds.push(challenger.id);
+    
+    await db.update(bossBattles).set({
+      currentChallengerId: challenger.id,
+      usedStudentIds: JSON.stringify(usedStudentIds),
+      updatedAt: new Date(),
+    }).where(eq(bossBattles.id, battleId));
+
+    // Agregar como participante si no existe
+    const [existing] = await db
+      .select()
+      .from(battleParticipants)
+      .where(and(
+        eq(battleParticipants.battleId, battleId),
+        eq(battleParticipants.studentId, challenger.id)
+      ));
+
+    if (!existing) {
+      await db.insert(battleParticipants).values({
+        id: uuidv4(),
+        battleId,
+        studentId: challenger.id,
+        joinedAt: new Date(),
+        totalDamage: 0,
+        correctAnswers: 0,
+        wrongAnswers: 0,
+      });
+    }
+
+    // Obtener info completa del retador
+    const [studentInfo] = await db
+      .select({
+        id: studentProfiles.id,
+        characterName: studentProfiles.characterName,
+        avatarUrl: studentProfiles.avatarUrl,
+        avatarGender: studentProfiles.avatarGender,
+        hp: studentProfiles.hp,
+        level: studentProfiles.level,
+      })
+      .from(studentProfiles)
+      .where(eq(studentProfiles.id, challenger.id));
+
+    // Obtener maxHp de classroom
+    const [classroom] = await db
+      .select({ maxHp: classrooms.maxHp })
+      .from(classrooms)
+      .where(eq(classrooms.id, boss.classroomId));
+
+    return {
+      needsNewRound: false,
+      challenger: {
+        ...studentInfo,
+        maxHp: classroom?.maxHp || 100,
+      },
+    };
+  }
+
+  async startNewRound(battleId: string) {
+    const boss = await this.getBossById(battleId);
+    if (!boss || boss.battleMode !== 'BVJ') {
+      throw new Error('Esta batalla no es de modo BvJ');
+    }
+
+    await db.update(bossBattles).set({
+      currentRound: (boss.currentRound || 1) + 1,
+      currentChallengerId: null,
+      usedStudentIds: JSON.stringify([]),
+      updatedAt: new Date(),
+    }).where(eq(bossBattles.id, battleId));
+
+    return this.getBossById(battleId);
+  }
+
+  // Actualizar índice de pregunta actual (BvJ)
+  async updateCurrentQuestionIndex(battleId: string, questionIndex: number) {
+    const boss = await this.getBossById(battleId);
+    if (!boss || boss.battleMode !== 'BVJ') {
+      throw new Error('Esta batalla no es de modo BvJ');
+    }
+
+    await db.update(bossBattles).set({
+      currentQuestionIndex: questionIndex,
+      currentChallengerId: null, // Limpiar retador al avanzar de pregunta
+      updatedAt: new Date(),
+    }).where(eq(bossBattles.id, battleId));
+
+    return { currentQuestionIndex: questionIndex };
+  }
+
+  async getBvJBattleState(battleId: string) {
+    const boss = await this.getBossById(battleId);
+    if (!boss) return null;
+
+    const questions = await db
+      .select()
+      .from(battleQuestions)
+      .where(eq(battleQuestions.battleId, battleId))
+      .orderBy(asc(battleQuestions.orderIndex));
+
+    // Obtener participantes con info
+    const participants = await db
+      .select({
+        id: battleParticipants.id,
+        battleId: battleParticipants.battleId,
+        studentId: battleParticipants.studentId,
+        totalDamage: battleParticipants.totalDamage,
+        correctAnswers: battleParticipants.correctAnswers,
+        wrongAnswers: battleParticipants.wrongAnswers,
+        characterName: studentProfiles.characterName,
+        avatarUrl: studentProfiles.avatarUrl,
+        hp: studentProfiles.hp,
+        level: studentProfiles.level,
+      })
+      .from(battleParticipants)
+      .innerJoin(studentProfiles, eq(battleParticipants.studentId, studentProfiles.id))
+      .where(eq(battleParticipants.battleId, battleId));
+
+    // Obtener maxHp
+    const [classroom] = await db
+      .select({ maxHp: classrooms.maxHp })
+      .from(classrooms)
+      .where(eq(classrooms.id, boss.classroomId));
+
+    // Obtener retador actual si existe
+    let currentChallenger = null;
+    if (boss.currentChallengerId) {
+      const [challenger] = await db
+        .select({
+          id: studentProfiles.id,
+          characterName: studentProfiles.characterName,
+          avatarUrl: studentProfiles.avatarUrl,
+          hp: studentProfiles.hp,
+          level: studentProfiles.level,
+        })
+        .from(studentProfiles)
+        .where(eq(studentProfiles.id, boss.currentChallengerId));
+      
+      if (challenger) {
+        currentChallenger = { ...challenger, maxHp: classroom?.maxHp || 100 };
+      }
+    }
+
+    // Parsear usedStudentIds
+    let usedStudentIds: string[] = [];
+    if (boss.usedStudentIds) {
+      try {
+        usedStudentIds = typeof boss.usedStudentIds === 'string'
+          ? JSON.parse(boss.usedStudentIds)
+          : boss.usedStudentIds;
+      } catch { usedStudentIds = []; }
+    }
+
+    return {
+      boss: {
+        ...boss,
+        usedStudentIds,
+      },
+      questions: questions.map(q => {
+        let options = q.options;
+        if (typeof options === 'string') {
+          try { options = JSON.parse(options); } catch { options = []; }
+        }
+        return { ...q, options };
+      }),
+      participants: participants.map(p => ({
+        ...p,
+        currentHp: p.hp,
+        maxHp: classroom?.maxHp || 100,
+      })),
+      currentChallenger,
+      currentRound: boss.currentRound || 1,
+      currentQuestionIndex: boss.currentQuestionIndex || 0,
+    };
   }
 }
 

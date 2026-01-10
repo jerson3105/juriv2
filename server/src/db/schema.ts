@@ -8,7 +8,8 @@ import {
   mysqlEnum,
   json,
   unique,
-  index
+  index,
+  decimal
 } from 'drizzle-orm/mysql-core';
 import { relations } from 'drizzle-orm';
 
@@ -31,6 +32,9 @@ export const attendanceStatusEnum = mysqlEnum('attendance_status', ['PRESENT', '
 
 // Enums para B2B (Escuelas)
 export const schoolMemberRoleEnum = mysqlEnum('school_member_role', ['OWNER', 'ADMIN', 'TEACHER']);
+
+// Enums para Sistema de Calificaciones por Competencias
+export const gradeScaleTypeEnum = mysqlEnum('grade_scale_type', ['PERU_LETTERS', 'PERU_VIGESIMAL', 'CENTESIMAL', 'USA_LETTERS', 'CUSTOM']);
 
 // ==================== ESCUELAS (B2B) ====================
 
@@ -337,11 +341,26 @@ export const classrooms = mysqlTable('classrooms', {
   scrollsMaxPerDay: int('scrolls_max_per_day').notNull().default(3), // Límite de mensajes por día por estudiante
   scrollsRequireApproval: boolean('scrolls_require_approval').notNull().default(true), // Requiere aprobación del profesor
   
+  // Configuración de Sistema de Calificaciones por Competencias
+  useCompetencies: boolean('use_competencies').notNull().default(false), // Si usa sistema de competencias
+  curriculumAreaId: varchar('curriculum_area_id', { length: 36 }), // FK a curriculum_areas
+  gradeScaleType: gradeScaleTypeEnum, // Tipo de escala de calificación
+  gradeScaleConfig: json('grade_scale_config').$type<{
+    ranges: Array<{
+      label: string;
+      minPercent: number;
+      maxPercent: number;
+      xpReward: number;
+      gpReward: number;
+    }>;
+  }>(),
+  
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
 }, (table) => ({
   teacherIdx: index('idx_classrooms_teacher').on(table.teacherId),
   schoolIdx: index('idx_classrooms_school').on(table.schoolId),
+  curriculumAreaIdx: index('idx_classrooms_curriculum_area').on(table.curriculumAreaId),
 }));
 
 export const classroomsRelations = relations(classrooms, ({ one, many }) => ({
@@ -353,6 +372,10 @@ export const classroomsRelations = relations(classrooms, ({ one, many }) => ({
     fields: [classrooms.schoolId],
     references: [schools.id],
   }),
+  curriculumArea: one(curriculumAreas, {
+    fields: [classrooms.curriculumAreaId],
+    references: [curriculumAreas.id],
+  }),
   students: many(studentProfiles),
   teams: many(teams),
   behaviors: many(behaviors),
@@ -360,6 +383,7 @@ export const classroomsRelations = relations(classrooms, ({ one, many }) => ({
   bossBattles: many(bossBattles),
   randomEvents: many(randomEvents),
   shopItems: many(shopItems),
+  classroomCompetencies: many(classroomCompetencies),
 }));
 
 // ==================== ESTUDIANTES ====================
@@ -523,10 +547,13 @@ export const behaviors = mysqlTable('behaviors', {
   isPositive: boolean('is_positive').notNull(),
   icon: varchar('icon', { length: 50 }),
   isActive: boolean('is_active').notNull().default(true),
+  // Competencia asociada (para calificación por competencias)
+  competencyId: varchar('competency_id', { length: 36 }),
   createdAt: datetime('created_at').notNull(),
 }, (table) => ({
   classroomIdx: index('idx_behaviors_classroom').on(table.classroomId),
   classroomActiveIdx: index('idx_behaviors_classroom_active').on(table.classroomId, table.isActive),
+  competencyIdx: index('idx_behaviors_competency').on(table.competencyId),
 }));
 
 export const behaviorsRelations = relations(behaviors, ({ one, many }) => ({
@@ -612,9 +639,13 @@ export const powerUsagesRelations = relations(powerUsages, ({ one }) => ({
 
 // ==================== BOSS BATTLES ====================
 
+// Tipo de batalla: CLASSIC (todos vs boss), BVJ (Boss vs Jugador 1v1)
+export const battleModeEnum = mysqlEnum('battle_mode', ['CLASSIC', 'BVJ']);
+
 export const bossBattles = mysqlTable('boss_battles', {
   id: varchar('id', { length: 36 }).primaryKey(),
   classroomId: varchar('classroom_id', { length: 36 }).notNull(),
+  battleMode: battleModeEnum.notNull().default('CLASSIC'),
   name: varchar('name', { length: 255 }).notNull(),
   description: text('description'),
   bossName: varchar('boss_name', { length: 255 }).notNull(),
@@ -622,18 +653,30 @@ export const bossBattles = mysqlTable('boss_battles', {
   bossImageUrl: varchar('boss_image_url', { length: 500 }),
   xpReward: int('xp_reward').notNull().default(50),
   gpReward: int('gp_reward').notNull().default(20),
+  participantBonus: int('participant_bonus').notNull().default(10), // Bonus XP/GP extra para participantes en BvJ
   status: battleStatusEnum.notNull().default('DRAFT'),
   currentHp: int('current_hp').notNull(),
+  currentRound: int('current_round').notNull().default(1), // Ronda actual (para BvJ)
+  currentQuestionIndex: int('current_question_index').notNull().default(0), // Índice de pregunta actual (para BvJ)
+  currentChallengerId: varchar('current_challenger_id', { length: 36 }), // Estudiante actual enfrentando al boss (BvJ)
+  usedStudentIds: json('used_student_ids'), // Array de IDs de estudiantes ya usados en la ronda actual
+  competencyId: varchar('competency_id', { length: 36 }),
   startedAt: datetime('started_at'),
   endedAt: datetime('ended_at'),
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
-});
+}, (table) => ({
+  competencyIdx: index('idx_boss_battles_competency').on(table.competencyId),
+}));
 
 export const bossBattlesRelations = relations(bossBattles, ({ one, many }) => ({
   classroom: one(classrooms, {
     fields: [bossBattles.classroomId],
     references: [classrooms.id],
+  }),
+  competency: one(classroomCompetencies, {
+    fields: [bossBattles.competencyId],
+    references: [classroomCompetencies.id],
   }),
   questions: many(battleQuestions),
   participants: many(battleParticipants),
@@ -1097,12 +1140,18 @@ export const badges = mysqlTable('badges', {
   // Límites
   maxAwards: int('max_awards').default(1),
   
+  // Competencia asociada (para calificación por competencias)
+  competencyId: varchar('competency_id', { length: 36 }),
+  
   // Metadata
   isSecret: boolean('is_secret').notNull().default(false),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
-});
+}, (table) => ({
+  classroomIdx: index('idx_badges_classroom').on(table.classroomId),
+  competencyIdx: index('idx_badges_competency').on(table.competencyId),
+}));
 
 export const badgesRelations = relations(badges, ({ one, many }) => ({
   classroom: one(classrooms, {
@@ -1245,6 +1294,7 @@ export type PurchaseStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type ItemUsageStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type NotificationType = 'ITEM_USED' | 'GIFT_RECEIVED' | 'BATTLE_STARTED' | 'LEVEL_UP' | 'POINTS' | 'PURCHASE_APPROVED' | 'PURCHASE_REJECTED' | 'BADGE' | 'MISSION_COMPLETED';
 export type BattleStatus = 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'VICTORY' | 'DEFEAT';
+export type BattleMode = 'CLASSIC' | 'BVJ';
 export type QuestionType = 'TEXT' | 'IMAGE';
 export type AvatarGender = 'MALE' | 'FEMALE';
 export type AvatarSlot = 'HEAD' | 'HAIR' | 'EYES' | 'TOP' | 'BOTTOM' | 'LEFT_HAND' | 'RIGHT_HAND' | 'SHOES' | 'BACK' | 'FLAG' | 'BACKGROUND';
@@ -1396,6 +1446,9 @@ export const studentBossBattles = mysqlTable('student_boss_battles', {
   startDate: datetime('start_date'), // null = inicia inmediatamente
   endDate: datetime('end_date'), // null = sin fecha límite
   
+  // Competencia asociada (opcional, para calificaciones)
+  competencyId: varchar('competency_id', { length: 36 }),
+  
   // Timestamps
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
@@ -1404,6 +1457,7 @@ export const studentBossBattles = mysqlTable('student_boss_battles', {
   classroomIdx: index('idx_student_boss_battles_classroom').on(table.classroomId),
   statusIdx: index('idx_student_boss_battles_status').on(table.status),
   questionBankIdx: index('idx_student_boss_battles_question_bank').on(table.questionBankId),
+  competencyIdx: index('idx_student_boss_battles_competency').on(table.competencyId),
 }));
 
 export const studentBossBattlesRelations = relations(studentBossBattles, ({ one, many }) => ({
@@ -1414,6 +1468,10 @@ export const studentBossBattlesRelations = relations(studentBossBattles, ({ one,
   questionBank: one(questionBanks, {
     fields: [studentBossBattles.questionBankId],
     references: [questionBanks.id],
+  }),
+  competency: one(classroomCompetencies, {
+    fields: [studentBossBattles.competencyId],
+    references: [classroomCompetencies.id],
   }),
   participants: many(studentBossBattleParticipants),
 }));
@@ -2554,3 +2612,198 @@ export type TournamentType = 'BRACKET' | 'LEAGUE' | 'QUICKFIRE';
 export type TournamentStatus = 'DRAFT' | 'READY' | 'ACTIVE' | 'PAUSED' | 'FINISHED';
 export type TournamentParticipantType = 'INDIVIDUAL' | 'CLAN';
 export type TournamentMatchStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'BYE';
+
+// ==================== SISTEMA DE CALIFICACIONES POR COMPETENCIAS ====================
+
+// Áreas curriculares (precargadas por país)
+export const curriculumAreas = mysqlTable('curriculum_areas', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  countryCode: varchar('country_code', { length: 5 }).notNull().default('PE'),
+  name: varchar('name', { length: 100 }).notNull(),
+  shortName: varchar('short_name', { length: 50 }),
+  displayOrder: int('display_order').notNull().default(0),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: datetime('created_at').notNull(),
+}, (table) => ({
+  countryIdx: index('idx_curriculum_areas_country').on(table.countryCode),
+}));
+
+export const curriculumAreasRelations = relations(curriculumAreas, ({ many }) => ({
+  competencies: many(curriculumCompetencies),
+  classrooms: many(classrooms),
+}));
+
+// Competencias por área curricular
+export const curriculumCompetencies = mysqlTable('curriculum_competencies', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  areaId: varchar('area_id', { length: 36 }).notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  shortName: varchar('short_name', { length: 100 }),
+  description: text('description'),
+  displayOrder: int('display_order').notNull().default(0),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: datetime('created_at').notNull(),
+}, (table) => ({
+  areaIdx: index('idx_curriculum_competencies_area').on(table.areaId),
+}));
+
+export const curriculumCompetenciesRelations = relations(curriculumCompetencies, ({ one, many }) => ({
+  area: one(curriculumAreas, {
+    fields: [curriculumCompetencies.areaId],
+    references: [curriculumAreas.id],
+  }),
+  classroomCompetencies: many(classroomCompetencies),
+}));
+
+// Competencias habilitadas por clase
+export const classroomCompetencies = mysqlTable('classroom_competencies', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
+  competencyId: varchar('competency_id', { length: 36 }).notNull(),
+  weight: int('weight').notNull().default(100), // Peso en porcentaje (100 = 1x)
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: datetime('created_at').notNull(),
+}, (table) => ({
+  classroomIdx: index('idx_classroom_competencies_classroom').on(table.classroomId),
+  competencyIdx: index('idx_classroom_competencies_competency').on(table.competencyId),
+  uniqueClassroomCompetency: unique('unique_classroom_competency').on(table.classroomId, table.competencyId),
+}));
+
+export const classroomCompetenciesRelations = relations(classroomCompetencies, ({ one }) => ({
+  classroom: one(classrooms, {
+    fields: [classroomCompetencies.classroomId],
+    references: [classrooms.id],
+  }),
+  competency: one(curriculumCompetencies, {
+    fields: [classroomCompetencies.competencyId],
+    references: [curriculumCompetencies.id],
+  }),
+}));
+
+// Actividades vinculadas a competencias
+export const activityTypeEnum = mysqlEnum('activity_type', ['TOURNAMENT', 'EXPEDITION', 'TIMED', 'MISSION']);
+
+export const activityCompetencies = mysqlTable('activity_competencies', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  activityType: activityTypeEnum.notNull(),
+  activityId: varchar('activity_id', { length: 36 }).notNull(),
+  competencyId: varchar('competency_id', { length: 36 }).notNull(),
+  weight: int('weight').notNull().default(100),
+  createdAt: datetime('created_at').notNull(),
+}, (table) => ({
+  activityIdx: index('idx_activity_competencies_activity').on(table.activityType, table.activityId),
+  competencyIdx: index('idx_activity_competencies_competency').on(table.competencyId),
+  uniqueActivityCompetency: unique('unique_activity_competency').on(table.activityType, table.activityId, table.competencyId),
+}));
+
+export const activityCompetenciesRelations = relations(activityCompetencies, ({ one }) => ({
+  competency: one(curriculumCompetencies, {
+    fields: [activityCompetencies.competencyId],
+    references: [curriculumCompetencies.id],
+  }),
+}));
+
+// ==================== CALIFICACIONES POR COMPETENCIAS ====================
+
+// Tipo de actividad extendido para incluir comportamientos e insignias
+export const scoreActivityTypeEnum = mysqlEnum('score_activity_type', ['TOURNAMENT', 'EXPEDITION', 'TIMED', 'MISSION', 'BEHAVIOR', 'BADGE']);
+
+// Calificaciones calculadas por estudiante/competencia/periodo
+export const studentGrades = mysqlTable('student_grades', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
+  studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),
+  competencyId: varchar('competency_id', { length: 36 }).notNull(),
+  period: varchar('period', { length: 20 }).notNull().default('CURRENT'),
+  score: decimal('score', { precision: 5, scale: 2 }).notNull().default('0'),
+  gradeLabel: varchar('grade_label', { length: 10 }),
+  calculationDetails: json('calculation_details').$type<{
+    activities: Array<{
+      type: string;
+      id: string;
+      name: string;
+      score: number;
+      weight: number;
+    }>;
+    totalWeight: number;
+    rawScore: number;
+  }>(),
+  activitiesCount: int('activities_count').notNull().default(0),
+  isManualOverride: boolean('is_manual_override').notNull().default(false),
+  manualScore: decimal('manual_score', { precision: 5, scale: 2 }),
+  manualNote: text('manual_note'),
+  calculatedAt: datetime('calculated_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  classroomIdx: index('idx_student_grades_classroom').on(table.classroomId),
+  studentIdx: index('idx_student_grades_student').on(table.studentProfileId),
+  competencyIdx: index('idx_student_grades_competency').on(table.competencyId),
+  periodIdx: index('idx_student_grades_period').on(table.period),
+  uniqueStudentCompetencyPeriod: unique('unique_student_competency_period').on(table.studentProfileId, table.competencyId, table.period),
+}));
+
+export const studentGradesRelations = relations(studentGrades, ({ one }) => ({
+  classroom: one(classrooms, {
+    fields: [studentGrades.classroomId],
+    references: [classrooms.id],
+  }),
+  studentProfile: one(studentProfiles, {
+    fields: [studentGrades.studentProfileId],
+    references: [studentProfiles.id],
+  }),
+  competency: one(curriculumCompetencies, {
+    fields: [studentGrades.competencyId],
+    references: [curriculumCompetencies.id],
+  }),
+}));
+
+// Puntajes individuales por actividad completada
+export const studentActivityScores = mysqlTable('student_activity_scores', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),
+  activityType: scoreActivityTypeEnum.notNull(),
+  activityId: varchar('activity_id', { length: 36 }).notNull(),
+  competencyId: varchar('competency_id', { length: 36 }).notNull(),
+  score: decimal('score', { precision: 5, scale: 2 }).notNull().default('0'),
+  weight: int('weight').notNull().default(100),
+  details: json('details').$type<{
+    activityName?: string;
+    maxScore?: number;
+    earnedScore?: number;
+    completedAt?: string;
+  }>(),
+  scoredAt: datetime('scored_at').notNull(),
+}, (table) => ({
+  studentIdx: index('idx_activity_scores_student').on(table.studentProfileId),
+  competencyIdx: index('idx_activity_scores_competency').on(table.competencyId),
+  activityIdx: index('idx_activity_scores_activity').on(table.activityType, table.activityId),
+  uniqueStudentActivityScore: unique('unique_student_activity_score').on(table.studentProfileId, table.activityType, table.activityId, table.competencyId),
+}));
+
+export const studentActivityScoresRelations = relations(studentActivityScores, ({ one }) => ({
+  studentProfile: one(studentProfiles, {
+    fields: [studentActivityScores.studentProfileId],
+    references: [studentProfiles.id],
+  }),
+  competency: one(curriculumCompetencies, {
+    fields: [studentActivityScores.competencyId],
+    references: [curriculumCompetencies.id],
+  }),
+}));
+
+// Types para Sistema de Competencias
+export type CurriculumArea = typeof curriculumAreas.$inferSelect;
+export type NewCurriculumArea = typeof curriculumAreas.$inferInsert;
+export type CurriculumCompetency = typeof curriculumCompetencies.$inferSelect;
+export type NewCurriculumCompetency = typeof curriculumCompetencies.$inferInsert;
+export type ClassroomCompetency = typeof classroomCompetencies.$inferSelect;
+export type NewClassroomCompetency = typeof classroomCompetencies.$inferInsert;
+export type ActivityCompetency = typeof activityCompetencies.$inferSelect;
+export type NewActivityCompetency = typeof activityCompetencies.$inferInsert;
+export type StudentGrade = typeof studentGrades.$inferSelect;
+export type NewStudentGrade = typeof studentGrades.$inferInsert;
+export type StudentActivityScore = typeof studentActivityScores.$inferSelect;
+export type NewStudentActivityScore = typeof studentActivityScores.$inferInsert;
+export type GradeScaleType = 'PERU_LETTERS' | 'PERU_VIGESIMAL' | 'CENTESIMAL' | 'USA_LETTERS' | 'CUSTOM';
+export type ActivityType = 'TOURNAMENT' | 'EXPEDITION' | 'TIMED' | 'MISSION';
+export type ScoreActivityType = 'TOURNAMENT' | 'EXPEDITION' | 'TIMED' | 'MISSION' | 'BEHAVIOR' | 'BADGE';

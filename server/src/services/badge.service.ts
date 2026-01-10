@@ -55,6 +55,7 @@ export interface CreateBadgeDto {
   rewardXp?: number;
   rewardGp?: number;
   isSecret?: boolean;
+  competencyId?: string;
 }
 
 class BadgeService {
@@ -81,6 +82,7 @@ class BadgeService {
       rewardXp: data.rewardXp || 0,
       rewardGp: data.rewardGp || 0,
       maxAwards: 1,
+      competencyId: data.competencyId || null,
       isSecret: data.isSecret || false,
       isActive: true,
       createdAt: now,

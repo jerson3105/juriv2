@@ -20,6 +20,7 @@ import {
   Building2,
   ScrollText,
   Map,
+  BookOpen,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useStudentStore } from '../../store/studentStore';
@@ -385,6 +386,35 @@ export const MainLayout = () => {
                   <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
                 </motion.span>
               )}
+            </Link>
+          )}
+
+          {/* Mis Calificaciones - solo para estudiantes con competencias habilitadas */}
+          {!isTeacher && currentProfile?.classroom?.useCompetencies && (
+            <Link
+              to="/my-grades"
+              onClick={() => setSidebarOpen(false)}
+              className={`
+                flex items-center gap-3 px-3 py-2.5 rounded-xl
+                transition-all duration-200 group relative
+                ${location.pathname === '/my-grades'
+                  ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-md'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }
+              `}
+            >
+              <div className={`
+                w-8 h-8 rounded-lg flex items-center justify-center transition-all
+                ${location.pathname === '/my-grades'
+                  ? 'bg-white/20' 
+                  : 'bg-gradient-to-br from-purple-500 to-indigo-500 text-white shadow-sm group-hover:scale-105'
+                }
+              `}>
+                <BookOpen size={16} />
+              </div>
+              <span className={`text-sm font-medium ${location.pathname === '/my-grades' ? '' : 'text-gray-700 dark:text-gray-300'}`}>
+                Mis Calificaciones
+              </span>
             </Link>
           )}
 

@@ -24,6 +24,7 @@ import expeditionMapRoutes from './expeditionMap.routes.js';
 import territoryRoutes from './territory.routes.js';
 import bugReportRoutes from './bugReport.routes.js';
 import tournamentRoutes from './tournament.routes.js';
+import gradeRoutes from './grade.routes.js';
 
 const router = Router();
 
@@ -62,5 +63,6 @@ router.use('/expedition-maps', expeditionMapRoutes);
 router.use('/territory', territoryRoutes);
 router.use('/bug-reports', bugReportRoutes);
 router.use('/tournaments', tournamentRoutes);
+router.use('/grades', gradeRoutes);
 
 export default router;

@@ -12,6 +12,7 @@ import {
   questionBanks,
   pointLogs,
   notifications,
+  activityCompetencies,
   type Tournament,
   type TournamentParticipant,
   type TournamentMatch,
@@ -43,6 +44,7 @@ export interface CreateTournamentDto {
   rewardGpSecond?: number;
   rewardGpThird?: number;
   rewardXpParticipation?: number;
+  competencyIds?: string[];
 }
 
 export interface UpdateTournamentDto extends Partial<CreateTournamentDto> {
@@ -148,6 +150,19 @@ class TournamentService {
       createdAt: now,
       updatedAt: now,
     });
+
+    // Guardar competencias asociadas si existen
+    if (data.competencyIds && data.competencyIds.length > 0) {
+      const competencyValues = data.competencyIds.map(competencyId => ({
+        id: uuidv4(),
+        activityType: 'TOURNAMENT' as const,
+        activityId: id,
+        competencyId,
+        weight: 100,
+        createdAt: now,
+      }));
+      await db.insert(activityCompetencies).values(competencyValues);
+    }
 
     const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, id));
     return tournament;

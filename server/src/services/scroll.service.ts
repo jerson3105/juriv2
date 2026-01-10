@@ -328,6 +328,10 @@ class ScrollService {
     
     if (config.enabled !== undefined) {
       updates.scrollsEnabled = config.enabled;
+      // Cuando se habilita, también abrir el mural automáticamente
+      if (config.enabled === true) {
+        updates.scrollsOpen = true;
+      }
     }
     if (config.maxPerDay !== undefined) {
       updates.scrollsMaxPerDay = config.maxPerDay;

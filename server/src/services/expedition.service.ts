@@ -12,6 +12,7 @@ import {
   teams,
   clanLogs,
   classrooms,
+  activityCompetencies,
   type ExpeditionStatus,
   type ExpeditionPinType,
   type ExpeditionProgressStatus,
@@ -29,6 +30,7 @@ export class ExpeditionService {
     name: string;
     description?: string;
     mapImageUrl: string;
+    competencyIds?: string[];
   }) {
     const now = new Date();
     const id = uuidv4();
@@ -44,6 +46,19 @@ export class ExpeditionService {
       createdAt: now,
       updatedAt: now,
     });
+
+    // Guardar competencias asociadas si existen
+    if (data.competencyIds && data.competencyIds.length > 0) {
+      const competencyValues = data.competencyIds.map(competencyId => ({
+        id: uuidv4(),
+        activityType: 'EXPEDITION' as const,
+        activityId: id,
+        competencyId,
+        weight: 100,
+        createdAt: now,
+      }));
+      await db.insert(activityCompetencies).values(competencyValues);
+    }
     
     return this.getById(id);
   }

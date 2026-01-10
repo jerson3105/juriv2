@@ -944,7 +944,7 @@ export const TournamentsActivity = ({ classroom, onBack }: TournamentsActivityPr
         )}
 
         <CreateTournamentModal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)}
-          onSubmit={(d: CreateTournamentData) => createMutation.mutate(d)} questionBanks={questionBanks} isLoading={createMutation.isPending} />
+          onSubmit={(d: CreateTournamentData) => createMutation.mutate(d)} questionBanks={questionBanks} isLoading={createMutation.isPending} classroom={classroom} />
       </div>
     );
   }
@@ -1493,10 +1493,22 @@ export const TournamentsActivity = ({ classroom, onBack }: TournamentsActivityPr
 };
 
 // Sub-components will be in separate file or below
-const CreateTournamentModal = ({ isOpen, onClose, onSubmit, questionBanks, isLoading }: any) => {
-  const [form, setForm] = useState<CreateTournamentData>({ name: '', type: 'BRACKET', participantType: 'INDIVIDUAL', questionBankIds: [], maxParticipants: 8, timePerQuestion: 30, questionsPerMatch: 3, pointsPerCorrect: 100, bonusTimePoints: 10, rewardXpFirst: 100, rewardXpSecond: 50, rewardXpThird: 25, rewardGpFirst: 50, rewardGpSecond: 25, rewardGpThird: 10, rewardXpParticipation: 10, icon: '🏆' });
-  useEffect(() => { if (isOpen) setForm({ name: '', type: 'BRACKET', participantType: 'INDIVIDUAL', questionBankIds: [], maxParticipants: 8, timePerQuestion: 30, questionsPerMatch: 3, pointsPerCorrect: 100, bonusTimePoints: 10, rewardXpFirst: 100, rewardXpSecond: 50, rewardXpThird: 25, rewardGpFirst: 50, rewardGpSecond: 25, rewardGpThird: 10, rewardXpParticipation: 10, icon: '🏆' }); }, [isOpen]);
+const CreateTournamentModal = ({ isOpen, onClose, onSubmit, questionBanks, isLoading, classroom }: any) => {
+  const [form, setForm] = useState<CreateTournamentData & { competencyIds?: string[] }>({ name: '', type: 'BRACKET', participantType: 'INDIVIDUAL', questionBankIds: [], maxParticipants: 8, timePerQuestion: 30, questionsPerMatch: 3, pointsPerCorrect: 100, bonusTimePoints: 10, rewardXpFirst: 100, rewardXpSecond: 50, rewardXpThird: 25, rewardGpFirst: 50, rewardGpSecond: 25, rewardGpThird: 10, rewardXpParticipation: 10, icon: '🏆', competencyIds: [] });
+  
+  // Cargar competencias si la clase las usa
+  const { data: curriculumAreas = [] } = useQuery({
+    queryKey: ['curriculum-areas'],
+    queryFn: () => classroomApi.getCurriculumAreas('PE'),
+    enabled: isOpen && classroom?.useCompetencies,
+  });
+  
+  // Obtener competencias del área de la clase
+  const classroomCompetencies = curriculumAreas.find((a: any) => a.id === classroom?.curriculumAreaId)?.competencies || [];
+  
+  useEffect(() => { if (isOpen) setForm({ name: '', type: 'BRACKET', participantType: 'INDIVIDUAL', questionBankIds: [], maxParticipants: 8, timePerQuestion: 30, questionsPerMatch: 3, pointsPerCorrect: 100, bonusTimePoints: 10, rewardXpFirst: 100, rewardXpSecond: 50, rewardXpThird: 25, rewardGpFirst: 50, rewardGpSecond: 25, rewardGpThird: 10, rewardXpParticipation: 10, icon: '🏆', competencyIds: [] }); }, [isOpen]);
   const toggle = (id: string) => setForm(p => ({ ...p, questionBankIds: p.questionBankIds.includes(id) ? p.questionBankIds.filter(x => x !== id) : [...p.questionBankIds, id] }));
+  const toggleCompetency = (id: string) => setForm(p => ({ ...p, competencyIds: (p.competencyIds || []).includes(id) ? (p.competencyIds || []).filter(x => x !== id) : [...(p.competencyIds || []), id] }));
   const submit = (e: React.FormEvent) => { e.preventDefault(); if (!form.name.trim() || form.questionBankIds.length === 0) { toast.error('Completa nombre y bancos'); return; } onSubmit(form); };
   if (!isOpen) return null;
   return (
@@ -1544,6 +1556,29 @@ const CreateTournamentModal = ({ isOpen, onClose, onSubmit, questionBanks, isLoa
                     <div className="font-medium text-sm">{b.name}</div><div className="text-xs text-gray-500">{b.questionCount || 0} preguntas</div></button>
                 ))}</div>
             )}</div>
+          {/* Selector de Competencias - Solo si la clase usa competencias */}
+          {classroom?.useCompetencies && classroomCompetencies.length > 0 && (
+            <div className="border-t pt-4">
+              <label className="block text-sm font-medium mb-2 flex items-center gap-2">
+                <Award size={16} className="text-emerald-500" />
+                Competencias que evalúa este torneo
+              </label>
+              <div className="grid grid-cols-1 gap-2 max-h-32 overflow-y-auto p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                {classroomCompetencies.map((c: any) => (
+                  <button key={c.id} type="button" onClick={() => toggleCompetency(c.id)}
+                    className={`p-2 rounded-lg text-left text-sm ${(form.competencyIds || []).includes(c.id) ? 'bg-emerald-200 dark:bg-emerald-800 ring-2 ring-emerald-500' : 'bg-white dark:bg-gray-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/50'}`}>
+                    <div className="flex items-center gap-2">
+                      {(form.competencyIds || []).includes(c.id) && <Check size={14} className="text-emerald-600" />}
+                      <span className="truncate">{c.name}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                {(form.competencyIds || []).length === 0 ? 'Selecciona al menos una competencia' : `${(form.competencyIds || []).length} competencia(s) seleccionada(s)`}
+              </p>
+            </div>
+          )}
           <div className="flex justify-end gap-3 pt-4">
             <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
             <Button type="submit" disabled={isLoading}>{isLoading ? 'Creando...' : 'Crear Torneo'}</Button>

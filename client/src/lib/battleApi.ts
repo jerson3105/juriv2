@@ -1,6 +1,7 @@
 import api from './api';
 
 export type BattleStatus = 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'VICTORY' | 'DEFEAT';
+export type BattleMode = 'CLASSIC' | 'BVJ';
 export type QuestionType = 'TEXT' | 'IMAGE';
 export type BattleQuestionType = 'TRUE_FALSE' | 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE' | 'MATCHING';
 
@@ -12,6 +13,7 @@ export interface MatchingPair {
 export interface Boss {
   id: string;
   classroomId: string;
+  battleMode: BattleMode;
   name: string;
   description: string | null;
   bossName: string;
@@ -20,7 +22,12 @@ export interface Boss {
   bossImageUrl: string | null;
   xpReward: number;
   gpReward: number;
+  participantBonus: number;
   status: BattleStatus;
+  currentRound: number;
+  currentChallengerId: string | null;
+  usedStudentIds: string[];
+  competencyId: string | null;
   startedAt: string | null;
   endedAt: string | null;
   createdAt: string;
@@ -92,6 +99,7 @@ export const battleApi = {
 
   createBoss: async (data: {
     classroomId: string;
+    battleMode?: BattleMode;
     name: string;
     description?: string;
     bossName: string;
@@ -99,6 +107,8 @@ export const battleApi = {
     bossImageUrl?: string;
     xpReward?: number;
     gpReward?: number;
+    participantBonus?: number;
+    competencyId?: string;
   }): Promise<Boss> => {
     const { data: boss } = await api.post('/battles/bosses', data);
     return boss;
@@ -121,6 +131,7 @@ export const battleApi = {
   },
 
   updateBoss: async (id: string, data: Partial<{
+    battleMode: BattleMode;
     name: string;
     description: string;
     bossName: string;
@@ -128,6 +139,8 @@ export const battleApi = {
     bossImageUrl: string;
     xpReward: number;
     gpReward: number;
+    participantBonus: number;
+    competencyId: string;
   }>): Promise<Boss> => {
     const { data: boss } = await api.put(`/battles/bosses/${id}`, data);
     return boss;
@@ -247,4 +260,51 @@ export const battleApi = {
       hpDamage: studentPenalty?.hpDamage,
     });
   },
+
+  // ==================== MODO BVJ (Boss vs Jugador) ====================
+
+  getBvJBattleState: async (bossId: string): Promise<BvJBattleState> => {
+    const { data } = await api.get(`/battles/bosses/${bossId}/bvj/state`);
+    return data;
+  },
+
+  selectRandomChallenger: async (bossId: string, studentIds: string[]): Promise<ChallengerResult> => {
+    const { data } = await api.post(`/battles/bosses/${bossId}/bvj/select-challenger`, { studentIds });
+    return data;
+  },
+
+  startNewRound: async (bossId: string): Promise<Boss> => {
+    const { data } = await api.post(`/battles/bosses/${bossId}/bvj/new-round`);
+    return data;
+  },
+
+  updateCurrentQuestionIndex: async (bossId: string, questionIndex: number): Promise<{ currentQuestionIndex: number }> => {
+    const { data } = await api.post(`/battles/bosses/${bossId}/bvj/update-question-index`, { questionIndex });
+    return data;
+  },
 };
+
+// Interfaces para BvJ
+export interface BvJChallenger {
+  id: string;
+  characterName: string | null;
+  avatarUrl: string | null;
+  avatarGender: 'MALE' | 'FEMALE' | null;
+  hp: number;
+  maxHp: number;
+  level: number;
+}
+
+export interface ChallengerResult {
+  needsNewRound: boolean;
+  challenger: BvJChallenger | null;
+}
+
+export interface BvJBattleState {
+  boss: Boss;
+  questions: BattleQuestion[];
+  participants: (BattleParticipant & { currentHp: number; maxHp: number })[];
+  currentChallenger: BvJChallenger | null;
+  currentRound: number;
+  currentQuestionIndex: number;
+}

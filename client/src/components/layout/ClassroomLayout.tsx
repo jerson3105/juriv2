@@ -107,7 +107,6 @@ export const ClassroomLayout = () => {
         { path: `/classroom/${id}/missions`, label: 'Misiones', icon: Target },
         { path: `/classroom/${id}/shop`, label: 'Tienda', icon: ShoppingBag, onboardingId: 'shop-menu' },
         { path: `/classroom/${id}/activities`, label: 'Actividades', icon: Dices },
-        { path: `/classroom/${id}/expeditions`, label: 'Expediciones', icon: Map },
       ],
     },
     { 
@@ -123,17 +122,11 @@ export const ClassroomLayout = () => {
       gradient: 'from-amber-500 to-yellow-500',
     },
     { 
-      path: `/classroom/${id}/statistics`, 
-      label: 'Estadísticas', 
+      path: `/classroom/${id}/reports`, 
+      label: 'Reportes', 
       icon: LayoutDashboard,
       gradient: 'from-violet-500 to-purple-500',
       onboardingId: 'statistics-menu',
-    },
-    { 
-      path: `/classroom/${id}/history`, 
-      label: 'Historial', 
-      icon: ScrollText,
-      gradient: 'from-cyan-500 to-blue-500',
     },
     { 
       path: `/classroom/${id}/settings`, 

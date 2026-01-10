@@ -15,6 +15,8 @@ import {
   FileText,
   Send,
   BarChart3,
+  Award,
+  Check,
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -47,7 +49,7 @@ const OBJECTIVE_TYPES = [
 
 export const MissionsPage = () => {
   const { id: classroomId } = useParams<{ id: string }>();
-  useOutletContext<{ classroom: Classroom }>();
+  const { classroom } = useOutletContext<{ classroom: Classroom }>();
   const queryClient = useQueryClient();
 
   const [showModal, setShowModal] = useState(false);
@@ -58,7 +60,7 @@ export const MissionsPage = () => {
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; mission: Mission | null }>({ isOpen: false, mission: null });
 
   // Form state
-  const [formData, setFormData] = useState<CreateMissionDto>({
+  const [formData, setFormData] = useState<CreateMissionDto & { competencyIds: string[] }>({
     name: '',
     description: '',
     icon: '🎯',
@@ -72,8 +74,27 @@ export const MissionsPage = () => {
     isRepeatable: true,
     autoAssign: true,
     autoExpire: true,
+    competencyIds: [],
   });
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+
+  // Cargar competencias si la clase las usa
+  const { data: curriculumAreas = [] } = useQuery({
+    queryKey: ['curriculum-areas'],
+    queryFn: () => classroomApi.getCurriculumAreas('PE'),
+    enabled: classroom?.useCompetencies,
+  });
+  
+  const classroomCompetencies = curriculumAreas.find((a: any) => a.id === classroom?.curriculumAreaId)?.competencies || [];
+  
+  const toggleCompetency = (id: string) => {
+    setFormData(p => ({
+      ...p,
+      competencyIds: p.competencyIds.includes(id) 
+        ? p.competencyIds.filter(x => x !== id) 
+        : [...p.competencyIds, id]
+    }));
+  };
 
   // Queries
   const { data: missions = [], isLoading } = useQuery({
@@ -215,6 +236,7 @@ export const MissionsPage = () => {
       isRepeatable: true,
       autoAssign: true,
       autoExpire: true,
+      competencyIds: [],
     });
   };
 
@@ -236,6 +258,7 @@ export const MissionsPage = () => {
       attachmentName: mission.attachmentName || undefined,
       isRepeatable: mission.isRepeatable,
       maxCompletions: mission.maxCompletions || undefined,
+      competencyIds: [],
     });
     setShowModal(true);
   };
@@ -754,6 +777,30 @@ export const MissionsPage = () => {
                     </>
                   )}
                 </div>
+
+                {/* Selector de Competencias */}
+                {classroom?.useCompetencies && classroomCompetencies.length > 0 && (
+                  <div className="border-t pt-4">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
+                      <Award size={16} className="text-emerald-500" />
+                      Competencias que evalúa
+                    </label>
+                    <div className="grid grid-cols-1 gap-2 max-h-28 overflow-y-auto p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                      {classroomCompetencies.map((c: any) => (
+                        <button key={c.id} type="button" onClick={() => toggleCompetency(c.id)}
+                          className={`p-2 rounded-lg text-left text-sm ${formData.competencyIds.includes(c.id) ? 'bg-emerald-200 dark:bg-emerald-800 ring-2 ring-emerald-500' : 'bg-white dark:bg-gray-800 hover:bg-emerald-100'}`}>
+                          <div className="flex items-center gap-2">
+                            {formData.competencyIds.includes(c.id) && <Check size={14} className="text-emerald-600" />}
+                            <span className="truncate">{c.name}</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {formData.competencyIds.length === 0 ? 'Opcional' : `${formData.competencyIds.length} seleccionada(s)`}
+                    </p>
+                  </div>
+                )}
 
                 {/* Buttons */}
                 <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">

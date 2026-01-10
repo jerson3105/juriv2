@@ -13,6 +13,7 @@ import {
   Sparkles,
   Target,
   Zap,
+  Check,
 } from 'lucide-react';
 import { badgeApi, type Badge, type CreateBadgeDto, type BadgeRarity, type BadgeAssignment, RARITY_COLORS, RARITY_LABELS } from '../../lib/badgeApi';
 import { behaviorApi } from '../../lib/behaviorApi';
@@ -261,7 +262,7 @@ export const BadgesPage = () => {
           <CreateBadgeModal
             key={editingBadge?.id || 'new'}
             badge={editingBadge}
-            classroomId={classroom.id}
+            classroom={classroom}
             onClose={() => {
               setShowCreateModal(false);
               setEditingBadge(null);
@@ -319,17 +320,18 @@ export const BadgesPage = () => {
 // Modal para crear/editar insignia
 const CreateBadgeModal = ({
   badge,
-  classroomId,
+  classroom,
   onClose,
   onSave,
   isLoading,
 }: {
   badge: Badge | null;
-  classroomId: string;
+  classroom: Classroom;
   onClose: () => void;
-  onSave: (data: CreateBadgeDto) => void;
+  onSave: (data: CreateBadgeDto & { competencyId?: string }) => void;
   isLoading: boolean;
 }) => {
+  const classroomId = classroom.id;
   const [formData, setFormData] = useState<CreateBadgeDto>({
     name: badge?.name || '',
     description: badge?.description || '',
@@ -342,6 +344,16 @@ const CreateBadgeModal = ({
     rewardGp: badge?.rewardGp || 0,
     isSecret: badge?.isSecret || false,
   });
+  const [competencyId, setCompetencyId] = useState<string | null>((badge as any)?.competencyId || null);
+
+  // Cargar competencias si la clase las usa
+  const { data: curriculumAreas = [] } = useQuery({
+    queryKey: ['curriculum-areas'],
+    queryFn: () => classroomApi.getCurriculumAreas('PE'),
+    enabled: classroom?.useCompetencies,
+  });
+  
+  const classroomCompetencies = curriculumAreas.find((a: any) => a.id === classroom?.curriculumAreaId)?.competencies || [];
 
   // Estado para imagen personalizada
   const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -426,6 +438,7 @@ const CreateBadgeModal = ({
       setConditionValue(5);
       setSelectedBehaviorId('');
       setBehaviorCategory('positive');
+      setCompetencyId(null);
     }
   }, [badge]);
 
@@ -490,6 +503,7 @@ const CreateBadgeModal = ({
       unlockCondition: condition,
       // Si hay imagen personalizada, usarla; si no, asegurar que icon tenga valor
       icon: formData.icon || '🏆',
+      competencyId: competencyId || undefined,
     };
     onSave(dataToSave);
   };
@@ -866,6 +880,41 @@ const CreateBadgeModal = ({
               </p>
             </div>
           </label>
+
+          {/* Selector de Competencia */}
+          {classroom?.useCompetencies && classroomCompetencies.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
+                <Award size={16} className="text-emerald-500" />
+                Competencia asociada
+              </label>
+              <div className="grid grid-cols-1 gap-1.5 max-h-24 overflow-y-auto p-2 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
+                <button
+                  type="button"
+                  onClick={() => setCompetencyId(null)}
+                  className={`p-2 rounded-lg text-left text-xs ${!competencyId ? 'bg-gray-200 dark:bg-gray-600 ring-1 ring-gray-400' : 'bg-white dark:bg-gray-800 hover:bg-gray-100'}`}
+                >
+                  <span className="text-gray-500">Sin competencia</span>
+                </button>
+                {classroomCompetencies.map((c: any) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setCompetencyId(c.id)}
+                    className={`p-2 rounded-lg text-left text-xs ${competencyId === c.id ? 'bg-emerald-100 dark:bg-emerald-900/50 ring-1 ring-emerald-500' : 'bg-white dark:bg-gray-800 hover:bg-gray-100'}`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      {competencyId === c.id && <Check size={12} className="text-emerald-500" />}
+                      <span className="truncate text-gray-800 dark:text-white">{c.name}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                {competencyId ? 'Esta insignia contribuirá a la competencia' : 'Opcional'}
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex gap-3">

@@ -19,6 +19,7 @@ interface CreateBehaviorData {
   gpValue?: number;
   isPositive: boolean;
   icon?: string;
+  competencyId?: string | null;
 }
 
 interface ApplyBehaviorData {
@@ -50,6 +51,7 @@ export class BehaviorService {
       gpValue,
       isPositive: data.isPositive,
       icon: data.icon || null,
+      competencyId: data.competencyId || null,
       createdAt: now,
     });
 
@@ -65,12 +67,14 @@ export class BehaviorService {
 
   // Obtener todos los comportamientos de una clase
   async getByClassroom(classroomId: string) {
-    return db.query.behaviors.findMany({
+    const result = await db.query.behaviors.findMany({
       where: and(
         eq(behaviors.classroomId, classroomId),
         eq(behaviors.isActive, true)
       ),
     });
+    console.log('[BehaviorService] getByClassroom result:', result.map(b => ({ id: b.id, name: b.name, competencyId: b.competencyId })));
+    return result;
   }
 
   // Obtener comportamientos positivos (para agregar puntos)

@@ -3,8 +3,16 @@ import { z } from 'zod';
 import { battleService } from '../services/battle.service.js';
 
 // Schemas de validación
+// competencyId acepta: string no vacío (puede ser UUID o ID numérico como string), cadena vacía, o undefined
+const optionalCompetencyId = z.union([
+  z.string().min(1),
+  z.literal(''),
+  z.undefined(),
+]).transform(val => (val === '' || val === undefined) ? undefined : val);
+
 const createBossSchema = z.object({
   classroomId: z.string().uuid(),
+  battleMode: z.enum(['CLASSIC', 'BVJ']).optional(),
   name: z.string().min(1).max(255),
   description: z.string().optional(),
   bossName: z.string().min(1).max(255),
@@ -12,9 +20,12 @@ const createBossSchema = z.object({
   bossImageUrl: z.string().optional(),
   xpReward: z.number().int().min(0).optional(),
   gpReward: z.number().int().min(0).optional(),
+  participantBonus: z.number().int().min(0).optional(),
+  competencyId: optionalCompetencyId,
 });
 
 const updateBossSchema = z.object({
+  battleMode: z.enum(['CLASSIC', 'BVJ']).optional(),
   name: z.string().min(1).max(255).optional(),
   description: z.string().optional(),
   bossName: z.string().min(1).max(255).optional(),
@@ -22,6 +33,8 @@ const updateBossSchema = z.object({
   bossImageUrl: z.string().optional(),
   xpReward: z.number().int().min(0).optional(),
   gpReward: z.number().int().min(0).optional(),
+  participantBonus: z.number().int().min(0).optional(),
+  competencyId: optionalCompetencyId,
 });
 
 const addQuestionSchema = z.object({
@@ -359,6 +372,71 @@ class BattleController {
       }
       console.error('Error applying manual damage:', error);
       res.status(500).json({ message: 'Error al aplicar daño' });
+    }
+  }
+
+  // ==================== MODO BVJ ====================
+
+  async getBvJBattleState(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const state = await battleService.getBvJBattleState(id);
+      if (!state) {
+        return res.status(404).json({ message: 'Batalla no encontrada' });
+      }
+      res.json(state);
+    } catch (error) {
+      console.error('Error getting BvJ battle state:', error);
+      res.status(500).json({ message: 'Error al obtener estado de batalla' });
+    }
+  }
+
+  async selectRandomChallenger(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const { studentIds } = req.body;
+      
+      if (!studentIds || !Array.isArray(studentIds) || studentIds.length === 0) {
+        return res.status(400).json({ message: 'Se requiere lista de estudiantes' });
+      }
+
+      const result = await battleService.selectRandomChallenger(id, studentIds);
+      res.json(result);
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.status(400).json({ message: error.message });
+      }
+      console.error('Error selecting challenger:', error);
+      res.status(500).json({ message: 'Error al seleccionar retador' });
+    }
+  }
+
+  async startNewRound(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const boss = await battleService.startNewRound(id);
+      res.json(boss);
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.status(400).json({ message: error.message });
+      }
+      console.error('Error starting new round:', error);
+      res.status(500).json({ message: 'Error al iniciar nueva ronda' });
+    }
+  }
+
+  async updateCurrentQuestionIndex(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const { questionIndex } = req.body;
+      const result = await battleService.updateCurrentQuestionIndex(id, questionIndex);
+      res.json(result);
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.status(400).json({ message: error.message });
+      }
+      console.error('Error updating question index:', error);
+      res.status(500).json({ message: 'Error al actualizar índice de pregunta' });
     }
   }
 }

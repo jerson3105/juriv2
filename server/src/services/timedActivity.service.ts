@@ -5,6 +5,7 @@ import {
   studentProfiles,
   behaviors,
   pointLogs,
+  activityCompetencies,
   type TimedActivity,
   type TimedActivityMode,
   type TimedActivityStatus,
@@ -32,6 +33,7 @@ export interface CreateTimedActivityDto {
   negativeBehaviorId?: string;
   bombPenaltyPoints?: number;
   bombPenaltyType?: 'XP' | 'HP' | 'GP';
+  competencyIds?: string[];
 }
 
 export interface UpdateTimedActivityDto extends Partial<CreateTimedActivityDto> {}
@@ -81,6 +83,19 @@ class TimedActivityService {
       createdAt: now,
       updatedAt: now,
     });
+
+    // Guardar competencias asociadas si existen
+    if (data.competencyIds && data.competencyIds.length > 0) {
+      const competencyValues = data.competencyIds.map(competencyId => ({
+        id: uuidv4(),
+        activityType: 'TIMED' as const,
+        activityId: id,
+        competencyId,
+        weight: 100,
+        createdAt: now,
+      }));
+      await db.insert(activityCompetencies).values(competencyValues);
+    }
 
     const [activity] = await db
       .select()

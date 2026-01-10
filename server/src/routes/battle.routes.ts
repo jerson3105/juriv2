@@ -103,4 +103,26 @@ router.get('/bosses/:id/results', (req, res) =>
   battleController.getBattleResults(req, res)
 );
 
+// ==================== MODO BVJ (Boss vs Jugador) ====================
+
+// Obtener estado de batalla BvJ
+router.get('/bosses/:id/bvj/state', (req, res) => 
+  battleController.getBvJBattleState(req, res)
+);
+
+// Seleccionar retador aleatorio
+router.post('/bosses/:id/bvj/select-challenger', authorize('TEACHER'), (req, res) => 
+  battleController.selectRandomChallenger(req, res)
+);
+
+// Iniciar nueva ronda
+router.post('/bosses/:id/bvj/new-round', authorize('TEACHER'), (req, res) => 
+  battleController.startNewRound(req, res)
+);
+
+// Actualizar índice de pregunta actual
+router.post('/bosses/:id/bvj/update-question-index', authorize('TEACHER'), (req, res) => 
+  battleController.updateCurrentQuestionIndex(req, res)
+);
+
 export default router;

@@ -21,6 +21,7 @@ import {
   Link2,
   Copy,
   ChevronLeft,
+  Shield,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -30,6 +31,7 @@ import { classroomApi, type Classroom } from '../../lib/classroomApi';
 import { behaviorApi, type Behavior } from '../../lib/behaviorApi';
 import { studentApi, CHARACTER_CLASSES, type PointType } from '../../lib/studentApi';
 import { badgeApi, type Badge, RARITY_COLORS, RARITY_LABELS } from '../../lib/badgeApi';
+import { CLAN_EMBLEMS } from '../../lib/clanApi';
 import { LevelUpAnimation } from '../../components/effects/LevelUpAnimation';
 import { MultiPointsAnimation, useMultiPointsEffect } from '../../components/effects/PurchaseEffects';
 import { TeacherBadgeAwardedModal } from '../../components/badges/TeacherBadgeAwardedModal';
@@ -46,7 +48,7 @@ export const StudentsPage = () => {
   const [showBadgeModal, setShowBadgeModal] = useState(false);
   const [behaviorType, setBehaviorType] = useState<'positive' | 'negative'>('positive');
   const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards');
+  const [viewMode, setViewMode] = useState<'cards' | 'list' | 'clans'>('cards');
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   
   // Estado para animación de subida de nivel
@@ -297,8 +299,8 @@ export const StudentsPage = () => {
 
         {/* Derecha: Acciones masivas + Toggle vista */}
         <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-          {/* Acciones masivas - Solo en vista lista, ocultas en móvil */}
-          {viewMode === 'list' && students.length > 0 && (
+          {/* Acciones masivas - En vista lista y clanes, ocultas en móvil */}
+          {(viewMode === 'list' || viewMode === 'clans') && students.length > 0 && (
             <div className="hidden sm:flex items-center gap-2">
               {/* Seleccionar todos */}
               <button
@@ -370,6 +372,17 @@ export const StudentsPage = () => {
             >
               <List size={18} />
             </button>
+            {classroom.clansEnabled && (
+              <button
+                onClick={() => setViewMode('clans')}
+                className={`p-2 rounded-md transition-colors ${
+                  viewMode === 'clans' ? 'bg-white dark:bg-gray-700 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-indigo-400 dark:text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-300'
+                }`}
+                title="Vista por clanes"
+              >
+                <Shield size={18} />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -820,6 +833,176 @@ export const StudentsPage = () => {
               </div>
             </Card>
           )}
+
+          {/* Vista por Clanes */}
+          {viewMode === 'clans' && students.length > 0 && (() => {
+            // Agrupar estudiantes por clan
+            const studentsByClan: Record<string, { 
+              clanId: string | null; 
+              clanName: string; 
+              clanColor: string; 
+              clanEmblem: string;
+              students: typeof students 
+            }> = {};
+            
+            students.forEach((student: any) => {
+              const clanId = student.teamId || student.clanId || 'sin-clan';
+              const clanName = student.clanName || 'Sin Clan';
+              const clanColor = student.clanColor || '#6b7280';
+              const clanEmblem = CLAN_EMBLEMS[student.clanEmblem] || '🛡️';
+              
+              if (!studentsByClan[clanId]) {
+                studentsByClan[clanId] = { clanId, clanName, clanColor, clanEmblem, students: [] };
+              }
+              studentsByClan[clanId].students.push(student);
+            });
+
+            // Ordenar: primero los clanes, luego sin clan
+            const sortedClans = Object.values(studentsByClan).sort((a, b) => {
+              if (a.clanId === 'sin-clan') return 1;
+              if (b.clanId === 'sin-clan') return -1;
+              return a.clanName.localeCompare(b.clanName);
+            });
+
+            return (
+              <div className="space-y-6">
+                {sortedClans.map((clan) => {
+                  const clanStudentIds = clan.students.map(s => s.id);
+                  const allClanSelected = clanStudentIds.every(id => selectedStudents.has(id));
+                  const someClanSelected = clanStudentIds.some(id => selectedStudents.has(id));
+
+                  const toggleClanSelection = () => {
+                    const newSelected = new Set(selectedStudents);
+                    if (allClanSelected) {
+                      clanStudentIds.forEach(id => newSelected.delete(id));
+                    } else {
+                      clanStudentIds.forEach(id => newSelected.add(id));
+                    }
+                    setSelectedStudents(newSelected);
+                  };
+
+                  return (
+                    <Card key={clan.clanId} className="overflow-hidden">
+                      {/* Header del Clan */}
+                      <div 
+                        className="p-4 flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"
+                        style={{ backgroundColor: clan.clanId !== 'sin-clan' ? clan.clanColor : '#6b7280' }}
+                        onClick={toggleClanSelection}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center text-2xl">
+                            {clan.clanEmblem}
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-bold text-white">{clan.clanName}</h3>
+                            <p className="text-sm text-white/80">{clan.students.length} estudiante{clan.students.length !== 1 ? 's' : ''}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-colors ${
+                            allClanSelected 
+                              ? 'bg-white border-white' 
+                              : someClanSelected 
+                                ? 'bg-white/50 border-white' 
+                                : 'border-white/50 hover:border-white'
+                          }`}>
+                            {allClanSelected && <Check size={14} className="text-gray-800" />}
+                            {someClanSelected && !allClanSelected && <div className="w-2 h-2 bg-gray-800 rounded-sm" />}
+                          </div>
+                          <span className="text-sm text-white/80 font-medium">
+                            {allClanSelected ? 'Todos seleccionados' : 'Seleccionar todos'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Lista de estudiantes del clan */}
+                      <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                        {clan.students.map((student) => {
+                          const isSelected = selectedStudents.has(student.id);
+                          const classInfo = CHARACTER_CLASSES[student.characterClass];
+                          const hpPercent = (student.hp / (classroom.maxHp || 100)) * 100;
+
+                          return (
+                            <div 
+                              key={student.id}
+                              className={`p-4 flex items-center gap-4 cursor-pointer transition-colors ${
+                                isSelected ? 'bg-indigo-50 dark:bg-indigo-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                              }`}
+                              onClick={() => toggleStudent(student.id)}
+                            >
+                              {/* Checkbox */}
+                              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                                isSelected 
+                                  ? 'bg-indigo-600 border-indigo-600' 
+                                  : 'border-gray-300 dark:border-gray-600 hover:border-indigo-400'
+                              }`}>
+                                {isSelected && <Check size={12} className="text-white" />}
+                              </div>
+
+                              {/* Avatar */}
+                              <div className="w-12 h-12 rounded-lg overflow-hidden bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center flex-shrink-0">
+                                <StudentAvatarMini
+                                  studentProfileId={student.id}
+                                  gender={student.avatarGender || 'MALE'}
+                                  size="xl"
+                                  className="scale-[0.22] origin-top"
+                                />
+                              </div>
+
+                              {/* Info */}
+                              <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-gray-800 dark:text-white truncate">
+                                  {getDisplayName(student)}
+                                </p>
+                                <div className="flex items-center gap-2 text-xs text-gray-500">
+                                  <span className="text-base">{classInfo?.icon}</span>
+                                  <span>{classInfo?.name}</span>
+                                  <span className="text-gray-300">•</span>
+                                  <span>Nv. {student.level}</span>
+                                </div>
+                              </div>
+
+                              {/* Stats */}
+                              <div className="hidden sm:flex items-center gap-4 text-sm">
+                                <div className="flex items-center gap-1">
+                                  <Sparkles size={14} className="text-yellow-500" />
+                                  <span className="font-medium">{student.xp}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Heart size={14} className="text-red-500" />
+                                  <div className="w-16 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                    <div 
+                                      className="h-full bg-gradient-to-r from-red-500 to-rose-400 rounded-full"
+                                      style={{ width: `${hpPercent}%` }}
+                                    />
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Coins size={14} className="text-amber-500" />
+                                  <span className="font-medium">{student.gp}</span>
+                                </div>
+                              </div>
+
+                              {/* Ver detalle */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate(`/classroom/${classroom.id}/student/${student.id}`);
+                                }}
+                                className="text-indigo-600 hover:text-indigo-700 p-2"
+                              >
+                                <Eye size={18} />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </>
       )}
 

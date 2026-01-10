@@ -10,10 +10,12 @@ import {
   Trash2,
   Edit2,
   X,
+  Award,
+  Check,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
-import { type Classroom } from '../../lib/classroomApi';
+import { classroomApi, type Classroom } from '../../lib/classroomApi';
 import { behaviorApi, type Behavior, type PointType } from '../../lib/behaviorApi';
 import toast from 'react-hot-toast';
 
@@ -165,6 +167,7 @@ export const BehaviorsPage = () => {
       {/* Modal de crear/editar */}
       <BehaviorModal
         isOpen={showModal}
+        classroom={classroom}
         onClose={() => {
           setShowModal(false);
           setEditingBehavior(null);
@@ -265,12 +268,14 @@ const BehaviorModal = ({
   isOpen,
   onClose,
   behavior,
+  classroom,
   onSave,
   isLoading,
 }: {
   isOpen: boolean;
   onClose: () => void;
   behavior: Behavior | null;
+  classroom: Classroom;
   onSave: (data: any) => void;
   isLoading: boolean;
 }) => {
@@ -281,6 +286,16 @@ const BehaviorModal = ({
   const [gpValue, setGpValue] = useState(behavior?.gpValue || 0);
   const [isPositive, setIsPositive] = useState(behavior?.isPositive ?? true);
   const [icon, setIcon] = useState(behavior?.icon || '⭐');
+  const [competencyId, setCompetencyId] = useState<string | null>(behavior?.competencyId || null);
+
+  // Cargar competencias si la clase las usa
+  const { data: curriculumAreas = [] } = useQuery({
+    queryKey: ['curriculum-areas'],
+    queryFn: () => classroomApi.getCurriculumAreas('PE'),
+    enabled: classroom?.useCompetencies,
+  });
+  
+  const classroomCompetencies = curriculumAreas.find((a: any) => a.id === classroom?.curriculumAreaId)?.competencies || [];
 
   // Reset form when behavior changes
   useEffect(() => {
@@ -292,6 +307,7 @@ const BehaviorModal = ({
       setGpValue(behavior.gpValue || 0);
       setIsPositive(behavior.isPositive);
       setIcon(behavior.icon || '⭐');
+      setCompetencyId(behavior?.competencyId || null);
     } else {
       setName('');
       setDescription('');
@@ -300,6 +316,7 @@ const BehaviorModal = ({
       setGpValue(0);
       setIsPositive(true);
       setIcon('⭐');
+      setCompetencyId(null);
     }
   }, [behavior]);
 
@@ -323,6 +340,7 @@ const BehaviorModal = ({
       gpValue,
       isPositive,
       icon,
+      competencyId: competencyId || undefined,
     });
   };
 
@@ -510,6 +528,41 @@ const BehaviorModal = ({
                 Deja en 0 los tipos que no quieras incluir
               </p>
             </div>
+
+            {/* Selector de Competencia */}
+            {classroom?.useCompetencies && classroomCompetencies.length > 0 && (
+              <div>
+                <label className="block text-xs font-medium mb-1.5 text-gray-400 flex items-center gap-1">
+                  <Award size={12} className="text-emerald-500" />
+                  Competencia asociada
+                </label>
+                <div className="grid grid-cols-1 gap-1.5 max-h-24 overflow-y-auto p-2 bg-gray-800 rounded-lg border border-gray-700">
+                  <button
+                    type="button"
+                    onClick={() => setCompetencyId(null)}
+                    className={`p-2 rounded-lg text-left text-xs ${!competencyId ? 'bg-gray-700 ring-1 ring-gray-500' : 'bg-gray-900 hover:bg-gray-700'}`}
+                  >
+                    <span className="text-gray-400">Sin competencia</span>
+                  </button>
+                  {classroomCompetencies.map((c: any) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => setCompetencyId(c.id)}
+                      className={`p-2 rounded-lg text-left text-xs ${competencyId === c.id ? 'bg-emerald-900/50 ring-1 ring-emerald-500' : 'bg-gray-900 hover:bg-gray-700'}`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        {competencyId === c.id && <Check size={12} className="text-emerald-500" />}
+                        <span className="truncate text-white">{c.name}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {competencyId ? 'Este comportamiento contribuirá a la competencia seleccionada' : 'Opcional - para calificación por competencias'}
+                </p>
+              </div>
+            )}
 
             {/* Submit button */}
             <button

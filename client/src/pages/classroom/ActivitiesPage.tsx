@@ -21,6 +21,7 @@ import { AulaZenActivity } from '../../components/activities/AulaZenActivity';
 import { ScrollsActivity } from '../../components/activities/ScrollsActivity';
 import { TerritoryConquestActivity } from '../../components/activities/TerritoryConquestActivity';
 import { TournamentsActivity } from '../../components/activities/TournamentsActivity';
+import { ExpeditionsActivity } from '../../components/activities/ExpeditionsActivity';
 import { useOutletContext, useParams } from 'react-router-dom';
 import BossBattleTypeModal from '../../components/modals/BossBattleTypeModal';
 import RouletteOfDestinyModal from '../../components/modals/RouletteOfDestinyModal';
@@ -132,6 +133,20 @@ const activities: Activity[] = [
     available: true,
     tag: '🆕 Nuevo',
     tagColor: 'from-green-400 to-emerald-500',
+  },
+  {
+    id: 'expeditions',
+    name: 'Expediciones',
+    description: 'Aventuras de aprendizaje con mapas interactivos. ¡Los estudiantes exploran y completan misiones!',
+    icon: <Map size={28} />,
+    emoji: '🗺️',
+    gradient: 'from-emerald-500 via-green-500 to-teal-500',
+    bgGradient: 'from-emerald-500/10 via-green-500/5 to-teal-500/10',
+    shadowColor: 'shadow-emerald-500/30',
+    glowColor: 'emerald',
+    available: true,
+    tag: '🌟 Aventura',
+    tagColor: 'from-emerald-400 to-teal-500',
   },
 ];
 
@@ -258,6 +273,15 @@ export const ActivitiesPage = () => {
   if (selectedActivity === 'tournaments') {
     return (
       <TournamentsActivity 
+        classroom={classroom}
+        onBack={() => setSelectedActivity(null)}
+      />
+    );
+  }
+
+  if (selectedActivity === 'expeditions') {
+    return (
+      <ExpeditionsActivity 
         classroom={classroom}
         onBack={() => setSelectedActivity(null)}
       />
