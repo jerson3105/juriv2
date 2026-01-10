@@ -1429,7 +1429,7 @@ const QuestionsModal = ({
                 boss={boss} 
                 onAdjustHp={async (newHp) => {
                   try {
-                    await battleApi.updateBoss(boss.id, { bossHp: newHp, currentHp: newHp });
+                    await battleApi.updateBoss(boss.id, { bossHp: newHp });
                     queryClient.invalidateQueries({ queryKey: ['bosses'] });
                     toast.success(`HP del boss ajustado a ${newHp}`);
                   } catch {
@@ -2625,7 +2625,6 @@ const StartBattleModal = ({
                         <div className="grid grid-cols-2 gap-1 p-2 bg-white">
                           {clan.students.map((student) => {
                             const hp = student.currentHp ?? student.hp ?? 100;
-                            const maxHp = student.maxHp ?? 100;
                             const isDisabled = hp <= 0;
                             const isSelected = selectedStudents.includes(student.id);
                             

@@ -13,7 +13,6 @@ import {
   ChevronRight,
   ShoppingBag,
   Dices,
-  ScrollText,
   GraduationCap,
   LayoutDashboard,
   CalendarCheck,

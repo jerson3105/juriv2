@@ -953,7 +953,6 @@ const BattleResultsView = ({ battleState, results, onBack }: { battleState: Batt
   const totalDamage = results.reduce((sum, r) => sum + r.damageDealt, 0);
   const totalXpEarned = results.reduce((sum, r) => sum + r.xpEarned, 0);
   const totalGpEarned = results.reduce((sum, r) => sum + r.gpEarned, 0);
-  const avgDamage = results.length > 0 ? Math.round(totalDamage / results.length) : 0;
   const topDamager = results[0];
 
   return (
