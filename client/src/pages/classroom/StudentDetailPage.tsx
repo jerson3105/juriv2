@@ -13,7 +13,7 @@ import {
   Calendar,
   ShoppingBag,
   Award,
-  Activity,
+  Zap as Activity,
   Target,
   Users,
   Trophy,

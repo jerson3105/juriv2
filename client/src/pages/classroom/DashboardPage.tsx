@@ -9,7 +9,7 @@ import {
   AlertTriangle,
   Award,
   Target,
-  Activity,
+  Zap as Activity,
   Heart,
   Sparkles,
   Coins,
