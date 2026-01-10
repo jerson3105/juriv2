@@ -7,7 +7,8 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
+      selfDestroying: true,
       includeAssets: ['favicon.ico', 'iconojuried.png', 'logo.png'],
       manifest: {
         name: 'Juried - Gamificación Educativa',
@@ -71,25 +72,18 @@ export default defineConfig({
     })
   ],
   build: {
-    // Optimización de bundle
+    // Optimización de bundle simplificada
     rollupOptions: {
       output: {
-        manualChunks: (id) => {
-          if (id.includes('node_modules')) {
-            if (id.includes('react-dom')) return 'vendor-react-dom';
-            if (id.includes('react-router')) return 'vendor-react-router';
-            if (id.includes('react')) return 'vendor-react';
-            if (id.includes('framer-motion')) return 'vendor-framer';
-            if (id.includes('lucide-react')) return 'vendor-icons';
-            if (id.includes('@tanstack/react-query')) return 'vendor-query';
-            if (id.includes('recharts') || id.includes('d3-')) return 'vendor-charts';
-            if (id.includes('axios') || id.includes('zustand')) return 'vendor-data';
-            return 'vendor';
-          }
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-ui': ['framer-motion', 'lucide-react'],
+          'vendor-data': ['@tanstack/react-query', 'axios', 'zustand'],
+          'vendor-charts': ['recharts'],
         },
       },
     },
-    chunkSizeWarningLimit: 1200,
+    chunkSizeWarningLimit: 1500,
     // Minificación con terser para eliminar console.log
     minify: 'terser',
     terserOptions: {
