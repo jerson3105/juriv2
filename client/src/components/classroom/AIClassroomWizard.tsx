@@ -83,10 +83,6 @@ export const AIClassroomWizard = ({ isOpen, onClose, onSuccess }: Props) => {
   const [badgesCount, setBadgesCount] = useState(8);
   const [badgeAssignmentMode, setBadgeAssignmentMode] = useState('MANUAL');
 
-  const [missionsDesc, setMissionsDesc] = useState('');
-  const [missionsCount, setMissionsCount] = useState(6);
-  const [missionTypes, setMissionTypes] = useState(new Set(['DAILY', 'WEEKLY']));
-
   const [shopDesc, setShopDesc] = useState('');
   const [shopCount, setShopCount] = useState(8);
 
@@ -128,10 +124,10 @@ export const AIClassroomWizard = ({ isOpen, onClose, onSuccess }: Props) => {
       const result = await api.post('/classrooms/generate-ai-content', {
         section,
         context: baseContext,
-        description: section === 'behaviors' ? behaviorsDesc : section === 'badges' ? badgesDesc : section === 'missions' ? missionsDesc : section === 'shop' ? shopDesc : questionsDesc,
-        count: section === 'behaviors' ? behaviorsCount : section === 'badges' ? badgesCount : section === 'missions' ? missionsCount : section === 'shop' ? shopCount : questionsCount,
+        description: section === 'behaviors' ? behaviorsDesc : section === 'badges' ? badgesDesc : section === 'shop' ? shopDesc : questionsDesc,
+        count: section === 'behaviors' ? behaviorsCount : section === 'badges' ? badgesCount : section === 'shop' ? shopCount : questionsCount,
         pointMode, includePositive, includeNegative, assignmentMode: badgeAssignmentMode,
-        types: Array.from(missionTypes), questionTypes: Array.from(questionTypes),
+        questionTypes: Array.from(questionTypes),
         // Competencias para behaviors y badges
         competencies: (section === 'behaviors' || section === 'badges') ? selectedCompetencies.map((c: any) => ({ id: c.id, name: c.name })) : undefined,
         // Comportamientos para badges
@@ -145,9 +141,6 @@ export const AIClassroomWizard = ({ isOpen, onClose, onSuccess }: Props) => {
         } else if (section === 'badges') {
           setGenerated((p: any) => ({ ...p, badges: result.data.data.items }));
           setSelectedBadges(new Set(result.data.data.items.map((_: any, i: number) => i)));
-        } else if (section === 'missions') {
-          setGenerated((p: any) => ({ ...p, missions: result.data.data.items }));
-          setSelectedMissions(new Set(result.data.data.items.map((_: any, i: number) => i)));
         } else if (section === 'shop') {
           setGenerated((p: any) => ({ ...p, shopItems: result.data.data.items }));
           setSelectedShopItems(new Set(result.data.data.items.map((_: any, i: number) => i)));
@@ -921,130 +914,6 @@ const StepBadges = (props: any) => {
         <div className="text-center py-8 text-gray-400">
           <Award size={40} className="mx-auto mb-3 opacity-30" />
           <p className="text-sm">Haz clic en "Generar con IA" para crear insignias</p>
-        </div>
-      )}
-    </div>
-  );
-};
-
-const StepMissions = (props: any) => {
-  const typeLabels: Record<string, string> = { DAILY: 'Diaria', WEEKLY: 'Semanal', SPECIAL: 'Especial' };
-  return (
-    <div className="space-y-4">
-      <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-xl border border-purple-200 dark:border-purple-800">
-        <p className="text-sm text-purple-700 dark:text-purple-300">
-          💡 <strong>¿Qué son las misiones?</strong> Son objetivos que los estudiantes deben completar para ganar recompensas.
-          Pueden ser <span className="font-bold">diarias</span>, <span className="font-bold">semanales</span> o <span className="font-bold">especiales</span>.
-        </p>
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">✏️ ¿Qué misiones crear?</label>
-        <textarea value={props.missionsDesc} onChange={(e: any) => props.setMissionsDesc(e.target.value)} placeholder="Ej: Completar tareas, participar en clase, ayudar a compañeros..." rows={2} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-purple-500 resize-none" />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">🔢 ¿Cuántas generar?</label>
-          <input type="number" min={3} max={15} value={props.missionsCount} onChange={(e: any) => props.setMissionsCount(+e.target.value)} className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-purple-500" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">📅 Tipos de misión</label>
-          <div className="flex gap-2">
-            {[
-              { value: 'DAILY', label: 'Diarias', icon: '📅' },
-              { value: 'WEEKLY', label: 'Semanales', icon: '📆' },
-              { value: 'SPECIAL', label: 'Especiales', icon: '⭐' },
-            ].map(t => (
-              <button key={t.value} type="button" onClick={() => { const s = new Set(props.missionTypes); s.has(t.value) && s.size > 1 ? s.delete(t.value) : s.add(t.value); props.setMissionTypes(s); }} className={`flex-1 px-2 py-2 text-xs rounded-xl border-2 transition-all ${props.missionTypes.has(t.value) ? 'bg-purple-100 border-purple-500' : 'bg-gray-50 border-gray-200 hover:border-purple-300'}`}>
-                <div className="text-base">{t.icon}</div>
-                <div className="font-medium">{t.label}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <button onClick={() => props.generateContent('missions')} disabled={props.isGenerating} className="w-full py-3 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-xl font-medium flex items-center justify-center gap-2 hover:from-purple-600 hover:to-indigo-700 disabled:opacity-50 transition-all">
-        {props.isGenerating ? <><Loader2 size={18} className="animate-spin" /> Generando misiones...</> : <><Sparkles size={18} /> {props.generated.missions.length ? 'Regenerar misiones' : 'Generar con IA'}</>}
-      </button>
-
-      {props.generated.missions.length > 0 && (
-        <div className="space-y-2 max-h-64 overflow-y-auto">
-          <div className="flex items-center justify-between text-sm text-gray-500 px-1">
-            <span>{props.selectedMissions.size} de {props.generated.missions.length} seleccionadas</span>
-            <button onClick={() => props.setSelectedMissions(new Set(props.generated.missions.map((_: any, i: number) => i)))} className="text-purple-600 hover:underline">Seleccionar todas</button>
-          </div>
-          {props.generated.missions.map((m: any, i: number) => (
-            <div key={i} className={`rounded-xl border-2 transition-all ${
-              props.selectedMissions.has(i)
-                ? m.type === 'DAILY' ? 'border-blue-500 bg-blue-50' : m.type === 'WEEKLY' ? 'border-green-500 bg-green-50' : 'border-amber-500 bg-amber-50'
-                : 'border-gray-200 dark:border-gray-600 opacity-50'
-            }`}>
-              {props.editingIdx?.type === 'missions' && props.editingIdx.idx === i ? (
-                <div className="p-3 space-y-3">
-                  <div className="flex gap-2">
-                    <input value={m.icon || '🎯'} onChange={(e: any) => props.updateItem('missions', i, { icon: e.target.value })} className="w-14 text-center text-xl border border-gray-300 rounded-lg px-2 py-1" />
-                    <input value={m.name || m.title || ''} onChange={(e: any) => props.updateItem('missions', i, { name: e.target.value })} className="flex-1 border border-gray-300 rounded-lg px-3 py-1" placeholder="Nombre de la misión" />
-                  </div>
-                  <textarea value={m.description || ''} onChange={(e: any) => props.updateItem('missions', i, { description: e.target.value })} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none" rows={2} placeholder="Descripción" />
-                  <div className="flex gap-2 items-center flex-wrap">
-                    <select value={m.type || 'DAILY'} onChange={(e: any) => props.updateItem('missions', i, { type: e.target.value })} className="border border-gray-300 rounded-lg px-2 py-1 text-sm">
-                      <option value="DAILY">📅 Diaria</option>
-                      <option value="WEEKLY">📆 Semanal</option>
-                      <option value="SPECIAL">⭐ Especial</option>
-                    </select>
-                    <select value={m.objectiveType || 'CUSTOM'} onChange={(e: any) => props.updateItem('missions', i, { objectiveType: e.target.value })} className="border border-gray-300 rounded-lg px-2 py-1 text-sm">
-                      <option value="CUSTOM">✋ Completar manual</option>
-                      <option value="COMPLETE_BEHAVIORS">📊 Completar comportamientos</option>
-                      <option value="EARN_XP">⚡ Ganar XP</option>
-                      <option value="EARN_GP">💰 Ganar GP</option>
-                    </select>
-                    <div className="flex items-center gap-1">
-                      <input type="number" value={m.xpReward || 0} onChange={(e: any) => props.updateItem('missions', i, { xpReward: +e.target.value })} className="w-16 border border-gray-300 rounded-lg px-2 py-1 text-sm" />
-                      <span className="text-xs text-purple-600 font-medium">XP</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <input type="number" value={m.gpReward || 0} onChange={(e: any) => props.updateItem('missions', i, { gpReward: +e.target.value })} className="w-16 border border-gray-300 rounded-lg px-2 py-1 text-sm" />
-                      <span className="text-xs text-amber-600 font-medium">GP</span>
-                    </div>
-                    <button onClick={() => props.setEditingIdx(null)} className="ml-auto px-4 py-1.5 bg-purple-500 text-white text-sm rounded-lg hover:bg-purple-600">✓ Listo</button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-center gap-3 p-3">
-                  <button onClick={() => { const s = new Set(props.selectedMissions); s.has(i) ? s.delete(i) : s.add(i); props.setSelectedMissions(s); }} className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${props.selectedMissions.has(i) ? 'bg-purple-500 border-purple-500' : 'border-gray-300'}`}>
-                    {props.selectedMissions.has(i) && <Check size={12} className="text-white" />}
-                  </button>
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0 ${m.type === 'DAILY' ? 'bg-blue-100' : m.type === 'WEEKLY' ? 'bg-green-100' : 'bg-amber-100'}`}>{m.icon || '🎯'}</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-gray-800 dark:text-white">{m.name || m.title}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${m.type === 'DAILY' ? 'bg-blue-200 text-blue-800' : m.type === 'WEEKLY' ? 'bg-green-200 text-green-800' : 'bg-amber-200 text-amber-800'}`}>{typeLabels[m.type] || 'Diaria'}</span>
-                      {m.objectiveType && m.objectiveType !== 'CUSTOM' && (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-gray-200 text-gray-700">
-                          {m.objectiveType === 'COMPLETE_BEHAVIORS' ? '📊 Por comportamientos' : m.objectiveType === 'EARN_XP' ? '⚡ Por XP' : '💰 Por GP'}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-gray-500 truncate">{m.description}</p>
-                    <div className="flex gap-2 mt-1">
-                      <span className="text-xs text-purple-600 font-medium">+{m.xpReward || 0} XP</span>
-                      <span className="text-xs text-amber-600 font-medium">+{m.gpReward || 0} GP</span>
-                    </div>
-                  </div>
-                  <button onClick={() => props.setEditingIdx({ type: 'missions', idx: i })} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><Edit2 size={14} className="text-gray-500" /></button>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {!props.generated.missions.length && !props.isGenerating && (
-        <div className="text-center py-8 text-gray-400">
-          <Target size={40} className="mx-auto mb-3 opacity-30" />
-          <p className="text-sm">Haz clic en "Generar con IA" para crear misiones</p>
         </div>
       )}
     </div>
