@@ -59,6 +59,27 @@ export interface CalculateResult {
   }>;
 }
 
+// Tipos para gestión de bimestres
+export interface BimesterInfo {
+  period: string;
+  label: string;
+  isCurrent: boolean;
+  isClosed: boolean;
+  closedAt?: string;
+}
+
+export interface BimesterStatus {
+  currentBimester: string;
+  closedBimesters: Array<{
+    period: string;
+    closedAt: string;
+    closedBy: string;
+  }>;
+  selectedYear: number;
+  availableYears: number[];
+  allBimesters: BimesterInfo[];
+}
+
 export const gradeApi = {
   // Obtener calificaciones de un estudiante
   getStudentGrades: async (studentProfileId: string, period: string = 'CURRENT'): Promise<StudentGrade[]> => {
@@ -125,5 +146,35 @@ export const gradeApi = {
     link.click();
     document.body.removeChild(link);
     window.URL.revokeObjectURL(url);
+  },
+
+  // ═══════════════════════════════════════════════════════════
+  // GESTIÓN DE BIMESTRES
+  // ═══════════════════════════════════════════════════════════
+
+  // Obtener estado de bimestres
+  getBimesterStatus: async (classroomId: string, year?: number): Promise<BimesterStatus> => {
+    const response = await api.get(`/grades/bimesters/${classroomId}`, {
+      params: year ? { year } : undefined,
+    });
+    return response.data;
+  },
+
+  // Establecer bimestre actual
+  setCurrentBimester: async (classroomId: string, period: string): Promise<{ success: boolean; currentBimester: string }> => {
+    const response = await api.put(`/grades/bimesters/${classroomId}/current`, { period });
+    return response.data;
+  },
+
+  // Cerrar bimestre
+  closeBimester: async (classroomId: string, period: string): Promise<{ success: boolean; closedPeriod: string; newCurrentBimester: string }> => {
+    const response = await api.post(`/grades/bimesters/${classroomId}/close`, { period });
+    return response.data;
+  },
+
+  // Reabrir bimestre
+  reopenBimester: async (classroomId: string, period: string): Promise<{ success: boolean; reopenedPeriod: string }> => {
+    const response = await api.post(`/grades/bimesters/${classroomId}/reopen`, { period });
+    return response.data;
   },
 };

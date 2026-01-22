@@ -26,7 +26,9 @@ export const configurePassport = () => {
         try {
           const email = profile.emails?.[0]?.value;
           // Obtener rol del state (pasado desde la ruta inicial)
-          const role = (req.query.state as string) || 'TEACHER';
+          // Si no hay rol o es vacío, significa que viene del login sin rol seleccionado
+          const stateRole = req.query.state as string;
+          const hasSelectedRole = stateRole && stateRole !== '' && stateRole !== 'undefined';
           
           if (!email) {
             return done(new Error('No se pudo obtener el email de Google'), undefined);
@@ -52,8 +54,26 @@ export const configurePassport = () => {
                 where: eq(users.id, user.id),
               });
             }
+            // Usuario existente, continuar normalmente
+            return done(null, user || undefined);
           } else {
-            // Crear nuevo usuario con el rol seleccionado
+            // Usuario nuevo
+            if (!hasSelectedRole) {
+              // No tiene rol seleccionado - devolver datos para selección de rol
+              // Usamos un objeto especial que el callback detectará
+              return done(null, {
+                isNewUser: true,
+                needsRoleSelection: true,
+                googleData: {
+                  email,
+                  firstName: profile.name?.givenName || profile.displayName?.split(' ')[0] || 'Usuario',
+                  lastName: profile.name?.familyName || profile.displayName?.split(' ').slice(1).join(' ') || '',
+                  avatarUrl: profile.photos?.[0]?.value || null,
+                }
+              } as any);
+            }
+            
+            // Tiene rol seleccionado - crear usuario
             const newUserId = uuidv4();
             const now = new Date();
             
@@ -63,7 +83,7 @@ export const configurePassport = () => {
               firstName: profile.name?.givenName || profile.displayName?.split(' ')[0] || 'Usuario',
               lastName: profile.name?.familyName || profile.displayName?.split(' ').slice(1).join(' ') || '',
               password: '', // No password para usuarios de Google
-              role: role as 'TEACHER' | 'STUDENT',
+              role: stateRole as 'TEACHER' | 'STUDENT' | 'PARENT',
               provider: 'GOOGLE',
               avatarUrl: profile.photos?.[0]?.value || null,
               createdAt: now,
@@ -73,9 +93,9 @@ export const configurePassport = () => {
             user = await db.query.users.findFirst({
               where: eq(users.id, newUserId),
             });
+            
+            return done(null, user || undefined);
           }
-
-          return done(null, user || undefined);
         } catch (error) {
           console.error('Error en Google OAuth:', error);
           return done(error as Error, undefined);

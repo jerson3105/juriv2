@@ -1,19 +1,20 @@
 import { useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, Lock, User, GraduationCap, Users, X, Check, AlertCircle } from 'lucide-react';
+import { Mail, Lock, User, GraduationCap, Users, X, Check, AlertCircle, Heart, Trophy, Sparkles, Target } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { useAuthStore } from '../../store/authStore';
 import toast from 'react-hot-toast';
 
-type UserRole = 'TEACHER' | 'STUDENT';
+type UserRole = 'TEACHER' | 'STUDENT' | 'PARENT';
 
 // Validación de requisitos de contraseña
 const validatePassword = (password: string) => ({
   minLength: password.length >= 8,
   hasUppercase: /[A-Z]/.test(password),
   hasLowercase: /[a-z]/.test(password),
+  hasNumber: /[0-9]/.test(password),
   hasSpecial: /[!@#$%^&*(),.?":{}|<>]/.test(password),
 });
 
@@ -45,6 +46,8 @@ export const RegisterPage = () => {
   const isPasswordValid = useMemo(() => 
     passwordValidation.minLength && 
     passwordValidation.hasUppercase && 
+    passwordValidation.hasLowercase &&
+    passwordValidation.hasNumber &&
     passwordValidation.hasSpecial,
     [passwordValidation]
   );
@@ -88,64 +91,115 @@ export const RegisterPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-900 via-primary-800 to-primary-950 p-4">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="w-full max-w-md"
-      >
-        {/* Logo */}
-        <div className="text-center mb-8">
+    <div className="min-h-screen flex">
+      {/* Panel izquierdo - Hero visual (oculto en móvil) */}
+      <div className="hidden lg:flex lg:w-1/2 relative bg-gradient-to-br from-emerald-600 via-teal-700 to-emerald-900 overflow-hidden">
+        {/* Patrón de fondo */}
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute inset-0" style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+          }}></div>
+        </div>
+
+        {/* Contenido del hero */}
+        <div className="relative z-10 flex flex-col justify-center items-center text-center p-12 w-full">
           <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ type: 'spring', duration: 0.8 }}
-            className="mb-4"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
           >
             <img 
               src="/logo.png" 
               alt="Juried" 
-              className="h-20 w-auto mx-auto drop-shadow-2xl"
+              className="h-24 w-auto mx-auto mb-8 drop-shadow-2xl"
             />
+            <h1 className="text-4xl font-bold text-white mb-4">
+              Únete a la Aventura
+            </h1>
+            <p className="text-xl text-emerald-100 mb-12 max-w-md">
+              Crea tu cuenta y comienza a transformar el aprendizaje
+            </p>
           </motion.div>
-          <h1 className="text-2xl font-bold text-white font-display">
-            Únete a Juried
-          </h1>
-          <p className="text-primary-200 mt-2">
-            Comienza tu aventura educativa
-          </p>
-        </div>
 
-        {/* Formulario */}
+          {/* Features */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, delay: 0.2 }}
+            className="space-y-4 w-full max-w-sm"
+          >
+            {[
+              { icon: Trophy, text: 'Gana puntos y sube de nivel' },
+              { icon: Target, text: 'Completa misiones y desafíos' },
+              { icon: Sparkles, text: 'Desbloquea logros y recompensas' },
+            ].map((feature, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.4 + i * 0.1 }}
+                className="flex items-center gap-3 text-left bg-white/10 backdrop-blur-sm rounded-xl p-4"
+              >
+                <div className="w-10 h-10 rounded-lg bg-white/20 flex items-center justify-center">
+                  <feature.icon className="w-5 h-5 text-white" />
+                </div>
+                <span className="text-white font-medium">{feature.text}</span>
+              </motion.div>
+            ))}
+          </motion.div>
+        </div>
+      </div>
+
+      {/* Panel derecho - Formulario */}
+      <div className="w-full lg:w-1/2 flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4 sm:p-8 overflow-y-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8"
+          transition={{ duration: 0.5 }}
+          className="w-full max-w-md"
         >
-          {step === 1 ? (
-            <>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-                ¿Quién eres?
-              </h2>
-              <p className="text-gray-600 dark:text-gray-400 mb-6">
-                Selecciona tu rol para continuar
-              </p>
+          {/* Logo solo visible en móvil */}
+          <div className="text-center mb-6 lg:hidden">
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: 'spring', duration: 0.8 }}
+            >
+              <img 
+                src="/logo.png" 
+                alt="Juried" 
+                className="h-14 w-auto mx-auto drop-shadow-2xl"
+              />
+            </motion.div>
+            <p className="text-gray-600 dark:text-gray-400 mt-2 text-sm">
+              Crea tu cuenta
+            </p>
+          </div>
 
-              <div className="grid grid-cols-2 gap-4">
+          {/* Formulario */}
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6 sm:p-8">
+            {step === 1 ? (
+              <>
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                  ¿Quién eres?
+                </h2>
+                <p className="text-gray-600 dark:text-gray-400 mb-6">
+                  Selecciona tu rol para continuar
+                </p>
+
+              <div className="grid grid-cols-3 gap-3">
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => selectRole('TEACHER')}
-                  className="p-6 rounded-xl border-2 border-gray-200 dark:border-gray-700 hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all group"
+                  className="p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all group"
                 >
-                  <GraduationCap className="w-12 h-12 mx-auto text-primary-600 mb-3" />
-                  <h3 className="font-bold text-gray-900 dark:text-white">
+                  <GraduationCap className="w-10 h-10 mx-auto text-primary-600 mb-2" />
+                  <h3 className="font-bold text-gray-900 dark:text-white text-sm">
                     Docente
                   </h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                    Crea y gestiona clases
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Crea clases
                   </p>
                 </motion.button>
 
@@ -153,14 +207,29 @@ export const RegisterPage = () => {
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => selectRole('STUDENT')}
-                  className="p-6 rounded-xl border-2 border-gray-200 dark:border-gray-700 hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all group"
+                  className="p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all group"
                 >
-                  <Users className="w-12 h-12 mx-auto text-primary-600 mb-3" />
-                  <h3 className="font-bold text-gray-900 dark:text-white">
+                  <Users className="w-10 h-10 mx-auto text-primary-600 mb-2" />
+                  <h3 className="font-bold text-gray-900 dark:text-white text-sm">
                     Estudiante
                   </h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                    Únete a una clase
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Únete a clase
+                  </p>
+                </motion.button>
+
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => selectRole('PARENT')}
+                  className="p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 hover:border-pink-500 hover:bg-pink-50 dark:hover:bg-pink-900/20 transition-all group"
+                >
+                  <Heart className="w-10 h-10 mx-auto text-pink-600 mb-2" />
+                  <h3 className="font-bold text-gray-900 dark:text-white text-sm">
+                    Padre
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Ve el progreso
                   </p>
                 </motion.button>
               </div>
@@ -215,7 +284,7 @@ export const RegisterPage = () => {
                   Crear cuenta
                 </h2>
                 <span className="ml-auto px-3 py-1 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 rounded-full text-sm font-medium">
-                  {formData.role === 'TEACHER' ? 'Docente' : 'Estudiante'}
+                  {formData.role === 'TEACHER' ? 'Docente' : formData.role === 'PARENT' ? 'Padre' : 'Estudiante'}
                 </span>
               </div>
 
@@ -280,6 +349,14 @@ export const RegisterPage = () => {
                         {passwordValidation.hasUppercase ? <Check size={14} /> : <AlertCircle size={14} />}
                         <span>Al menos una letra mayúscula (A-Z)</span>
                       </div>
+                      <div className={`flex items-center gap-2 text-xs ${passwordValidation.hasLowercase ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                        {passwordValidation.hasLowercase ? <Check size={14} /> : <AlertCircle size={14} />}
+                        <span>Al menos una letra minúscula (a-z)</span>
+                      </div>
+                      <div className={`flex items-center gap-2 text-xs ${passwordValidation.hasNumber ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                        {passwordValidation.hasNumber ? <Check size={14} /> : <AlertCircle size={14} />}
+                        <span>Al menos un número (0-9)</span>
+                      </div>
                       <div className={`flex items-center gap-2 text-xs ${passwordValidation.hasSpecial ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}>
                         {passwordValidation.hasSpecial ? <Check size={14} /> : <AlertCircle size={14} />}
                         <span>Al menos un carácter especial (!@#$%^&*)</span>
@@ -321,32 +398,36 @@ export const RegisterPage = () => {
             </>
           )}
 
-          <div className="mt-6 text-center">
-            <p className="text-gray-600 dark:text-gray-400">
-              ¿Ya tienes cuenta?{' '}
-              <Link
-                to="/login"
-                className="text-primary-600 hover:text-primary-700 font-medium"
-              >
-                Inicia sesión
+            <div className="mt-6 text-center">
+              <p className="text-gray-600 dark:text-gray-400">
+                ¿Ya tienes cuenta?{' '}
+                <Link
+                  to="/login"
+                  className="text-primary-600 hover:text-primary-700 font-medium"
+                >
+                  Inicia sesión
+                </Link>
+              </p>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="text-center mt-6 space-y-2">
+            <div className="flex items-center justify-center gap-4 text-sm">
+              <Link to="/about" className="text-gray-500 hover:text-primary-600 transition-colors">
+                ¿Qué es Juried?
               </Link>
+              <span className="text-gray-400">•</span>
+              <Link to="/privacy" className="text-gray-500 hover:text-primary-600 transition-colors">
+                Privacidad
+              </Link>
+            </div>
+            <p className="text-gray-400 text-xs">
+              © {new Date().getFullYear()} Juried. Todos los derechos reservados.
             </p>
           </div>
         </motion.div>
-
-        {/* Footer */}
-        <div className="text-center mt-6 space-y-2">
-          <Link
-            to="/about"
-            className="text-primary-300 hover:text-primary-100 text-sm font-medium transition-colors"
-          >
-            ¿Qué es Juried? →
-          </Link>
-          <p className="text-primary-400 text-xs">
-            © {new Date().getFullYear()} Juried. Todos los derechos reservados.
-          </p>
-        </div>
-      </motion.div>
+      </div>
 
       {/* Modal de selección de rol para Google */}
       <AnimatePresence>
@@ -381,27 +462,38 @@ export const RegisterPage = () => {
                 Selecciona tu rol para continuar con Google
               </p>
 
-              <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="grid grid-cols-3 gap-3 mb-6">
                 <button
                   onClick={() => handleGoogleRegister('TEACHER')}
-                  className="flex flex-col items-center gap-3 p-6 border-2 border-gray-200 dark:border-gray-600 rounded-xl hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all group"
+                  className="flex flex-col items-center gap-2 p-4 border-2 border-gray-200 dark:border-gray-600 rounded-xl hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all group"
                 >
-                  <div className="w-16 h-16 bg-primary-100 dark:bg-primary-900/30 rounded-full flex items-center justify-center group-hover:bg-primary-200 dark:group-hover:bg-primary-800/40 transition-colors">
-                    <GraduationCap className="w-8 h-8 text-primary-600 dark:text-primary-400" />
+                  <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-full flex items-center justify-center group-hover:bg-primary-200 dark:group-hover:bg-primary-800/40 transition-colors">
+                    <GraduationCap className="w-6 h-6 text-primary-600 dark:text-primary-400" />
                   </div>
-                  <span className="font-semibold text-gray-900 dark:text-white">Docente</span>
-                  <span className="text-xs text-gray-500 text-center">Crea y gestiona clases</span>
+                  <span className="font-semibold text-gray-900 dark:text-white text-sm">Docente</span>
+                  <span className="text-xs text-gray-500 text-center">Crea clases</span>
                 </button>
 
                 <button
                   onClick={() => handleGoogleRegister('STUDENT')}
-                  className="flex flex-col items-center gap-3 p-6 border-2 border-gray-200 dark:border-gray-600 rounded-xl hover:border-secondary-500 hover:bg-secondary-50 dark:hover:bg-secondary-900/20 transition-all group"
+                  className="flex flex-col items-center gap-2 p-4 border-2 border-gray-200 dark:border-gray-600 rounded-xl hover:border-secondary-500 hover:bg-secondary-50 dark:hover:bg-secondary-900/20 transition-all group"
                 >
-                  <div className="w-16 h-16 bg-secondary-100 dark:bg-secondary-900/30 rounded-full flex items-center justify-center group-hover:bg-secondary-200 dark:group-hover:bg-secondary-800/40 transition-colors">
-                    <Users className="w-8 h-8 text-secondary-600 dark:text-secondary-400" />
+                  <div className="w-12 h-12 bg-secondary-100 dark:bg-secondary-900/30 rounded-full flex items-center justify-center group-hover:bg-secondary-200 dark:group-hover:bg-secondary-800/40 transition-colors">
+                    <Users className="w-6 h-6 text-secondary-600 dark:text-secondary-400" />
                   </div>
-                  <span className="font-semibold text-gray-900 dark:text-white">Estudiante</span>
+                  <span className="font-semibold text-gray-900 dark:text-white text-sm">Estudiante</span>
                   <span className="text-xs text-gray-500 text-center">Únete a clases</span>
+                </button>
+
+                <button
+                  onClick={() => handleGoogleRegister('PARENT')}
+                  className="flex flex-col items-center gap-2 p-4 border-2 border-gray-200 dark:border-gray-600 rounded-xl hover:border-pink-500 hover:bg-pink-50 dark:hover:bg-pink-900/20 transition-all group"
+                >
+                  <div className="w-12 h-12 bg-pink-100 dark:bg-pink-900/30 rounded-full flex items-center justify-center group-hover:bg-pink-200 dark:group-hover:bg-pink-800/40 transition-colors">
+                    <Heart className="w-6 h-6 text-pink-600 dark:text-pink-400" />
+                  </div>
+                  <span className="font-semibold text-gray-900 dark:text-white text-sm">Padre</span>
+                  <span className="text-xs text-gray-500 text-center">Ve el progreso</span>
                 </button>
               </div>
 

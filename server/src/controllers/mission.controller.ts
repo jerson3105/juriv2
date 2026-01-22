@@ -235,6 +235,23 @@ export const getMyMissions = async (req: Request, res: Response) => {
 
 // ==================== PROGRESO Y RECOMPENSAS ====================
 
+export const updateMissionProgressManually = async (req: Request, res: Response) => {
+  try {
+    const { studentMissionId } = req.params;
+    const { progress } = req.body;
+
+    if (typeof progress !== 'number') {
+      return res.status(400).json({ error: 'El progreso debe ser un número' });
+    }
+
+    const updated = await missionService.updateProgressManually(studentMissionId, progress);
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Error updating mission progress:', error);
+    res.status(400).json({ error: error.message || 'Error al actualizar el progreso' });
+  }
+};
+
 export const claimMissionReward = async (req: Request, res: Response) => {
   try {
     const { studentMissionId } = req.params;

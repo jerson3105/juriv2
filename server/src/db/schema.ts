@@ -15,12 +15,11 @@ import { relations } from 'drizzle-orm';
 
 // ==================== ENUMS ====================
 
-export const userRoleEnum = mysqlEnum('role', ['ADMIN', 'TEACHER', 'STUDENT']);
+export const userRoleEnum = mysqlEnum('role', ['ADMIN', 'TEACHER', 'STUDENT', 'PARENT']);
 export const authProviderEnum = mysqlEnum('provider', ['LOCAL', 'GOOGLE']);
 export const characterClassEnum = mysqlEnum('character_class', ['GUARDIAN', 'ARCANE', 'EXPLORER', 'ALCHEMIST']);
 export const pointTypeEnum = mysqlEnum('point_type', ['XP', 'HP', 'GP']);
 export const pointActionEnum = mysqlEnum('action', ['ADD', 'REMOVE']);
-export const battleStatusEnum = mysqlEnum('status', ['DRAFT', 'ACTIVE', 'COMPLETED', 'VICTORY', 'DEFEAT']);
 export const questionTypeEnum = mysqlEnum('question_type', ['TEXT', 'IMAGE']);
 export const itemCategoryEnum = mysqlEnum('category', ['AVATAR', 'ACCESSORY', 'CONSUMABLE', 'SPECIAL']);
 export const itemRarityEnum = mysqlEnum('rarity', ['COMMON', 'RARE', 'LEGENDARY']);
@@ -35,6 +34,10 @@ export const schoolMemberRoleEnum = mysqlEnum('school_member_role', ['OWNER', 'A
 
 // Enums para Sistema de Calificaciones por Competencias
 export const gradeScaleTypeEnum = mysqlEnum('grade_scale_type', ['PERU_LETTERS', 'PERU_VIGESIMAL', 'CENTESIMAL', 'USA_LETTERS', 'CUSTOM']);
+
+// Enums para Sistema de Padres de Familia
+export const parentRelationshipEnum = mysqlEnum('relationship', ['FATHER', 'MOTHER', 'TUTOR', 'GUARDIAN']);
+export const parentLinkStatusEnum = mysqlEnum('status', ['PENDING', 'ACTIVE', 'REVOKED']);
 
 // ==================== ESCUELAS (B2B) ====================
 
@@ -256,11 +259,12 @@ export const users = mysqlTable('users', {
   updatedAt: datetime('updated_at').notNull(),
 });
 
-export const usersRelations = relations(users, ({ many }) => ({
+export const usersRelations = relations(users, ({ many, one }) => ({
   teacherClassrooms: many(classrooms),
   studentProfiles: many(studentProfiles),
   refreshTokens: many(refreshTokens),
   schoolMemberships: many(schoolMembers),
+  parentProfile: one(parentProfiles),
 }));
 
 export const refreshTokens = mysqlTable('refresh_tokens', {
@@ -275,6 +279,62 @@ export const refreshTokensRelations = relations(refreshTokens, ({ one }) => ({
   user: one(users, {
     fields: [refreshTokens.userId],
     references: [users.id],
+  }),
+}));
+
+// ==================== PADRES DE FAMILIA ====================
+
+export const parentProfiles = mysqlTable('parent_profiles', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  userId: varchar('user_id', { length: 36 }).notNull(),
+  phone: varchar('phone', { length: 20 }),
+  relationship: parentRelationshipEnum.notNull().default('GUARDIAN'),
+  
+  // Preferencias de notificación
+  notifyByEmail: boolean('notify_by_email').notNull().default(true),
+  notifyWeeklySummary: boolean('notify_weekly_summary').notNull().default(true),
+  notifyAlerts: boolean('notify_alerts').notNull().default(true),
+  
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  userIdx: index('idx_parent_profiles_user').on(table.userId),
+}));
+
+export const parentProfilesRelations = relations(parentProfiles, ({ one, many }) => ({
+  user: one(users, {
+    fields: [parentProfiles.userId],
+    references: [users.id],
+  }),
+  studentLinks: many(parentStudentLinks),
+}));
+
+export const parentStudentLinks = mysqlTable('parent_student_links', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  parentProfileId: varchar('parent_profile_id', { length: 36 }).notNull(),
+  studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),
+  
+  status: parentLinkStatusEnum.notNull().default('PENDING'),
+  linkCode: varchar('link_code', { length: 8 }).notNull(), // Código generado por profesor
+  
+  linkedAt: datetime('linked_at'), // Cuando se activó el vínculo
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  parentIdx: index('idx_parent_student_links_parent').on(table.parentProfileId),
+  studentIdx: index('idx_parent_student_links_student').on(table.studentProfileId),
+  linkCodeIdx: index('idx_parent_student_links_code').on(table.linkCode),
+  uniqueLink: unique('unique_parent_student').on(table.parentProfileId, table.studentProfileId),
+}));
+
+export const parentStudentLinksRelations = relations(parentStudentLinks, ({ one }) => ({
+  parentProfile: one(parentProfiles, {
+    fields: [parentStudentLinks.parentProfileId],
+    references: [parentProfiles.id],
+  }),
+  studentProfile: one(studentProfiles, {
+    fields: [parentStudentLinks.studentProfileId],
+    references: [studentProfiles.id],
   }),
 }));
 
@@ -318,7 +378,6 @@ export const classrooms = mysqlTable('classrooms', {
   // Configuración de clanes
   clansEnabled: boolean('clans_enabled').notNull().default(false), // Habilitar sistema de clanes
   clanXpPercentage: int('clan_xp_percentage').notNull().default(50), // % de XP que va al clan (0-100)
-  clanBattlesEnabled: boolean('clan_battles_enabled').notNull().default(false), // Clanes vs Boss en lugar de individual
   clanGpRewardEnabled: boolean('clan_gp_reward_enabled').notNull().default(true), // GP para todos al ganar
   
   // Configuración de racha de login
@@ -354,6 +413,13 @@ export const classrooms = mysqlTable('classrooms', {
       gpReward: number;
     }>;
   }>(),
+  // Gestión de bimestres
+  currentBimester: varchar('current_bimester', { length: 20 }).default('2024-B1'),
+  closedBimesters: json('closed_bimesters').$type<Array<{
+    period: string;
+    closedAt: string;
+    closedBy: string;
+  }>>(),
   
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
@@ -380,7 +446,6 @@ export const classroomsRelations = relations(classrooms, ({ one, many }) => ({
   teams: many(teams),
   behaviors: many(behaviors),
   powers: many(powers),
-  bossBattles: many(bossBattles),
   randomEvents: many(randomEvents),
   shopItems: many(shopItems),
   classroomCompetencies: many(classroomCompetencies),
@@ -397,11 +462,11 @@ export const studentProfiles = mysqlTable('student_profiles', {
   avatarGender: avatarGenderEnum.notNull().default('MALE'), // género del avatar
   displayName: varchar('display_name', { length: 100 }), // Nombre para estudiantes sin cuenta
   linkCode: varchar('link_code', { length: 8 }).unique(), // Código para vincular cuenta
+  parentLinkCode: varchar('parent_link_code', { length: 8 }).unique(), // Código para vincular padre
   xp: int('xp').notNull().default(0),
   hp: int('hp').notNull().default(100),
   gp: int('gp').notNull().default(0),
   level: int('level').notNull().default(1),
-  bossKills: int('boss_kills').notNull().default(0), // Victorias en Boss Battles
   characterName: varchar('character_name', { length: 100 }),
   avatarUrl: varchar('avatar_url', { length: 500 }),
   teamId: varchar('team_id', { length: 36 }),
@@ -438,7 +503,6 @@ export const studentProfilesRelations = relations(studentProfiles, ({ one, many 
   pointLogs: many(pointLogs),
   powerUsages: many(powerUsages),
   purchases: many(purchases),
-  battleResults: many(battleResults),
   loginStreaks: many(loginStreaks),
 }));
 
@@ -633,158 +697,6 @@ export const powerUsagesRelations = relations(powerUsages, ({ one }) => ({
   }),
   student: one(studentProfiles, {
     fields: [powerUsages.studentId],
-    references: [studentProfiles.id],
-  }),
-}));
-
-// ==================== BOSS BATTLES ====================
-
-// Tipo de batalla: CLASSIC (todos vs boss), BVJ (Boss vs Jugador 1v1)
-export const battleModeEnum = mysqlEnum('battle_mode', ['CLASSIC', 'BVJ']);
-
-export const bossBattles = mysqlTable('boss_battles', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
-  battleMode: battleModeEnum.notNull().default('CLASSIC'),
-  name: varchar('name', { length: 255 }).notNull(),
-  description: text('description'),
-  bossName: varchar('boss_name', { length: 255 }).notNull(),
-  bossHp: int('boss_hp').notNull(),
-  bossImageUrl: varchar('boss_image_url', { length: 500 }),
-  xpReward: int('xp_reward').notNull().default(50),
-  gpReward: int('gp_reward').notNull().default(20),
-  participantBonus: int('participant_bonus').notNull().default(10), // Bonus XP/GP extra para participantes en BvJ
-  status: battleStatusEnum.notNull().default('DRAFT'),
-  currentHp: int('current_hp').notNull(),
-  currentRound: int('current_round').notNull().default(1), // Ronda actual (para BvJ)
-  currentQuestionIndex: int('current_question_index').notNull().default(0), // Índice de pregunta actual (para BvJ)
-  currentChallengerId: varchar('current_challenger_id', { length: 36 }), // Estudiante actual enfrentando al boss (BvJ)
-  usedStudentIds: json('used_student_ids'), // Array de IDs de estudiantes ya usados en la ronda actual
-  competencyId: varchar('competency_id', { length: 36 }),
-  startedAt: datetime('started_at'),
-  endedAt: datetime('ended_at'),
-  createdAt: datetime('created_at').notNull(),
-  updatedAt: datetime('updated_at').notNull(),
-}, (table) => ({
-  competencyIdx: index('idx_boss_battles_competency').on(table.competencyId),
-}));
-
-export const bossBattlesRelations = relations(bossBattles, ({ one, many }) => ({
-  classroom: one(classrooms, {
-    fields: [bossBattles.classroomId],
-    references: [classrooms.id],
-  }),
-  competency: one(classroomCompetencies, {
-    fields: [bossBattles.competencyId],
-    references: [classroomCompetencies.id],
-  }),
-  questions: many(battleQuestions),
-  participants: many(battleParticipants),
-  answers: many(battleAnswers),
-  results: many(battleResults),
-}));
-
-// Enum para tipo de pregunta de batalla
-export const battleQuestionTypeEnum = mysqlEnum('battle_question_type', ['TRUE_FALSE', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'MATCHING']);
-
-export const battleQuestions = mysqlTable('battle_questions', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  battleId: varchar('battle_id', { length: 36 }).notNull(),
-  questionType: questionTypeEnum.notNull().default('TEXT'),
-  battleQuestionType: battleQuestionTypeEnum.notNull().default('SINGLE_CHOICE'), // Tipo: V/F, única, múltiple, unir
-  question: text('question').notNull(),
-  imageUrl: varchar('image_url', { length: 500 }), // Para preguntas con imagen
-  options: json('options'), // Array de strings (puede ser null para MATCHING)
-  correctIndex: int('correct_index').notNull().default(0),
-  correctIndices: json('correct_indices'), // Array de índices correctos para MULTIPLE_CHOICE
-  pairs: json('pairs'), // Array de {left, right} para MATCHING
-  damage: int('damage').notNull().default(10),
-  hpPenalty: int('hp_penalty').notNull().default(10), // HP que pierden los que fallan
-  timeLimit: int('time_limit').notNull().default(30),
-  orderIndex: int('order_index').notNull().default(0),
-  createdAt: datetime('created_at').notNull(),
-});
-
-export const battleQuestionsRelations = relations(battleQuestions, ({ one, many }) => ({
-  battle: one(bossBattles, {
-    fields: [battleQuestions.battleId],
-    references: [bossBattles.id],
-  }),
-  answers: many(battleAnswers),
-}));
-
-// Participantes de la batalla
-export const battleParticipants = mysqlTable('battle_participants', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  battleId: varchar('battle_id', { length: 36 }).notNull(),
-  studentId: varchar('student_id', { length: 36 }).notNull(),
-  joinedAt: datetime('joined_at').notNull(),
-  totalDamage: int('total_damage').notNull().default(0),
-  correctAnswers: int('correct_answers').notNull().default(0),
-  wrongAnswers: int('wrong_answers').notNull().default(0),
-}, (table) => ({
-  battleStudentUnique: unique().on(table.battleId, table.studentId),
-}));
-
-export const battleParticipantsRelations = relations(battleParticipants, ({ one, many }) => ({
-  battle: one(bossBattles, {
-    fields: [battleParticipants.battleId],
-    references: [bossBattles.id],
-  }),
-  student: one(studentProfiles, {
-    fields: [battleParticipants.studentId],
-    references: [studentProfiles.id],
-  }),
-  answers: many(battleAnswers),
-}));
-
-// Respuestas individuales
-export const battleAnswers = mysqlTable('battle_answers', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  battleId: varchar('battle_id', { length: 36 }).notNull(),
-  questionId: varchar('question_id', { length: 36 }).notNull(),
-  participantId: varchar('participant_id', { length: 36 }).notNull(),
-  selectedIndex: int('selected_index'), // null si no respondió a tiempo
-  isCorrect: boolean('is_correct').notNull().default(false),
-  timeSpent: int('time_spent'), // segundos que tardó en responder
-  answeredAt: datetime('answered_at').notNull(),
-});
-
-export const battleAnswersRelations = relations(battleAnswers, ({ one }) => ({
-  battle: one(bossBattles, {
-    fields: [battleAnswers.battleId],
-    references: [bossBattles.id],
-  }),
-  question: one(battleQuestions, {
-    fields: [battleAnswers.questionId],
-    references: [battleQuestions.id],
-  }),
-  participant: one(battleParticipants, {
-    fields: [battleAnswers.participantId],
-    references: [battleParticipants.id],
-  }),
-}));
-
-export const battleResults = mysqlTable('battle_results', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  battleId: varchar('battle_id', { length: 36 }).notNull(),
-  studentId: varchar('student_id', { length: 36 }).notNull(),
-  score: int('score').notNull().default(0),
-  damageDealt: int('damage_dealt').notNull().default(0),
-  xpEarned: int('xp_earned').notNull().default(0),
-  gpEarned: int('gp_earned').notNull().default(0),
-  completedAt: datetime('completed_at').notNull(),
-}, (table) => ({
-  battleStudentUnique: unique().on(table.battleId, table.studentId),
-}));
-
-export const battleResultsRelations = relations(battleResults, ({ one }) => ({
-  battle: one(bossBattles, {
-    fields: [battleResults.battleId],
-    references: [bossBattles.id],
-  }),
-  student: one(studentProfiles, {
-    fields: [battleResults.studentId],
     references: [studentProfiles.id],
   }),
 }));
@@ -1270,16 +1182,17 @@ export const questionsRelations = relations(questions, ({ one }) => ({
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
+export type ParentProfile = typeof parentProfiles.$inferSelect;
+export type NewParentProfile = typeof parentProfiles.$inferInsert;
+export type ParentStudentLink = typeof parentStudentLinks.$inferSelect;
+export type NewParentStudentLink = typeof parentStudentLinks.$inferInsert;
+export type ParentRelationship = 'FATHER' | 'MOTHER' | 'TUTOR' | 'GUARDIAN';
+export type ParentLinkStatus = 'PENDING' | 'ACTIVE' | 'REVOKED';
 export type Classroom = typeof classrooms.$inferSelect;
 export type NewClassroom = typeof classrooms.$inferInsert;
 export type StudentProfile = typeof studentProfiles.$inferSelect;
 export type Team = typeof teams.$inferSelect;
 export type Power = typeof powers.$inferSelect;
-export type BossBattle = typeof bossBattles.$inferSelect;
-export type BattleQuestion = typeof battleQuestions.$inferSelect;
-export type BattleParticipant = typeof battleParticipants.$inferSelect;
-export type BattleAnswer = typeof battleAnswers.$inferSelect;
-export type BattleResult = typeof battleResults.$inferSelect;
 export type RandomEvent = typeof randomEvents.$inferSelect;
 export type EventLog = typeof eventLogs.$inferSelect;
 export type ShopItem = typeof shopItems.$inferSelect;
@@ -1292,9 +1205,7 @@ export type ItemRarity = 'COMMON' | 'RARE' | 'LEGENDARY';
 export type PurchaseType = 'SELF' | 'GIFT' | 'TEACHER';
 export type PurchaseStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type ItemUsageStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
-export type NotificationType = 'ITEM_USED' | 'GIFT_RECEIVED' | 'BATTLE_STARTED' | 'LEVEL_UP' | 'POINTS' | 'PURCHASE_APPROVED' | 'PURCHASE_REJECTED' | 'BADGE' | 'MISSION_COMPLETED';
-export type BattleStatus = 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'VICTORY' | 'DEFEAT';
-export type BattleMode = 'CLASSIC' | 'BVJ';
+export type NotificationType = 'ITEM_USED' | 'GIFT_RECEIVED' | 'LEVEL_UP' | 'POINTS' | 'PURCHASE_APPROVED' | 'PURCHASE_REJECTED' | 'BADGE' | 'MISSION_COMPLETED';
 export type QuestionType = 'TEXT' | 'IMAGE';
 export type AvatarGender = 'MALE' | 'FEMALE';
 export type AvatarSlot = 'HEAD' | 'HAIR' | 'EYES' | 'TOP' | 'BOTTOM' | 'LEFT_HAND' | 'RIGHT_HAND' | 'SHOES' | 'BACK' | 'FLAG' | 'BACKGROUND';
@@ -1411,140 +1322,6 @@ export type TimedActivityResult = typeof timedActivityResults.$inferSelect;
 export type NewTimedActivityResult = typeof timedActivityResults.$inferInsert;
 export type TimedActivityMode = 'STOPWATCH' | 'TIMER' | 'BOMB' | 'BOMB_RANDOM';
 export type TimedActivityStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'COMPLETED';
-
-// ==================== STUDENT BOSS BATTLES ====================
-
-export const studentBossBattles = mysqlTable('student_boss_battles', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
-  
-  // Info del boss
-  bossName: varchar('boss_name', { length: 255 }).notNull(),
-  bossImageUrl: varchar('boss_image_url', { length: 500 }),
-  bossMaxHp: int('boss_max_hp').notNull(),
-  bossCurrentHp: int('boss_current_hp').notNull(),
-  
-  // Configuración de preguntas
-  questionBankId: varchar('question_bank_id', { length: 36 }).notNull(),
-  questionsPerAttempt: int('questions_per_attempt').notNull().default(5), // Preguntas por intento
-  
-  // Configuración de daño
-  damagePerCorrect: int('damage_per_correct').notNull().default(10), // Daño al boss por respuesta correcta
-  damageToStudentOnWrong: int('damage_to_student_on_wrong').notNull().default(5), // Daño al estudiante por respuesta incorrecta
-  
-  // Configuración de intentos
-  maxAttempts: int('max_attempts').notNull().default(1), // Intentos permitidos por estudiante
-  
-  // Recompensas
-  xpPerCorrectAnswer: int('xp_per_correct_answer').notNull().default(10), // XP por respuesta correcta
-  gpPerCorrectAnswer: int('gp_per_correct_answer').notNull().default(5), // GP por respuesta correcta
-  bonusXpOnVictory: int('bonus_xp_on_victory').notNull().default(50), // XP bonus si el boss muere
-  bonusGpOnVictory: int('bonus_gp_on_victory').notNull().default(25), // GP bonus si el boss muere
-  
-  // Programación
-  status: mysqlEnum('status', ['DRAFT', 'SCHEDULED', 'ACTIVE', 'COMPLETED', 'VICTORY', 'DEFEAT']).notNull().default('DRAFT'),
-  startDate: datetime('start_date'), // null = inicia inmediatamente
-  endDate: datetime('end_date'), // null = sin fecha límite
-  
-  // Competencia asociada (opcional, para calificaciones)
-  competencyId: varchar('competency_id', { length: 36 }),
-  
-  // Timestamps
-  createdAt: datetime('created_at').notNull(),
-  updatedAt: datetime('updated_at').notNull(),
-  completedAt: datetime('completed_at'), // Cuando el boss murió o terminó el tiempo
-}, (table) => ({
-  classroomIdx: index('idx_student_boss_battles_classroom').on(table.classroomId),
-  statusIdx: index('idx_student_boss_battles_status').on(table.status),
-  questionBankIdx: index('idx_student_boss_battles_question_bank').on(table.questionBankId),
-  competencyIdx: index('idx_student_boss_battles_competency').on(table.competencyId),
-}));
-
-export const studentBossBattlesRelations = relations(studentBossBattles, ({ one, many }) => ({
-  classroom: one(classrooms, {
-    fields: [studentBossBattles.classroomId],
-    references: [classrooms.id],
-  }),
-  questionBank: one(questionBanks, {
-    fields: [studentBossBattles.questionBankId],
-    references: [questionBanks.id],
-  }),
-  competency: one(classroomCompetencies, {
-    fields: [studentBossBattles.competencyId],
-    references: [classroomCompetencies.id],
-  }),
-  participants: many(studentBossBattleParticipants),
-}));
-
-// Participantes en la batalla (tracking de intentos y estado)
-export const studentBossBattleParticipants = mysqlTable('student_boss_battle_participants', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  battleId: varchar('battle_id', { length: 36 }).notNull(),
-  studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),
-  
-  // Estadísticas acumuladas
-  totalDamageDealt: int('total_damage_dealt').notNull().default(0),
-  totalCorrectAnswers: int('total_correct_answers').notNull().default(0),
-  totalWrongAnswers: int('total_wrong_answers').notNull().default(0),
-  attemptsUsed: int('attempts_used').notNull().default(0),
-  
-  // Recompensas obtenidas
-  xpEarned: int('xp_earned').notNull().default(0),
-  gpEarned: int('gp_earned').notNull().default(0),
-  
-  // Estado
-  isCurrentlyBattling: boolean('is_currently_battling').notNull().default(false), // Para mostrar quién está batallando
-  lastBattleAt: datetime('last_battle_at'),
-  
-  createdAt: datetime('created_at').notNull(),
-}, (table) => ({
-  battleIdx: index('idx_sbb_participants_battle').on(table.battleId),
-  studentIdx: index('idx_sbb_participants_student').on(table.studentProfileId),
-}));
-
-export const studentBossBattleParticipantsRelations = relations(studentBossBattleParticipants, ({ one, many }) => ({
-  battle: one(studentBossBattles, {
-    fields: [studentBossBattleParticipants.battleId],
-    references: [studentBossBattles.id],
-  }),
-  student: one(studentProfiles, {
-    fields: [studentBossBattleParticipants.studentProfileId],
-    references: [studentProfiles.id],
-  }),
-  attempts: many(studentBossBattleAttempts),
-}));
-
-// Intentos individuales (cada vez que el estudiante entra a batallar)
-export const studentBossBattleAttempts = mysqlTable('student_boss_battle_attempts', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  participantId: varchar('participant_id', { length: 36 }).notNull(),
-  
-  // Resultados del intento
-  damageDealt: int('damage_dealt').notNull().default(0),
-  correctAnswers: int('correct_answers').notNull().default(0),
-  wrongAnswers: int('wrong_answers').notNull().default(0),
-  hpLost: int('hp_lost').notNull().default(0), // HP que perdió el estudiante
-  
-  // Preguntas respondidas en este intento (IDs de preguntas)
-  questionsAnswered: json('questions_answered'), // [{questionId, isCorrect, answeredAt}]
-  
-  startedAt: datetime('started_at').notNull(),
-  completedAt: datetime('completed_at'),
-});
-
-export const studentBossBattleAttemptsRelations = relations(studentBossBattleAttempts, ({ one }) => ({
-  participant: one(studentBossBattleParticipants, {
-    fields: [studentBossBattleAttempts.participantId],
-    references: [studentBossBattleParticipants.id],
-  }),
-}));
-
-// Types
-export type StudentBossBattle = typeof studentBossBattles.$inferSelect;
-export type NewStudentBossBattle = typeof studentBossBattles.$inferInsert;
-export type StudentBossBattleParticipant = typeof studentBossBattleParticipants.$inferSelect;
-export type StudentBossBattleAttempt = typeof studentBossBattleAttempts.$inferSelect;
-export type StudentBossBattleStatus = 'DRAFT' | 'SCHEDULED' | 'ACTIVE' | 'COMPLETED' | 'VICTORY' | 'DEFEAT';
 
 // ==================== SISTEMA DE MISIONES ====================
 
@@ -2076,266 +1853,6 @@ export type ExpeditionSubmission = typeof expeditionSubmissions.$inferSelect;
 export type ExpeditionStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
 export type ExpeditionPinType = 'INTRO' | 'OBJECTIVE' | 'FINAL';
 export type ExpeditionProgressStatus = 'LOCKED' | 'UNLOCKED' | 'IN_PROGRESS' | 'PASSED' | 'FAILED' | 'COMPLETED';
-
-// ==================== CONQUISTA DE TERRITORIOS ====================
-
-// Enums para Conquista de Territorios
-export const territoryGameStatusEnum = mysqlEnum('territory_game_status', ['DRAFT', 'ACTIVE', 'PAUSED', 'FINISHED']);
-export const territoryStatusEnum = mysqlEnum('territory_status', ['NEUTRAL', 'OWNED', 'CONTESTED']);
-export const territoryChallengeTypeEnum = mysqlEnum('territory_challenge_type', ['CONQUEST', 'DEFENSE']);
-export const territoryChallengeResultEnum = mysqlEnum('territory_challenge_result', ['PENDING', 'CORRECT', 'INCORRECT']);
-
-// Mapas de territorios (plantillas reutilizables)
-export const territoryMaps = mysqlTable('territory_maps', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
-  name: varchar('name', { length: 100 }).notNull(),
-  description: text('description'),
-  // Configuración visual del mapa
-  backgroundImage: varchar('background_image', { length: 500 }), // Imagen de fondo opcional
-  gridCols: int('grid_cols').notNull().default(4), // Columnas del grid
-  gridRows: int('grid_rows').notNull().default(3), // Filas del grid
-  // Configuración de puntos
-  baseConquestPoints: int('base_conquest_points').notNull().default(100), // XP base por conquistar
-  baseDefensePoints: int('base_defense_points').notNull().default(50), // XP base por defender
-  bonusStreakPoints: int('bonus_streak_points').notNull().default(25), // Bonus por racha
-  // Estado
-  isActive: boolean('is_active').notNull().default(true),
-  createdAt: datetime('created_at').notNull(),
-  updatedAt: datetime('updated_at').notNull(),
-}, (table) => ({
-  classroomIdx: index('idx_territory_maps_classroom').on(table.classroomId),
-}));
-
-export const territoryMapsRelations = relations(territoryMaps, ({ one, many }) => ({
-  classroom: one(classrooms, {
-    fields: [territoryMaps.classroomId],
-    references: [classrooms.id],
-  }),
-  territories: many(territories),
-  games: many(territoryGames),
-}));
-
-// Territorios individuales dentro de un mapa
-export const territories = mysqlTable('territories', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  mapId: varchar('map_id', { length: 36 }).notNull(),
-  name: varchar('name', { length: 100 }).notNull(),
-  description: text('description'),
-  // Posición en el grid
-  gridX: int('grid_x').notNull(), // Columna (0-indexed)
-  gridY: int('grid_y').notNull(), // Fila (0-indexed)
-  // Visuales
-  icon: varchar('icon', { length: 50 }).notNull().default('🏰'),
-  color: varchar('color', { length: 7 }).notNull().default('#6366f1'), // Color base
-  // Configuración especial
-  pointMultiplier: int('point_multiplier').notNull().default(100), // 100 = 1x, 150 = 1.5x
-  isStrategic: boolean('is_strategic').notNull().default(false), // Territorios clave
-  // Conexiones (territorios adyacentes para futuras mecánicas)
-  adjacentTerritories: json('adjacent_territories').$type<string[]>().default([]),
-  createdAt: datetime('created_at').notNull(),
-  updatedAt: datetime('updated_at').notNull(),
-}, (table) => ({
-  mapIdx: index('idx_territories_map').on(table.mapId),
-  gridIdx: index('idx_territories_grid').on(table.mapId, table.gridX, table.gridY),
-}));
-
-export const territoriesRelations = relations(territories, ({ one, many }) => ({
-  map: one(territoryMaps, {
-    fields: [territories.mapId],
-    references: [territoryMaps.id],
-  }),
-  gameStates: many(territoryGameStates),
-  challenges: many(territoryChallenges),
-}));
-
-// Sesiones de juego de Conquista de Territorios
-export const territoryGames = mysqlTable('territory_games', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
-  mapId: varchar('map_id', { length: 36 }).notNull(),
-  name: varchar('name', { length: 100 }).notNull(),
-  // Bancos de preguntas asociados (JSON array de IDs)
-  questionBankIds: json('question_bank_ids').$type<string[]>().notNull(),
-  // Clanes participantes (JSON array de IDs)
-  participatingClanIds: json('participating_clan_ids').$type<string[]>().notNull(),
-  // Estado del juego
-  status: territoryGameStatusEnum.notNull().default('DRAFT'),
-  // Configuración de la sesión
-  maxRounds: int('max_rounds'), // null = sin límite
-  currentRound: int('current_round').notNull().default(0),
-  timePerQuestion: int('time_per_question').notNull().default(30), // segundos
-  // Estadísticas
-  totalChallenges: int('total_challenges').notNull().default(0),
-  // Timestamps
-  startedAt: datetime('started_at'),
-  finishedAt: datetime('finished_at'),
-  createdAt: datetime('created_at').notNull(),
-  updatedAt: datetime('updated_at').notNull(),
-}, (table) => ({
-  classroomIdx: index('idx_territory_games_classroom').on(table.classroomId),
-  mapIdx: index('idx_territory_games_map').on(table.mapId),
-  statusIdx: index('idx_territory_games_status').on(table.status),
-}));
-
-export const territoryGamesRelations = relations(territoryGames, ({ one, many }) => ({
-  classroom: one(classrooms, {
-    fields: [territoryGames.classroomId],
-    references: [classrooms.id],
-  }),
-  map: one(territoryMaps, {
-    fields: [territoryGames.mapId],
-    references: [territoryMaps.id],
-  }),
-  states: many(territoryGameStates),
-  challenges: many(territoryChallenges),
-  clanScores: many(territoryGameClanScores),
-}));
-
-// Estado de cada territorio en una partida específica
-export const territoryGameStates = mysqlTable('territory_game_states', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  gameId: varchar('game_id', { length: 36 }).notNull(),
-  territoryId: varchar('territory_id', { length: 36 }).notNull(),
-  // Estado actual
-  status: territoryStatusEnum.notNull().default('NEUTRAL'),
-  ownerClanId: varchar('owner_clan_id', { length: 36 }), // null si neutral
-  // Historial
-  conqueredAt: datetime('conquered_at'),
-  timesContested: int('times_contested').notNull().default(0),
-  timesChanged: int('times_changed').notNull().default(0), // Veces que cambió de dueño
-  // Último clan que intentó conquistar/retar
-  lastChallengerId: varchar('last_challenger_id', { length: 36 }),
-  lastChallengeAt: datetime('last_challenge_at'),
-  updatedAt: datetime('updated_at').notNull(),
-}, (table) => ({
-  gameIdx: index('idx_territory_game_states_game').on(table.gameId),
-  territoryIdx: index('idx_territory_game_states_territory').on(table.territoryId),
-  ownerIdx: index('idx_territory_game_states_owner').on(table.ownerClanId),
-  uniqueGameTerritory: unique('unique_game_territory').on(table.gameId, table.territoryId),
-}));
-
-export const territoryGameStatesRelations = relations(territoryGameStates, ({ one }) => ({
-  game: one(territoryGames, {
-    fields: [territoryGameStates.gameId],
-    references: [territoryGames.id],
-  }),
-  territory: one(territories, {
-    fields: [territoryGameStates.territoryId],
-    references: [territories.id],
-  }),
-  ownerClan: one(teams, {
-    fields: [territoryGameStates.ownerClanId],
-    references: [teams.id],
-  }),
-}));
-
-// Puntajes de clanes en una partida
-export const territoryGameClanScores = mysqlTable('territory_game_clan_scores', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  gameId: varchar('game_id', { length: 36 }).notNull(),
-  clanId: varchar('clan_id', { length: 36 }).notNull(),
-  // Puntuación
-  totalPoints: int('total_points').notNull().default(0),
-  territoriesOwned: int('territories_owned').notNull().default(0),
-  territoriesConquered: int('territories_conquered').notNull().default(0), // Total conquistados (histórico)
-  territoriesLost: int('territories_lost').notNull().default(0),
-  successfulDefenses: int('successful_defenses').notNull().default(0),
-  failedDefenses: int('failed_defenses').notNull().default(0),
-  // Rachas
-  currentStreak: int('current_streak').notNull().default(0),
-  bestStreak: int('best_streak').notNull().default(0),
-  updatedAt: datetime('updated_at').notNull(),
-}, (table) => ({
-  gameIdx: index('idx_territory_clan_scores_game').on(table.gameId),
-  clanIdx: index('idx_territory_clan_scores_clan').on(table.clanId),
-  uniqueGameClan: unique('unique_game_clan').on(table.gameId, table.clanId),
-}));
-
-export const territoryGameClanScoresRelations = relations(territoryGameClanScores, ({ one }) => ({
-  game: one(territoryGames, {
-    fields: [territoryGameClanScores.gameId],
-    references: [territoryGames.id],
-  }),
-  clan: one(teams, {
-    fields: [territoryGameClanScores.clanId],
-    references: [teams.id],
-  }),
-}));
-
-// Desafíos/Retos de territorios (cada intento de conquista o defensa)
-export const territoryChallenges = mysqlTable('territory_challenges', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  gameId: varchar('game_id', { length: 36 }).notNull(),
-  territoryId: varchar('territory_id', { length: 36 }).notNull(),
-  questionId: varchar('question_id', { length: 36 }).notNull(),
-  // Tipo de desafío
-  challengeType: territoryChallengeTypeEnum.notNull(), // CONQUEST (neutral) o DEFENSE (owned)
-  // Clanes involucrados
-  challengerClanId: varchar('challenger_clan_id', { length: 36 }).notNull(), // Clan que intenta conquistar/retar
-  defenderClanId: varchar('defender_clan_id', { length: 36 }), // null si es territorio neutral
-  // Estudiante que respondió (para dar puntos individuales)
-  respondentStudentId: varchar('respondent_student_id', { length: 36 }),
-  // Resultado
-  result: territoryChallengeResultEnum.notNull().default('PENDING'),
-  // Puntos otorgados
-  pointsAwarded: int('points_awarded').notNull().default(0),
-  xpToStudent: int('xp_to_student').notNull().default(0), // XP dado al estudiante
-  xpToClan: int('xp_to_clan').notNull().default(0), // XP dado al clan
-  // Tiempo
-  timeSpent: int('time_spent'), // Segundos que tardó en responder
-  // Timestamps
-  startedAt: datetime('started_at').notNull(),
-  answeredAt: datetime('answered_at'),
-  createdAt: datetime('created_at').notNull(),
-}, (table) => ({
-  gameIdx: index('idx_territory_challenges_game').on(table.gameId),
-  territoryIdx: index('idx_territory_challenges_territory').on(table.territoryId),
-  challengerIdx: index('idx_territory_challenges_challenger').on(table.challengerClanId),
-  defenderIdx: index('idx_territory_challenges_defender').on(table.defenderClanId),
-}));
-
-export const territoryChallengesRelations = relations(territoryChallenges, ({ one }) => ({
-  game: one(territoryGames, {
-    fields: [territoryChallenges.gameId],
-    references: [territoryGames.id],
-  }),
-  territory: one(territories, {
-    fields: [territoryChallenges.territoryId],
-    references: [territories.id],
-  }),
-  question: one(questions, {
-    fields: [territoryChallenges.questionId],
-    references: [questions.id],
-  }),
-  challengerClan: one(teams, {
-    fields: [territoryChallenges.challengerClanId],
-    references: [teams.id],
-  }),
-  defenderClan: one(teams, {
-    fields: [territoryChallenges.defenderClanId],
-    references: [teams.id],
-  }),
-  respondentStudent: one(studentProfiles, {
-    fields: [territoryChallenges.respondentStudentId],
-    references: [studentProfiles.id],
-  }),
-}));
-
-// Types para Conquista de Territorios
-export type TerritoryMap = typeof territoryMaps.$inferSelect;
-export type NewTerritoryMap = typeof territoryMaps.$inferInsert;
-export type Territory = typeof territories.$inferSelect;
-export type NewTerritory = typeof territories.$inferInsert;
-export type TerritoryGame = typeof territoryGames.$inferSelect;
-export type NewTerritoryGame = typeof territoryGames.$inferInsert;
-export type TerritoryGameState = typeof territoryGameStates.$inferSelect;
-export type TerritoryGameClanScore = typeof territoryGameClanScores.$inferSelect;
-export type TerritoryChallenge = typeof territoryChallenges.$inferSelect;
-export type TerritoryGameStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'FINISHED';
-export type TerritoryStatus = 'NEUTRAL' | 'OWNED' | 'CONTESTED';
-export type TerritoryChallengeType = 'CONQUEST' | 'DEFENSE';
-export type TerritoryChallengeResult = 'PENDING' | 'CORRECT' | 'INCORRECT';
 
 // ==================== REPORTES DE BUGS ====================
 

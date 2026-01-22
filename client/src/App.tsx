@@ -8,6 +8,7 @@ import { TimerProvider } from './contexts/TimerContext';
 import { LoginPage } from './pages/auth/LoginPage';
 import { RegisterPage } from './pages/auth/RegisterPage';
 import { GoogleCallbackPage } from './pages/auth/GoogleCallbackPage';
+import { SelectRolePage } from './pages/auth/SelectRolePage';
 import { AboutPage } from './pages/AboutPage';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { TeacherDashboard } from './pages/dashboard/TeacherDashboard';
@@ -29,16 +30,16 @@ import { BadgesPage } from './pages/classroom/BadgesPage';
 import { ClansPage } from './pages/classroom/ClansPage';
 import { RankingsPage } from './pages/classroom/RankingsPage';
 import { QuestionBanksPage } from './pages/classroom/QuestionBanksPage';
-import { StudentBossBattlesPage } from './pages/classroom/StudentBossBattlesPage';
-import { StudentBossBattlePage } from './pages/student/StudentBossBattlePage';
 import { MissionsPage } from './pages/classroom/MissionsPage';
 import { ExpeditionsPage } from './pages/classroom/ExpeditionsPage';
 import { ReportsPage } from './pages/classroom/ReportsPage';
+import { HistoryPage } from './pages/classroom/HistoryPage';
+import { GradebookPage } from './pages/classroom/GradebookPage';
+import { GradebookStatsPage } from './pages/classroom/GradebookStatsPage';
 import { StudentMissionsPage } from './pages/student/StudentMissionsPage';
 import { StudentScrollsPage } from './pages/student/StudentScrollsPage';
 import { StudentGradesPage } from './pages/student/StudentGradesPage';
 import { StudentExpeditionsPage } from './pages/student/StudentExpeditionsPage';
-import { StudentTerritoryPage } from './pages/student/StudentTerritoryPage';
 
 // Settings
 import { SettingsPage } from './pages/settings/SettingsPage';
@@ -61,6 +62,10 @@ import SchoolStudentsPage from './pages/school/SchoolStudentsPage';
 import SchoolSettingsPage from './pages/school/SchoolSettingsPage';
 import SchoolGradesPage from './pages/school/SchoolGradesPage';
 
+// Parent pages
+import ParentDashboard from './pages/parent/ParentDashboard';
+import ChildDetailPage from './pages/parent/ChildDetailPage';
+
 // Layout
 import { MainLayout } from './components/layout/MainLayout';
 import { ClassroomLayout } from './components/layout/ClassroomLayout';
@@ -77,6 +82,10 @@ const DashboardRouter = () => {
   
   if (user?.role === 'ADMIN') {
     return <Navigate to="/admin" replace />;
+  }
+  
+  if (user?.role === 'PARENT') {
+    return <Navigate to="/parent" replace />;
   }
   
   if (user?.role === 'STUDENT') {
@@ -168,6 +177,7 @@ function App() {
           
           {/* Google OAuth Callback */}
           <Route path="/auth/google/callback" element={<GoogleCallbackPage />} />
+          <Route path="/auth/select-role" element={<SelectRolePage />} />
 
           {/* Protected Routes */}
           <Route
@@ -190,8 +200,10 @@ function App() {
               <Route path="reports" element={<ReportsPage />} />
               <Route path="statistics" element={<Navigate to="../reports" replace />} />
               <Route path="dashboard" element={<Navigate to="../reports" replace />} />
-              <Route path="history" element={<Navigate to="../reports" replace />} />
-              <Route path="gradebook" element={<Navigate to="../reports" replace />} />
+              <Route path="history" element={<HistoryPage />} />
+              <Route path="gradebook" element={<GradebookPage />} />
+              <Route path="gradebook/stats" element={<GradebookStatsPage />} />
+              <Route path="gamification-stats" element={<ReportsPage />} />
               <Route path="students" element={<StudentsPage />} />
               <Route path="behaviors" element={<BehaviorsPage />} />
               <Route path="shop" element={<ShopPage />} />
@@ -201,7 +213,6 @@ function App() {
               <Route path="clans" element={<ClansPage />} />
               <Route path="rankings" element={<RankingsPage />} />
               <Route path="question-banks" element={<QuestionBanksPage />} />
-              <Route path="boss-battles/student" element={<StudentBossBattlesPage />} />
               <Route path="missions" element={<MissionsPage />} />
               <Route path="expeditions" element={<ExpeditionsPage />} />
               <Route path="settings" element={<ClassroomSettingsPage />} />
@@ -216,9 +227,6 @@ function App() {
             <Route path="scrolls" element={<StudentScrollsPage />} />
             <Route path="my-grades" element={<StudentGradesPage />} />
             <Route path="expeditions" element={<StudentExpeditionsPage />} />
-            <Route path="territory" element={<StudentTerritoryPage />} />
-            <Route path="student-battle/:classroomId" element={<StudentBossBattlePage />} />
-            <Route path="student-battle/:classroomId/:battleId" element={<StudentBossBattlePage />} />
             
             {/* Redirigir rutas antiguas */}
             <Route path="my-classroom" element={<Navigate to="/dashboard" replace />} />
@@ -287,6 +295,24 @@ function App() {
             element={
               <ProtectedRoute>
                 <AdminSchools />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Parent Routes */}
+          <Route
+            path="/parent"
+            element={
+              <ProtectedRoute>
+                <ParentDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/parent/child/:studentId"
+            element={
+              <ProtectedRoute>
+                <ChildDetailPage />
               </ProtectedRoute>
             }
           />

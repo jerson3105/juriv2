@@ -230,6 +230,19 @@ export const questionBankApi = {
     const response = await api.post(`/question-banks/question/${questionId}/check`, { answer });
     return response.data.data;
   },
+
+  // ==================== GENERACIÓN CON IA ====================
+
+  generateWithAI: async (data: {
+    topic: string;
+    quantity: number;
+    level: string;
+    questionTypes?: BankQuestionType[];
+    difficulty?: QuestionDifficulty;
+  }): Promise<{ csv: string; prompt: string }> => {
+    const response = await api.post('/question-banks/generate-ai', data);
+    return response.data.data;
+  },
 };
 
 // Helper para parsear JSON que puede estar doblemente serializado

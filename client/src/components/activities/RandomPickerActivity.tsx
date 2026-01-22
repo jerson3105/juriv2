@@ -49,6 +49,7 @@ export const RandomPickerActivity = ({ classroom, onBack }: RandomPickerActivity
   const [slotItems, setSlotItems] = useState<Student[]>([]);
   const [slotPosition, setSlotPosition] = useState(0);
   const [wheelRotation, setWheelRotation] = useState(0);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const { data: behaviors = [] } = useQuery({
     queryKey: ['behaviors', classroom.id],
@@ -238,6 +239,22 @@ export const RandomPickerActivity = ({ classroom, onBack }: RandomPickerActivity
                 {isSpinning ? <SpinningAnimation type={animationType} students={animationType === 'slot' ? slotItems : availableStudents} slotPosition={slotPosition} wheelRotation={wheelRotation} /> : currentStudent ? <SelectedStudentDisplay student={currentStudent} /> : <IdleState availableCount={availableStudents.length} />}
               </AnimatePresence>
             </div>
+            <AnimatePresence mode="wait">
+              <motion.img
+                key={isSpinning ? 'spinning' : currentStudent ? 'selected' : 'idle'}
+                src={isSpinning
+                  ? '/assets/mascot/jiro-randomPickerWhile.png'
+                  : currentStudent
+                    ? '/assets/mascot/jiro-randomPickerSelect.png'
+                    : '/assets/mascot/jiro-randomPicker.png'}
+                alt="Jiro"
+                className="absolute bottom-0 left-0 w-52 max-w-[45%] h-auto z-20 pointer-events-none"
+                initial={{ x: -40, opacity: 0, scale: 0.9 }}
+                animate={{ x: 0, opacity: 1, scale: 1 }}
+                exit={{ x: -40, opacity: 0, scale: 0.9 }}
+                transition={{ type: 'spring', stiffness: 180, damping: 18 }}
+              />
+            </AnimatePresence>
             <div className="absolute inset-0 rounded-3xl border-2 border-white/20 pointer-events-none" />
           </motion.div>
 
@@ -247,7 +264,7 @@ export const RandomPickerActivity = ({ classroom, onBack }: RandomPickerActivity
               <Dices size={22} className="relative z-10" />
               <span className="relative z-10 text-lg">{isSpinning ? '¡Seleccionando...!' : '¡Elegir Estudiante!'}</span>
             </motion.button>
-            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={resetRound} disabled={isSpinning || selectedStudents.length === 0} className="flex items-center gap-2 px-5 py-4 bg-white/90 hover:bg-white text-gray-700 font-semibold rounded-2xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setShowResetConfirm(true)} disabled={isSpinning || selectedStudents.length === 0} className="flex items-center gap-2 px-5 py-4 bg-white/90 hover:bg-white text-gray-700 font-semibold rounded-2xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed">
               <RotateCcw size={18} />Nueva ronda
             </motion.button>
           </div>
@@ -308,6 +325,59 @@ export const RandomPickerActivity = ({ classroom, onBack }: RandomPickerActivity
           </motion.div>
         </div>
       </div>
+
+      {/* Modal de confirmación Nueva Ronda */}
+      <AnimatePresence>
+        {showResetConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            onClick={() => setShowResetConfirm(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="text-center">
+                <div className="w-16 h-16 bg-violet-100 dark:bg-violet-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <RotateCcw className="w-8 h-8 text-violet-600 dark:text-violet-400" />
+                </div>
+                <h3 className="text-lg font-bold text-gray-800 dark:text-white mb-2">
+                  ¿Iniciar nueva ronda?
+                </h3>
+                <p className="text-gray-500 dark:text-gray-400 mb-6 text-sm">
+                  La selección de estudiantes se reiniciará y todos estarán disponibles nuevamente.
+                  <span className="block mt-1 font-medium text-violet-600 dark:text-violet-400">
+                    {selectedStudents.length} estudiante{selectedStudents.length !== 1 ? 's' : ''} seleccionado{selectedStudents.length !== 1 ? 's' : ''} se perderá{selectedStudents.length !== 1 ? 'n' : ''}.
+                  </span>
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowResetConfirm(false)}
+                    className="flex-1 px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 font-medium transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => {
+                      resetRound();
+                      setShowResetConfirm(false);
+                    }}
+                    className="flex-1 px-4 py-2.5 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-xl hover:from-violet-600 hover:to-purple-700 font-medium transition-colors"
+                  >
+                    Sí, reiniciar
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

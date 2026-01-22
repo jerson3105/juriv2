@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft,
@@ -22,6 +23,9 @@ import {
   ChevronRight,
   Zap,
   Shield,
+  Copy,
+  Link2,
+  RefreshCw,
 } from 'lucide-react';
 import {
   AreaChart,
@@ -40,6 +44,7 @@ import { historyApi } from '../../lib/historyApi';
 import { CHARACTER_CLASSES } from '../../lib/studentApi';
 import { clanApi, CLAN_EMBLEMS } from '../../lib/clanApi';
 import { badgeApi, RARITY_COLORS, type StudentBadge } from '../../lib/badgeApi';
+import { parentApi } from '../../lib/parentApi';
 
 type HistoryFilter = 'ALL' | 'XP' | 'GP' | 'HP' | 'PURCHASE' | 'LEVEL_UP';
 const ITEMS_PER_PAGE = 10;
@@ -50,6 +55,24 @@ export const StudentDetailPage = () => {
   const { classroom } = useOutletContext<{ classroom: Classroom & { showCharacterName?: boolean } }>();
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('ALL');
   const [currentPage, setCurrentPage] = useState(1);
+  const [parentLinkCode, setParentLinkCode] = useState<string | null>(null);
+
+  // Mutación para generar código de padre
+  const generateCodeMutation = useMutation({
+    mutationFn: () => parentApi.generateParentLinkCode(studentId!),
+    onSuccess: (data) => {
+      setParentLinkCode(data.code);
+      toast.success('Código generado exitosamente');
+    },
+    onError: () => {
+      toast.error('Error al generar el código');
+    },
+  });
+
+  const copyToClipboard = (code: string) => {
+    navigator.clipboard.writeText(code);
+    toast.success('Código copiado al portapapeles');
+  };
 
   // Obtener datos de la clase
   const { data: classroomData, isLoading } = useQuery({
@@ -443,6 +466,71 @@ export const StudentDetailPage = () => {
           )}
         </Card>
       </div>
+
+      {/* Código para Padres */}
+      <Card className="p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-gradient-to-br from-pink-400 to-rose-500 rounded-lg flex items-center justify-center">
+              <Link2 className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-800 dark:text-white">Código para Padres</h3>
+              <p className="text-xs text-gray-500">Comparte este código con el padre/madre del estudiante</p>
+            </div>
+          </div>
+        </div>
+        
+        <div className="flex flex-col sm:flex-row items-center gap-4">
+          {parentLinkCode ? (
+            <>
+              <div className="flex-1 flex items-center gap-2 p-3 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                <code className="text-2xl font-mono font-bold tracking-widest text-pink-600 dark:text-pink-400">
+                  {parentLinkCode}
+                </code>
+                <button
+                  onClick={() => copyToClipboard(parentLinkCode)}
+                  className="p-2 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                  title="Copiar código"
+                >
+                  <Copy size={18} className="text-gray-500" />
+                </button>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => generateCodeMutation.mutate()}
+                disabled={generateCodeMutation.isPending}
+              >
+                <RefreshCw size={16} className={generateCodeMutation.isPending ? 'animate-spin' : ''} />
+                Regenerar
+              </Button>
+            </>
+          ) : (
+            <Button
+              onClick={() => generateCodeMutation.mutate()}
+              disabled={generateCodeMutation.isPending}
+              className="bg-pink-600 hover:bg-pink-700"
+            >
+              {generateCodeMutation.isPending ? (
+                <>
+                  <RefreshCw size={16} className="animate-spin" />
+                  Generando...
+                </>
+              ) : (
+                <>
+                  <Link2 size={16} />
+                  Generar código de vinculación
+                </>
+              )}
+            </Button>
+          )}
+        </div>
+        
+        <p className="text-xs text-gray-500 mt-3">
+          El padre debe registrarse en Juried como "Padre" e ingresar este código para vincular a su hijo.
+        </p>
+      </Card>
 
       {/* Estadísticas y Gráficos */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -107,7 +107,7 @@ export const authApi = {
     password: string;
     firstName: string;
     lastName: string;
-    role: 'TEACHER' | 'STUDENT';
+    role: 'TEACHER' | 'STUDENT' | 'PARENT';
   }) => api.post<ApiResponse<AuthData>>('/auth/register', data),
 
   login: (data: { email: string; password: string }) =>
@@ -123,6 +123,16 @@ export const authApi = {
 
   changePassword: (data: { currentPassword: string; newPassword: string }) =>
     api.put<ApiResponse<null>>('/auth/change-password', data),
+
+  completeGoogleRegistration: (data: {
+    googleData: {
+      email: string;
+      firstName: string;
+      lastName: string;
+      avatarUrl?: string | null;
+    };
+    role: 'TEACHER' | 'STUDENT' | 'PARENT';
+  }) => api.post<ApiResponse<AuthData>>('/auth/google/complete-registration', data),
 };
 
 // Tipos
@@ -131,7 +141,7 @@ export interface User {
   email: string;
   firstName: string;
   lastName: string;
-  role: 'ADMIN' | 'TEACHER' | 'STUDENT';
+  role: 'ADMIN' | 'TEACHER' | 'STUDENT' | 'PARENT';
   avatarUrl: string | null;
   provider: 'LOCAL' | 'GOOGLE';
   createdAt: string;

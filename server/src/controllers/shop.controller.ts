@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { shopService } from '../services/shop.service.js';
+import { GoogleGenAI } from '@google/genai';
 
 // Schemas de validación
 const createItemSchema = z.object({
@@ -451,6 +452,134 @@ export class ShopController {
     } catch (error) {
       console.error('Error rejecting purchase:', error);
       res.status(500).json({ message: 'Error al rechazar compra' });
+    }
+  }
+
+  // ==================== GENERACIÓN CON IA ====================
+
+  async generateWithAI(req: Request, res: Response) {
+    try {
+      const { description, level, count, itemType } = req.body;
+
+      if (!description || !level) {
+        return res.status(400).json({
+          success: false,
+          message: 'Se requiere descripción y nivel educativo',
+        });
+      }
+
+      // Instrucciones según el tipo de item
+      let typeInstruction = '';
+      switch (itemType) {
+        case 'PRIVILEGES':
+          typeInstruction = 'Genera PRIVILEGIOS que los estudiantes puedan canjear (elegir asiento, tiempo extra, entregar tarde, etc.)';
+          break;
+        case 'REWARDS':
+          typeInstruction = 'Genera RECOMPENSAS físicas o experiencias (dulces, stickers, ser ayudante, etc.)';
+          break;
+        case 'POWERS':
+          typeInstruction = 'Genera PODERES especiales del juego (escudo anti-HP, duplicar XP, revivir, etc.)';
+          break;
+        default:
+          typeInstruction = 'Genera una mezcla variada de privilegios, recompensas y poderes';
+          break;
+      }
+
+      const prompt = `Eres un experto en gamificación educativa. Genera ${count || 8} artículos para la tienda de una clase gamificada de nivel ${level}.
+
+CONTEXTO DEL PROFESOR:
+"${description}"
+
+TIPO DE ITEMS A GENERAR:
+${typeInstruction}
+
+Responde ÚNICAMENTE con un array JSON válido, sin explicaciones ni markdown:
+
+[
+  {
+    "name": "Nombre corto y atractivo (máx 30 caracteres)",
+    "description": "Descripción breve de qué hace o qué es",
+    "category": "CONSUMABLE",
+    "rarity": "COMMON",
+    "price": 25,
+    "icon": "🎁"
+  }
+]
+
+REGLAS IMPORTANTES:
+1. CATEGORÍAS:
+   - CONSUMABLE: Se usa una vez y desaparece (privilegios, experiencias)
+   - SPECIAL: Items únicos o muy especiales
+
+2. RAREZAS y PRECIOS sugeridos:
+   - COMMON: 10-30 GP (fáciles de conseguir)
+   - RARE: 50-100 GP (requieren más esfuerzo)
+   - LEGENDARY: 150-300 GP (muy difíciles, muy valiosos)
+
+3. Iconos disponibles: 🎁⭐💎🏆🎭👑🔮⚡🌟💫🎪🎨🧪💊🗡️🛡️💺⏰📝🎵📱🍬🎮✨🌈🔥❄️
+
+4. Nombres creativos pero claros en español
+5. Apropiados para nivel ${level}
+6. Útiles y motivadores para estudiantes
+7. Realistas de implementar por el profesor
+
+Genera items variados y atractivos:`;
+
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({
+          success: false,
+          message: 'API Key de Gemini no configurada',
+        });
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: prompt,
+      });
+
+      const responseText = response.text || '';
+
+      if (!responseText.trim()) {
+        return res.status(500).json({
+          success: false,
+          message: 'La IA no generó contenido',
+        });
+      }
+
+      let items = [];
+      try {
+        let cleanText = responseText.trim();
+        if (cleanText.startsWith('```json')) {
+          cleanText = cleanText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        } else if (cleanText.startsWith('```')) {
+          cleanText = cleanText.replace(/^```\s*/, '').replace(/\s*```$/, '');
+        }
+        items = JSON.parse(cleanText);
+      } catch (parseError) {
+        console.error('Error parsing AI response:', responseText);
+        return res.status(500).json({
+          success: false,
+          message: 'Error al procesar la respuesta de la IA',
+        });
+      }
+
+      res.json({
+        success: true,
+        data: {
+          items,
+          prompt,
+        },
+      });
+
+    } catch (error: any) {
+      console.error('Error generating shop items with AI:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Error al generar items con IA',
+      });
     }
   }
 }

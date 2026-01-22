@@ -75,9 +75,23 @@ export const RouletteOfDestinyModal = ({
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
           >
-            <div className="relative w-full max-w-lg bg-white dark:bg-gray-800 rounded-3xl shadow-2xl overflow-hidden pointer-events-auto" onClick={(e) => e.stopPropagation()}>
-              {/* Header con gradiente */}
-              <div className="relative bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 p-6 pb-8">
+            <div className="relative w-full max-w-3xl bg-white dark:bg-gray-800 rounded-3xl shadow-2xl overflow-hidden pointer-events-auto flex flex-col md:flex-row" onClick={(e) => e.stopPropagation()}>
+              {/* Panel izquierdo - Jiro */}
+              <div className="hidden md:block md:w-64 relative overflow-hidden flex-shrink-0">
+                <motion.img
+                  src="/assets/mascot/jiroSA.jpg"
+                  alt="Jiro"
+                  className="absolute inset-0 w-full h-full object-cover"
+                  initial={{ scale: 1.1, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ duration: 0.4 }}
+                />
+              </div>
+
+              {/* Panel derecho - Contenido */}
+              <div className="flex-1 flex flex-col">
+                {/* Header con gradiente */}
+                <div className="relative bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 p-6 pb-8">
                 {/* Partículas decorativas */}
                 <div className="absolute inset-0 overflow-hidden">
                   {[...Array(6)].map((_, i) => (
@@ -198,6 +212,7 @@ export const RouletteOfDestinyModal = ({
                   <Zap size={14} />
                   <span>Selecciona una opción para comenzar</span>
                 </div>
+              </div>
               </div>
             </div>
           </motion.div>

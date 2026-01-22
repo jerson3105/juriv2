@@ -69,6 +69,20 @@ export interface CreateBadgeDto {
   rewardXp?: number;
   rewardGp?: number;
   isSecret?: boolean;
+  competencyId?: string | null;
+}
+
+export interface GeneratedBadge {
+  name: string;
+  description: string;
+  icon: string;
+  rarity: BadgeRarity;
+  assignmentMode: BadgeAssignment;
+  unlockCondition: BadgeCondition | null;
+  rewardXp: number;
+  rewardGp: number;
+  isSecret: boolean;
+  competencyId?: string;
 }
 
 // Colores por rareza
@@ -198,5 +212,20 @@ export const badgeApi = {
   }> => {
     const response = await api.get(`/badges/classroom/${classroomId}/stats`);
     return response.data;
+  },
+
+  // Generar insignias con IA
+  generateWithAI: async (data: {
+    description: string;
+    level: string;
+    count?: number;
+    assignmentMode?: 'MANUAL' | 'AUTOMATIC' | 'BOTH';
+    rarities?: ('COMMON' | 'RARE' | 'EPIC' | 'LEGENDARY')[];
+    includeSecret?: boolean;
+    classroomId?: string;
+    competencies?: { id: string; name: string }[];
+  }): Promise<{ badges: GeneratedBadge[]; prompt: string }> => {
+    const response = await api.post('/badges/generate-ai', data);
+    return response.data.data;
   },
 };

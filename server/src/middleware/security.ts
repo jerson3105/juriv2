@@ -45,13 +45,14 @@ export const pollingLimiter = rateLimit({
 // Rate limiter para autenticación (más estricto)
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 10, // máximo 10 intentos de login
+  max: config_app.isDev ? 50 : 15, // más permisivo en dev
   message: {
     success: false,
     message: 'Demasiados intentos de inicio de sesión, intenta en 15 minutos.',
   },
   standardHeaders: true,
   legacyHeaders: false,
+  skipSuccessfulRequests: true, // No contar logins exitosos
 });
 
 // Aplicar middleware de seguridad

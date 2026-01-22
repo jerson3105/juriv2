@@ -26,4 +26,7 @@ router.get('/bank/:bankId/random', authorize('TEACHER'), questionBankController.
 router.get('/bank/:bankId/stats', authorize('TEACHER'), questionBankController.getStats.bind(questionBankController));
 router.post('/question/:questionId/check', authorize('TEACHER'), questionBankController.checkAnswer.bind(questionBankController));
 
+// Generación con IA
+router.post('/generate-ai', authorize('TEACHER'), questionBankController.generateWithAI.bind(questionBankController));
+
 export default router;

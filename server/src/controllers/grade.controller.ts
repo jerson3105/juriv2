@@ -167,6 +167,95 @@ export class GradeController {
       res.status(500).json({ error: error.message || 'Error al exportar PDF' });
     }
   }
+
+  // ═══════════════════════════════════════════════════════════
+  // GESTIÓN DE BIMESTRES
+  // ═══════════════════════════════════════════════════════════
+
+  /**
+   * Obtiene el estado de los bimestres
+   * GET /api/grades/bimesters/:classroomId
+   */
+  async getBimesterStatus(req: Request, res: Response) {
+    try {
+      const { classroomId } = req.params;
+      const { year } = req.query;
+      const status = await gradeService.getBimesterStatus(
+        classroomId, 
+        year ? parseInt(year as string) : undefined
+      );
+      res.json(status);
+    } catch (error: any) {
+      console.error('Error getting bimester status:', error);
+      res.status(500).json({ error: error.message || 'Error al obtener estado de bimestres' });
+    }
+  }
+
+  /**
+   * Establece el bimestre actual
+   * PUT /api/grades/bimesters/:classroomId/current
+   */
+  async setCurrentBimester(req: Request, res: Response) {
+    try {
+      const { classroomId } = req.params;
+      const { period } = req.body;
+      const userId = (req as any).user?.id;
+
+      if (!period) {
+        return res.status(400).json({ error: 'period es requerido' });
+      }
+
+      const result = await gradeService.setCurrentBimester(classroomId, period, userId);
+      res.json(result);
+    } catch (error: any) {
+      console.error('Error setting current bimester:', error);
+      res.status(400).json({ error: error.message || 'Error al establecer bimestre actual' });
+    }
+  }
+
+  /**
+   * Cierra un bimestre
+   * POST /api/grades/bimesters/:classroomId/close
+   */
+  async closeBimester(req: Request, res: Response) {
+    try {
+      const { classroomId } = req.params;
+      const { period } = req.body;
+      const userId = (req as any).user?.id;
+
+      if (!period) {
+        return res.status(400).json({ error: 'period es requerido' });
+      }
+
+      const result = await gradeService.closeBimester(classroomId, period, userId);
+      res.json(result);
+    } catch (error: any) {
+      console.error('Error closing bimester:', error);
+      res.status(400).json({ error: error.message || 'Error al cerrar bimestre' });
+    }
+  }
+
+  /**
+   * Reabre un bimestre cerrado
+   * POST /api/grades/bimesters/:classroomId/reopen
+   */
+  async reopenBimester(req: Request, res: Response) {
+    try {
+      const { classroomId } = req.params;
+      const { period } = req.body;
+      const userId = (req as any).user?.id;
+
+      if (!period) {
+        return res.status(400).json({ error: 'period es requerido' });
+      }
+
+      const result = await gradeService.reopenBimester(classroomId, period, userId);
+      res.json(result);
+    } catch (error: any) {
+      console.error('Error reopening bimester:', error);
+      res.status(400).json({ error: error.message || 'Error al reabrir bimestre' });
+    }
+  }
 }
 
 export const gradeController = new GradeController();

@@ -119,4 +119,11 @@ router.put('/notifications/read-all', (req, res) =>
   shopController.markAllRead(req, res)
 );
 
+// ==================== GENERACIÓN CON IA ====================
+
+// Generar items con IA (solo profesor)
+router.post('/generate-ai', authorize('TEACHER'), (req, res) => 
+  shopController.generateWithAI(req, res)
+);
+
 export default router;

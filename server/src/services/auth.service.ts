@@ -1,11 +1,11 @@
 import bcrypt from 'bcryptjs';
 import { eq, or } from 'drizzle-orm';
-import { db, users, refreshTokens as refreshTokensTable } from '../db/index.js';
+import { db, users, refreshTokens as refreshTokensTable, parentProfiles } from '../db/index.js';
 import { generateTokenPair, verifyRefreshToken, revokeRefreshToken, revokeAllUserTokens } from '../utils/jwt.js';
 import { v4 as uuidv4 } from 'uuid';
 
 // Tipos
-type UserRole = 'TEACHER' | 'STUDENT';
+type UserRole = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'PARENT';
 
 interface RegisterInput {
   email: string;
@@ -78,6 +78,20 @@ export const register = async (input: RegisterInput): Promise<AuthResponse> => {
     createdAt: now,
     updatedAt: now,
   });
+  
+  // Si es padre, crear el perfil de padre
+  if (role === 'PARENT') {
+    await db.insert(parentProfiles).values({
+      id: uuidv4(),
+      userId,
+      relationship: 'GUARDIAN',
+      notifyByEmail: true,
+      notifyWeeklySummary: true,
+      notifyAlerts: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
   
   // Generar tokens
   const tokens = await generateTokenPair({
@@ -201,6 +215,20 @@ export const googleAuth = async (input: GoogleAuthInput): Promise<AuthResponse> 
       createdAt: now,
       updatedAt: now,
     });
+    
+    // Si es padre, crear el perfil de padre
+    if (role === 'PARENT') {
+      await db.insert(parentProfiles).values({
+        id: uuidv4(),
+        userId,
+        relationship: 'GUARDIAN',
+        notifyByEmail: true,
+        notifyWeeklySummary: true,
+        notifyAlerts: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
     
     user = {
       id: userId,
@@ -424,4 +452,65 @@ export const generateTokensForUser = async (userId: string): Promise<{ accessTok
   });
   
   return tokens;
+};
+
+/**
+ * Completar registro de usuario de Google con rol seleccionado
+ */
+export const completeGoogleRegistration = async (googleData: {
+  email: string;
+  firstName: string;
+  lastName: string;
+  avatarUrl?: string | null;
+}, role: UserRole) => {
+  // Verificar que el email no exista
+  const existingUser = await db.query.users.findFirst({
+    where: eq(users.email, googleData.email),
+  });
+  
+  if (existingUser) {
+    throw new Error('Este email ya está registrado');
+  }
+  
+  const newUserId = uuidv4();
+  const now = new Date();
+  
+  await db.insert(users).values({
+    id: newUserId,
+    email: googleData.email,
+    firstName: googleData.firstName,
+    lastName: googleData.lastName,
+    password: '',
+    role: role,
+    provider: 'GOOGLE',
+    avatarUrl: googleData.avatarUrl || null,
+    createdAt: now,
+    updatedAt: now,
+  });
+  
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, newUserId),
+  });
+  
+  if (!user) {
+    throw new Error('Error al crear usuario');
+  }
+  
+  const tokens = await generateTokenPair({
+    userId: user.id,
+    email: user.email,
+    role: user.role as UserRole,
+  });
+  
+  return {
+    user: {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+      avatarUrl: user.avatarUrl,
+    },
+    ...tokens,
+  };
 };

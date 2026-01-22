@@ -4,7 +4,7 @@ import { config_app } from '../config/env.js';
 import { db, refreshTokens } from '../db/index.js';
 import { v4 as uuidv4 } from 'uuid';
 
-type UserRole = 'TEACHER' | 'STUDENT';
+type UserRole = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'PARENT';
 
 interface TokenPayload {
   userId: string;

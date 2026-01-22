@@ -1,7 +1,7 @@
 // Extensión de tipos para Express Request
 // Este archivo extiende el tipo Request de Express para incluir el usuario autenticado
 
-type UserRole = 'ADMIN' | 'TEACHER' | 'STUDENT';
+type UserRole = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'PARENT';
 
 declare global {
   namespace Express {

@@ -98,4 +98,29 @@ export const behaviorApi = {
     const response = await api.post('/behaviors/apply', data);
     return response.data.data;
   },
+
+  // Generar comportamientos con IA
+  generateWithAI: async (data: {
+    description: string;
+    level: string;
+    count?: number;
+    includePositive?: boolean;
+    includeNegative?: boolean;
+    pointMode?: 'COMBINED' | 'XP_ONLY' | 'HP_ONLY' | 'GP_ONLY';
+    competencies?: { id: string; name: string }[];
+  }): Promise<{ behaviors: GeneratedBehavior[]; prompt: string }> => {
+    const response = await api.post('/behaviors/generate-ai', data);
+    return response.data.data;
+  },
 };
+
+export interface GeneratedBehavior {
+  name: string;
+  description: string;
+  isPositive: boolean;
+  xpValue: number;
+  hpValue: number;
+  gpValue: number;
+  icon: string;
+  competencyId?: string;
+}

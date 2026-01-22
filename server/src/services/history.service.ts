@@ -8,14 +8,12 @@ import {
   itemUsages,
   studentBadges,
   badges,
-  battleResults,
-  bossBattles,
 } from '../db/schema.js';
 import { eq, desc, and, sql } from 'drizzle-orm';
 
 export interface ActivityLogEntry {
   id: string;
-  type: 'POINTS' | 'PURCHASE' | 'ITEM_USED' | 'LEVEL_UP' | 'BADGE' | 'BOSS_BATTLE';
+  type: 'POINTS' | 'PURCHASE' | 'ITEM_USED' | 'LEVEL_UP' | 'BADGE';
   timestamp: Date;
   studentId: string;
   studentName: string | null;
@@ -31,12 +29,6 @@ export interface ActivityLogEntry {
     newLevel?: number;
     badgeName?: string;
     badgeIcon?: string;
-    // Boss Battle
-    battleName?: string;
-    xpEarned?: number;
-    gpEarned?: number;
-    damageDealt?: number;
-    isVictory?: boolean;
     // Puntos combinados (cuando un comportamiento tiene XP+HP+GP)
     xpAmount?: number;
     hpAmount?: number;
@@ -51,7 +43,7 @@ class HistoryService {
   async getClassroomHistory(classroomId: string, options?: {
     limit?: number;
     offset?: number;
-    type?: 'POINTS' | 'PURCHASE' | 'ITEM_USED' | 'BADGE' | 'BOSS_BATTLE' | 'ALL';
+    type?: 'POINTS' | 'PURCHASE' | 'ITEM_USED' | 'BADGE' | 'ALL';
     studentId?: string;
     startDate?: Date;
   }): Promise<{ logs: ActivityLogEntry[]; total: number }> {
@@ -294,50 +286,6 @@ class HistoryService {
           details: {
             badgeName: badge.badgeName,
             badgeIcon: badge.badgeIcon || undefined,
-          },
-        });
-      }
-    }
-
-    // 5. Obtener resultados de Boss Battles
-    if (filterType === 'ALL' || filterType === 'BOSS_BATTLE') {
-      const battlesData = await db
-        .select({
-          id: battleResults.id,
-          studentId: battleResults.studentId,
-          completedAt: battleResults.completedAt,
-          xpEarned: battleResults.xpEarned,
-          gpEarned: battleResults.gpEarned,
-          damageDealt: battleResults.damageDealt,
-          battleName: bossBattles.name,
-          bossName: bossBattles.bossName,
-          battleStatus: bossBattles.status,
-        })
-        .from(battleResults)
-        .innerJoin(bossBattles, eq(battleResults.battleId, bossBattles.id))
-        .where(
-          options?.studentId 
-            ? eq(battleResults.studentId, options.studentId)
-            : eq(bossBattles.classroomId, classroomId)
-        )
-        .orderBy(desc(battleResults.completedAt))
-        .limit(limit * 2);
-
-      for (const battle of battlesData) {
-        const student = studentMap.get(battle.studentId);
-        logs.push({
-          id: battle.id,
-          type: 'BOSS_BATTLE',
-          timestamp: battle.completedAt,
-          studentId: battle.studentId,
-          studentName: student?.characterName || null,
-          studentClass: student?.characterClass || 'GUARDIAN',
-          details: {
-            battleName: battle.bossName || battle.battleName,
-            xpEarned: battle.xpEarned,
-            gpEarned: battle.gpEarned,
-            damageDealt: battle.damageDealt,
-            isVictory: battle.battleStatus === 'VICTORY',
           },
         });
       }

@@ -77,7 +77,21 @@ export interface CreateMissionDto {
   autoExpire?: boolean;
 }
 
+export interface GeneratedMission {
+  name: string;
+  description: string;
+  icon: string;
+  type: MissionType;
+  category: MissionCategory;
+  objectiveType: string;
+  objectiveTarget: number;
+  rewardXp: number;
+  rewardGp: number;
+  isRepeatable: boolean;
+}
+
 export interface MissionAssignment {
+  id: string;
   studentProfileId: string;
   studentName: string;
   status: MissionStatus;
@@ -239,6 +253,12 @@ export const missionApi = {
     return response.data;
   },
 
+  // Actualizar progreso manualmente (para misiones CUSTOM)
+  updateProgressManually: async (studentMissionId: string, progress: number): Promise<any> => {
+    const response = await api.put(`/missions/progress/${studentMissionId}`, { progress });
+    return response.data;
+  },
+
   // ==================== RACHAS ====================
 
   // Obtener mi racha (estudiante)
@@ -280,5 +300,17 @@ export const missionApi = {
       },
     });
     return response.data;
+  },
+
+  // Generar misiones con IA
+  generateWithAI: async (data: {
+    description: string;
+    level: string;
+    count?: number;
+    types?: MissionType[];
+    categories?: MissionCategory[];
+  }): Promise<{ missions: GeneratedMission[]; prompt: string }> => {
+    const response = await api.post('/missions/generate-ai', data);
+    return response.data.data;
   },
 };

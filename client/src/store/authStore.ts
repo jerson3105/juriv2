@@ -18,7 +18,7 @@ interface AuthState {
     password: string;
     firstName: string;
     lastName: string;
-    role: 'TEACHER' | 'STUDENT';
+    role: 'TEACHER' | 'STUDENT' | 'PARENT';
   }) => Promise<void>;
   logout: () => Promise<void>;
   fetchUser: () => Promise<void>;

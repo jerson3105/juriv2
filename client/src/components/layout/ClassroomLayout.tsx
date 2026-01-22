@@ -14,7 +14,6 @@ import {
   ShoppingBag,
   Dices,
   GraduationCap,
-  LayoutDashboard,
   CalendarCheck,
   ChevronDown,
   List,
@@ -25,11 +24,14 @@ import {
   Medal,
   Trophy,
   BookOpen,
-  Target,
+  // Target, // Temporalmente no usado
   Map,
   Lock,
   Sparkles,
   Rocket,
+  BarChart3,
+  Scroll,
+  ClipboardList,
 } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
@@ -41,6 +43,7 @@ import { BugReportButton } from '../BugReportButton';
 import { ClassroomOnboardingProvider } from '../onboarding';
 import { HelpCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { AIAssistantWidget } from '../classroom/AIAssistantWidget';
 
 export const ClassroomLayout = () => {
   const { id } = useParams<{ id: string }>();
@@ -103,10 +106,15 @@ export const ClassroomLayout = () => {
       subItems: [
         { path: `/classroom/${id}/behaviors`, label: 'Comportamientos', icon: Award, onboardingId: 'behaviors-menu' },
         { path: `/classroom/${id}/badges`, label: 'Insignias', icon: Medal },
-        { path: `/classroom/${id}/missions`, label: 'Misiones', icon: Target },
         { path: `/classroom/${id}/shop`, label: 'Tienda', icon: ShoppingBag, onboardingId: 'shop-menu' },
-        { path: `/classroom/${id}/activities`, label: 'Actividades', icon: Dices },
+        { path: `/classroom/${id}/rankings`, label: 'Rankings', icon: Trophy },
       ],
+    },
+    { 
+      path: `/classroom/${id}/activities`, 
+      label: 'Actividades', 
+      icon: Dices,
+      gradient: 'from-emerald-500 to-teal-500',
     },
     { 
       path: `/classroom/${id}/question-banks`, 
@@ -115,15 +123,22 @@ export const ClassroomLayout = () => {
       gradient: 'from-indigo-500 to-purple-500',
     },
     { 
-      path: `/classroom/${id}/rankings`, 
-      label: 'Rankings', 
-      icon: Trophy,
-      gradient: 'from-amber-500 to-yellow-500',
+      path: `/classroom/${id}/history`, 
+      label: 'Historial', 
+      icon: Scroll,
+      gradient: 'from-blue-500 to-cyan-500',
     },
+    // Solo mostrar Calificaciones si la clase usa competencias
+    ...(classroom?.useCompetencies ? [{ 
+      path: `/classroom/${id}/gradebook`, 
+      label: 'Calificaciones', 
+      icon: ClipboardList,
+      gradient: 'from-pink-500 to-rose-500',
+    }] : []),
     { 
       path: `/classroom/${id}/reports`, 
-      label: 'Reportes', 
-      icon: LayoutDashboard,
+      label: 'Estadísticas', 
+      icon: BarChart3,
       gradient: 'from-violet-500 to-purple-500',
       onboardingId: 'statistics-menu',
     },
@@ -136,7 +151,7 @@ export const ClassroomLayout = () => {
   ];
 
   const isActive = (path: string, exact?: boolean) => {
-    if (!path) return false; // Ignorar paths vacíos
+    if (!path) return false;
     if (exact) {
       return location.pathname === path;
     }
@@ -261,11 +276,14 @@ export const ClassroomLayout = () => {
             // Item con submenú
             if (hasSubItems) {
               const menuKey = (item as any).menuKey;
-              const isMenuOpen = menuKey === 'students' ? studentsMenuOpen : gamificationMenuOpen;
+              const isMenuOpen = 
+                menuKey === 'students' ? studentsMenuOpen :
+                menuKey === 'gamification' ? gamificationMenuOpen : false;
+              
               const toggleMenu = () => {
                 if (menuKey === 'students') {
                   setStudentsMenuOpen(!studentsMenuOpen);
-                } else {
+                } else if (menuKey === 'gamification') {
                   setGamificationMenuOpen(!gamificationMenuOpen);
                 }
               };
@@ -612,6 +630,9 @@ export const ClassroomLayout = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* AI Assistant Widget - Flotante */}
+      {id && <AIAssistantWidget classroomId={id} />}
     </div>
   );
 };

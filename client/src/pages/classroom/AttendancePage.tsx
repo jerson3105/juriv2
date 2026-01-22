@@ -18,7 +18,6 @@ import {
 } from 'lucide-react';
 import { classroomApi, type Classroom } from '../../lib/classroomApi';
 import { attendanceApi, type AttendanceStatus, type BulkAttendanceData } from '../../lib/attendanceApi';
-import { StudentAvatarMini } from '../../components/avatar/StudentAvatarMini';
 import toast from 'react-hot-toast';
 
 const STATUS_CONFIG: Record<AttendanceStatus, { label: string; icon: any; color: string; bgColor: string }> = {
@@ -90,10 +89,8 @@ export const AttendancePage = () => {
     }
   }, [existingAttendance, classroomData?.students]);
 
-  const students = classroomData?.students || [];
-
   // Función para obtener el nombre a mostrar según configuración
-  const getDisplayName = (student: typeof students[0]) => {
+  const getDisplayName = (student: any) => {
     if (classroom.showCharacterName === false) {
       // Mostrar nombre real
       if (student.realName && student.realLastName) {
@@ -105,6 +102,13 @@ export const AttendancePage = () => {
     // Por defecto mostrar nombre de personaje
     return student.characterName || 'Sin nombre';
   };
+
+  // Ordenar estudiantes alfabéticamente por nombre
+  const students = [...(classroomData?.students || [])].sort((a, b) => {
+    const nameA = getDisplayName(a).toLowerCase();
+    const nameB = getDisplayName(b).toLowerCase();
+    return nameA.localeCompare(nameB, 'es');
+  });
 
   const changeDate = (days: number) => {
     const newDate = new Date(selectedDate);
@@ -323,22 +327,11 @@ export const AttendancePage = () => {
                   transition={{ delay: index * 0.03 }}
                   className="flex items-center gap-4 p-4 hover:bg-gray-50 transition-colors"
                 >
-                  {/* Avatar */}
-                  <div className="w-12 h-[70px] relative rounded-lg overflow-hidden bg-gradient-to-br from-indigo-50 to-purple-50">
-                    <StudentAvatarMini
-                      studentProfileId={student.id}
-                      gender={student.avatarGender || 'MALE'}
-                      size="md"
-                      className="absolute top-0 left-1/2 -translate-x-1/2 scale-[0.28] origin-top"
-                    />
-                  </div>
-
                   {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-medium text-gray-900 truncate">
+                    <h3 className="font-medium text-gray-900 dark:text-white truncate">
                       {getDisplayName(student)}
                     </h3>
-                    <p className="text-sm text-gray-500">Nivel {student.level}</p>
                   </div>
 
                   {/* Status buttons */}

@@ -382,149 +382,183 @@ const ClanFormModal = ({ clan, onClose, onSubmit, isLoading }: ClanFormModalProp
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
       onClick={onClose}
     >
       <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.9, opacity: 0 }}
-        className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md shadow-xl"
+        className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-3xl max-h-[90vh] shadow-xl overflow-hidden flex flex-col md:flex-row"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-gray-800 dark:text-white">
-            {clan ? 'Editar Clan' : 'Nuevo Clan'}
-          </h2>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
-            <X size={20} className="text-gray-500" />
-          </button>
+        {/* Panel izquierdo - Jiro */}
+        <div className="hidden md:block md:w-64 flex-shrink-0 relative overflow-hidden">
+          <motion.img
+            src="/assets/mascot/jiro-clanes.jpg"
+            alt="Jiro"
+            className="absolute inset-0 w-full h-full object-cover"
+            initial={{ scale: 1.1, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.4 }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+          <div className="absolute bottom-0 left-0 right-0 p-4">
+            <p className="text-white text-xs font-semibold mb-2">💡 Consejos para crear clanes</p>
+            <ul className="text-white/80 text-[10px] space-y-1">
+              <li>• Nombres creativos: elige nombres que motiven el trabajo en equipo.</li>
+              <li>• Equilibrio: distribuye estudiantes de distintos niveles.</li>
+              <li>• Lemas: un buen lema refuerza la identidad del equipo.</li>
+            </ul>
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-4 space-y-4">
-          {/* Nombre */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Nombre del Clan
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              placeholder="Ej: Los Dragones"
-              required
-            />
+        {/* Panel derecho - Contenido */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Header */}
+          <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+              <Shield className="text-violet-500" size={24} />
+              {clan ? 'Editar Clan' : 'Nuevo Clan'}
+            </h2>
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500"
+            >
+              <X size={20} />
+            </button>
           </div>
 
-          {/* Color */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Color
-            </label>
-            <div className="flex gap-2 flex-wrap">
-              {CLAN_COLORS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setColor(c)}
-                  className={`w-8 h-8 rounded-full transition-transform ${
-                    color === c ? 'ring-2 ring-offset-2 ring-violet-500 scale-110' : ''
-                  }`}
-                  style={{ backgroundColor: c }}
-                />
-              ))}
+          <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-4">
+            {/* Nombre */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Nombre del Clan
+              </label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-all"
+                placeholder="Ej: Los Dragones"
+                required
+              />
             </div>
-          </div>
 
-          {/* Emblema */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Emblema
-            </label>
-            <div className="flex gap-2 flex-wrap">
-              {Object.entries(CLAN_EMBLEMS).map(([key, emoji]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setEmblem(key)}
-                  className={`w-10 h-10 rounded-lg text-xl flex items-center justify-center transition-all ${
-                    emblem === key
-                      ? 'bg-violet-100 dark:bg-violet-900 ring-2 ring-violet-500'
-                      : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'
-                  }`}
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Lema */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Lema (opcional)
-            </label>
-            <input
-              type="text"
-              value={motto}
-              onChange={(e) => setMotto(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              placeholder="Ej: Unidos somos más fuertes"
-            />
-          </div>
-
-          {/* Max miembros */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Máximo de miembros
-            </label>
-            <input
-              type="number"
-              value={maxMembers}
-              onChange={(e) => setMaxMembers(parseInt(e.target.value) || 10)}
-              min={2}
-              max={50}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-            />
-          </div>
-
-          {/* Preview */}
-          <div className="p-3 rounded-lg" style={{ backgroundColor: color }}>
-            <div className="flex items-center gap-2 text-white">
-              <span className="text-2xl">{CLAN_EMBLEMS[emblem]}</span>
-              <div>
-                <p className="font-bold">{name || 'Nombre del clan'}</p>
-                {motto && <p className="text-xs opacity-80 italic">"{motto}"</p>}
+            {/* Color */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Color del Clan
+              </label>
+              <div className="flex gap-3 flex-wrap">
+                {CLAN_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setColor(c)}
+                    className={`w-10 h-10 rounded-full transition-all shadow-md hover:scale-110 ${
+                      color === c ? 'ring-4 ring-offset-2 ring-violet-500 scale-110' : ''
+                    }`}
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
               </div>
             </div>
-          </div>
 
-          {/* Botones */}
-          <div className="flex gap-2 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={isLoading || !name}
-              className="flex-1 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {isLoading ? (
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                <>
-                  <Check size={16} />
-                  {clan ? 'Guardar' : 'Crear'}
-                </>
-              )}
-            </button>
+            {/* Emblema */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Emblema
+              </label>
+              <div className="grid grid-cols-8 gap-2">
+                {Object.entries(CLAN_EMBLEMS).map(([key, emoji]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setEmblem(key)}
+                    className={`w-11 h-11 rounded-xl text-xl flex items-center justify-center transition-all hover:scale-105 ${
+                      emblem === key
+                        ? 'bg-violet-100 dark:bg-violet-900 ring-2 ring-violet-500 shadow-lg'
+                        : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    }`}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Lema y Max miembros en fila */}
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Lema (opcional)
+                </label>
+                <input
+                  type="text"
+                  value={motto}
+                  onChange={(e) => setMotto(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-all"
+                  placeholder="Ej: Unidos somos más fuertes"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Máximo de miembros
+                </label>
+                <input
+                  type="number"
+                  value={maxMembers}
+                  onChange={(e) => setMaxMembers(parseInt(e.target.value) || 10)}
+                  min={2}
+                  max={50}
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition-all"
+                />
+              </div>
+            </div>
+
+            {/* Preview mejorado */}
+            <div className="p-4 rounded-xl shadow-lg" style={{ backgroundColor: color }}>
+              <div className="flex items-center gap-3 text-white">
+                <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center">
+                  <span className="text-3xl">{CLAN_EMBLEMS[emblem]}</span>
+                </div>
+                <div>
+                  <p className="font-bold text-lg">{name || 'Nombre del clan'}</p>
+                  {motto && <p className="text-sm opacity-80 italic">"{motto}"</p>}
+                  <p className="text-xs opacity-70 mt-1">Máx. {maxMembers} miembros</p>
+                </div>
+              </div>
+            </div>
+          </form>
+
+          {/* Footer con botones */}
+          <div className="p-5 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 font-medium transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={isLoading || !name}
+                className="flex-1 px-4 py-3 bg-violet-600 text-white rounded-xl hover:bg-violet-700 disabled:opacity-50 flex items-center justify-center gap-2 font-semibold transition-colors"
+              >
+                {isLoading ? (
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <Check size={18} />
+                    {clan ? 'Guardar Cambios' : '🛡️ Crear Clan'}
+                  </>
+                )}
+              </button>
+            </div>
           </div>
-        </form>
+        </div>
       </motion.div>
     </motion.div>
   );

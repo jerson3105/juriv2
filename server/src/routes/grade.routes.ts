@@ -28,4 +28,20 @@ router.delete('/:gradeId/manual', authorize('TEACHER'), gradeController.clearMan
 // Exportar libro de calificaciones en PDF (solo profesor)
 router.get('/export/pdf/:classroomId', authorize('TEACHER'), gradeController.exportPDF);
 
+// ═══════════════════════════════════════════════════════════
+// GESTIÓN DE BIMESTRES
+// ═══════════════════════════════════════════════════════════
+
+// Obtener estado de bimestres (solo profesor)
+router.get('/bimesters/:classroomId', authorize('TEACHER'), gradeController.getBimesterStatus);
+
+// Establecer bimestre actual (solo profesor)
+router.put('/bimesters/:classroomId/current', authorize('TEACHER'), gradeController.setCurrentBimester);
+
+// Cerrar bimestre (solo profesor)
+router.post('/bimesters/:classroomId/close', authorize('TEACHER'), gradeController.closeBimester);
+
+// Reabrir bimestre (solo profesor)
+router.post('/bimesters/:classroomId/reopen', authorize('TEACHER'), gradeController.reopenBimester);
+
 export default router;

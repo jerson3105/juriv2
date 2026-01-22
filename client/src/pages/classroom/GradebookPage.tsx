@@ -15,6 +15,10 @@ import {
   ChevronUp,
   Info,
   AlertCircle,
+  Lock,
+  Unlock,
+  Calendar,
+  Settings2,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -26,8 +30,21 @@ export const GradebookPage = () => {
   const { classroom } = useOutletContext<{ classroom: Classroom }>();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
-  const [period, setPeriod] = useState('CURRENT');
   const [expandedStudent, setExpandedStudent] = useState<string | null>(null);
+  const [showBimesterModal, setShowBimesterModal] = useState(false);
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+
+  // Obtener estado de bimestres
+  const { data: bimesterStatus } = useQuery({
+    queryKey: ['bimester-status', classroom.id, selectedYear],
+    queryFn: () => gradeApi.getBimesterStatus(classroom.id, selectedYear),
+    enabled: !!classroom.id && !!classroom.useCompetencies,
+  });
+
+  // El periodo actual es el bimestre actual del classroom
+  const currentBimester = bimesterStatus?.currentBimester || `${new Date().getFullYear()}-B1`;
+  const [selectedPeriod, setSelectedPeriod] = useState<string | null>(null);
+  const period = selectedPeriod || currentBimester;
 
   // Obtener datos completos de la clase (incluye estudiantes)
   const { data: classroomData } = useQuery({
@@ -102,6 +119,43 @@ export const GradebookPage = () => {
     onError: () => toast.error('Error al exportar PDF'),
   });
 
+  // Mutación para cerrar bimestre
+  const closeBimesterMutation = useMutation({
+    mutationFn: (periodToClose: string) => gradeApi.closeBimester(classroom.id, periodToClose),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['bimester-status', classroom.id] });
+      queryClient.invalidateQueries({ queryKey: ['classroom-grades', classroom.id] });
+      const closedLabel = `Bimestre ${data.closedPeriod.split('-B')[1]}`;
+      const newLabel = `Bimestre ${data.newCurrentBimester.split('-B')[1]} (${data.newCurrentBimester.split('-B')[0]})`;
+      toast.success(`${closedLabel} cerrado. Ahora trabajas en ${newLabel}`);
+      setShowBimesterModal(false);
+    },
+    onError: (error: any) => toast.error(error.response?.data?.error || 'Error al cerrar bimestre'),
+  });
+
+  // Mutación para reabrir bimestre
+  const reopenBimesterMutation = useMutation({
+    mutationFn: (periodToReopen: string) => gradeApi.reopenBimester(classroom.id, periodToReopen),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['bimester-status', classroom.id] });
+      const reopenedLabel = `Bimestre ${data.reopenedPeriod.split('-B')[1]}`;
+      toast.success(`${reopenedLabel} reabierto`);
+    },
+    onError: (error: any) => toast.error(error.response?.data?.error || 'Error al reabrir bimestre'),
+  });
+
+  // Verificar si el período seleccionado es futuro (no se puede calcular)
+  const isFuturePeriod = useMemo(() => {
+    if (!bimesterStatus?.currentBimester) return false;
+    
+    const [currentYear, currentBim] = bimesterStatus.currentBimester.split('-B').map(p => parseInt(p));
+    const [periodYear, periodBim] = period.split('-B').map(p => parseInt(p));
+    
+    if (periodYear > currentYear) return true;
+    if (periodYear === currentYear && periodBim > currentBim) return true;
+    return false;
+  }, [period, bimesterStatus?.currentBimester]);
+
   // Agrupar calificaciones por estudiante
   const studentGrades = useMemo(() => {
     const grouped: Record<string, { name: string; grades: ClassroomGrade[] }> = {};
@@ -123,11 +177,24 @@ export const GradebookPage = () => {
       .sort((a, b) => a[1].name.localeCompare(b[1].name));
   }, [grades, searchTerm]);
 
-  // Calcular promedio de un estudiante
-  const calculateAverage = (studentGrades: ClassroomGrade[]) => {
-    if (studentGrades.length === 0) return 0;
-    const total = studentGrades.reduce((sum, g) => sum + (g.score || 0), 0);
-    return (total / studentGrades.length).toFixed(1);
+  // Calcular promedio de un estudiante (solo competencias con actividades)
+  const calculateAverage = (studentGrades: ClassroomGrade[]): { score: number; label: string } => {
+    if (studentGrades.length === 0) return { score: 0, label: 'C' };
+    // Solo incluir competencias que tienen actividades registradas
+    const validGrades = studentGrades.filter(g => 
+      g.score != null && !isNaN(Number(g.score)) && g.activitiesCount > 0
+    );
+    if (validGrades.length === 0) return { score: 0, label: '-' };
+    const total = validGrades.reduce((sum, g) => sum + Number(g.score), 0);
+    const avg = total / validGrades.length;
+    
+    // Determinar letra según escala Perú
+    let label = 'C';
+    if (avg >= 90) label = 'AD';
+    else if (avg >= 70) label = 'A';
+    else if (avg >= 50) label = 'B';
+    
+    return { score: Number(avg.toFixed(1)), label };
   };
 
   // Obtener color según escala
@@ -175,7 +242,8 @@ export const GradebookPage = () => {
             variant="secondary"
             size="sm"
             onClick={() => recalculateMutation.mutate()}
-            disabled={recalculateMutation.isPending}
+            disabled={recalculateMutation.isPending || isFuturePeriod}
+            title={isFuturePeriod ? 'No se puede calcular un bimestre futuro' : ''}
           >
             <RefreshCw size={16} className={recalculateMutation.isPending ? 'animate-spin' : ''} />
             {recalculateMutation.isPending ? 'Calculando...' : 'Recalcular'}
@@ -205,17 +273,34 @@ export const GradebookPage = () => {
               className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-800 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
             />
           </div>
-          <select
-            value={period}
-            onChange={(e) => setPeriod(e.target.value)}
-            className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-800 dark:text-white"
-          >
-            <option value="CURRENT">Periodo Actual</option>
-            <option value="2024-B1">Bimestre 1</option>
-            <option value="2024-B2">Bimestre 2</option>
-            <option value="2024-B3">Bimestre 3</option>
-            <option value="2024-B4">Bimestre 4</option>
-          </select>
+          <div className="flex items-center gap-2">
+            <select
+              value={period}
+              onChange={(e) => setSelectedPeriod(e.target.value)}
+              className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-800 dark:text-white"
+            >
+              {bimesterStatus?.allBimesters.map((b) => (
+                <option key={b.period} value={b.period}>
+                  {b.label} {b.isCurrent ? '(Actual)' : ''} {b.isClosed ? '🔒' : ''}
+                </option>
+              )) || (
+                <>
+                  <option value={`${new Date().getFullYear()}-B1`}>Bimestre 1</option>
+                  <option value={`${new Date().getFullYear()}-B2`}>Bimestre 2</option>
+                  <option value={`${new Date().getFullYear()}-B3`}>Bimestre 3</option>
+                  <option value={`${new Date().getFullYear()}-B4`}>Bimestre 4</option>
+                </>
+              )}
+            </select>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowBimesterModal(true)}
+              title="Gestionar bimestres"
+            >
+              <Settings2 size={16} />
+            </Button>
+          </div>
         </div>
       </Card>
 
@@ -234,9 +319,15 @@ export const GradebookPage = () => {
             Sin calificaciones registradas
           </h3>
           <p className="text-gray-600 dark:text-gray-400 mb-4">
-            Haz clic en "Recalcular" para generar las calificaciones basadas en las actividades completadas.
+            {isFuturePeriod 
+              ? 'Este es un bimestre futuro. No se pueden calcular calificaciones hasta que sea el bimestre actual.'
+              : 'Haz clic en "Recalcular" para generar las calificaciones basadas en las actividades completadas.'
+            }
           </p>
-          <Button onClick={() => recalculateMutation.mutate()} disabled={recalculateMutation.isPending}>
+          <Button 
+            onClick={() => recalculateMutation.mutate()} 
+            disabled={recalculateMutation.isPending || isFuturePeriod}
+          >
             <RefreshCw size={16} className={recalculateMutation.isPending ? 'animate-spin' : ''} />
             Calcular Calificaciones
           </Button>
@@ -308,8 +399,8 @@ export const GradebookPage = () => {
                         );
                       })}
                       <td className="px-4 py-3 text-center">
-                        <span className="font-bold text-indigo-600 dark:text-indigo-400">
-                          {avg}%
+                        <span className={`inline-flex items-center justify-center px-2 py-1 rounded-lg text-sm font-bold ${getGradeColor(avg.label)}`}>
+                          {avg.label} ({avg.score}%)
                         </span>
                       </td>
                     </motion.tr>
@@ -563,6 +654,135 @@ export const GradebookPage = () => {
                   <Check size={16} />
                   Guardar
                 </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal de gestión de bimestres */}
+      <AnimatePresence>
+        {showBimesterModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={() => setShowBimesterModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-lg p-6"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center text-white">
+                    <Calendar size={20} />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-gray-800 dark:text-white">Gestión de Bimestres</h2>
+                    <p className="text-xs text-gray-500">Controla los períodos de calificación</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowBimesterModal(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
+                  <X size={20} className="text-gray-500" />
+                </button>
+              </div>
+
+              {/* Selector de año */}
+              <div className="mb-4 flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Año:</span>
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-800 dark:text-white text-sm"
+                >
+                  {bimesterStatus?.availableYears?.map((y) => (
+                    <option key={y} value={y}>{y}</option>
+                  )) || (
+                    <option value={new Date().getFullYear()}>{new Date().getFullYear()}</option>
+                  )}
+                </select>
+              </div>
+
+              <div className="space-y-3">
+                {bimesterStatus?.allBimesters.map((b) => (
+                  <div
+                    key={b.period}
+                    className={`flex items-center justify-between p-4 rounded-xl border ${
+                      b.isCurrent 
+                        ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800' 
+                        : b.isClosed
+                          ? 'bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700'
+                          : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      {b.isClosed ? (
+                        <Lock size={20} className="text-gray-400" />
+                      ) : b.isCurrent ? (
+                        <Unlock size={20} className="text-indigo-500" />
+                      ) : (
+                        <div className="w-5 h-5" />
+                      )}
+                      <div>
+                        <p className="font-medium text-gray-800 dark:text-white">
+                          {b.label}
+                          {b.isCurrent && (
+                            <span className="ml-2 text-xs px-2 py-0.5 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-full">
+                              Actual
+                            </span>
+                          )}
+                        </p>
+                        {b.isClosed && b.closedAt && (
+                          <p className="text-xs text-gray-500">
+                            Cerrado el {new Date(b.closedAt).toLocaleDateString()}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      {b.isClosed ? (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => reopenBimesterMutation.mutate(b.period)}
+                          disabled={reopenBimesterMutation.isPending}
+                        >
+                          <Unlock size={14} />
+                          Reabrir
+                        </Button>
+                      ) : b.isCurrent ? (
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => closeBimesterMutation.mutate(b.period)}
+                          disabled={closeBimesterMutation.isPending}
+                        >
+                          <Lock size={14} />
+                          Cerrar
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-6 p-4 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800">
+                <div className="flex items-start gap-2">
+                  <Info size={16} className="text-amber-600 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-amber-800 dark:text-amber-200">
+                    <p className="font-medium mb-1">¿Cómo funciona?</p>
+                    <ul className="text-xs space-y-1 text-amber-700 dark:text-amber-300">
+                      <li>• <strong>Cerrar bimestre</strong>: Las calificaciones quedan congeladas y pasas al siguiente bimestre.</li>
+                      <li>• <strong>Reabrir bimestre</strong>: Permite editar calificaciones de un bimestre cerrado.</li>
+                      <li>• Las calificaciones de cada bimestre son independientes.</li>
+                    </ul>
+                  </div>
+                </div>
               </div>
             </motion.div>
           </motion.div>

@@ -5,7 +5,7 @@ import { config_app } from '../config/env.js';
 import { db, users } from '../db/index.js';
 import { cache, CACHE_KEYS, CACHE_TTL } from '../utils/cache.js';
 
-type UserRole = 'ADMIN' | 'TEACHER' | 'STUDENT';
+type UserRole = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'PARENT';
 
 // Payload del JWT
 interface JwtPayload {

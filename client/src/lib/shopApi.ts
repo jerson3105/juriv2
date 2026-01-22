@@ -343,4 +343,29 @@ export const shopApi = {
   markAllNotificationsRead: async (): Promise<void> => {
     await api.put('/shop/notifications/read-all');
   },
+
+  // ==================== GENERACIÓN CON IA ====================
+
+  generateWithAI: async (params: {
+    description: string;
+    level: string;
+    count?: number;
+    itemType?: 'PRIVILEGES' | 'REWARDS' | 'POWERS' | 'MIXED';
+  }): Promise<{
+    success: boolean;
+    data?: {
+      items: Array<{
+        name: string;
+        description: string;
+        category: ItemCategory;
+        rarity: ItemRarity;
+        price: number;
+        icon: string;
+      }>;
+    };
+    message?: string;
+  }> => {
+    const { data } = await api.post('/shop/generate-ai', params);
+    return data;
+  },
 };

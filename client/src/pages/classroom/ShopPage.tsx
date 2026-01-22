@@ -14,6 +14,7 @@ import {
   Check,
   XCircle,
   Shirt,
+  Sparkles,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -42,6 +43,7 @@ export const ShopPage = () => {
   const [showGiftModal, setShowGiftModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ShopItem | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; item: ShopItem | null }>({ isOpen: false, item: null });
+  const [showAIModal, setShowAIModal] = useState(false);
 
   const { data: items = [], isLoading } = useQuery({
     queryKey: ['shop-items', classroom.id],
@@ -238,8 +240,15 @@ export const ShopPage = () => {
         <AvatarShopManager classroomId={classroom.id} />
       ) : (
         <>
-          {/* Botón nuevo artículo */}
-          <div className="flex justify-end">
+          {/* Botones de acción */}
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setShowAIModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-medium hover:from-emerald-600 hover:to-teal-700 transition-colors shadow-lg"
+            >
+              <Sparkles size={18} />
+              Generar con IA
+            </button>
             <Button
               onClick={() => {
                 setEditingItem(null);
@@ -355,19 +364,93 @@ export const ShopPage = () => {
 
       {/* Lista de items por rareza */}
       {items.length === 0 ? (
-        <Card className="text-center py-12">
-          <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-emerald-100 to-teal-100 rounded-2xl flex items-center justify-center">
-            <ShoppingBag className="w-8 h-8 text-emerald-500" />
+        <Card className="py-8">
+          <div className="text-center mb-6">
+            <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-900/30 dark:to-orange-900/30 rounded-2xl flex items-center justify-center">
+              <ShoppingBag className="w-8 h-8 text-amber-500" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-2">
+              ¡Bienvenido a la Tienda!
+            </h3>
+            <p className="text-gray-500 dark:text-gray-400 text-sm max-w-md mx-auto">
+              La tienda permite a tus estudiantes gastar el <strong className="text-amber-600">Oro (GP)</strong> que ganan en recompensas y privilegios especiales.
+            </p>
           </div>
-          <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-2">
-            No hay artículos en la tienda
-          </h3>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
-            Crea artículos para que tus estudiantes puedan comprar con su oro
-          </p>
-          <Button onClick={() => setShowModal(true)} leftIcon={<Plus size={16} />}>
-            Crear primer artículo
-          </Button>
+
+          {/* Guía rápida */}
+          <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-4 mb-6 border border-amber-200 dark:border-amber-800">
+            <h4 className="font-semibold text-amber-800 dark:text-amber-300 mb-3 flex items-center gap-2">
+              💡 ¿Cómo funciona?
+            </h4>
+            <div className="grid md:grid-cols-3 gap-4 text-sm">
+              <div className="flex gap-2">
+                <span className="text-lg">1️⃣</span>
+                <div>
+                  <p className="font-medium text-gray-700 dark:text-gray-300">Crea artículos</p>
+                  <p className="text-gray-500 dark:text-gray-400 text-xs">Privilegios, premios o experiencias</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <span className="text-lg">2️⃣</span>
+                <div>
+                  <p className="font-medium text-gray-700 dark:text-gray-300">Los estudiantes compran</p>
+                  <p className="text-gray-500 dark:text-gray-400 text-xs">Usando el oro que ganan</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <span className="text-lg">3️⃣</span>
+                <div>
+                  <p className="font-medium text-gray-700 dark:text-gray-300">Tú apruebas el uso</p>
+                  <p className="text-gray-500 dark:text-gray-400 text-xs">Controlas cuándo se canjean</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Ideas de items */}
+          <div className="mb-6">
+            <h4 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 text-sm">💎 Ideas populares:</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-2 text-center">
+                <span className="text-xl block mb-1">💺</span>
+                <span className="text-gray-600 dark:text-gray-400">Elegir asiento</span>
+              </div>
+              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-2 text-center">
+                <span className="text-xl block mb-1">⏰</span>
+                <span className="text-gray-600 dark:text-gray-400">+5 min en examen</span>
+              </div>
+              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-2 text-center">
+                <span className="text-xl block mb-1">🎵</span>
+                <span className="text-gray-600 dark:text-gray-400">Poner música</span>
+              </div>
+              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-2 text-center">
+                <span className="text-xl block mb-1">📝</span>
+                <span className="text-gray-600 dark:text-gray-400">Entregar tarea tarde</span>
+              </div>
+              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-2 text-center">
+                <span className="text-xl block mb-1">🛡️</span>
+                <span className="text-gray-600 dark:text-gray-400">Escudo anti-HP</span>
+              </div>
+              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-2 text-center">
+                <span className="text-xl block mb-1">🍬</span>
+                <span className="text-gray-600 dark:text-gray-400">Dulce o snack</span>
+              </div>
+              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-2 text-center">
+                <span className="text-xl block mb-1">📱</span>
+                <span className="text-gray-600 dark:text-gray-400">5 min de celular</span>
+              </div>
+              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-2 text-center">
+                <span className="text-xl block mb-1">⭐</span>
+                <span className="text-gray-600 dark:text-gray-400">Punto extra</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="text-center">
+            <Button onClick={() => setShowModal(true)} leftIcon={<Plus size={16} />}>
+              Crear primer artículo
+            </Button>
+          </div>
         </Card>
       ) : (
         <div className="space-y-6">
@@ -434,6 +517,14 @@ export const ShopPage = () => {
             }}
             isLoading={teacherPurchaseMutation.isPending}
             getDisplayName={getDisplayName}
+          />
+
+          {/* Modal de generación con IA */}
+          <AIShopModal
+            isOpen={showAIModal}
+            onClose={() => setShowAIModal(false)}
+            classroomId={classroom.id}
+            onItemsGenerated={() => {}}
           />
         </>
       )}
@@ -582,6 +673,16 @@ const ItemCard = ({
   );
 };
 
+// Ejemplos de items para la tienda
+const ITEM_EXAMPLES = [
+  { icon: '💺', name: 'Elegir asiento', description: 'Elige dónde sentarte por un día', category: 'CONSUMABLE' as ItemCategory, rarity: 'COMMON' as ItemRarity, price: 25 },
+  { icon: '⏰', name: '+5 min en examen', description: '5 minutos extra en cualquier evaluación', category: 'CONSUMABLE' as ItemCategory, rarity: 'RARE' as ItemRarity, price: 100 },
+  { icon: '📝', name: 'Entregar tarde', description: 'Entrega una tarea con 1 día de retraso sin penalización', category: 'CONSUMABLE' as ItemCategory, rarity: 'RARE' as ItemRarity, price: 75 },
+  { icon: '🛡️', name: 'Escudo protector', description: 'Protege de la próxima pérdida de HP', category: 'SPECIAL' as ItemCategory, rarity: 'LEGENDARY' as ItemRarity, price: 150 },
+  { icon: '🎵', name: 'DJ por un día', description: 'Elige la música de fondo durante el trabajo', category: 'CONSUMABLE' as ItemCategory, rarity: 'COMMON' as ItemRarity, price: 30 },
+  { icon: '⭐', name: 'Punto extra', description: '+1 punto en una tarea o examen', category: 'CONSUMABLE' as ItemCategory, rarity: 'LEGENDARY' as ItemRarity, price: 200 },
+];
+
 // Modal crear/editar item
 const ItemModal = ({
   isOpen,
@@ -605,6 +706,15 @@ const ItemModal = ({
   const [imageUrl, setImageUrl] = useState(item?.imageUrl || '');
   const [imagePreview, setImagePreview] = useState<string | null>(item?.imageUrl || null);
   const [stock, setStock] = useState<number | ''>(item?.stock ?? '');
+
+  const applyExample = (example: typeof ITEM_EXAMPLES[0]) => {
+    setName(example.name);
+    setDescription(example.description);
+    setCategory(example.category);
+    setRarity(example.rarity);
+    setPrice(example.price);
+    setIcon(example.icon);
+  };
 
   // Manejar selección de imagen
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -694,21 +804,56 @@ const ItemModal = ({
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
           onClick={(e) => e.stopPropagation()}
-          className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden"
+          className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col md:flex-row"
         >
-          <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-              {item ? 'Editar artículo' : 'Nuevo artículo'}
-            </h2>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500"
-            >
-              <X size={20} />
-            </button>
+          {/* Panel izquierdo - Jiro */}
+          <div className="hidden md:block md:w-64 flex-shrink-0 relative overflow-hidden">
+            <motion.img
+              src="/assets/mascot/jiro-tienda.jpg"
+              alt="Jiro"
+              className="absolute inset-0 w-full h-full object-cover"
+              initial={{ scale: 1.1, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.4 }}
+            />
           </div>
 
-          <form onSubmit={handleSubmit} className="p-4 space-y-4 overflow-y-auto max-h-[70vh]">
+          {/* Panel derecho - Contenido */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <ShoppingBag className="text-amber-500" size={24} />
+                {item ? 'Editar artículo' : 'Nuevo artículo'}
+              </h2>
+              <button
+                onClick={onClose}
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="flex-1 p-5 space-y-4 overflow-y-auto">
+            {/* Ejemplos rápidos - solo para nuevos items */}
+            {!item && (
+              <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3 border border-amber-200 dark:border-amber-800">
+                <p className="text-xs font-medium text-amber-700 dark:text-amber-300 mb-2">💡 Ejemplos rápidos (click para usar):</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {ITEM_EXAMPLES.map((example, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => applyExample(example)}
+                      className="flex items-center gap-1 px-2 py-1 text-xs bg-white dark:bg-gray-700 rounded-lg border border-amber-200 dark:border-amber-700 hover:border-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/30 transition-colors"
+                    >
+                      <span>{example.icon}</span>
+                      <span className="text-gray-700 dark:text-gray-300">{example.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <Input
               label="Nombre"
               value={name}
@@ -909,13 +1054,14 @@ const ItemModal = ({
 
             <Button
               type="submit"
-              className="w-full"
+              className="w-full !bg-gradient-to-r !from-amber-500 !to-orange-500 hover:!from-amber-600 hover:!to-orange-600"
               isLoading={isLoading}
               disabled={!name.trim()}
             >
-              {item ? 'Guardar cambios' : 'Crear artículo'}
+              {item ? 'Guardar cambios' : '🛒 Crear artículo'}
             </Button>
-          </form>
+            </form>
+          </div>
         </motion.div>
       </motion.div>
     </AnimatePresence>
@@ -1032,6 +1178,458 @@ const GiveToStudentModal = ({
               <Gift size={18} className="mr-2" />
               Dar artículo (gratis)
             </Button>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+};
+
+// Modal de generación con IA para la tienda
+const AIShopModal = ({
+  isOpen,
+  onClose,
+  classroomId,
+  onItemsGenerated,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  classroomId: string;
+  onItemsGenerated: () => void;
+}) => {
+  const [step, setStep] = useState<'form' | 'preview'>('form');
+  const [description, setDescription] = useState('');
+  const [level, setLevel] = useState('');
+  const [itemType, setItemType] = useState<'PRIVILEGES' | 'REWARDS' | 'POWERS' | 'MIXED'>('MIXED');
+  const [count, setCount] = useState(8);
+  const [generatedItems, setGeneratedItems] = useState<any[]>([]);
+  const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+
+  const queryClient = useQueryClient();
+
+  const handleGenerate = async () => {
+    if (!description.trim() || !level) {
+      toast.error('Completa la descripción y el nivel educativo');
+      return;
+    }
+
+    setIsGenerating(true);
+    try {
+      const result = await shopApi.generateWithAI({
+        description,
+        level,
+        count,
+        itemType,
+      });
+
+      if (result.success && result.data?.items) {
+        setGeneratedItems(result.data.items);
+        setSelectedItems(new Set(result.data.items.map((_, i) => i)));
+        setStep('preview');
+      } else {
+        toast.error(result.message || 'Error al generar items');
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Error al conectar con la IA');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleImport = async () => {
+    const itemsToImport = generatedItems.filter((_, i) => selectedItems.has(i));
+    if (itemsToImport.length === 0) {
+      toast.error('Selecciona al menos un item');
+      return;
+    }
+
+    try {
+      let imported = 0;
+      for (const item of itemsToImport) {
+        await shopApi.createItem({
+          classroomId,
+          name: item.name,
+          description: item.description,
+          category: item.category || 'CONSUMABLE',
+          rarity: item.rarity || 'COMMON',
+          price: item.price,
+          icon: item.icon,
+        });
+        imported++;
+      }
+      toast.success(`${imported} artículo(s) importados a la tienda`);
+      queryClient.invalidateQueries({ queryKey: ['shop-items', classroomId] });
+      onItemsGenerated();
+      handleClose();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Error al importar items');
+    }
+  };
+
+  const handleClose = () => {
+    setStep('form');
+    setDescription('');
+    setGeneratedItems([]);
+    setSelectedItems(new Set());
+    setEditingIndex(null);
+    onClose();
+  };
+
+  const toggleItem = (index: number) => {
+    const newSelected = new Set(selectedItems);
+    if (newSelected.has(index)) {
+      newSelected.delete(index);
+    } else {
+      newSelected.add(index);
+    }
+    setSelectedItems(newSelected);
+  };
+
+  const updateItem = (index: number, updates: Partial<any>) => {
+    const newItems = [...generatedItems];
+    newItems[index] = { ...newItems[index], ...updates };
+    setGeneratedItems(newItems);
+  };
+
+  const deleteItem = (index: number) => {
+    setGeneratedItems(generatedItems.filter((_, i) => i !== index));
+    const newSelected = new Set(selectedItems);
+    newSelected.delete(index);
+    setSelectedItems(newSelected);
+    setEditingIndex(null);
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+        onClick={handleClose}
+      >
+        <motion.div
+          initial={{ scale: 0.95, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          exit={{ scale: 0.95, opacity: 0 }}
+          onClick={(e) => e.stopPropagation()}
+          className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col"
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center">
+                <Sparkles size={20} className="text-white" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-gray-800 dark:text-white">
+                  {step === 'form' ? 'Generar Artículos con IA' : 'Vista Previa'}
+                </h2>
+                <p className="text-xs text-gray-500">
+                  {step === 'form' ? 'Describe qué items quieres en tu tienda' : `${selectedItems.size} de ${generatedItems.length} seleccionados`}
+                </p>
+              </div>
+            </div>
+            <button onClick={handleClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+              <X size={20} />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto p-4">
+            {step === 'form' ? (
+              <div className="space-y-4">
+                {/* Introducción amigable */}
+                <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800">
+                  <p className="text-sm text-amber-700 dark:text-amber-300">
+                    🛒 <strong>¿Qué es la tienda?</strong> Es donde tus estudiantes gastan el Oro (GP) que ganan.
+                    Puedes crear privilegios (elegir asiento, tiempo extra), recompensas (dulces, stickers) o poderes especiales (escudos, bonus).
+                  </p>
+                </div>
+
+                {/* Ejemplos rápidos */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    🚀 Ejemplos rápidos <span className="font-normal text-gray-500">(clic para usar)</span>
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {[
+                      { emoji: '💺', title: 'Privilegios', desc: 'Elegir asiento, tiempo extra en exámenes, entregar tarde, ser ayudante del día' },
+                      { emoji: '🎁', title: 'Recompensas', desc: 'Dulces, stickers, certificados, tiempo libre, poner música en clase' },
+                      { emoji: '⚡', title: 'Poderes', desc: 'Escudo anti-HP, duplicar XP del día, revivir puntos, congelar HP por un día' },
+                      { emoji: '🎮', title: 'Temática gamer', desc: 'Items con nombres de videojuegos: pociones, escudos mágicos, power-ups, monedas doradas' },
+                      { emoji: '⚔️', title: 'Aventura medieval', desc: 'Pergamino del conocimiento, poción de sabiduría, escudo del guardián, amuleto de la suerte' },
+                      { emoji: '🚀', title: 'Espacial/Ciencia', desc: 'Combustible extra, escudo de energía, teletransporte, visión de rayos X' },
+                    ].map((example) => (
+                      <button
+                        key={example.title}
+                        onClick={() => setDescription(example.desc)}
+                        className={`text-left p-2 rounded-lg border transition-all ${
+                          description === example.desc
+                            ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30'
+                            : 'border-gray-200 dark:border-gray-600 hover:border-emerald-300 hover:bg-emerald-50/50 dark:hover:bg-emerald-900/10'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">{example.emoji}</span>
+                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{example.title}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Descripción personalizada */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    ✏️ O escribe tu propia descripción
+                  </label>
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={2}
+                    className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm resize-none"
+                    placeholder="Describe qué tipo de artículos quieres para tu tienda..."
+                  />
+                </div>
+
+                {/* Nivel y cantidad */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      🎓 Nivel educativo
+                    </label>
+                    <select
+                      value={level}
+                      onChange={(e) => setLevel(e.target.value)}
+                      className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm"
+                    >
+                      <option value="">Seleccionar...</option>
+                      <option value="Primaria (6-11 años)">Primaria (6-11 años)</option>
+                      <option value="Secundaria (12-16 años)">Secundaria (12-16 años)</option>
+                      <option value="Preparatoria/Bachillerato">Preparatoria/Bachillerato</option>
+                      <option value="Universidad">Universidad</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      🔢 ¿Cuántos artículos?
+                    </label>
+                    <input
+                      type="number"
+                      value={count}
+                      onChange={(e) => setCount(Math.max(1, Math.min(15, parseInt(e.target.value) || 8)))}
+                      min={1}
+                      max={15}
+                      className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm"
+                    />
+                  </div>
+                </div>
+
+                {/* Tipo de items */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    🏷️ Tipo de artículos
+                  </label>
+                  <div className="flex gap-2 flex-wrap">
+                    {[
+                      { value: 'MIXED', label: '🎲 Variado', desc: 'Mezcla de todo' },
+                      { value: 'PRIVILEGES', label: '💺 Privilegios', desc: 'Beneficios académicos' },
+                      { value: 'REWARDS', label: '🎁 Recompensas', desc: 'Premios físicos' },
+                      { value: 'POWERS', label: '⚡ Poderes', desc: 'Habilidades especiales' },
+                    ].map((type) => (
+                      <button
+                        key={type.value}
+                        onClick={() => setItemType(type.value as any)}
+                        className={`px-3 py-2 rounded-lg text-sm transition-all ${
+                          itemType === type.value
+                            ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 ring-2 ring-emerald-500'
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
+                        }`}
+                      >
+                        {type.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Vista previa de items generados */
+              <div className="space-y-2">
+                {generatedItems.map((item, index) => (
+                  editingIndex === index ? (
+                    /* Formulario de edición inline */
+                    <div key={index} className="p-4 rounded-xl border-2 border-blue-500 bg-blue-50 dark:bg-blue-900/20 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-blue-700 dark:text-blue-400">Editando artículo</span>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => deleteItem(index)}
+                            className="p-1.5 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                          <button
+                            onClick={() => setEditingIndex(null)}
+                            className="p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      </div>
+                      
+                      {/* Icono y rareza */}
+                      <div className="flex gap-3 items-center">
+                        <div className="flex gap-1 flex-wrap">
+                          {['🎁', '⭐', '💎', '🏆', '🎭', '👑', '🔮', '⚡', '🌟', '💺', '⏰', '🛡️'].map(emoji => (
+                            <button
+                              key={emoji}
+                              onClick={() => updateItem(index, { icon: emoji })}
+                              className={`w-7 h-7 rounded text-sm ${item.icon === emoji ? 'bg-blue-500 ring-2 ring-blue-400' : 'bg-gray-200 dark:bg-gray-700'}`}
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                        <select
+                          value={item.rarity}
+                          onChange={(e) => updateItem(index, { rarity: e.target.value })}
+                          className="px-2 py-1 text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg"
+                        >
+                          <option value="COMMON">Común</option>
+                          <option value="RARE">Raro</option>
+                          <option value="LEGENDARY">Legendario</option>
+                        </select>
+                      </div>
+
+                      {/* Nombre, descripción y precio */}
+                      <div className="grid grid-cols-3 gap-2">
+                        <input
+                          type="text"
+                          value={item.name}
+                          onChange={(e) => updateItem(index, { name: e.target.value })}
+                          className="px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg"
+                          placeholder="Nombre"
+                        />
+                        <input
+                          type="text"
+                          value={item.description}
+                          onChange={(e) => updateItem(index, { description: e.target.value })}
+                          className="px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg"
+                          placeholder="Descripción"
+                        />
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            value={item.price}
+                            onChange={(e) => updateItem(index, { price: parseInt(e.target.value) || 0 })}
+                            className="w-20 px-2 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg"
+                            min={0}
+                          />
+                          <span className="text-amber-600 font-medium text-sm">GP</span>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Vista normal del item */
+                    <div
+                      key={index}
+                      onClick={() => toggleItem(index)}
+                      className={`p-3 rounded-xl cursor-pointer transition-all border-2 ${
+                        selectedItems.has(index)
+                          ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-500'
+                          : 'bg-gray-50 dark:bg-gray-700 border-transparent opacity-60'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedItems.has(index)}
+                          onChange={() => toggleItem(index)}
+                          className="w-4 h-4 rounded accent-emerald-500"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <span className="text-2xl">{item.icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-gray-800 dark:text-white truncate">{item.name}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 ${
+                              item.rarity === 'LEGENDARY' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300' :
+                              item.rarity === 'RARE' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300' :
+                              'bg-gray-100 text-gray-600 dark:bg-gray-600 dark:text-gray-300'
+                            }`}>
+                              {item.rarity === 'LEGENDARY' ? 'Legendario' : item.rarity === 'RARE' ? 'Raro' : 'Común'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 truncate">{item.description}</p>
+                        </div>
+                        <span className="text-amber-600 font-bold text-sm flex-shrink-0">{item.price} GP</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setEditingIndex(index); }}
+                          className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg flex-shrink-0"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  )
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+            <div className="flex justify-between items-center">
+              {step === 'preview' && (
+                <button
+                  onClick={() => setStep('form')}
+                  className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                >
+                  ← Volver
+                </button>
+              )}
+              <div className="flex gap-3 ml-auto">
+                <button
+                  onClick={handleClose}
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  Cancelar
+                </button>
+                {step === 'form' ? (
+                  <button
+                    onClick={handleGenerate}
+                    disabled={!description.trim() || !level || isGenerating}
+                    className="px-6 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {isGenerating ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Generando...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={16} />
+                        Generar con IA
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleImport}
+                    disabled={selectedItems.size === 0}
+                    className="px-6 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50 flex items-center gap-2"
+                  >
+                    <Check size={16} />
+                    Importar {selectedItems.size} artículo(s)
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </motion.div>
       </motion.div>

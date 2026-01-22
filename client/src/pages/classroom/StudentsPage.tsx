@@ -22,6 +22,8 @@ import {
   Copy,
   ChevronLeft,
   Shield,
+  Award,
+  Settings,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -414,25 +416,6 @@ export const StudentsPage = () => {
         </Card>
       ) : (
         <>
-          {/* Mensaje cuando no hay resultados de búsqueda */}
-          {students.length === 0 && searchQuery.trim() && (
-            <div className="text-center py-12 bg-white/50 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
-              <Search className="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-gray-600" />
-              <h3 className="text-lg font-medium text-gray-600 dark:text-gray-400 mb-1">
-                No se encontraron resultados
-              </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-500">
-                No hay estudiantes que coincidan con "<span className="font-medium">{searchQuery}</span>"
-              </p>
-              <button
-                onClick={() => setSearchQuery('')}
-                className="mt-3 text-sm text-indigo-600 hover:text-indigo-700 font-medium"
-              >
-                Limpiar búsqueda
-              </button>
-            </div>
-          )}
-
           {/* Vista de Cards - Layout Dividido */}
           {viewMode === 'cards' && students.length > 0 && (() => {
             // Obtener estudiante seleccionado para el panel de detalle
@@ -683,8 +666,8 @@ export const StudentsPage = () => {
           })()}
 
           {/* Vista de Lista */}
-          {viewMode === 'list' && students.length > 0 && (
-            <Card className="overflow-hidden">
+          {viewMode === 'list' && (
+            <Card className="overflow-hidden !p-0">
               {/* Barra de búsqueda */}
               <div className="p-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
                 <div className="relative max-w-xs">
@@ -698,8 +681,19 @@ export const StudentsPage = () => {
                   />
                 </div>
               </div>
-              <div className="overflow-x-auto">
-              <table className="w-full min-w-[700px]">
+              {students.length === 0 && searchQuery.trim() ? (
+                <div className="text-center py-12 px-4">
+                  <Search className="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-gray-600" />
+                  <h3 className="text-lg font-medium text-gray-600 dark:text-gray-400 mb-1">
+                    No se encontraron resultados
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-500">
+                    No hay estudiantes que coincidan con "<span className="font-medium">{searchQuery}</span>"
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[700px]">
                 <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
                   <tr>
                     <th className="w-10 px-4 py-3"></th>
@@ -829,8 +823,9 @@ export const StudentsPage = () => {
                     );
                   })}
                 </tbody>
-              </table>
-              </div>
+                  </table>
+                </div>
+              )}
             </Card>
           )}
 
@@ -1148,7 +1143,7 @@ const BadgeAwardModal = ({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+        className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
         onClick={onClose}
       >
         <motion.div
@@ -1156,97 +1151,150 @@ const BadgeAwardModal = ({
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
           onClick={(e) => e.stopPropagation()}
-          className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col"
+          className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col md:flex-row"
         >
-          {/* Header */}
-          <div className="bg-gradient-to-r from-amber-500 to-orange-500 p-4 text-white">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Medal size={24} />
-                <h2 className="font-bold text-lg">Dar Insignia</h2>
-              </div>
-              <button onClick={onClose} className="p-1 hover:bg-white/20 rounded-lg">
+          {/* Panel izquierdo - Jiro */}
+          <div className="hidden md:block md:w-64 flex-shrink-0 relative overflow-hidden">
+            <motion.img
+              src="/assets/mascot/jiro-insignias.jpg"
+              alt="Jiro"
+              className="absolute inset-0 w-full h-full object-cover"
+              initial={{ scale: 1.1, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.4 }}
+            />
+          </div>
+
+          {/* Panel derecho - Contenido */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <Medal className="text-amber-500" size={24} />
+                Dar Insignia
+              </h2>
+              <button
+                onClick={onClose}
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500"
+              >
                 <X size={20} />
               </button>
             </div>
-            <p className="text-sm text-white/80 mt-1">
-              {selectedStudentIds.length} estudiante(s) seleccionado(s)
-            </p>
-          </div>
 
-          {/* Lista de insignias */}
-          <div className="flex-1 overflow-y-auto p-4">
-            {loadingBadges ? (
-              <div className="text-center py-8">
-                <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-                <p className="text-gray-500">Cargando insignias...</p>
-              </div>
-            ) : manualBadges.length === 0 ? (
-              <div className="text-center py-8">
-                <Medal className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                <p className="text-gray-500">No hay insignias disponibles</p>
-                <p className="text-sm text-gray-400 mt-1">
-                  Crea insignias en Gamificación → Insignias
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {manualBadges.map((badge: Badge) => {
-                  const colors = RARITY_COLORS[badge.rarity];
-                  return (
-                    <button
-                      key={badge.id}
-                      onClick={() => setSelectedBadge(badge)}
-                      className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
-                        selectedBadge?.id === badge.id
-                          ? `${colors.bg} ${colors.border}`
-                          : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center bg-gradient-to-br ${colors.gradient}`}>
-                        <span className="text-2xl">{badge.icon}</span>
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium text-gray-800 dark:text-white">{badge.name}</p>
-                          {badge.assignmentMode === 'AUTOMATIC' && (
-                            <span className="text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded">Auto</span>
-                          )}
-                        </div>
-                        <p className="text-xs text-gray-500 line-clamp-1">{badge.description}</p>
-                        <span className={`text-xs font-medium ${colors.text}`}>
-                          {RARITY_LABELS[badge.rarity]}
-                        </span>
-                      </div>
-                      {selectedBadge?.id === badge.id && (
-                        <Check className="w-5 h-5 text-green-500" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Razón y botón */}
-          {selectedBadge && (
-            <div className="p-4 border-t border-gray-200 dark:border-gray-700 space-y-3">
-              <input
-                type="text"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder="Razón (opcional)"
-                className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm"
-              />
-              <Button
-                onClick={() => awardMutation.mutate()}
-                disabled={awardMutation.isPending}
-                className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600"
-              >
-                {awardMutation.isPending ? 'Otorgando...' : `Dar "${selectedBadge.name}"`}
-              </Button>
+            {/* Info bar */}
+            <div className="px-5 py-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-100 dark:border-amber-800">
+              <p className="text-sm text-amber-700 dark:text-amber-300 flex items-center gap-2">
+                <Users size={14} />
+                {selectedStudentIds.length} estudiante(s) seleccionado(s)
+              </p>
             </div>
+
+            {/* Lista de insignias */}
+            <div className="flex-1 overflow-y-auto p-5">
+              {/* Tips para docentes */}
+              <div className="mb-4 p-4 rounded-xl border bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800">
+                <h4 className="font-semibold text-sm mb-2 flex items-center gap-2 text-amber-700 dark:text-amber-300">
+                  💡 Consejos para otorgar insignias
+                </h4>
+                <ul className="space-y-1.5 text-xs text-gray-600 dark:text-gray-400">
+                  <li className="flex items-start gap-2">
+                    <span className="text-amber-500">✓</span>
+                    <span><strong>Reconocimiento:</strong> Las insignias son logros permanentes que motivan a los estudiantes.</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-amber-500">✓</span>
+                    <span><strong>Rarezas:</strong> Reserva las insignias épicas y legendarias para logros excepcionales.</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-amber-500">✓</span>
+                    <span><strong>Personaliza:</strong> Añade una razón para que el estudiante recuerde por qué la recibió.</span>
+                  </li>
+                </ul>
+              </div>
+
+              {loadingBadges ? (
+                <div className="text-center py-8">
+                  <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                  <p className="text-gray-500">Cargando insignias...</p>
+                </div>
+              ) : manualBadges.length === 0 ? (
+                <div className="text-center py-8">
+                  <Medal className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                  <p className="text-gray-500">No hay insignias disponibles</p>
+                  <p className="text-sm text-gray-400 mt-1">
+                    Crea insignias en Gamificación → Insignias
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {manualBadges.map((badge: Badge) => {
+                    const colors = RARITY_COLORS[badge.rarity];
+                    return (
+                      <button
+                        key={badge.id}
+                        onClick={() => setSelectedBadge(badge)}
+                        className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-left hover:scale-[1.01] active:scale-[0.99] ${
+                          selectedBadge?.id === badge.id
+                            ? `${colors.bg} ${colors.border} shadow-md`
+                            : 'border-gray-200 dark:border-gray-600 hover:border-amber-300 hover:bg-amber-50/50 dark:hover:bg-amber-900/10'
+                        }`}
+                      >
+                        <div className={`w-14 h-14 rounded-full flex items-center justify-center bg-gradient-to-br ${colors.gradient} shadow-lg`}>
+                          <span className="text-2xl">{badge.icon}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-semibold text-gray-800 dark:text-white">{badge.name}</p>
+                            {badge.assignmentMode === 'AUTOMATIC' && (
+                              <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-full font-medium">Auto</span>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-1 mt-0.5">{badge.description}</p>
+                          <span className={`text-xs font-bold ${colors.text} mt-1 inline-block`}>
+                            {RARITY_LABELS[badge.rarity]}
+                          </span>
+                        </div>
+                        {selectedBadge?.id === badge.id && (
+                          <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
+                            <Check className="w-5 h-5 text-white" />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Razón y botón */}
+            {selectedBadge && (
+              <div className="p-5 border-t border-gray-200 dark:border-gray-700 space-y-3 bg-gray-50 dark:bg-gray-800/50">
+                <div className="flex items-center gap-3 p-3 bg-white dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center bg-gradient-to-br ${RARITY_COLORS[selectedBadge.rarity].gradient}`}>
+                    <span className="text-lg">{selectedBadge.icon}</span>
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-800 dark:text-white text-sm">{selectedBadge.name}</p>
+                    <p className={`text-xs font-medium ${RARITY_COLORS[selectedBadge.rarity].text}`}>{RARITY_LABELS[selectedBadge.rarity]}</p>
+                  </div>
+                </div>
+                <input
+                  type="text"
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="Razón del reconocimiento (opcional)"
+                  className="w-full px-4 py-3 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all"
+                />
+                <Button
+                  onClick={() => awardMutation.mutate()}
+                  disabled={awardMutation.isPending}
+                  className="w-full !py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-semibold"
+                >
+                  {awardMutation.isPending ? 'Otorgando...' : `🏆 Dar "${selectedBadge.name}"`}
+                </Button>
+              </div>
           )}
+          </div>
         </motion.div>
       </motion.div>
     </AnimatePresence>
@@ -1302,7 +1350,7 @@ const PointsModal = ({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+        className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
         onClick={onClose}
       >
         <motion.div
@@ -1310,50 +1358,73 @@ const PointsModal = ({
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
           onClick={(e) => e.stopPropagation()}
-          className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-hidden"
+          className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col md:flex-row"
         >
-          {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-              {isPositive ? '✨ Dar puntos' : '⚡ Quitar puntos'}
-            </h2>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500"
-            >
-              <X size={20} />
-            </button>
+          {/* Panel izquierdo - Jiro */}
+          <div className="hidden md:block md:w-72 flex-shrink-0 relative overflow-hidden">
+            {/* Imagen de fondo que cubre todo el panel */}
+            <motion.img
+              src={isPositive ? "/assets/mascot/jiro-puntosfavor.jpg" : "/assets/mascot/jiro-puntoscontra.jpg"}
+              alt="Jiro"
+              className="absolute inset-0 w-full h-full object-cover"
+              initial={{ scale: 1.1, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.4 }}
+            />
           </div>
 
-          {/* Tabs */}
-          <div data-onboarding="points-modal-tabs" className="flex border-b border-gray-200 dark:border-gray-700">
-            <button
-              onClick={() => setActiveTab('behaviors')}
-              className={`flex-1 py-3 text-sm font-medium transition-colors ${
-                activeTab === 'behaviors'
-                  ? 'text-indigo-600 border-b-2 border-indigo-600'
-                  : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-              }`}
-            >
-              Comportamientos
-            </button>
-            <button
-              onClick={() => setActiveTab('manual')}
-              data-onboarding="manual-tab-btn"
-              className={`flex-1 py-3 text-sm font-medium transition-colors ${
-                activeTab === 'manual'
-                  ? 'text-indigo-600 border-b-2 border-indigo-600'
-                  : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-              }`}
-            >
-              Manual
-            </button>
-          </div>
+          {/* Panel derecho - Contenido */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                {isPositive ? <Sparkles className="text-emerald-500" size={24} /> : <Zap className="text-red-500" size={24} />}
+                {isPositive ? 'Dar puntos' : 'Quitar puntos'}
+              </h2>
+              <button
+                onClick={onClose}
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500"
+              >
+                <X size={20} />
+              </button>
+            </div>
 
-          <div className="p-4 overflow-y-auto max-h-96">
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-              Aplicar a {selectedCount} estudiante{selectedCount !== 1 ? 's' : ''}
-            </p>
+            {/* Tabs */}
+            <div data-onboarding="points-modal-tabs" className="flex border-b border-gray-200 dark:border-gray-700">
+              <button
+                onClick={() => setActiveTab('behaviors')}
+                className={`flex-1 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                  activeTab === 'behaviors'
+                    ? isPositive 
+                      ? 'text-emerald-600 border-b-2 border-emerald-600 bg-emerald-50 dark:bg-emerald-900/20'
+                      : 'text-red-600 border-b-2 border-red-600 bg-red-50 dark:bg-red-900/20'
+                    : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                }`}
+              >
+                <Award size={16} />
+                Comportamientos
+              </button>
+              <button
+                onClick={() => setActiveTab('manual')}
+                data-onboarding="manual-tab-btn"
+                className={`flex-1 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+                  activeTab === 'manual'
+                    ? isPositive 
+                      ? 'text-emerald-600 border-b-2 border-emerald-600 bg-emerald-50 dark:bg-emerald-900/20'
+                      : 'text-red-600 border-b-2 border-red-600 bg-red-50 dark:bg-red-900/20'
+                    : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                }`}
+              >
+                <Settings size={16} />
+                Manual
+              </button>
+            </div>
+
+            <div className="flex-1 p-5 overflow-y-auto">
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 flex items-center gap-2">
+                <Users size={14} />
+                Aplicar a {selectedCount} estudiante{selectedCount !== 1 ? 's' : ''}
+              </p>
 
             {/* Tab: Comportamientos */}
             {activeTab === 'behaviors' && (
@@ -1424,12 +1495,59 @@ const PointsModal = ({
 
             {/* Tab: Manual */}
             {activeTab === 'manual' && (
-              <form onSubmit={handleManualSubmit} data-onboarding="manual-section" className="space-y-4">
-                {/* Tipo de punto */}
-                <div>
-                  <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                    Tipo de punto
-                  </label>
+              <div className="space-y-4">
+                {/* Tips para docentes */}
+                <div className={`p-4 rounded-xl border ${
+                  isPositive 
+                    ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800' 
+                    : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                }`}>
+                  <h4 className={`font-semibold text-sm mb-2 flex items-center gap-2 ${
+                    isPositive ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'
+                  }`}>
+                    💡 Consejos para asignar puntos
+                  </h4>
+                  <ul className="space-y-1.5 text-xs text-gray-600 dark:text-gray-400">
+                    {isPositive ? (
+                      <>
+                        <li className="flex items-start gap-2">
+                          <span className="text-emerald-500">✓</span>
+                          <span><strong>XP (Experiencia):</strong> Para logros académicos, tareas completadas, participación activa.</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="text-emerald-500">✓</span>
+                          <span><strong>HP (Vida):</strong> Para premiar buena conducta, puntualidad, respeto.</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="text-emerald-500">✓</span>
+                          <span><strong>GP (Oro):</strong> Moneda para la tienda. Úsalo como incentivo especial.</span>
+                        </li>
+                      </>
+                    ) : (
+                      <>
+                        <li className="flex items-start gap-2">
+                          <span className="text-red-500">!</span>
+                          <span><strong>Sé justo:</strong> La penalización debe ser proporcional a la falta.</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="text-red-500">!</span>
+                          <span><strong>HP para conducta:</strong> Quitar HP por faltas de comportamiento.</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="text-red-500">!</span>
+                          <span><strong>XP con cuidado:</strong> Evita quitar XP por conducta, úsalo solo para trabajo académico.</span>
+                        </li>
+                      </>
+                    )}
+                  </ul>
+                </div>
+
+                <form onSubmit={handleManualSubmit} data-onboarding="manual-section" className="space-y-4">
+                  {/* Tipo de punto */}
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+                      Tipo de punto
+                    </label>
                   <div className="flex gap-2">
                     {(['XP', 'HP', 'GP'] as PointType[]).map((type) => (
                       <button
@@ -1495,15 +1613,17 @@ const PointsModal = ({
                 />
 
                 <Button
-                  type="submit"
-                  className={`w-full ${isPositive ? '!bg-green-500 hover:!bg-green-600' : '!bg-red-500 hover:!bg-red-600'}`}
-                  isLoading={isSubmitting}
-                  disabled={!manualReason.trim() || manualAmount <= 0}
-                >
-                  {isPositive ? 'Agregar' : 'Quitar'} {manualAmount} {manualPointType}
-                </Button>
-              </form>
+                    type="submit"
+                    className={`w-full ${isPositive ? '!bg-green-500 hover:!bg-green-600' : '!bg-red-500 hover:!bg-red-600'}`}
+                    isLoading={isSubmitting}
+                    disabled={!manualReason.trim() || manualAmount <= 0}
+                  >
+                    {isPositive ? 'Agregar' : 'Quitar'} {manualAmount} {manualPointType}
+                  </Button>
+                </form>
+              </div>
             )}
+            </div>
           </div>
         </motion.div>
       </motion.div>

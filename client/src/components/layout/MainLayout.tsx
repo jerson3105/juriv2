@@ -418,34 +418,6 @@ export const MainLayout = () => {
             </Link>
           )}
 
-          {/* Conquista de Territorios - solo para estudiantes con clanes habilitados */}
-          {!isTeacher && currentProfile?.classroom?.clansEnabled && currentProfile?.teamId && (
-            <Link
-              to="/territory"
-              onClick={() => setSidebarOpen(false)}
-              className={`
-                flex items-center gap-3 px-3 py-2.5 rounded-xl
-                transition-all duration-200 group relative
-                ${location.pathname === '/territory'
-                  ? 'bg-gradient-to-r from-indigo-500 to-blue-600 text-white shadow-md'
-                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                }
-              `}
-            >
-              <div className={`
-                w-8 h-8 rounded-lg flex items-center justify-center transition-all
-                ${location.pathname === '/territory'
-                  ? 'bg-white/20' 
-                  : 'bg-gradient-to-br from-indigo-500 to-blue-600 text-white shadow-sm group-hover:scale-105'
-                }
-              `}>
-                <Shield size={16} />
-              </div>
-              <span className={`text-sm font-medium ${location.pathname === '/territory' ? '' : 'text-gray-700 dark:text-gray-300'}`}>
-                Territorios
-              </span>
-            </Link>
-          )}
         </nav>
 
         {/* User Card */}

@@ -4,6 +4,7 @@ import { db } from '../db/index.js';
 import { curriculumAreas, curriculumCompetencies } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { GoogleGenAI } from '@google/genai';
 
 const createClassroomSchema = z.object({
   name: z.string().min(2).max(255),
@@ -358,6 +359,405 @@ export class ClassroomController {
       res.status(500).json({
         success: false,
         message: 'Error al obtener áreas curriculares',
+      });
+    }
+  }
+
+  async generateAIContent(req: Request, res: Response) {
+    try {
+      const { 
+        section, context, description, count,
+        pointMode, includePositive, includeNegative,
+        assignmentMode, types, questionTypes,
+        competencies, behaviors 
+      } = req.body;
+
+      if (!section || !context) {
+        return res.status(400).json({
+          success: false,
+          message: 'Se requiere sección y contexto',
+        });
+      }
+
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({
+          success: false,
+          message: 'API Key de Gemini no configurada',
+        });
+      }
+
+      let prompt = '';
+      const itemCount = count || 10;
+
+      const includePos = includePositive !== false;
+      const includeNeg = includeNegative !== false;
+      const behaviorMix = includePos && includeNeg ? 'una mezcla de comportamientos POSITIVOS y NEGATIVOS' : includePos ? 'SOLO comportamientos POSITIVOS' : 'SOLO comportamientos NEGATIVOS';
+      const pointModeDesc = pointMode === 'COMBINED' ? 'Usa combinaciones de XP, HP y GP según corresponda' : pointMode === 'XP_ONLY' ? 'Usa SOLO XP (xpValue), deja hpValue y gpValue en 0' : pointMode === 'HP_ONLY' ? 'Usa SOLO HP (hpValue), deja xpValue y gpValue en 0' : 'Usa SOLO GP (gpValue), deja xpValue y hpValue en 0';
+
+      // Preparar contexto de competencias si existen
+      const competenciesContext = competencies && competencies.length > 0
+        ? `\n\nCOMPETENCIAS CURRICULARES DISPONIBLES:\n${competencies.map((c: any, i: number) => `${i + 1}. "${c.name}" (ID: ${c.id})`).join('\n')}\n\nIMPORTANTE: Cada comportamiento DEBE estar ligado a una de estas competencias usando el campo "competencyId".`
+        : '';
+
+      // Preparar contexto de comportamientos para insignias
+      const behaviorsContext = behaviors && behaviors.length > 0
+        ? `\n\nCOMPORTAMIENTOS DISPONIBLES EN LA CLASE:\n${behaviors.map((b: string, i: number) => `${i + 1}. "${b}"`).join('\n')}\n\nIMPORTANTE: Las condiciones de activación (triggerCondition) DEBEN referenciar estos comportamientos específicos.`
+        : '';
+
+      switch (section) {
+        case 'behaviors':
+          const hasCompetencies = competencies && competencies.length > 0;
+          const firstCompetencyId = hasCompetencies ? competencies[0].id : '';
+          const competencyField = hasCompetencies
+            ? `\n    "competencyId": "${firstCompetencyId}",`
+            : '';
+          const competencyRule = hasCompetencies
+            ? `\n6. OBLIGATORIO: Usa el campo "competencyId" con el ID EXACTO de una competencia de la lista (ej: "${firstCompetencyId}"). NO inventes IDs.`
+            : '';
+          
+          prompt = `Eres un experto en gamificación educativa. Genera ${itemCount} comportamientos para una clase.
+
+CONTEXTO:
+${context}
+
+DESCRIPCIÓN ADICIONAL DEL PROFESOR:
+${description || 'Genera comportamientos variados apropiados para esta clase'}
+${competenciesContext}
+
+Genera ${behaviorMix}.
+${pointModeDesc}
+
+Responde ÚNICAMENTE con un array JSON válido:
+[
+  {
+    "name": "Nombre corto (máx 40 caracteres)",
+    "description": "Descripción breve",
+    "isPositive": true,
+    "xpValue": 10,
+    "hpValue": 0,
+    "gpValue": 5,
+    "icon": "⭐"${competencyField}
+  }
+]
+
+REGLAS:
+1. Positivos: XP 5-30, GP 0-15, HP generalmente 0
+2. Negativos: HP 5-25 (daño a la vida), XP 0, GP 0-10 (multa opcional)
+3. Iconos: ⭐🎯📚✅🏆💪🧠❤️💔⚡🔥❌😴📵🤝👏💡🎨🔬📝✋🙋
+4. Nombres en español, apropiados al nivel
+5. isPositive=true para premiar, isPositive=false para penalizar${competencyRule}`;
+          break;
+
+        case 'badges':
+          const badgeMode = assignmentMode || 'MANUAL';
+          const badgeModeDesc = badgeMode === 'MANUAL' ? 'MANUAL (el profesor las asigna manualmente)' : badgeMode === 'AUTOMATIC' ? 'AUTOMATIC (se asignan automáticamente al cumplir condiciones basadas en comportamientos)' : 'BOTH (pueden ser manuales o automáticas)';
+          
+          // Contexto de competencias para insignias
+          const badgeHasCompetencies = competencies && competencies.length > 0;
+          const badgeFirstCompetencyId = badgeHasCompetencies ? competencies[0].id : '';
+          
+          const badgeCompetenciesContext = badgeHasCompetencies
+            ? `\n\nCOMPETENCIAS CURRICULARES DISPONIBLES:\n${competencies.map((c: any, i: number) => `${i + 1}. "${c.name}" (ID: ${c.id})`).join('\n')}\n\nIMPORTANTE: Cada insignia DEBE estar ligada a una de estas competencias usando el campo "competencyId" con el ID EXACTO.`
+            : '';
+          
+          const competencyBadgeField = badgeHasCompetencies
+            ? `\n    "competencyId": "${badgeFirstCompetencyId}",`
+            : '';
+          
+          const competencyBadgeRule = badgeHasCompetencies
+            ? `\n7. OBLIGATORIO: Usa el campo "competencyId" con el ID EXACTO de una competencia de la lista (ej: "${badgeFirstCompetencyId}"). NO inventes IDs.`
+            : '';
+
+          // Para modo AUTOMATIC, forzar uso exclusivo de comportamientos existentes
+          const hasBehaviors = behaviors && behaviors.length > 0;
+          const behaviorsList = hasBehaviors ? behaviors.map((b: string) => `"${b}"`).join(', ') : '';
+          
+          const automaticModeWarning = (badgeMode === 'AUTOMATIC' || badgeMode === 'BOTH') && hasBehaviors
+            ? `\n\n⚠️ CRÍTICO PARA MODO AUTOMÁTICO:
+Las insignias automáticas se desbloquean cuando el estudiante ACUMULA un comportamiento específico.
+SOLO puedes usar estos comportamientos EXACTOS en triggerCondition: ${behaviorsList}
+
+Formato OBLIGATORIO de triggerCondition: "Obtener X veces '[NOMBRE EXACTO DEL COMPORTAMIENTO]'"
+Ejemplos CORRECTOS:
+- "Obtener 5 veces '${behaviors[0]}'"
+- "Obtener 3 veces '${behaviors[Math.min(1, behaviors.length - 1)]}'"
+
+PROHIBIDO inventar condiciones como "Entregar tareas", "Completar proyectos", etc.
+Si no hay comportamiento apropiado, usa uno de los disponibles de todas formas.`
+            : '';
+          
+          prompt = `Eres un experto en gamificación educativa. Genera ${itemCount} insignias para una clase.
+
+CONTEXTO:
+${context}
+
+DESCRIPCIÓN ADICIONAL:
+${description || 'Genera insignias variadas para reconocer diferentes logros'}
+${behaviorsContext}${badgeCompetenciesContext}${automaticModeWarning}
+
+MODO DE ASIGNACIÓN: ${badgeModeDesc}
+
+Responde ÚNICAMENTE con un array JSON válido:
+[
+  {
+    "name": "Nombre de la insignia",
+    "description": "Qué logro reconoce",
+    "icon": "🏆",
+    "rarity": "COMMON",
+    "assignmentMode": "${badgeMode}",
+    "triggerCondition": "Obtener X veces '[NOMBRE EXACTO DE COMPORTAMIENTO DE LA LISTA]'",${competencyBadgeField}
+    "rewardXp": 50,
+    "rewardGp": 20
+  }
+]
+
+REGLAS:
+1. Rarezas: COMMON (50%), RARE (30%), EPIC (15%), LEGENDARY (5%)
+2. Recompensas según rareza:
+   - COMMON: XP 20-50, GP 10-20 (requiere 3-5 veces el comportamiento)
+   - RARE: XP 50-100, GP 20-50 (requiere 5-8 veces)
+   - EPIC: XP 100-200, GP 50-100 (requiere 8-12 veces)
+   - LEGENDARY: XP 200-500, GP 100-200 (requiere 15+ veces)
+3. Iconos: 🏆⭐🎖️💎👑🎯🔥💪📚✨🎓🚀🌟💡🎨🔬🏅🥇🥈🥉
+4. Nombres creativos en español relacionados con el comportamiento
+5. SIEMPRE incluir "assignmentMode": "${badgeMode}" en cada insignia
+6. Para AUTOMATIC/BOTH: triggerCondition DEBE usar EXACTAMENTE un nombre de comportamiento de la lista proporcionada. NO INVENTES condiciones.${competencyBadgeRule}`;
+          break;
+
+        case 'missions':
+          const missionTypesArr = types && types.length > 0 ? types : ['DAILY', 'WEEKLY', 'SPECIAL'];
+          const missionTypesStr = missionTypesArr.join(', ');
+          prompt = `Eres un experto en gamificación educativa. Genera ${itemCount} misiones para una clase.
+
+CONTEXTO:
+${context}
+
+DESCRIPCIÓN ADICIONAL:
+${description || 'Genera misiones variadas con diferentes objetivos'}
+
+TIPOS DE MISIÓN A GENERAR: ${missionTypesStr}
+
+Responde ÚNICAMENTE con un array JSON válido:
+[
+  {
+    "name": "Título de la misión",
+    "description": "Descripción del objetivo",
+    "xpReward": 100,
+    "gpReward": 50,
+    "type": "DAILY",
+    "category": "ACADEMIC",
+    "objectiveType": "CUSTOM",
+    "icon": "🎯"
+  }
+]
+
+REGLAS:
+1. Tipos permitidos: ${missionTypesStr}
+   - DAILY: misiones para completar en un día
+   - WEEKLY: misiones para completar en una semana
+   - SPECIAL: misiones especiales o de proyecto
+2. Categorías: ACADEMIC (tareas), PARTICIPATION, BEHAVIOR, SOCIAL, CUSTOM
+3. objectiveType: COMPLETE_BEHAVIORS, EARN_XP, EARN_GP, REACH_LEVEL, COLLECT_BADGES, CUSTOM
+4. Recompensas: XP 50-300, GP 20-100
+5. Títulos creativos y motivadores en español
+6. Iconos: 🎯📅📆⭐🏆💪📚✨🎓🚀🌟💡🎨🔬🏅`;
+          break;
+
+        case 'shop':
+          prompt = `Eres un experto en gamificación educativa. Genera ${itemCount} artículos de tienda para una clase.
+
+CONTEXTO:
+${context}
+
+DESCRIPCIÓN ADICIONAL:
+${description || 'Genera artículos variados: privilegios, recompensas y poderes especiales'}
+
+Responde ÚNICAMENTE con un array JSON válido:
+[
+  {
+    "name": "Nombre del artículo",
+    "description": "Qué obtiene el estudiante",
+    "icon": "🎁",
+    "category": "CONSUMABLE",
+    "rarity": "COMMON",
+    "price": 50
+  }
+]
+
+REGLAS:
+1. Categorías: CONSUMABLE (uso único), SPECIAL (poderes especiales)
+2. Rarezas: COMMON, RARE, LEGENDARY
+3. Precios según rareza:
+   - COMMON: 20-80 GP
+   - RARE: 80-200 GP
+   - LEGENDARY: 200-500 GP
+4. Tipos de artículos:
+   - Privilegios: elegir asiento, tiempo extra, entregar tarde
+   - Recompensas: stickers, certificados, tiempo libre
+   - Poderes: escudo HP, bonus XP, duplicar puntos
+5. Iconos: 🎁⭐💎🏆🎭👑🔮⚡🌟💺⏰🛡️🎵📱🎮🍬✨💫🎪`;
+          break;
+
+        case 'questions':
+          const qTypes = questionTypes && questionTypes.length > 0 ? questionTypes : ['SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'TRUE_FALSE'];
+          const qTypesStr = qTypes.join(', ');
+          prompt = `Eres un experto educativo. Genera un banco de preguntas para una clase.
+
+CONTEXTO:
+${context}
+
+TEMAS A EVALUAR:
+${description || 'Genera preguntas generales apropiadas para la asignatura y nivel'}
+
+TIPOS DE PREGUNTA A GENERAR: ${qTypesStr}
+
+Responde ÚNICAMENTE con un objeto JSON válido:
+{
+  "name": "Banco de Preguntas - [Tema]",
+  "description": "Descripción del banco",
+  "questions": [
+    {
+      "questionText": "¿Texto de la pregunta?",
+      "type": "SINGLE_CHOICE",
+      "options": [{"text": "Opción A", "isCorrect": true}, {"text": "Opción B", "isCorrect": false}],
+      "points": 10,
+      "difficulty": "MEDIUM",
+      "explanation": "Explicación educativa de por qué la respuesta correcta es correcta"
+    }
+  ]
+}
+
+REGLAS:
+1. Genera ${itemCount} preguntas variadas
+2. TIPOS PERMITIDOS: ${qTypesStr}
+   - TRUE_FALSE: pregunta de verdadero/falso con 2 opciones
+   - SINGLE_CHOICE: una sola respuesta correcta (4 opciones)
+   - MULTIPLE_CHOICE: múltiples respuestas correctas (4 opciones)
+   - MATCHING: pares para relacionar (4-6 pares)
+3. Para MATCHING: options = [{"text": "A", "isCorrect": false, "matchWith": "1"}, {"text": "1", "isCorrect": true, "matchWith": "A"}]
+4. Dificultades: EASY (30%), MEDIUM (50%), HARD (20%)
+5. Puntos: EASY 5-10, MEDIUM 10-20, HARD 20-30
+6. Distribuir proporcionalmente entre los tipos solicitados
+7. Usa "questionText" (no "question") para el texto
+8. En options usa objetos con "text" e "isCorrect"
+9. IMPORTANTE: Incluye siempre "explanation" con una explicación educativa clara de la respuesta correcta`;
+          break;
+
+        default:
+          return res.status(400).json({
+            success: false,
+            message: 'Sección no válida',
+          });
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: prompt,
+      });
+
+      const responseText = response.text || '';
+
+      if (!responseText.trim()) {
+        return res.status(500).json({
+          success: false,
+          message: 'La IA no generó contenido',
+        });
+      }
+
+      let parsedData;
+      try {
+        let cleanText = responseText.trim();
+        if (cleanText.startsWith('```json')) {
+          cleanText = cleanText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        } else if (cleanText.startsWith('```')) {
+          cleanText = cleanText.replace(/^```\s*/, '').replace(/\s*```$/, '');
+        }
+        parsedData = JSON.parse(cleanText);
+      } catch (parseError) {
+        console.error('Error parsing AI response:', responseText);
+        return res.status(500).json({
+          success: false,
+          message: 'Error al procesar la respuesta de la IA',
+        });
+      }
+
+      res.json({
+        success: true,
+        data: section === 'questions' ? parsedData : { items: parsedData },
+      });
+
+    } catch (error: any) {
+      console.error('Error generating AI content:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Error al generar contenido con IA',
+      });
+    }
+  }
+
+  // Obtener cantidades de elementos clonables
+  async getCloneableCounts(req: Request, res: Response) {
+    try {
+      const user = req.user as any;
+      if (!user) {
+        return res.status(401).json({ success: false, message: 'No autenticado' });
+      }
+
+      const { classroomId } = req.params;
+      const counts = await classroomService.getCloneableCounts(classroomId);
+
+      res.json({
+        success: true,
+        data: counts,
+      });
+    } catch (error: any) {
+      console.error('Error getting cloneable counts:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Error al obtener conteos',
+      });
+    }
+  }
+
+  // Clonar aula
+  async cloneClassroom(req: Request, res: Response) {
+    try {
+      const user = req.user as any;
+      if (!user) {
+        return res.status(401).json({ success: false, message: 'No autenticado' });
+      }
+
+      const { classroomId } = req.params;
+      const { name, description, copyBehaviors, copyBadges, copyShopItems, copyQuestionBanks } = req.body;
+
+      if (!name || name.trim().length < 2) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'El nombre del aula es requerido (mínimo 2 caracteres)' 
+        });
+      }
+
+      const result = await classroomService.cloneClassroom(classroomId, user.id, {
+        name: name.trim(),
+        description: description?.trim(),
+        copyBehaviors: copyBehaviors ?? true,
+        copyBadges: copyBadges ?? true,
+        copyShopItems: copyShopItems ?? true,
+        copyQuestionBanks: copyQuestionBanks ?? true,
+      });
+
+      res.json({
+        success: true,
+        data: result,
+        message: 'Aula clonada exitosamente',
+      });
+    } catch (error: any) {
+      console.error('Error cloning classroom:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Error al clonar el aula',
       });
     }
   }

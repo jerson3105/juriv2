@@ -7,7 +7,6 @@ import {
   Heart, 
   Coins, 
   TrendingUp, 
-  Swords,
   ShoppingBag,
   Plus,
   Users,
@@ -28,11 +27,8 @@ import { studentApi, CHARACTER_CLASSES } from '../../lib/studentApi';
 import { avatarApi } from '../../lib/avatarApi';
 import { shopApi } from '../../lib/shopApi';
 import { StudentShopPage } from './StudentShopPage';
-import { studentBossBattleApi } from '../../lib/studentBossBattleApi';
-import { StudentBattleView } from '../../components/student/StudentBattleView';
 import { StudentProgressView } from '../../components/student/StudentProgressView';
 import { ClanRankingView } from '../../components/student/ClanRankingView';
-import { battleApi } from '../../lib/battleApi';
 import { badgeApi, type Badge, RARITY_COLORS, RARITY_LABELS } from '../../lib/badgeApi';
 import { BadgeUnlockModal } from '../../components/badges/BadgeUnlockModal';
 import { LevelUpAnimation } from '../../components/effects/LevelUpAnimation';
@@ -43,8 +39,7 @@ export const StudentDashboard = () => {
   const { user } = useAuthStore();
   const { selectedClassIndex } = useStudentStore();
   const navigate = useNavigate();
-  const [activeView, setActiveView] = useState<'dashboard' | 'shop' | 'avatar-shop' | 'battle' | 'badges' | 'progress' | 'clan-ranking'>('dashboard');
-  const [activeBattleId, setActiveBattleId] = useState<string | null>(null);
+  const [activeView, setActiveView] = useState<'dashboard' | 'shop' | 'avatar-shop' | 'badges' | 'progress' | 'clan-ranking'>('dashboard');
   
   // Estado para animación de subida de nivel
   const [showLevelUp, setShowLevelUp] = useState(false);
@@ -66,26 +61,6 @@ export const StudentDashboard = () => {
   // Clase actualmente seleccionada (sincronizada con el sidebar)
   const currentProfile = myClasses?.[selectedClassIndex];
   
-  // Batallas activas para este estudiante (sistema antiguo)
-  const { data: activeBattles = [] } = useQuery({
-    queryKey: ['active-battles', currentProfile?.id],
-    queryFn: () => battleApi.getActiveBattlesForStudent(currentProfile!.id),
-    enabled: !!currentProfile?.id,
-    staleTime: 60000, // Considerar datos frescos por 1 minuto
-  });
-
-  // Student Boss Battles disponibles (nuevo sistema)
-  const { data: studentBossBattles = [] } = useQuery({
-    queryKey: ['student-boss-battles-available', currentProfile?.classroomId, currentProfile?.id],
-    queryFn: () => studentBossBattleApi.getAvailableForStudent(currentProfile!.classroomId, currentProfile!.id),
-    enabled: !!currentProfile?.classroomId && !!currentProfile?.id,
-    staleTime: 30000,
-  });
-
-  // Filtrar solo batallas activas donde puede participar
-  const availableStudentBattles = studentBossBattles.filter(
-    (b: any) => b.status === 'ACTIVE' && b.canParticipate
-  );
 
   // Items equipados del avatar
   const { data: equippedItems = [] } = useQuery({
@@ -220,20 +195,6 @@ export const StudentDashboard = () => {
 
   // Obtener compañeros de clase para regalos (simplificado - se cargará en StudentShopPage)
   const classmates: Array<{ id: string; characterName: string | null; characterClass: string }> = [];
-
-  // Vista de batalla
-  if (activeView === 'battle' && activeBattleId) {
-    return (
-      <StudentBattleView
-        bossId={activeBattleId}
-        studentId={currentProfile.id}
-        onBack={() => {
-          setActiveView('dashboard');
-          setActiveBattleId(null);
-        }}
-      />
-    );
-  }
 
   // Vista de progreso/estadísticas
   if (activeView === 'progress') {
@@ -694,91 +655,7 @@ export const StudentDashboard = () => {
             )}
 
             {/* Acciones rápidas */}
-            <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Boss Battles - Nuevo sistema */}
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.25 }}
-                className="bg-gradient-to-br from-red-500 to-orange-500 rounded-xl p-4 text-white shadow-lg"
-              >
-                <div className="flex items-center gap-2 mb-3">
-                  <Swords className="w-5 h-5" />
-                  <h3 className="font-bold text-sm">Boss Battles</h3>
-                  {(availableStudentBattles.length > 0 || activeBattles.length > 0) && (
-                    <span className="ml-auto bg-yellow-400 text-red-800 text-xs font-bold px-2 py-0.5 rounded-full animate-pulse">
-                      {availableStudentBattles.length + activeBattles.length} ACTIVA{(availableStudentBattles.length + activeBattles.length) > 1 ? 'S' : ''}
-                    </span>
-                  )}
-                </div>
-                {availableStudentBattles.length > 0 ? (
-                  <div className="space-y-2">
-                    {availableStudentBattles.slice(0, 2).map((battle: any) => (
-                      <button
-                        key={battle.id}
-                        onClick={() => navigate(`/student-battle/${currentProfile?.classroomId}/${battle.id}`)}
-                        className="w-full bg-white/20 hover:bg-white/30 rounded-lg p-2 text-left transition-all"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="text-xl">💀</span>
-                          <div className="flex-1">
-                            <p className="font-bold text-xs">{battle.bossName}</p>
-                            <div className="flex items-center gap-2">
-                              <div className="flex-1 h-1 bg-white/20 rounded-full overflow-hidden">
-                                <div 
-                                  className="h-full bg-white rounded-full" 
-                                  style={{ width: `${battle.hpPercentage}%` }} 
-                                />
-                              </div>
-                              <span className="text-xs text-red-200">{battle.hpPercentage}%</span>
-                            </div>
-                          </div>
-                          <Swords className="w-4 h-4 animate-pulse" />
-                        </div>
-                      </button>
-                    ))}
-                    <button
-                      onClick={() => navigate(`/student-battle/${currentProfile?.classroomId}`)}
-                      className="w-full py-1.5 bg-white/10 hover:bg-white/20 text-white/80 rounded-lg text-xs font-medium transition-colors"
-                    >
-                      Ver todas →
-                    </button>
-                  </div>
-                ) : activeBattles.length > 0 ? (
-                  <div className="space-y-2">
-                    {activeBattles.slice(0, 2).map((battle) => (
-                      <button
-                        key={battle.id}
-                        onClick={() => {
-                          setActiveBattleId(battle.id);
-                          setActiveView('battle');
-                        }}
-                        className="w-full bg-white/20 hover:bg-white/30 rounded-lg p-2 text-left transition-all"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="text-xl">🐉</span>
-                          <div className="flex-1">
-                            <p className="font-bold text-xs">{battle.bossName}</p>
-                            <p className="text-xs text-red-200">{battle.currentHp}/{battle.bossHp} HP</p>
-                          </div>
-                          <Swords className="w-4 h-4 animate-pulse" />
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <>
-                    <p className="text-red-100 mb-3 text-xs">No hay batallas activas</p>
-                    <button 
-                      onClick={() => navigate(`/student-battle/${currentProfile?.classroomId}`)}
-                      className="w-full py-2 bg-white/20 hover:bg-white/30 text-white/80 rounded-lg text-xs font-medium transition-colors"
-                    >
-                      Ver batallas
-                    </button>
-                  </>
-                )}
-              </motion.div>
-
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
               {/* Tienda de Items */}
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
@@ -870,8 +747,8 @@ export const StudentDashboard = () => {
                 </button>
               </motion.div>
 
-              {/* Misiones */}
-              <motion.div
+              {/* Misiones - Temporalmente oculto para reestructuración */}
+              {/* <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.5 }}
@@ -889,7 +766,7 @@ export const StudentDashboard = () => {
                   Ver misiones
                   <ChevronRight size={14} />
                 </button>
-              </motion.div>
+              </motion.div> */}
 
               {/* Unirse a otra clase */}
               <motion.div

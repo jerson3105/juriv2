@@ -2,18 +2,21 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Users, Copy, Check, Trash2, X, GraduationCap, Sparkles, BookOpen } from 'lucide-react';
+import { Plus, Users, Copy, Check, Trash2, X, GraduationCap, Sparkles, BookOpen, Layers, Award, ShoppingBag, HelpCircle } from 'lucide-react';
 import { classroomApi, type Classroom, type CreateClassroomData } from '../../lib/classroomApi';
 import { getMySchools } from '../../api/schoolApi';
 import { useOnboardingStore } from '../../store/onboardingStore';
+import { AIClassroomWizard } from '../../components/classroom/AIClassroomWizard';
 import toast from 'react-hot-toast';
 
 export const ClassroomsPage = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showAIWizard, setShowAIWizard] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [deletingClassroom, setDeletingClassroom] = useState<Classroom | null>(null);
+  const [cloningClassroom, setCloningClassroom] = useState<Classroom | null>(null);
   
   const { isActive, currentStep, nextStep } = useOnboardingStore();
 
@@ -65,6 +68,19 @@ export const ClassroomsPage = () => {
     },
   });
 
+  const cloneMutation = useMutation({
+    mutationFn: ({ classroomId, options }: { classroomId: string; options: Parameters<typeof classroomApi.clone>[1] }) => 
+      classroomApi.clone(classroomId, options),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['classrooms'] });
+      setCloningClassroom(null);
+      toast.success(`¡Aula "${data.classroom.name}" creada exitosamente!`);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Error al clonar el aula');
+    },
+  });
+
   const copyCode = async (code: string) => {
     await navigator.clipboard.writeText(code);
     setCopiedCode(code);
@@ -97,14 +113,23 @@ export const ClassroomsPage = () => {
           </div>
         </div>
         {canCreateClasses && (
-          <button 
-            onClick={() => setShowCreateModal(true)}
-            data-onboarding="create-class-btn"
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-violet-500 to-purple-500 text-white text-sm font-medium rounded-xl shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 transition-shadow"
-          >
-            <Plus size={18} />
-            Nueva Clase
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setShowAIWizard(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-sm font-medium rounded-xl shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 transition-shadow"
+            >
+              <Sparkles size={18} />
+              Crear con IA
+            </button>
+            <button 
+              onClick={() => setShowCreateModal(true)}
+              data-onboarding="create-class-btn"
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-violet-500 to-purple-500 text-white text-sm font-medium rounded-xl shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 transition-shadow"
+            >
+              <Plus size={18} />
+              Nueva Clase
+            </button>
+          </div>
         )}
       </div>
 
@@ -154,6 +179,7 @@ export const ClassroomsPage = () => {
               onCopyCode={copyCode}
               copiedCode={copiedCode}
               onDelete={(id) => handleDelete(classrooms?.find(c => c.id === id)!)}
+              onClone={(id) => setCloningClassroom(classrooms?.find(c => c.id === id)!)}
               onView={(id) => navigate(`/classroom/${id}`)}
             />
           ))}
@@ -168,6 +194,15 @@ export const ClassroomsPage = () => {
         isLoading={createMutation.isPending}
       />
 
+      {/* Modal de crear clase con IA */}
+      <AIClassroomWizard
+        isOpen={showAIWizard}
+        onClose={() => setShowAIWizard(false)}
+        onSuccess={(classroomId) => {
+          navigate(`/classroom/${classroomId}`);
+        }}
+      />
+
       {/* Modal de confirmación de eliminación */}
       <AnimatePresence>
         {deletingClassroom && (
@@ -176,6 +211,18 @@ export const ClassroomsPage = () => {
             onClose={() => setDeletingClassroom(null)}
             onConfirm={confirmDelete}
             isLoading={deleteMutation.isPending}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Modal de clonación de aula */}
+      <AnimatePresence>
+        {cloningClassroom && (
+          <CloneClassroomModal
+            classroom={cloningClassroom}
+            onClose={() => setCloningClassroom(null)}
+            onClone={(options) => cloneMutation.mutate({ classroomId: cloningClassroom.id, options })}
+            isLoading={cloneMutation.isPending}
           />
         )}
       </AnimatePresence>
@@ -190,6 +237,7 @@ const ClassroomCard = ({
   onCopyCode,
   copiedCode,
   onDelete,
+  onClone,
   onView,
 }: {
   classroom: Classroom;
@@ -197,6 +245,7 @@ const ClassroomCard = ({
   onCopyCode: (code: string) => void;
   copiedCode: string | null;
   onDelete: (id: string) => void;
+  onClone: (id: string) => void;
   onView: (id: string) => void;
 }) => {
   return (
@@ -216,15 +265,28 @@ const ClassroomCard = ({
             {classroom.description || 'Sin descripción'}
           </p>
         </div>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete(classroom.id);
-          }}
-          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
-        >
-          <Trash2 size={16} />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onClone(classroom.id);
+            }}
+            title="Duplicar aula"
+            className="p-1.5 text-gray-400 hover:text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-900/30 rounded-lg transition-colors"
+          >
+            <Layers size={16} />
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(classroom.id);
+            }}
+            title="Eliminar aula"
+            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
       </div>
 
       {/* Código de clase */}
@@ -353,43 +415,57 @@ const CreateClassroomModal = ({
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
           onClick={(e: React.MouseEvent) => e.stopPropagation()}
-          className="bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md p-6 border border-gray-800 max-h-[90vh] overflow-y-auto"
+          className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border border-gray-200 dark:border-gray-800 max-h-[90vh] flex flex-col md:flex-row"
         >
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-lg font-bold text-white">
-              Nueva Clase
-            </h2>
-            <button
-              onClick={handleClose}
-              className="p-2 hover:bg-gray-800 rounded-lg text-gray-400"
-            >
-              <X size={18} />
-            </button>
+          {/* Panel izquierdo - Jiro */}
+          <div className="hidden md:block md:w-2/5 relative overflow-hidden">
+            <motion.img
+              src="/assets/mascot/jiro-crearclase.jpg"
+              alt="Jiro"
+              className="absolute inset-0 w-full h-full object-cover"
+              initial={{ scale: 1.1, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.4 }}
+            />
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">
-                Nombre de la clase
-              </label>
-              <input
-                type="text"
-                placeholder="Ej: Matemáticas 3°A"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+          {/* Panel derecho - Formulario */}
+          <div className="flex-1 p-6 overflow-y-auto">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+                Nueva Clase
+              </h2>
+              <button
+                onClick={handleClose}
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-500 dark:text-gray-400"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                  Nombre de la clase
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: Matemáticas 3°A"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
                 required
-                className="w-full px-3 py-2.5 rounded-xl border border-gray-700 bg-gray-800 text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none placeholder-gray-500"
+                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none placeholder-gray-400 dark:placeholder-gray-500"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                 Grado (opcional)
               </label>
               <select
                 value={gradeLevel}
                 onChange={(e) => setGradeLevel(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-gray-700 bg-gray-800 text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
+                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
               >
                 {GRADE_LEVELS.map((grade) => (
                   <option key={grade.value} value={grade.value}>
@@ -400,25 +476,25 @@ const CreateClassroomModal = ({
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                 Descripción (opcional)
               </label>
               <textarea
                 placeholder="Describe tu clase..."
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-gray-700 bg-gray-800 text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none placeholder-gray-500 resize-none"
+                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none placeholder-gray-400 dark:placeholder-gray-500 resize-none"
                 rows={2}
               />
             </div>
 
             {/* Toggle de Competencias */}
-            <div className="border-t border-gray-700 pt-4">
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <BookOpen size={18} className="text-violet-400" />
+                  <BookOpen size={18} className="text-violet-500" />
                   <div>
-                    <p className="text-sm font-medium text-white">Usar Competencias</p>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">Usar Competencias</p>
                     <p className="text-xs text-gray-500">Habilita calificaciones por competencias</p>
                   </div>
                 </div>
@@ -426,7 +502,7 @@ const CreateClassroomModal = ({
                   type="button"
                   onClick={() => setUseCompetencies(!useCompetencies)}
                   className={`relative w-11 h-6 rounded-full transition-colors ${
-                    useCompetencies ? 'bg-violet-500' : 'bg-gray-700'
+                    useCompetencies ? 'bg-violet-500' : 'bg-gray-300 dark:bg-gray-700'
                   }`}
                 >
                   <span
@@ -446,15 +522,15 @@ const CreateClassroomModal = ({
                     exit={{ height: 0, opacity: 0 }}
                     className="overflow-hidden"
                   >
-                    <div className="mt-4 space-y-3 p-3 bg-gray-800/50 rounded-xl border border-gray-700">
+                    <div className="mt-4 space-y-3 p-3 bg-gray-100 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
                       <div>
-                        <label className="block text-xs font-medium text-gray-400 mb-1">
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                           Área Curricular
                         </label>
                         <select
                           value={selectedAreaId}
                           onChange={(e) => setSelectedAreaId(e.target.value)}
-                          className="w-full px-3 py-2 rounded-lg border border-gray-600 bg-gray-700 text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
+                          className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
                         >
                           <option value="">Selecciona un área...</option>
                           {curriculumAreas.map((area) => (
@@ -466,23 +542,26 @@ const CreateClassroomModal = ({
                       </div>
 
                       <div>
-                        <label className="block text-xs font-medium text-gray-400 mb-1">
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                           Sistema de Calificación
                         </label>
                         <select
                           value={gradeScaleType}
                           onChange={(e) => setGradeScaleType(e.target.value as any)}
-                          className="w-full px-3 py-2 rounded-lg border border-gray-600 bg-gray-700 text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
+                          className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
                         >
                           <option value="PERU_LETTERS">Perú - Letras (AD, A, B, C)</option>
                           <option value="PERU_VIGESIMAL">Perú - Vigesimal (0-20)</option>
-                          <option value="CENTESIMAL">Centesimal (0-100)</option>
-                          <option value="USA_LETTERS">USA - Letras (A, B, C, D, F)</option>
                         </select>
                       </div>
 
+                      <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2 rounded-lg flex items-center gap-2">
+                        <span>🇵🇪</span>
+                        <span>Por el momento solo están disponibles las competencias del currículo de Perú.</span>
+                      </div>
+
                       {selectedAreaId && (
-                        <div className="text-xs text-gray-400 bg-gray-700/50 p-2 rounded-lg">
+                        <div className="text-xs text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 p-2 rounded-lg">
                           <p className="font-medium text-violet-400 mb-1">Competencias incluidas:</p>
                           <ul className="space-y-0.5">
                             {curriculumAreas
@@ -505,7 +584,7 @@ const CreateClassroomModal = ({
               <button
                 type="button"
                 onClick={handleClose}
-                className="flex-1 px-4 py-2.5 bg-gray-800 text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-700"
+                className="flex-1 px-4 py-2.5 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-700"
               >
                 Cancelar
               </button>
@@ -518,6 +597,7 @@ const CreateClassroomModal = ({
               </button>
             </div>
           </form>
+          </div>
         </motion.div>
       </motion.div>
     </AnimatePresence>
@@ -587,6 +667,226 @@ const DeleteConfirmModal = ({
             {isLoading ? 'Eliminando...' : 'Eliminar'}
           </button>
         </div>
+      </motion.div>
+    </motion.div>
+  );
+};
+
+// Modal de clonación de aula
+const CloneClassroomModal = ({
+  classroom,
+  onClose,
+  onClone,
+  isLoading,
+}: {
+  classroom: Classroom;
+  onClose: () => void;
+  onClone: (options: {
+    name: string;
+    description?: string;
+    copyBehaviors: boolean;
+    copyBadges: boolean;
+    copyShopItems: boolean;
+    copyQuestionBanks: boolean;
+  }) => void;
+  isLoading: boolean;
+}) => {
+  const [name, setName] = useState(`${classroom.name} (Copia)`);
+
+  // Obtener cantidades de elementos clonables
+  const { data: counts } = useQuery({
+    queryKey: ['cloneable-counts', classroom.id],
+    queryFn: () => classroomApi.getCloneableCounts(classroom.id),
+  });
+  const [description, setDescription] = useState(classroom.description || '');
+  const [copyBehaviors, setCopyBehaviors] = useState(true);
+  const [copyBadges, setCopyBadges] = useState(true);
+  const [copyShopItems, setCopyShopItems] = useState(true);
+  const [copyQuestionBanks, setCopyQuestionBanks] = useState(true);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onClone({
+      name: name.trim(),
+      description: description.trim() || undefined,
+      copyBehaviors,
+      copyBadges,
+      copyShopItems,
+      copyQuestionBanks,
+    });
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-lg shadow-xl"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center">
+              <Layers className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">Duplicar Aula</h2>
+              <p className="text-xs text-gray-500">Crea una copia de "{classroom.name}"</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Nombre */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Nombre de la nueva aula *
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Ej: Matemáticas 3°B"
+              className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
+              required
+              minLength={2}
+            />
+          </div>
+
+          {/* Descripción */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Descripción (opcional)
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Describe tu clase..."
+              rows={2}
+              className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none resize-none"
+            />
+          </div>
+
+          {/* Info de configuración heredada */}
+          {classroom.useCompetencies && (
+            <div className="text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 p-2 rounded-lg flex items-center gap-2">
+              <BookOpen size={14} />
+              <span>Se copiará la configuración de competencias del aula original.</span>
+            </div>
+          )}
+
+          {/* Checkboxes de qué copiar */}
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              ¿Qué deseas copiar?
+            </label>
+            
+            <label className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+              <input
+                type="checkbox"
+                checked={copyBehaviors}
+                onChange={(e) => setCopyBehaviors(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+              />
+              <div className="flex items-center gap-2 flex-1">
+                <Award size={18} className="text-amber-500" />
+                <div>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                    Comportamientos
+                    {counts && <span className="ml-2 text-xs font-normal text-amber-600 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded">{counts.behaviors}</span>}
+                  </p>
+                  <p className="text-xs text-gray-500">Acciones positivas y negativas configuradas</p>
+                </div>
+              </div>
+            </label>
+
+            <label className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+              <input
+                type="checkbox"
+                checked={copyBadges}
+                onChange={(e) => setCopyBadges(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+              />
+              <div className="flex items-center gap-2 flex-1">
+                <Award size={18} className="text-purple-500" />
+                <div>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                    Insignias
+                    {counts && <span className="ml-2 text-xs font-normal text-purple-600 bg-purple-100 dark:bg-purple-900/30 px-1.5 py-0.5 rounded">{counts.badges}</span>}
+                  </p>
+                  <p className="text-xs text-gray-500">Medallas y reconocimientos</p>
+                </div>
+              </div>
+            </label>
+
+            <label className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+              <input
+                type="checkbox"
+                checked={copyShopItems}
+                onChange={(e) => setCopyShopItems(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+              />
+              <div className="flex items-center gap-2 flex-1">
+                <ShoppingBag size={18} className="text-emerald-500" />
+                <div>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                    Tienda
+                    {counts && <span className="ml-2 text-xs font-normal text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded">{counts.shopItems}</span>}
+                  </p>
+                  <p className="text-xs text-gray-500">Items y recompensas de la tienda</p>
+                </div>
+              </div>
+            </label>
+
+            <label className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+              <input
+                type="checkbox"
+                checked={copyQuestionBanks}
+                onChange={(e) => setCopyQuestionBanks(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+              />
+              <div className="flex items-center gap-2 flex-1">
+                <HelpCircle size={18} className="text-blue-500" />
+                <div>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                    Banco de Preguntas
+                    {counts && <span className="ml-2 text-xs font-normal text-blue-600 bg-blue-100 dark:bg-blue-900/30 px-1.5 py-0.5 rounded">{counts.questionBanks}</span>}
+                  </p>
+                  <p className="text-xs text-gray-500">Preguntas para torneos y actividades</p>
+                </div>
+              </div>
+            </label>
+          </div>
+
+          {/* Botones */}
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors font-medium"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={isLoading || name.trim().length < 2}
+              className="flex-1 px-4 py-2.5 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-xl hover:from-violet-600 hover:to-purple-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 font-medium"
+            >
+              <Layers className="w-4 h-4" />
+              {isLoading ? 'Creando...' : 'Crear Copia'}
+            </button>
+          </div>
+        </form>
       </motion.div>
     </motion.div>
   );

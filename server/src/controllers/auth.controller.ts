@@ -17,7 +17,7 @@ const registerSchema = z.object({
   password: passwordSchema,
   firstName: z.string().min(2, 'El nombre debe tener al menos 2 caracteres'),
   lastName: z.string().min(2, 'El apellido debe tener al menos 2 caracteres'),
-  role: z.enum(['TEACHER', 'STUDENT']),
+  role: z.enum(['TEACHER', 'STUDENT', 'PARENT']),
 });
 
 const loginSchema = z.object({
@@ -359,7 +359,7 @@ export const uploadAvatar = async (req: Request, res: Response): Promise<void> =
       return;
     }
     
-    const avatarUrl = `/api/avatars/${req.file.filename}`;
+    const avatarUrl = `/api/static/avatars/${req.file.filename}`;
     const updatedUser = await authService.updateProfile(req.user.id, { avatarUrl });
     
     res.json({
@@ -437,6 +437,14 @@ export const googleCallback = async (req: Request, res: Response): Promise<void>
       return;
     }
 
+    // Verificar si es un usuario nuevo que necesita seleccionar rol
+    if (user.needsRoleSelection && user.googleData) {
+      // Codificar los datos de Google en base64 para pasarlos al frontend
+      const googleDataEncoded = Buffer.from(JSON.stringify(user.googleData)).toString('base64');
+      res.redirect(`${config_app.clientUrl}/auth/select-role?data=${googleDataEncoded}`);
+      return;
+    }
+
     // Generar tokens JWT para el usuario
     const tokens = await authService.generateTokensForUser(user.id);
     
@@ -449,5 +457,52 @@ export const googleCallback = async (req: Request, res: Response): Promise<void>
   } catch (error) {
     console.error('Error en Google callback:', error);
     res.redirect(`${config_app.clientUrl}/login?error=google_auth_failed`);
+  }
+};
+
+/**
+ * POST /api/auth/google/complete-registration
+ * Completar registro de Google con rol seleccionado
+ */
+export const completeGoogleRegistration = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { googleData, role } = req.body;
+    
+    if (!googleData || !role) {
+      res.status(400).json({
+        success: false,
+        message: 'Datos incompletos',
+      });
+      return;
+    }
+    
+    if (!['TEACHER', 'STUDENT', 'PARENT'].includes(role)) {
+      res.status(400).json({
+        success: false,
+        message: 'Rol inválido',
+      });
+      return;
+    }
+    
+    const result = await authService.completeGoogleRegistration(googleData, role);
+    
+    res.json({
+      success: true,
+      message: 'Registro completado exitosamente',
+      data: result,
+    });
+  } catch (error) {
+    console.error('Error completing Google registration:', error);
+    if (error instanceof Error) {
+      res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+      return;
+    }
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor',
+    });
   }
 };

@@ -408,6 +408,48 @@ const ActivityFormModal = ({ activity, behaviors, classroom, onClose, onSubmit, 
     onSubmit(formData);
   };
 
+  // Tips para cada modo
+  const modeTips: Record<TimedActivityMode, { title: string; tips: string[]; example: string }> = {
+    STOPWATCH: {
+      title: '⏱️ Cronómetro',
+      tips: [
+        'Ideal para medir velocidad de resolución',
+        'Los estudiantes compiten por terminar primero',
+        'Puedes dar puntos bonus a los más rápidos',
+      ],
+      example: '📝 Ejemplo: "Resuelve estos 5 ejercicios lo más rápido posible"',
+    },
+    TIMER: {
+      title: '⏳ Temporizador',
+      tips: [
+        'Establece un tiempo límite para la tarea',
+        'Usa multiplicadores para premiar velocidad',
+        'Perfecto para exámenes cronometrados',
+      ],
+      example: '📝 Ejemplo: "Tienes 10 minutos para completar la actividad"',
+    },
+    BOMB: {
+      title: '💣 Bomba Manual',
+      tips: [
+        'Tú controlas cuándo "explota" la bomba',
+        'El estudiante con la bomba debe responder',
+        'Si responde bien, pasa la bomba a otro',
+      ],
+      example: '📝 Ejemplo: "Papa caliente con preguntas de historia"',
+    },
+    BOMB_RANDOM: {
+      title: '🎲 Bomba Aleatoria',
+      tips: [
+        'La bomba pasa automáticamente entre estudiantes',
+        'Tiempo aleatorio entre mínimo y máximo',
+        'Genera emoción y mantiene la atención',
+      ],
+      example: '📝 Ejemplo: "Ronda rápida de vocabulario en inglés"',
+    },
+  };
+
+  const currentTips = modeTips[formData.mode];
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -421,23 +463,78 @@ const ActivityFormModal = ({ activity, behaviors, classroom, onClose, onSubmit, 
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+        className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col md:flex-row"
       >
-        <div className="p-6 border-b border-gray-100 dark:border-gray-700">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-gray-800 dark:text-white">
-              {activity ? 'Editar Actividad' : 'Nueva Actividad de Tiempo'}
-            </h2>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-            >
-              <X size={20} />
-            </button>
+        {/* Panel izquierdo - Jiro y Tips */}
+        <div className="hidden md:flex md:w-72 flex-shrink-0 flex-col justify-center bg-gradient-to-br from-purple-600 via-violet-600 to-indigo-700 relative overflow-hidden">
+          {/* Decoración */}
+          <div className="absolute inset-0 opacity-10">
+            <div className="absolute top-10 left-5 w-20 h-20 border-2 border-white rounded-full" />
+            <div className="absolute bottom-20 right-5 w-16 h-16 border-2 border-white rounded-full" />
+          </div>
+          
+          {/* Contenido centrado */}
+          <div className="flex flex-col items-center justify-center p-4">
+            {/* Imagen de Jiro */}
+            <div className="w-44 h-44 relative mb-4">
+              <AnimatePresence mode="wait">
+                <motion.img
+                  key={formData.mode}
+                  src={`/assets/mascot/jiro-timed-${formData.mode.toLowerCase()}.png`}
+                  alt="Jiro"
+                  className="absolute inset-0 w-full h-full object-contain"
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{ duration: 0.3 }}
+                />
+              </AnimatePresence>
+            </div>
+
+            {/* Tips del modo */}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={formData.mode}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.3 }}
+                className="text-center space-y-3"
+              >
+                <h3 className="text-white font-bold text-sm">{currentTips.title}</h3>
+                <ul className="space-y-2 text-left">
+                  {currentTips.tips.map((tip, i) => (
+                    <li key={i} className="flex items-start gap-2 text-white/80 text-xs">
+                      <span className="text-yellow-300 mt-0.5">💡</span>
+                      <span>{tip}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="p-2 bg-white/10 rounded-lg">
+                  <p className="text-white/70 text-xs italic">{currentTips.example}</p>
+                </div>
+              </motion.div>
+            </AnimatePresence>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+        {/* Panel derecho - Formulario */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="p-6 border-b border-gray-100 dark:border-gray-700 flex-shrink-0">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-800 dark:text-white">
+                {activity ? 'Editar Actividad' : 'Nueva Actividad de Tiempo'}
+              </h2>
+              <button
+                onClick={onClose}
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+          </div>
+
+          <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5">
           {/* Nombre */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -728,6 +825,7 @@ const ActivityFormModal = ({ activity, behaviors, classroom, onClose, onSubmit, 
             </Button>
           </div>
         </form>
+        </div>
       </motion.div>
     </motion.div>
   );

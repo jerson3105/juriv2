@@ -68,4 +68,7 @@ router.get('/google/callback',
   authController.googleCallback
 );
 
+// Completar registro de Google con rol seleccionado
+router.post('/google/complete-registration', authController.completeGoogleRegistration);
+
 export default router;

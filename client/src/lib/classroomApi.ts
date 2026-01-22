@@ -219,4 +219,34 @@ export const classroomApi = {
     const response = await api.post('/classrooms/join', data);
     return response.data.data;
   },
+
+  // Obtener cantidades de elementos clonables
+  getCloneableCounts: async (classroomId: string): Promise<{
+    behaviors: number;
+    badges: number;
+    shopItems: number;
+    questionBanks: number;
+  }> => {
+    const response = await api.get(`/classrooms/${classroomId}/cloneable-counts`);
+    return response.data.data;
+  },
+
+  // Clonar aula
+  clone: async (
+    classroomId: string, 
+    options: {
+      name: string;
+      description?: string;
+      copyBehaviors: boolean;
+      copyBadges: boolean;
+      copyShopItems: boolean;
+      copyQuestionBanks: boolean;
+    }
+  ): Promise<{ 
+    classroom: Classroom; 
+    copied: { behaviors: number; badges: number; shopItems: boolean; questionBanks: number } 
+  }> => {
+    const response = await api.post(`/classrooms/${classroomId}/clone`, options);
+    return response.data.data;
+  },
 };

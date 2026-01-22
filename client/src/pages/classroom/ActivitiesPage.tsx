@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { 
   Dices, 
-  Swords, 
   ChevronRight,
   Users,
   Zap,
@@ -14,16 +13,13 @@ import {
 } from 'lucide-react';
 import { RandomPickerActivity } from '../../components/activities/RandomPickerActivity';
 import { RandomEventsActivity } from '../../components/activities/RandomEventsActivity';
-import { BossBattleActivity } from '../../components/activities/BossBattleActivity';
 import { ClanPickerActivity } from '../../components/activities/ClanPickerActivity';
 import { TimedActivitiesActivity } from '../../components/activities/TimedActivitiesActivity';
 import { AulaZenActivity } from '../../components/activities/AulaZenActivity';
 import { ScrollsActivity } from '../../components/activities/ScrollsActivity';
-import { TerritoryConquestActivity } from '../../components/activities/TerritoryConquestActivity';
 import { TournamentsActivity } from '../../components/activities/TournamentsActivity';
 import { ExpeditionsActivity } from '../../components/activities/ExpeditionsActivity';
 import { useOutletContext, useParams } from 'react-router-dom';
-import BossBattleTypeModal from '../../components/modals/BossBattleTypeModal';
 import RouletteOfDestinyModal from '../../components/modals/RouletteOfDestinyModal';
 
 interface Activity {
@@ -55,20 +51,6 @@ const activities: Activity[] = [
     available: true,
     tag: '⭐ Popular',
     tagColor: 'from-amber-400 to-orange-500',
-  },
-  {
-    id: 'boss-battle',
-    name: 'Boss Battle',
-    description: 'Batallas cooperativas contra jefes épicos. ¡Trabaja en equipo!',
-    icon: <Swords size={28} />,
-    emoji: '⚔️',
-    gradient: 'from-red-500 via-orange-500 to-amber-500',
-    bgGradient: 'from-red-500/10 via-orange-500/5 to-amber-500/10',
-    shadowColor: 'shadow-red-500/30',
-    glowColor: 'red',
-    available: true,
-    tag: '🔥 Épico',
-    tagColor: 'from-red-500 to-orange-500',
   },
   {
     id: 'timed-activities',
@@ -109,18 +91,6 @@ const activities: Activity[] = [
     available: true,
   },
   {
-    id: 'territory-conquest',
-    name: 'Conquista de Territorios',
-    description: 'Batalla de clanes por el control del mapa. ¡Conquista territorios respondiendo preguntas!',
-    icon: <Map size={28} />,
-    emoji: '🗺️',
-    gradient: 'from-indigo-500 via-blue-500 to-cyan-500',
-    bgGradient: 'from-indigo-500/10 via-blue-500/5 to-cyan-500/10',
-    shadowColor: 'shadow-indigo-500/30',
-    glowColor: 'indigo',
-    available: true,
-  },
-  {
     id: 'tournaments',
     name: 'Torneos',
     description: 'Competencias de bracket eliminatorio. ¡Estudiantes o clanes compiten respondiendo preguntas!',
@@ -153,7 +123,6 @@ const activities: Activity[] = [
 // Consejos rotativos
 const tips = [
   { icon: '🎲', title: 'Selección Aleatoria', text: 'Usa la Selección Aleatoria para elegir quién participa en clase. ¡Los estudiantes estarán más atentos!' },
-  { icon: '⚔️', title: 'Boss Battle', text: 'Las batallas de boss fomentan el trabajo en equipo. ¡Úsalas para repasar contenido de forma épica!' },
   { icon: '🧘', title: 'Aula Zen', text: 'El medidor de ruido ayuda a mantener un ambiente tranquilo. ¡Recompensa el silencio!' },
   { icon: '💣', title: 'Modo Bomba', text: 'El modo bomba añade emoción a las actividades. ¡Perfecto para respuestas rápidas!' },
   { icon: '🛡️', title: 'Clanes', text: 'Seleccionar clanes promueve la colaboración entre equipos. ¡Todos ganan juntos!' },
@@ -161,10 +130,9 @@ const tips = [
 
 export const ActivitiesPage = () => {
   const { classroom } = useOutletContext<{ classroom: any }>();
-  const { id: classroomId } = useParams<{ id: string }>();
+  useParams<{ id: string }>();
   
   const [selectedActivity, setSelectedActivity] = useState<string | null>(null);
-  const [showBossBattleModal, setShowBossBattleModal] = useState(false);
   const [showRouletteModal, setShowRouletteModal] = useState(false);
   const [currentTipIndex, setCurrentTipIndex] = useState(0);
 
@@ -178,9 +146,7 @@ export const ActivitiesPage = () => {
 
   // Handler para click en actividad
   const handleActivityClick = (activityId: string) => {
-    if (activityId === 'boss-battle') {
-      setShowBossBattleModal(true);
-    } else if (activityId === 'roulette-of-destiny') {
+    if (activityId === 'roulette-of-destiny') {
       setShowRouletteModal(true);
     } else {
       setSelectedActivity(activityId);
@@ -192,10 +158,6 @@ export const ActivitiesPage = () => {
     setSelectedActivity(optionId);
   };
 
-  // Handler para seleccionar Boss Battle clásica desde el modal
-  const handleSelectClassicBattle = () => {
-    setSelectedActivity('boss-battle');
-  };
 
   // Si hay una actividad seleccionada, mostrarla
   if (selectedActivity === 'random-picker') {
@@ -216,14 +178,6 @@ export const ActivitiesPage = () => {
     );
   }
 
-  if (selectedActivity === 'boss-battle') {
-    return (
-      <BossBattleActivity 
-        classroom={classroom}
-        onBack={() => setSelectedActivity(null)}
-      />
-    );
-  }
 
   if (selectedActivity === 'clan-picker') {
     return (
@@ -255,15 +209,6 @@ export const ActivitiesPage = () => {
   if (selectedActivity === 'scrolls') {
     return (
       <ScrollsActivity 
-        classroom={classroom}
-        onBack={() => setSelectedActivity(null)}
-      />
-    );
-  }
-
-  if (selectedActivity === 'territory-conquest') {
-    return (
-      <TerritoryConquestActivity 
         classroom={classroom}
         onBack={() => setSelectedActivity(null)}
       />
@@ -441,13 +386,6 @@ export const ActivitiesPage = () => {
         </div>
       </div>
 
-      {/* Modal de selección de tipo de Boss Battle */}
-      <BossBattleTypeModal
-        isOpen={showBossBattleModal}
-        onClose={() => setShowBossBattleModal(false)}
-        classroomId={classroomId || ''}
-        onSelectClassic={handleSelectClassicBattle}
-      />
 
       {/* Modal de Ruleta del Destino */}
       <RouletteOfDestinyModal

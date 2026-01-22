@@ -94,6 +94,13 @@ export const BadgeCard = ({
             {isSecret ? '???' : badge.name}
           </h4>
           
+          {/* Descripción */}
+          {!isSecret && badge.description && (
+            <p className="text-xs text-gray-500 dark:text-gray-400 text-center line-clamp-2 mt-0.5 px-1">
+              {badge.description}
+            </p>
+          )}
+          
           {/* Rareza */}
           <span className={`
             text-xs font-medium px-2 py-0.5 rounded-full mt-1

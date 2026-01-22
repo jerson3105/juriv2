@@ -37,18 +37,19 @@ app.use(passport.initialize());
 
 // Servir archivos estáticos ANTES del middleware de seguridad (para evitar CORS issues)
 // En producción, estos se sirven bajo /api/ para que pasen por el proxy de Apache
+// NOTA: Usamos /api/static/avatars para archivos, porque /api/avatars es para rutas de API
 const uploadsBaseDir = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
-app.use('/api/badges', cors(), express.static(path.join(process.cwd(), 'public', 'badges')));
-app.use('/api/avatars', cors(), express.static(path.join(uploadsBaseDir, 'avatars')));
-app.use('/api/uploads/expeditions', cors(), express.static(path.join(uploadsBaseDir, 'expeditions')));
-app.use('/api/uploads/maps', cors(), express.static(path.join(uploadsBaseDir, 'maps')));
-app.use('/api/uploads/missions', cors(), express.static(path.join(uploadsBaseDir, 'missions')));
+app.use('/api/badges', cors(corsOptions), express.static(path.join(process.cwd(), 'public', 'badges')));
+app.use('/api/static/avatars', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'avatars')));
+app.use('/api/uploads/expeditions', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'expeditions')));
+app.use('/api/uploads/maps', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'maps')));
+app.use('/api/uploads/missions', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'missions')));
 // También mantener rutas sin /api para desarrollo local
-app.use('/badges', cors(), express.static(path.join(process.cwd(), 'public', 'badges')));
-app.use('/avatars', cors(), express.static(path.join(uploadsBaseDir, 'avatars')));
-app.use('/uploads/expeditions', cors(), express.static(path.join(uploadsBaseDir, 'expeditions')));
-app.use('/uploads/maps', cors(), express.static(path.join(uploadsBaseDir, 'maps')));
-app.use('/uploads/missions', cors(), express.static(path.join(uploadsBaseDir, 'missions')));
+app.use('/badges', cors(corsOptions), express.static(path.join(process.cwd(), 'public', 'badges')));
+app.use('/avatars', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'avatars')));
+app.use('/uploads/expeditions', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'expeditions')));
+app.use('/uploads/maps', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'maps')));
+app.use('/uploads/missions', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'missions')));
 
 // Aplicar middleware de seguridad
 applySecurityMiddleware(app);

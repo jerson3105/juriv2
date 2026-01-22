@@ -73,7 +73,6 @@ export class BehaviorService {
         eq(behaviors.isActive, true)
       ),
     });
-    console.log('[BehaviorService] getByClassroom result:', result.map(b => ({ id: b.id, name: b.name, competencyId: b.competencyId })));
     return result;
   }
 

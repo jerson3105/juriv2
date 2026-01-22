@@ -58,3 +58,4 @@ client/public/avatars/female/Inferior/870f8af8-8e6a-4906-8473-5703154503be.png
 server/.env.production.example
 scripts/deploy-production.sh
 AUDITORIA_SEGUNDA_REVISION.md
+server/.env.example

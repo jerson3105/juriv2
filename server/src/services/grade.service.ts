@@ -18,20 +18,17 @@ import {
   expeditions,
   pointLogs,
   studentBadges,
-  studentBossBattles,
-  studentBossBattleParticipants,
-  bossBattles,
-  battleParticipants,
   type GradeScaleType,
 } from '../db/schema.js';
-import { eq, and, inArray, sql } from 'drizzle-orm';
+import { eq, and, inArray, sql, gte, lte } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 
 // Escalas de calificación predefinidas
+// Rangos Perú: AD (90-100), A (70-89), B (50-69), C (0-49)
 const GRADE_SCALES: Record<string, Array<{ label: string; minPercent: number }>> = {
   PERU_LETTERS: [
-    { label: 'AD', minPercent: 85 },
-    { label: 'A', minPercent: 65 },
+    { label: 'AD', minPercent: 90 },
+    { label: 'A', minPercent: 70 },
     { label: 'B', minPercent: 50 },
     { label: 'C', minPercent: 0 },
   ],
@@ -73,7 +70,85 @@ interface GradeCalculationResult {
   activities: ActivityScoreData[];
 }
 
+// Interfaz para el rango de fechas del bimestre
+interface BimesterDateRange {
+  startDate: Date;
+  endDate: Date;
+}
+
 class GradeService {
+
+  /**
+   * Calcula las fechas de inicio y fin de un bimestre basado en los cierres registrados
+   */
+  private async getBimesterDateRange(
+    classroomId: string,
+    period: string
+  ): Promise<BimesterDateRange> {
+    const [classroom] = await db.select({
+      closedBimesters: classrooms.closedBimesters,
+      createdAt: classrooms.createdAt,
+    }).from(classrooms).where(eq(classrooms.id, classroomId));
+
+    // Parse closedBimesters
+    let closedBimesters: any[] = [];
+    if (classroom?.closedBimesters) {
+      if (typeof classroom.closedBimesters === 'string') {
+        try { closedBimesters = JSON.parse(classroom.closedBimesters); } catch { closedBimesters = []; }
+      } else if (Array.isArray(classroom.closedBimesters)) {
+        closedBimesters = classroom.closedBimesters;
+      }
+    }
+
+    // Ordenar bimestres cerrados por fecha
+    closedBimesters.sort((a, b) => new Date(a.closedAt).getTime() - new Date(b.closedAt).getTime());
+
+    // Extraer año y número de bimestre del período (ej: "2026-B2" -> year=2026, bimNum=2)
+    const [yearStr, bimPart] = period.split('-B');
+    const year = parseInt(yearStr);
+    const bimNum = parseInt(bimPart);
+
+    // Fecha de inicio: es la fecha de cierre del bimestre anterior, o la fecha de creación de la clase
+    let startDate: Date;
+    if (bimNum === 1) {
+      // Para B1, buscar si existe B4 del año anterior cerrado
+      const prevBim = closedBimesters.find(cb => cb.period === `${year - 1}-B4`);
+      startDate = prevBim ? new Date(prevBim.closedAt) : new Date(classroom?.createdAt || '2020-01-01');
+    } else {
+      // Para B2, B3, B4, buscar el bimestre anterior del mismo año
+      const prevBim = closedBimesters.find(cb => cb.period === `${year}-B${bimNum - 1}`);
+      startDate = prevBim ? new Date(prevBim.closedAt) : new Date(classroom?.createdAt || '2020-01-01');
+    }
+
+    // Fecha de fin: es la fecha de cierre de este bimestre, o la fecha actual si está abierto
+    const thisBim = closedBimesters.find(cb => cb.period === period);
+    const endDate = thisBim ? new Date(thisBim.closedAt) : new Date();
+
+    return { startDate, endDate };
+  }
+
+  /**
+   * Verifica si un período es futuro (no se puede calcular)
+   */
+  private async isFuturePeriod(classroomId: string, period: string): Promise<boolean> {
+    const [classroom] = await db.select({
+      currentBimester: classrooms.currentBimester,
+    }).from(classrooms).where(eq(classrooms.id, classroomId));
+
+    if (!classroom) return true;
+
+    const currentBimester = classroom.currentBimester || `${new Date().getFullYear()}-B1`;
+    
+    // Comparar períodos
+    const [currentYear, currentBim] = currentBimester.split('-B').map((p, i) => i === 0 ? parseInt(p) : parseInt(p));
+    const [periodYear, periodBim] = period.split('-B').map((p, i) => i === 0 ? parseInt(p) : parseInt(p));
+
+    // Es futuro si el año es mayor, o si es el mismo año pero el bimestre es mayor
+    if (periodYear > currentYear) return true;
+    if (periodYear === currentYear && periodBim > currentBim) return true;
+
+    return false;
+  }
   
   /**
    * Calcula y guarda las calificaciones de un estudiante para todas sus competencias
@@ -91,6 +166,14 @@ class GradeService {
     if (!classroom.useCompetencies) {
       return [];
     }
+
+    // 1.5. Validar que no sea un bimestre futuro
+    if (await this.isFuturePeriod(classroomId, period)) {
+      throw new Error('No se pueden calcular calificaciones de un bimestre futuro');
+    }
+
+    // 1.6. Obtener el rango de fechas del bimestre
+    const dateRange = await this.getBimesterDateRange(classroomId, period);
 
     // 2. Obtener competencias de la clase
     const classCompetencies = await db.select({
@@ -118,7 +201,8 @@ class GradeService {
       const activities = await this.getStudentActivityScores(
         studentProfileId,
         comp.competencyId,
-        classroomId
+        classroomId,
+        dateRange
       );
 
       // Calcular promedio ponderado
@@ -199,46 +283,39 @@ class GradeService {
   private async getStudentActivityScores(
     studentProfileId: string,
     competencyId: string,
-    classroomId: string
+    classroomId: string,
+    dateRange: BimesterDateRange
   ): Promise<ActivityScoreData[]> {
     const scores: ActivityScoreData[] = [];
 
     // 1. Misiones completadas
-    const missionScores = await this.getMissionScores(studentProfileId, competencyId);
+    const missionScores = await this.getMissionScores(studentProfileId, competencyId, dateRange);
     scores.push(...missionScores);
 
     // 2. Actividades temporizadas
-    const timedScores = await this.getTimedActivityScores(studentProfileId, competencyId);
+    const timedScores = await this.getTimedActivityScores(studentProfileId, competencyId, dateRange);
     scores.push(...timedScores);
 
     // 3. Torneos
-    const tournamentScores = await this.getTournamentScores(studentProfileId, competencyId);
+    const tournamentScores = await this.getTournamentScores(studentProfileId, competencyId, dateRange);
     scores.push(...tournamentScores);
 
     // 4. Expediciones
-    const expeditionScores = await this.getExpeditionScores(studentProfileId, competencyId);
+    const expeditionScores = await this.getExpeditionScores(studentProfileId, competencyId, dateRange);
     scores.push(...expeditionScores);
 
     // 5. Comportamientos positivos
-    const behaviorScores = await this.getBehaviorScores(studentProfileId, competencyId, classroomId);
+    const behaviorScores = await this.getBehaviorScores(studentProfileId, competencyId, classroomId, dateRange);
     scores.push(...behaviorScores);
 
     // 6. Insignias
-    const badgeScores = await this.getBadgeScores(studentProfileId, competencyId, classroomId);
+    const badgeScores = await this.getBadgeScores(studentProfileId, competencyId, classroomId, dateRange);
     scores.push(...badgeScores);
-
-    // 7. Boss Battles (Cooperativas)
-    const bossBattleScores = await this.getBossBattleScores(studentProfileId, competencyId);
-    scores.push(...bossBattleScores);
-
-    // 8. Boss Battles (Clásicas)
-    const classicBattleScores = await this.getClassicBossBattleScores(studentProfileId, competencyId);
-    scores.push(...classicBattleScores);
 
     return scores;
   }
 
-  private async getMissionScores(studentProfileId: string, competencyId: string): Promise<ActivityScoreData[]> {
+  private async getMissionScores(studentProfileId: string, competencyId: string, dateRange: BimesterDateRange): Promise<ActivityScoreData[]> {
     const scores: ActivityScoreData[] = [];
 
     const missionCompetencies = await db.select({
@@ -260,12 +337,15 @@ class GradeService {
       currentProgress: studentMissions.currentProgress,
       targetProgress: studentMissions.targetProgress,
       missionName: missions.name,
+      completedAt: studentMissions.completedAt,
     })
     .from(studentMissions)
     .leftJoin(missions, eq(studentMissions.missionId, missions.id))
     .where(and(
       eq(studentMissions.studentProfileId, studentProfileId),
-      inArray(studentMissions.missionId, missionIds)
+      inArray(studentMissions.missionId, missionIds),
+      gte(studentMissions.assignedAt, dateRange.startDate),
+      lte(studentMissions.assignedAt, dateRange.endDate)
     ));
 
     for (const cm of completedMissions) {
@@ -289,7 +369,7 @@ class GradeService {
     return scores;
   }
 
-  private async getTimedActivityScores(studentProfileId: string, competencyId: string): Promise<ActivityScoreData[]> {
+  private async getTimedActivityScores(studentProfileId: string, competencyId: string, dateRange: BimesterDateRange): Promise<ActivityScoreData[]> {
     const scores: ActivityScoreData[] = [];
 
     const timedCompetencies = await db.select({
@@ -316,7 +396,9 @@ class GradeService {
     .leftJoin(timedActivities, eq(timedActivityResults.activityId, timedActivities.id))
     .where(and(
       eq(timedActivityResults.studentProfileId, studentProfileId),
-      inArray(timedActivityResults.activityId, timedIds)
+      inArray(timedActivityResults.activityId, timedIds),
+      gte(timedActivityResults.createdAt, dateRange.startDate),
+      lte(timedActivityResults.createdAt, dateRange.endDate)
     ));
 
     for (const ct of completedTimed) {
@@ -352,7 +434,7 @@ class GradeService {
     return scores;
   }
 
-  private async getTournamentScores(studentProfileId: string, competencyId: string): Promise<ActivityScoreData[]> {
+  private async getTournamentScores(studentProfileId: string, competencyId: string, dateRange: BimesterDateRange): Promise<ActivityScoreData[]> {
     const scores: ActivityScoreData[] = [];
 
     const tournamentCompetencies = await db.select({
@@ -379,7 +461,9 @@ class GradeService {
     .leftJoin(tournaments, eq(tournamentParticipants.tournamentId, tournaments.id))
     .where(and(
       eq(tournamentParticipants.studentProfileId, studentProfileId),
-      inArray(tournamentParticipants.tournamentId, tournamentIds)
+      inArray(tournamentParticipants.tournamentId, tournamentIds),
+      gte(tournamentParticipants.joinedAt, dateRange.startDate),
+      lte(tournamentParticipants.joinedAt, dateRange.endDate)
     ));
 
     for (const p of participations) {
@@ -401,7 +485,7 @@ class GradeService {
     return scores;
   }
 
-  private async getExpeditionScores(studentProfileId: string, competencyId: string): Promise<ActivityScoreData[]> {
+  private async getExpeditionScores(studentProfileId: string, competencyId: string, dateRange: BimesterDateRange): Promise<ActivityScoreData[]> {
     const scores: ActivityScoreData[] = [];
 
     const expeditionCompetencies = await db.select({
@@ -427,7 +511,9 @@ class GradeService {
     .leftJoin(expeditions, eq(expeditionStudentProgress.expeditionId, expeditions.id))
     .where(and(
       eq(expeditionStudentProgress.studentProfileId, studentProfileId),
-      inArray(expeditionStudentProgress.expeditionId, expeditionIds)
+      inArray(expeditionStudentProgress.expeditionId, expeditionIds),
+      gte(expeditionStudentProgress.updatedAt, dateRange.startDate),
+      lte(expeditionStudentProgress.updatedAt, dateRange.endDate)
     ));
 
     for (const ep of progress) {
@@ -449,7 +535,7 @@ class GradeService {
     return scores;
   }
 
-  private async getBehaviorScores(studentProfileId: string, competencyId: string, classroomId: string): Promise<ActivityScoreData[]> {
+  private async getBehaviorScores(studentProfileId: string, competencyId: string, classroomId: string, dateRange: BimesterDateRange): Promise<ActivityScoreData[]> {
     const scores: ActivityScoreData[] = [];
 
     // Obtener TODOS los comportamientos de la competencia (positivos y negativos)
@@ -474,7 +560,9 @@ class GradeService {
         .from(pointLogs)
         .where(and(
           eq(pointLogs.studentId, studentProfileId),
-          eq(pointLogs.behaviorId, behavior.id)
+          eq(pointLogs.behaviorId, behavior.id),
+          gte(pointLogs.createdAt, dateRange.startDate),
+          lte(pointLogs.createdAt, dateRange.endDate)
         ));
 
       const count = Number(logs[0]?.count) || 0;
@@ -530,7 +618,7 @@ class GradeService {
     return scores;
   }
 
-  private async getBadgeScores(studentProfileId: string, competencyId: string, classroomId: string): Promise<ActivityScoreData[]> {
+  private async getBadgeScores(studentProfileId: string, competencyId: string, classroomId: string, dateRange: BimesterDateRange): Promise<ActivityScoreData[]> {
     const scores: ActivityScoreData[] = [];
 
     const competencyBadges = await db.select()
@@ -553,7 +641,9 @@ class GradeService {
     .leftJoin(badges, eq(studentBadges.badgeId, badges.id))
     .where(and(
       eq(studentBadges.studentProfileId, studentProfileId),
-      inArray(studentBadges.badgeId, badgeIds)
+      inArray(studentBadges.badgeId, badgeIds),
+      gte(studentBadges.unlockedAt, dateRange.startDate),
+      lte(studentBadges.unlockedAt, dateRange.endDate)
     ));
 
     for (const eb of earnedBadges) {
@@ -567,91 +657,6 @@ class GradeService {
         name: eb.badgeName || 'Insignia',
         score: 100,
         weight,
-        competencyId,
-      });
-    }
-
-    return scores;
-  }
-
-  private async getBossBattleScores(studentProfileId: string, competencyId: string): Promise<ActivityScoreData[]> {
-    const scores: ActivityScoreData[] = [];
-
-    // Obtener boss battles con competencia asignada que están completadas/victoria
-    const battleParticipations = await db.select({
-      battleId: studentBossBattles.id,
-      battleName: studentBossBattles.bossName,
-      status: studentBossBattles.status,
-      correctAnswers: studentBossBattleParticipants.totalCorrectAnswers,
-      wrongAnswers: studentBossBattleParticipants.totalWrongAnswers,
-    })
-    .from(studentBossBattleParticipants)
-    .innerJoin(studentBossBattles, eq(studentBossBattleParticipants.battleId, studentBossBattles.id))
-    .where(and(
-      eq(studentBossBattleParticipants.studentProfileId, studentProfileId),
-      eq(studentBossBattles.competencyId, competencyId),
-      inArray(studentBossBattles.status, ['COMPLETED', 'VICTORY', 'DEFEAT'])
-    ));
-
-    for (const participation of battleParticipations) {
-      const totalAnswers = participation.correctAnswers + participation.wrongAnswers;
-      if (totalAnswers === 0) continue;
-
-      // Score = porcentaje de respuestas correctas
-      const scorePercent = (participation.correctAnswers / totalAnswers) * 100;
-      
-      // Peso dinámico basado en cantidad de respuestas (más participación = más peso)
-      const dynamicWeight = Math.min(100, Math.max(30, totalAnswers * 5));
-
-      scores.push({
-        type: 'BOSS_BATTLE',
-        id: participation.battleId,
-        name: `Boss Battle: ${participation.battleName}`,
-        score: Math.round(scorePercent),
-        weight: dynamicWeight,
-        competencyId,
-      });
-    }
-
-    return scores;
-  }
-
-  private async getClassicBossBattleScores(studentProfileId: string, competencyId: string): Promise<ActivityScoreData[]> {
-    const scores: ActivityScoreData[] = [];
-
-    // Obtener boss battles clásicas con competencia asignada que están completadas
-    const battleParticipations = await db.select({
-      battleId: bossBattles.id,
-      battleName: bossBattles.bossName,
-      activityName: bossBattles.name,
-      status: bossBattles.status,
-      correctAnswers: battleParticipants.correctAnswers,
-      wrongAnswers: battleParticipants.wrongAnswers,
-    })
-    .from(battleParticipants)
-    .innerJoin(bossBattles, eq(battleParticipants.battleId, bossBattles.id))
-    .where(and(
-      eq(battleParticipants.studentId, studentProfileId),
-      eq(bossBattles.competencyId, competencyId),
-      inArray(bossBattles.status, ['COMPLETED', 'VICTORY', 'DEFEAT'])
-    ));
-
-    for (const participation of battleParticipations) {
-      const totalAnswers = participation.correctAnswers + participation.wrongAnswers;
-      if (totalAnswers === 0) continue;
-
-      // Score = porcentaje de respuestas correctas
-      const scorePercent = (participation.correctAnswers / totalAnswers) * 100;
-      
-      // Peso dinámico basado en cantidad de respuestas
-      const dynamicWeight = Math.min(100, Math.max(30, totalAnswers * 5));
-
-      scores.push({
-        type: 'BOSS_BATTLE_CLASSIC',
-        id: participation.battleId,
-        name: `${participation.activityName}: ${participation.battleName}`,
-        score: Math.round(scorePercent),
-        weight: dynamicWeight,
         competencyId,
       });
     }
@@ -785,6 +790,197 @@ class GradeService {
     await this.calculateStudentGrades(grade.classroomId, grade.studentProfileId, grade.period);
     
     return { success: true };
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // GESTIÓN DE BIMESTRES
+  // ═══════════════════════════════════════════════════════════
+
+  /**
+   * Obtiene el estado de los bimestres de un classroom
+   */
+  async getBimesterStatus(classroomId: string, year?: number) {
+    const [classroom] = await db.select({
+      currentBimester: classrooms.currentBimester,
+      closedBimesters: classrooms.closedBimesters,
+      createdAt: classrooms.createdAt,
+    }).from(classrooms).where(eq(classrooms.id, classroomId));
+
+    if (!classroom) throw new Error('Clase no encontrada');
+
+    // Parse seguro de closedBimesters (puede venir como string JSON desde MySQL)
+    let closedBimesters: any[] = [];
+    if (classroom.closedBimesters) {
+      if (typeof classroom.closedBimesters === 'string') {
+        try {
+          closedBimesters = JSON.parse(classroom.closedBimesters);
+        } catch {
+          closedBimesters = [];
+        }
+      } else if (Array.isArray(classroom.closedBimesters)) {
+        closedBimesters = classroom.closedBimesters;
+      }
+    }
+    const currentYear = new Date().getFullYear();
+    const selectedYear = year || currentYear;
+    
+    // El bimestre actual por defecto usa el año actual
+    const defaultBimester = `${currentYear}-B1`;
+    const currentBimester = classroom.currentBimester || defaultBimester;
+
+    // Definir todos los bimestres del año seleccionado
+    const allBimesters = [
+      `${selectedYear}-B1`,
+      `${selectedYear}-B2`,
+      `${selectedYear}-B3`,
+      `${selectedYear}-B4`,
+    ];
+
+    // Obtener años disponibles (desde creación de clase hasta año actual)
+    const classroomYear = classroom.createdAt ? new Date(classroom.createdAt).getFullYear() : currentYear;
+    const availableYears: number[] = [];
+    for (let y = classroomYear; y <= currentYear; y++) {
+      availableYears.push(y);
+    }
+    
+    return {
+      currentBimester,
+      closedBimesters,
+      selectedYear,
+      availableYears,
+      allBimesters: allBimesters.map(b => ({
+        period: b,
+        label: `Bimestre ${b.split('-B')[1]}`,
+        isCurrent: b === currentBimester,
+        isClosed: closedBimesters.some((cb: any) => cb.period === b),
+        closedAt: closedBimesters.find((cb: any) => cb.period === b)?.closedAt,
+      })),
+    };
+  }
+
+  /**
+   * Establece el bimestre actual de trabajo
+   */
+  async setCurrentBimester(classroomId: string, period: string, userId: string) {
+    const [classroom] = await db.select().from(classrooms).where(eq(classrooms.id, classroomId));
+    if (!classroom) throw new Error('Clase no encontrada');
+
+    // Parse seguro de closedBimesters
+    let closedBimesters: any[] = [];
+    if (classroom.closedBimesters) {
+      if (typeof classroom.closedBimesters === 'string') {
+        try { closedBimesters = JSON.parse(classroom.closedBimesters); } catch { closedBimesters = []; }
+      } else if (Array.isArray(classroom.closedBimesters)) {
+        closedBimesters = classroom.closedBimesters;
+      }
+    }
+    
+    // Verificar si el bimestre está cerrado
+    if (closedBimesters.some((cb: any) => cb.period === period)) {
+      throw new Error('Este bimestre está cerrado. Debes reabrirlo primero.');
+    }
+
+    await db.update(classrooms)
+      .set({ 
+        currentBimester: period,
+        updatedAt: new Date(),
+      })
+      .where(eq(classrooms.id, classroomId));
+
+    return { success: true, currentBimester: period };
+  }
+
+  /**
+   * Cierra un bimestre (congela las calificaciones)
+   */
+  async closeBimester(classroomId: string, period: string, userId: string) {
+    const [classroom] = await db.select().from(classrooms).where(eq(classrooms.id, classroomId));
+    if (!classroom) throw new Error('Clase no encontrada');
+
+    // Parse seguro de closedBimesters
+    let closedBimesters: any[] = [];
+    if (classroom.closedBimesters) {
+      if (typeof classroom.closedBimesters === 'string') {
+        try { closedBimesters = JSON.parse(classroom.closedBimesters); } catch { closedBimesters = []; }
+      } else if (Array.isArray(classroom.closedBimesters)) {
+        closedBimesters = classroom.closedBimesters;
+      }
+    }
+    
+    // Verificar si ya está cerrado
+    if (closedBimesters.some((cb: any) => cb.period === period)) {
+      throw new Error('Este bimestre ya está cerrado');
+    }
+
+    // Agregar a la lista de bimestres cerrados
+    closedBimesters.push({
+      period,
+      closedAt: new Date().toISOString(),
+      closedBy: userId,
+    });
+
+    // Si el bimestre que se cierra es el actual, avanzar al siguiente
+    let newCurrentBimester = classroom.currentBimester;
+    if (classroom.currentBimester === period) {
+      const [yearPart] = period.split('-B');
+      const bimesterNum = parseInt(period.split('-B')[1]);
+      if (bimesterNum < 4) {
+        newCurrentBimester = `${yearPart}-B${bimesterNum + 1}`;
+      } else {
+        // Si es B4, pasar a B1 del siguiente año
+        newCurrentBimester = `${parseInt(yearPart) + 1}-B1`;
+      }
+    }
+
+    await db.update(classrooms)
+      .set({ 
+        closedBimesters: closedBimesters,
+        currentBimester: newCurrentBimester,
+        updatedAt: new Date(),
+      })
+      .where(eq(classrooms.id, classroomId));
+
+    return { 
+      success: true, 
+      closedPeriod: period,
+      newCurrentBimester,
+    };
+  }
+
+  /**
+   * Reabre un bimestre cerrado
+   */
+  async reopenBimester(classroomId: string, period: string, userId: string) {
+    const [classroom] = await db.select().from(classrooms).where(eq(classrooms.id, classroomId));
+    if (!classroom) throw new Error('Clase no encontrada');
+
+    // Parse seguro de closedBimesters
+    let closedBimesters: any[] = [];
+    if (classroom.closedBimesters) {
+      if (typeof classroom.closedBimesters === 'string') {
+        try { closedBimesters = JSON.parse(classroom.closedBimesters); } catch { closedBimesters = []; }
+      } else if (Array.isArray(classroom.closedBimesters)) {
+        closedBimesters = classroom.closedBimesters;
+      }
+    }
+    
+    // Verificar si está cerrado
+    const closedIndex = closedBimesters.findIndex((cb: any) => cb.period === period);
+    if (closedIndex === -1) {
+      throw new Error('Este bimestre no está cerrado');
+    }
+
+    // Remover de la lista de cerrados
+    closedBimesters.splice(closedIndex, 1);
+
+    await db.update(classrooms)
+      .set({ 
+        closedBimesters: closedBimesters.length > 0 ? closedBimesters : null,
+        updatedAt: new Date(),
+      })
+      .where(eq(classrooms.id, classroomId));
+
+    return { success: true, reopenedPeriod: period };
   }
 }
 

@@ -247,6 +247,7 @@ class MissionService {
 
   // Obtener detalles de asignaciones de una misión (para el profesor)
   async getMissionAssignments(missionId: string): Promise<{
+    id: string;
     studentProfileId: string;
     studentName: string;
     status: MissionStatus;
@@ -265,6 +266,7 @@ class MissionService {
       .orderBy(desc(studentMissions.completedAt));
 
     return results.map(r => ({
+      id: r.studentMission.id,
       studentProfileId: r.student.id,
       studentName: r.student.characterName || 'Estudiante',
       status: r.studentMission.status as MissionStatus,
@@ -387,6 +389,64 @@ class MissionService {
     }
 
     return updatedMissions;
+  }
+
+  // Actualizar progreso manualmente (para misiones CUSTOM/personalizadas)
+  async updateProgressManually(
+    studentMissionId: string,
+    newProgress: number
+  ): Promise<StudentMission> {
+    const [studentMission] = await db.select({
+      studentMission: studentMissions,
+      mission: missions,
+    })
+      .from(studentMissions)
+      .innerJoin(missions, eq(studentMissions.missionId, missions.id))
+      .where(eq(studentMissions.id, studentMissionId));
+
+    if (!studentMission) {
+      throw new Error('Asignación de misión no encontrada');
+    }
+
+    if (studentMission.studentMission.status === 'CLAIMED') {
+      throw new Error('La misión ya fue reclamada');
+    }
+
+    const { mission } = studentMission;
+    const clampedProgress = Math.min(Math.max(0, newProgress), studentMission.studentMission.targetProgress);
+    const isCompleted = clampedProgress >= studentMission.studentMission.targetProgress;
+
+    await db.update(studentMissions)
+      .set({
+        currentProgress: clampedProgress,
+        status: isCompleted ? 'COMPLETED' : 'ACTIVE',
+        completedAt: isCompleted ? new Date() : null,
+      })
+      .where(eq(studentMissions.id, studentMissionId));
+
+    // Si se completó, actualizar racha y notificar
+    if (isCompleted && studentMission.studentMission.status !== 'COMPLETED') {
+      await this.updateStreak(studentMission.studentMission.studentProfileId, mission.classroomId);
+      
+      // Crear notificación para el estudiante
+      const [profile] = await db.select().from(studentProfiles)
+        .where(eq(studentProfiles.id, studentMission.studentMission.studentProfileId));
+      
+      if (profile?.userId) {
+        await db.insert(notifications).values({
+          id: uuidv4(),
+          userId: profile.userId,
+          type: 'MISSION_COMPLETED',
+          title: '🎯 ¡Misión completada!',
+          message: `Has completado la misión "${mission.name}". ¡Reclama tu recompensa!`,
+          isRead: false,
+          createdAt: new Date(),
+        });
+      }
+    }
+
+    const [updated] = await db.select().from(studentMissions).where(eq(studentMissions.id, studentMissionId));
+    return updated;
   }
 
   // ==================== RECLAMAR RECOMPENSAS ====================

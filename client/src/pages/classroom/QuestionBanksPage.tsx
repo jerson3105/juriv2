@@ -58,6 +58,15 @@ export const QuestionBanksPage = () => {
   const [csvPreview, setCsvPreview] = useState<{ questions: CreateQuestionData[]; errors: string[] } | null>(null);
   const [showAIImportModal, setShowAIImportModal] = useState(false);
   const [csvTextInput, setCsvTextInput] = useState('');
+  const [aiMode, setAiMode] = useState<'direct' | 'manual'>('direct');
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiForm, setAiForm] = useState({
+    topic: '',
+    quantity: 10,
+    level: '',
+    questionTypes: ['TRUE_FALSE', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'MATCHING'] as BankQuestionType[],
+    difficulty: '' as QuestionDifficulty | '',
+  });
 
   // Fetch banks
   const { data: banks = [], isLoading: loadingBanks } = useQuery({
@@ -183,6 +192,135 @@ export const QuestionBanksPage = () => {
 
     setCsvPreview(null);
     setImportingCSV(false);
+  };
+
+  // Generate questions with AI directly
+  const handleGenerateWithAI = async () => {
+    if (!aiForm.topic || !aiForm.level || !selectedBank) return;
+    
+    setAiGenerating(true);
+    try {
+      const result = await questionBankApi.generateWithAI({
+        topic: aiForm.topic,
+        quantity: aiForm.quantity,
+        level: aiForm.level,
+        questionTypes: aiForm.questionTypes.length > 0 ? aiForm.questionTypes : undefined,
+        difficulty: aiForm.difficulty || undefined,
+      });
+      
+      // Set the CSV text and process it
+      setCsvTextInput(result.csv);
+      toast.success('Preguntas generadas por IA');
+      
+      // Auto-process the generated CSV
+      setTimeout(() => {
+        processCSVText(result.csv);
+      }, 100);
+      
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Error al generar preguntas con IA');
+    } finally {
+      setAiGenerating(false);
+    }
+  };
+
+  // Process CSV text (shared function)
+  const processCSVText = (text: string) => {
+    if (!text.trim() || !selectedBank) return;
+    
+    const normalizedText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const lines = normalizedText.split('\n').filter(line => line.trim());
+    
+    if (lines.length < 2) {
+      toast.error('El texto CSV está vacío o no tiene datos');
+      return;
+    }
+
+    // Detect delimiter
+    const firstLine = lines[0];
+    const commaCount = (firstLine.match(/,/g) || []).length;
+    const semicolonCount = (firstLine.match(/;/g) || []).length;
+    const delimiter = semicolonCount > commaCount ? ';' : ',';
+
+    // Parse header
+    const rawHeaders = parseCSVLine(lines[0], delimiter);
+    const headers = rawHeaders.map(h => h.toLowerCase().trim().replace(/[^a-z]/g, ''));
+    
+    const requiredHeaders = ['type', 'questiontext'];
+    const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
+    
+    if (missingHeaders.length > 0) {
+      toast.error(`Faltan columnas requeridas: ${missingHeaders.join(', ')}`);
+      return;
+    }
+
+    // Parse rows for preview
+    const parsedQuestions: CreateQuestionData[] = [];
+    const errors: string[] = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      try {
+        const values = parseCSVLine(lines[i], delimiter);
+        const row: Record<string, string> = {};
+        headers.forEach((h, idx) => { row[h] = values[idx] || ''; });
+
+        const questionData: CreateQuestionData = {
+          type: (row.type?.toUpperCase() || 'SINGLE_CHOICE') as BankQuestionType,
+          difficulty: (row.difficulty?.toUpperCase() || 'MEDIUM') as QuestionDifficulty,
+          points: parseInt(row.points) || 10,
+          questionText: row.questiontext || '',
+          timeLimitSeconds: parseInt(row.timelimitseconds) || 30,
+          explanation: row.explanation || undefined,
+        };
+
+        // Parse type-specific fields
+        if (questionData.type === 'TRUE_FALSE') {
+          questionData.correctAnswer = row.correctanswer?.toLowerCase() === 'true';
+        } else if (questionData.type === 'SINGLE_CHOICE' || questionData.type === 'MULTIPLE_CHOICE') {
+          if (row.options) {
+            try {
+              questionData.options = JSON.parse(row.options);
+            } catch {
+              errors.push(`Línea ${i + 1}: Error al parsear opciones JSON`);
+              questionData.options = [];
+            }
+          }
+        } else if (questionData.type === 'MATCHING') {
+          if (row.pairs) {
+            try {
+              questionData.pairs = JSON.parse(row.pairs);
+            } catch {
+              errors.push(`Línea ${i + 1}: Error al parsear pares JSON`);
+              questionData.pairs = [];
+            }
+          }
+        }
+
+        // Validate question
+        if (!questionData.questionText) {
+          errors.push(`Línea ${i + 1}: Falta el texto de la pregunta`);
+        } else if (!['TRUE_FALSE', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'MATCHING'].includes(questionData.type)) {
+          errors.push(`Línea ${i + 1}: Tipo de pregunta inválido "${questionData.type}"`);
+        } else {
+          parsedQuestions.push(questionData);
+        }
+      } catch (err) {
+        errors.push(`Línea ${i + 1}: Error de formato`);
+      }
+    }
+
+    // Show preview modal
+    setCsvPreview({ questions: parsedQuestions, errors });
+    setShowAIImportModal(false);
+    setCsvTextInput('');
+    // Reset AI form
+    setAiForm({
+      topic: '',
+      quantity: 10,
+      level: '',
+      questionTypes: ['TRUE_FALSE', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'MATCHING'],
+      difficulty: '',
+    });
   };
 
   // Process pasted CSV text from AI
@@ -871,7 +1009,7 @@ export const QuestionBanksPage = () => {
                     </div>
                     <div>
                       <h2 className="text-xl font-bold text-gray-800 dark:text-white">Generar Preguntas con IA</h2>
-                      <p className="text-sm text-gray-500">Usa ChatGPT, Gemini o Claude para crear preguntas</p>
+                      <p className="text-sm text-gray-500">Usa Gemini AI para crear preguntas automáticamente</p>
                     </div>
                   </div>
                   <button
@@ -881,38 +1019,182 @@ export const QuestionBanksPage = () => {
                     <X className="w-5 h-5 text-gray-500" />
                   </button>
                 </div>
+
+                {/* Mode Toggle */}
+                <div className="flex gap-2 mt-4">
+                  <button
+                    onClick={() => setAiMode('direct')}
+                    className={`flex-1 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                      aiMode === 'direct'
+                        ? 'bg-emerald-500 text-white'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    }`}
+                  >
+                    <Sparkles className="w-4 h-4 inline mr-2" />
+                    Generación Automática
+                  </button>
+                  <button
+                    onClick={() => setAiMode('manual')}
+                    className={`flex-1 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                      aiMode === 'manual'
+                        ? 'bg-emerald-500 text-white'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    }`}
+                  >
+                    <Copy className="w-4 h-4 inline mr-2" />
+                    Importar CSV Manual
+                  </button>
+                </div>
               </div>
 
               {/* Content */}
               <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                {/* Step 1: Prompt */}
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 bg-emerald-500 text-white rounded-full flex items-center justify-center text-sm font-bold">1</div>
-                    <h3 className="font-semibold text-gray-800 dark:text-white">Copia este prompt y pégalo en tu IA favorita</h3>
-                  </div>
-                  <div className="relative">
-                    <pre className="bg-gray-100 dark:bg-gray-900 p-4 rounded-xl text-sm text-gray-700 dark:text-gray-300 overflow-x-auto whitespace-pre-wrap border border-gray-200 dark:border-gray-700">
+                {aiMode === 'direct' ? (
+                  <>
+                    {/* Direct AI Generation Form */}
+                    <div className="grid md:grid-cols-2 gap-4">
+                      {/* Topic */}
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Tema de las preguntas *
+                        </label>
+                        <input
+                          type="text"
+                          value={aiForm.topic}
+                          onChange={(e) => setAiForm({ ...aiForm, topic: e.target.value })}
+                          placeholder="Ej: Fracciones, La Revolución Francesa, El Sistema Solar..."
+                          className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+
+                      {/* Quantity */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Cantidad de preguntas *
+                        </label>
+                        <input
+                          type="number"
+                          value={aiForm.quantity}
+                          onChange={(e) => setAiForm({ ...aiForm, quantity: parseInt(e.target.value) || 10 })}
+                          min={1}
+                          max={30}
+                          className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+
+                      {/* Level */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Nivel educativo *
+                        </label>
+                        <input
+                          type="text"
+                          value={aiForm.level}
+                          onChange={(e) => setAiForm({ ...aiForm, level: e.target.value })}
+                          placeholder="Ej: Primaria, Secundaria, Universidad..."
+                          className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+
+                      {/* Difficulty */}
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Dificultad (opcional)
+                        </label>
+                        <div className="flex gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setAiForm({ ...aiForm, difficulty: '' })}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                              !aiForm.difficulty
+                                ? 'bg-gray-800 text-white dark:bg-white dark:text-gray-800'
+                                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                            }`}
+                          >
+                            Variada
+                          </button>
+                          {(['EASY', 'MEDIUM', 'HARD'] as const).map((diff) => (
+                            <button
+                              key={diff}
+                              type="button"
+                              onClick={() => setAiForm({ ...aiForm, difficulty: diff })}
+                              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                                aiForm.difficulty === diff
+                                  ? diff === 'EASY' ? 'bg-green-500 text-white' :
+                                    diff === 'MEDIUM' ? 'bg-yellow-500 text-white' :
+                                    'bg-red-500 text-white'
+                                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                              }`}
+                            >
+                              {DIFFICULTY_LABELS[diff]}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Question Types */}
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Tipos de preguntas a generar
+                        </label>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                          {([
+                            { type: 'TRUE_FALSE' as const, icon: '✓✗', label: 'Verdadero/Falso' },
+                            { type: 'SINGLE_CHOICE' as const, icon: '○', label: 'Selección única' },
+                            { type: 'MULTIPLE_CHOICE' as const, icon: '☑', label: 'Selección múltiple' },
+                            { type: 'MATCHING' as const, icon: '↔', label: 'Relacionar' },
+                          ]).map(({ type, icon, label }) => (
+                            <label
+                              key={type}
+                              className={`flex items-center gap-2 p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                                aiForm.questionTypes.includes(type)
+                                  ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
+                                  : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={aiForm.questionTypes.includes(type)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setAiForm({ ...aiForm, questionTypes: [...aiForm.questionTypes, type] });
+                                  } else {
+                                    setAiForm({ ...aiForm, questionTypes: aiForm.questionTypes.filter(t => t !== type) });
+                                  }
+                                }}
+                                className="sr-only"
+                              />
+                              <span className="text-xl">{icon}</span>
+                              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* Manual CSV Import */}
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 bg-emerald-500 text-white rounded-full flex items-center justify-center text-sm font-bold">1</div>
+                        <h3 className="font-semibold text-gray-800 dark:text-white">Copia este prompt y pégalo en tu IA favorita</h3>
+                      </div>
+                      <div className="relative">
+                        <pre className="bg-gray-100 dark:bg-gray-900 p-4 rounded-xl text-sm text-gray-700 dark:text-gray-300 overflow-x-auto whitespace-pre-wrap border border-gray-200 dark:border-gray-700 max-h-48">
 {`Genera [CANTIDAD] preguntas sobre [TEMA] para estudiantes de [NIVEL]. 
 
-Usa EXACTAMENTE este formato CSV (no agregues explicaciones, solo el CSV):
+Usa EXACTAMENTE este formato CSV:
 
 type,difficulty,points,questionText,options,correctAnswer,pairs,explanation,timeLimitSeconds
-TRUE_FALSE,EASY,10,"[Pregunta de verdadero/falso]",,true,,"[Explicación]",20
-SINGLE_CHOICE,MEDIUM,15,"[Pregunta de opción única]","[{""text"":""Opción 1"",""isCorrect"":false},{""text"":""Opción 2"",""isCorrect"":true},{""text"":""Opción 3"",""isCorrect"":false}]",,,"[Explicación]",30
-MULTIPLE_CHOICE,HARD,20,"[Pregunta de múltiples respuestas correctas]","[{""text"":""Opción 1"",""isCorrect"":true},{""text"":""Opción 2"",""isCorrect"":false},{""text"":""Opción 3"",""isCorrect"":true}]",,,"[Explicación]",45
-MATCHING,MEDIUM,25,"[Pregunta de relacionar]",,,"[{""left"":""Elemento 1"",""right"":""Pareja 1""},{""left"":""Elemento 2"",""right"":""Pareja 2""}]","[Explicación]",40
-
-IMPORTANTE:
-- Tipos válidos: TRUE_FALSE, SINGLE_CHOICE, MULTIPLE_CHOICE, MATCHING
-- Dificultades: EASY, MEDIUM, HARD
-- Las comillas dentro del JSON deben ser dobles ("")
-- Varía los tipos de preguntas
-- Incluye explicaciones educativas`}
-                    </pre>
-                    <button
-                      onClick={() => {
-                        const prompt = `Genera [CANTIDAD] preguntas sobre [TEMA] para estudiantes de [NIVEL]. 
+TRUE_FALSE,EASY,10,"[Pregunta]",,true,,"[Explicación]",20
+SINGLE_CHOICE,MEDIUM,15,"[Pregunta]","[{""text"":""Opción"",""isCorrect"":true}]",,,"[Explicación]",30
+MULTIPLE_CHOICE,HARD,20,"[Pregunta]","[{""text"":""Opción"",""isCorrect"":true}]",,,"[Explicación]",45
+MATCHING,MEDIUM,25,"[Pregunta]",,,"[{""left"":""A"",""right"":""B""}]","[Explicación]",40`}
+                        </pre>
+                        <button
+                          onClick={() => {
+                            const prompt = `Genera [CANTIDAD] preguntas sobre [TEMA] para estudiantes de [NIVEL]. 
 
 Usa EXACTAMENTE este formato CSV (no agregues explicaciones, solo el CSV):
 
@@ -928,30 +1210,31 @@ IMPORTANTE:
 - Las comillas dentro del JSON deben ser dobles ("")
 - Varía los tipos de preguntas
 - Incluye explicaciones educativas`;
-                        navigator.clipboard.writeText(prompt);
-                        toast.success('Prompt copiado al portapapeles');
-                      }}
-                      className="absolute top-2 right-2 p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                    >
-                      <Copy className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-                    </button>
-                  </div>
-                </div>
+                            navigator.clipboard.writeText(prompt);
+                            toast.success('Prompt copiado al portapapeles');
+                          }}
+                          className="absolute top-2 right-2 p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                        >
+                          <Copy className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                        </button>
+                      </div>
+                    </div>
 
-                {/* Step 2: Paste result */}
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 bg-emerald-500 text-white rounded-full flex items-center justify-center text-sm font-bold">2</div>
-                    <h3 className="font-semibold text-gray-800 dark:text-white">Pega aquí el resultado de la IA</h3>
-                  </div>
-                  <textarea
-                    value={csvTextInput}
-                    onChange={(e) => setCsvTextInput(e.target.value)}
-                    placeholder="Pega aquí el CSV generado por la IA..."
-                    rows={10}
-                    className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none font-mono text-sm"
-                  />
-                </div>
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 bg-emerald-500 text-white rounded-full flex items-center justify-center text-sm font-bold">2</div>
+                        <h3 className="font-semibold text-gray-800 dark:text-white">Pega aquí el resultado de la IA</h3>
+                      </div>
+                      <textarea
+                        value={csvTextInput}
+                        onChange={(e) => setCsvTextInput(e.target.value)}
+                        placeholder="Pega aquí el CSV generado por la IA..."
+                        rows={10}
+                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none font-mono text-sm"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Footer */}
@@ -965,19 +1248,46 @@ IMPORTANTE:
                       onClick={() => {
                         setShowAIImportModal(false);
                         setCsvTextInput('');
+                        setAiForm({
+                          topic: '',
+                          quantity: 10,
+                          level: '',
+                          questionTypes: ['TRUE_FALSE', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'MATCHING'],
+                          difficulty: '',
+                        });
                       }}
                       className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700"
                     >
                       Cancelar
                     </button>
-                    <button
-                      onClick={handleProcessCSVText}
-                      disabled={!csvTextInput.trim()}
-                      className="px-6 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50 flex items-center gap-2"
-                    >
-                      <CheckCircle className="w-4 h-4" />
-                      Procesar CSV
-                    </button>
+                    {aiMode === 'direct' ? (
+                      <button
+                        onClick={handleGenerateWithAI}
+                        disabled={!aiForm.topic || !aiForm.level || aiGenerating || aiForm.questionTypes.length === 0}
+                        className="px-6 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50 flex items-center gap-2"
+                      >
+                        {aiGenerating ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            Generando...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-4 h-4" />
+                            Generar con IA
+                          </>
+                        )}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleProcessCSVText}
+                        disabled={!csvTextInput.trim()}
+                        className="px-6 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50 flex items-center gap-2"
+                      >
+                        <CheckCircle className="w-4 h-4" />
+                        Procesar CSV
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1029,122 +1339,154 @@ const BankModal = ({ isOpen, onClose, onSubmit, onDelete, initialData, isLoading
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
       onClick={onClose}
     >
       <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.9, opacity: 0 }}
-        className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto"
+        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col md:flex-row"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-gray-800 dark:text-white">
-            {initialData ? 'Editar Banco' : 'Nuevo Banco'}
-          </h2>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
-            <X size={20} className="text-gray-500" />
-          </button>
+        {/* Panel izquierdo - Jiro */}
+        <div className="hidden md:block md:w-64 flex-shrink-0 relative overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600">
+          <motion.img
+            src="/assets/mascot/jiro-bancoPreguntas.jpg"
+            alt="Jiro"
+            className="absolute inset-0 w-full h-full object-cover"
+            initial={{ scale: 1.1, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.4 }}
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+            }}
+          />
+          {/* Tips para docentes */}
+          <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/60 to-transparent">
+            <p className="text-white text-xs font-medium mb-2">💡 Tips:</p>
+            <ul className="text-white/80 text-[10px] space-y-1">
+              <li>• Organiza preguntas por tema</li>
+              <li>• Usa nombres descriptivos</li>
+              <li>• Elige colores para identificar</li>
+            </ul>
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Preview */}
-          <div className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
-            <div 
-              className="w-14 h-14 rounded-xl flex items-center justify-center text-3xl"
-              style={{ backgroundColor: color + '30' }}
-            >
-              {getBankEmoji(icon)}
+        {/* Panel derecho - Contenido */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
+                <BookOpen className="w-5 h-5 text-white" />
+              </div>
+              <h2 className="text-xl font-bold text-gray-800 dark:text-white">
+                {initialData ? 'Editar Banco' : 'Nuevo Banco de Preguntas'}
+              </h2>
             </div>
+            <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+              <X size={20} className="text-gray-500" />
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="flex-1 p-5 space-y-4 overflow-y-auto">
+            {/* Preview */}
+            <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-xl border border-indigo-100 dark:border-indigo-800">
+              <div 
+                className="w-14 h-14 rounded-xl flex items-center justify-center text-3xl shadow-md"
+                style={{ backgroundColor: color + '30' }}
+              >
+                {getBankEmoji(icon)}
+              </div>
+              <div>
+                <p className="font-semibold text-gray-800 dark:text-white">
+                  {name || 'Nombre del banco'}
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">{description || 'Descripción opcional'}</p>
+              </div>
+            </div>
+
+            {/* Name */}
             <div>
-              <p className="font-semibold text-gray-800 dark:text-white">
-                {name || 'Nombre del banco'}
-              </p>
-              <p className="text-sm text-gray-500">{description || 'Descripción opcional'}</p>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Nombre del banco *
+              </label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Ej: Matemáticas - Fracciones"
+                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors"
+                required
+              />
             </div>
-          </div>
 
-          {/* Name */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Nombre *
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ej: Matemáticas - Fracciones"
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500"
-              required
-            />
-          </div>
-
-          {/* Description */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Descripción
-            </label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Descripción opcional del banco..."
-              rows={2}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500 resize-none"
-            />
-          </div>
-
-          {/* Icon */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Icono
-            </label>
-            <div className="grid grid-cols-6 gap-2">
-              {BANK_ICONS.map((i) => (
-                <button
-                  key={i.id}
-                  type="button"
-                  onClick={() => setIcon(i.id)}
-                  className={`p-2 rounded-lg text-xl transition-all ${
-                    icon === i.id 
-                      ? 'bg-indigo-100 dark:bg-indigo-900/50 ring-2 ring-indigo-500' 
-                      : 'hover:bg-gray-100 dark:hover:bg-gray-700'
-                  }`}
-                  title={i.label}
-                >
-                  {i.emoji}
-                </button>
-              ))}
+            {/* Description */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Descripción
+              </label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Descripción opcional del banco..."
+                rows={2}
+                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 resize-none transition-colors"
+              />
             </div>
-          </div>
 
-          {/* Color */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Color
-            </label>
-            <div className="flex gap-2 flex-wrap">
-              {BANK_COLORS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setColor(c)}
-                  className={`w-8 h-8 rounded-full transition-all ${
-                    color === c ? 'ring-2 ring-offset-2 ring-gray-400' : ''
-                  }`}
-                  style={{ backgroundColor: c }}
-                />
-              ))}
+            {/* Icon */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Icono
+              </label>
+              <div className="grid grid-cols-6 gap-2">
+                {BANK_ICONS.map((i) => (
+                  <button
+                    key={i.id}
+                    type="button"
+                    onClick={() => setIcon(i.id)}
+                    className={`p-2.5 rounded-xl text-xl transition-all ${
+                      icon === i.id 
+                        ? 'bg-indigo-100 dark:bg-indigo-900/50 ring-2 ring-indigo-500 shadow-md' 
+                        : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                    }`}
+                    title={i.label}
+                  >
+                    {i.emoji}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
 
-          {/* Actions */}
-          <div className="flex gap-3 pt-4">
+            {/* Color */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Color del banco
+              </label>
+              <div className="flex gap-2 flex-wrap">
+                {BANK_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setColor(c)}
+                    className={`w-9 h-9 rounded-full transition-all hover:scale-110 ${
+                      color === c ? 'ring-2 ring-offset-2 ring-gray-400 dark:ring-offset-gray-800 scale-110' : ''
+                    }`}
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+              </div>
+            </div>
+          </form>
+
+          {/* Footer */}
+          <div className="flex items-center gap-3 p-5 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
             {onDelete && (
               <button
                 type="button"
                 onClick={onDelete}
-                className="px-4 py-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl"
+                className="px-4 py-2.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl font-medium transition-colors"
               >
                 Eliminar
               </button>
@@ -1153,19 +1495,19 @@ const BankModal = ({ isOpen, onClose, onSubmit, onDelete, initialData, isLoading
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700"
+              className="px-5 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 font-medium transition-colors"
             >
               Cancelar
             </button>
             <button
-              type="submit"
+              onClick={handleSubmit}
               disabled={isLoading || !name.trim()}
-              className="px-6 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl hover:from-indigo-600 hover:to-purple-700 disabled:opacity-50"
+              className="px-6 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl hover:from-indigo-600 hover:to-purple-700 disabled:opacity-50 font-medium shadow-lg shadow-indigo-500/25 transition-all"
             >
-              {isLoading ? 'Guardando...' : initialData ? 'Guardar' : 'Crear'}
+              {isLoading ? 'Guardando...' : initialData ? 'Guardar cambios' : '📚 Crear banco'}
             </button>
           </div>
-        </form>
+        </div>
       </motion.div>
     </motion.div>
   );
@@ -1347,288 +1689,333 @@ const QuestionModal = ({ isOpen, onClose, onSubmit, initialData, isLoading }: Qu
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
       onClick={onClose}
     >
       <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.9, opacity: 0 }}
-        className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col md:flex-row"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-gray-800 dark:text-white">
-            {initialData ? 'Editar Pregunta' : 'Nueva Pregunta'}
-          </h2>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
-            <X size={20} className="text-gray-500" />
-          </button>
+        <div className="hidden md:block md:w-64 flex-shrink-0 relative overflow-hidden bg-gradient-to-br from-indigo-500 to-purple-600">
+          <motion.img
+            src="/assets/mascot/jiro-bancoPreguntas.jpg"
+            alt="Jiro"
+            className="absolute inset-0 w-full h-full object-cover"
+            initial={{ scale: 1.1, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.4 }}
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+            }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+          <div className="absolute bottom-0 left-0 right-0 p-4">
+            <p className="text-white text-xs font-semibold mb-2">💡 Tips rápidos</p>
+            <ul className="text-white/80 text-[10px] space-y-1">
+              <li>• Preguntas claras y cortas</li>
+              <li>• Usa imágenes solo si ayudan</li>
+              <li>• Ajusta puntos según dificultad</li>
+            </ul>
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Question Type */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Tipo de pregunta
-            </label>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {[
-                { id: 'TRUE_FALSE', icon: CheckCircle, label: 'V o F' },
-                { id: 'SINGLE_CHOICE', icon: HelpCircle, label: 'Única' },
-                { id: 'MULTIPLE_CHOICE', icon: ListChecks, label: 'Múltiple' },
-                { id: 'MATCHING', icon: ArrowLeftRight, label: 'Unir' },
-              ].map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => handleTypeChange(t.id as BankQuestionType)}
-                  className={`flex flex-col items-center gap-1 p-3 rounded-xl border-2 transition-all ${
-                    type === t.id
-                      ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30'
-                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  <t.icon size={20} className={type === t.id ? 'text-indigo-600' : 'text-gray-400'} />
-                  <span className={`text-xs font-medium ${type === t.id ? 'text-indigo-600' : 'text-gray-500'}`}>
-                    {t.label}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Question Text */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Pregunta *
-            </label>
-            <textarea
-              value={questionText}
-              onChange={(e) => setQuestionText(e.target.value)}
-              placeholder="Escribe la pregunta aquí..."
-              rows={3}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500 resize-none"
-              required
-            />
-          </div>
-
-          {/* Image URL */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              URL de imagen (opcional)
-            </label>
-            <input
-              type="url"
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
-              placeholder="https://ejemplo.com/imagen.jpg"
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
-
-          {/* Type-specific fields */}
-          {type === 'TRUE_FALSE' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Respuesta correcta
-              </label>
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setCorrectAnswer(true)}
-                  className={`flex-1 py-3 rounded-xl border-2 font-medium transition-all ${
-                    correctAnswer
-                      ? 'border-green-500 bg-green-50 dark:bg-green-900/30 text-green-700'
-                      : 'border-gray-200 dark:border-gray-700 text-gray-500'
-                  }`}
-                >
-                  ✓ Verdadero
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCorrectAnswer(false)}
-                  className={`flex-1 py-3 rounded-xl border-2 font-medium transition-all ${
-                    !correctAnswer
-                      ? 'border-red-500 bg-red-50 dark:bg-red-900/30 text-red-700'
-                      : 'border-gray-200 dark:border-gray-700 text-gray-500'
-                  }`}
-                >
-                  ✗ Falso
-                </button>
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
+                <HelpCircle className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-800 dark:text-white">
+                  {initialData ? 'Editar Pregunta' : 'Nueva Pregunta'}
+                </h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Completa los campos esenciales y guarda.
+                </p>
               </div>
             </div>
-          )}
+            <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+              <X size={20} className="text-gray-500" />
+            </button>
+          </div>
 
-          {(type === 'SINGLE_CHOICE' || type === 'MULTIPLE_CHOICE') && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Opciones {type === 'SINGLE_CHOICE' ? '(marca la correcta)' : '(marca las correctas)'}
+          <form id="question-form" onSubmit={handleSubmit} className="flex-1 p-5 space-y-5 overflow-y-auto">
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Tipo de pregunta
               </label>
-              <div className="space-y-2">
-                {options.map((option, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => updateOption(index, 'isCorrect', !option.isCorrect)}
-                      className={`flex-shrink-0 w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${
-                        option.isCorrect
-                          ? 'border-green-500 bg-green-500 text-white'
-                          : 'border-gray-300 dark:border-gray-600 hover:border-green-400'
-                      }`}
-                    >
-                      {option.isCorrect && <CheckCircle size={16} />}
-                    </button>
-                    <input
-                      type="text"
-                      value={option.text}
-                      onChange={(e) => updateOption(index, 'text', e.target.value)}
-                      placeholder={`Opción ${index + 1}`}
-                      className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500"
-                    />
-                    {options.length > 2 && (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {[
+                  { id: 'TRUE_FALSE', icon: CheckCircle, label: 'V o F', desc: 'Respuesta binaria' },
+                  { id: 'SINGLE_CHOICE', icon: HelpCircle, label: 'Única', desc: 'Una correcta' },
+                  { id: 'MULTIPLE_CHOICE', icon: ListChecks, label: 'Múltiple', desc: 'Varias correctas' },
+                  { id: 'MATCHING', icon: ArrowLeftRight, label: 'Unir', desc: 'Relacionar pares' },
+                ].map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => handleTypeChange(t.id as BankQuestionType)}
+                    className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all text-left ${
+                      type === t.id
+                        ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30'
+                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+                      type === t.id ? 'bg-indigo-500 text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-500'
+                    }`}>
+                      <t.icon size={18} />
+                    </div>
+                    <div>
+                      <p className={`text-sm font-semibold ${type === t.id ? 'text-indigo-600' : 'text-gray-700 dark:text-gray-200'}`}>
+                        {t.label}
+                      </p>
+                      <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                        {t.desc}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-4">
+              <div className="bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 rounded-xl p-4">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Pregunta *
+                </label>
+                <textarea
+                  value={questionText}
+                  onChange={(e) => setQuestionText(e.target.value)}
+                  placeholder="Escribe la pregunta aquí..."
+                  rows={3}
+                  className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500 resize-none"
+                  required
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                  Tip: usa frases cortas y evita doble negación.
+                </p>
+              </div>
+
+              <div className="bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 rounded-xl p-4">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  URL de imagen (opcional)
+                </label>
+                <input
+                  type="url"
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                  placeholder="https://ejemplo.com/imagen.jpg"
+                  className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+
+            {type === 'TRUE_FALSE' && (
+              <div className="bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 rounded-xl p-4">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Respuesta correcta
+                </label>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setCorrectAnswer(true)}
+                    className={`flex-1 py-3 rounded-xl border-2 font-medium transition-all ${
+                      correctAnswer
+                        ? 'border-green-500 bg-green-50 dark:bg-green-900/30 text-green-700'
+                        : 'border-gray-200 dark:border-gray-700 text-gray-500'
+                    }`}
+                  >
+                    ✓ Verdadero
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCorrectAnswer(false)}
+                    className={`flex-1 py-3 rounded-xl border-2 font-medium transition-all ${
+                      !correctAnswer
+                        ? 'border-red-500 bg-red-50 dark:bg-red-900/30 text-red-700'
+                        : 'border-gray-200 dark:border-gray-700 text-gray-500'
+                    }`}
+                  >
+                    ✗ Falso
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {(type === 'SINGLE_CHOICE' || type === 'MULTIPLE_CHOICE') && (
+              <div className="bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 rounded-xl p-4">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Opciones {type === 'SINGLE_CHOICE' ? '(marca la correcta)' : '(marca las correctas)'}
+                </label>
+                <div className="space-y-2">
+                  {options.map((option, index) => (
+                    <div key={index} className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => removeOption(index)}
-                        className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
+                        onClick={() => updateOption(index, 'isCorrect', !option.isCorrect)}
+                        className={`flex-shrink-0 w-9 h-9 rounded-full border-2 flex items-center justify-center transition-all ${
+                          option.isCorrect
+                            ? 'border-green-500 bg-green-500 text-white'
+                            : 'border-gray-300 dark:border-gray-600 hover:border-green-400'
+                        }`}
                       >
-                        <X size={16} />
+                        {option.isCorrect && <CheckCircle size={16} />}
                       </button>
-                    )}
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={addOption}
-                  className="w-full py-2 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-500 hover:border-indigo-400 hover:text-indigo-500 transition-colors"
-                >
-                  + Agregar opción
-                </button>
+                      <input
+                        type="text"
+                        value={option.text}
+                        onChange={(e) => updateOption(index, 'text', e.target.value)}
+                        placeholder={`Opción ${index + 1}`}
+                        className="flex-1 px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500"
+                      />
+                      {options.length > 2 && (
+                        <button
+                          type="button"
+                          onClick={() => removeOption(index)}
+                          className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
+                        >
+                          <X size={16} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={addOption}
+                    className="w-full py-2.5 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl text-gray-500 hover:border-indigo-400 hover:text-indigo-500 transition-colors"
+                  >
+                    + Agregar opción
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {type === 'MATCHING' && (
+              <div className="bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 rounded-xl p-4">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Pares para unir
+                </label>
+                <div className="space-y-2">
+                  {pairs.map((pair, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={pair.left}
+                        onChange={(e) => updatePair(index, 'left', e.target.value)}
+                        placeholder="Izquierda"
+                        className="flex-1 px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <ArrowLeftRight size={20} className="text-gray-400 flex-shrink-0" />
+                      <input
+                        type="text"
+                        value={pair.right}
+                        onChange={(e) => updatePair(index, 'right', e.target.value)}
+                        placeholder="Derecha"
+                        className="flex-1 px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500"
+                      />
+                      {pairs.length > 2 && (
+                        <button
+                          type="button"
+                          onClick={() => removePair(index)}
+                          className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
+                        >
+                          <X size={16} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={addPair}
+                    className="w-full py-2.5 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl text-gray-500 hover:border-indigo-400 hover:text-indigo-500 transition-colors"
+                  >
+                    + Agregar par
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 rounded-xl p-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Dificultad
+                  </label>
+                  <select
+                    value={difficulty}
+                    onChange={(e) => setDifficulty(e.target.value as QuestionDifficulty)}
+                    className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="EASY">Fácil</option>
+                    <option value="MEDIUM">Media</option>
+                    <option value="HARD">Difícil</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Puntos
+                  </label>
+                  <input
+                    type="number"
+                    value={points}
+                    onChange={(e) => setPoints(Number(e.target.value))}
+                    min={1}
+                    max={100}
+                    className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Tiempo (seg)
+                  </label>
+                  <input
+                    type="number"
+                    value={timeLimitSeconds}
+                    onChange={(e) => setTimeLimitSeconds(Number(e.target.value))}
+                    min={5}
+                    max={300}
+                    className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
               </div>
             </div>
-          )}
 
-          {type === 'MATCHING' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Pares para unir
-              </label>
-              <div className="space-y-2">
-                {pairs.map((pair, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={pair.left}
-                      onChange={(e) => updatePair(index, 'left', e.target.value)}
-                      placeholder="Izquierda"
-                      className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500"
-                    />
-                    <ArrowLeftRight size={20} className="text-gray-400 flex-shrink-0" />
-                    <input
-                      type="text"
-                      value={pair.right}
-                      onChange={(e) => updatePair(index, 'right', e.target.value)}
-                      placeholder="Derecha"
-                      className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500"
-                    />
-                    {pairs.length > 2 && (
-                      <button
-                        type="button"
-                        onClick={() => removePair(index)}
-                        className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
-                      >
-                        <X size={16} />
-                      </button>
-                    )}
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={addPair}
-                  className="w-full py-2 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg text-gray-500 hover:border-indigo-400 hover:text-indigo-500 transition-colors"
-                >
-                  + Agregar par
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Settings row */}
-          <div className="grid grid-cols-3 gap-4">
-            <div>
+            <div className="bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 rounded-xl p-4">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Dificultad
+                Explicación (opcional)
               </label>
-              <select
-                value={difficulty}
-                onChange={(e) => setDifficulty(e.target.value as QuestionDifficulty)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="EASY">Fácil</option>
-                <option value="MEDIUM">Media</option>
-                <option value="HARD">Difícil</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Puntos
-              </label>
-              <input
-                type="number"
-                value={points}
-                onChange={(e) => setPoints(Number(e.target.value))}
-                min={1}
-                max={100}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500"
+              <textarea
+                value={explanation}
+                onChange={(e) => setExplanation(e.target.value)}
+                placeholder="Explicación que se mostrará después de responder..."
+                rows={2}
+                className="w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500 resize-none"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Tiempo (seg)
-              </label>
-              <input
-                type="number"
-                value={timeLimitSeconds}
-                onChange={(e) => setTimeLimitSeconds(Number(e.target.value))}
-                min={5}
-                max={300}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-          </div>
+          </form>
 
-          {/* Explanation */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Explicación (opcional)
-            </label>
-            <textarea
-              value={explanation}
-              onChange={(e) => setExplanation(e.target.value)}
-              placeholder="Explicación que se mostrará después de responder..."
-              rows={2}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 focus:ring-2 focus:ring-indigo-500 resize-none"
-            />
-          </div>
-
-          {/* Actions */}
-          <div className="flex gap-3 pt-4">
+          <div className="flex items-center gap-3 p-5 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700"
+              className="px-5 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 font-medium transition-colors"
             >
               Cancelar
             </button>
             <button
               type="submit"
+              form="question-form"
               disabled={isLoading || !questionText.trim()}
-              className="flex-1 px-6 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl hover:from-indigo-600 hover:to-purple-700 disabled:opacity-50"
+              className="px-6 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl hover:from-indigo-600 hover:to-purple-700 disabled:opacity-50 font-medium shadow-lg shadow-indigo-500/25 transition-all"
             >
-              {isLoading ? 'Guardando...' : initialData ? 'Guardar' : 'Crear'}
+              {isLoading ? 'Guardando...' : initialData ? 'Guardar cambios' : '✨ Crear pregunta'}
             </button>
           </div>
-        </form>
+        </div>
       </motion.div>
     </motion.div>
   );

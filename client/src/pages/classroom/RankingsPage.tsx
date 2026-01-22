@@ -6,7 +6,6 @@ import {
   Trophy,
   Zap,
   Coins,
-  Swords,
   Shield,
   Crown,
   TrendingUp,
@@ -20,7 +19,7 @@ import { classroomApi } from '../../lib/classroomApi';
 import { CHARACTER_CLASSES } from '../../lib/studentApi';
 import confetti from 'canvas-confetti';
 
-type RankingType = 'xp' | 'gp' | 'battles' | 'clans';
+type RankingType = 'xp' | 'gp' | 'clans';
 
 interface Student {
   id: string;
@@ -30,7 +29,6 @@ interface Student {
   xp: number;
   hp: number;
   gp: number;
-  bossKills?: number;
   isActive?: boolean;
   user?: {
     firstName: string;
@@ -41,7 +39,6 @@ interface Student {
 const RANKING_TABS = [
   { id: 'xp' as RankingType, label: 'XP Total', icon: Zap, color: 'from-violet-500 to-purple-600', bgColor: 'bg-violet-500' },
   { id: 'gp' as RankingType, label: 'Oro', icon: Coins, color: 'from-amber-500 to-yellow-500', bgColor: 'bg-amber-500' },
-  { id: 'battles' as RankingType, label: 'Boss Battles', icon: Swords, color: 'from-red-500 to-orange-500', bgColor: 'bg-red-500' },
   { id: 'clans' as RankingType, label: 'Clanes', icon: Shield, color: 'from-teal-500 to-cyan-500', bgColor: 'bg-teal-500' },
 ];
 
@@ -50,6 +47,12 @@ const PODIUM_COLORS = [
   { bg: 'from-gray-300 to-gray-400', shadow: 'shadow-gray-400/50', text: 'text-gray-700', medal: '🥈' },
   { bg: 'from-orange-400 to-amber-500', shadow: 'shadow-orange-500/50', text: 'text-orange-900', medal: '🥉' },
 ];
+
+const JIRO_RANKING_IMAGES: Record<RankingType, string> = {
+  xp: '/assets/mascot/jiro-ranking-xp.png',
+  gp: '/assets/mascot/jiro-ranking-oro.png',
+  clans: '/assets/mascot/jiro-ranking-clanes.png',
+};
 
 export const RankingsPage = () => {
   const { classroom } = useOutletContext<{ classroom: any }>();
@@ -82,8 +85,6 @@ export const RankingsPage = () => {
         return sorted.sort((a, b) => b.xp - a.xp);
       case 'gp':
         return sorted.sort((a, b) => b.gp - a.gp);
-      case 'battles':
-        return sorted.sort((a, b) => (b.bossKills || 0) - (a.bossKills || 0));
       default:
         return sorted;
     }
@@ -128,7 +129,6 @@ export const RankingsPage = () => {
     switch (activeTab) {
       case 'xp': return student.xp;
       case 'gp': return student.gp;
-      case 'battles': return student.bossKills || 0;
       default: return 0;
     }
   };
@@ -137,7 +137,6 @@ export const RankingsPage = () => {
     switch (activeTab) {
       case 'xp': return 'XP';
       case 'gp': return 'Oro';
-      case 'battles': return 'victorias';
       default: return '';
     }
   };
@@ -226,7 +225,17 @@ export const RankingsPage = () => {
             <div className="space-y-6">
               {/* Podio de Clanes */}
               {top3Clans.length > 0 && (
-                <div className="flex items-end justify-center gap-4 py-8">
+                <div className="relative flex items-end justify-center gap-4 py-8">
+                  <motion.img
+                    key={activeTab}
+                    src={JIRO_RANKING_IMAGES[activeTab]}
+                    alt="Jiro"
+                    className="hidden md:block absolute bottom-0 left-0 w-56 h-auto pointer-events-none select-none"
+                    initial={{ x: -20, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: -20, opacity: 0 }}
+                    transition={{ duration: 0.4 }}
+                  />
                   {/* 2do lugar */}
                   {top3Clans[1] && (
                     <motion.div
@@ -361,7 +370,17 @@ export const RankingsPage = () => {
             <div className="space-y-6">
               {/* Podio */}
               {top3Students.length > 0 && (
-                <div className="flex items-end justify-center gap-4 py-8">
+                <div className="relative flex items-end justify-center gap-4 py-8">
+                  <motion.img
+                    key={activeTab}
+                    src={JIRO_RANKING_IMAGES[activeTab]}
+                    alt="Jiro"
+                    className="hidden md:block absolute bottom-0 left-0 w-56 h-auto pointer-events-none select-none"
+                    initial={{ x: -20, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: -20, opacity: 0 }}
+                    transition={{ duration: 0.4 }}
+                  />
                   {/* 2do lugar */}
                   {top3Students[1] && (
                     <motion.div
