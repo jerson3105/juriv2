@@ -112,7 +112,6 @@ export interface AdminClassroomDetails {
         timer: number;
         tournament: number;
         expedition: number;
-        mission: number;
       };
       completed: number;
     };
@@ -123,7 +122,6 @@ export interface AdminClassroomDetails {
     timed: AdminClassroomActivity[];
     tournaments: AdminClassroomActivity[];
     expeditions: AdminClassroomActivity[];
-    missions: AdminClassroomActivity[];
   };
   questionBanks: AdminQuestionBank[];
 }

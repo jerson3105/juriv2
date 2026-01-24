@@ -4,7 +4,6 @@ import { eq, and, desc, sql, gte, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { avatarService } from './avatar.service.js';
 import { clanService } from './clan.service.js';
-import { missionService } from './mission.service.js';
 import { badgeService } from './badge.service.js';
 
 type CharacterClass = 'GUARDIAN' | 'ARCANE' | 'EXPLORER' | 'ALCHEMIST';
@@ -238,19 +237,6 @@ export class StudentService {
         await clanService.contributeXpToClan(data.studentId, data.amount, data.reason || 'XP ganado');
       } catch (error) {
         // Silently fail - don't break point update
-      }
-    }
-
-    // Tracking de misiones - puntos manuales
-    if (data.amount > 0) {
-      try {
-        if (data.pointType === 'XP') {
-          await missionService.updateMissionProgress(data.studentId, 'EARN_XP', data.amount);
-        } else if (data.pointType === 'GP') {
-          await missionService.updateMissionProgress(data.studentId, 'EARN_GP', data.amount);
-        }
-      } catch (error) {
-        console.error('Error updating mission progress:', error);
       }
     }
 

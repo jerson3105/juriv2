@@ -3,13 +3,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import {
   Sparkles, X, ChevronRight, ChevronLeft, Check, GraduationCap,
-  BookOpen, Award, Target, ShoppingBag, HelpCircle, Loader2,
+  BookOpen, Award, ShoppingBag, HelpCircle, Loader2,
   Edit2, Trash2, Heart, Coins,
 } from 'lucide-react';
 import { classroomApi } from '../../lib/classroomApi';
 import { behaviorApi } from '../../lib/behaviorApi';
 import { badgeApi } from '../../lib/badgeApi';
-import { missionApi } from '../../lib/missionApi';
 import { shopApi } from '../../lib/shopApi';
 import { questionBankApi } from '../../lib/questionBankApi';
 import toast from 'react-hot-toast';
@@ -41,7 +40,6 @@ const STEPS = [
   { id: 'info', title: 'Información', icon: <GraduationCap size={16} /> },
   { id: 'behaviors', title: 'Comportamientos', icon: <BookOpen size={16} /> },
   { id: 'badges', title: 'Insignias', icon: <Award size={16} /> },
-  // { id: 'missions', title: 'Misiones', icon: <Target size={16} /> }, // Temporalmente oculto
   { id: 'shop', title: 'Tienda', icon: <ShoppingBag size={16} /> },
   { id: 'questions', title: 'Preguntas', icon: <HelpCircle size={16} /> },
   { id: 'review', title: 'Resumen', icon: <Check size={16} /> },
@@ -94,13 +92,12 @@ export const AIClassroomWizard = ({ isOpen, onClose, onSuccess }: Props) => {
 
   // Contenido generado
   const [generated, setGenerated] = useState<any>({
-    behaviors: [], badges: [], missions: [], shopItems: [], questionBank: null,
+    behaviors: [], badges: [], shopItems: [], questionBank: null,
   });
 
   // Selección
   const [selectedBehaviors, setSelectedBehaviors] = useState<Set<number>>(new Set());
   const [selectedBadges, setSelectedBadges] = useState<Set<number>>(new Set());
-  const [selectedMissions, setSelectedMissions] = useState<Set<number>>(new Set());
   const [selectedShopItems, setSelectedShopItems] = useState<Set<number>>(new Set());
 
   // Edición
@@ -166,7 +163,7 @@ export const AIClassroomWizard = ({ isOpen, onClose, onSuccess }: Props) => {
 
   const deleteItem = (type: string, idx: number) => {
     setGenerated((p: any) => ({ ...p, [type]: p[type].filter((_: any, i: number) => i !== idx) }));
-    const setFn = type === 'behaviors' ? setSelectedBehaviors : type === 'badges' ? setSelectedBadges : type === 'missions' ? setSelectedMissions : setSelectedShopItems;
+    const setFn = type === 'behaviors' ? setSelectedBehaviors : type === 'badges' ? setSelectedBadges : setSelectedShopItems;
     setFn((prev: Set<number>) => {
       const newSet = new Set<number>();
       prev.forEach(i => { if (i < idx) newSet.add(i); else if (i > idx) newSet.add(i - 1); });
@@ -233,17 +230,6 @@ export const AIClassroomWizard = ({ isOpen, onClose, onSuccess }: Props) => {
         } catch (e) { console.error(e); }
       }
 
-      for (const m of generated.missions.filter((_: any, i: number) => selectedMissions.has(i))) {
-        try {
-          await missionApi.createMission(cid, {
-            name: m.name || m.title, description: m.description || '',
-            type: m.type || 'SPECIAL', category: m.category || 'CUSTOM',
-            objectiveType: m.objectiveType || 'CUSTOM', objectiveTarget: 1,
-            rewardXp: m.xpReward || 0, rewardGp: m.gpReward || 0,
-          });
-        } catch (e) { console.error(e); }
-      }
-
       for (const s of generated.shopItems.filter((_: any, i: number) => selectedShopItems.has(i))) {
         try {
           await shopApi.createItem({
@@ -289,8 +275,8 @@ export const AIClassroomWizard = ({ isOpen, onClose, onSuccess }: Props) => {
   const handleClose = () => {
     setCurrentStep(0);
     setClassData({ name: '', description: '', subject: '', gradeLevel: '', useCompetencies: false, curriculumAreaId: '', gradeScaleType: 'PERU_LETTERS' });
-    setGenerated({ behaviors: [], badges: [], missions: [], shopItems: [], questionBank: null });
-    setSelectedBehaviors(new Set()); setSelectedBadges(new Set()); setSelectedMissions(new Set()); setSelectedShopItems(new Set());
+    setGenerated({ behaviors: [], badges: [], shopItems: [], questionBank: null });
+    setSelectedBehaviors(new Set()); setSelectedBadges(new Set()); setSelectedShopItems(new Set());
     setIncludeQuestionBank(false);
     onClose();
   };
@@ -742,10 +728,9 @@ export const AIClassroomWizard = ({ isOpen, onClose, onSuccess }: Props) => {
 
             {/* Step 2: Badges */}
             {currentStep === 2 && <StepBadges {...{ badgesDesc, setBadgesDesc, badgesCount, setBadgesCount, badgeAssignmentMode, setBadgeAssignmentMode, isGenerating, generateContent, generated, selectedBadges, setSelectedBadges, editingIdx, setEditingIdx, updateItem, deleteItem, useCompetencies: classData.useCompetencies, competencies: curriculumAreas.find((a: any) => a.id === classData.curriculumAreaId)?.competencies || [] }} />}
-            {/* Misiones ocultas temporalmente */}
             {currentStep === 3 && <StepShop {...{ shopDesc, setShopDesc, shopCount, setShopCount, isGenerating, generateContent, generated, selectedShopItems, setSelectedShopItems, editingIdx, setEditingIdx, updateItem, deleteItem }} />}
             {currentStep === 4 && <StepQuestions {...{ questionBankName, setQuestionBankName, questionsDesc, setQuestionsDesc, questionsCount, setQuestionsCount, questionTypes, setQuestionTypes, isGenerating, generateContent, generated, includeQuestionBank, setIncludeQuestionBank }} />}
-            {currentStep === 5 && <StepReview {...{ classData, generated, selectedBehaviors, selectedBadges, selectedMissions, selectedShopItems, includeQuestionBank, isCreating, createClassroom }} />}
+            {currentStep === 5 && <StepReview {...{ classData, generated, selectedBehaviors, selectedBadges, selectedShopItems, includeQuestionBank, isCreating, createClassroom }} />}
           </div>
 
           {/* Footer */}
@@ -1135,15 +1120,6 @@ const StepReview = (props: any) => {
           </div>
           <p className="font-bold text-2xl text-amber-600">{props.selectedBadges.size}</p>
           <p className="text-xs text-gray-500">de {props.generated.badges.length} generadas</p>
-        </div>
-
-        <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-xl border border-purple-200">
-          <div className="flex items-center gap-2 mb-2">
-            <Target size={16} className="text-purple-600" />
-            <span className="text-xs font-medium text-gray-600">Misiones</span>
-          </div>
-          <p className="font-bold text-2xl text-purple-600">{props.selectedMissions.size}</p>
-          <p className="text-xs text-gray-500">de {props.generated.missions.length} generadas</p>
         </div>
 
         <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-xl border border-orange-200">

@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { db } from '../db/index.js';
 import { 
   users, classrooms, avatarItems, studentProfiles, schools, schoolMembers,
-  questionBanks, questions, timedActivities, tournaments, expeditions, missions
+  questionBanks, questions, timedActivities, tournaments, expeditions
 } from '../db/schema.js';
 import { eq, desc, count, sql, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
@@ -456,11 +456,6 @@ export const adminController = {
         .from(expeditions)
         .where(eq(expeditions.classroomId, id));
 
-      const [missionsCount] = await db
-        .select({ count: count() })
-        .from(missions)
-        .where(eq(missions.classroomId, id));
-
       // Actividades completadas
       const [timedCompleted] = await db
         .select({ count: count() })
@@ -477,7 +472,7 @@ export const adminController = {
         .from(expeditions)
         .where(sql`${expeditions.classroomId} = ${id} AND ${expeditions.status} = 'ARCHIVED'`);
 
-      const totalActivities = timedActivitiesCount.count + tournamentsCount.count + expeditionsCount.count + missionsCount.count;
+      const totalActivities = timedActivitiesCount.count + tournamentsCount.count + expeditionsCount.count;
       const completedActivities = timedCompleted.count + tournamentsCompleted.count + expeditionsCompleted.count;
 
       // Última actividad (más reciente entre todas las tablas)
@@ -566,16 +561,6 @@ export const adminController = {
         .where(eq(expeditions.classroomId, id))
         .orderBy(desc(expeditions.createdAt));
 
-      const missionsList = await db
-        .select({
-          id: missions.id,
-          name: missions.name,
-          createdAt: missions.createdAt,
-        })
-        .from(missions)
-        .where(eq(missions.classroomId, id))
-        .orderBy(desc(missions.createdAt));
-
       // Obtener lista de bancos de preguntas con conteo de preguntas
       const questionBanksList = await db
         .select({
@@ -620,7 +605,6 @@ export const adminController = {
                 timer: timedActivitiesCount.count,
                 tournament: tournamentsCount.count,
                 expedition: expeditionsCount.count,
-                mission: missionsCount.count,
               },
               completed: completedActivities,
             },
@@ -631,7 +615,6 @@ export const adminController = {
             timed: timedActivitiesList,
             tournaments: tournamentsList,
             expeditions: expeditionsList,
-            missions: missionsList,
           },
           questionBanks: questionBanksWithCount,
         },

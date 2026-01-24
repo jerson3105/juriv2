@@ -278,10 +278,10 @@ const NotificationItem = ({
 };
 
 // Botón de notificaciones para el header
-export const NotificationsBell = ({ onClick }: { onClick: () => void }) => {
+export const NotificationsBell = ({ onClick, classroomId }: { onClick: () => void; classroomId?: string }) => {
   const { data: count = 0 } = useQuery({
-    queryKey: ['unread-count'],
-    queryFn: shopApi.getUnreadCount,
+    queryKey: ['unread-count', classroomId],
+    queryFn: () => shopApi.getUnreadCount(classroomId),
     refetchInterval: 30000,
   });
 

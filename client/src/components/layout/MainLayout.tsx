@@ -21,6 +21,7 @@ import {
   ScrollText,
   Map,
   BookOpen,
+  Album,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useStudentStore } from '../../store/studentStore';
@@ -349,6 +350,35 @@ export const MainLayout = () => {
             </Link>
           )}
 
+          {/* Coleccionables - solo para estudiantes */}
+          {!isTeacher && currentProfile && (
+            <Link
+              to="/collectibles"
+              onClick={() => setSidebarOpen(false)}
+              className={`
+                flex items-center gap-3 px-3 py-2.5 rounded-xl
+                transition-all duration-200 group relative
+                ${location.pathname === '/collectibles'
+                  ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-white shadow-md'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }
+              `}
+            >
+              <div className={`
+                w-8 h-8 rounded-lg flex items-center justify-center transition-all
+                ${location.pathname === '/collectibles'
+                  ? 'bg-white/20' 
+                  : 'bg-gradient-to-br from-amber-500 to-yellow-500 text-white shadow-sm group-hover:scale-105'
+                }
+              `}>
+                <Album size={16} />
+              </div>
+              <span className={`text-sm font-medium ${location.pathname === '/collectibles' ? '' : 'text-gray-700 dark:text-gray-300'}`}>
+                Álbum de Cromos
+              </span>
+            </Link>
+          )}
+
           {/* Expediciones - solo para estudiantes */}
           {!isTeacher && studentExpeditions.length > 0 && (
             <Link
@@ -484,7 +514,7 @@ export const MainLayout = () => {
 
             {/* Notificaciones (solo para estudiantes) */}
             {!isTeacher && (
-              <NotificationsBell onClick={() => setShowNotifications(true)} />
+              <NotificationsBell onClick={() => setShowNotifications(true)} classroomId={currentProfile?.classroomId} />
             )}
 
             {/* Theme Toggle */}

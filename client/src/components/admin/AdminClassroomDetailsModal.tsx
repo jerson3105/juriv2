@@ -283,11 +283,6 @@ const GeneralTab = ({ details, formatDate, getTimeAgo, getDaysActive }: any) => 
             <p className="text-2xl font-bold text-green-900">{details.stats.activities.byType.expedition}</p>
             <p className="text-xs text-green-700">Expediciones</p>
           </div>
-          <div className="text-center p-4 bg-amber-50 rounded-lg">
-            <Scroll className="w-8 h-8 text-amber-600 mx-auto mb-2" />
-            <p className="text-2xl font-bold text-amber-900">{details.stats.activities.byType.mission}</p>
-            <p className="text-xs text-amber-700">Misiones</p>
-          </div>
         </div>
       </div>
 
@@ -541,14 +536,13 @@ const QuestionBanksTab = ({ details }: any) => {
 
 // Tab: Activities
 const ActivitiesTab = ({ details }: any) => {
-  const [filterType, setFilterType] = useState<'all' | 'timed' | 'tournament' | 'expedition' | 'mission'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'timed' | 'tournament' | 'expedition'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   const allActivities = [
     ...details.activities.timed.map((a: any) => ({ ...a, type: 'TIMER', typeLabel: 'Temporizador', icon: Clock, color: 'blue' })),
     ...details.activities.tournaments.map((a: any) => ({ ...a, type: 'TOURNAMENT', typeLabel: 'Torneo', icon: Trophy, color: 'purple' })),
     ...details.activities.expeditions.map((a: any) => ({ ...a, type: 'EXPEDITION', typeLabel: 'Expedición', icon: Map, color: 'green' })),
-    ...details.activities.missions.map((a: any) => ({ ...a, type: 'MISSION', typeLabel: 'Misión', icon: Scroll, color: 'amber' })),
   ];
 
   const filteredActivities = allActivities
@@ -597,7 +591,6 @@ const ActivitiesTab = ({ details }: any) => {
           <option value="timed">Temporizador</option>
           <option value="tournament">Torneos</option>
           <option value="expedition">Expediciones</option>
-          <option value="mission">Misiones</option>
         </select>
       </div>
 

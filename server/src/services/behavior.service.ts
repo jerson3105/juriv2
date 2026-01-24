@@ -4,7 +4,6 @@ import { eq, and, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { badgeService } from './badge.service.js';
 import { clanService } from './clan.service.js';
-import { missionService } from './mission.service.js';
 
 type PointType = 'XP' | 'HP' | 'GP';
 
@@ -207,23 +206,6 @@ export class BehaviorService {
           await clanService.contributeXpToClan(student.id, xpChange, behavior.name);
         } catch (error) {
           // Silently fail - don't break behavior application
-        }
-      }
-
-      // Tracking de misiones - actualizar progreso
-      if (behavior.isPositive) {
-        try {
-          // Tracking de XP ganado
-          if (xpChange > 0) {
-            await missionService.updateMissionProgress(student.id, 'EARN_XP', xpChange);
-          }
-          // Tracking de GP ganado
-          if (gpChange > 0) {
-            await missionService.updateMissionProgress(student.id, 'EARN_GP', gpChange);
-          }
-        } catch (error) {
-          // Silently fail - don't break behavior application
-          console.error('Error updating mission progress:', error);
         }
       }
 

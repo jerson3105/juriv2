@@ -30,16 +30,16 @@ import { BadgesPage } from './pages/classroom/BadgesPage';
 import { ClansPage } from './pages/classroom/ClansPage';
 import { RankingsPage } from './pages/classroom/RankingsPage';
 import { QuestionBanksPage } from './pages/classroom/QuestionBanksPage';
-import { MissionsPage } from './pages/classroom/MissionsPage';
 import { ExpeditionsPage } from './pages/classroom/ExpeditionsPage';
+import { CollectiblesPage } from './pages/classroom/CollectiblesPage';
 import { ReportsPage } from './pages/classroom/ReportsPage';
 import { HistoryPage } from './pages/classroom/HistoryPage';
 import { GradebookPage } from './pages/classroom/GradebookPage';
 import { GradebookStatsPage } from './pages/classroom/GradebookStatsPage';
-import { StudentMissionsPage } from './pages/student/StudentMissionsPage';
 import { StudentScrollsPage } from './pages/student/StudentScrollsPage';
 import { StudentGradesPage } from './pages/student/StudentGradesPage';
 import { StudentExpeditionsPage } from './pages/student/StudentExpeditionsPage';
+import { StudentCollectiblesPage } from './pages/student/StudentCollectiblesPage';
 
 // Settings
 import { SettingsPage } from './pages/settings/SettingsPage';
@@ -213,8 +213,8 @@ function App() {
               <Route path="clans" element={<ClansPage />} />
               <Route path="rankings" element={<RankingsPage />} />
               <Route path="question-banks" element={<QuestionBanksPage />} />
-              <Route path="missions" element={<MissionsPage />} />
               <Route path="expeditions" element={<ExpeditionsPage />} />
+              <Route path="collectibles" element={<CollectiblesPage />} />
               <Route path="settings" element={<ClassroomSettingsPage />} />
               <Route path="student/:studentId" element={<StudentDetailPage />} />
             </Route>
@@ -223,10 +223,10 @@ function App() {
             <Route path="join-class" element={<JoinClassPage />} />
             <Route path="my-clan" element={<MyClanPage />} />
             <Route path="my-attendance" element={<StudentAttendancePage />} />
-            <Route path="missions/:classroomId" element={<StudentMissionsPage />} />
             <Route path="scrolls" element={<StudentScrollsPage />} />
             <Route path="my-grades" element={<StudentGradesPage />} />
             <Route path="expeditions" element={<StudentExpeditionsPage />} />
+            <Route path="collectibles" element={<StudentCollectiblesPage />} />
             
             {/* Redirigir rutas antiguas */}
             <Route path="my-classroom" element={<Navigate to="/dashboard" replace />} />

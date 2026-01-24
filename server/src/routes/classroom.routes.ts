@@ -9,7 +9,7 @@ const router = Router();
 router.use(authenticate);
 
 // Rutas para profesores
-router.get('/curriculum-areas', authorize('TEACHER'), classroomController.getCurriculumAreas.bind(classroomController));
+router.get('/curriculum-areas', authorize('TEACHER', 'STUDENT'), classroomController.getCurriculumAreas.bind(classroomController));
 router.post('/generate-ai-content', authorize('TEACHER'), classroomController.generateAIContent.bind(classroomController));
 router.post('/', authorize('TEACHER'), classroomController.create.bind(classroomController));
 router.get('/my', authorize('TEACHER'), classroomController.getMyClassrooms.bind(classroomController));

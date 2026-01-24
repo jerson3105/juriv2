@@ -1,22 +1,64 @@
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { 
   Users, 
   Plus,
-  TrendingUp,
   GraduationCap,
   Lightbulb,
   ArrowRight,
+  Megaphone,
+  Sparkles,
+  ChevronRight,
+  X,
+  Album,
+  Package,
+  Trophy,
   Star,
+  Coins,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { classroomApi } from '../../lib/classroomApi';
 import { getMySchools } from '../../api/schoolApi';
 
+// Tips rotativos para Jiro
+const JIRO_TIPS = [
+  { text: "¡Los eventos aleatorios son geniales para sorprender a tus estudiantes! Actívalos desde Actividades.", highlight: "eventos aleatorios" },
+  { text: "¿Sabías que puedes crear insignias personalizadas? Motiva a tus estudiantes con logros únicos.", highlight: "insignias personalizadas" },
+  { text: "La tienda de clase permite a los estudiantes canjear sus puntos por recompensas. ¡Configúrala!", highlight: "tienda de clase" },
+  { text: "Los clanes fomentan el trabajo en equipo. Activa las batallas de clanes para más emoción.", highlight: "clanes" },
+  { text: "Usa los Pergaminos del Aula para que tus estudiantes se reconozcan entre sí.", highlight: "Pergaminos del Aula" },
+  { text: "Las expediciones son misiones grupales perfectas para proyectos colaborativos.", highlight: "expediciones" },
+  { text: "Crea álbumes de cromos coleccionables. ¡A los estudiantes les encanta completarlos!", highlight: "cromos coleccionables" },
+  { text: "El banco de preguntas te permite reutilizar preguntas en diferentes actividades.", highlight: "banco de preguntas" },
+];
+
+// Noticias/Actualizaciones de Juried
+const JURIED_NEWS = [
+  { 
+    id: 'collectibles',
+    title: '🆕 Nueva función: Coleccionables',
+    description: 'Crea álbumes de cromos para tus estudiantes. ¡Pueden comprar sobres con GP!',
+    date: '2026-01-23',
+    isNew: true,
+    hasModal: true,
+  },
+];
+
 export const TeacherDashboard = () => {
   const { user } = useAuthStore();
   const navigate = useNavigate();
+  const [currentTipIndex, setCurrentTipIndex] = useState(0);
+  const [showCollectiblesModal, setShowCollectiblesModal] = useState(false);
+
+  // Rotar tips cada 10 segundos
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTipIndex((prev) => (prev + 1) % JIRO_TIPS.length);
+    }, 10000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Obtener clases del backend
   const { data: classrooms, isLoading, isError } = useQuery({
@@ -37,11 +79,20 @@ export const TeacherDashboard = () => {
 
   // Calcular estadísticas reales
   const totalStudents = classrooms?.reduce((acc, c) => acc + (c.studentCount || 0), 0) || 0;
-  
-  const stats = [
-    { label: 'Clases Activas', value: classrooms?.length.toString() || '0', icon: GraduationCap, gradient: 'from-blue-500 to-cyan-400', bg: 'bg-blue-50 dark:bg-blue-900/30' },
-    { label: 'Estudiantes', value: totalStudents.toString(), icon: Users, gradient: 'from-emerald-500 to-teal-400', bg: 'bg-emerald-50 dark:bg-emerald-900/30' },
-  ];
+  const currentTip = JIRO_TIPS[currentTipIndex];
+
+  // Función para resaltar texto en el tip
+  const renderTipText = (text: string, highlight: string) => {
+    const parts = text.split(highlight);
+    if (parts.length === 1) return text;
+    return (
+      <>
+        {parts[0]}
+        <span className="font-bold text-yellow-300">{highlight}</span>
+        {parts[1]}
+      </>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 -m-4 md:-m-6 lg:-m-8 p-4 md:p-6 lg:p-8">
@@ -89,44 +140,18 @@ export const TeacherDashboard = () => {
           </div>
         </motion.div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 gap-3">
-          {stats.map((stat, index) => (
-            <motion.div
-              key={stat.label}
-              initial={{ opacity: 0, y: 20, scale: 0.9 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ delay: index * 0.05 }}
-              whileHover={{ scale: 1.03, y: -2 }}
-              className="group cursor-pointer"
-            >
-              <div className={`${stat.bg} dark:bg-gray-800/80 rounded-xl p-4 shadow-md hover:shadow-lg transition-all border border-white/50 dark:border-gray-700/50`}>
-                <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${stat.gradient} flex items-center justify-center mb-3 shadow-md group-hover:scale-105 transition-transform`}>
-                  <stat.icon className="w-5 h-5 text-white" />
-                </div>
-                <p className="text-2xl font-bold text-gray-800 dark:text-white">
-                  {stat.value}
-                </p>
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                  {stat.label}
-                </p>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-
-        {/* Main Content */}
+        {/* Main Content - 2 columnas */}
         <div className="grid lg:grid-cols-3 gap-4">
-          {/* Clases */}
+          {/* Columna Izquierda - Clases */}
           <motion.div 
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.2 }}
+            transition={{ delay: 0.25 }}
             className="lg:col-span-2"
           >
             <div 
               data-onboarding="classes-list"
-              className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg rounded-xl p-4 shadow-lg shadow-blue-500/10 border border-white/50 dark:border-gray-700/50"
+              className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg rounded-xl p-4 shadow-lg shadow-blue-500/10 border border-white/50 dark:border-gray-700/50 h-full"
             >
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-base font-bold text-gray-800 dark:text-white flex items-center gap-2">
@@ -169,7 +194,7 @@ export const TeacherDashboard = () => {
                         key={classroom.id} 
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.05 * index }}
+                        transition={{ delay: 0.3 + 0.05 * index }}
                         whileHover={{ scale: 1.01, x: 3 }}
                         onClick={() => navigate(`/classroom/${classroom.id}`)}
                         className="flex items-center justify-between p-3 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 hover:from-blue-100 hover:to-indigo-100 dark:hover:from-blue-900/50 dark:hover:to-indigo-900/50 rounded-xl cursor-pointer transition-all border border-blue-100 dark:border-blue-800/50 group"
@@ -187,7 +212,7 @@ export const TeacherDashboard = () => {
                                 <Users size={12} />
                                 {classroom.studentCount || 0}
                               </span>
-                              <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-medium">
+                              <span className="px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded text-xs font-medium">
                                 {classroom.code}
                               </span>
                             </div>
@@ -199,11 +224,11 @@ export const TeacherDashboard = () => {
                   </>
                 ) : (
                   <div className="text-center py-8">
-                    <div className="w-14 h-14 mx-auto mb-3 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-xl flex items-center justify-center">
+                    <div className="w-14 h-14 mx-auto mb-3 bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/30 dark:to-indigo-900/30 rounded-xl flex items-center justify-center">
                       <GraduationCap className="w-7 h-7 text-blue-500" />
                     </div>
-                    <h3 className="text-sm font-semibold text-gray-700 mb-1">¡Crea tu primera clase!</h3>
-                    <p className="text-xs text-gray-500">Comienza a gamificar tu aula</p>
+                    <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">¡Crea tu primera clase!</h3>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Comienza a gamificar tu aula</p>
                   </div>
                 )}
 
@@ -221,93 +246,255 @@ export const TeacherDashboard = () => {
             </div>
           </motion.div>
 
-          {/* Sidebar */}
+          {/* Columna Derecha - Resumen y Noticias */}
           <motion.div 
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.3 }}
             className="space-y-4"
           >
-            {/* Banner de Bienvenida */}
-            <div className="relative overflow-hidden bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-600 rounded-xl p-4 text-white shadow-lg">
-              <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2" />
-              <div className="absolute bottom-0 left-0 w-16 h-16 bg-white/10 rounded-full translate-y-1/2 -translate-x-1/2" />
-              
-              <div className="relative z-10">
-                <div className="flex items-center gap-2 mb-2">
-                  <Star className="w-4 h-4 text-yellow-300" />
-                  <span className="text-xs font-medium text-blue-100">Bienvenido</span>
-                </div>
-                
-                <motion.div
-                  animate={{ y: [0, -3, 0] }}
-                  transition={{ duration: 2, repeat: Infinity }}
-                  className="text-4xl mb-2"
-                >
-                  🎓
-                </motion.div>
-                
-                <h3 className="text-base font-bold mb-1">¡Bienvenido a Juried!</h3>
-                <p className="text-blue-100 text-xs">
-                  Gamifica tu aula y motiva a tus estudiantes.
-                </p>
-              </div>
-            </div>
-
-            {/* Consejo del día */}
+            {/* Resumen */}
             <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg rounded-xl p-4 shadow-lg border border-white/50 dark:border-gray-700/50">
               <div className="flex items-center gap-2 mb-3">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-md">
-                  <Lightbulb className="w-4 h-4 text-white" />
-                </div>
-                <h3 className="font-semibold text-gray-800 dark:text-white text-sm">Consejo del día</h3>
-              </div>
-              <p className="text-gray-600 dark:text-gray-400 text-xs leading-relaxed">
-                💡 Usa los <span className="font-semibold text-amber-600">eventos aleatorios</span> para mantener a tus estudiantes motivados.
-              </p>
-            </div>
-
-            {/* Quick Stats Mini */}
-            <div className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/30 dark:to-teal-900/30 rounded-xl p-4 border border-emerald-100 dark:border-emerald-800/50">
-              <div className="flex items-center gap-2 mb-3">
                 <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-md">
-                  <TrendingUp className="w-4 h-4 text-white" />
+                  <Sparkles className="w-4 h-4 text-white" />
                 </div>
-                <h3 className="font-semibold text-gray-800 dark:text-white text-sm">Tu progreso</h3>
+                <h3 className="font-semibold text-gray-800 dark:text-white text-sm">Resumen</h3>
               </div>
               <div className="space-y-2">
-                <div>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="text-gray-600 dark:text-gray-400">Clases</span>
-                    <span className="font-semibold text-emerald-600">{classrooms?.length || 0}/10</span>
-                  </div>
-                  <div className="h-1.5 bg-emerald-100 dark:bg-emerald-900/50 rounded-full overflow-hidden">
-                    <motion.div 
-                      initial={{ width: 0 }}
-                      animate={{ width: `${((classrooms?.length || 0) / 10) * 100}%` }}
-                      className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full"
-                    />
-                  </div>
+                <div className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700">
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Clases activas</span>
+                  <span className="text-sm font-bold text-gray-800 dark:text-white">{classrooms?.length || 0}</span>
                 </div>
-                <div>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="text-gray-600 dark:text-gray-400">Estudiantes</span>
-                    <span className="font-semibold text-emerald-600">{totalStudents}/50</span>
-                  </div>
-                  <div className="h-1.5 bg-emerald-100 dark:bg-emerald-900/50 rounded-full overflow-hidden">
-                    <motion.div 
-                      initial={{ width: 0 }}
-                      animate={{ width: `${(totalStudents / 50) * 100}%` }}
-                      className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full"
-                    />
-                  </div>
+                <div className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700">
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Total estudiantes</span>
+                  <span className="text-sm font-bold text-gray-800 dark:text-white">{totalStudents}</span>
+                </div>
+                <div className="flex items-center justify-between py-2">
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Promedio por clase</span>
+                  <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                    {classrooms?.length ? Math.round(totalStudents / classrooms.length) : 0}
+                  </span>
                 </div>
               </div>
             </div>
 
-            </motion.div>
+            {/* Últimas Noticias */}
+            <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg rounded-xl p-4 shadow-lg border border-white/50 dark:border-gray-700/50">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-rose-500 to-pink-500 flex items-center justify-center shadow-md">
+                  <Megaphone className="w-4 h-4 text-white" />
+                </div>
+                <h3 className="font-semibold text-gray-800 dark:text-white text-sm">Últimas Noticias</h3>
+              </div>
+              <div className="space-y-3">
+                {JURIED_NEWS.map((news, index) => (
+                  <motion.div
+                    key={news.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.4 + index * 0.1 }}
+                    onClick={() => news.hasModal && setShowCollectiblesModal(true)}
+                    className="group cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 -mx-2 px-2 py-2 rounded-lg transition-colors"
+                  >
+                    <div className="flex items-start gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-xs font-semibold text-gray-800 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                            {news.title}
+                          </h4>
+                          {news.isNew && (
+                            <span className="flex-shrink-0 px-1.5 py-0.5 bg-gradient-to-r from-rose-500 to-pink-500 text-white text-[10px] font-bold rounded-full">
+                              NEW
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400 line-clamp-2 mt-0.5">
+                          {news.description}
+                        </p>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600 group-hover:text-blue-500 transition-colors flex-shrink-0 mt-0.5" />
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
         </div>
+
+        {/* Banner con Jiro - Tips */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="relative overflow-hidden bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 rounded-2xl shadow-lg shadow-purple-500/20"
+        >
+          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4xIj48cGF0aCBkPSJNMzYgMzRjMC0yIDItNCAyLTRzMiAyIDIgNC0yIDQtMiA0LTItMi0yLTR6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-30" />
+          <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-2xl" />
+          <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-white/10 rounded-full blur-2xl" />
+          
+          <div className="relative flex flex-col sm:flex-row items-center gap-4 p-4 sm:p-5">
+            {/* Imagen de Jiro */}
+            <motion.div
+              animate={{ y: [0, -5, 0] }}
+              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+              className="flex-shrink-0"
+            >
+              <img 
+                src="/jiro-mascot.png" 
+                alt="Jiro - Mascota de Juried"
+                className="w-16 h-16 sm:w-20 sm:h-20 object-contain drop-shadow-2xl"
+              />
+            </motion.div>
+            
+            {/* Contenido del tip */}
+            <div className="flex-1 text-white text-center sm:text-left">
+              <div className="flex items-center justify-center sm:justify-start gap-2 mb-2">
+                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-white/20 backdrop-blur-sm rounded-full">
+                  <Lightbulb className="w-3.5 h-3.5" />
+                  <span className="text-xs font-medium">Consejo de Jiro</span>
+                </div>
+                <div className="flex gap-1">
+                  {JIRO_TIPS.map((_, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setCurrentTipIndex(idx)}
+                      className={`w-1.5 h-1.5 rounded-full transition-all ${
+                        idx === currentTipIndex ? 'bg-white w-4' : 'bg-white/40 hover:bg-white/60'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+              <motion.p
+                key={currentTipIndex}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="text-sm md:text-base leading-relaxed text-white/95"
+              >
+                {renderTipText(currentTip.text, currentTip.highlight)}
+              </motion.p>
+            </div>
+          </div>
+        </motion.div>
       </div>
+
+      {/* Modal de Coleccionables */}
+      {showCollectiblesModal && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+          onClick={() => setShowCollectiblesModal(false)}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
+          >
+            {/* Header del modal */}
+            <div className="relative bg-gradient-to-r from-amber-500 to-orange-500 p-6 rounded-t-2xl">
+              <button
+                onClick={() => setShowCollectiblesModal(false)}
+                className="absolute top-4 right-4 p-1 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center">
+                  <Album className="w-8 h-8 text-white" />
+                </div>
+                <div className="text-white">
+                  <span className="px-2 py-0.5 bg-white/20 rounded-full text-xs font-medium mb-1 inline-block">Nueva función</span>
+                  <h2 className="text-xl font-bold">Coleccionables</h2>
+                </div>
+              </div>
+            </div>
+
+            {/* Contenido del modal */}
+            <div className="p-6 space-y-5">
+              <p className="text-gray-600 dark:text-gray-300 text-sm leading-relaxed">
+                ¡Crea álbumes de cromos coleccionables para tus estudiantes! Una forma divertida de motivarlos mientras aprenden.
+              </p>
+
+              {/* Características */}
+              <div className="space-y-3">
+                <h3 className="font-semibold text-gray-800 dark:text-white text-sm flex items-center gap-2">
+                  <Star className="w-4 h-4 text-amber-500" />
+                  ¿Qué puedes hacer?
+                </h3>
+                <div className="grid gap-3">
+                  <div className="flex items-start gap-3 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl">
+                    <div className="w-8 h-8 bg-amber-100 dark:bg-amber-900/40 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Album className="w-4 h-4 text-amber-600" />
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-gray-800 dark:text-white text-sm">Crear álbumes temáticos</h4>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Define temáticas como "Historia del Perú", "Ciencias", etc.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
+                    <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900/40 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Package className="w-4 h-4 text-blue-600" />
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-gray-800 dark:text-white text-sm">Sobres con diferentes precios</h4>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Configura precios para sobres de 1, 5 o 10 cromos.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 bg-purple-50 dark:bg-purple-900/20 rounded-xl">
+                    <div className="w-8 h-8 bg-purple-100 dark:bg-purple-900/40 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Sparkles className="w-4 h-4 text-purple-600" />
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-gray-800 dark:text-white text-sm">Rarezas y cromos brillantes</h4>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Común, Poco común, Raro, Épico y Legendario. ¡Con versiones shiny!</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
+                    <div className="w-8 h-8 bg-emerald-100 dark:bg-emerald-900/40 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Trophy className="w-4 h-4 text-emerald-600" />
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-gray-800 dark:text-white text-sm">Recompensas al completar</h4>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Otorga XP y GP cuando completen el álbum.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Cómo funciona */}
+              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4">
+                <h3 className="font-semibold text-gray-800 dark:text-white text-sm flex items-center gap-2 mb-2">
+                  <Coins className="w-4 h-4 text-amber-500" />
+                  ¿Cómo funciona para los estudiantes?
+                </h3>
+                <ol className="text-xs text-gray-600 dark:text-gray-300 space-y-1 list-decimal list-inside">
+                  <li>Ganan GP completando actividades y comportamientos</li>
+                  <li>Compran sobres de cromos con sus GP</li>
+                  <li>Abren los sobres y descubren qué cromos obtienen</li>
+                  <li>Completan el álbum para ganar la recompensa</li>
+                </ol>
+              </div>
+
+              {/* Botón de acción */}
+              <button
+                onClick={() => {
+                  setShowCollectiblesModal(false);
+                  navigate('/classrooms');
+                }}
+                className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-semibold rounded-xl shadow-lg shadow-amber-500/25 transition-all flex items-center justify-center gap-2"
+              >
+                <Album className="w-5 h-5" />
+                Ir a mis clases para crear un álbum
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
     </div>
   );
 };

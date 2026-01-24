@@ -331,8 +331,9 @@ export const shopApi = {
     return Array.isArray(data) ? data : data.data;
   },
 
-  getUnreadCount: async (): Promise<number> => {
-    const { data } = await api.get('/shop/notifications/unread-count');
+  getUnreadCount: async (classroomId?: string): Promise<number> => {
+    const params = classroomId ? { classroomId } : {};
+    const { data } = await api.get('/shop/notifications/unread-count', { params });
     return data.count;
   },
 

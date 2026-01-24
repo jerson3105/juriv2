@@ -866,7 +866,7 @@ export const notifications = mysqlTable('notifications', {
   id: varchar('id', { length: 36 }).primaryKey(),
   userId: varchar('user_id', { length: 36 }).notNull(), // a quien va dirigida
   classroomId: varchar('classroom_id', { length: 36 }),
-  type: mysqlEnum('notification_type', ['ITEM_USED', 'GIFT_RECEIVED', 'BATTLE_STARTED', 'LEVEL_UP', 'POINTS', 'PURCHASE_APPROVED', 'PURCHASE_REJECTED', 'BADGE', 'MISSION_COMPLETED', 'SCROLL_RECEIVED', 'SCROLL_APPROVED', 'SCROLL_REJECTED']).notNull(),
+  type: mysqlEnum('notification_type', ['ITEM_USED', 'GIFT_RECEIVED', 'BATTLE_STARTED', 'LEVEL_UP', 'POINTS', 'PURCHASE_APPROVED', 'PURCHASE_REJECTED', 'BADGE', 'SCROLL_RECEIVED', 'SCROLL_APPROVED', 'SCROLL_REJECTED']).notNull(),
   title: varchar('title', { length: 255 }).notNull(),
   message: text('message').notNull(),
   data: json('data'), // datos adicionales (itemId, studentId, etc)
@@ -1205,7 +1205,7 @@ export type ItemRarity = 'COMMON' | 'RARE' | 'LEGENDARY';
 export type PurchaseType = 'SELF' | 'GIFT' | 'TEACHER';
 export type PurchaseStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 export type ItemUsageStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
-export type NotificationType = 'ITEM_USED' | 'GIFT_RECEIVED' | 'LEVEL_UP' | 'POINTS' | 'PURCHASE_APPROVED' | 'PURCHASE_REJECTED' | 'BADGE' | 'MISSION_COMPLETED';
+export type NotificationType = 'ITEM_USED' | 'GIFT_RECEIVED' | 'LEVEL_UP' | 'POINTS' | 'PURCHASE_APPROVED' | 'PURCHASE_REJECTED' | 'BADGE' | 'SCROLL_RECEIVED' | 'SCROLL_APPROVED' | 'SCROLL_REJECTED';
 export type QuestionType = 'TEXT' | 'IMAGE';
 export type AvatarGender = 'MALE' | 'FEMALE';
 export type AvatarSlot = 'HEAD' | 'HAIR' | 'EYES' | 'TOP' | 'BOTTOM' | 'LEFT_HAND' | 'RIGHT_HAND' | 'SHOES' | 'BACK' | 'FLAG' | 'BACKGROUND';
@@ -1322,97 +1322,6 @@ export type TimedActivityResult = typeof timedActivityResults.$inferSelect;
 export type NewTimedActivityResult = typeof timedActivityResults.$inferInsert;
 export type TimedActivityMode = 'STOPWATCH' | 'TIMER' | 'BOMB' | 'BOMB_RANDOM';
 export type TimedActivityStatus = 'DRAFT' | 'ACTIVE' | 'PAUSED' | 'COMPLETED';
-
-// ==================== SISTEMA DE MISIONES ====================
-
-export const missionTypeEnum = mysqlEnum('mission_type', ['DAILY', 'WEEKLY', 'SPECIAL']);
-export const missionCategoryEnum = mysqlEnum('mission_category', ['PARTICIPATION', 'PROGRESS', 'SOCIAL', 'SHOP', 'BATTLE', 'STREAK', 'CUSTOM']);
-export const missionStatusEnum = mysqlEnum('mission_status', ['ACTIVE', 'COMPLETED', 'EXPIRED', 'CLAIMED']);
-
-// Definiciones de misiones (plantillas)
-export const missions = mysqlTable('missions', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
-  
-  // Info básica
-  name: varchar('name', { length: 100 }).notNull(),
-  description: text('description').notNull(),
-  icon: varchar('icon', { length: 50 }).notNull().default('🎯'),
-  
-  // Tipo y categoría
-  type: missionTypeEnum.notNull().default('DAILY'),
-  category: missionCategoryEnum.notNull().default('PROGRESS'),
-  
-  // Objetivo de la misión
-  // Tipos: EARN_XP, EARN_GP, ATTEND_CLASS, COMPLETE_BATTLE, MAKE_PURCHASE, 
-  //        GIVE_GIFT, REACH_LEVEL, COMPLETE_MISSIONS, MAINTAIN_STREAK, CUSTOM
-  objectiveType: varchar('objective_type', { length: 50 }).notNull(),
-  objectiveTarget: int('objective_target').notNull().default(1), // Cantidad a alcanzar
-  objectiveConfig: json('objective_config'), // Config adicional (behaviorId, etc)
-  
-  // Recompensas
-  rewardXp: int('reward_xp').notNull().default(0),
-  rewardGp: int('reward_gp').notNull().default(0),
-  rewardHp: int('reward_hp').notNull().default(0),
-  
-  // Archivo adjunto (instrucciones, recursos)
-  attachmentUrl: varchar('attachment_url', { length: 500 }),
-  attachmentName: varchar('attachment_name', { length: 255 }),
-  
-  // Configuración
-  isRepeatable: boolean('is_repeatable').notNull().default(true), // Se puede asignar múltiples veces
-  maxCompletions: int('max_completions'), // null = ilimitado
-  
-  // Estado
-  isActive: boolean('is_active').notNull().default(true),
-  createdAt: datetime('created_at').notNull(),
-  updatedAt: datetime('updated_at').notNull(),
-}, (table) => ({
-  classroomIdx: index('idx_missions_classroom').on(table.classroomId),
-  typeIdx: index('idx_missions_type').on(table.type),
-  activeIdx: index('idx_missions_active').on(table.isActive),
-}));
-
-export const missionsRelations = relations(missions, ({ one, many }) => ({
-  classroom: one(classrooms, {
-    fields: [missions.classroomId],
-    references: [classrooms.id],
-  }),
-  studentMissions: many(studentMissions),
-}));
-
-// Misiones asignadas a estudiantes
-export const studentMissions = mysqlTable('student_missions', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),
-  missionId: varchar('mission_id', { length: 36 }).notNull(),
-  
-  // Progreso
-  status: missionStatusEnum.notNull().default('ACTIVE'),
-  currentProgress: int('current_progress').notNull().default(0),
-  targetProgress: int('target_progress').notNull(), // Copiado de mission.objectiveTarget
-  
-  // Fechas
-  assignedAt: datetime('assigned_at').notNull(),
-  expiresAt: datetime('expires_at'), // null = no expira
-  completedAt: datetime('completed_at'),
-  claimedAt: datetime('claimed_at'), // Cuando reclamó la recompensa
-}, (table) => ({
-  studentIdx: index('idx_student_missions_student').on(table.studentProfileId),
-  missionIdx: index('idx_student_missions_mission').on(table.missionId),
-  statusIdx: index('idx_student_missions_status').on(table.status),
-}));
-
-export const studentMissionsRelations = relations(studentMissions, ({ one }) => ({
-  student: one(studentProfiles, {
-    fields: [studentMissions.studentProfileId],
-    references: [studentProfiles.id],
-  }),
-  mission: one(missions, {
-    fields: [studentMissions.missionId],
-    references: [missions.id],
-  }),
-}));
 
 // Rachas de estudiantes
 export const studentStreaks = mysqlTable('student_streaks', {
@@ -1547,14 +1456,7 @@ export const scrollReactionsRelations = relations(scrollReactions, ({ one }) => 
 }));
 
 // Types
-export type Mission = typeof missions.$inferSelect;
-export type NewMission = typeof missions.$inferInsert;
-export type StudentMission = typeof studentMissions.$inferSelect;
-export type NewStudentMission = typeof studentMissions.$inferInsert;
 export type StudentStreak = typeof studentStreaks.$inferSelect;
-export type MissionType = 'DAILY' | 'WEEKLY' | 'SPECIAL';
-export type MissionCategory = 'PARTICIPATION' | 'PROGRESS' | 'SOCIAL' | 'SHOP' | 'BATTLE' | 'STREAK' | 'CUSTOM';
-export type MissionStatus = 'ACTIVE' | 'COMPLETED' | 'EXPIRED' | 'CLAIMED';
 
 // Scroll types
 export type Scroll = typeof scrolls.$inferSelect;
@@ -2324,3 +2226,178 @@ export type NewStudentActivityScore = typeof studentActivityScores.$inferInsert;
 export type GradeScaleType = 'PERU_LETTERS' | 'PERU_VIGESIMAL' | 'CENTESIMAL' | 'USA_LETTERS' | 'CUSTOM';
 export type ActivityType = 'TOURNAMENT' | 'EXPEDITION' | 'TIMED' | 'MISSION';
 export type ScoreActivityType = 'TOURNAMENT' | 'EXPEDITION' | 'TIMED' | 'MISSION' | 'BEHAVIOR' | 'BADGE';
+
+// ==================== SISTEMA DE COLECCIONABLES ====================
+
+// Enums para Coleccionables
+export const cardRarityEnum = mysqlEnum('card_rarity', ['COMMON', 'UNCOMMON', 'RARE', 'EPIC', 'LEGENDARY']);
+export const packTypeEnum = mysqlEnum('pack_type', ['SINGLE', 'PACK_5', 'PACK_10']);
+export const imageStyleEnum = mysqlEnum('image_style', ['CARTOON', 'REALISTIC', 'PIXEL_ART', 'ANIME', 'WATERCOLOR', 'MINIMALIST']);
+
+// Álbumes de coleccionables
+export const collectibleAlbums = mysqlTable('collectible_albums', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description'),
+  coverImage: varchar('cover_image', { length: 500 }),
+  theme: varchar('theme', { length: 255 }), // Temática para generación IA
+  imageStyle: imageStyleEnum.default('CARTOON'),
+  
+  // Precios de sobres (en GP)
+  singlePackPrice: int('single_pack_price').notNull().default(10),
+  fivePackPrice: int('five_pack_price').notNull().default(45),
+  tenPackPrice: int('ten_pack_price').notNull().default(80),
+  
+  // Recompensas por completar
+  rewardXp: int('reward_xp').notNull().default(0),
+  rewardHp: int('reward_hp').notNull().default(0),
+  rewardGp: int('reward_gp').notNull().default(0),
+  rewardBadgeId: varchar('reward_badge_id', { length: 36 }),
+  
+  // Configuración
+  allowTrades: boolean('allow_trades').notNull().default(false),
+  isActive: boolean('is_active').notNull().default(true),
+  
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  classroomIdx: index('idx_collectible_albums_classroom').on(table.classroomId),
+}));
+
+export const collectibleAlbumsRelations = relations(collectibleAlbums, ({ one, many }) => ({
+  classroom: one(classrooms, {
+    fields: [collectibleAlbums.classroomId],
+    references: [classrooms.id],
+  }),
+  rewardBadge: one(badges, {
+    fields: [collectibleAlbums.rewardBadgeId],
+    references: [badges.id],
+  }),
+  cards: many(collectibleCards),
+}));
+
+// Cromos/cartas del álbum
+export const collectibleCards = mysqlTable('collectible_cards', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  albumId: varchar('album_id', { length: 36 }).notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description'),
+  imageUrl: varchar('image_url', { length: 500 }),
+  rarity: cardRarityEnum.notNull().default('COMMON'),
+  slotNumber: int('slot_number').notNull(), // Posición en el álbum
+  isShiny: boolean('is_shiny').notNull().default(false), // Versión brillante
+  
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  albumIdx: index('idx_collectible_cards_album').on(table.albumId),
+  slotIdx: index('idx_collectible_cards_slot').on(table.albumId, table.slotNumber),
+}));
+
+export const collectibleCardsRelations = relations(collectibleCards, ({ one, many }) => ({
+  album: one(collectibleAlbums, {
+    fields: [collectibleCards.albumId],
+    references: [collectibleAlbums.id],
+  }),
+  studentCollectibles: many(studentCollectibles),
+}));
+
+// Cromos obtenidos por estudiantes
+export const studentCollectibles = mysqlTable('student_collectibles', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),
+  cardId: varchar('card_id', { length: 36 }).notNull(),
+  quantity: int('quantity').notNull().default(1), // Pueden tener duplicados
+  isShiny: boolean('is_shiny').notNull().default(false), // Si obtuvieron versión brillante
+  
+  obtainedAt: datetime('obtained_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  studentIdx: index('idx_student_collectibles_student').on(table.studentProfileId),
+  cardIdx: index('idx_student_collectibles_card').on(table.cardId),
+  uniqueStudentCard: unique('unique_student_card').on(table.studentProfileId, table.cardId, table.isShiny),
+}));
+
+export const studentCollectiblesRelations = relations(studentCollectibles, ({ one }) => ({
+  studentProfile: one(studentProfiles, {
+    fields: [studentCollectibles.studentProfileId],
+    references: [studentProfiles.id],
+  }),
+  card: one(collectibleCards, {
+    fields: [studentCollectibles.cardId],
+    references: [collectibleCards.id],
+  }),
+}));
+
+// Historial de compras de sobres
+export const collectiblePurchases = mysqlTable('collectible_purchases', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),
+  albumId: varchar('album_id', { length: 36 }).notNull(),
+  packType: packTypeEnum.notNull(),
+  gpSpent: int('gp_spent').notNull(),
+  cardsObtained: json('cards_obtained').$type<Array<{
+    cardId: string;
+    cardName: string;
+    rarity: string;
+    isShiny: boolean;
+    isNew: boolean; // Si era nuevo o duplicado
+  }>>().notNull(),
+  
+  purchasedAt: datetime('purchased_at').notNull(),
+}, (table) => ({
+  studentIdx: index('idx_collectible_purchases_student').on(table.studentProfileId),
+  albumIdx: index('idx_collectible_purchases_album').on(table.albumId),
+}));
+
+export const collectiblePurchasesRelations = relations(collectiblePurchases, ({ one }) => ({
+  studentProfile: one(studentProfiles, {
+    fields: [collectiblePurchases.studentProfileId],
+    references: [studentProfiles.id],
+  }),
+  album: one(collectibleAlbums, {
+    fields: [collectiblePurchases.albumId],
+    references: [collectibleAlbums.id],
+  }),
+}));
+
+// Registro de álbumes completados
+export const completedAlbums = mysqlTable('completed_albums', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),
+  albumId: varchar('album_id', { length: 36 }).notNull(),
+  rewardsGiven: boolean('rewards_given').notNull().default(false),
+  
+  completedAt: datetime('completed_at').notNull(),
+}, (table) => ({
+  studentIdx: index('idx_completed_albums_student').on(table.studentProfileId),
+  albumIdx: index('idx_completed_albums_album').on(table.albumId),
+  uniqueStudentAlbum: unique('unique_student_album').on(table.studentProfileId, table.albumId),
+}));
+
+export const completedAlbumsRelations = relations(completedAlbums, ({ one }) => ({
+  studentProfile: one(studentProfiles, {
+    fields: [completedAlbums.studentProfileId],
+    references: [studentProfiles.id],
+  }),
+  album: one(collectibleAlbums, {
+    fields: [completedAlbums.albumId],
+    references: [collectibleAlbums.id],
+  }),
+}));
+
+// Types para Sistema de Coleccionables
+export type CollectibleAlbum = typeof collectibleAlbums.$inferSelect;
+export type NewCollectibleAlbum = typeof collectibleAlbums.$inferInsert;
+export type CollectibleCard = typeof collectibleCards.$inferSelect;
+export type NewCollectibleCard = typeof collectibleCards.$inferInsert;
+export type StudentCollectible = typeof studentCollectibles.$inferSelect;
+export type NewStudentCollectible = typeof studentCollectibles.$inferInsert;
+export type CollectiblePurchase = typeof collectiblePurchases.$inferSelect;
+export type NewCollectiblePurchase = typeof collectiblePurchases.$inferInsert;
+export type CompletedAlbum = typeof completedAlbums.$inferSelect;
+export type NewCompletedAlbum = typeof completedAlbums.$inferInsert;
+export type CardRarity = 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
+export type PackType = 'SINGLE' | 'PACK_5' | 'PACK_10';
+export type ImageStyle = 'CARTOON' | 'REALISTIC' | 'PIXEL_ART' | 'ANIME' | 'WATERCOLOR' | 'MINIMALIST';

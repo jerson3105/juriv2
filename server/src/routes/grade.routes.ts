@@ -32,8 +32,8 @@ router.get('/export/pdf/:classroomId', authorize('TEACHER'), gradeController.exp
 // GESTIÓN DE BIMESTRES
 // ═══════════════════════════════════════════════════════════
 
-// Obtener estado de bimestres (solo profesor)
-router.get('/bimesters/:classroomId', authorize('TEACHER'), gradeController.getBimesterStatus);
+// Obtener estado de bimestres (profesor y estudiante)
+router.get('/bimesters/:classroomId', authorize('TEACHER', 'STUDENT'), gradeController.getBimesterStatus);
 
 // Establecer bimestre actual (solo profesor)
 router.put('/bimesters/:classroomId/current', authorize('TEACHER'), gradeController.setCurrentBimester);

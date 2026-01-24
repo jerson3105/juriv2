@@ -57,7 +57,7 @@ export interface ChildDetail {
 }
 
 export interface ActivityLogItem {
-  type: 'BEHAVIOR' | 'MISSION' | 'ACTIVITY' | 'BADGE';
+  type: 'BEHAVIOR' | 'ACTIVITY' | 'BADGE';
   description: string;
   date: string;
   isPositive: boolean;
@@ -109,7 +109,6 @@ export interface AIStudentReport {
     totalXP: number;
     totalActivities: number;
     badges: number;
-    missionsCompleted: number;
   };
 }
 

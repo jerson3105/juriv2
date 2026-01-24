@@ -13,7 +13,6 @@ import {
 import { eq, and, desc } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { clanService } from './clan.service.js';
-import { missionService } from './mission.service.js';
 
 // DTOs
 export interface CreateTimedActivityDto {
@@ -532,18 +531,6 @@ class TimedActivityService {
       }
     }
 
-    // Tracking de misiones - puntos ganados en actividad
-    if (action === 'ADD' && amount > 0) {
-      try {
-        if (pointType === 'XP') {
-          await missionService.updateMissionProgress(studentProfileId, 'EARN_XP', amount);
-        } else if (pointType === 'GP') {
-          await missionService.updateMissionProgress(studentProfileId, 'EARN_GP', amount);
-        }
-      } catch (error) {
-        console.error('Error updating mission progress:', error);
-      }
-    }
   }
 
   // Obtener actividad activa de una clase

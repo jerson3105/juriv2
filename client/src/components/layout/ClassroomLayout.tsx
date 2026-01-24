@@ -32,6 +32,7 @@ import {
   BarChart3,
   Scroll,
   ClipboardList,
+  Album,
 } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
@@ -107,6 +108,7 @@ export const ClassroomLayout = () => {
         { path: `/classroom/${id}/behaviors`, label: 'Comportamientos', icon: Award, onboardingId: 'behaviors-menu' },
         { path: `/classroom/${id}/badges`, label: 'Insignias', icon: Medal },
         { path: `/classroom/${id}/shop`, label: 'Tienda', icon: ShoppingBag, onboardingId: 'shop-menu' },
+        { path: `/classroom/${id}/collectibles`, label: 'Coleccionables', icon: Album },
         { path: `/classroom/${id}/rankings`, label: 'Rankings', icon: Trophy },
       ],
     },
@@ -223,9 +225,9 @@ export const ClassroomLayout = () => {
         <div className="p-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
           <Link to="/dashboard" className="flex items-center gap-2 justify-center">
             <img 
-              src="/logo.png" 
+              src={collapsed ? "/logo-solo.png" : "/logo.png"}
               alt="Juried" 
-              className={`${collapsed ? 'h-8' : 'h-9'} w-auto transition-all`}
+              className={`${collapsed ? 'h-8 w-8' : 'h-9'} w-auto transition-all`}
             />
           </Link>
           {/* Botón cerrar en móvil */}
@@ -454,7 +456,7 @@ export const ClassroomLayout = () => {
             <ThemeToggle />
             
             {/* Botón de notificaciones */}
-            <NotificationsBell onClick={() => setShowNotifications(true)} />
+            <NotificationsBell onClick={() => setShowNotifications(true)} classroomId={classroom.id} />
             
             {/* Botón de cerrar sesión */}
             <button

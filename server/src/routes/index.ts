@@ -13,7 +13,6 @@ import badgeRoutes from './badge.routes.js';
 import clanRoutes from './clan.routes.js';
 import questionBankRoutes from './questionBank.routes.js';
 import timedActivityRoutes from './timedActivity.routes.js';
-import missionRoutes from './mission.routes.js';
 import loginStreakRoutes from './loginStreak.routes.js';
 import schoolRoutes from './school.routes.js';
 import scrollRoutes from './scroll.routes.js';
@@ -23,6 +22,7 @@ import bugReportRoutes from './bugReport.routes.js';
 import tournamentRoutes from './tournament.routes.js';
 import gradeRoutes from './grade.routes.js';
 import parentRoutes from './parent.routes.js';
+import collectibleRoutes from './collectible.routes.js';
 
 const router = Router();
 
@@ -50,7 +50,6 @@ router.use('/badges', badgeRoutes);
 router.use('/clans', clanRoutes);
 router.use('/question-banks', questionBankRoutes);
 router.use('/timed-activities', timedActivityRoutes);
-router.use('/missions', missionRoutes);
 router.use('/login-streak', loginStreakRoutes);
 router.use('/schools', schoolRoutes);
 router.use('/scrolls', scrollRoutes);
@@ -60,5 +59,6 @@ router.use('/bug-reports', bugReportRoutes);
 router.use('/tournaments', tournamentRoutes);
 router.use('/grades', gradeRoutes);
 router.use('/parent', parentRoutes);
+router.use('/collectibles', collectibleRoutes);
 
 export default router;

@@ -13,7 +13,6 @@ import {
   type PurchaseType,
   type ItemUsageStatus,
 } from '../db/schema.js';
-import { missionService } from './mission.service.js';
 
 // Imágenes predeterminadas por categoría y rareza
 const DEFAULT_IMAGES: Record<string, Record<string, string>> = {
@@ -351,19 +350,6 @@ export class ShopService {
       message = '¡Regalo enviado exitosamente!';
     } else if (requiresApproval) {
       message = 'Compra enviada para aprobación del profesor';
-    }
-
-    // Tracking de misiones - compra realizada
-    if (!requiresApproval) {
-      try {
-        await missionService.updateMissionProgress(data.studentId, 'MAKE_PURCHASE', quantity);
-        // Si es un regalo, también trackear GIVE_GIFT para el comprador
-        if (data.purchaseType === 'GIFT' && data.buyerId) {
-          await missionService.updateMissionProgress(data.buyerId, 'GIVE_GIFT', 1);
-        }
-      } catch (error) {
-        console.error('Error updating mission progress:', error);
-      }
     }
 
     return { 
@@ -894,14 +880,20 @@ export class ShopService {
       .where(eq(notifications.userId, userId));
   }
 
-  async getUnreadCount(userId: string): Promise<number> {
+  async getUnreadCount(userId: string, classroomId?: string): Promise<number> {
+    const conditions = [
+      eq(notifications.userId, userId),
+      eq(notifications.isRead, false)
+    ];
+    
+    if (classroomId) {
+      conditions.push(eq(notifications.classroomId, classroomId));
+    }
+    
     const result = await db
       .select()
       .from(notifications)
-      .where(and(
-        eq(notifications.userId, userId),
-        eq(notifications.isRead, false)
-      ));
+      .where(and(...conditions));
     return result.length;
   }
 }

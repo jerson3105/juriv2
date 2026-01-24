@@ -396,8 +396,9 @@ export class ShopController {
   async getUnreadCount(req: Request, res: Response) {
     try {
       const userId = req.user!.id;
+      const classroomId = req.query.classroomId as string | undefined;
       
-      const count = await shopService.getUnreadCount(userId);
+      const count = await shopService.getUnreadCount(userId, classroomId);
       res.json({ count });
     } catch (error) {
       console.error('Error getting unread count:', error);

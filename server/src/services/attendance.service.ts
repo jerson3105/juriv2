@@ -2,7 +2,6 @@ import { db } from '../db/index.js';
 import { attendanceRecords, studentProfiles, type AttendanceStatus } from '../db/schema.js';
 import { eq, and, between, desc, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
-import { missionService } from './mission.service.js';
 
 export const attendanceService = {
   // Registrar asistencia para un estudiante
@@ -68,19 +67,6 @@ export const attendanceService = {
           xp: sql`${studentProfiles.xp} + ${xpAwarded}`,
         })
         .where(eq(studentProfiles.id, studentProfileId));
-    }
-
-    // Tracking de misiones - asistencia registrada
-    if (status === 'PRESENT') {
-      try {
-        await missionService.updateMissionProgress(studentProfileId, 'ATTEND_CLASS', 1);
-        // También trackear XP ganado por asistencia
-        if (xpAwarded > 0) {
-          await missionService.updateMissionProgress(studentProfileId, 'EARN_XP', xpAwarded);
-        }
-      } catch (error) {
-        console.error('Error updating mission progress:', error);
-      }
     }
 
     return { id, classroomId, studentProfileId, date: normalizedDate, status, notes, xpAwarded };

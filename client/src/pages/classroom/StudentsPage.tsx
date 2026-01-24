@@ -24,6 +24,7 @@ import {
   Shield,
   Award,
   Settings,
+  UserMinus,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -66,6 +67,12 @@ export const StudentsPage = () => {
   // Estado para modal de añadir estudiantes placeholder
   const [showAddPlaceholderModal, setShowAddPlaceholderModal] = useState(false);
 
+  // Estado para "Aplicar a Restantes"
+  const [showApplyToRestModal, setShowApplyToRestModal] = useState(false);
+  const [lastAppliedStudentIds, setLastAppliedStudentIds] = useState<Set<string>>(new Set());
+  const [lastAppliedBehavior, setLastAppliedBehavior] = useState<Behavior | null>(null);
+  const [isApplyingToRest, setIsApplyingToRest] = useState(false); // Flag para evitar loop
+
   // Hook para animación de puntos
   const { effect: pointsEffect, showMultiPointsEffect, hideMultiPointsEffect } = useMultiPointsEffect();
 
@@ -87,8 +94,14 @@ export const StudentsPage = () => {
 
   const applyBehaviorMutation = useMutation({
     mutationFn: (data: any) => behaviorApi.apply(data),
-    onSuccess: async (result) => {
+    onSuccess: async (result, variables) => {
       queryClient.invalidateQueries({ queryKey: ['classroom', classroom.id] });
+      
+      // Guardar los estudiantes a quienes se aplicó para poder ofrecer "aplicar a restantes"
+      const appliedIds = new Set<string>(variables.studentIds);
+      setLastAppliedStudentIds(appliedIds);
+      setLastAppliedBehavior(result.behavior);
+      
       setSelectedStudents(new Set());
       setShowBehaviorModal(false);
       
@@ -135,6 +148,19 @@ export const StudentsPage = () => {
           // Error al obtener info de insignia - ignorar silenciosamente
         }
       }
+      
+      // Mostrar modal de "aplicar a restantes" si hay estudiantes que no fueron seleccionados
+      // Solo si NO estamos aplicando desde el modal de restantes (evitar loop)
+      // Y solo en vista de lista (viewMode === 'list')
+      if (!isApplyingToRest && viewMode === 'list') {
+        const totalStudents = classroomData?.students?.length || 0;
+        const appliedCount = variables.studentIds.length;
+        if (appliedCount < totalStudents && appliedCount > 0) {
+          // Hay estudiantes restantes, mostrar opción (esperar 4s para que se vea la animación de puntos)
+          setTimeout(() => setShowApplyToRestModal(true), 4000);
+        }
+      }
+      setIsApplyingToRest(false);
     },
     onError: () => {
       toast.error('Error al aplicar comportamiento');
@@ -1080,6 +1106,31 @@ export const StudentsPage = () => {
           queryClient.invalidateQueries({ queryKey: ['placeholder-students', classroom.id] });
         }}
       />
+
+      {/* Modal para aplicar a estudiantes restantes */}
+      <ApplyToRestModal
+        isOpen={showApplyToRestModal}
+        onClose={() => {
+          setShowApplyToRestModal(false);
+          setLastAppliedStudentIds(new Set());
+          setLastAppliedBehavior(null);
+        }}
+        restStudents={allStudents.filter(s => !lastAppliedStudentIds.has(s.id))}
+        lastBehavior={lastAppliedBehavior}
+        allBehaviors={behaviors || []}
+        onApply={(behavior, studentIds) => {
+          setIsApplyingToRest(true); // Evitar que el modal se reabra
+          applyBehaviorMutation.mutate({
+            behaviorId: behavior.id,
+            studentIds,
+          });
+          setShowApplyToRestModal(false);
+          setLastAppliedStudentIds(new Set());
+          setLastAppliedBehavior(null);
+        }}
+        isLoading={applyBehaviorMutation.isPending}
+        getDisplayName={getDisplayName}
+      />
     </div>
   );
 };
@@ -1624,6 +1675,196 @@ const PointsModal = ({
               </div>
             )}
             </div>
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
+  );
+};
+
+// Modal de "Aplicar a Restantes"
+const ApplyToRestModal = ({
+  isOpen,
+  onClose,
+  restStudents,
+  lastBehavior,
+  allBehaviors,
+  onApply,
+  isLoading,
+  getDisplayName,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  restStudents: Array<{ id: string; characterName: string | null; realName?: string | null; realLastName?: string | null }>;
+  lastBehavior: Behavior | null;
+  allBehaviors: Behavior[];
+  onApply: (behavior: Behavior, studentIds: string[]) => void;
+  isLoading: boolean;
+  getDisplayName: (student: any) => string;
+}) => {
+  const [selectedBehaviorId, setSelectedBehaviorId] = useState<string | null>(null);
+
+  if (!isOpen || restStudents.length === 0) return null;
+
+  const selectedBehavior = allBehaviors.find(b => b.id === selectedBehaviorId);
+  
+  // Sugerir comportamiento opuesto al último aplicado
+  const suggestedBehaviors = lastBehavior 
+    ? allBehaviors.filter(b => b.isPositive !== lastBehavior.isPositive)
+    : allBehaviors;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+        onClick={onClose}
+      >
+        <motion.div
+          initial={{ scale: 0.95, opacity: 0, y: 20 }}
+          animate={{ scale: 1, opacity: 1, y: 0 }}
+          exit={{ scale: 0.95, opacity: 0, y: 20 }}
+          onClick={(e) => e.stopPropagation()}
+          className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden"
+        >
+          {/* Header */}
+          <div className="p-5 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-amber-500 to-orange-500">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3 text-white">
+                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+                  <UserMinus size={20} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold">Aplicar a Restantes</h2>
+                  <p className="text-sm text-white/80">
+                    {restStudents.length} estudiante{restStudents.length !== 1 ? 's' : ''} sin evaluar
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={onClose}
+                className="p-2 hover:bg-white/20 rounded-lg text-white transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+          </div>
+
+          <div className="p-5 space-y-4">
+            {/* Info del comportamiento anterior */}
+            {lastBehavior && (
+              <div className="p-3 bg-gray-50 dark:bg-gray-900 rounded-xl text-sm">
+                <p className="text-gray-500 dark:text-gray-400 mb-1">Acabas de aplicar:</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">{lastBehavior.icon || '⭐'}</span>
+                  <span className="font-medium text-gray-800 dark:text-white">{lastBehavior.name}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                    lastBehavior.isPositive 
+                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                      : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                  }`}>
+                    {lastBehavior.isPositive ? 'Positivo' : 'Negativo'}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Lista de estudiantes restantes (colapsada) */}
+            <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800">
+              <p className="text-sm font-medium text-amber-800 dark:text-amber-300 mb-2">
+                Estudiantes restantes:
+              </p>
+              <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
+                {restStudents.map(student => (
+                  <span 
+                    key={student.id}
+                    className="text-xs px-2 py-1 bg-white dark:bg-gray-800 rounded-lg text-gray-700 dark:text-gray-300 border border-amber-200 dark:border-amber-700"
+                  >
+                    {getDisplayName(student)}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Selector de comportamiento */}
+            <div>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Selecciona el comportamiento a aplicar:
+              </p>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {suggestedBehaviors.length > 0 ? (
+                  suggestedBehaviors.map(behavior => {
+                    const isSelected = selectedBehaviorId === behavior.id;
+                    const xp = behavior.xpValue ?? (behavior.pointType === 'XP' ? behavior.pointValue : 0);
+                    const hp = behavior.hpValue ?? (behavior.pointType === 'HP' ? behavior.pointValue : 0);
+                    const gp = behavior.gpValue ?? (behavior.pointType === 'GP' ? behavior.pointValue : 0);
+                    const sign = behavior.isPositive ? '+' : '-';
+                    
+                    return (
+                      <button
+                        key={behavior.id}
+                        onClick={() => setSelectedBehaviorId(behavior.id)}
+                        className={`w-full flex items-center justify-between p-3 rounded-xl border-2 transition-all ${
+                          isSelected
+                            ? behavior.isPositive
+                              ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
+                              : 'border-red-500 bg-red-50 dark:bg-red-900/20'
+                            : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-xl">{behavior.icon || (behavior.isPositive ? '⭐' : '💔')}</span>
+                          <div className="text-left">
+                            <p className="font-medium text-gray-900 dark:text-white text-sm">
+                              {behavior.name}
+                            </p>
+                            {behavior.description && (
+                              <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]">
+                                {behavior.description}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {xp > 0 && <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300">{sign}{xp} XP</span>}
+                          {hp > 0 && <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">{sign}{hp} HP</span>}
+                          {gp > 0 && <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">{sign}{gp} GP</span>}
+                        </div>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <p className="text-center text-gray-500 dark:text-gray-400 py-4 text-sm">
+                    No hay comportamientos disponibles
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="p-5 border-t border-gray-200 dark:border-gray-700 flex gap-3">
+            <Button
+              variant="secondary"
+              onClick={onClose}
+              className="flex-1"
+            >
+              Omitir
+            </Button>
+            <Button
+              onClick={() => {
+                if (selectedBehavior) {
+                  onApply(selectedBehavior, restStudents.map(s => s.id));
+                }
+              }}
+              disabled={!selectedBehavior || isLoading}
+              isLoading={isLoading}
+              className="flex-1 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600"
+            >
+              Aplicar a {restStudents.length}
+            </Button>
           </div>
         </motion.div>
       </motion.div>

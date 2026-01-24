@@ -410,7 +410,6 @@ export const GradebookStatsPage = () => {
                                     switch (type) {
                                       case 'BEHAVIOR': return '🎯';
                                       case 'BADGE': return '🏅';
-                                      case 'MISSION': return '📜';
                                       case 'TOURNAMENT': return '🏆';
                                       case 'EXPEDITION': return '🗺️';
                                       case 'TIMER': return '⏱️';
@@ -421,7 +420,6 @@ export const GradebookStatsPage = () => {
                                     switch (type) {
                                       case 'BEHAVIOR': return 'Comportamiento';
                                       case 'BADGE': return 'Insignia';
-                                      case 'MISSION': return 'Misión';
                                       case 'TOURNAMENT': return 'Torneo';
                                       case 'EXPEDITION': return 'Expedición';
                                       case 'TIMER': return 'Actividad';

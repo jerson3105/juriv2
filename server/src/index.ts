@@ -43,13 +43,13 @@ app.use('/api/badges', cors(corsOptions), express.static(path.join(process.cwd()
 app.use('/api/static/avatars', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'avatars')));
 app.use('/api/uploads/expeditions', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'expeditions')));
 app.use('/api/uploads/maps', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'maps')));
-app.use('/api/uploads/missions', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'missions')));
+app.use('/api/uploads/collectibles', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'collectibles')));
 // También mantener rutas sin /api para desarrollo local
 app.use('/badges', cors(corsOptions), express.static(path.join(process.cwd(), 'public', 'badges')));
 app.use('/avatars', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'avatars')));
 app.use('/uploads/expeditions', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'expeditions')));
 app.use('/uploads/maps', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'maps')));
-app.use('/uploads/missions', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'missions')));
+app.use('/uploads/collectibles', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'collectibles')));
 
 // Aplicar middleware de seguridad
 applySecurityMiddleware(app);

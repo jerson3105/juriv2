@@ -11,7 +11,6 @@ import {
   CheckCircle,
   XCircle,
   Award,
-  Target,
   Sparkles,
   X,
   TrendingUp,
@@ -428,7 +427,6 @@ function ActividadTab({ studentId }: { studentId: string }) {
 function ActivityItem({ activity, showTime = false }: { activity: ActivityLogItem; showTime?: boolean }) {
   const getIcon = () => {
     if (activity.type === 'BADGE') return <Award size={16} className="text-purple-500" />;
-    if (activity.type === 'MISSION') return <Target size={16} className="text-blue-500" />;
     if (activity.isPositive) return <CheckCircle size={16} className="text-green-500" />;
     return <XCircle size={16} className="text-red-500" />;
   };
@@ -516,11 +514,6 @@ function AIReportModal({ report, onClose }: { report: AIStudentReport; onClose: 
               <ThumbsUp className="w-5 h-5 text-green-600 mx-auto mb-1" />
               <p className="text-2xl font-bold text-green-700 dark:text-green-400">{report.stats.positiveActions}</p>
               <p className="text-xs text-green-600 dark:text-green-500">Reconocimientos</p>
-            </div>
-            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 text-center">
-              <Target className="w-5 h-5 text-blue-600 mx-auto mb-1" />
-              <p className="text-2xl font-bold text-blue-700 dark:text-blue-400">{report.stats.missionsCompleted}</p>
-              <p className="text-xs text-blue-600 dark:text-blue-500">Misiones</p>
             </div>
             <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-3 text-center">
               <Award className="w-5 h-5 text-purple-600 mx-auto mb-1" />

@@ -8,8 +8,6 @@ import {
   curriculumCompetencies,
   behaviors,
   badges,
-  studentMissions,
-  missions,
   timedActivityResults,
   timedActivities,
   tournamentParticipants,
@@ -288,11 +286,7 @@ class GradeService {
   ): Promise<ActivityScoreData[]> {
     const scores: ActivityScoreData[] = [];
 
-    // 1. Misiones completadas
-    const missionScores = await this.getMissionScores(studentProfileId, competencyId, dateRange);
-    scores.push(...missionScores);
-
-    // 2. Actividades temporizadas
+    // 1. Actividades temporizadas
     const timedScores = await this.getTimedActivityScores(studentProfileId, competencyId, dateRange);
     scores.push(...timedScores);
 
@@ -311,60 +305,6 @@ class GradeService {
     // 6. Insignias
     const badgeScores = await this.getBadgeScores(studentProfileId, competencyId, classroomId, dateRange);
     scores.push(...badgeScores);
-
-    return scores;
-  }
-
-  private async getMissionScores(studentProfileId: string, competencyId: string, dateRange: BimesterDateRange): Promise<ActivityScoreData[]> {
-    const scores: ActivityScoreData[] = [];
-
-    const missionCompetencies = await db.select({
-      activityId: activityCompetencies.activityId,
-      weight: activityCompetencies.weight,
-    })
-    .from(activityCompetencies)
-    .where(and(
-      eq(activityCompetencies.activityType, 'MISSION'),
-      eq(activityCompetencies.competencyId, competencyId)
-    ));
-
-    if (missionCompetencies.length === 0) return scores;
-    const missionIds = missionCompetencies.map(m => m.activityId);
-
-    const completedMissions = await db.select({
-      missionId: studentMissions.missionId,
-      status: studentMissions.status,
-      currentProgress: studentMissions.currentProgress,
-      targetProgress: studentMissions.targetProgress,
-      missionName: missions.name,
-      completedAt: studentMissions.completedAt,
-    })
-    .from(studentMissions)
-    .leftJoin(missions, eq(studentMissions.missionId, missions.id))
-    .where(and(
-      eq(studentMissions.studentProfileId, studentProfileId),
-      inArray(studentMissions.missionId, missionIds),
-      gte(studentMissions.assignedAt, dateRange.startDate),
-      lte(studentMissions.assignedAt, dateRange.endDate)
-    ));
-
-    for (const cm of completedMissions) {
-      const missionComp = missionCompetencies.find(m => m.activityId === cm.missionId);
-      const progress = cm.currentProgress || 0;
-      const target = cm.targetProgress || 1;
-      const percentage = Math.min(100, (progress / target) * 100);
-
-      if (cm.status === 'COMPLETED' || percentage >= 50) {
-        scores.push({
-          type: 'MISSION',
-          id: cm.missionId,
-          name: cm.missionName || 'Misión',
-          score: cm.status === 'COMPLETED' ? 100 : percentage,
-          weight: missionComp?.weight || 100,
-          competencyId,
-        });
-      }
-    }
 
     return scores;
   }
@@ -699,6 +639,22 @@ class GradeService {
   // ═══════════════════════════════════════════════════════════
 
   async getStudentGrades(studentProfileId: string, period: string = 'CURRENT') {
+    // Si es CURRENT, resolver el período actual del classroom
+    let resolvedPeriod = period;
+    if (period === 'CURRENT') {
+      const [profile] = await db.select({
+        classroomId: studentProfiles.classroomId,
+      }).from(studentProfiles).where(eq(studentProfiles.id, studentProfileId));
+
+      if (profile) {
+        const [classroom] = await db.select({
+          currentBimester: classrooms.currentBimester,
+        }).from(classrooms).where(eq(classrooms.id, profile.classroomId));
+
+        resolvedPeriod = classroom?.currentBimester || `${new Date().getFullYear()}-B1`;
+      }
+    }
+
     return db.select({
       id: studentGrades.id,
       competencyId: studentGrades.competencyId,
@@ -716,11 +672,21 @@ class GradeService {
     .leftJoin(curriculumCompetencies, eq(studentGrades.competencyId, curriculumCompetencies.id))
     .where(and(
       eq(studentGrades.studentProfileId, studentProfileId),
-      eq(studentGrades.period, period)
+      eq(studentGrades.period, resolvedPeriod)
     ));
   }
 
   async getClassroomGrades(classroomId: string, period: string = 'CURRENT') {
+    // Si es CURRENT, resolver el período actual del classroom
+    let resolvedPeriod = period;
+    if (period === 'CURRENT') {
+      const [classroom] = await db.select({
+        currentBimester: classrooms.currentBimester,
+      }).from(classrooms).where(eq(classrooms.id, classroomId));
+
+      resolvedPeriod = classroom?.currentBimester || `${new Date().getFullYear()}-B1`;
+    }
+
     return db.select({
       id: studentGrades.id,
       studentProfileId: studentGrades.studentProfileId,
@@ -740,7 +706,7 @@ class GradeService {
     .leftJoin(curriculumCompetencies, eq(studentGrades.competencyId, curriculumCompetencies.id))
     .where(and(
       eq(studentGrades.classroomId, classroomId),
-      eq(studentGrades.period, period)
+      eq(studentGrades.period, resolvedPeriod)
     ));
   }
 

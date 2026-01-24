@@ -8,8 +8,6 @@ import {
   studentGrades,
   pointLogs,
   behaviors,
-  studentMissions,
-  missions,
   timedActivityResults,
   timedActivities,
   studentBadges,
@@ -564,33 +562,6 @@ class ParentService {
       }
     }
     
-    // Misiones completadas - limitado
-    const completedMissions = await db.select({
-      missionName: missions.name,
-      status: studentMissions.status,
-      completedAt: studentMissions.completedAt,
-    })
-    .from(studentMissions)
-    .leftJoin(missions, eq(studentMissions.missionId, missions.id))
-    .where(and(
-      eq(studentMissions.studentProfileId, studentProfileId),
-      eq(studentMissions.status, 'COMPLETED'),
-      gte(studentMissions.completedAt, startDate),
-      lte(studentMissions.completedAt, end)
-    ))
-    .limit(queryLimit);
-    
-    for (const mission of completedMissions) {
-      if (mission.completedAt) {
-        activity.push({
-          type: 'MISSION',
-          description: `Completó objetivo: "${mission.missionName}"`,
-          date: mission.completedAt,
-          isPositive: true,
-        });
-      }
-    }
-    
     // Actividades cronometradas - limitado
     const timedResults = await db.select({
       activityName: timedActivities.name,
@@ -787,7 +758,6 @@ class ParentService {
         totalXP,
         totalActivities: activities.length,
         badges: activities.filter(a => a.type === 'BADGE').length,
-        missionsCompleted: activities.filter(a => a.type === 'MISSION').length,
       }
     };
 
@@ -844,7 +814,6 @@ ESTADÍSTICAS DEL BIMESTRE:
 - Observaciones (áreas de mejora): ${contextData.stats.negativeActions}
 - XP total ganado: ${contextData.stats.totalXP}
 - Insignias obtenidas: ${contextData.stats.badges}
-- Misiones completadas: ${contextData.stats.missionsCompleted}
 - Total de actividades: ${contextData.stats.totalActivities}
 
 ACTIVIDADES RECIENTES:
@@ -905,7 +874,7 @@ Responde en formato JSON con esta estructura exacta (en español):
       summary,
       strengths: [
         contextData.stats.positiveActions > 0 ? 'Recibe reconocimientos de su profesor' : 'Participa en las actividades de clase',
-        contextData.stats.missionsCompleted > 0 ? 'Completa misiones y objetivos' : 'Asiste regularmente a clases',
+        'Asiste regularmente a clases',
         `Ha alcanzado el nivel ${contextData.level} en la plataforma`,
       ],
       areasToImprove: contextData.stats.negativeActions > 0 
@@ -946,7 +915,6 @@ interface AIStudentReport {
     totalXP: number;
     totalActivities: number;
     badges: number;
-    missionsCompleted: number;
   };
 }
 

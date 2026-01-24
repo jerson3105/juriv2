@@ -471,7 +471,6 @@ export const GradebookPage = () => {
                                               <span className={`w-2 h-2 rounded-full ${
                                                 activity.type === 'BEHAVIOR' ? 'bg-emerald-500' :
                                                 activity.type === 'BADGE' ? 'bg-amber-500' :
-                                                activity.type === 'MISSION' ? 'bg-blue-500' :
                                                 activity.type === 'EXPEDITION' ? 'bg-purple-500' :
                                                 activity.type === 'TIMED' ? 'bg-cyan-500' :
                                                 'bg-gray-500'
@@ -482,7 +481,6 @@ export const GradebookPage = () => {
                                               <span className="text-xs px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 rounded text-gray-600 dark:text-gray-400">
                                                 {activity.type === 'BEHAVIOR' ? 'Comportamiento' :
                                                  activity.type === 'BADGE' ? 'Insignia' :
-                                                 activity.type === 'MISSION' ? 'Misión' :
                                                  activity.type === 'EXPEDITION' ? 'Expedición' :
                                                  activity.type === 'TIMED' ? 'Actividad' :
                                                  activity.type}
