@@ -10,7 +10,6 @@ import {
   Target,
   Trophy,
   Map,
-  Scroll,
   CheckCircle,
   Copy,
   Mail,

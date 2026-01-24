@@ -835,7 +835,7 @@ const CreateAlbumModal = ({ isOpen, onClose, onSubmit, isLoading }: { isOpen: bo
   );
 };
 
-const EditAlbumModal = ({ isOpen, onClose, album, onSubmit, isLoading }: { isOpen: boolean; onClose: () => void; album: AlbumWithCards; onSubmit: (data: any) => void; isLoading: boolean }) => {
+const EditAlbumModal = ({ isOpen, onClose, album, onSubmit, isLoading }: { isOpen: boolean; onClose: () => void; album: CollectibleAlbum; onSubmit: (data: any) => void; isLoading: boolean }) => {
   const [name, setName] = useState(album.name);
   const [description, setDescription] = useState(album.description || '');
   const [singlePackPrice, setSinglePackPrice] = useState(album.singlePackPrice);
