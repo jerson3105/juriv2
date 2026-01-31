@@ -2,7 +2,6 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { ChevronLeft, Zap, Clock, MapPin, Play, CheckCircle, Trophy, Star } from 'lucide-react';
-import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { jiroExpeditionApi } from '../../lib/jiroExpeditionApi';
 import { useStudentStore } from '../../store/studentStore';
