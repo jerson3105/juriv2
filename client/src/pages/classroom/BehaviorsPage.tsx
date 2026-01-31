@@ -218,7 +218,8 @@ export const BehaviorsPage = () => {
           setShowAIModal(false);
         }}
       />
-    </div>
+
+      </div>
   );
 };
 

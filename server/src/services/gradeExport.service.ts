@@ -1,5 +1,6 @@
 // @ts-ignore - PDFKit types issue with ESM
 import PDFDocument from 'pdfkit';
+import ExcelJS from 'exceljs';
 import { db } from '../db/index.js';
 import { 
   studentGrades, 
@@ -9,6 +10,7 @@ import {
   users
 } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
+import { classroomCompetencies } from '../db/schema.js';
 
 interface StudentGradeData {
   studentId: string;
@@ -442,6 +444,210 @@ class GradeExportService {
       case 'C': return '#DC2626';
       default: return '#6B7280';
     }
+  }
+
+  /**
+   * Genera el libro de calificaciones en formato Excel según el formato SIAGIE
+   * Columnas: ID (vacío), Cód. Estudiante (vacío), Nombres, [NL + Conclusión descriptiva por competencia]
+   */
+  async generateGradebookExcel(classroomId: string, period: string = 'CURRENT'): Promise<Buffer> {
+    const classroom = await db.select()
+      .from(classrooms)
+      .where(eq(classrooms.id, classroomId))
+      .then(rows => rows[0]);
+
+    if (!classroom) {
+      throw new Error('Clase no encontrada');
+    }
+
+    const studentsData = await this.getStudentsWithGrades(classroomId, period);
+    const competencies = await this.getClassroomCompetenciesOrdered(classroomId);
+
+    return this.createExcel(classroom, studentsData, competencies);
+  }
+
+  /**
+   * Obtiene las competencias del aula ordenadas para el Excel
+   */
+  private async getClassroomCompetenciesOrdered(classroomId: string): Promise<{ id: string; name: string; index: number }[]> {
+    const comps = await db.select({
+      competencyId: classroomCompetencies.competencyId,
+      competencyName: curriculumCompetencies.name,
+    })
+    .from(classroomCompetencies)
+    .leftJoin(curriculumCompetencies, eq(classroomCompetencies.competencyId, curriculumCompetencies.id))
+    .where(eq(classroomCompetencies.classroomId, classroomId));
+
+    return comps.map((c, idx) => ({
+      id: c.competencyId,
+      name: c.competencyName || 'Competencia',
+      index: idx + 1,
+    }));
+  }
+
+  private async createExcel(
+    classroom: any,
+    students: StudentGradeData[],
+    competencies: { id: string; name: string; index: number }[]
+  ): Promise<Buffer> {
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Juried';
+    workbook.created = new Date();
+
+    const worksheet = workbook.addWorksheet('Calificaciones', {
+      views: [{ state: 'frozen', xSplit: 3, ySplit: 2 }]
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    // ENCABEZADOS - Fila 1: Títulos principales
+    // ═══════════════════════════════════════════════════════════
+    const headerRow1: (string | null)[] = ['ID', 'Cód. Estudiante', 'Nombres'];
+    
+    // Por cada competencia: columna NL y columna Conclusión descriptiva
+    competencies.forEach((comp, idx) => {
+      const compNum = String(idx + 1).padStart(2, '0');
+      headerRow1.push(compNum); // NL
+      headerRow1.push(null);    // Conclusión descriptiva (se fusionará)
+    });
+
+    worksheet.addRow(headerRow1);
+
+    // ═══════════════════════════════════════════════════════════
+    // ENCABEZADOS - Fila 2: Subtítulos
+    // ═══════════════════════════════════════════════════════════
+    const headerRow2: string[] = ['', '', ''];
+    
+    competencies.forEach(() => {
+      headerRow2.push('NL');
+      headerRow2.push('Conclusión descriptiva de la competencia');
+    });
+
+    worksheet.addRow(headerRow2);
+
+    // Fusionar celdas de encabezado para ID, Cód. Estudiante, Nombres (filas 1-2)
+    worksheet.mergeCells('A1:A2');
+    worksheet.mergeCells('B1:B2');
+    worksheet.mergeCells('C1:C2');
+
+    // Fusionar celdas de competencia (número de competencia abarca NL y Conclusión)
+    let colIndex = 4; // Columna D
+    competencies.forEach(() => {
+      const startCol = this.getExcelColumn(colIndex);
+      const endCol = this.getExcelColumn(colIndex + 1);
+      worksheet.mergeCells(`${startCol}1:${endCol}1`);
+      colIndex += 2;
+    });
+
+    // Estilos para encabezados
+    const headerStyle: Partial<ExcelJS.Style> = {
+      font: { bold: true, size: 10 },
+      alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
+      border: {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' },
+      },
+      fill: {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE0E0E0' },
+      },
+    };
+
+    // Aplicar estilos a las filas de encabezado
+    [1, 2].forEach(rowNum => {
+      const row = worksheet.getRow(rowNum);
+      row.eachCell((cell) => {
+        cell.style = headerStyle;
+      });
+      row.height = 30;
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    // DATOS DE ESTUDIANTES
+    // ═══════════════════════════════════════════════════════════
+    students.forEach((student) => {
+      const rowData: string[] = [
+        '', // ID - vacío
+        '', // Cód. Estudiante - vacío
+        student.displayName.toUpperCase(), // Nombres en mayúsculas
+      ];
+
+      competencies.forEach(comp => {
+        const grade = student.grades.find(g => g.competencyId === comp.id);
+        rowData.push(grade?.gradeLabel || ''); // NL
+        rowData.push(''); // Conclusión descriptiva - vacío (el docente lo llena para C)
+      });
+
+      const dataRow = worksheet.addRow(rowData);
+      
+      // Estilos para datos
+      dataRow.eachCell((cell, colNumber) => {
+        cell.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' },
+        };
+        cell.alignment = { vertical: 'middle' };
+        
+        // Centrar las columnas de NL
+        if (colNumber > 3 && (colNumber - 4) % 2 === 0) {
+          cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        }
+      });
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    // ANCHOS DE COLUMNA
+    // ═══════════════════════════════════════════════════════════
+    worksheet.getColumn(1).width = 10;  // ID
+    worksheet.getColumn(2).width = 18;  // Cód. Estudiante
+    worksheet.getColumn(3).width = 40;  // Nombres
+
+    colIndex = 4;
+    competencies.forEach(() => {
+      worksheet.getColumn(colIndex).width = 5;      // NL
+      worksheet.getColumn(colIndex + 1).width = 40; // Conclusión descriptiva
+      colIndex += 2;
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    // LEYENDA AL FINAL
+    // ═══════════════════════════════════════════════════════════
+    const lastDataRow = students.length + 2; // +2 por las filas de encabezado
+    const legendStartRow = lastDataRow + 3;
+
+    // Fila vacía y luego LEYENDA
+    worksheet.getCell(`A${legendStartRow}`).value = 'LEYENDA';
+    worksheet.getCell(`A${legendStartRow}`).font = { bold: true };
+
+    worksheet.getCell(`A${legendStartRow + 1}`).value = 'NL = Nivel de logro alcanzado';
+    
+    // Agregar descripción de cada competencia
+    competencies.forEach((comp, idx) => {
+      const compNum = String(idx + 1).padStart(2, '0');
+      worksheet.getCell(`A${legendStartRow + 2 + idx}`).value = `${compNum} = ${comp.name}`;
+    });
+
+    // Generar buffer
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer);
+  }
+
+  /**
+   * Convierte un índice de columna (1-based) a letra de Excel (A, B, ..., Z, AA, AB, ...)
+   */
+  private getExcelColumn(index: number): string {
+    let column = '';
+    let temp = index;
+    while (temp > 0) {
+      const remainder = (temp - 1) % 26;
+      column = String.fromCharCode(65 + remainder) + column;
+      temp = Math.floor((temp - 1) / 26);
+    }
+    return column;
   }
 }
 

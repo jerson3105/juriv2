@@ -224,6 +224,56 @@ export const QuestionBanksPage = () => {
     }
   };
 
+  // Helper para parsear opciones de diferentes formatos
+  const parseOptionsField = (optionsStr: string, correctAnswerStr?: string): QuestionOption[] | null => {
+    // Intentar JSON primero
+    try {
+      const parsed = JSON.parse(optionsStr);
+      if (Array.isArray(parsed)) return parsed;
+    } catch { /* continuar con otros formatos */ }
+    
+    // Formato alternativo: "opcion1|opcion2|opcion3" con correctanswer como índice
+    // O: "opcion1*|opcion2|opcion3" donde * marca la correcta
+    const str = optionsStr.trim();
+    if (str.includes('|') || str.includes(';')) {
+      const separator = str.includes('|') ? '|' : ';';
+      const parts = str.split(separator).map(p => p.trim()).filter(p => p);
+      if (parts.length === 0) return null;
+      
+      const correctIdx = parseInt(correctAnswerStr || '0') || 0;
+      return parts.map((text, idx) => {
+        const isCorrectMarker = text.endsWith('*');
+        const cleanText = isCorrectMarker ? text.slice(0, -1).trim() : text;
+        const isCorrect = isCorrectMarker || idx === correctIdx;
+        return { text: cleanText, isCorrect };
+      });
+    }
+    
+    return null;
+  };
+
+  // Helper para parsear pares de diferentes formatos
+  const parsePairsField = (pairsStr: string): MatchingPair[] | null => {
+    // Intentar JSON primero
+    try {
+      const parsed = JSON.parse(pairsStr);
+      if (Array.isArray(parsed)) return parsed;
+    } catch { /* continuar con otros formatos */ }
+    
+    // Formato alternativo: "izq1:der1|izq2:der2"
+    const str = pairsStr.trim();
+    if (str.includes('|') && str.includes(':')) {
+      const parts = str.split('|').map(p => p.trim()).filter(p => p);
+      const pairs = parts.map(part => {
+        const [left, right] = part.split(':').map(s => s.trim());
+        return { left: left || '', right: right || '' };
+      }).filter(p => p.left && p.right);
+      return pairs.length > 0 ? pairs : null;
+    }
+    
+    return null;
+  };
+
   // Process CSV text (shared function)
   const processCSVText = (text: string) => {
     if (!text.trim() || !selectedBank) return;
@@ -264,13 +314,20 @@ export const QuestionBanksPage = () => {
         const row: Record<string, string> = {};
         headers.forEach((h, idx) => { row[h] = values[idx] || ''; });
 
+        // Detectar si explanation y timeLimitSeconds están intercambiados
+        let explanationVal = row.explanation || '';
+        let timeLimitVal = row.timelimitseconds || '';
+        if (/^\d+$/.test(explanationVal.trim()) && timeLimitVal.trim() && !/^\d+$/.test(timeLimitVal.trim())) {
+          [explanationVal, timeLimitVal] = [timeLimitVal, explanationVal];
+        }
+
         const questionData: CreateQuestionData = {
           type: (row.type?.toUpperCase() || 'SINGLE_CHOICE') as BankQuestionType,
           difficulty: (row.difficulty?.toUpperCase() || 'MEDIUM') as QuestionDifficulty,
           points: parseInt(row.points) || 10,
           questionText: row.questiontext || '',
-          timeLimitSeconds: parseInt(row.timelimitseconds) || 30,
-          explanation: row.explanation || undefined,
+          timeLimitSeconds: parseInt(timeLimitVal) || 30,
+          explanation: explanationVal.trim() || undefined,
         };
 
         // Parse type-specific fields
@@ -278,19 +335,21 @@ export const QuestionBanksPage = () => {
           questionData.correctAnswer = row.correctanswer?.toLowerCase() === 'true';
         } else if (questionData.type === 'SINGLE_CHOICE' || questionData.type === 'MULTIPLE_CHOICE') {
           if (row.options) {
-            try {
-              questionData.options = JSON.parse(row.options);
-            } catch {
-              errors.push(`Línea ${i + 1}: Error al parsear opciones JSON`);
+            const parsedOptions = parseOptionsField(row.options, row.correctanswer);
+            if (parsedOptions) {
+              questionData.options = parsedOptions;
+            } else {
+              errors.push(`Línea ${i + 1}: Error al parsear opciones`);
               questionData.options = [];
             }
           }
         } else if (questionData.type === 'MATCHING') {
           if (row.pairs) {
-            try {
-              questionData.pairs = JSON.parse(row.pairs);
-            } catch {
-              errors.push(`Línea ${i + 1}: Error al parsear pares JSON`);
+            const parsedPairs = parsePairsField(row.pairs);
+            if (parsedPairs) {
+              questionData.pairs = parsedPairs;
+            } else {
+              errors.push(`Línea ${i + 1}: Error al parsear pares`);
               questionData.pairs = [];
             }
           }
@@ -364,13 +423,20 @@ export const QuestionBanksPage = () => {
         const row: Record<string, string> = {};
         headers.forEach((h, idx) => { row[h] = values[idx] || ''; });
 
+        // Detectar si explanation y timeLimitSeconds están intercambiados
+        let explanationVal2 = row.explanation || '';
+        let timeLimitVal2 = row.timelimitseconds || '';
+        if (/^\d+$/.test(explanationVal2.trim()) && timeLimitVal2.trim() && !/^\d+$/.test(timeLimitVal2.trim())) {
+          [explanationVal2, timeLimitVal2] = [timeLimitVal2, explanationVal2];
+        }
+
         const questionData: CreateQuestionData = {
           type: (row.type?.toUpperCase() || 'SINGLE_CHOICE') as BankQuestionType,
           difficulty: (row.difficulty?.toUpperCase() || 'MEDIUM') as QuestionDifficulty,
           points: parseInt(row.points) || 10,
           questionText: row.questiontext || '',
-          timeLimitSeconds: parseInt(row.timelimitseconds) || 30,
-          explanation: row.explanation || undefined,
+          timeLimitSeconds: parseInt(timeLimitVal2) || 30,
+          explanation: explanationVal2.trim() || undefined,
         };
 
         // Parse type-specific fields
@@ -378,19 +444,21 @@ export const QuestionBanksPage = () => {
           questionData.correctAnswer = row.correctanswer?.toLowerCase() === 'true';
         } else if (questionData.type === 'SINGLE_CHOICE' || questionData.type === 'MULTIPLE_CHOICE') {
           if (row.options) {
-            try {
-              questionData.options = JSON.parse(row.options);
-            } catch {
-              errors.push(`Línea ${i + 1}: Error al parsear opciones JSON`);
+            const parsedOpts = parseOptionsField(row.options, row.correctanswer);
+            if (parsedOpts) {
+              questionData.options = parsedOpts;
+            } else {
+              errors.push(`Línea ${i + 1}: Error al parsear opciones`);
               questionData.options = [];
             }
           }
         } else if (questionData.type === 'MATCHING') {
           if (row.pairs) {
-            try {
-              questionData.pairs = JSON.parse(row.pairs);
-            } catch {
-              errors.push(`Línea ${i + 1}: Error al parsear pares JSON`);
+            const parsedPrs = parsePairsField(row.pairs);
+            if (parsedPrs) {
+              questionData.pairs = parsedPrs;
+            } else {
+              errors.push(`Línea ${i + 1}: Error al parsear pares`);
               questionData.pairs = [];
             }
           }
@@ -1565,7 +1633,8 @@ const QuestionModal = ({ isOpen, onClose, onSubmit, initialData, isLoading }: Qu
       
       // Inicializar según el tipo
       if (parsed.type === 'TRUE_FALSE') {
-        setCorrectAnswer(parsed.correctAnswer === true);
+        // correctAnswer puede venir como booleano o string
+        setCorrectAnswer(parsed.correctAnswer === true || parsed.correctAnswer === 'true');
         // Limpiar otros estados
         setOptions([{ text: '', isCorrect: true }, { text: '', isCorrect: false }]);
         setPairs([{ left: '', right: '' }, { left: '', right: '' }]);

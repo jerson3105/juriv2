@@ -109,11 +109,13 @@ class HistoryService {
       }>();
 
       for (const log of pointLogsData) {
-        // Crear clave única: behaviorId (o visibleId si no hay behavior) + studentId + timestamp al segundo
+        // Crear clave única: behaviorId (o reason si no hay behavior) + studentId + timestamp al segundo
         const timestampKey = new Date(log.createdAt).toISOString().slice(0, 19);
         const groupKey = log.behaviorId 
           ? `${log.behaviorId}-${log.studentId}-${timestampKey}`
-          : `manual-${log.id}`; // Logs manuales no se agrupan
+          : log.reason 
+            ? `reason-${log.reason}-${log.studentId}-${timestampKey}` // Agrupar por reason (ej: expediciones)
+            : `manual-${log.id}`; // Logs sin reason ni behavior no se agrupan
 
         const existing = groupedLogs.get(groupKey);
         if (existing) {

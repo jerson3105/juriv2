@@ -28,6 +28,9 @@ router.delete('/:gradeId/manual', authorize('TEACHER'), gradeController.clearMan
 // Exportar libro de calificaciones en PDF (solo profesor)
 router.get('/export/pdf/:classroomId', authorize('TEACHER'), gradeController.exportPDF);
 
+// Exportar libro de calificaciones en Excel formato SIAGIE (solo profesor)
+router.get('/export/excel/:classroomId', authorize('TEACHER'), gradeController.exportExcel);
+
 // ═══════════════════════════════════════════════════════════
 // GESTIÓN DE BIMESTRES
 // ═══════════════════════════════════════════════════════════

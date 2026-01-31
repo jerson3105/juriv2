@@ -178,6 +178,14 @@ class QuestionBankService {
     // Validar datos según el tipo
     this.validateQuestionData(data);
 
+    // Normalizar correctAnswer a booleano para TRUE_FALSE
+    let normalizedCorrectAnswer: any = data.correctAnswer;
+    if (data.type === 'TRUE_FALSE' && normalizedCorrectAnswer !== undefined) {
+      if (typeof normalizedCorrectAnswer === 'string') {
+        normalizedCorrectAnswer = (normalizedCorrectAnswer as string).toLowerCase() === 'true';
+      }
+    }
+
     await db.insert(questions).values({
       id,
       bankId: data.bankId,
@@ -187,7 +195,7 @@ class QuestionBankService {
       questionText: data.questionText,
       imageUrl: data.imageUrl || null,
       options: data.options ? JSON.stringify(data.options) : null,
-      correctAnswer: data.correctAnswer !== undefined ? JSON.stringify(data.correctAnswer) : null,
+      correctAnswer: normalizedCorrectAnswer !== undefined ? JSON.stringify(normalizedCorrectAnswer) : null,
       pairs: data.pairs ? JSON.stringify(data.pairs) : null,
       explanation: data.explanation || null,
       timeLimitSeconds: data.timeLimitSeconds || 30,
@@ -218,7 +226,15 @@ class QuestionBankService {
     if (data.questionText !== undefined) updateData.questionText = data.questionText;
     if (data.imageUrl !== undefined) updateData.imageUrl = data.imageUrl;
     if (data.options !== undefined) updateData.options = JSON.stringify(data.options);
-    if (data.correctAnswer !== undefined) updateData.correctAnswer = JSON.stringify(data.correctAnswer);
+    if (data.correctAnswer !== undefined) {
+      // Normalizar correctAnswer a booleano para TRUE_FALSE
+      let normalizedCA: any = data.correctAnswer;
+      const questionType = data.type || question.type;
+      if (questionType === 'TRUE_FALSE' && typeof normalizedCA === 'string') {
+        normalizedCA = (normalizedCA as string).toLowerCase() === 'true';
+      }
+      updateData.correctAnswer = JSON.stringify(normalizedCA);
+    }
     if (data.pairs !== undefined) updateData.pairs = JSON.stringify(data.pairs);
     if (data.explanation !== undefined) updateData.explanation = data.explanation;
     if (data.timeLimitSeconds !== undefined) updateData.timeLimitSeconds = data.timeLimitSeconds;

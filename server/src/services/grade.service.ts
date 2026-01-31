@@ -16,6 +16,9 @@ import {
   expeditions,
   pointLogs,
   studentBadges,
+  jiroStudentExpeditions,
+  jiroExpeditions,
+  jiroExpeditionCompetencies,
   type GradeScaleType,
 } from '../db/schema.js';
 import { eq, and, inArray, sql, gte, lte } from 'drizzle-orm';
@@ -294,11 +297,15 @@ class GradeService {
     const tournamentScores = await this.getTournamentScores(studentProfileId, competencyId, dateRange);
     scores.push(...tournamentScores);
 
-    // 4. Expediciones
+    // 4. Expediciones clásicas
     const expeditionScores = await this.getExpeditionScores(studentProfileId, competencyId, dateRange);
     scores.push(...expeditionScores);
 
-    // 5. Comportamientos positivos
+    // 5. Expediciones de Jiro
+    const jiroExpeditionScores = await this.getJiroExpeditionScores(studentProfileId, competencyId, dateRange);
+    scores.push(...jiroExpeditionScores);
+
+    // 6. Comportamientos positivos
     const behaviorScores = await this.getBehaviorScores(studentProfileId, competencyId, classroomId, dateRange);
     scores.push(...behaviorScores);
 
@@ -468,6 +475,62 @@ class GradeService {
         name: ep.expeditionName || 'Expedición',
         score,
         weight: expComp?.weight || 100,
+        competencyId,
+      });
+    }
+
+    return scores;
+  }
+
+  private async getJiroExpeditionScores(studentProfileId: string, competencyId: string, dateRange: BimesterDateRange): Promise<ActivityScoreData[]> {
+    const scores: ActivityScoreData[] = [];
+
+    // Obtener expediciones de Jiro que tienen esta competencia asociada
+    const jiroCompetencies = await db.select({
+      expeditionId: jiroExpeditionCompetencies.expeditionId,
+    })
+    .from(jiroExpeditionCompetencies)
+    .where(eq(jiroExpeditionCompetencies.competencyId, competencyId));
+
+    if (jiroCompetencies.length === 0) return scores;
+    const expeditionIds = jiroCompetencies.map(j => j.expeditionId);
+
+    // Obtener progreso del estudiante en estas expediciones
+    const progress = await db.select({
+      expeditionId: jiroStudentExpeditions.expeditionId,
+      status: jiroStudentExpeditions.status,
+      finalScore: jiroStudentExpeditions.finalScore,
+      correctAnswers: jiroStudentExpeditions.correctAnswers,
+      wrongAnswers: jiroStudentExpeditions.wrongAnswers,
+      completedAt: jiroStudentExpeditions.completedAt,
+      expeditionName: jiroExpeditions.name,
+      gradeWeight: jiroExpeditions.gradeWeight,
+    })
+    .from(jiroStudentExpeditions)
+    .leftJoin(jiroExpeditions, eq(jiroStudentExpeditions.expeditionId, jiroExpeditions.id))
+    .where(and(
+      eq(jiroStudentExpeditions.studentProfileId, studentProfileId),
+      inArray(jiroStudentExpeditions.expeditionId, expeditionIds),
+      gte(jiroStudentExpeditions.updatedAt, dateRange.startDate),
+      lte(jiroStudentExpeditions.updatedAt, dateRange.endDate)
+    ));
+
+    for (const jp of progress) {
+      // Solo contar expediciones completadas
+      if (jp.status !== 'COMPLETED') continue;
+
+      // Calcular score basado en respuestas correctas
+      const totalAnswers = (jp.correctAnswers || 0) + (jp.wrongAnswers || 0);
+      const score = totalAnswers > 0 
+        ? ((jp.correctAnswers || 0) / totalAnswers) * 100 
+        : 0;
+
+      scores.push({
+        type: 'JIRO_EXPEDITION',
+        id: jp.expeditionId,
+        name: jp.expeditionName || 'Expedición de Jiro',
+        score,
+        weight: Number(jp.gradeWeight) || 100,
         competencyId,
       });
     }

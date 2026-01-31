@@ -19,8 +19,10 @@ import { AulaZenActivity } from '../../components/activities/AulaZenActivity';
 import { ScrollsActivity } from '../../components/activities/ScrollsActivity';
 import { TournamentsActivity } from '../../components/activities/TournamentsActivity';
 import { ExpeditionsActivity } from '../../components/activities/ExpeditionsActivity';
+import { JiroExpeditionsActivity } from '../../components/activities/JiroExpeditionsActivity';
 import { useOutletContext, useParams } from 'react-router-dom';
 import RouletteOfDestinyModal from '../../components/modals/RouletteOfDestinyModal';
+import ExpeditionTypeModal from '../../components/modals/ExpeditionTypeModal';
 
 interface Activity {
   id: string;
@@ -105,7 +107,7 @@ const activities: Activity[] = [
     tagColor: 'from-green-400 to-emerald-500',
   },
   {
-    id: 'expeditions',
+    id: 'expeditions-selector',
     name: 'Expediciones',
     description: 'Aventuras de aprendizaje con mapas interactivos. ¡Los estudiantes exploran y completan misiones!',
     icon: <Map size={28} />,
@@ -134,6 +136,7 @@ export const ActivitiesPage = () => {
   
   const [selectedActivity, setSelectedActivity] = useState<string | null>(null);
   const [showRouletteModal, setShowRouletteModal] = useState(false);
+  const [showExpeditionModal, setShowExpeditionModal] = useState(false);
   const [currentTipIndex, setCurrentTipIndex] = useState(0);
 
   // Rotación automática de consejos
@@ -148,6 +151,8 @@ export const ActivitiesPage = () => {
   const handleActivityClick = (activityId: string) => {
     if (activityId === 'roulette-of-destiny') {
       setShowRouletteModal(true);
+    } else if (activityId === 'expeditions-selector') {
+      setShowExpeditionModal(true);
     } else {
       setSelectedActivity(activityId);
     }
@@ -155,6 +160,11 @@ export const ActivitiesPage = () => {
 
   // Handler para seleccionar opción de la Ruleta del Destino
   const handleRouletteSelect = (optionId: string) => {
+    setSelectedActivity(optionId);
+  };
+
+  // Handler para seleccionar tipo de expedición
+  const handleExpeditionSelect = (optionId: string) => {
     setSelectedActivity(optionId);
   };
 
@@ -227,6 +237,15 @@ export const ActivitiesPage = () => {
   if (selectedActivity === 'expeditions') {
     return (
       <ExpeditionsActivity 
+        classroom={classroom}
+        onBack={() => setSelectedActivity(null)}
+      />
+    );
+  }
+
+  if (selectedActivity === 'jiro-expeditions') {
+    return (
+      <JiroExpeditionsActivity 
         classroom={classroom}
         onBack={() => setSelectedActivity(null)}
       />
@@ -392,6 +411,13 @@ export const ActivitiesPage = () => {
         isOpen={showRouletteModal}
         onClose={() => setShowRouletteModal(false)}
         onSelectOption={handleRouletteSelect}
+      />
+
+      {/* Modal de Tipo de Expedición */}
+      <ExpeditionTypeModal
+        isOpen={showExpeditionModal}
+        onClose={() => setShowExpeditionModal(false)}
+        onSelectOption={handleExpeditionSelect}
       />
 
     </div>

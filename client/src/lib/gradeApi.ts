@@ -148,6 +148,25 @@ export const gradeApi = {
     window.URL.revokeObjectURL(url);
   },
 
+  // Exportar libro de calificaciones en Excel (formato SIAGIE)
+  exportExcel: async (classroomId: string, period: string = 'CURRENT'): Promise<void> => {
+    const response = await api.get(`/grades/export/excel/${classroomId}`, {
+      params: { period },
+      responseType: 'blob',
+    });
+    
+    // Crear link de descarga
+    const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `calificaciones-${new Date().toISOString().split('T')[0]}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  },
+
   // ═══════════════════════════════════════════════════════════
   // GESTIÓN DE BIMESTRES
   // ═══════════════════════════════════════════════════════════

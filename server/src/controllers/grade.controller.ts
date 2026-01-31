@@ -168,6 +168,29 @@ export class GradeController {
     }
   }
 
+  /**
+   * Exporta el libro de calificaciones en Excel (formato SIAGIE)
+   * GET /api/grades/export/excel/:classroomId
+   */
+  async exportExcel(req: Request, res: Response) {
+    try {
+      const { classroomId } = req.params;
+      const { period = 'CURRENT' } = req.query;
+
+      const excelBuffer = await gradeExportService.generateGradebookExcel(
+        classroomId,
+        period as string
+      );
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename=calificaciones-${classroomId}.xlsx`);
+      res.send(excelBuffer);
+    } catch (error: any) {
+      console.error('Error exporting Excel:', error);
+      res.status(500).json({ error: error.message || 'Error al exportar Excel' });
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════
   // GESTIÓN DE BIMESTRES
   // ═══════════════════════════════════════════════════════════

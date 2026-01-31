@@ -355,7 +355,8 @@ export const BadgesPage = () => {
           }
         }}
       />
-    </div>
+
+      </div>
   );
 };
 

@@ -40,6 +40,8 @@ import { StudentScrollsPage } from './pages/student/StudentScrollsPage';
 import { StudentGradesPage } from './pages/student/StudentGradesPage';
 import { StudentExpeditionsPage } from './pages/student/StudentExpeditionsPage';
 import { StudentCollectiblesPage } from './pages/student/StudentCollectiblesPage';
+import { StudentJiroExpeditionPage } from './pages/student/StudentJiroExpeditionPage';
+import { StudentJiroExpeditionsPage } from './pages/student/StudentJiroExpeditionsPage';
 
 // Settings
 import { SettingsPage } from './pages/settings/SettingsPage';
@@ -226,6 +228,8 @@ function App() {
             <Route path="scrolls" element={<StudentScrollsPage />} />
             <Route path="my-grades" element={<StudentGradesPage />} />
             <Route path="expeditions" element={<StudentExpeditionsPage />} />
+            <Route path="jiro-expeditions" element={<StudentJiroExpeditionsPage />} />
+            <Route path="jiro-expedition/:expeditionId" element={<StudentJiroExpeditionPage />} />
             <Route path="collectibles" element={<StudentCollectiblesPage />} />
             
             {/* Redirigir rutas antiguas */}

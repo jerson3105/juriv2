@@ -419,6 +419,35 @@ export const MainLayout = () => {
             </Link>
           )}
 
+          {/* Expediciones de Jiro - solo para estudiantes */}
+          {!isTeacher && (
+            <Link
+              to="/jiro-expeditions"
+              onClick={() => setSidebarOpen(false)}
+              className={`
+                flex items-center gap-3 px-3 py-2.5 rounded-xl
+                transition-all duration-200 group relative
+                ${location.pathname.startsWith('/jiro-expedition')
+                  ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }
+              `}
+            >
+              <div className={`
+                w-8 h-8 rounded-lg flex items-center justify-center transition-all
+                ${location.pathname.startsWith('/jiro-expedition')
+                  ? 'bg-white/20' 
+                  : 'bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-sm group-hover:scale-105'
+                }
+              `}>
+                <span className="text-sm">🦊</span>
+              </div>
+              <span className={`text-sm font-medium ${location.pathname.startsWith('/jiro-expedition') ? '' : 'text-gray-700 dark:text-gray-300'}`}>
+                Expedición de Jiro
+              </span>
+            </Link>
+          )}
+
           {/* Mis Calificaciones - solo para estudiantes con competencias habilitadas */}
           {!isTeacher && currentProfile?.classroom?.useCompetencies && (
             <Link

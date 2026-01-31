@@ -44,6 +44,7 @@ app.use('/api/static/avatars', cors(corsOptions), express.static(path.join(uploa
 app.use('/api/uploads/expeditions', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'expeditions')));
 app.use('/api/uploads/maps', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'maps')));
 app.use('/api/uploads/collectibles', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'collectibles')));
+app.use('/api/uploads/jiro-deliveries', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'jiro-deliveries')));
 // También mantener rutas sin /api para desarrollo local
 app.use('/badges', cors(corsOptions), express.static(path.join(process.cwd(), 'public', 'badges')));
 app.use('/avatars', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'avatars')));

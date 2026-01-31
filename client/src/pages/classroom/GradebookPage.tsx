@@ -19,6 +19,11 @@ import {
   Unlock,
   Calendar,
   Settings2,
+  Scale,
+  Target,
+  Sparkles,
+  Medal,
+  Trophy,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -33,6 +38,7 @@ export const GradebookPage = () => {
   const [expandedStudent, setExpandedStudent] = useState<string | null>(null);
   const [showBimesterModal, setShowBimesterModal] = useState(false);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [showInfoModal, setShowInfoModal] = useState(false);
 
   // Obtener estado de bimestres
   const { data: bimesterStatus } = useQuery({
@@ -112,11 +118,11 @@ export const GradebookPage = () => {
     onError: () => toast.error('Error al guardar calificación'),
   });
 
-  // Mutación para exportar PDF
-  const exportPDFMutation = useMutation({
-    mutationFn: () => gradeApi.exportPDF(classroom.id, period),
-    onSuccess: () => toast.success('PDF descargado correctamente'),
-    onError: () => toast.error('Error al exportar PDF'),
+  // Mutación para exportar Excel (formato SIAGIE)
+  const exportExcelMutation = useMutation({
+    mutationFn: () => gradeApi.exportExcel(classroom.id, period),
+    onSuccess: () => toast.success('Excel descargado correctamente'),
+    onError: () => toast.error('Error al exportar Excel'),
   });
 
   // Mutación para cerrar bimestre
@@ -238,25 +244,31 @@ export const GradebookPage = () => {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
+          <button
             onClick={() => recalculateMutation.mutate()}
             disabled={recalculateMutation.isPending || isFuturePeriod}
             title={isFuturePeriod ? 'No se puede calcular un bimestre futuro' : ''}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-medium hover:from-emerald-600 hover:to-teal-700 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm"
           >
             <RefreshCw size={16} className={recalculateMutation.isPending ? 'animate-spin' : ''} />
             {recalculateMutation.isPending ? 'Calculando...' : 'Recalcular'}
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => exportPDFMutation.mutate()}
-            disabled={exportPDFMutation.isPending || grades.length === 0}
+          </button>
+          <button
+            onClick={() => exportExcelMutation.mutate()}
+            disabled={exportExcelMutation.isPending || grades.length === 0}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-medium hover:from-green-600 hover:to-emerald-700 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+            title="Exportar en formato SIAGIE"
           >
-            <Download size={16} className={exportPDFMutation.isPending ? 'animate-pulse' : ''} />
-            {exportPDFMutation.isPending ? 'Generando...' : 'Exportar PDF'}
-          </Button>
+            <Download size={16} className={exportExcelMutation.isPending ? 'animate-pulse' : ''} />
+            {exportExcelMutation.isPending ? 'Generando...' : 'Excel SIAGIE'}
+          </button>
+          <button
+            onClick={() => setShowInfoModal(true)}
+            className="p-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-colors shadow-lg"
+            title="Información sobre calificaciones"
+          >
+            <Info size={18} />
+          </button>
         </div>
       </div>
 
@@ -781,6 +793,147 @@ export const GradebookPage = () => {
                     </ul>
                   </div>
                 </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal de información sobre calificaciones */}
+      <AnimatePresence>
+        {showInfoModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            onClick={() => setShowInfoModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="p-5 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-t-2xl">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center">
+                    <Scale size={20} className="text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-gray-800 dark:text-white">
+                      Sistema de Pesos en Calificaciones
+                    </h2>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Cómo influyen las actividades en la nota final
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="p-5 space-y-5">
+                {/* Explicación */}
+                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4">
+                  <h3 className="font-semibold text-blue-800 dark:text-blue-300 mb-2 flex items-center gap-2">
+                    <Target size={16} />
+                    ¿Qué es el peso?
+                  </h3>
+                  <p className="text-sm text-blue-700 dark:text-blue-400">
+                    El <strong>peso</strong> determina la importancia de cada actividad en el cálculo de la calificación final. 
+                    Un peso mayor significa mayor influencia en la nota.
+                  </p>
+                </div>
+
+                {/* Ejemplo visual */}
+                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4">
+                  <h3 className="font-semibold text-gray-800 dark:text-white mb-3">Ejemplo de cálculo</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between items-center py-1 border-b border-gray-200 dark:border-gray-600">
+                      <span className="text-gray-600 dark:text-gray-300">Expedición (80% × peso 100)</span>
+                      <span className="font-mono text-gray-800 dark:text-white">= 8000</span>
+                    </div>
+                    <div className="flex justify-between items-center py-1 border-b border-gray-200 dark:border-gray-600">
+                      <span className="text-gray-600 dark:text-gray-300">Comportamientos (94% × peso 30)</span>
+                      <span className="font-mono text-gray-800 dark:text-white">= 2820</span>
+                    </div>
+                    <div className="flex justify-between items-center py-1 border-b border-gray-200 dark:border-gray-600">
+                      <span className="text-gray-600 dark:text-gray-300">Insignias (100% × peso 20)</span>
+                      <span className="font-mono text-gray-800 dark:text-white">= 2000</span>
+                    </div>
+                    <div className="flex justify-between items-center py-1 pt-2 font-semibold">
+                      <span className="text-gray-800 dark:text-white">Nota final: (8000 + 2820 + 2000) ÷ 150</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-mono">= 85.5%</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Pesos por feature */}
+                <div>
+                  <h3 className="font-semibold text-gray-800 dark:text-white mb-3">Peso por tipo de actividad</h3>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
+                      <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-lg flex items-center justify-center">
+                        <Sparkles size={18} className="text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-800 dark:text-white">Comportamientos</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Acciones positivas y negativas</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">30</span>
+                        <p className="text-xs text-gray-500">peso fijo</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl">
+                      <div className="w-10 h-10 bg-gradient-to-br from-amber-500 to-orange-500 rounded-lg flex items-center justify-center">
+                        <Medal size={18} className="text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-800 dark:text-white">Insignias</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Logros y reconocimientos</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-lg font-bold text-amber-600 dark:text-amber-400">20</span>
+                        <p className="text-xs text-gray-500">peso fijo</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 p-3 bg-purple-50 dark:bg-purple-900/20 rounded-xl">
+                      <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
+                        <Trophy size={18} className="text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-800 dark:text-white">Expediciones de Jiro</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Configurable al crear</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-lg font-bold text-purple-600 dark:text-purple-400">100</span>
+                        <p className="text-xs text-gray-500">por defecto</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Nota */}
+                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3">
+                  <p className="text-sm text-amber-800 dark:text-amber-300">
+                    <strong>💡 Tip:</strong> Un peso de 100 vs 30 significa que la primera actividad tiene ~3.3 veces más influencia en la nota final.
+                  </p>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+                <button
+                  onClick={() => setShowInfoModal(false)}
+                  className="w-full py-2.5 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-xl font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                >
+                  Entendido
+                </button>
               </div>
             </motion.div>
           </motion.div>
