@@ -1,6 +1,7 @@
 // @ts-ignore - PDFKit types issue with ESM
 import PDFDocument from 'pdfkit';
 import ExcelJS from 'exceljs';
+import { GoogleGenAI } from '@google/genai';
 import { db } from '../db/index.js';
 import { 
   studentGrades, 
@@ -34,6 +35,52 @@ interface GradeStats {
 }
 
 class GradeExportService {
+  private ai: GoogleGenAI | null = null;
+
+  private getAI(): GoogleGenAI {
+    if (!this.ai) {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error('GEMINI_API_KEY no configurada');
+      }
+      this.ai = new GoogleGenAI({ apiKey });
+    }
+    return this.ai;
+  }
+
+  /**
+   * Genera una conclusión descriptiva para estudiantes con nota C en una competencia
+   * usando IA. La conclusión es genérica (no personalizada por estudiante).
+   */
+  private async generateConclusionForC(competencyName: string): Promise<string> {
+    try {
+      const ai = this.getAI();
+      
+      const prompt = `Eres un experto en educación peruana. Genera UNA SOLA oración breve (máximo 25 palabras) que explique por qué un estudiante está "En inicio" (nota C) en la competencia "${competencyName}".
+
+La oración debe:
+- Ser genérica (aplicable a cualquier estudiante con C)
+- Indicar que el estudiante está en proceso de desarrollar la competencia
+- Ser constructiva y profesional
+- NO mencionar el nombre del estudiante
+- Estar en tercera persona
+
+Responde SOLO con la oración, sin comillas ni explicaciones adicionales.`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: prompt,
+      });
+
+      const text = response.text?.trim() || '';
+      // Limpiar posibles comillas
+      return text.replace(/^["']|["']$/g, '').trim();
+    } catch (error) {
+      console.error('Error generating conclusion with AI:', error);
+      return `Requiere apoyo adicional para desarrollar la competencia ${competencyName}.`;
+    }
+  }
+
   async generateGradebookPDF(classroomId: string, period: string = 'CURRENT'): Promise<Buffer> {
     const classroom = await db.select()
       .from(classrooms)
@@ -463,7 +510,27 @@ class GradeExportService {
     const studentsData = await this.getStudentsWithGrades(classroomId, period);
     const competencies = await this.getClassroomCompetenciesOrdered(classroomId);
 
-    return this.createExcel(classroom, studentsData, competencies);
+    // Identificar competencias que tienen al menos un estudiante con C
+    const competenciesWithC = new Set<string>();
+    for (const student of studentsData) {
+      for (const grade of student.grades) {
+        if (grade.gradeLabel === 'C') {
+          competenciesWithC.add(grade.competencyId);
+        }
+      }
+    }
+
+    // Generar conclusiones con IA solo para competencias con notas C
+    const conclusionsMap = new Map<string, string>();
+    for (const compId of competenciesWithC) {
+      const comp = competencies.find(c => c.id === compId);
+      if (comp) {
+        const conclusion = await this.generateConclusionForC(comp.name);
+        conclusionsMap.set(compId, conclusion);
+      }
+    }
+
+    return this.createExcel(classroom, studentsData, competencies, conclusionsMap);
   }
 
   /**
@@ -488,7 +555,8 @@ class GradeExportService {
   private async createExcel(
     classroom: any,
     students: StudentGradeData[],
-    competencies: { id: string; name: string; index: number }[]
+    competencies: { id: string; name: string; index: number }[],
+    conclusionsMap: Map<string, string> = new Map()
   ): Promise<Buffer> {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Juried';
@@ -576,8 +644,15 @@ class GradeExportService {
 
       competencies.forEach(comp => {
         const grade = student.grades.find(g => g.competencyId === comp.id);
-        rowData.push(grade?.gradeLabel || ''); // NL
-        rowData.push(''); // Conclusión descriptiva - vacío (el docente lo llena para C)
+        const gradeLabel = grade?.gradeLabel || '';
+        rowData.push(gradeLabel); // NL
+        
+        // Si la nota es C, agregar la conclusión descriptiva generada por IA
+        if (gradeLabel === 'C' && conclusionsMap.has(comp.id)) {
+          rowData.push(conclusionsMap.get(comp.id) || '');
+        } else {
+          rowData.push(''); // Vacío para otras notas
+        }
       });
 
       const dataRow = worksheet.addRow(rowData);
@@ -592,9 +667,14 @@ class GradeExportService {
         };
         cell.alignment = { vertical: 'middle' };
         
-        // Centrar las columnas de NL
+        // Centrar las columnas de NL (columnas pares después de la 3)
         if (colNumber > 3 && (colNumber - 4) % 2 === 0) {
           cell.alignment = { horizontal: 'center', vertical: 'middle' };
+        }
+        
+        // Ajustar texto en columnas de Conclusión descriptiva (columnas impares después de la 4)
+        if (colNumber > 3 && (colNumber - 4) % 2 === 1) {
+          cell.alignment = { vertical: 'middle', wrapText: true };
         }
       });
     });
