@@ -485,7 +485,7 @@ class AvatarService {
     };
   }
 
-  // Asignar items por defecto a un estudiante (para configuración inicial B2B)
+  // Asignar items por defecto a un estudiante
   async assignDefaultItems(studentProfileId: string, gender: AvatarGender) {
     try {
       // Primero eliminar items equipados existentes (por si acaso)

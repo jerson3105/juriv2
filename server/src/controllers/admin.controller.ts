@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { db } from '../db/index.js';
 import { 
-  users, classrooms, avatarItems, studentProfiles, schools, schoolMembers,
+  users, classrooms, avatarItems, studentProfiles,
   questionBanks, questions, timedActivities, tournaments, expeditions
 } from '../db/schema.js';
 import { eq, desc, count, sql, inArray } from 'drizzle-orm';
@@ -622,61 +622,6 @@ export const adminController = {
     } catch (error) {
       console.error('Error getting classroom details:', error);
       res.status(500).json({ success: false, message: 'Error al obtener detalles de la clase' });
-    }
-  },
-
-  // ==================== GESTIÓN DE ESCUELAS ====================
-  async getSchools(req: Request, res: Response) {
-    try {
-      const allSchools = await db.query.schools.findMany({
-        orderBy: [desc(schools.createdAt)],
-      });
-
-      // Obtener estadísticas para cada escuela
-      const schoolsWithStats = await Promise.all(
-        allSchools.map(async (school) => {
-          // Contar miembros
-          const [memberCount] = await db
-            .select({ count: count() })
-            .from(schoolMembers)
-            .where(eq(schoolMembers.schoolId, school.id));
-
-          // Contar clases
-          const [classCount] = await db
-            .select({ count: count() })
-            .from(classrooms)
-            .where(eq(classrooms.schoolId, school.id));
-
-          // Contar estudiantes
-          const schoolClassrooms = await db.query.classrooms.findMany({
-            where: eq(classrooms.schoolId, school.id),
-          });
-          
-          let studentCount = 0;
-          if (schoolClassrooms.length > 0) {
-            const classroomIds = schoolClassrooms.map(c => c.id);
-            const [result] = await db
-              .select({ count: count() })
-              .from(studentProfiles)
-              .where(inArray(studentProfiles.classroomId, classroomIds));
-            studentCount = Number(result?.count || 0);
-          }
-
-          return {
-            ...school,
-            stats: {
-              members: Number(memberCount?.count || 0),
-              classrooms: Number(classCount?.count || 0),
-              students: studentCount,
-            },
-          };
-        })
-      );
-
-      res.json(schoolsWithStats);
-    } catch (error) {
-      console.error('Error getting schools:', error);
-      res.status(500).json({ success: false, message: 'Error al obtener escuelas' });
     }
   },
 };

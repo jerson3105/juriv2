@@ -86,7 +86,4 @@ router.delete('/avatar-items/:itemId', adminController.deleteAvatarItem);
 router.get('/classrooms', adminController.getClassrooms);
 router.get('/classrooms/:id/details', adminController.getClassroomDetails);
 
-// ==================== GESTIÓN DE ESCUELAS ====================
-router.get('/schools', adminController.getSchools);
-
 export default router;

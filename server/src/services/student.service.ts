@@ -856,41 +856,6 @@ export class StudentService {
 
     return { linkCode };
   }
-
-  // Completar configuración inicial para estudiantes B2B
-  async completeInitialSetup(studentId: string, data: {
-    characterName: string;
-    avatarGender: 'MALE' | 'FEMALE';
-  }) {
-    const profile = await db.query.studentProfiles.findFirst({
-      where: eq(studentProfiles.id, studentId),
-    });
-
-    if (!profile) {
-      throw new Error('Perfil de estudiante no encontrado');
-    }
-
-    if (!profile.needsSetup) {
-      throw new Error('Este perfil ya ha sido configurado');
-    }
-
-    // Actualizar el perfil con el género y nombre de personaje
-    await db.update(studentProfiles)
-      .set({
-        characterName: data.characterName,
-        avatarGender: data.avatarGender,
-        needsSetup: false,
-        updatedAt: new Date(),
-      })
-      .where(eq(studentProfiles.id, studentId));
-
-    // Asignar items de avatar por defecto según el género
-    await avatarService.assignDefaultItems(studentId, data.avatarGender);
-
-    return db.query.studentProfiles.findFirst({
-      where: eq(studentProfiles.id, studentId),
-    });
-  }
 }
 
 export const studentService = new StudentService();

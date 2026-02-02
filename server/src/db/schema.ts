@@ -29,215 +29,12 @@ export const purchaseTypeEnum = mysqlEnum('purchase_type', ['SELF', 'GIFT', 'TEA
 export const purchaseStatusEnum = mysqlEnum('purchase_status', ['PENDING', 'APPROVED', 'REJECTED']);
 export const attendanceStatusEnum = mysqlEnum('attendance_status', ['PRESENT', 'ABSENT', 'LATE', 'EXCUSED']);
 
-// Enums para B2B (Escuelas)
-export const schoolMemberRoleEnum = mysqlEnum('school_member_role', ['OWNER', 'ADMIN', 'TEACHER']);
-
 // Enums para Sistema de Calificaciones por Competencias
 export const gradeScaleTypeEnum = mysqlEnum('grade_scale_type', ['PERU_LETTERS', 'PERU_VIGESIMAL', 'CENTESIMAL', 'USA_LETTERS', 'CUSTOM']);
 
 // Enums para Sistema de Padres de Familia
 export const parentRelationshipEnum = mysqlEnum('relationship', ['FATHER', 'MOTHER', 'TUTOR', 'GUARDIAN']);
 export const parentLinkStatusEnum = mysqlEnum('status', ['PENDING', 'ACTIVE', 'REVOKED']);
-
-// ==================== ESCUELAS (B2B) ====================
-
-export const schools = mysqlTable('schools', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  name: varchar('name', { length: 255 }).notNull(),
-  slug: varchar('slug', { length: 100 }).notNull().unique(), // URL amigable
-  description: text('description'),
-  logoUrl: varchar('logo_url', { length: 500 }),
-  
-  // Contacto
-  email: varchar('email', { length: 255 }),
-  phone: varchar('phone', { length: 50 }),
-  address: text('address'),
-  
-  // Configuración
-  isActive: boolean('is_active').notNull().default(true),
-  maxTeachers: int('max_teachers').notNull().default(50), // Límite de profesores
-  maxStudentsPerClass: int('max_students_per_class').notNull().default(50), // Límite por clase
-  
-  // Timestamps
-  createdAt: datetime('created_at').notNull(),
-  updatedAt: datetime('updated_at').notNull(),
-}, (table) => ({
-  slugIdx: index('idx_schools_slug').on(table.slug),
-}));
-
-export const schoolsRelations = relations(schools, ({ many }) => ({
-  members: many(schoolMembers),
-  classrooms: many(classrooms),
-  behaviors: many(schoolBehaviors),
-  badges: many(schoolBadges),
-  grades: many(schoolGrades),
-  students: many(schoolStudents),
-}));
-
-// Miembros de la escuela (admins y profesores)
-export const schoolMembers = mysqlTable('school_members', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  schoolId: varchar('school_id', { length: 36 }).notNull(),
-  userId: varchar('user_id', { length: 36 }).notNull(),
-  role: schoolMemberRoleEnum.notNull().default('TEACHER'), // OWNER, ADMIN, TEACHER
-  
-  // Permisos adicionales para TEACHER
-  canCreateClasses: boolean('can_create_classes').notNull().default(false),
-  canManageStudents: boolean('can_manage_students').notNull().default(true),
-  
-  isActive: boolean('is_active').notNull().default(true),
-  joinedAt: datetime('joined_at').notNull(),
-  createdAt: datetime('created_at').notNull(),
-  updatedAt: datetime('updated_at').notNull(),
-}, (table) => ({
-  schoolIdx: index('idx_school_members_school').on(table.schoolId),
-  userIdx: index('idx_school_members_user').on(table.userId),
-  uniqueMember: unique('unique_school_member').on(table.schoolId, table.userId),
-}));
-
-export const schoolMembersRelations = relations(schoolMembers, ({ one }) => ({
-  school: one(schools, {
-    fields: [schoolMembers.schoolId],
-    references: [schools.id],
-  }),
-  user: one(users, {
-    fields: [schoolMembers.userId],
-    references: [users.id],
-  }),
-}));
-
-// Comportamientos globales de escuela
-export const schoolBehaviors = mysqlTable('school_behaviors', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  schoolId: varchar('school_id', { length: 36 }).notNull(),
-  name: varchar('name', { length: 100 }).notNull(),
-  description: text('description'),
-  icon: varchar('icon', { length: 50 }).notNull().default('⭐'),
-  isPositive: boolean('is_positive').notNull().default(true),
-  xpValue: int('xp_value').notNull().default(0),
-  hpValue: int('hp_value').notNull().default(0),
-  gpValue: int('gp_value').notNull().default(0),
-  isActive: boolean('is_active').notNull().default(true),
-  createdAt: datetime('created_at').notNull(),
-  updatedAt: datetime('updated_at').notNull(),
-}, (table) => ({
-  schoolIdx: index('idx_school_behaviors_school').on(table.schoolId),
-}));
-
-export const schoolBehaviorsRelations = relations(schoolBehaviors, ({ one }) => ({
-  school: one(schools, {
-    fields: [schoolBehaviors.schoolId],
-    references: [schools.id],
-  }),
-}));
-
-// Insignias globales de escuela
-export const schoolBadges = mysqlTable('school_badges', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  schoolId: varchar('school_id', { length: 36 }).notNull(),
-  name: varchar('name', { length: 100 }).notNull(),
-  description: varchar('description', { length: 255 }).notNull(),
-  icon: varchar('icon', { length: 50 }).notNull(),
-  customImage: varchar('custom_image', { length: 500 }),
-  category: mysqlEnum('school_badge_category', ['PROGRESS', 'PARTICIPATION', 'SOCIAL', 'SPECIAL', 'CUSTOM']).notNull(),
-  rarity: mysqlEnum('school_badge_rarity', ['COMMON', 'RARE', 'EPIC', 'LEGENDARY']).notNull().default('COMMON'),
-  xpReward: int('xp_reward').notNull().default(0),
-  gpReward: int('gp_reward').notNull().default(0),
-  isActive: boolean('is_active').notNull().default(true),
-  createdAt: datetime('created_at').notNull(),
-  updatedAt: datetime('updated_at').notNull(),
-}, (table) => ({
-  schoolIdx: index('idx_school_badges_school').on(table.schoolId),
-}));
-
-export const schoolBadgesRelations = relations(schoolBadges, ({ one }) => ({
-  school: one(schools, {
-    fields: [schoolBadges.schoolId],
-    references: [schools.id],
-  }),
-}));
-
-// Grados de escuela (1° SEC, 2° SEC, etc.)
-export const schoolGrades = mysqlTable('school_grades', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  schoolId: varchar('school_id', { length: 36 }).notNull(),
-  name: varchar('name', { length: 100 }).notNull(),
-  level: int('level').notNull().default(1),
-  isActive: boolean('is_active').notNull().default(true),
-  createdAt: datetime('created_at').notNull(),
-  updatedAt: datetime('updated_at').notNull(),
-}, (table) => ({
-  schoolIdx: index('idx_school_grades_school').on(table.schoolId),
-  uniqueName: unique('unique_grade_name').on(table.schoolId, table.name),
-}));
-
-export const schoolGradesRelations = relations(schoolGrades, ({ one, many }) => ({
-  school: one(schools, {
-    fields: [schoolGrades.schoolId],
-    references: [schools.id],
-  }),
-  sections: many(schoolSections),
-}));
-
-// Secciones de grado (A, B, C, etc.)
-export const schoolSections = mysqlTable('school_sections', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  gradeId: varchar('grade_id', { length: 36 }).notNull(),
-  name: varchar('name', { length: 50 }).notNull(),
-  isActive: boolean('is_active').notNull().default(true),
-  createdAt: datetime('created_at').notNull(),
-  updatedAt: datetime('updated_at').notNull(),
-}, (table) => ({
-  gradeIdx: index('idx_school_sections_grade').on(table.gradeId),
-  uniqueName: unique('unique_section_name').on(table.gradeId, table.name),
-}));
-
-export const schoolSectionsRelations = relations(schoolSections, ({ one, many }) => ({
-  grade: one(schoolGrades, {
-    fields: [schoolSections.gradeId],
-    references: [schoolGrades.id],
-  }),
-  students: many(schoolStudents),
-}));
-
-// Estudiantes de escuela (con credenciales)
-export const schoolStudents = mysqlTable('school_students', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  schoolId: varchar('school_id', { length: 36 }).notNull(),
-  sectionId: varchar('section_id', { length: 36 }).notNull(),
-  userId: varchar('user_id', { length: 36 }), // FK a users cuando se vincula
-  firstName: varchar('first_name', { length: 100 }).notNull(),
-  lastName: varchar('last_name', { length: 100 }).notNull(),
-  email: varchar('email', { length: 255 }).notNull(),
-  dni: varchar('dni', { length: 20 }), // DNI/Documento de identidad
-  tempPassword: varchar('temp_password', { length: 100 }), // Contraseña temporal para exportar
-  studentCode: varchar('student_code', { length: 50 }), // Código de estudiante opcional
-  isActive: boolean('is_active').notNull().default(true),
-  createdAt: datetime('created_at').notNull(),
-  updatedAt: datetime('updated_at').notNull(),
-}, (table) => ({
-  schoolIdx: index('idx_school_students_school').on(table.schoolId),
-  sectionIdx: index('idx_school_students_section').on(table.sectionId),
-  userIdx: index('idx_school_students_user').on(table.userId),
-  uniqueEmail: unique('unique_student_email').on(table.schoolId, table.email),
-  dniIdx: index('idx_school_students_dni').on(table.dni),
-}));
-
-export const schoolStudentsRelations = relations(schoolStudents, ({ one, many }) => ({
-  school: one(schools, {
-    fields: [schoolStudents.schoolId],
-    references: [schools.id],
-  }),
-  section: one(schoolSections, {
-    fields: [schoolStudents.sectionId],
-    references: [schoolSections.id],
-  }),
-  user: one(users, {
-    fields: [schoolStudents.userId],
-    references: [users.id],
-  }),
-  profiles: many(studentProfiles),
-}));
 
 // ==================== USUARIOS ====================
 
@@ -263,7 +60,6 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   teacherClassrooms: many(classrooms),
   studentProfiles: many(studentProfiles),
   refreshTokens: many(refreshTokens),
-  schoolMemberships: many(schoolMembers),
   parentProfile: one(parentProfiles),
 }));
 
@@ -346,7 +142,6 @@ export const classrooms = mysqlTable('classrooms', {
   description: text('description'),
   code: varchar('code', { length: 8 }).notNull().unique(),
   teacherId: varchar('teacher_id', { length: 36 }).notNull(),
-  schoolId: varchar('school_id', { length: 36 }), // NULL para B2C, ID para B2B
   gradeLevel: varchar('grade_level', { length: 20 }), // Nivel de grado: INICIAL_3, INICIAL_4, INICIAL_5, PRIMARIA_1-6, SECUNDARIA_1-5
   isActive: boolean('is_active').notNull().default(true),
   bannerUrl: varchar('banner_url', { length: 500 }),
@@ -425,7 +220,6 @@ export const classrooms = mysqlTable('classrooms', {
   updatedAt: datetime('updated_at').notNull(),
 }, (table) => ({
   teacherIdx: index('idx_classrooms_teacher').on(table.teacherId),
-  schoolIdx: index('idx_classrooms_school').on(table.schoolId),
   curriculumAreaIdx: index('idx_classrooms_curriculum_area').on(table.curriculumAreaId),
 }));
 
@@ -433,10 +227,6 @@ export const classroomsRelations = relations(classrooms, ({ one, many }) => ({
   teacher: one(users, {
     fields: [classrooms.teacherId],
     references: [users.id],
-  }),
-  school: one(schools, {
-    fields: [classrooms.schoolId],
-    references: [schools.id],
   }),
   curriculumArea: one(curriculumAreas, {
     fields: [classrooms.curriculumAreaId],
@@ -455,7 +245,6 @@ export const classroomsRelations = relations(classrooms, ({ one, many }) => ({
 
 export const studentProfiles = mysqlTable('student_profiles', {
   id: varchar('id', { length: 36 }).primaryKey(),
-  schoolStudentId: varchar('school_student_id', { length: 36 }), // FK a school_students para B2B
   userId: varchar('user_id', { length: 36 }), // Nullable para estudiantes placeholder
   classroomId: varchar('classroom_id', { length: 36 }).notNull(),
   characterClass: characterClassEnum.notNull(),
@@ -472,7 +261,6 @@ export const studentProfiles = mysqlTable('student_profiles', {
   teamId: varchar('team_id', { length: 36 }),
   isActive: boolean('is_active').notNull().default(true),
   isDemo: boolean('is_demo').notNull().default(false), // Estudiante demo para onboarding
-  needsSetup: boolean('needs_setup').notNull().default(false), // Para B2B: necesita configurar género y nombre de personaje
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
 }, (table) => ({
@@ -480,7 +268,6 @@ export const studentProfiles = mysqlTable('student_profiles', {
   userIdx: index('idx_student_profiles_user').on(table.userId),
   teamIdx: index('idx_student_profiles_team').on(table.teamId),
   activeIdx: index('idx_student_profiles_active').on(table.isActive),
-  schoolStudentIdx: index('idx_student_profiles_school_student').on(table.schoolStudentId),
 }));
 
 export const studentProfilesRelations = relations(studentProfiles, ({ one, many }) => ({
@@ -495,10 +282,6 @@ export const studentProfilesRelations = relations(studentProfiles, ({ one, many 
   team: one(teams, {
     fields: [studentProfiles.teamId],
     references: [teams.id],
-  }),
-  schoolStudent: one(schoolStudents, {
-    fields: [studentProfiles.schoolStudentId],
-    references: [schoolStudents.id],
   }),
   pointLogs: many(pointLogs),
   powerUsages: many(powerUsages),

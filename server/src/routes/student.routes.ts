@@ -37,7 +37,4 @@ router.get('/placeholder/:studentId/pdf/single', authorize('TEACHER'), studentCo
 // Vincular cuenta de estudiante con código
 router.post('/link-account', authorize('STUDENT'), studentController.linkAccount.bind(studentController));
 
-// Completar configuración inicial para estudiantes B2B
-router.post('/:studentId/complete-setup', authorize('STUDENT'), studentController.completeInitialSetup.bind(studentController));
-
 export default router;

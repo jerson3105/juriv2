@@ -8,7 +8,6 @@ import {
   Shield,
   ChevronRight,
   LogOut,
-  Building2,
   Map,
   Bug
 } from 'lucide-react';
@@ -72,13 +71,6 @@ export default function AdminDashboard() {
   ] : [];
 
   const menuItems = [
-    {
-      title: 'Gestión de Escuelas',
-      description: 'Crear y administrar escuelas (B2B)',
-      icon: Building2,
-      link: '/admin/schools',
-      color: 'bg-pink-100 text-pink-600',
-    },
     {
       title: 'Gestión de Items de Avatar',
       description: 'Subir y administrar items de avatar para los estudiantes',

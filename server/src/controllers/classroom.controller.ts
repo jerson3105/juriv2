@@ -129,32 +129,11 @@ export class ClassroomController {
       }
 
       // Verificar que el usuario tenga acceso a esta clase
-      // Si es una clase de escuela (B2B), verificar permisos de escuela
-      if (classroom.schoolId) {
-        const { schoolService } = await import('../services/school.service.js');
-        const member = await schoolService.getMemberByUserId(classroom.schoolId, userId);
-        if (!member) {
-          return res.status(403).json({
-            success: false,
-            message: 'No tienes acceso a esta clase',
-          });
-        }
-        // Si es profesor (no admin), verificar que sea el profesor asignado
-        const isAdmin = member.role === 'OWNER' || member.role === 'ADMIN';
-        if (!isAdmin && classroom.teacherId !== userId) {
-          return res.status(403).json({
-            success: false,
-            message: 'No tienes acceso a esta clase',
-          });
-        }
-      } else {
-        // Clase B2C: solo el profesor dueño puede acceder
-        if (classroom.teacherId !== userId) {
-          return res.status(403).json({
-            success: false,
-            message: 'No tienes acceso a esta clase',
-          });
-        }
+      if (classroom.teacherId !== userId) {
+        return res.status(403).json({
+          success: false,
+          message: 'No tienes acceso a esta clase',
+        });
       }
 
       const students = await classroomService.getStudents(id);

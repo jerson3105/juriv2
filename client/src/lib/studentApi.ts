@@ -18,7 +18,6 @@ export interface StudentProfile {
   gp: number;
   teamId: string | null;
   isActive: boolean;
-  needsSetup?: boolean; // Para B2B: necesita configurar género y nombre de personaje
   displayName?: string; // Nombre real para mostrar
   createdAt: string;
   updatedAt: string;
@@ -32,7 +31,6 @@ export interface StudentProfile {
     id: string;
     name: string;
     code: string;
-    schoolId?: string; // Para identificar si es B2B
     clansEnabled?: boolean;
     scrollsEnabled?: boolean;
     scrollsOpen?: boolean;
@@ -194,9 +192,4 @@ export const studentApi = {
     return response.data.data;
   },
 
-  // Completar configuración inicial para estudiantes B2B
-  completeInitialSetup: async (studentId: string, data: { characterName: string; avatarGender: AvatarGender }): Promise<StudentProfile> => {
-    const response = await api.post(`/students/${studentId}/complete-setup`, data);
-    return response.data.data;
-  },
 };

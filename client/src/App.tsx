@@ -51,18 +51,8 @@ import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminAvatarItems from './pages/admin/AdminAvatarItems';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminClassrooms from './pages/admin/AdminClassrooms';
-import AdminSchools from './pages/admin/AdminSchools';
 import AdminExpeditionMaps from './pages/admin/AdminExpeditionMaps';
 import { AdminBugReports } from './pages/admin/AdminBugReports';
-
-// School pages (B2B)
-import MySchoolsPage from './pages/school/MySchoolsPage';
-import SchoolDashboardPage from './pages/school/SchoolDashboardPage';
-import SchoolMembersPage from './pages/school/SchoolMembersPage';
-import SchoolClassroomsPage from './pages/school/SchoolClassroomsPage';
-import SchoolStudentsPage from './pages/school/SchoolStudentsPage';
-import SchoolSettingsPage from './pages/school/SchoolSettingsPage';
-import SchoolGradesPage from './pages/school/SchoolGradesPage';
 
 // Parent pages
 import ParentDashboard from './pages/parent/ParentDashboard';
@@ -235,14 +225,7 @@ function App() {
             {/* Redirigir rutas antiguas */}
             <Route path="my-classroom" element={<Navigate to="/dashboard" replace />} />
             
-            {/* Rutas de escuelas (B2B) */}
-            <Route path="schools" element={<MySchoolsPage />} />
-            <Route path="school/:schoolId" element={<SchoolDashboardPage />} />
-            <Route path="school/:schoolId/members" element={<SchoolMembersPage />} />
-            <Route path="school/:schoolId/classrooms" element={<SchoolClassroomsPage />} />
-            <Route path="school/:schoolId/students" element={<SchoolStudentsPage />} />
-            <Route path="school/:schoolId/grades" element={<SchoolGradesPage />} />
-            <Route path="school/:schoolId/settings" element={<SchoolSettingsPage />} />
+
           </Route>
 
           {/* Admin Routes */}
@@ -294,15 +277,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/admin/schools"
-            element={
-              <ProtectedRoute>
-                <AdminSchools />
-              </ProtectedRoute>
-            }
-          />
-
           {/* Parent Routes */}
           <Route
             path="/parent"

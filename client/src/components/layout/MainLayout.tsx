@@ -17,7 +17,6 @@ import {
   HelpCircle,
   Shield,
   Calendar,
-  Building2,
   ScrollText,
   Map,
   BookOpen,
@@ -35,7 +34,6 @@ import { BugReportButton } from '../BugReportButton';
 const teacherNavItems = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, gradient: 'from-blue-500 to-indigo-500' },
   { path: '/classrooms', label: 'Mis Clases', icon: Users, gradient: 'from-emerald-500 to-teal-500' },
-  { path: '/schools', label: 'Mis Escuelas', icon: Building2, gradient: 'from-purple-500 to-pink-500' },
   { path: '/settings', label: 'Configuración', icon: Settings, gradient: 'from-gray-500 to-slate-500' },
 ];
 

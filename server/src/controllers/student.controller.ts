@@ -619,58 +619,6 @@ export class StudentController {
       });
     }
   }
-
-  // Completar configuración inicial para estudiantes B2B
-  async completeInitialSetup(req: Request, res: Response) {
-    try {
-      const { studentId } = req.params;
-      const userId = req.user?.id;
-
-      if (!userId) {
-        return res.status(401).json({ success: false, message: 'No autorizado' });
-      }
-
-      // Verificar que el estudiante pertenece al usuario
-      const profile = await db.query.studentProfiles.findFirst({
-        where: and(
-          eq(studentProfiles.id, studentId),
-          eq(studentProfiles.userId, userId)
-        ),
-      });
-
-      if (!profile) {
-        return res.status(404).json({ success: false, message: 'Perfil no encontrado' });
-      }
-
-      const schema = z.object({
-        characterName: z.string().min(2, 'Nombre muy corto').max(50, 'Nombre muy largo'),
-        avatarGender: z.enum(['MALE', 'FEMALE']),
-      });
-
-      const data = schema.parse(req.body);
-
-      const updatedProfile = await studentService.completeInitialSetup(studentId, data);
-
-      res.json({
-        success: true,
-        message: '¡Configuración completada!',
-        data: updatedProfile,
-      });
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({
-          success: false,
-          message: 'Datos inválidos',
-          errors: error.errors,
-        });
-      }
-      console.error('Error completing initial setup:', error);
-      res.status(500).json({
-        success: false,
-        message: error instanceof Error ? error.message : 'Error al completar configuración',
-      });
-    }
-  }
 }
 
 export const studentController = new StudentController();

@@ -20,7 +20,6 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { classroomApi } from '../../lib/classroomApi';
-import { getMySchools } from '../../api/schoolApi';
 
 // Tips rotativos para Jiro
 const JIRO_TIPS = [
@@ -66,16 +65,8 @@ export const TeacherDashboard = () => {
     queryFn: classroomApi.getMyClassrooms,
   });
 
-  // Verificar permisos de escuela
-  const { data: mySchools = [] } = useQuery({
-    queryKey: ['my-schools'],
-    queryFn: getMySchools,
-  });
-
-  // Verificar si puede crear clases
-  const canCreateClasses = mySchools.length === 0 || mySchools.some(
-    s => s.role === 'OWNER' || s.role === 'ADMIN' || s.canCreateClasses
-  );
+  // Profesores siempre pueden crear clases (modo B2C)
+  const canCreateClasses = true;
 
   // Calcular estadísticas reales
   const totalStudents = classrooms?.reduce((acc, c) => acc + (c.studentCount || 0), 0) || 0;

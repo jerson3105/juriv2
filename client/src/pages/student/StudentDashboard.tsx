@@ -33,7 +33,6 @@ import { badgeApi, type Badge, RARITY_COLORS, RARITY_LABELS } from '../../lib/ba
 import { BadgeUnlockModal } from '../../components/badges/BadgeUnlockModal';
 import { LevelUpAnimation } from '../../components/effects/LevelUpAnimation';
 import { LoginStreakWidget } from '../../components/student/LoginStreakWidget';
-import { InitialSetupModal } from '../../components/student/InitialSetupModal';
 
 export const StudentDashboard = () => {
   const { user } = useAuthStore();
@@ -799,18 +798,6 @@ export const StudentDashboard = () => {
         isOpen={!!unlockedBadge}
         onClose={() => setUnlockedBadge(null)}
       />
-
-      {/* Modal de configuración inicial para estudiantes B2B */}
-      {currentProfile && currentProfile.needsSetup && currentProfile.classroom?.schoolId && (
-        <InitialSetupModal
-          isOpen={true}
-          studentId={currentProfile.id}
-          displayName={currentProfile.displayName}
-          onComplete={() => {
-            // El modal se cerrará automáticamente cuando needsSetup sea false
-          }}
-        />
-      )}
 
     </div>
   );

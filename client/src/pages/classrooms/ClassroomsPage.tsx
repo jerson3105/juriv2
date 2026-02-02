@@ -4,7 +4,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Users, Copy, Check, Trash2, X, GraduationCap, Sparkles, BookOpen, Layers, Award, ShoppingBag, HelpCircle } from 'lucide-react';
 import { classroomApi, type Classroom, type CreateClassroomData } from '../../lib/classroomApi';
-import { getMySchools } from '../../api/schoolApi';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { AIClassroomWizard } from '../../components/classroom/AIClassroomWizard';
 import toast from 'react-hot-toast';
@@ -25,20 +24,8 @@ export const ClassroomsPage = () => {
     queryFn: classroomApi.getMyClassrooms,
   });
 
-  // Verificar si el profesor pertenece a una escuela y sus permisos
-  const { data: mySchools = [] } = useQuery({
-    queryKey: ['my-schools'],
-    queryFn: getMySchools,
-  });
-
-  // Si pertenece a alguna escuela, verificar si puede crear clases
-  // Un profesor puede crear clases si:
-  // 1. No pertenece a ninguna escuela (profesor independiente B2C)
-  // 2. Es OWNER o ADMIN de alguna escuela
-  // 3. Tiene el permiso canCreateClasses en alguna escuela
-  const canCreateClasses = mySchools.length === 0 || mySchools.some(
-    s => s.role === 'OWNER' || s.role === 'ADMIN' || s.canCreateClasses
-  );
+  // Profesores siempre pueden crear clases (modo B2C)
+  const canCreateClasses = true;
 
   const createMutation = useMutation({
     mutationFn: classroomApi.create,
