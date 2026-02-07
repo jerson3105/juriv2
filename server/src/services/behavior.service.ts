@@ -1,5 +1,5 @@
 import { db } from '../db/index.js';
-import { behaviors, studentProfiles, pointLogs, classrooms, notifications } from '../db/schema.js';
+import { behaviors, studentProfiles, pointLogs, classrooms, notifications, curriculumCompetencies } from '../db/schema.js';
 import { eq, and, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { badgeService } from './badge.service.js';
@@ -66,35 +66,166 @@ export class BehaviorService {
 
   // Obtener todos los comportamientos de una clase
   async getByClassroom(classroomId: string) {
-    const result = await db.query.behaviors.findMany({
-      where: and(
+    const rows = await db
+      .select({
+        id: behaviors.id,
+        classroomId: behaviors.classroomId,
+        name: behaviors.name,
+        description: behaviors.description,
+        pointType: behaviors.pointType,
+        pointValue: behaviors.pointValue,
+        xpValue: behaviors.xpValue,
+        hpValue: behaviors.hpValue,
+        gpValue: behaviors.gpValue,
+        isPositive: behaviors.isPositive,
+        icon: behaviors.icon,
+        isActive: behaviors.isActive,
+        competencyId: behaviors.competencyId,
+        createdAt: behaviors.createdAt,
+        competency_id: curriculumCompetencies.id,
+        competency_name: curriculumCompetencies.name,
+        competency_shortName: curriculumCompetencies.shortName,
+        competency_areaId: curriculumCompetencies.areaId,
+      })
+      .from(behaviors)
+      .leftJoin(curriculumCompetencies, eq(behaviors.competencyId, curriculumCompetencies.id))
+      .where(and(
         eq(behaviors.classroomId, classroomId),
         eq(behaviors.isActive, true)
-      ),
-    });
-    return result;
+      ));
+    
+    return rows.map(row => ({
+      id: row.id,
+      classroomId: row.classroomId,
+      name: row.name,
+      description: row.description,
+      pointType: row.pointType,
+      pointValue: row.pointValue,
+      xpValue: row.xpValue,
+      hpValue: row.hpValue,
+      gpValue: row.gpValue,
+      isPositive: row.isPositive,
+      icon: row.icon,
+      isActive: row.isActive,
+      competencyId: row.competencyId,
+      createdAt: row.createdAt,
+      competency: row.competency_id ? {
+        id: row.competency_id,
+        name: row.competency_name!,
+        shortName: row.competency_shortName,
+        areaId: row.competency_areaId!,
+      } : null,
+    }));
   }
 
   // Obtener comportamientos positivos (para agregar puntos)
   async getPositive(classroomId: string) {
-    return db.query.behaviors.findMany({
-      where: and(
+    const rows = await db
+      .select({
+        id: behaviors.id,
+        classroomId: behaviors.classroomId,
+        name: behaviors.name,
+        description: behaviors.description,
+        pointType: behaviors.pointType,
+        pointValue: behaviors.pointValue,
+        xpValue: behaviors.xpValue,
+        hpValue: behaviors.hpValue,
+        gpValue: behaviors.gpValue,
+        isPositive: behaviors.isPositive,
+        icon: behaviors.icon,
+        isActive: behaviors.isActive,
+        competencyId: behaviors.competencyId,
+        createdAt: behaviors.createdAt,
+        competency_id: curriculumCompetencies.id,
+        competency_name: curriculumCompetencies.name,
+        competency_shortName: curriculumCompetencies.shortName,
+        competency_areaId: curriculumCompetencies.areaId,
+      })
+      .from(behaviors)
+      .leftJoin(curriculumCompetencies, eq(behaviors.competencyId, curriculumCompetencies.id))
+      .where(and(
         eq(behaviors.classroomId, classroomId),
         eq(behaviors.isPositive, true),
         eq(behaviors.isActive, true)
-      ),
-    });
+      ));
+    
+    return rows.map(row => ({
+      id: row.id,
+      classroomId: row.classroomId,
+      name: row.name,
+      description: row.description,
+      pointType: row.pointType,
+      pointValue: row.pointValue,
+      xpValue: row.xpValue,
+      hpValue: row.hpValue,
+      gpValue: row.gpValue,
+      isPositive: row.isPositive,
+      icon: row.icon,
+      isActive: row.isActive,
+      competencyId: row.competencyId,
+      createdAt: row.createdAt,
+      competency: row.competency_id ? {
+        id: row.competency_id,
+        name: row.competency_name!,
+        shortName: row.competency_shortName,
+        areaId: row.competency_areaId!,
+      } : null,
+    }));
   }
 
   // Obtener comportamientos negativos (para quitar puntos)
   async getNegative(classroomId: string) {
-    return db.query.behaviors.findMany({
-      where: and(
+    const rows = await db
+      .select({
+        id: behaviors.id,
+        classroomId: behaviors.classroomId,
+        name: behaviors.name,
+        description: behaviors.description,
+        pointType: behaviors.pointType,
+        pointValue: behaviors.pointValue,
+        xpValue: behaviors.xpValue,
+        hpValue: behaviors.hpValue,
+        gpValue: behaviors.gpValue,
+        isPositive: behaviors.isPositive,
+        icon: behaviors.icon,
+        isActive: behaviors.isActive,
+        competencyId: behaviors.competencyId,
+        createdAt: behaviors.createdAt,
+        competency_id: curriculumCompetencies.id,
+        competency_name: curriculumCompetencies.name,
+        competency_shortName: curriculumCompetencies.shortName,
+        competency_areaId: curriculumCompetencies.areaId,
+      })
+      .from(behaviors)
+      .leftJoin(curriculumCompetencies, eq(behaviors.competencyId, curriculumCompetencies.id))
+      .where(and(
         eq(behaviors.classroomId, classroomId),
         eq(behaviors.isPositive, false),
         eq(behaviors.isActive, true)
-      ),
-    });
+      ));
+    
+    return rows.map(row => ({
+      id: row.id,
+      classroomId: row.classroomId,
+      name: row.name,
+      description: row.description,
+      pointType: row.pointType,
+      pointValue: row.pointValue,
+      xpValue: row.xpValue,
+      hpValue: row.hpValue,
+      gpValue: row.gpValue,
+      isPositive: row.isPositive,
+      icon: row.icon,
+      isActive: row.isActive,
+      competencyId: row.competencyId,
+      createdAt: row.createdAt,
+      competency: row.competency_id ? {
+        id: row.competency_id,
+        name: row.competency_name!,
+        shortName: row.competency_shortName,
+        areaId: row.competency_areaId!,
+      } : null,
+    }));
   }
 
   // Actualizar comportamiento

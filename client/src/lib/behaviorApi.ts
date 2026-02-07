@@ -17,6 +17,12 @@ export interface Behavior {
   isActive: boolean;
   createdAt: string;
   competencyId: string | null;
+  competency?: {
+    id: string;
+    name: string;
+    shortName: string | null;
+    areaId: string;
+  } | null;
 }
 
 export interface CreateBehaviorData {

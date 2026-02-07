@@ -213,6 +213,7 @@ export const BehaviorsPage = () => {
               gpValue: b.gpValue,
               isPositive: b.isPositive,
               icon: b.icon,
+              competencyId: b.competencyId || undefined,
             });
           });
           setShowAIModal(false);
@@ -284,6 +285,14 @@ const BehaviorCard = ({
               );
             })}
           </div>
+          {behavior.competency && (
+            <div className="mt-1.5 flex items-center gap-1">
+              <Award size={11} className="text-violet-500 flex-shrink-0" />
+              <span className="text-[10px] text-violet-600 dark:text-violet-400 font-medium truncate">
+                {behavior.competency.name}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 

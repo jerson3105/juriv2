@@ -235,9 +235,14 @@ export class BehaviorController {
 COMPETENCIAS DISPONIBLES:
 ${competencyList}
 
-IMPORTANTE: Asigna a cada comportamiento la competencia más apropiada usando su ID exacto.
-Si un comportamiento no encaja claramente con ninguna competencia, usa null.`;
-        competencyJsonField = ',\n    "competencyId": "id-de-la-competencia-o-null"';
+⚠️ MUY IMPORTANTE - ASIGNACIÓN DE COMPETENCIAS:
+- DEBES asignar una competencia a CADA comportamiento generado
+- Analiza cuidadosamente cuál competencia se relaciona mejor con cada comportamiento
+- Usa el ID exacto de la competencia
+- SOLO usa null si el comportamiento es puramente administrativo o de gestión del aula
+- La mayoría de comportamientos académicos, sociales y de desarrollo personal SÍ tienen relación con alguna competencia
+- Es OBLIGATORIO que al menos el 80% de los comportamientos tengan competencia asignada`;
+        competencyJsonField = ',\n    "competencyId": "id-de-la-competencia" // OBLIGATORIO: usa el ID exacto de la lista de arriba';
       }
 
       // Construir el prompt
@@ -283,7 +288,7 @@ REGLAS IMPORTANTES:
 4. Nombres concisos y claros en español
 5. Apropiados para nivel ${level}
 6. Basados en el contexto que describió el profesor
-${competencies && competencies.length > 0 ? '7. Asigna competencyId usando los IDs exactos proporcionados (o null si no aplica)' : ''}
+${competencies && competencies.length > 0 ? '7. ⚠️ CRÍTICO: Asigna competencyId a TODOS los comportamientos usando los IDs exactos. Solo omite (null) si es puramente administrativo.' : ''}
 
 Genera comportamientos variados y útiles:`;
 

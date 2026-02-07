@@ -408,6 +408,10 @@ export const behaviorsRelations = relations(behaviors, ({ one, many }) => ({
     fields: [behaviors.classroomId],
     references: [classrooms.id],
   }),
+  competency: one(curriculumCompetencies, {
+    fields: [behaviors.competencyId],
+    references: [curriculumCompetencies.id],
+  }),
   pointLogs: many(pointLogs),
 }));
 
