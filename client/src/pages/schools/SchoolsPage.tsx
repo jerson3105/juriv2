@@ -41,7 +41,7 @@ import {
 import { schoolApi, type MySchool, type CreateSchoolData, type SchoolMember } from '../../lib/schoolApi';
 import { historyApi } from '../../lib/historyApi';
 import { attendanceApi } from '../../lib/attendanceApi';
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuthStore } from '../../store/authStore';
 import toast from 'react-hot-toast';
 
@@ -2757,7 +2757,7 @@ const SchoolDetailView = ({
                   <Tooltip
                     contentStyle={{ fontSize: 12, borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                     labelFormatter={(v) => `Semana del ${new Date(v + 'T00:00:00').toLocaleDateString('es-PE', { day: 'numeric', month: 'short' })}`}
-                    formatter={(value: number) => [`${value}%`, 'Asistencia']}
+                    formatter={(value) => [`${value}%`, 'Asistencia']}
                   />
                   <Area type="monotone" dataKey="rate" name="Asistencia" stroke="#6366f1" fill="#6366f1" fillOpacity={0.2} strokeWidth={2} />
                 </AreaChart>
