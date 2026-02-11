@@ -2,7 +2,7 @@ import api from './api';
 
 export interface ActivityLogEntry {
   id: string;
-  type: 'POINTS' | 'PURCHASE' | 'ITEM_USED' | 'LEVEL_UP' | 'BADGE' | 'BOSS_BATTLE';
+  type: 'POINTS' | 'PURCHASE' | 'ITEM_USED' | 'LEVEL_UP' | 'BADGE' | 'ATTENDANCE';
   timestamp: string;
   studentId: string;
   studentName: string | null;
@@ -18,16 +18,13 @@ export interface ActivityLogEntry {
     newLevel?: number;
     badgeName?: string;
     badgeIcon?: string;
-    // Boss Battle
-    battleName?: string;
-    xpEarned?: number;
-    gpEarned?: number;
-    damageDealt?: number;
-    isVictory?: boolean;
     // Puntos combinados (cuando un comportamiento tiene XP+HP+GP)
     xpAmount?: number;
     hpAmount?: number;
     gpAmount?: number;
+    // Asistencia
+    attendanceStatus?: string;
+    attendanceDate?: string;
   };
 }
 
@@ -37,6 +34,8 @@ export interface ClassroomStats {
   totalPurchases: number;
   totalItemsUsed: number;
   topStudents: { id: string; name: string; xp: number }[];
+  topPositiveBehaviors: { name: string; icon: string | null; count: number }[];
+  topNegativeBehaviors: { name: string; icon: string | null; count: number }[];
 }
 
 export interface HistoryResponse {
@@ -50,7 +49,7 @@ export const historyApi = {
     options?: {
       limit?: number;
       offset?: number;
-      type?: 'POINTS' | 'PURCHASE' | 'ITEM_USED' | 'BADGE' | 'BOSS_BATTLE' | 'ALL';
+      type?: 'POINTS' | 'PURCHASE' | 'ITEM_USED' | 'BADGE' | 'ATTENDANCE' | 'ALL';
       studentId?: string;
     }
   ): Promise<HistoryResponse> => {

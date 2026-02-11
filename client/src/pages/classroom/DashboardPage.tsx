@@ -179,12 +179,12 @@ export const DashboardPage = () => {
       });
       
       const xpGanado = dayLogs
-        .filter(l => l.type === 'POINTS' && l.details.action === 'ADD' && l.details.pointType === 'XP')
-        .reduce((sum, l) => sum + (l.details.amount || 0), 0);
+        .filter(l => l.type === 'POINTS' && l.details.action === 'ADD' && (l.details.pointType === 'XP' || l.details.pointType === 'MIXED'))
+        .reduce((sum, l) => sum + (l.details.xpAmount || l.details.amount || 0), 0);
       
       const xpPerdido = dayLogs
-        .filter(l => l.type === 'POINTS' && l.details.action === 'REMOVE' && l.details.pointType === 'XP')
-        .reduce((sum, l) => sum + (l.details.amount || 0), 0);
+        .filter(l => l.type === 'POINTS' && l.details.action === 'REMOVE' && (l.details.pointType === 'XP' || l.details.pointType === 'MIXED'))
+        .reduce((sum, l) => sum + (l.details.xpAmount || l.details.amount || 0), 0);
       
       const compras = dayLogs.filter(l => l.type === 'PURCHASE').length;
       

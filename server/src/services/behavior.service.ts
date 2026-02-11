@@ -81,6 +81,7 @@ export class BehaviorService {
         icon: behaviors.icon,
         isActive: behaviors.isActive,
         competencyId: behaviors.competencyId,
+        schoolBehaviorId: behaviors.schoolBehaviorId,
         createdAt: behaviors.createdAt,
         competency_id: curriculumCompetencies.id,
         competency_name: curriculumCompetencies.name,
@@ -108,6 +109,7 @@ export class BehaviorService {
       icon: row.icon,
       isActive: row.isActive,
       competencyId: row.competencyId,
+      schoolBehaviorId: row.schoolBehaviorId,
       createdAt: row.createdAt,
       competency: row.competency_id ? {
         id: row.competency_id,
@@ -135,6 +137,7 @@ export class BehaviorService {
         icon: behaviors.icon,
         isActive: behaviors.isActive,
         competencyId: behaviors.competencyId,
+        schoolBehaviorId: behaviors.schoolBehaviorId,
         createdAt: behaviors.createdAt,
         competency_id: curriculumCompetencies.id,
         competency_name: curriculumCompetencies.name,
@@ -163,6 +166,7 @@ export class BehaviorService {
       icon: row.icon,
       isActive: row.isActive,
       competencyId: row.competencyId,
+      schoolBehaviorId: row.schoolBehaviorId,
       createdAt: row.createdAt,
       competency: row.competency_id ? {
         id: row.competency_id,
@@ -190,6 +194,7 @@ export class BehaviorService {
         icon: behaviors.icon,
         isActive: behaviors.isActive,
         competencyId: behaviors.competencyId,
+        schoolBehaviorId: behaviors.schoolBehaviorId,
         createdAt: behaviors.createdAt,
         competency_id: curriculumCompetencies.id,
         competency_name: curriculumCompetencies.name,
@@ -218,6 +223,7 @@ export class BehaviorService {
       icon: row.icon,
       isActive: row.isActive,
       competencyId: row.competencyId,
+      schoolBehaviorId: row.schoolBehaviorId,
       createdAt: row.createdAt,
       competency: row.competency_id ? {
         id: row.competency_id,

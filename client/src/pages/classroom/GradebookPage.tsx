@@ -32,7 +32,7 @@ import { gradeApi, type ClassroomGrade } from '../../lib/gradeApi';
 import toast from 'react-hot-toast';
 
 export const GradebookPage = () => {
-  const { classroom } = useOutletContext<{ classroom: Classroom }>();
+  const { classroom, refetch } = useOutletContext<{ classroom: Classroom; refetch: () => void }>();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedStudent, setExpandedStudent] = useState<string | null>(null);
@@ -60,24 +60,10 @@ export const GradebookPage = () => {
 
   const realStudents = classroomData?.students || [];
   const [editingGrade, setEditingGrade] = useState<{ id: string; score: number; note: string } | null>(null);
+  const [pendingAreaId, setPendingAreaId] = useState('');
+  const [pendingGradeScale, setPendingGradeScale] = useState<'PERU_LETTERS' | 'PERU_VIGESIMAL' | 'CENTESIMAL' | 'USA_LETTERS'>('PERU_LETTERS');
 
-  // Verificar si la clase usa competencias
-  if (!classroom.useCompetencies) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <AlertCircle size={48} className="text-amber-500 mb-4" />
-        <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-2">
-          Sistema de Competencias no habilitado
-        </h2>
-        <p className="text-gray-600 dark:text-gray-400 max-w-md">
-          Para usar el Libro de Calificaciones, primero habilita el sistema de competencias
-          en la configuración de la clase.
-        </p>
-      </div>
-    );
-  }
-
-  // Obtener competencias de la clase
+  // Obtener competencias de la clase (siempre, para el selector de área)
   const { data: curriculumAreas = [] } = useQuery({
     queryKey: ['curriculum-areas'],
     queryFn: () => classroomApi.getCurriculumAreas('PE'),
@@ -89,6 +75,7 @@ export const GradebookPage = () => {
   const { data: grades = [], isLoading } = useQuery({
     queryKey: ['classroom-grades', classroom.id, period],
     queryFn: () => gradeApi.getClassroomGrades(classroom.id, period),
+    enabled: !!classroom.useCompetencies && !!classroom.curriculumAreaId,
   });
 
   // Mutación para recalcular (primero sincroniza competencias)
@@ -148,6 +135,18 @@ export const GradebookPage = () => {
       toast.success(`${reopenedLabel} reabierto`);
     },
     onError: (error: any) => toast.error(error.response?.data?.error || 'Error al reabrir bimestre'),
+  });
+
+  // Mutación para guardar área curricular
+  const saveAreaMutation = useMutation({
+    mutationFn: (data: { curriculumAreaId: string; gradeScaleType: 'PERU_LETTERS' | 'PERU_VIGESIMAL' | 'CENTESIMAL' | 'USA_LETTERS' }) =>
+      classroomApi.update(classroom.id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['classroom', classroom.id] });
+      refetch();
+      toast.success('Área curricular configurada correctamente');
+    },
+    onError: () => toast.error('Error al guardar la configuración'),
   });
 
   // Verificar si el período seleccionado es futuro (no se puede calcular)
@@ -224,6 +223,128 @@ export const GradebookPage = () => {
     
     return 'text-gray-600 bg-gray-100 dark:bg-gray-700';
   };
+
+  // Estado: competencias no habilitadas
+  if (!classroom.useCompetencies) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <AlertCircle size={48} className="text-amber-500 mb-4" />
+        <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-2">
+          Sistema de Competencias no habilitado
+        </h2>
+        <p className="text-gray-600 dark:text-gray-400 max-w-md">
+          Para usar el Libro de Calificaciones, primero habilita el sistema de competencias
+          en la configuración de la clase.
+        </p>
+      </div>
+    );
+  }
+
+  // Estado: competencias habilitadas pero sin área curricular seleccionada
+  if (!classroom.curriculumAreaId) {
+    const selectedArea = curriculumAreas.find((a: any) => a.id === pendingAreaId);
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 bg-gradient-to-br from-indigo-500 to-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
+            <BookOpen size={22} />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold text-gray-800 dark:text-white">Libro de Calificaciones</h1>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Configuración inicial requerida</p>
+          </div>
+        </div>
+
+        <Card className="p-6">
+          <div className="flex flex-col items-center text-center max-w-lg mx-auto">
+            <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 rounded-2xl flex items-center justify-center mb-4">
+              <AlertCircle size={32} className="text-amber-500" />
+            </div>
+            <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-2">
+              Selecciona el Área Curricular
+            </h2>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+              Para comenzar a usar el Libro de Calificaciones, debes elegir el área curricular de esta clase. 
+              Las competencias se cargarán automáticamente según el área seleccionada.
+            </p>
+
+            <div className="w-full space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 text-left">
+                  Área Curricular
+                </label>
+                <select
+                  value={pendingAreaId}
+                  onChange={(e) => setPendingAreaId(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                >
+                  <option value="">Selecciona un área...</option>
+                  {curriculumAreas.map((area: any) => (
+                    <option key={area.id} value={area.id}>
+                      {area.name} ({area.competencies?.length || 0} competencias)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedArea && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  className="bg-indigo-50 dark:bg-indigo-900/20 rounded-xl p-3 text-left"
+                >
+                  <p className="text-xs font-medium text-indigo-600 dark:text-indigo-400 mb-2">
+                    Competencias incluidas:
+                  </p>
+                  <ul className="space-y-1">
+                    {selectedArea.competencies?.map((comp: any, idx: number) => (
+                      <li key={comp.id} className="text-xs text-gray-600 dark:text-gray-400">
+                        {idx + 1}. {comp.name}
+                      </li>
+                    ))}
+                  </ul>
+                </motion.div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 text-left">
+                  Sistema de Calificación
+                </label>
+                <select
+                  value={pendingGradeScale}
+                  onChange={(e) => setPendingGradeScale(e.target.value as any)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                >
+                  <option value="PERU_LETTERS">Perú - Letras (AD, A, B, C)</option>
+                  <option value="PERU_VIGESIMAL">Perú - Vigesimal (0-20)</option>
+                  <option value="CENTESIMAL">Centesimal (0-100)</option>
+                  <option value="USA_LETTERS">USA - Letras (A, B, C, D, F)</option>
+                </select>
+              </div>
+
+              <button
+                onClick={() => {
+                  if (!pendingAreaId) {
+                    toast.error('Selecciona un área curricular');
+                    return;
+                  }
+                  saveAreaMutation.mutate({
+                    curriculumAreaId: pendingAreaId,
+                    gradeScaleType: pendingGradeScale,
+                  });
+                }}
+                disabled={!pendingAreaId || saveAreaMutation.isPending}
+                className="w-full px-4 py-2.5 bg-gradient-to-r from-indigo-500 to-blue-600 text-white rounded-xl font-medium hover:from-indigo-600 hover:to-blue-700 transition-colors shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                <Check size={16} />
+                {saveAreaMutation.isPending ? 'Guardando...' : 'Configurar y continuar'}
+              </button>
+            </div>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

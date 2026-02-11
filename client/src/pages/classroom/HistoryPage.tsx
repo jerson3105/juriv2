@@ -17,13 +17,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Medal,
-  Swords
+  CalendarCheck,
 } from 'lucide-react';
 import { historyApi } from '../../lib/historyApi';
 import type { ActivityLogEntry } from '../../lib/historyApi';
 import { CHARACTER_CLASSES } from '../../lib/studentApi';
 
-type FilterType = 'ALL' | 'POINTS' | 'PURCHASE' | 'ITEM_USED' | 'BADGE' | 'BOSS_BATTLE';
+type FilterType = 'ALL' | 'POINTS' | 'PURCHASE' | 'ITEM_USED' | 'BADGE' | 'ATTENDANCE';
 
 const ITEMS_PER_PAGE = 15;
 
@@ -87,7 +87,7 @@ export const HistoryPage = () => {
     { id: 'PURCHASE', label: 'Compras', icon: <ShoppingBag size={16} /> },
     { id: 'ITEM_USED', label: 'Items usados', icon: <Sparkles size={16} /> },
     { id: 'BADGE', label: 'Insignias', icon: <Medal size={16} /> },
-    { id: 'BOSS_BATTLE', label: 'Boss Battles', icon: <Swords size={16} /> },
+    { id: 'ATTENDANCE', label: 'Asistencia', icon: <CalendarCheck size={16} /> },
   ];
 
   const getActivityIcon = (entry: ActivityLogEntry) => {
@@ -105,8 +105,8 @@ export const HistoryPage = () => {
         return <Trophy className="text-yellow-500" size={20} />;
       case 'BADGE':
         return <Medal className="text-amber-500" size={20} />;
-      case 'BOSS_BATTLE':
-        return <Swords className="text-purple-500" size={20} />;
+      case 'ATTENDANCE':
+        return <CalendarCheck className="text-blue-500" size={20} />;
       default:
         return <ScrollText className="text-gray-500" size={20} />;
     }
@@ -202,25 +202,25 @@ export const HistoryPage = () => {
             </span>
           </span>
         );
-      case 'BOSS_BATTLE':
+      case 'ATTENDANCE': {
+        const statusMap: Record<string, { label: string; color: string }> = {
+          PRESENT: { label: 'Presente', color: 'text-emerald-600' },
+          ABSENT: { label: 'Ausente', color: 'text-red-600' },
+          LATE: { label: 'Tardanza', color: 'text-amber-600' },
+          EXCUSED: { label: 'Justificado', color: 'text-blue-600' },
+        };
+        const st = statusMap[entry.details.attendanceStatus || ''] || { label: entry.details.attendanceStatus, color: 'text-gray-600' };
         return (
           <span>
             <span className="font-medium">{studentName}</span>
-            {entry.details.isVictory ? ' derrotó a ' : ' luchó contra '}
-            <span className="font-medium">🐉 {entry.details.battleName}</span>
-            <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${
-              entry.details.isVictory 
-                ? 'bg-green-100 text-green-700'
-                : 'bg-gray-100 text-gray-700'
-            }`}>
-              {entry.details.isVictory ? '¡Victoria!' : 'Derrota'}
-            </span>
-            <span className="ml-2 text-emerald-600 font-medium">+{entry.details.xpEarned} XP</span>
-            {entry.details.gpEarned && entry.details.gpEarned > 0 && (
-              <span className="ml-1 text-amber-600 font-medium">+{entry.details.gpEarned} GP</span>
+            {' — '}
+            <span className={`font-bold ${st.color}`}>{st.label}</span>
+            {entry.details.amount && entry.details.amount > 0 && (
+              <span className="text-emerald-500 font-medium"> +{entry.details.amount} XP</span>
             )}
           </span>
         );
+      }
       default:
         return <span>{studentName}</span>;
     }

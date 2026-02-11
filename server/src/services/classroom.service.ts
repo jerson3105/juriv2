@@ -23,7 +23,33 @@ import {
   timedActivityResults,
   clanLogs,
   classroomCompetencies,
-  curriculumCompetencies
+  curriculumCompetencies,
+  loginStreaks,
+  notifications,
+  classroomAvatarItems,
+  studentStreaks,
+  scrolls,
+  scrollReactions,
+  randomEvents,
+  eventLogs,
+  expeditions,
+  expeditionPins,
+  expeditionStudentProgress,
+  expeditionSubmissions,
+  tournaments,
+  tournamentParticipants,
+  tournamentMatches,
+  studentGrades,
+  studentActivityScores,
+  collectibleAlbums,
+  collectibleCards,
+  studentCollectibles,
+  jiroExpeditions,
+  jiroStudentExpeditions,
+  jiroDeliveryStations,
+  jiroQuestionAnswers,
+  jiroDeliveries,
+  jiroExpeditionCompetencies,
 } from '../db/schema.js';
 import { eq, and, desc, inArray, sql, count } from 'drizzle-orm';
 import { generateClassCode } from '../utils/helpers.js';
@@ -40,6 +66,7 @@ interface CreateClassroomData {
   useCompetencies?: boolean;
   curriculumAreaId?: string | null;
   gradeScaleType?: 'PERU_LETTERS' | 'PERU_VIGESIMAL' | 'CENTESIMAL' | 'USA_LETTERS' | 'CUSTOM' | null;
+  schoolId?: string | null;
 }
 
 interface UpdateClassroomData {
@@ -78,6 +105,10 @@ interface UpdateClassroomData {
     resetOnMiss: boolean;
     graceDays: number;
   } | null;
+  // Competencias
+  useCompetencies?: boolean;
+  curriculumAreaId?: string | null;
+  gradeScaleType?: 'PERU_LETTERS' | 'PERU_VIGESIMAL' | 'CENTESIMAL' | 'USA_LETTERS' | 'CUSTOM' | null;
 }
 
 export class ClassroomService {
@@ -93,9 +124,10 @@ export class ClassroomService {
       teacherId: data.teacherId,
       gradeLevel: data.gradeLevel || null,
       code,
-      useCompetencies: data.useCompetencies || false,
+      useCompetencies: data.schoolId ? true : (data.useCompetencies || false),
       curriculumAreaId: data.curriculumAreaId || null,
       gradeScaleType: data.gradeScaleType || null,
+      schoolId: data.schoolId || null,
       createdAt: now,
       updatedAt: now,
     });
@@ -298,32 +330,122 @@ export class ClassroomService {
     });
     const powerIds = classPowers.map(p => p.id);
 
+    // Obtener IDs de expediciones
+    const classExpeditions = await db.query.expeditions.findMany({
+      where: eq(expeditions.classroomId, classroomId),
+      columns: { id: true }
+    });
+    const expeditionIds = classExpeditions.map(e => e.id);
+
+    // Obtener IDs de jiro expeditions
+    const classJiroExpeditions = await db.query.jiroExpeditions.findMany({
+      where: eq(jiroExpeditions.classroomId, classroomId),
+      columns: { id: true }
+    });
+    const jiroExpeditionIds = classJiroExpeditions.map(e => e.id);
+
+    // Obtener IDs de scrolls
+    const classScrolls = await db.query.scrolls.findMany({
+      where: eq(scrolls.classroomId, classroomId),
+      columns: { id: true }
+    });
+    const scrollIds = classScrolls.map(s => s.id);
+
+    // Obtener IDs de torneos
+    const classTournaments = await db.query.tournaments.findMany({
+      where: eq(tournaments.classroomId, classroomId),
+      columns: { id: true }
+    });
+    const tournamentIds = classTournaments.map(t => t.id);
+
+    // Obtener IDs de álbumes de coleccionables
+    const classAlbums = await db.query.collectibleAlbums.findMany({
+      where: eq(collectibleAlbums.classroomId, classroomId),
+      columns: { id: true }
+    });
+    const albumIds = classAlbums.map(a => a.id);
+
     // Eliminar en orden correcto (dependencias primero)
-    
+
     // 1. Eliminar datos relacionados con estudiantes
     if (studentIds.length > 0) {
       await db.delete(pointLogs).where(inArray(pointLogs.studentId, studentIds));
       await db.delete(studentAvatarPurchases).where(inArray(studentAvatarPurchases.studentProfileId, studentIds));
       await db.delete(studentEquippedItems).where(inArray(studentEquippedItems.studentProfileId, studentIds));
-      await db.delete(attendanceRecords).where(eq(attendanceRecords.classroomId, classroomId));
+      await db.delete(studentGrades).where(eq(studentGrades.classroomId, classroomId));
+      await db.delete(studentActivityScores).where(inArray(studentActivityScores.studentProfileId, studentIds));
+    }
+    await db.delete(attendanceRecords).where(eq(attendanceRecords.classroomId, classroomId));
+
+    // 2. Eliminar coleccionables
+    if (albumIds.length > 0) {
+      const albumCards = await db.query.collectibleCards.findMany({
+        where: inArray(collectibleCards.albumId, albumIds),
+        columns: { id: true }
+      });
+      const cardIds = albumCards.map(c => c.id);
+      if (cardIds.length > 0) {
+        await db.delete(studentCollectibles).where(inArray(studentCollectibles.cardId, cardIds));
+        await db.delete(collectibleCards).where(inArray(collectibleCards.id, cardIds));
+      }
+      await db.delete(collectibleAlbums).where(inArray(collectibleAlbums.id, albumIds));
     }
 
-    // 2. Eliminar datos de badges
+    // 3. Eliminar datos de badges
     if (badgeIds.length > 0) {
       await db.delete(badgeProgress).where(inArray(badgeProgress.badgeId, badgeIds));
       await db.delete(studentBadges).where(inArray(studentBadges.badgeId, badgeIds));
       await db.delete(badges).where(inArray(badges.id, badgeIds));
     }
 
-    // 3. Eliminar datos de timed activities
+    // 4. Eliminar datos de timed activities
     if (activityIds.length > 0) {
       await db.delete(timedActivityResults).where(inArray(timedActivityResults.activityId, activityIds));
       await db.delete(timedActivities).where(inArray(timedActivities.id, activityIds));
     }
 
-    // 6. Eliminar datos de tienda
+    // 5. Eliminar scrolls (pergaminos)
+    if (scrollIds.length > 0) {
+      await db.delete(scrollReactions).where(inArray(scrollReactions.scrollId, scrollIds));
+      await db.delete(scrolls).where(inArray(scrolls.id, scrollIds));
+    }
+
+    // 6. Eliminar expediciones
+    if (expeditionIds.length > 0) {
+      await db.delete(expeditionSubmissions).where(inArray(expeditionSubmissions.expeditionId, expeditionIds));
+      await db.delete(expeditionStudentProgress).where(inArray(expeditionStudentProgress.expeditionId, expeditionIds));
+      await db.delete(expeditionPins).where(inArray(expeditionPins.expeditionId, expeditionIds));
+      await db.delete(expeditions).where(inArray(expeditions.id, expeditionIds));
+    }
+
+    // 7. Eliminar jiro expeditions y datos relacionados
+    if (jiroExpeditionIds.length > 0) {
+      // Obtener student expeditions para limpiar sus hijos
+      const jiroStudentExps = await db.query.jiroStudentExpeditions.findMany({
+        where: inArray(jiroStudentExpeditions.expeditionId, jiroExpeditionIds),
+        columns: { id: true }
+      });
+      const jiroStudentExpIds = jiroStudentExps.map(e => e.id);
+
+      if (jiroStudentExpIds.length > 0) {
+        await db.delete(jiroQuestionAnswers).where(inArray(jiroQuestionAnswers.studentExpeditionId, jiroStudentExpIds));
+        await db.delete(jiroDeliveries).where(inArray(jiroDeliveries.studentExpeditionId, jiroStudentExpIds));
+      }
+      await db.delete(jiroStudentExpeditions).where(inArray(jiroStudentExpeditions.expeditionId, jiroExpeditionIds));
+      await db.delete(jiroDeliveryStations).where(inArray(jiroDeliveryStations.expeditionId, jiroExpeditionIds));
+      await db.delete(jiroExpeditionCompetencies).where(inArray(jiroExpeditionCompetencies.expeditionId, jiroExpeditionIds));
+      await db.delete(jiroExpeditions).where(inArray(jiroExpeditions.id, jiroExpeditionIds));
+    }
+
+    // 8. Eliminar torneos
+    if (tournamentIds.length > 0) {
+      await db.delete(tournamentMatches).where(inArray(tournamentMatches.tournamentId, tournamentIds));
+      await db.delete(tournamentParticipants).where(inArray(tournamentParticipants.tournamentId, tournamentIds));
+      await db.delete(tournaments).where(inArray(tournaments.id, tournamentIds));
+    }
+
+    // 9. Eliminar datos de tienda
     if (itemIds.length > 0) {
-      // Obtener purchases
       const itemPurchases = await db.query.purchases.findMany({
         where: inArray(purchases.itemId, itemIds),
         columns: { id: true }
@@ -337,33 +459,46 @@ export class ClassroomService {
       await db.delete(shopItems).where(inArray(shopItems.id, itemIds));
     }
 
-    // 7. Eliminar datos de poderes
+    // 10. Eliminar datos de poderes
     if (powerIds.length > 0) {
       await db.delete(powerUsages).where(inArray(powerUsages.powerId, powerIds));
       await db.delete(powers).where(inArray(powers.id, powerIds));
     }
 
-    // 8. Eliminar banco de preguntas
+    // 11. Eliminar banco de preguntas
     if (qBankIds.length > 0) {
       await db.delete(questions).where(inArray(questions.bankId, qBankIds));
       await db.delete(questionBanks).where(inArray(questionBanks.id, qBankIds));
     }
 
-    // 9. Eliminar datos de clanes/equipos
+    // 12. Eliminar datos de clanes/equipos
     if (teamIds.length > 0) {
       await db.delete(clanLogs).where(inArray(clanLogs.clanId, teamIds));
       await db.delete(teams).where(inArray(teams.id, teamIds));
     }
 
-    // 10. Eliminar comportamientos
+    // 13. Eliminar eventos aleatorios
+    await db.delete(eventLogs).where(eq(eventLogs.classroomId, classroomId));
+    await db.delete(randomEvents).where(eq(randomEvents.classroomId, classroomId));
+
+    // 14. Eliminar notificaciones, streaks, login streaks, avatar items
+    await db.delete(notifications).where(eq(notifications.classroomId, classroomId));
+    await db.delete(loginStreaks).where(eq(loginStreaks.classroomId, classroomId));
+    await db.delete(studentStreaks).where(eq(studentStreaks.classroomId, classroomId));
+    await db.delete(classroomAvatarItems).where(eq(classroomAvatarItems.classroomId, classroomId));
+
+    // 15. Eliminar competencias del aula
+    await db.delete(classroomCompetencies).where(eq(classroomCompetencies.classroomId, classroomId));
+
+    // 16. Eliminar comportamientos
     await db.delete(behaviors).where(eq(behaviors.classroomId, classroomId));
 
-    // 11. Eliminar perfiles de estudiantes
+    // 17. Eliminar perfiles de estudiantes
     if (studentIds.length > 0) {
       await db.delete(studentProfiles).where(inArray(studentProfiles.id, studentIds));
     }
 
-    // 12. Finalmente eliminar la clase
+    // 18. Finalmente eliminar la clase
     await db.delete(classrooms).where(eq(classrooms.id, classroomId));
     
     return { success: true };
@@ -470,6 +605,7 @@ export class ClassroomService {
       copyBadges: boolean;
       copyShopItems: boolean;
       copyQuestionBanks: boolean;
+      schoolId?: string | null;
     }
   ) {
     // Verificar que el aula origen existe y pertenece al profesor
@@ -523,6 +659,8 @@ export class ClassroomService {
       gradeScaleType: sourceClassroom.gradeScaleType,
       gradeScaleConfig: sourceClassroom.gradeScaleConfig,
       currentBimester: sourceClassroom.currentBimester,
+      // Escuela
+      schoolId: options.schoolId !== undefined ? (options.schoolId || null) : (sourceClassroom as any).schoolId || null,
       // Timestamps
       createdAt: now,
       updatedAt: now,

@@ -646,6 +646,64 @@ class ParentService {
     return { unlinked: true };
   }
   
+  // Generar códigos de vinculación para TODOS los estudiantes de una clase (bulk)
+  async generateBulkParentLinkCodes(classroomId: string): Promise<{
+    students: { id: string; name: string; parentLinkCode: string }[];
+    classroomName: string;
+    classroomCode: string;
+  }> {
+    const now = new Date();
+
+    // Obtener info de la clase
+    const [cls] = await db.select({
+      name: classrooms.name,
+      code: classrooms.code,
+    }).from(classrooms).where(eq(classrooms.id, classroomId));
+
+    if (!cls) throw new Error('Clase no encontrada');
+
+    // Obtener todos los estudiantes activos
+    const students = await db.select({
+      id: studentProfiles.id,
+      characterName: studentProfiles.characterName,
+      displayName: studentProfiles.displayName,
+      parentLinkCode: studentProfiles.parentLinkCode,
+    })
+    .from(studentProfiles)
+    .where(and(
+      eq(studentProfiles.classroomId, classroomId),
+      eq(studentProfiles.isActive, true),
+      eq(studentProfiles.isDemo, false),
+    ));
+
+    const result: { id: string; name: string; parentLinkCode: string }[] = [];
+
+    for (const student of students) {
+      let code = student.parentLinkCode;
+      // Solo generar código si no tiene uno
+      if (!code) {
+        code = this.generateCode();
+        await db.update(studentProfiles)
+          .set({ parentLinkCode: code, updatedAt: now })
+          .where(eq(studentProfiles.id, student.id));
+      }
+      result.push({
+        id: student.id,
+        name: student.displayName || student.characterName || 'Sin nombre',
+        parentLinkCode: code,
+      });
+    }
+
+    // Ordenar alfabéticamente
+    result.sort((a, b) => a.name.localeCompare(b.name));
+
+    return {
+      students: result,
+      classroomName: cls.name,
+      classroomCode: cls.code,
+    };
+  }
+
   // Generar código de vinculación para padre (llamado por profesor)
   async generateParentLinkCode(studentProfileId: string): Promise<string> {
     const code = this.generateCode();

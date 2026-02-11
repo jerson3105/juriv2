@@ -17,6 +17,7 @@ export interface Behavior {
   isActive: boolean;
   createdAt: string;
   competencyId: string | null;
+  schoolBehaviorId: string | null;
   competency?: {
     id: string;
     name: string;

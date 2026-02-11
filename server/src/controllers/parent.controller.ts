@@ -242,6 +242,17 @@ class ParentController {
     }
   }
 
+  // Generar códigos de vinculación masivos (para profesor)
+  async generateBulkParentLinkCodes(req: AuthRequest, res: Response) {
+    try {
+      const { classroomId } = req.params;
+      const result = await parentService.generateBulkParentLinkCodes(classroomId);
+      res.json({ data: result });
+    } catch (error: any) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+
   // Generar informe IA del estudiante
   async generateAIReport(req: AuthRequest, res: Response) {
     try {

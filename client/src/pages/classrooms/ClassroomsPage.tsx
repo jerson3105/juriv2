@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Users, Copy, Check, Trash2, X, GraduationCap, Sparkles, BookOpen, Layers, Award, ShoppingBag, HelpCircle } from 'lucide-react';
+import { Plus, Users, Copy, Check, Trash2, X, GraduationCap, Sparkles, BookOpen, Layers, Award, ShoppingBag, HelpCircle, School, MoreVertical, ChevronDown, User } from 'lucide-react';
 import { classroomApi, type Classroom, type CreateClassroomData } from '../../lib/classroomApi';
+import { schoolApi, type MySchool } from '../../lib/schoolApi';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { AIClassroomWizard } from '../../components/classroom/AIClassroomWizard';
 import toast from 'react-hot-toast';
@@ -16,6 +17,8 @@ export const ClassroomsPage = () => {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [deletingClassroom, setDeletingClassroom] = useState<Classroom | null>(null);
   const [cloningClassroom, setCloningClassroom] = useState<Classroom | null>(null);
+  const [showOptionsMenu, setShowOptionsMenu] = useState(false);
+  const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
   
   const { isActive, currentStep, nextStep } = useOnboardingStore();
 
@@ -23,6 +26,46 @@ export const ClassroomsPage = () => {
     queryKey: ['classrooms'],
     queryFn: classroomApi.getMyClassrooms,
   });
+
+  // Escuelas verificadas del profesor
+  const { data: pageSchools = [] } = useQuery({
+    queryKey: ['my-schools'],
+    queryFn: schoolApi.getMySchools,
+  });
+  const pageVerifiedSchools = pageSchools.filter((s: MySchool) => s.memberStatus === 'VERIFIED' || (s.memberRole === 'OWNER' && s.memberStatus === 'PENDING_ADMIN'));
+
+  // Agrupar clases por escuela y personales
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const groupedClassrooms = useMemo(() => {
+    if (!classrooms) return { schools: [], personal: [] };
+    const schoolMap: Record<string, { school: MySchool; classrooms: Classroom[] }> = {};
+    const personal: Classroom[] = [];
+
+    classrooms.forEach((c) => {
+      if (c.schoolId) {
+        if (!schoolMap[c.schoolId]) {
+          const school = pageSchools.find((s: MySchool) => s.id === c.schoolId);
+          schoolMap[c.schoolId] = {
+            school: school || { id: c.schoolId, name: 'Escuela', address: null, city: null, province: null, country: '', logoUrl: null, isVerified: false, memberId: '', memberRole: 'TEACHER', memberStatus: 'VERIFIED', rejectionReason: null, memberCount: 0, classroomCount: 0, pendingRequestCount: 0 } as MySchool,
+            classrooms: [],
+          };
+        }
+        schoolMap[c.schoolId].classrooms.push(c);
+      } else {
+        personal.push(c);
+      }
+    });
+
+    return {
+      schools: Object.values(schoolMap),
+      personal,
+    };
+  }, [classrooms, pageSchools]);
+
+  const isSectionExpanded = (key: string) => !collapsedSections[key];
+  const toggleSection = (key: string) => {
+    setCollapsedSections(prev => ({ ...prev, [key]: !prev[key] }));
+  };
 
   // Profesores siempre pueden crear clases (modo B2C)
   const canCreateClasses = true;
@@ -101,6 +144,35 @@ export const ClassroomsPage = () => {
         </div>
         {canCreateClasses && (
           <div className="flex items-center gap-2">
+            {/* Options button - solo si tiene escuelas verificadas */}
+            {pageVerifiedSchools.length > 0 && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowOptionsMenu(!showOptionsMenu)}
+                  className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors"
+                  title="Opciones"
+                >
+                  <MoreVertical size={20} />
+                </button>
+                {showOptionsMenu && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setShowOptionsMenu(false)} />
+                    <div className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 z-20 py-1">
+                      <button
+                        onClick={() => {
+                          setShowBulkAssignModal(true);
+                          setShowOptionsMenu(false);
+                        }}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                      >
+                        <School size={16} className="text-blue-500" />
+                        Asignar clases a escuela
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
             <button 
               onClick={() => setShowAIWizard(true)}
               className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-sm font-medium rounded-xl shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 transition-shadow"
@@ -157,19 +229,106 @@ export const ClassroomsPage = () => {
           </button>
         </div>
       ) : (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {classrooms?.map((classroom, index) => (
-            <ClassroomCard
-              key={classroom.id}
-              classroom={classroom}
-              index={index}
-              onCopyCode={copyCode}
-              copiedCode={copiedCode}
-              onDelete={(id) => handleDelete(classrooms?.find(c => c.id === id)!)}
-              onClone={(id) => setCloningClassroom(classrooms?.find(c => c.id === id)!)}
-              onView={(id) => navigate(`/classroom/${id}`)}
-            />
+        <div className="space-y-4">
+          {/* Secciones de escuelas */}
+          {groupedClassrooms.schools.map(({ school, classrooms: schoolClassrooms }) => (
+            <div key={school.id} className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg overflow-hidden">
+              <button
+                onClick={() => toggleSection(school.id)}
+                className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-white shadow-md shadow-blue-500/20">
+                    <School size={18} />
+                  </div>
+                  <div className="text-left">
+                    <h2 className="text-sm font-bold text-gray-800 dark:text-white">{school.name}</h2>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">{schoolClassrooms.length} clase{schoolClassrooms.length !== 1 ? 's' : ''}</p>
+                  </div>
+                </div>
+                <ChevronDown
+                  size={18}
+                  className={`text-gray-400 transition-transform duration-200 ${isSectionExpanded(school.id) ? 'rotate-180' : ''}`}
+                />
+              </button>
+              <AnimatePresence initial={false}>
+                {isSectionExpanded(school.id) && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 px-5 pb-5">
+                      {schoolClassrooms.map((classroom, index) => (
+                        <ClassroomCard
+                          key={classroom.id}
+                          classroom={classroom}
+                          index={index}
+                          onCopyCode={copyCode}
+                          copiedCode={copiedCode}
+                          onDelete={(id) => handleDelete(classrooms?.find(c => c.id === id)!)}
+                          onClone={(id) => setCloningClassroom(classrooms?.find(c => c.id === id)!)}
+                          onView={(id) => navigate(`/classroom/${id}`)}
+                        />
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           ))}
+
+          {/* Sección de clases personales */}
+          {groupedClassrooms.personal.length > 0 && (
+            <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg overflow-hidden">
+              <button
+                onClick={() => toggleSection('personal')}
+                className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 bg-gradient-to-br from-gray-400 to-gray-500 rounded-xl flex items-center justify-center text-white shadow-md shadow-gray-400/20">
+                    <User size={18} />
+                  </div>
+                  <div className="text-left">
+                    <h2 className="text-sm font-bold text-gray-800 dark:text-white">Clases Personales</h2>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">{groupedClassrooms.personal.length} clase{groupedClassrooms.personal.length !== 1 ? 's' : ''}</p>
+                  </div>
+                </div>
+                <ChevronDown
+                  size={18}
+                  className={`text-gray-400 transition-transform duration-200 ${isSectionExpanded('personal') ? 'rotate-180' : ''}`}
+                />
+              </button>
+              <AnimatePresence initial={false}>
+                {isSectionExpanded('personal') && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 px-5 pb-5">
+                      {groupedClassrooms.personal.map((classroom, index) => (
+                        <ClassroomCard
+                          key={classroom.id}
+                          classroom={classroom}
+                          index={index}
+                          onCopyCode={copyCode}
+                          copiedCode={copiedCode}
+                          onDelete={(id) => handleDelete(classrooms?.find(c => c.id === id)!)}
+                          onClone={(id) => setCloningClassroom(classrooms?.find(c => c.id === id)!)}
+                          onView={(id) => navigate(`/classroom/${id}`)}
+                        />
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
         </div>
       )}
 
@@ -210,6 +369,21 @@ export const ClassroomsPage = () => {
             onClose={() => setCloningClassroom(null)}
             onClone={(options) => cloneMutation.mutate({ classroomId: cloningClassroom.id, options })}
             isLoading={cloneMutation.isPending}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Modal de asignación masiva a escuela */}
+      <AnimatePresence>
+        {showBulkAssignModal && (
+          <BulkAssignModal
+            classrooms={classrooms || []}
+            verifiedSchools={pageVerifiedSchools}
+            onClose={() => setShowBulkAssignModal(false)}
+            onSuccess={() => {
+              queryClient.invalidateQueries({ queryKey: ['classrooms'] });
+              setShowBulkAssignModal(false);
+            }}
           />
         )}
       </AnimatePresence>
@@ -356,6 +530,7 @@ const CreateClassroomModal = ({
   const [useCompetencies, setUseCompetencies] = useState(false);
   const [selectedAreaId, setSelectedAreaId] = useState('');
   const [gradeScaleType, setGradeScaleType] = useState<'PERU_LETTERS' | 'PERU_VIGESIMAL' | 'CENTESIMAL' | 'USA_LETTERS'>('PERU_LETTERS');
+  const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(null);
 
   // Cargar áreas curriculares
   const { data: curriculumAreas = [] } = useQuery({
@@ -363,6 +538,15 @@ const CreateClassroomModal = ({
     queryFn: () => classroomApi.getCurriculumAreas('PE'),
     enabled: useCompetencies,
   });
+
+  // Cargar escuelas verificadas del profesor
+  const { data: mySchools = [] } = useQuery({
+    queryKey: ['my-schools'],
+    queryFn: schoolApi.getMySchools,
+    enabled: isOpen,
+  });
+
+  const verifiedSchools = mySchools.filter((s: MySchool) => s.memberStatus === 'VERIFIED' || (s.memberRole === 'OWNER' && s.memberStatus === 'PENDING_ADMIN'));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -373,6 +557,7 @@ const CreateClassroomModal = ({
       useCompetencies,
       curriculumAreaId: useCompetencies ? selectedAreaId || null : null,
       gradeScaleType: useCompetencies ? gradeScaleType : null,
+      schoolId: selectedSchoolId,
     });
   };
 
@@ -383,6 +568,7 @@ const CreateClassroomModal = ({
     setUseCompetencies(false);
     setSelectedAreaId('');
     setGradeScaleType('PERU_LETTERS');
+    setSelectedSchoolId(null);
     onClose();
   };
 
@@ -567,6 +753,59 @@ const CreateClassroomModal = ({
               </AnimatePresence>
             </div>
 
+            {/* Asignar a escuela */}
+            {verifiedSchools.length > 0 && (
+              <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <School size={18} className="text-blue-500" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">Asignar a escuela</p>
+                    <p className="text-xs text-gray-500">Elige si esta clase pertenece a una escuela</p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label
+                    className={`flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition-colors ${
+                      selectedSchoolId === null
+                        ? 'border-violet-300 dark:border-violet-600 bg-violet-50 dark:bg-violet-900/20'
+                        : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="schoolAssignment"
+                      checked={selectedSchoolId === null}
+                      onChange={() => setSelectedSchoolId(null)}
+                      className="w-4 h-4 text-violet-600 focus:ring-violet-500"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">Clase personal</span>
+                  </label>
+                  {verifiedSchools.map((school: MySchool) => (
+                    <label
+                      key={school.id}
+                      className={`flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition-colors ${
+                        selectedSchoolId === school.id
+                          ? 'border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/20'
+                          : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="schoolAssignment"
+                        checked={selectedSchoolId === school.id}
+                        onChange={() => setSelectedSchoolId(school.id)}
+                        className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                      />
+                      <div className="flex items-center gap-2 min-w-0">
+                        <School size={14} className="text-blue-500 flex-shrink-0" />
+                        <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{school.name}</span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="flex gap-2 pt-2">
               <button
                 type="button"
@@ -675,6 +914,7 @@ const CloneClassroomModal = ({
     copyBadges: boolean;
     copyShopItems: boolean;
     copyQuestionBanks: boolean;
+    schoolId?: string | null;
   }) => void;
   isLoading: boolean;
 }) => {
@@ -685,11 +925,20 @@ const CloneClassroomModal = ({
     queryKey: ['cloneable-counts', classroom.id],
     queryFn: () => classroomApi.getCloneableCounts(classroom.id),
   });
+
+  // Cargar escuelas verificadas del profesor
+  const { data: cloneSchools = [] } = useQuery({
+    queryKey: ['my-schools'],
+    queryFn: schoolApi.getMySchools,
+  });
+  const cloneVerifiedSchools = cloneSchools.filter((s: MySchool) => s.memberStatus === 'VERIFIED' || (s.memberRole === 'OWNER' && s.memberStatus === 'PENDING_ADMIN'));
+
   const [description, setDescription] = useState(classroom.description || '');
   const [copyBehaviors, setCopyBehaviors] = useState(true);
   const [copyBadges, setCopyBadges] = useState(true);
   const [copyShopItems, setCopyShopItems] = useState(true);
   const [copyQuestionBanks, setCopyQuestionBanks] = useState(true);
+  const [cloneSchoolId, setCloneSchoolId] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -700,6 +949,7 @@ const CloneClassroomModal = ({
       copyBadges,
       copyShopItems,
       copyQuestionBanks,
+      schoolId: cloneSchoolId,
     });
   };
 
@@ -855,6 +1105,56 @@ const CloneClassroomModal = ({
             </label>
           </div>
 
+          {/* Asignar a escuela */}
+          {cloneVerifiedSchools.length > 0 && (
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+              <div className="flex items-center gap-2 mb-2">
+                <School size={16} className="text-blue-500" />
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Asignar a escuela</p>
+              </div>
+              <div className="space-y-1.5">
+                <label
+                  className={`flex items-center gap-3 p-2 rounded-lg border cursor-pointer transition-colors ${
+                    cloneSchoolId === null
+                      ? 'border-violet-300 dark:border-violet-600 bg-violet-50 dark:bg-violet-900/20'
+                      : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="cloneSchoolAssignment"
+                    checked={cloneSchoolId === null}
+                    onChange={() => setCloneSchoolId(null)}
+                    className="w-4 h-4 text-violet-600 focus:ring-violet-500"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Clase personal</span>
+                </label>
+                {cloneVerifiedSchools.map((school: MySchool) => (
+                  <label
+                    key={school.id}
+                    className={`flex items-center gap-3 p-2 rounded-lg border cursor-pointer transition-colors ${
+                      cloneSchoolId === school.id
+                        ? 'border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/20'
+                        : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="cloneSchoolAssignment"
+                      checked={cloneSchoolId === school.id}
+                      onChange={() => setCloneSchoolId(school.id)}
+                      className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                    />
+                    <div className="flex items-center gap-2 min-w-0">
+                      <School size={14} className="text-blue-500 flex-shrink-0" />
+                      <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{school.name}</span>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Botones */}
           <div className="flex gap-3 pt-2">
             <button
@@ -874,6 +1174,152 @@ const CloneClassroomModal = ({
             </button>
           </div>
         </form>
+      </motion.div>
+    </motion.div>
+  );
+};
+
+// Modal de asignación masiva de clases a escuela
+const BulkAssignModal = ({
+  classrooms,
+  verifiedSchools,
+  onClose,
+  onSuccess,
+}: {
+  classrooms: Classroom[];
+  verifiedSchools: MySchool[];
+  onClose: () => void;
+  onSuccess: () => void;
+}) => {
+  const [selectedSchoolId, setSelectedSchoolId] = useState<string>('');
+  const [selectedClassroomIds, setSelectedClassroomIds] = useState<string[]>([]);
+  const [assigning, setAssigning] = useState(false);
+
+  // Solo mostrar clases personales (sin escuela asignada)
+  const personalClassrooms = classrooms.filter(c => !c.schoolId);
+
+  const toggleClassroom = (id: string) => {
+    setSelectedClassroomIds(prev =>
+      prev.includes(id) ? prev.filter(cid => cid !== id) : [...prev, id]
+    );
+  };
+
+  const handleAssign = async () => {
+    if (!selectedSchoolId || selectedClassroomIds.length === 0) return;
+    setAssigning(true);
+    try {
+      await Promise.all(
+        selectedClassroomIds.map(classroomId =>
+          schoolApi.assignClassroom(selectedSchoolId, classroomId)
+        )
+      );
+      toast.success(`${selectedClassroomIds.length} clase(s) asignada(s) a la escuela`);
+      onSuccess();
+    } catch {
+      toast.error('Error al asignar clases');
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.95, opacity: 0 }}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-lg shadow-xl max-h-[80vh] flex flex-col"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+              <School className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">Asignar clases a escuela</h2>
+              <p className="text-xs text-gray-500">Selecciona las clases personales a asignar</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+
+        {/* Seleccionar escuela */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Escuela destino</label>
+          <select
+            value={selectedSchoolId}
+            onChange={(e) => setSelectedSchoolId(e.target.value)}
+            className="w-full px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+          >
+            <option value="">Selecciona una escuela...</option>
+            {verifiedSchools.map((school) => (
+              <option key={school.id} value={school.id}>{school.name}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Lista de clases personales */}
+        <div className="flex-1 overflow-y-auto mb-4">
+          {personalClassrooms.length === 0 ? (
+            <div className="text-center py-8">
+              <Check className="w-12 h-12 text-emerald-300 mx-auto mb-2" />
+              <p className="text-sm text-gray-500">Todas tus clases ya están asignadas a una escuela</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs text-gray-500 mb-2">Clases personales ({personalClassrooms.length})</p>
+              {personalClassrooms.map((classroom) => (
+                <label
+                  key={classroom.id}
+                  className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
+                    selectedClassroomIds.includes(classroom.id)
+                      ? 'border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedClassroomIds.includes(classroom.id)}
+                    onChange={() => toggleClassroom(classroom.id)}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 dark:text-white truncate">{classroom.name}</p>
+                    <p className="text-xs text-gray-500">{classroom.studentCount || 0} estudiantes</p>
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Botones */}
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors font-medium"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleAssign}
+            disabled={assigning || !selectedSchoolId || selectedClassroomIds.length === 0}
+            className="flex-1 px-4 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl hover:from-blue-600 hover:to-indigo-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 font-medium"
+          >
+            <School className="w-4 h-4" />
+            {assigning ? 'Asignando...' : `Asignar ${selectedClassroomIds.length > 0 ? `(${selectedClassroomIds.length})` : ''}`}
+          </button>
+        </div>
       </motion.div>
     </motion.div>
   );

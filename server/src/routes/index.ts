@@ -23,6 +23,7 @@ import gradeRoutes from './grade.routes.js';
 import parentRoutes from './parent.routes.js';
 import collectibleRoutes from './collectible.routes.js';
 import jiroExpeditionRoutes from './jiroExpedition.routes.js';
+import schoolRoutes from './school.routes.js';
 
 const router = Router();
 
@@ -60,5 +61,6 @@ router.use('/grades', gradeRoutes);
 router.use('/parent', parentRoutes);
 router.use('/collectibles', collectibleRoutes);
 router.use('/jiro-expeditions', jiroExpeditionRoutes);
+router.use('/schools', schoolRoutes);
 
 export default router;

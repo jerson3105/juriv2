@@ -110,6 +110,13 @@ export const BadgeCard = ({
             {RARITY_LABELS[badge.rarity]}
           </span>
           
+          {/* Indicador de escuela */}
+          {badge.schoolBadgeId && (
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 mt-1">
+              🏫 Escuela
+            </span>
+          )}
+          
           {/* Progreso */}
           {!isUnlocked && progress && progress.targetValue > 0 && (
             <div className="w-full mt-2">

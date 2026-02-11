@@ -1,5 +1,5 @@
 import { db } from '../db/index.js';
-import { attendanceRecords, studentProfiles, type AttendanceStatus } from '../db/schema.js';
+import { attendanceRecords, studentProfiles, pointLogs, type AttendanceStatus } from '../db/schema.js';
 import { eq, and, between, desc, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -59,7 +59,7 @@ export const attendanceService = {
       updatedAt: now,
     });
 
-    // Si el estudiante está presente, otorgar XP
+    // Si el estudiante está presente, otorgar XP y registrar en pointLogs
     if (status === 'PRESENT' && xpAwarded > 0) {
       await db
         .update(studentProfiles)
@@ -67,6 +67,16 @@ export const attendanceService = {
           xp: sql`${studentProfiles.xp} + ${xpAwarded}`,
         })
         .where(eq(studentProfiles.id, studentProfileId));
+
+      await db.insert(pointLogs).values({
+        id: uuidv4(),
+        studentId: studentProfileId,
+        pointType: 'XP',
+        action: 'ADD',
+        amount: xpAwarded,
+        reason: 'Asistencia',
+        createdAt: now,
+      });
     }
 
     return { id, classroomId, studentProfileId, date: normalizedDate, status, notes, xpAwarded };

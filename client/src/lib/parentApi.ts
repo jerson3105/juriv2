@@ -182,6 +182,16 @@ export const parentApi = {
     return response.data;
   },
 
+  // Generar códigos de vinculación masivos para folletos de padres (para profesor)
+  generateBulkParentLinkCodes: async (classroomId: string): Promise<{
+    students: { id: string; name: string; parentLinkCode: string }[];
+    classroomName: string;
+    classroomCode: string;
+  }> => {
+    const response = await api.post(`/parent/generate-codes-bulk/${classroomId}`);
+    return response.data.data;
+  },
+
   // Obtener informe IA del estudiante
   getAIReport: async (studentId: string): Promise<AIStudentReport> => {
     const response = await api.get(`/parent/child/${studentId}/ai-report`);

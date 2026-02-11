@@ -284,6 +284,11 @@ const BehaviorCard = ({
                 </div>
               );
             })}
+            {behavior.schoolBehaviorId && (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-[10px] font-semibold">
+                🏫 Escuela
+              </span>
+            )}
           </div>
           {behavior.competency && (
             <div className="mt-1.5 flex items-center gap-1">

@@ -33,6 +33,7 @@ export interface Badge {
   rewardXp: number;
   rewardGp: number;
   maxAwards: number | null;
+  schoolBadgeId: string | null;
   isSecret: boolean;
   isActive: boolean;
   createdAt: string;

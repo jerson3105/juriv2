@@ -13,6 +13,7 @@ const createClassroomSchema = z.object({
   useCompetencies: z.boolean().optional().default(false),
   curriculumAreaId: z.string().max(36).optional().nullable(),
   gradeScaleType: z.enum(['PERU_LETTERS', 'PERU_VIGESIMAL', 'CENTESIMAL', 'USA_LETTERS', 'CUSTOM']).optional().nullable(),
+  schoolId: z.string().max(36).optional().nullable(),
 });
 
 const updateClassroomSchema = z.object({
@@ -63,6 +64,11 @@ const updateClassroomSchema = z.object({
     resetOnMiss: z.boolean().default(true),
     graceDays: z.number().int().min(0).max(7).default(0),
   }).optional().nullable(),
+  
+  // Competencias
+  useCompetencies: z.boolean().optional(),
+  curriculumAreaId: z.string().max(36).optional().nullable(),
+  gradeScaleType: z.string().max(20).optional().nullable(),
 });
 
 const joinClassroomSchema = z.object({
@@ -155,7 +161,7 @@ export class ClassroomController {
     try {
       const { id } = req.params;
       const data = updateClassroomSchema.parse(req.body);
-      const classroom = await classroomService.update(id, req.user!.id, data);
+      const classroom = await classroomService.update(id, req.user!.id, data as any);
 
       res.json({
         success: true,
@@ -235,6 +241,7 @@ export class ClassroomController {
           message: 'No tienes permiso para eliminar esta clase',
         });
       }
+      console.error('Error deleting classroom:', error);
       res.status(500).json({
         success: false,
         message: 'Error al eliminar la clase',
@@ -709,7 +716,7 @@ REGLAS:
       }
 
       const { classroomId } = req.params;
-      const { name, description, copyBehaviors, copyBadges, copyShopItems, copyQuestionBanks } = req.body;
+      const { name, description, copyBehaviors, copyBadges, copyShopItems, copyQuestionBanks, schoolId } = req.body;
 
       if (!name || name.trim().length < 2) {
         return res.status(400).json({ 
@@ -725,6 +732,7 @@ REGLAS:
         copyBadges: copyBadges ?? true,
         copyShopItems: copyShopItems ?? true,
         copyQuestionBanks: copyQuestionBanks ?? true,
+        schoolId: schoolId || null,
       });
 
       res.json({

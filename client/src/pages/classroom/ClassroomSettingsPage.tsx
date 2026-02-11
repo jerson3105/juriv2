@@ -25,9 +25,13 @@ import {
   Gift,
   BookOpen,
   Award,
+  Printer,
+  FileText,
+  Loader2,
 } from 'lucide-react';
 import { classroomApi, type Classroom, type UpdateClassroomSettings } from '../../lib/classroomApi';
 import { studentApi } from '../../lib/studentApi';
+import { parentApi } from '../../lib/parentApi';
 import toast from 'react-hot-toast';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
 import { placeholderStudentApi } from '../../lib/placeholderStudentApi';
@@ -42,6 +46,7 @@ export const ClassroomSettingsPage = () => {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showDemoDeleteConfirm, setShowDemoDeleteConfirm] = useState(false);
   const [showAddPlaceholderModal, setShowAddPlaceholderModal] = useState(false);
+  const [generatingFlyers, setGeneratingFlyers] = useState(false);
 
   // Query para estudiantes placeholder
   const { data: placeholderStudents = [] } = useQuery({
@@ -1005,6 +1010,158 @@ export const ClassroomSettingsPage = () => {
                   Tienes {placeholderStudents.length} estudiante{placeholderStudents.length !== 1 ? 's' : ''} sin vincular
                 </p>
               )}
+            </div>
+          </motion.div>
+
+          {/* Folletos para padres */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.52 }}
+            className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg p-5"
+          >
+            <h2 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
+              <div className="w-8 h-8 bg-gradient-to-br from-teal-500 to-cyan-600 rounded-lg flex items-center justify-center">
+                <FileText size={16} className="text-white" />
+              </div>
+              Folletos para Padres
+            </h2>
+            
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Genera folletos individuales con el código de vinculación de cada estudiante para repartir a los padres de familia.
+              </p>
+              
+              <button
+                onClick={async () => {
+                  setGeneratingFlyers(true);
+                  try {
+                    const data = await parentApi.generateBulkParentLinkCodes(classroom.id);
+                    if (data.students.length === 0) {
+                      toast.error('No hay estudiantes activos en la clase');
+                      return;
+                    }
+                    // Abrir ventana de impresión con los folletos
+                    const printWindow = window.open('', '_blank');
+                    if (!printWindow) {
+                      toast.error('Permite las ventanas emergentes para imprimir');
+                      return;
+                    }
+                    printWindow.document.write(`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Folletos para Padres - ${data.classroomName}</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Inter', sans-serif; background: #f8fafc; }
+    .page { page-break-after: always; padding: 10mm; }
+    .page:last-child { page-break-after: auto; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; height: calc(297mm - 20mm); }
+    .flyer {
+      border: 2px dashed #cbd5e1;
+      border-radius: 12px;
+      padding: 6mm;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      background: white;
+    }
+    .flyer-logo { font-size: 28px; font-weight: 700; color: #6366f1; margin-bottom: 4mm; }
+    .flyer-class { font-size: 11px; color: #64748b; margin-bottom: 5mm; background: #f1f5f9; padding: 3px 10px; border-radius: 20px; }
+    .flyer-student { font-size: 15px; font-weight: 600; color: #1e293b; margin-bottom: 2mm; }
+    .flyer-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2mm; margin-top: 4mm; }
+    .flyer-code {
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      color: #6366f1;
+      background: #eef2ff;
+      padding: 4mm 8mm;
+      border-radius: 10px;
+      margin: 3mm 0;
+      font-family: monospace;
+    }
+    .flyer-instructions {
+      font-size: 9px;
+      color: #64748b;
+      line-height: 1.5;
+      margin-top: 4mm;
+      max-width: 90%;
+    }
+    .flyer-instructions ol { padding-left: 14px; text-align: left; }
+    .flyer-url { font-size: 10px; color: #6366f1; font-weight: 600; margin-top: 2mm; }
+    .scissors { text-align: center; color: #cbd5e1; font-size: 10px; margin: 2mm 0; }
+    @media print {
+      body { background: white; }
+      .no-print { display: none !important; }
+      .page { padding: 8mm; }
+      .flyer { border: 1.5px dashed #94a3b8; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print" style="background:#6366f1;color:white;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;">
+    <div>
+      <strong>${data.classroomName}</strong> — ${data.students.length} folletos generados
+    </div>
+    <button onclick="window.print()" style="background:white;color:#6366f1;border:none;padding:8px 20px;border-radius:8px;font-weight:600;cursor:pointer;font-size:14px;">
+      \u{1F5A8} Imprimir folletos
+    </button>
+  </div>
+${(() => {
+  const pages = [];
+  for (let i = 0; i < data.students.length; i += 4) {
+    const batch = data.students.slice(i, i + 4);
+    const flyers = batch.map(s => `
+      <div class="flyer">
+        <div class="flyer-logo">Juried</div>
+        <div class="flyer-class">${data.classroomName}</div>
+        <div class="flyer-student">${s.name}</div>
+        <div class="flyer-label">Código de vinculación para padres</div>
+        <div class="flyer-code">${s.parentLinkCode}</div>
+        <div class="flyer-instructions">
+          <ol>
+            <li>Ingrese a <strong>www.plataformajuried.com</strong> y regístrese como <strong>Padre/Madre</strong></li>
+            <li>Ingrese el código de arriba para vincular a su hijo/a</li>
+            <li>Podrá ver el progreso, calificaciones y actividad de su hijo/a</li>
+          </ol>
+        </div>
+        <div class="flyer-url">www.plataformajuried.com</div>
+      </div>
+    `).join('');
+    // Pad with empty flyers if less than 4
+    const empty = Array(4 - batch.length).fill('<div class="flyer" style="border-color:transparent;"></div>').join('');
+    pages.push('<div class="page"><div class="grid">' + flyers + empty + '</div></div>');
+  }
+  return pages.join('');
+})()}
+</body>
+</html>`);
+                    printWindow.document.close();
+                    toast.success(`${data.students.length} folletos generados`);
+                  } catch {
+                    toast.error('Error al generar folletos');
+                  } finally {
+                    setGeneratingFlyers(false);
+                  }
+                }}
+                disabled={generatingFlyers}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-600 hover:to-cyan-600 text-white rounded-xl text-sm font-medium shadow-lg shadow-teal-500/25 transition-all disabled:opacity-50"
+              >
+                {generatingFlyers ? (
+                  <><Loader2 size={16} className="animate-spin" /> Generando...</>
+                ) : (
+                  <><Printer size={16} /> Obtener folletos individuales</>
+                )}
+              </button>
+              
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Se generarán folletos imprimibles con 4 por página. Los códigos existentes se mantienen.
+              </p>
             </div>
           </motion.div>
 

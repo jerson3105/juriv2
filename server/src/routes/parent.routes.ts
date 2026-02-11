@@ -21,4 +21,7 @@ router.put('/preferences', authenticate, authorize('PARENT'), parentController.u
 // Ruta para profesor: generar código de vinculación
 router.post('/generate-code/:studentId', authenticate, authorize('TEACHER'), parentController.generateParentLinkCode);
 
+// Ruta para profesor: generar códigos masivos para folletos de padres
+router.post('/generate-codes-bulk/:classroomId', authenticate, authorize('TEACHER'), parentController.generateBulkParentLinkCodes);
+
 export default router;

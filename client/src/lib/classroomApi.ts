@@ -65,6 +65,9 @@ export interface Classroom {
     }>;
   } | null;
   
+  // Escuela
+  schoolId: string | null;
+  
   studentCount?: number;
   createdAt: string;
   updatedAt: string;
@@ -91,6 +94,7 @@ export interface CreateClassroomData {
   useCompetencies?: boolean;
   curriculumAreaId?: string | null;
   gradeScaleType?: 'PERU_LETTERS' | 'PERU_VIGESIMAL' | 'CENTESIMAL' | 'USA_LETTERS' | 'CUSTOM' | null;
+  schoolId?: string | null;
 }
 
 export interface CurriculumCompetency {
@@ -159,6 +163,10 @@ export interface UpdateClassroomSettings {
     resetOnMiss: boolean;
     graceDays: number;
   };
+  // Competencias
+  useCompetencies?: boolean;
+  curriculumAreaId?: string | null;
+  gradeScaleType?: 'PERU_LETTERS' | 'PERU_VIGESIMAL' | 'CENTESIMAL' | 'USA_LETTERS' | 'CUSTOM' | null;
 }
 
 export interface JoinClassroomData {
@@ -241,6 +249,7 @@ export const classroomApi = {
       copyBadges: boolean;
       copyShopItems: boolean;
       copyQuestionBanks: boolean;
+      schoolId?: string | null;
     }
   ): Promise<{ 
     classroom: Classroom; 

@@ -8,12 +8,13 @@ import {
   itemUsages,
   studentBadges,
   badges,
+  attendanceRecords,
 } from '../db/schema.js';
 import { eq, desc, and, sql } from 'drizzle-orm';
 
 export interface ActivityLogEntry {
   id: string;
-  type: 'POINTS' | 'PURCHASE' | 'ITEM_USED' | 'LEVEL_UP' | 'BADGE';
+  type: 'POINTS' | 'PURCHASE' | 'ITEM_USED' | 'LEVEL_UP' | 'BADGE' | 'ATTENDANCE';
   timestamp: Date;
   studentId: string;
   studentName: string | null;
@@ -33,6 +34,9 @@ export interface ActivityLogEntry {
     xpAmount?: number;
     hpAmount?: number;
     gpAmount?: number;
+    // Asistencia
+    attendanceStatus?: string;
+    attendanceDate?: string;
   };
 }
 
@@ -43,7 +47,7 @@ class HistoryService {
   async getClassroomHistory(classroomId: string, options?: {
     limit?: number;
     offset?: number;
-    type?: 'POINTS' | 'PURCHASE' | 'ITEM_USED' | 'BADGE' | 'ALL';
+    type?: 'POINTS' | 'PURCHASE' | 'ITEM_USED' | 'BADGE' | 'ATTENDANCE' | 'ALL';
     studentId?: string;
     startDate?: Date;
   }): Promise<{ logs: ActivityLogEntry[]; total: number }> {
@@ -293,6 +297,44 @@ class HistoryService {
       }
     }
 
+    // 5. Obtener registros de asistencia
+    if (filterType === 'ALL' || filterType === 'ATTENDANCE') {
+      const attendanceData = await db
+        .select({
+          id: attendanceRecords.id,
+          studentId: attendanceRecords.studentProfileId,
+          date: attendanceRecords.date,
+          status: attendanceRecords.status,
+          xpAwarded: attendanceRecords.xpAwarded,
+          createdAt: attendanceRecords.createdAt,
+        })
+        .from(attendanceRecords)
+        .where(
+          options?.studentId
+            ? and(eq(attendanceRecords.studentProfileId, options.studentId), eq(attendanceRecords.classroomId, classroomId))
+            : eq(attendanceRecords.classroomId, classroomId)
+        )
+        .orderBy(desc(attendanceRecords.createdAt))
+        .limit(limit * 2);
+
+      for (const att of attendanceData) {
+        const student = studentMap.get(att.studentId);
+        logs.push({
+          id: att.id,
+          type: 'ATTENDANCE',
+          timestamp: att.createdAt,
+          studentId: att.studentId,
+          studentName: student?.characterName || null,
+          studentClass: student?.characterClass || 'GUARDIAN',
+          details: {
+            attendanceStatus: att.status,
+            attendanceDate: new Date(att.date).toISOString().split('T')[0],
+            amount: att.xpAwarded || 0,
+          },
+        });
+      }
+    }
+
     // Ordenar por fecha y paginar
     logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
     
@@ -311,9 +353,31 @@ class HistoryService {
     totalPurchases: number;
     totalItemsUsed: number;
     topStudents: { id: string; name: string; xp: number }[];
+    topPositiveBehaviors: { name: string; icon: string | null; count: number }[];
+    topNegativeBehaviors: { name: string; icon: string | null; count: number }[];
   }> {
-    // Obtener estudiantes
-    const studentsData = await db
+    // Obtener TODOS los estudiantes de la clase para cálculos globales
+    const allStudents = await db
+      .select({ id: studentProfiles.id })
+      .from(studentProfiles)
+      .where(eq(studentProfiles.classroomId, classroomId));
+
+    const allStudentIds = allStudents.map((s: { id: string }) => s.id);
+
+    if (allStudentIds.length === 0) {
+      return {
+        totalXpGiven: 0,
+        totalXpRemoved: 0,
+        totalPurchases: 0,
+        totalItemsUsed: 0,
+        topStudents: [],
+        topPositiveBehaviors: [],
+        topNegativeBehaviors: [],
+      };
+    }
+
+    // Top 5 estudiantes para el leaderboard
+    const topStudentsData = await db
       .select({
         id: studentProfiles.id,
         characterName: studentProfiles.characterName,
@@ -324,19 +388,7 @@ class HistoryService {
       .orderBy(desc(studentProfiles.xp))
       .limit(5);
 
-    const studentIds = studentsData.map((s: { id: string }) => s.id);
-
-    if (studentIds.length === 0) {
-      return {
-        totalXpGiven: 0,
-        totalXpRemoved: 0,
-        totalPurchases: 0,
-        totalItemsUsed: 0,
-        topStudents: [],
-      };
-    }
-
-    // Calcular XP dado/quitado
+    // Calcular XP dado/quitado usando TODOS los estudiantes
     const xpLogs = await db
       .select({
         id: pointLogs.id,
@@ -346,7 +398,7 @@ class HistoryService {
       .from(pointLogs)
       .where(
         and(
-          sql`${pointLogs.studentId} IN (${sql.join(studentIds.map((id: string) => sql`${id}`), sql`, `)})`,
+          sql`${pointLogs.studentId} IN (${sql.join(allStudentIds.map((id: string) => sql`${id}`), sql`, `)})`,
           eq(pointLogs.pointType, 'XP')
         )
       )
@@ -359,7 +411,7 @@ class HistoryService {
     const [purchaseCount] = await db
       .select({ count: sql<number>`COUNT(*)` })
       .from(purchases)
-      .where(sql`${purchases.studentId} IN (${sql.join(studentIds.map((id: string) => sql`${id}`), sql`, `)})`);
+      .where(sql`${purchases.studentId} IN (${sql.join(allStudentIds.map((id: string) => sql`${id}`), sql`, `)})`);
 
     // Contar items usados
     const [usageCount] = await db
@@ -367,16 +419,46 @@ class HistoryService {
       .from(itemUsages)
       .where(eq(itemUsages.classroomId, classroomId));
 
+    // Top comportamientos positivos y negativos
+    const behaviorCounts = await db
+      .select({
+        behaviorId: pointLogs.behaviorId,
+        name: behaviors.name,
+        icon: behaviors.icon,
+        isPositive: behaviors.isPositive,
+        count: sql<number>`COUNT(DISTINCT CONCAT(${pointLogs.studentId}, '-', DATE_FORMAT(${pointLogs.createdAt}, '%Y-%m-%d %H:%i:%s')))`,
+      })
+      .from(pointLogs)
+      .innerJoin(behaviors, eq(pointLogs.behaviorId, behaviors.id))
+      .where(
+        sql`${pointLogs.studentId} IN (${sql.join(allStudentIds.map((id: string) => sql`${id}`), sql`, `)})`
+      )
+      .groupBy(pointLogs.behaviorId, behaviors.name, behaviors.icon, behaviors.isPositive)
+      .orderBy(sql`5 DESC`)
+      .limit(20);
+
+    const topPositiveBehaviors = behaviorCounts
+      .filter(b => b.isPositive)
+      .slice(0, 5)
+      .map(b => ({ name: b.name, icon: b.icon, count: Number(b.count) }));
+
+    const topNegativeBehaviors = behaviorCounts
+      .filter(b => !b.isPositive)
+      .slice(0, 5)
+      .map(b => ({ name: b.name, icon: b.icon, count: Number(b.count) }));
+
     return {
       totalXpGiven: Number(xpGiven),
       totalXpRemoved: Number(xpRemoved),
       totalPurchases: Number(purchaseCount?.count || 0),
       totalItemsUsed: Number(usageCount?.count || 0),
-      topStudents: studentsData.map((s: { id: string; characterName: string | null; xp: number }) => ({
+      topStudents: topStudentsData.map((s: { id: string; characterName: string | null; xp: number }) => ({
         id: s.id,
         name: s.characterName || 'Sin nombre',
         xp: s.xp,
       })),
+      topPositiveBehaviors,
+      topNegativeBehaviors,
     };
   }
 }

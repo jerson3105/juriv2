@@ -36,6 +36,11 @@ export const gradeScaleTypeEnum = mysqlEnum('grade_scale_type', ['PERU_LETTERS',
 export const parentRelationshipEnum = mysqlEnum('relationship', ['FATHER', 'MOTHER', 'TUTOR', 'GUARDIAN']);
 export const parentLinkStatusEnum = mysqlEnum('status', ['PENDING', 'ACTIVE', 'REVOKED']);
 
+// Enums para Sistema de Escuelas
+export const schoolMemberRoleEnum = mysqlEnum('school_member_role', ['OWNER', 'TEACHER']);
+export const schoolMemberStatusEnum = mysqlEnum('school_member_status', ['PENDING_ADMIN', 'PENDING_OWNER', 'VERIFIED', 'REJECTED']);
+export const schoolVerificationStatusEnum = mysqlEnum('school_verification_status', ['PENDING', 'APPROVED', 'REJECTED']);
+
 // ==================== USUARIOS ====================
 
 export const users = mysqlTable('users', {
@@ -216,11 +221,15 @@ export const classrooms = mysqlTable('classrooms', {
     closedBy: string;
   }>>(),
   
+  // Escuela asociada (opcional)
+  schoolId: varchar('school_id', { length: 36 }),
+  
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
 }, (table) => ({
   teacherIdx: index('idx_classrooms_teacher').on(table.teacherId),
   curriculumAreaIdx: index('idx_classrooms_curriculum_area').on(table.curriculumAreaId),
+  schoolIdx: index('idx_classrooms_school').on(table.schoolId),
 }));
 
 export const classroomsRelations = relations(classrooms, ({ one, many }) => ({
@@ -231,6 +240,10 @@ export const classroomsRelations = relations(classrooms, ({ one, many }) => ({
   curriculumArea: one(curriculumAreas, {
     fields: [classrooms.curriculumAreaId],
     references: [curriculumAreas.id],
+  }),
+  school: one(schools, {
+    fields: [classrooms.schoolId],
+    references: [schools.id],
   }),
   students: many(studentProfiles),
   teams: many(teams),
@@ -396,6 +409,8 @@ export const behaviors = mysqlTable('behaviors', {
   isActive: boolean('is_active').notNull().default(true),
   // Competencia asociada (para calificación por competencias)
   competencyId: varchar('competency_id', { length: 36 }),
+  // Origen: si fue importado de un comportamiento de escuela
+  schoolBehaviorId: varchar('school_behavior_id', { length: 36 }),
   createdAt: datetime('created_at').notNull(),
 }, (table) => ({
   classroomIdx: index('idx_behaviors_classroom').on(table.classroomId),
@@ -843,6 +858,9 @@ export const badges = mysqlTable('badges', {
   
   // Competencia asociada (para calificación por competencias)
   competencyId: varchar('competency_id', { length: 36 }),
+  
+  // Origen: si fue importado de una insignia de escuela
+  schoolBadgeId: varchar('school_badge_id', { length: 36 }),
   
   // Metadata
   isSecret: boolean('is_secret').notNull().default(false),
@@ -2438,3 +2456,176 @@ export type JiroExpeditionStatus = 'DRAFT' | 'OPEN' | 'IN_PROGRESS' | 'CLOSED';
 export type JiroStudentStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'PENDING_REVIEW' | 'COMPLETED';
 export type JiroDeliveryFileType = 'PDF' | 'IMAGE' | 'WORD' | 'EXCEL';
 export type JiroDeliveryStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+// ==================== SISTEMA DE ESCUELAS ====================
+
+export const schools = mysqlTable('schools', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  address: text('address'),
+  city: varchar('city', { length: 100 }),
+  province: varchar('province', { length: 100 }),
+  country: varchar('country', { length: 100 }).notNull().default('Perú'),
+  googlePlaceId: varchar('google_place_id', { length: 255 }),
+  latitude: decimal('latitude', { precision: 10, scale: 8 }),
+  longitude: decimal('longitude', { precision: 11, scale: 8 }),
+  logoUrl: varchar('logo_url', { length: 500 }),
+  isVerified: boolean('is_verified').notNull().default(false),
+  isActive: boolean('is_active').notNull().default(true),
+  createdBy: varchar('created_by', { length: 36 }).notNull(),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  nameIdx: index('idx_schools_name').on(table.name),
+  googlePlaceIdx: index('idx_schools_google_place').on(table.googlePlaceId),
+  createdByIdx: index('idx_schools_created_by').on(table.createdBy),
+}));
+
+export const schoolsRelations = relations(schools, ({ one, many }) => ({
+  creator: one(users, {
+    fields: [schools.createdBy],
+    references: [users.id],
+  }),
+  members: many(schoolMembers),
+  verifications: many(schoolVerifications),
+  classrooms: many(classrooms),
+}));
+
+export const schoolMembers = mysqlTable('school_members', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  schoolId: varchar('school_id', { length: 36 }).notNull(),
+  userId: varchar('user_id', { length: 36 }).notNull(),
+  role: schoolMemberRoleEnum.notNull().default('TEACHER'),
+  status: schoolMemberStatusEnum.notNull(),
+  rejectionReason: text('rejection_reason'),
+  joinedAt: datetime('joined_at'),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  schoolIdx: index('idx_school_members_school').on(table.schoolId),
+  userIdx: index('idx_school_members_user').on(table.userId),
+  uniqueSchoolMember: unique('unique_school_member').on(table.schoolId, table.userId),
+}));
+
+export const schoolMembersRelations = relations(schoolMembers, ({ one }) => ({
+  school: one(schools, {
+    fields: [schoolMembers.schoolId],
+    references: [schools.id],
+  }),
+  user: one(users, {
+    fields: [schoolMembers.userId],
+    references: [users.id],
+  }),
+}));
+
+export const schoolVerifications = mysqlTable('school_verifications', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  schoolId: varchar('school_id', { length: 36 }).notNull(),
+  userId: varchar('user_id', { length: 36 }).notNull(),
+  position: varchar('position', { length: 100 }).notNull(),
+  documentUrls: json('document_urls').$type<string[]>(),
+  details: text('details'),
+  status: schoolVerificationStatusEnum.notNull().default('PENDING'),
+  reviewedBy: varchar('reviewed_by', { length: 36 }),
+  reviewNote: text('review_note'),
+  reviewedAt: datetime('reviewed_at'),
+  createdAt: datetime('created_at').notNull(),
+}, (table) => ({
+  schoolIdx: index('idx_school_verifications_school').on(table.schoolId),
+  userIdx: index('idx_school_verifications_user').on(table.userId),
+  statusIdx: index('idx_school_verifications_status').on(table.status),
+}));
+
+export const schoolVerificationsRelations = relations(schoolVerifications, ({ one }) => ({
+  school: one(schools, {
+    fields: [schoolVerifications.schoolId],
+    references: [schools.id],
+  }),
+  user: one(users, {
+    fields: [schoolVerifications.userId],
+    references: [users.id],
+  }),
+  reviewer: one(users, {
+    fields: [schoolVerifications.reviewedBy],
+    references: [users.id],
+  }),
+}));
+
+// Comportamientos de escuela (creados por OWNER, importables por profesores)
+export const schoolBehaviors = mysqlTable('school_behaviors', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  schoolId: varchar('school_id', { length: 36 }).notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description'),
+  pointType: pointTypeEnum.notNull(),
+  pointValue: int('point_value').notNull(),
+  xpValue: int('xp_value').notNull().default(0),
+  hpValue: int('hp_value').notNull().default(0),
+  gpValue: int('gp_value').notNull().default(0),
+  icon: varchar('icon', { length: 50 }),
+  isActive: boolean('is_active').notNull().default(true),
+  createdBy: varchar('created_by', { length: 36 }).notNull(),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  schoolIdx: index('idx_school_behaviors_school').on(table.schoolId),
+  schoolActiveIdx: index('idx_school_behaviors_school_active').on(table.schoolId, table.isActive),
+}));
+
+export const schoolBehaviorsRelations = relations(schoolBehaviors, ({ one }) => ({
+  school: one(schools, {
+    fields: [schoolBehaviors.schoolId],
+    references: [schools.id],
+  }),
+  creator: one(users, {
+    fields: [schoolBehaviors.createdBy],
+    references: [users.id],
+  }),
+}));
+
+// Insignias de escuela (creadas por OWNER, importables por profesores)
+export const schoolBadges = mysqlTable('school_badges', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  schoolId: varchar('school_id', { length: 36 }).notNull(),
+  name: varchar('name', { length: 100 }).notNull(),
+  description: varchar('description', { length: 255 }).notNull(),
+  icon: varchar('icon', { length: 50 }).notNull(),
+  customImage: varchar('custom_image', { length: 500 }),
+  category: mysqlEnum('school_badge_category', ['PROGRESS', 'PARTICIPATION', 'SOCIAL', 'SHOP', 'SPECIAL', 'SECRET', 'CUSTOM']).notNull().default('CUSTOM'),
+  rarity: mysqlEnum('school_badge_rarity', ['COMMON', 'RARE', 'EPIC', 'LEGENDARY']).notNull().default('COMMON'),
+  assignmentMode: mysqlEnum('school_badge_assignment', ['AUTOMATIC', 'MANUAL', 'BOTH']).notNull().default('MANUAL'),
+  unlockCondition: json('unlock_condition'),
+  rewardXp: int('reward_xp').notNull().default(0),
+  rewardGp: int('reward_gp').notNull().default(0),
+  isSecret: boolean('is_secret').notNull().default(false),
+  isActive: boolean('is_active').notNull().default(true),
+  createdBy: varchar('created_by', { length: 36 }).notNull(),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  schoolIdx: index('idx_school_badges_school').on(table.schoolId),
+  schoolActiveIdx: index('idx_school_badges_school_active').on(table.schoolId, table.isActive),
+}));
+
+export const schoolBadgesRelations = relations(schoolBadges, ({ one }) => ({
+  school: one(schools, {
+    fields: [schoolBadges.schoolId],
+    references: [schools.id],
+  }),
+  creator: one(users, {
+    fields: [schoolBadges.createdBy],
+    references: [users.id],
+  }),
+}));
+
+// Types para Sistema de Escuelas
+export type School = typeof schools.$inferSelect;
+export type NewSchool = typeof schools.$inferInsert;
+export type SchoolMember = typeof schoolMembers.$inferSelect;
+export type NewSchoolMember = typeof schoolMembers.$inferInsert;
+export type SchoolVerification = typeof schoolVerifications.$inferSelect;
+export type NewSchoolVerification = typeof schoolVerifications.$inferInsert;
+export type SchoolBehavior = typeof schoolBehaviors.$inferSelect;
+export type NewSchoolBehavior = typeof schoolBehaviors.$inferInsert;
+export type SchoolBadge = typeof schoolBadges.$inferSelect;
+export type NewSchoolBadge = typeof schoolBadges.$inferInsert;

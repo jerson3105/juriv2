@@ -17,6 +17,11 @@ import {
   Trophy,
   Star,
   Coins,
+  School,
+  BarChart3,
+  UserCheck,
+  ClipboardList,
+  CheckCircle,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { classroomApi } from '../../lib/classroomApi';
@@ -36,11 +41,19 @@ const JIRO_TIPS = [
 // Noticias/Actualizaciones de Juried
 const JURIED_NEWS = [
   { 
+    id: 'schools-v1',
+    title: '🏫 Escuelas Juried',
+    description: 'Registra tu escuela, gestiona profesores y accede a reportes detallados por clase: XP, asistencia, comportamientos y más.',
+    date: '2026-02-08',
+    isNew: true,
+    hasModal: true,
+  },
+  { 
     id: 'collectibles',
     title: '🆕 Nueva función: Coleccionables',
     description: 'Crea álbumes de cromos para tus estudiantes. ¡Pueden comprar sobres con GP!',
     date: '2026-01-23',
-    isNew: true,
+    isNew: false,
     hasModal: true,
   },
 ];
@@ -50,6 +63,7 @@ export const TeacherDashboard = () => {
   const navigate = useNavigate();
   const [currentTipIndex, setCurrentTipIndex] = useState(0);
   const [showCollectiblesModal, setShowCollectiblesModal] = useState(false);
+  const [showSchoolsModal, setShowSchoolsModal] = useState(false);
 
   // Rotar tips cada 10 segundos
   useEffect(() => {
@@ -285,7 +299,10 @@ export const TeacherDashboard = () => {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.4 + index * 0.1 }}
-                    onClick={() => news.hasModal && setShowCollectiblesModal(true)}
+                    onClick={() => {
+                      if (news.id === 'collectibles') setShowCollectiblesModal(true);
+                      if (news.id === 'schools-v1') setShowSchoolsModal(true);
+                    }}
                     className="group cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 -mx-2 px-2 py-2 rounded-lg transition-colors"
                   >
                     <div className="flex items-start gap-2">
@@ -369,6 +386,120 @@ export const TeacherDashboard = () => {
           </div>
         </motion.div>
       </div>
+
+      {/* Modal de Escuelas Juried */}
+      {showSchoolsModal && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+          onClick={() => setShowSchoolsModal(false)}
+        >
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.9, opacity: 0 }}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
+          >
+            {/* Header */}
+            <div className="relative bg-gradient-to-r from-indigo-500 to-blue-500 p-6 rounded-t-2xl">
+              <button
+                onClick={() => setShowSchoolsModal(false)}
+                className="absolute top-4 right-4 p-1 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center">
+                  <School className="w-8 h-8 text-white" />
+                </div>
+                <div className="text-white">
+                  <span className="px-2 py-0.5 bg-white/20 rounded-full text-xs font-medium mb-1 inline-block">Nueva función</span>
+                  <h2 className="text-xl font-bold">Escuelas Juried</h2>
+                </div>
+              </div>
+            </div>
+
+            {/* Contenido */}
+            <div className="p-6 space-y-5">
+              <p className="text-gray-600 dark:text-gray-300 text-sm leading-relaxed">
+                Ahora puedes registrar tu escuela en Juried y gestionar a todos tus profesores desde un solo lugar, con reportes detallados de cada clase.
+              </p>
+
+              <div className="space-y-3">
+                <h3 className="font-semibold text-gray-800 dark:text-white text-sm flex items-center gap-2">
+                  <Star className="w-4 h-4 text-indigo-500" />
+                  ¿Qué incluye?
+                </h3>
+                <div className="grid gap-3">
+                  <div className="flex items-start gap-3 p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl">
+                    <div className="w-8 h-8 bg-indigo-100 dark:bg-indigo-900/40 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <School className="w-4 h-4 text-indigo-600" />
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-gray-800 dark:text-white text-sm">Registro de escuela</h4>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Registra tu institución y verifica tu rol como director o coordinador.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
+                    <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900/40 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <UserCheck className="w-4 h-4 text-blue-600" />
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-gray-800 dark:text-white text-sm">Gestión de profesores</h4>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Invita profesores, aprueba solicitudes y administra tu equipo docente.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
+                    <div className="w-8 h-8 bg-emerald-100 dark:bg-emerald-900/40 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <BarChart3 className="w-4 h-4 text-emerald-600" />
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-gray-800 dark:text-white text-sm">Reportes por clase</h4>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">XP otorgado, asistencia, comportamientos positivos/negativos y top estudiantes.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-3 bg-purple-50 dark:bg-purple-900/20 rounded-xl">
+                    <div className="w-8 h-8 bg-purple-100 dark:bg-purple-900/40 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <ClipboardList className="w-4 h-4 text-purple-600" />
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-gray-800 dark:text-white text-sm">Reporte general de escuela</h4>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Vista consolidada con tendencias de asistencia, ranking de clases y más.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4">
+                <h3 className="font-semibold text-gray-800 dark:text-white text-sm flex items-center gap-2 mb-2">
+                  <CheckCircle className="w-4 h-4 text-indigo-500" />
+                  Correcciones incluidas
+                </h3>
+                <ul className="text-xs text-gray-600 dark:text-gray-300 space-y-1 list-disc list-inside">
+                  <li>Estadísticas de asistencia corregidas en reportes por clase</li>
+                  <li>Comportamientos positivos y negativos más comunes en cada clase</li>
+                  <li>Gráfico de asistencia por clase optimizado para muchas clases</li>
+                  <li>Correcciones menores de interfaz y navegación</li>
+                </ul>
+              </div>
+
+              <button
+                onClick={() => {
+                  setShowSchoolsModal(false);
+                  navigate('/schools');
+                }}
+                className="w-full py-3 bg-gradient-to-r from-indigo-500 to-blue-500 hover:from-indigo-600 hover:to-blue-600 text-white font-semibold rounded-xl shadow-lg shadow-indigo-500/25 transition-all flex items-center justify-center gap-2"
+              >
+                <School className="w-5 h-5" />
+                Ir a Escuelas
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
 
       {/* Modal de Coleccionables */}
       {showCollectiblesModal && (

@@ -53,6 +53,10 @@ import AdminUsers from './pages/admin/AdminUsers';
 import AdminClassrooms from './pages/admin/AdminClassrooms';
 import AdminExpeditionMaps from './pages/admin/AdminExpeditionMaps';
 import { AdminBugReports } from './pages/admin/AdminBugReports';
+import AdminSchoolVerifications from './pages/admin/AdminSchoolVerifications';
+
+// Schools
+import { SchoolsPage } from './pages/schools/SchoolsPage';
 
 // Parent pages
 import ParentDashboard from './pages/parent/ParentDashboard';
@@ -277,6 +281,26 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/admin/school-verifications"
+            element={
+              <ProtectedRoute>
+                <AdminSchoolVerifications />
+              </ProtectedRoute>
+            }
+          />
+          {/* School Routes */}
+          <Route
+            path="/schools"
+            element={
+              <ProtectedRoute>
+                <MainLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<SchoolsPage />} />
+          </Route>
+
           {/* Parent Routes */}
           <Route
             path="/parent"

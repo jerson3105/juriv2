@@ -100,6 +100,13 @@ export default function AdminDashboard() {
       color: 'bg-emerald-100 text-emerald-600',
     },
     {
+      title: 'Verificaciones de Escuelas',
+      description: 'Revisar solicitudes de verificación de escuelas',
+      icon: Shield,
+      link: '/admin/school-verifications',
+      color: 'bg-amber-100 text-amber-600',
+    },
+    {
       title: 'Reportes de Bugs',
       description: 'Ver y gestionar reportes de bugs enviados por profesores',
       icon: Bug,
