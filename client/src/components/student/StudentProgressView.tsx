@@ -359,7 +359,10 @@ export const StudentProgressView = ({ studentId, onBack }: StudentProgressViewPr
             ) : (
               <>
                 <div className="space-y-2">
-                  {paginatedHistory.map((item) => (
+                  {paginatedHistory.map((item) => {
+                    const isCombined = (item.xpAmount ? 1 : 0) + (item.gpAmount ? 1 : 0) + (item.hpAmount ? 1 : 0) > 1;
+                    const sign = item.action === 'ADD' ? '+' : '-';
+                    return (
                     <motion.div
                       key={item.id}
                       initial={{ opacity: 0, x: -10 }}
@@ -388,13 +391,22 @@ export const StudentProgressView = ({ studentId, onBack }: StudentProgressViewPr
                           </p>
                         </div>
                       </div>
-                      <div className={`text-sm font-bold ${
-                        item.action === 'ADD' ? 'text-emerald-600' : 'text-red-600'
-                      }`}>
-                        {item.action === 'ADD' ? '+' : '-'}{item.amount} {item.type}
-                      </div>
+                      {isCombined ? (
+                        <div className="flex flex-col items-end gap-0.5">
+                          {item.xpAmount && <span className={`text-xs font-bold ${item.action === 'ADD' ? 'text-emerald-600' : 'text-red-600'}`}>{sign}{item.xpAmount} XP</span>}
+                          {item.gpAmount && <span className={`text-xs font-bold ${item.action === 'ADD' ? 'text-amber-600' : 'text-red-600'}`}>{sign}{item.gpAmount} GP</span>}
+                          {item.hpAmount && <span className={`text-xs font-bold ${item.action === 'ADD' ? 'text-rose-600' : 'text-red-600'}`}>{sign}{item.hpAmount} HP</span>}
+                        </div>
+                      ) : (
+                        <div className={`text-sm font-bold ${
+                          item.action === 'ADD' ? 'text-emerald-600' : 'text-red-600'
+                        }`}>
+                          {sign}{item.amount} {item.type}
+                        </div>
+                      )}
                     </motion.div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {/* Paginación */}

@@ -17,6 +17,7 @@ import {
 import { eq, and, desc, gte, lte, inArray, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcryptjs';
+import { gradeService } from './grade.service.js';
 
 interface ChildSummary {
   studentProfileId: string;
@@ -462,10 +463,28 @@ class ParentService {
     .leftJoin(curriculumCompetencies, eq(studentGrades.competencyId, curriculumCompetencies.id))
     .where(eq(studentGrades.studentProfileId, studentProfileId));
     
+    // Obtener actividades en vivo del período actual usando el grade service
+    let liveActivities: Record<string, Array<{ type: string; name: string; score: number; weight: number }>> = {};
+    try {
+      const dateRange = await gradeService.getBimesterDateRange(student.classroomId, targetPeriod);
+      const uniqueCompetencyIds = [...new Set(allGrades.map(g => g.competencyId))];
+      for (const compId of uniqueCompetencyIds) {
+        const scores = await gradeService.getStudentActivityScores(studentProfileId, compId, student.classroomId, dateRange);
+        liveActivities[compId] = scores.map(s => ({
+          type: s.type,
+          name: s.name,
+          score: s.score,
+          weight: s.weight,
+        }));
+      }
+    } catch {
+      // Si falla, continuamos sin actividades
+    }
+
     // Organizar por competencia y bimestre
     const gradesByCompetency: Record<string, {
       name: string;
-      grades: Record<string, { score: number; label: string }>;
+      grades: Record<string, { score: number; label: string; activities?: Array<{ type: string; name: string; score: number; weight: number }> }>;
     }> = {};
     
     for (const grade of allGrades) {
@@ -475,9 +494,11 @@ class ParentService {
           grades: {},
         };
       }
+      const isCurrentPeriod = grade.period === targetPeriod;
       gradesByCompetency[grade.competencyId].grades[grade.period] = {
         score: parseFloat(grade.score) || 0,
         label: grade.gradeLabel || '',
+        activities: isCurrentPeriod ? (liveActivities[grade.competencyId] || []) : [],
       };
     }
     
@@ -530,8 +551,9 @@ class ParentService {
     const activity: ActivityLogItem[] = [];
     const queryLimit = Math.min(limit, 30); // Límite por tipo de actividad
     
-    // Comportamientos (puntos) - limitado
+    // Comportamientos (puntos) - limitado, agrupando combinados
     const behaviorLogs = await db.select({
+      behaviorId: pointLogs.behaviorId,
       behaviorName: behaviors.name,
       action: pointLogs.action,
       amount: pointLogs.amount,
@@ -546,20 +568,34 @@ class ParentService {
       lte(pointLogs.createdAt, end)
     ))
     .orderBy(desc(pointLogs.createdAt))
-    .limit(queryLimit);
+    .limit(queryLimit * 3);
     
+    // Agrupar pointLogs combinados (mismo behaviorId + createdAt)
+    const groupedBehaviors = new Map<string, { behaviorName: string; action: string; createdAt: Date; points: string[] }>();
     for (const log of behaviorLogs) {
-      if (log.behaviorName && log.createdAt) {
-        activity.push({
-          type: 'BEHAVIOR',
-          description: log.action === 'ADD' 
-            ? `Recibió reconocimiento: "${log.behaviorName}"`
-            : `Observación: "${log.behaviorName}"`,
-          date: log.createdAt,
-          isPositive: log.action === 'ADD',
-          details: `${log.action === 'ADD' ? '+' : '-'}${log.amount} ${log.pointType}`,
+      if (!log.behaviorName || !log.createdAt || !log.behaviorId) continue;
+      const key = `${log.behaviorId}_${new Date(log.createdAt).getTime()}`;
+      if (!groupedBehaviors.has(key)) {
+        groupedBehaviors.set(key, {
+          behaviorName: log.behaviorName,
+          action: log.action,
+          createdAt: log.createdAt,
+          points: [],
         });
       }
+      groupedBehaviors.get(key)!.points.push(`${log.action === 'ADD' ? '+' : '-'}${log.amount} ${log.pointType}`);
+    }
+
+    for (const group of groupedBehaviors.values()) {
+      activity.push({
+        type: 'BEHAVIOR',
+        description: group.action === 'ADD'
+          ? `Recibió reconocimiento: "${group.behaviorName}"`
+          : `Observación: "${group.behaviorName}"`,
+        date: group.createdAt,
+        isPositive: group.action === 'ADD',
+        details: group.points.join(', '),
+      });
     }
     
     // Actividades cronometradas - limitado

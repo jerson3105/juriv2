@@ -71,7 +71,7 @@ export interface ChildGrades {
   competencies: Array<{
     id: string;
     name: string;
-    grades: Record<string, { score: number; label: string }>;
+    grades: Record<string, { score: number; label: string; activities?: Array<{ type: string; name: string; score: number; weight: number }>; activitiesCount?: number }>;
   }>;
 }
 

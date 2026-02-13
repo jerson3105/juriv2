@@ -24,6 +24,7 @@ import {
   Sparkles,
   Medal,
   Trophy,
+  Timer,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -1019,6 +1020,20 @@ export const GradebookPage = () => {
                       </div>
                       <div className="text-right">
                         <span className="text-lg font-bold text-amber-600 dark:text-amber-400">20</span>
+                        <p className="text-xs text-gray-500">peso fijo</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 p-3 bg-orange-50 dark:bg-orange-900/20 rounded-xl">
+                      <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-red-500 rounded-lg flex items-center justify-center">
+                        <Timer size={18} className="text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-800 dark:text-white">Actividades de Tiempo</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Cronómetro, temporizador y bomba</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-lg font-bold text-orange-600 dark:text-orange-400">30</span>
                         <p className="text-xs text-gray-500">peso fijo</p>
                       </div>
                     </div>

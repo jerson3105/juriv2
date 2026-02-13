@@ -90,7 +90,7 @@ class TimedActivityService {
         activityType: 'TIMED' as const,
         activityId: id,
         competencyId,
-        weight: 100,
+        weight: 30,
         createdAt: now,
       }));
       await db.insert(activityCompetencies).values(competencyValues);

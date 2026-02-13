@@ -96,6 +96,9 @@ export interface StudentStats {
     amount: number;
     reason: string;
     date: string;
+    xpAmount?: number;
+    gpAmount?: number;
+    hpAmount?: number;
   }>;
 }
 

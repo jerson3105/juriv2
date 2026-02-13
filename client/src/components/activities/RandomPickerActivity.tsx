@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { 
   ArrowLeft, Dices, RotateCcw, Volume2, VolumeX, UserMinus, History,
-  Crown, Zap, Heart, Coins, Check, X, Settings, Sparkles, Star, Trophy, Users
+  Crown, Zap, Heart, Coins, Check, X, Settings, Sparkles, Star, Trophy, Users, BookOpen, CheckCircle2
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { studentApi, CHARACTER_CLASSES } from '../../lib/studentApi';
@@ -50,6 +50,7 @@ export const RandomPickerActivity = ({ classroom, onBack }: RandomPickerActivity
   const [slotPosition, setSlotPosition] = useState(0);
   const [wheelRotation, setWheelRotation] = useState(0);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [appliedBehaviors, setAppliedBehaviors] = useState<Map<string, number>>(new Map());
 
   const { data: behaviors = [] } = useQuery({
     queryKey: ['behaviors', classroom.id],
@@ -78,8 +79,13 @@ export const RandomPickerActivity = ({ classroom, onBack }: RandomPickerActivity
 
   const applyBehaviorMutation = useMutation({
     mutationFn: ({ behaviorId, studentIds }: { behaviorId: string; studentIds: string[] }) => behaviorApi.apply({ behaviorId, studentIds }),
-    onSuccess: (result) => {
+    onSuccess: (result, variables) => {
       queryClient.invalidateQueries({ queryKey: ['classroom'] });
+      setAppliedBehaviors(prev => {
+        const next = new Map(prev);
+        next.set(variables.behaviorId, (next.get(variables.behaviorId) || 0) + 1);
+        return next;
+      });
       if (result.behavior) {
         const b = result.behavior;
         const xp = b.xpValue ?? (b.pointType === 'XP' ? b.pointValue : 0);
@@ -111,6 +117,7 @@ export const RandomPickerActivity = ({ classroom, onBack }: RandomPickerActivity
     setAvailableStudents(prev => prev.filter(s => s.id !== selected.id));
     setIsSpinning(false);
     setShowPointsPanel(true);
+    setAppliedBehaviors(new Map());
     playSound('select');
     launchConfetti();
   }, [playSound, launchConfetti]);
@@ -272,7 +279,7 @@ export const RandomPickerActivity = ({ classroom, onBack }: RandomPickerActivity
           <AnimatePresence>
             {showPointsPanel && currentStudent && (
               <motion.div initial={{ opacity: 0, y: 20, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -20, scale: 0.95 }}>
-                <PointsPanel student={currentStudent} onGivePoints={givePoints} onApplyBehavior={(behaviorId) => applyBehaviorMutation.mutate({ behaviorId, studentIds: [currentStudent.id] })} behaviors={behaviors} isLoading={pointsMutation.isPending || applyBehaviorMutation.isPending} pointsAnimation={pointsAnimation} />
+                <PointsPanel student={currentStudent} onGivePoints={givePoints} onApplyBehavior={(behaviorId) => applyBehaviorMutation.mutate({ behaviorId, studentIds: [currentStudent.id] })} behaviors={behaviors} isLoading={pointsMutation.isPending || applyBehaviorMutation.isPending} pointsAnimation={pointsAnimation} appliedBehaviors={appliedBehaviors} />
               </motion.div>
             )}
           </AnimatePresence>
@@ -587,8 +594,8 @@ const SelectedStudentDisplay = ({ student }: { student: Student }) => {
 };
 
 // Panel de puntos
-const PointsPanel = ({ student, onGivePoints, onApplyBehavior, behaviors, isLoading, pointsAnimation }: { 
-  student: Student; onGivePoints: (type: 'xp' | 'hp' | 'gp', amount: number) => void; onApplyBehavior: (behaviorId: string) => void; behaviors: Behavior[]; isLoading: boolean; pointsAnimation: { xp: number; hp: number; gp: number; isPositive: boolean } | null;
+const PointsPanel = ({ student, onGivePoints, onApplyBehavior, behaviors, isLoading, pointsAnimation, appliedBehaviors }: { 
+  student: Student; onGivePoints: (type: 'xp' | 'hp' | 'gp', amount: number) => void; onApplyBehavior: (behaviorId: string) => void; behaviors: Behavior[]; isLoading: boolean; pointsAnimation: { xp: number; hp: number; gp: number; isPositive: boolean } | null; appliedBehaviors: Map<string, number>;
 }) => {
   const [activeTab, setActiveTab] = useState<'quick' | 'behaviors'>('behaviors');
   const presets = [
@@ -646,10 +653,18 @@ const PointsPanel = ({ student, onGivePoints, onApplyBehavior, behaviors, isLoad
                   const xp = b.xpValue ?? (b.pointType === 'XP' ? b.pointValue : 0);
                   const hp = b.hpValue ?? (b.pointType === 'HP' ? b.pointValue : 0);
                   const gp = b.gpValue ?? (b.pointType === 'GP' ? b.pointValue : 0);
+                  const timesApplied = appliedBehaviors.get(b.id) || 0;
                   return (
-                    <motion.button key={b.id} whileHover={{ scale: 1.01, x: 4 }} whileTap={{ scale: 0.99 }} onClick={() => onApplyBehavior(b.id)} disabled={isLoading} className="w-full flex items-center justify-between p-3 rounded-xl bg-gradient-to-r from-emerald-50 to-green-50 hover:from-emerald-100 hover:to-green-100 border border-emerald-200 transition-all disabled:opacity-50">
-                      <div className="flex items-center gap-2"><span className="text-xl">{b.icon || '⭐'}</span><span className="text-sm font-semibold text-gray-800">{b.name}</span></div>
+                    <motion.button key={b.id} whileHover={{ scale: 1.01, x: 4 }} whileTap={{ scale: 0.99 }} onClick={() => onApplyBehavior(b.id)} disabled={isLoading} className={`w-full flex items-center justify-between p-3 rounded-xl transition-all disabled:opacity-50 ${timesApplied > 0 ? 'bg-gradient-to-r from-emerald-100 to-green-100 border-2 border-emerald-400 ring-1 ring-emerald-300' : 'bg-gradient-to-r from-emerald-50 to-green-50 hover:from-emerald-100 hover:to-green-100 border border-emerald-200'}`}>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">{b.icon || '⭐'}</span>
+                        <div className="text-left">
+                          <span className="text-sm font-semibold text-gray-800">{b.name}</span>
+                          {b.competency && <span className="flex items-center gap-1 text-[10px] text-violet-600 font-medium"><BookOpen size={10} />{b.competency.name}</span>}
+                        </div>
+                      </div>
                       <div className="flex items-center gap-1">
+                        {timesApplied > 0 && <span className="flex items-center gap-0.5 text-xs bg-emerald-600 text-white px-2 py-0.5 rounded-full font-bold"><CheckCircle2 size={12} />x{timesApplied}</span>}
                         {xp > 0 && <span className="text-xs bg-emerald-500 text-white px-2 py-0.5 rounded-full font-bold">+{xp} XP</span>}
                         {hp > 0 && <span className="text-xs bg-rose-500 text-white px-2 py-0.5 rounded-full font-bold">+{hp} HP</span>}
                         {gp > 0 && <span className="text-xs bg-amber-500 text-white px-2 py-0.5 rounded-full font-bold">+{gp} GP</span>}
@@ -668,10 +683,18 @@ const PointsPanel = ({ student, onGivePoints, onApplyBehavior, behaviors, isLoad
                   const xp = b.xpValue ?? (b.pointType === 'XP' ? b.pointValue : 0);
                   const hp = b.hpValue ?? (b.pointType === 'HP' ? b.pointValue : 0);
                   const gp = b.gpValue ?? (b.pointType === 'GP' ? b.pointValue : 0);
+                  const timesApplied = appliedBehaviors.get(b.id) || 0;
                   return (
-                    <motion.button key={b.id} whileHover={{ scale: 1.01, x: 4 }} whileTap={{ scale: 0.99 }} onClick={() => onApplyBehavior(b.id)} disabled={isLoading} className="w-full flex items-center justify-between p-3 rounded-xl bg-gradient-to-r from-red-50 to-rose-50 hover:from-red-100 hover:to-rose-100 border border-red-200 transition-all disabled:opacity-50">
-                      <div className="flex items-center gap-2"><span className="text-xl">{b.icon || '💔'}</span><span className="text-sm font-semibold text-gray-800">{b.name}</span></div>
+                    <motion.button key={b.id} whileHover={{ scale: 1.01, x: 4 }} whileTap={{ scale: 0.99 }} onClick={() => onApplyBehavior(b.id)} disabled={isLoading} className={`w-full flex items-center justify-between p-3 rounded-xl transition-all disabled:opacity-50 ${timesApplied > 0 ? 'bg-gradient-to-r from-red-100 to-rose-100 border-2 border-red-400 ring-1 ring-red-300' : 'bg-gradient-to-r from-red-50 to-rose-50 hover:from-red-100 hover:to-rose-100 border border-red-200'}`}>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">{b.icon || '💔'}</span>
+                        <div className="text-left">
+                          <span className="text-sm font-semibold text-gray-800">{b.name}</span>
+                          {b.competency && <span className="flex items-center gap-1 text-[10px] text-violet-600 font-medium"><BookOpen size={10} />{b.competency.name}</span>}
+                        </div>
+                      </div>
                       <div className="flex items-center gap-1">
+                        {timesApplied > 0 && <span className="flex items-center gap-0.5 text-xs bg-red-600 text-white px-2 py-0.5 rounded-full font-bold"><CheckCircle2 size={12} />x{timesApplied}</span>}
                         {xp > 0 && <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full font-bold">-{xp} XP</span>}
                         {hp > 0 && <span className="text-xs bg-gray-500 text-white px-2 py-0.5 rounded-full font-bold">-{hp} HP</span>}
                         {gp > 0 && <span className="text-xs bg-gray-500 text-white px-2 py-0.5 rounded-full font-bold">-{gp} GP</span>}

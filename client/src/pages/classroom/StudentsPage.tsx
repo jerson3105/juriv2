@@ -195,7 +195,7 @@ export const StudentsPage = () => {
     return student.characterName || 'Sin nombre';
   };
 
-  // Filtrar estudiantes por búsqueda
+  // Filtrar y ordenar estudiantes alfabéticamente
   const students = allStudents.filter((student) => {
     if (!searchQuery.trim()) return true;
     const query = searchQuery.toLowerCase();
@@ -203,7 +203,7 @@ export const StudentsPage = () => {
     const realName = `${student.realName || ''} ${student.realLastName || ''}`.toLowerCase();
     const className = CHARACTER_CLASSES[student.characterClass]?.name.toLowerCase() || '';
     return displayName.includes(query) || realName.includes(query) || className.includes(query);
-  });
+  }).sort((a, b) => getDisplayName(a).localeCompare(getDisplayName(b), 'es'));
 
   const toggleStudent = (studentId: string) => {
     const newSelected = new Set(selectedStudents);

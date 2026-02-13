@@ -82,7 +82,7 @@ class GradeService {
   /**
    * Calcula las fechas de inicio y fin de un bimestre basado en los cierres registrados
    */
-  private async getBimesterDateRange(
+  async getBimesterDateRange(
     classroomId: string,
     period: string
   ): Promise<BimesterDateRange> {
@@ -281,7 +281,7 @@ class GradeService {
   /**
    * Obtiene los puntajes de actividades de un estudiante para una competencia
    */
-  private async getStudentActivityScores(
+  async getStudentActivityScores(
     studentProfileId: string,
     competencyId: string,
     classroomId: string,
@@ -362,7 +362,7 @@ class GradeService {
           id: ct.activityId,
           name: ct.activityName || 'Actividad',
           score: Math.max(percentage, 70),
-          weight: timedComp?.weight || 100,
+          weight: timedComp?.weight || 30,
           competencyId,
         });
       } else {
@@ -372,7 +372,7 @@ class GradeService {
           id: ct.activityId,
           name: `${ct.activityName || 'Actividad'} (no completada)`,
           score: 30, // Mínimo por participar
-          weight: timedComp?.weight || 100,
+          weight: timedComp?.weight || 30,
           competencyId,
         });
       }
@@ -553,13 +553,15 @@ class GradeService {
     if (competencyBehaviors.length === 0) return scores;
 
     // Calcular score neto basado en comportamientos positivos y negativos
-    let totalPositiveXP = 0;
-    let totalNegativeXP = 0;
+    // Usar impacto total (XP + HP + GP), no solo XP
+    let totalPositivePoints = 0;
+    let totalNegativePoints = 0;
     let hasAnyBehavior = false;
-    const behaviorDetails: Array<{ name: string; count: number; xp: number; isPositive: boolean }> = [];
+    const behaviorDetails: Array<{ name: string; count: number; points: number; isPositive: boolean }> = [];
 
     for (const behavior of competencyBehaviors) {
-      const logs = await db.select({ count: sql<number>`COUNT(*)` })
+      // Contar aplicaciones únicas (deduplicar combinados con mismo createdAt)
+      const logs = await db.select({ count: sql<number>`COUNT(DISTINCT ${pointLogs.createdAt})` })
         .from(pointLogs)
         .where(and(
           eq(pointLogs.studentId, studentProfileId),
@@ -571,37 +573,38 @@ class GradeService {
       const count = Number(logs[0]?.count) || 0;
       if (count > 0) {
         hasAnyBehavior = true;
-        const behaviorXP = Math.abs(behavior.xpValue || 0);
-        const totalXPFromBehavior = count * behaviorXP;
+        // Impacto total del comportamiento: XP + HP (GP es moneda de tienda, no afecta calificaciones)
+        const behaviorPoints = Math.abs(behavior.xpValue || 0) + Math.abs(behavior.hpValue || 0);
+        const totalPointsFromBehavior = count * behaviorPoints;
 
         behaviorDetails.push({
           name: behavior.name,
           count,
-          xp: totalXPFromBehavior,
+          points: totalPointsFromBehavior,
           isPositive: behavior.isPositive ?? true,
         });
 
         if (behavior.isPositive) {
-          totalPositiveXP += totalXPFromBehavior;
+          totalPositivePoints += totalPointsFromBehavior;
         } else {
-          totalNegativeXP += totalXPFromBehavior;
+          totalNegativePoints += totalPointsFromBehavior;
         }
       }
     }
 
     if (hasAnyBehavior) {
-      const totalXP = totalPositiveXP + totalNegativeXP;
+      const totalPoints = totalPositivePoints + totalNegativePoints;
       
       let scorePercent: number;
-      if (totalNegativeXP === 0) {
+      if (totalNegativePoints === 0) {
         scorePercent = 100;
-      } else if (totalPositiveXP === 0) {
+      } else if (totalPositivePoints === 0) {
         scorePercent = 0;
       } else {
-        scorePercent = (totalPositiveXP / totalXP) * 100;
+        scorePercent = (totalPositivePoints / totalPoints) * 100;
       }
 
-      const dynamicWeight = Math.min(100, Math.max(30, Math.round(totalXP / 10)));
+      const dynamicWeight = Math.min(100, Math.max(30, Math.round(totalPoints / 10)));
 
       // Crear nombre descriptivo con los comportamientos individuales
       const detailsText = behaviorDetails
@@ -611,7 +614,7 @@ class GradeService {
       scores.push({
         type: 'BEHAVIOR',
         id: 'behavior-aggregate',
-        name: `Comportamientos (+${totalPositiveXP} / -${totalNegativeXP}): ${detailsText}`,
+        name: `Comportamientos (+${totalPositivePoints} / -${totalNegativePoints}): ${detailsText}`,
         score: Math.round(scorePercent),
         weight: dynamicWeight,
         competencyId,

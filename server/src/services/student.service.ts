@@ -505,10 +505,15 @@ export class StudentService {
       .reduce((sum, l) => sum + l.amount, 0);
 
     // Obtener comportamientos más frecuentes (positivos y negativos)
+    // Deduplicar combinados: mismo behaviorId + createdAt = 1 aplicación
     const behaviorCounts: Record<string, { count: number; isPositive: boolean; name: string }> = {};
+    const seenBehaviorApps = new Set<string>();
     
     for (const log of allLogs) {
       if (log.behaviorId) {
+        const dedupKey = `${log.behaviorId}_${log.createdAt.getTime()}`;
+        if (seenBehaviorApps.has(dedupKey)) continue;
+        seenBehaviorApps.add(dedupKey);
         if (!behaviorCounts[log.behaviorId]) {
           behaviorCounts[log.behaviorId] = { count: 0, isPositive: log.action === 'ADD', name: '' };
         }
@@ -551,14 +556,58 @@ export class StudentService {
       }
     }
 
-    // Historial reciente (últimos 100 para paginación en cliente)
-    const recentHistory = allLogs.slice(0, 100).map(log => ({
+    // Historial reciente - agrupar comportamientos combinados (mismo behaviorId + createdAt)
+    const groupedLogs: { id: string; type: string; action: string; amount: number; reason: string | null; date: Date; xpAmount?: number; gpAmount?: number; hpAmount?: number }[] = [];
+    const seen = new Map<string, number>(); // key -> index in groupedLogs
+
+    for (const log of allLogs) {
+      // Agrupar si tiene behaviorId (comportamiento combinado)
+      if (log.behaviorId) {
+        const key = `${log.behaviorId}_${log.createdAt.getTime()}`;
+        const existingIdx = seen.get(key);
+        if (existingIdx !== undefined) {
+          // Agregar este tipo de punto al grupo existente
+          const existing = groupedLogs[existingIdx];
+          if (log.pointType === 'XP') existing.xpAmount = log.amount;
+          else if (log.pointType === 'GP') existing.gpAmount = log.amount;
+          else if (log.pointType === 'HP') existing.hpAmount = log.amount;
+          continue;
+        }
+        const entry: typeof groupedLogs[0] = {
+          id: log.id,
+          type: log.pointType,
+          action: log.action,
+          amount: log.amount,
+          reason: log.reason,
+          date: log.createdAt,
+        };
+        if (log.pointType === 'XP') entry.xpAmount = log.amount;
+        else if (log.pointType === 'GP') entry.gpAmount = log.amount;
+        else if (log.pointType === 'HP') entry.hpAmount = log.amount;
+        seen.set(key, groupedLogs.length);
+        groupedLogs.push(entry);
+      } else {
+        groupedLogs.push({
+          id: log.id,
+          type: log.pointType,
+          action: log.action,
+          amount: log.amount,
+          reason: log.reason,
+          date: log.createdAt,
+        });
+      }
+    }
+
+    const recentHistory = groupedLogs.slice(0, 100).map(log => ({
       id: log.id,
-      type: log.pointType,
+      type: log.type,
       action: log.action,
       amount: log.amount,
       reason: log.reason,
-      date: log.createdAt,
+      date: log.date,
+      xpAmount: log.xpAmount,
+      gpAmount: log.gpAmount,
+      hpAmount: log.hpAmount,
     }));
 
     // Calcular racha (días consecutivos con actividad)

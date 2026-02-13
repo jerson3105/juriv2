@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, 
   BookOpen, 
@@ -13,12 +13,20 @@ import {
   Award,
   Sparkles,
   X,
+  LogOut,
   TrendingUp,
   Lightbulb,
   Star,
   ThumbsUp,
   AlertCircle,
-  MessageSquare
+  MessageSquare,
+  ChevronDown,
+  ChevronUp,
+  Timer,
+  Trophy,
+  Zap,
+  Heart,
+  Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { parentApi } from '../../lib/parentApi';
@@ -26,6 +34,7 @@ import type { ChildDetail, ActivityLogItem, AIStudentReport } from '../../lib/pa
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { useState } from 'react';
+import { useAuthStore } from '../../store/authStore';
 
 type TabType = 'resumen' | 'calificaciones' | 'actividad';
 
@@ -34,6 +43,14 @@ export default function ChildDetailPage() {
   const [activeTab, setActiveTab] = useState<TabType>('resumen');
   const [showAIReport, setShowAIReport] = useState(false);
   const [aiReport, setAiReport] = useState<AIStudentReport | null>(null);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const { user, logout } = useAuthStore();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
+  };
 
   const aiReportMutation = useMutation({
     mutationFn: () => parentApi.getAIReport(studentId!),
@@ -109,6 +126,38 @@ export default function ChildDetailPage() {
               <span className="px-3 py-1.5 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-full text-sm font-medium">
                 {detail.currentBimester.replace('-B', ' - Bimestre ')}
               </span>
+              
+              {/* Menú de usuario */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowUserMenu(!showUserMenu)}
+                  className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                >
+                  <div className="w-8 h-8 bg-pink-100 dark:bg-pink-900/30 rounded-full flex items-center justify-center">
+                    <User size={18} className="text-pink-600 dark:text-pink-400" />
+                  </div>
+                </button>
+                
+                {showUserMenu && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50">
+                    <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">
+                        {user?.firstName} {user?.lastName}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {user?.email}
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleLogout}
+                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                    >
+                      <LogOut size={16} />
+                      Cerrar sesión
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -294,66 +343,147 @@ function ResumenTab({ detail }: { detail: ChildDetail }) {
   );
 }
 
+function getActivityTypeLabel(type: string) {
+  switch (type) {
+    case 'TIMED': return { label: 'Actividad de Tiempo', icon: <Timer size={14} className="text-orange-500" />, color: 'bg-orange-50 text-orange-700 dark:bg-orange-900/20 dark:text-orange-300' };
+    case 'BEHAVIOR': return { label: 'Comportamiento', icon: <Heart size={14} className="text-emerald-500" />, color: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300' };
+    case 'BADGE': return { label: 'Insignia', icon: <Award size={14} className="text-amber-500" />, color: 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300' };
+    case 'JIRO_EXPEDITION': return { label: 'Expedición de Jiro', icon: <Trophy size={14} className="text-purple-500" />, color: 'bg-purple-50 text-purple-700 dark:bg-purple-900/20 dark:text-purple-300' };
+    case 'EXPEDITION': return { label: 'Expedición', icon: <Star size={14} className="text-blue-500" />, color: 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300' };
+    case 'TOURNAMENT': return { label: 'Torneo', icon: <Trophy size={14} className="text-red-500" />, color: 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300' };
+    default: return { label: type, icon: <Zap size={14} className="text-gray-500" />, color: 'bg-gray-50 text-gray-700 dark:bg-gray-700 dark:text-gray-300' };
+  }
+}
+
 function CalificacionesTab({ studentId }: { studentId: string }) {
   const { data: gradesData } = useQuery({
     queryKey: ['parent-child-grades', studentId],
     queryFn: () => parentApi.getChildGrades(studentId),
   });
+  const [expandedComp, setExpandedComp] = useState<string | null>(null);
 
   const periods = ['B1', 'B2', 'B3', 'B4'];
+  const currentYear = new Date().getFullYear();
 
   return (
-    <Card className="p-5 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 overflow-x-auto">
-      <h3 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-4">
-        <Award size={20} className="text-indigo-500" />
-        Calificaciones por Bimestre
-      </h3>
+    <div className="space-y-4">
+      <Card className="p-5 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 overflow-x-auto">
+        <h3 className="font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-4">
+          <Award size={20} className="text-indigo-500" />
+          Calificaciones por Bimestre
+        </h3>
 
-      {!gradesData || gradesData.competencies.length === 0 ? (
-        <p className="text-gray-500 dark:text-gray-400 text-center py-8">
-          Aún no hay calificaciones registradas.
-        </p>
-      ) : (
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-gray-200 dark:border-gray-700">
-              <th className="text-left py-2 pr-4 text-sm font-semibold text-gray-700 dark:text-gray-300">
-                Competencia
-              </th>
+        {!gradesData || gradesData.competencies.length === 0 ? (
+          <p className="text-gray-500 dark:text-gray-400 text-center py-8">
+            Aún no hay calificaciones registradas.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {/* Header */}
+            <div className="grid grid-cols-[1fr_repeat(4,60px)] gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+              <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">Competencia</span>
               {periods.map((p) => (
-                <th key={p} className="text-center px-3 py-2 text-sm font-semibold text-gray-700 dark:text-gray-300 min-w-[60px]">
-                  {p}
-                </th>
+                <span key={p} className="text-center text-sm font-semibold text-gray-700 dark:text-gray-300">{p}</span>
               ))}
-            </tr>
-          </thead>
-          <tbody>
-            {gradesData.competencies.map((comp) => (
-              <tr key={comp.id} className="border-b border-gray-100 dark:border-gray-800">
-                <td className="py-3 pr-4 text-sm text-gray-800 dark:text-gray-200">
-                  {comp.name}
-                </td>
-                {periods.map((p) => {
-                  const periodKey = `${new Date().getFullYear()}-${p}`;
-                  const grade = comp.grades[periodKey];
-                  return (
-                    <td key={p} className="text-center px-3 py-3">
-                      {grade ? (
-                        <span className={`px-2 py-1 rounded text-sm font-bold ${getGradeBgColor(grade.label)}`}>
-                          {grade.label}
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">-</span>
+            </div>
+
+            {/* Rows */}
+            {gradesData.competencies.map((comp) => {
+              const isExpanded = expandedComp === comp.id;
+              // Find the best grade to show details for - try all periods to find one with activities
+              const allGradeEntries = Object.entries(comp.grades);
+              const gradeWithActivities = allGradeEntries.find(([_, g]) => g.activities && g.activities.length > 0);
+              const expandableGrade = gradeWithActivities?.[1] || allGradeEntries[0]?.[1];
+              const hasAnyGrade = allGradeEntries.length > 0;
+
+              return (
+                <div key={comp.id} className="border border-gray-100 dark:border-gray-700 rounded-xl overflow-hidden">
+                  <button
+                    onClick={() => hasAnyGrade ? setExpandedComp(isExpanded ? null : comp.id) : null}
+                    className={`w-full grid grid-cols-[1fr_repeat(4,60px)] gap-2 px-3 py-3 items-center transition-colors ${
+                      hasAnyGrade ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer' : 'cursor-default'
+                    } ${isExpanded ? 'bg-indigo-50/50 dark:bg-indigo-900/10' : ''}`}
+                  >
+                    <span className="text-left text-sm text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                      {hasAnyGrade && (
+                        isExpanded ? <ChevronUp size={16} className="text-indigo-500 shrink-0" /> : <ChevronDown size={16} className="text-gray-400 shrink-0" />
                       )}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </Card>
+                      {comp.name}
+                    </span>
+                    {periods.map((p) => {
+                      const periodKey = `${currentYear}-${p}`;
+                      const grade = comp.grades[periodKey];
+                      return (
+                        <span key={p} className="text-center">
+                          {grade ? (
+                            <span className={`inline-block px-2 py-1 rounded text-sm font-bold ${getGradeBgColor(grade.label)}`}>
+                              {grade.label}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </span>
+                      );
+                    })}
+                  </button>
+
+                  <AnimatePresence>
+                    {isExpanded && expandableGrade && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="px-4 pb-4 pt-1 border-t border-gray-100 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50">
+                          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-1">
+                            <Info size={12} />
+                            Actividades que contribuyen a esta nota ({expandableGrade.label} - {Math.round(expandableGrade.score)}%)
+                          </p>
+                          {expandableGrade.activities && expandableGrade.activities.length > 0 ? (
+                            <div className="space-y-2">
+                              {expandableGrade.activities.map((act: { type: string; name: string; score: number; weight: number }, idx: number) => {
+                                const typeInfo = getActivityTypeLabel(act.type);
+                                return (
+                                  <div key={idx} className="flex items-center justify-between p-2.5 bg-white dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      {typeInfo.icon}
+                                      <div className="min-w-0">
+                                        <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{act.name}</p>
+                                        <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded-full font-medium ${typeInfo.color}`}>{typeInfo.label}</span>
+                                      </div>
+                                    </div>
+                                    <div className="text-right shrink-0 ml-3">
+                                      <p className="text-sm font-bold text-gray-800 dark:text-gray-200">{Math.round(act.score)}%</p>
+                                      <p className="text-[10px] text-gray-500">peso: {act.weight}</p>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-gray-400 text-center py-3">El desglose de actividades estará disponible cuando el profesor recalcule las calificaciones.</p>
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
+      {/* Leyenda explicativa */}
+      <Card className="p-4 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800">
+        <p className="text-xs text-blue-700 dark:text-blue-300 flex items-center gap-2">
+          <Info size={14} className="shrink-0" />
+          <span>Haz clic en una competencia para ver las actividades, comportamientos e insignias que contribuyen a la calificación de tu hijo.</span>
+        </p>
+      </Card>
+    </div>
   );
 }
 
