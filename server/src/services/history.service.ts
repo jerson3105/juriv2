@@ -2,6 +2,7 @@ import { db } from '../db/index.js';
 import { 
   pointLogs, 
   studentProfiles, 
+  classrooms,
   behaviors,
   purchases,
   shopItems,
@@ -10,7 +11,7 @@ import {
   badges,
   attendanceRecords,
 } from '../db/schema.js';
-import { eq, desc, and, sql } from 'drizzle-orm';
+import { eq, desc, and, inArray, sql } from 'drizzle-orm';
 
 export interface ActivityLogEntry {
   id: string;
@@ -40,20 +41,95 @@ export interface ActivityLogEntry {
   };
 }
 
+type HistoryFilterType = 'POINTS' | 'PURCHASE' | 'ITEM_USED' | 'BADGE' | 'ATTENDANCE' | 'ALL';
+
+interface HistoryQueryOptions {
+  limit?: number;
+  offset?: number;
+  type?: HistoryFilterType;
+  studentId?: string;
+}
+
+const VALID_HISTORY_FILTERS: ReadonlySet<HistoryFilterType> = new Set([
+  'POINTS',
+  'PURCHASE',
+  'ITEM_USED',
+  'BADGE',
+  'ATTENDANCE',
+  'ALL',
+]);
+
+const DEFAULT_HISTORY_LIMIT = 50;
+const MAX_HISTORY_LIMIT = 200;
+const MAX_HISTORY_OFFSET = 1_000;
+const MAX_HISTORY_FETCH_WINDOW = 1_000;
+const POINTS_FETCH_MULTIPLIER = 3;
+const SECONDARY_FETCH_MULTIPLIER = 2;
+
 class HistoryService {
+  private normalizeHistoryOptions(options?: HistoryQueryOptions): {
+    limit: number;
+    offset: number;
+    type: HistoryFilterType;
+    studentId?: string;
+  } {
+    const parsedLimit = Number(options?.limit);
+    const parsedOffset = Number(options?.offset);
+
+    const safeLimit = Number.isFinite(parsedLimit)
+      ? Math.trunc(parsedLimit)
+      : DEFAULT_HISTORY_LIMIT;
+    const safeOffset = Number.isFinite(parsedOffset) ? Math.trunc(parsedOffset) : 0;
+
+    const type = options?.type && VALID_HISTORY_FILTERS.has(options.type)
+      ? options.type
+      : 'ALL';
+
+    const normalizedStudentId = typeof options?.studentId === 'string' && options.studentId.trim()
+      ? options.studentId.trim()
+      : undefined;
+
+    return {
+      limit: Math.min(Math.max(safeLimit, 1), MAX_HISTORY_LIMIT),
+      offset: Math.min(Math.max(safeOffset, 0), MAX_HISTORY_OFFSET),
+      type,
+      studentId: normalizedStudentId,
+    };
+  }
+
+  private getFetchWindow(limit: number, offset: number): number {
+    return Math.min(limit + offset, MAX_HISTORY_FETCH_WINDOW);
+  }
+
+  async verifyTeacherOwnsClassroom(teacherId: string, classroomId: string): Promise<boolean> {
+    const classroom = await db.query.classrooms.findFirst({
+      where: and(eq(classrooms.id, classroomId), eq(classrooms.teacherId, teacherId)),
+      columns: { id: true },
+    });
+
+    return Boolean(classroom);
+  }
+
+  async verifyStudentBelongsToClassroom(studentId: string, classroomId: string): Promise<boolean> {
+    const student = await db.query.studentProfiles.findFirst({
+      where: and(eq(studentProfiles.id, studentId), eq(studentProfiles.classroomId, classroomId)),
+      columns: { id: true },
+    });
+
+    return Boolean(student);
+  }
+
   /**
    * Obtener historial completo de una clase
    */
-  async getClassroomHistory(classroomId: string, options?: {
-    limit?: number;
-    offset?: number;
-    type?: 'POINTS' | 'PURCHASE' | 'ITEM_USED' | 'BADGE' | 'ATTENDANCE' | 'ALL';
-    studentId?: string;
-    startDate?: Date;
-  }): Promise<{ logs: ActivityLogEntry[]; total: number }> {
-    const limit = options?.limit || 50;
-    const offset = options?.offset || 0;
-    const filterType = options?.type || 'ALL';
+  async getClassroomHistory(
+    classroomId: string,
+    options?: HistoryQueryOptions
+  ): Promise<{ logs: ActivityLogEntry[]; total: number }> {
+    const { limit, offset, type: filterType, studentId } = this.normalizeHistoryOptions(options);
+    const fetchWindow = this.getFetchWindow(limit, offset);
+    const pointsFetchLimit = Math.min(fetchWindow * POINTS_FETCH_MULTIPLIER, MAX_HISTORY_FETCH_WINDOW * 3);
+    const secondaryFetchLimit = Math.min(fetchWindow * SECONDARY_FETCH_MULTIPLIER, MAX_HISTORY_FETCH_WINDOW * 2);
 
     // Obtener estudiantes de la clase
     const students = await db
@@ -70,6 +146,10 @@ class HistoryService {
 
     if (studentIds.length === 0) {
       return { logs: [], total: 0 };
+    }
+
+    if (studentId && !studentMap.has(studentId)) {
+      throw new Error('Sin acceso al estudiante seleccionado');
     }
 
     const logs: ActivityLogEntry[] = [];
@@ -91,12 +171,12 @@ class HistoryService {
         .from(pointLogs)
         .leftJoin(behaviors, eq(pointLogs.behaviorId, behaviors.id))
         .where(
-          options?.studentId 
-            ? eq(pointLogs.studentId, options.studentId)
-            : sql`${pointLogs.studentId} IN (${sql.join(studentIds.map((id: string) => sql`${id}`), sql`, `)})`
+          studentId
+            ? eq(pointLogs.studentId, studentId)
+            : inArray(pointLogs.studentId, studentIds)
         )
         .orderBy(desc(pointLogs.createdAt))
-        .limit(limit * 3); // Obtener más para agrupar
+        .limit(pointsFetchLimit); // Obtener más para agrupar
 
       // Agrupar logs del mismo comportamiento aplicado al mismo estudiante en el mismo momento
       // Un comportamiento con XP+HP+GP genera 3 logs, pero deben mostrarse como 1 entrada
@@ -195,12 +275,12 @@ class HistoryService {
         .from(purchases)
         .innerJoin(shopItems, eq(purchases.itemId, shopItems.id))
         .where(
-          options?.studentId 
-            ? eq(purchases.studentId, options.studentId)
-            : sql`${purchases.studentId} IN (${sql.join(studentIds.map((id: string) => sql`${id}`), sql`, `)})`
+          studentId
+            ? eq(purchases.studentId, studentId)
+            : inArray(purchases.studentId, studentIds)
         )
         .orderBy(desc(purchases.purchasedAt))
-        .limit(limit * 2);
+        .limit(secondaryFetchLimit);
 
       for (const purchase of purchasesData) {
         const student = studentMap.get(purchase.studentId);
@@ -235,12 +315,15 @@ class HistoryService {
         .from(itemUsages)
         .innerJoin(shopItems, eq(itemUsages.itemId, shopItems.id))
         .where(
-          options?.studentId 
-            ? eq(itemUsages.studentId, options.studentId)
+          studentId
+            ? and(
+              eq(itemUsages.studentId, studentId),
+              eq(itemUsages.classroomId, classroomId)
+            )
             : eq(itemUsages.classroomId, classroomId)
         )
         .orderBy(desc(itemUsages.usedAt))
-        .limit(limit * 2);
+        .limit(secondaryFetchLimit);
 
       for (const usage of usagesData) {
         const student = studentMap.get(usage.studentId);
@@ -273,12 +356,12 @@ class HistoryService {
         .from(studentBadges)
         .innerJoin(badges, eq(studentBadges.badgeId, badges.id))
         .where(
-          options?.studentId 
-            ? eq(studentBadges.studentProfileId, options.studentId)
-            : sql`${studentBadges.studentProfileId} IN (${sql.join(studentIds.map((id: string) => sql`${id}`), sql`, `)})`
+          studentId
+            ? eq(studentBadges.studentProfileId, studentId)
+            : inArray(studentBadges.studentProfileId, studentIds)
         )
         .orderBy(desc(studentBadges.unlockedAt))
-        .limit(limit * 2);
+        .limit(secondaryFetchLimit);
 
       for (const badge of badgesData) {
         const student = studentMap.get(badge.studentId);
@@ -310,12 +393,15 @@ class HistoryService {
         })
         .from(attendanceRecords)
         .where(
-          options?.studentId
-            ? and(eq(attendanceRecords.studentProfileId, options.studentId), eq(attendanceRecords.classroomId, classroomId))
+          studentId
+            ? and(
+              eq(attendanceRecords.studentProfileId, studentId),
+              eq(attendanceRecords.classroomId, classroomId)
+            )
             : eq(attendanceRecords.classroomId, classroomId)
         )
         .orderBy(desc(attendanceRecords.createdAt))
-        .limit(limit * 2);
+        .limit(secondaryFetchLimit);
 
       for (const att of attendanceData) {
         const student = studentMap.get(att.studentId);
@@ -391,14 +477,13 @@ class HistoryService {
     // Calcular XP dado/quitado usando TODOS los estudiantes
     const xpLogs = await db
       .select({
-        id: pointLogs.id,
         action: pointLogs.action,
         total: sql<number>`SUM(${pointLogs.amount})`,
       })
       .from(pointLogs)
       .where(
         and(
-          sql`${pointLogs.studentId} IN (${sql.join(allStudentIds.map((id: string) => sql`${id}`), sql`, `)})`,
+          inArray(pointLogs.studentId, allStudentIds),
           eq(pointLogs.pointType, 'XP')
         )
       )
@@ -411,7 +496,7 @@ class HistoryService {
     const [purchaseCount] = await db
       .select({ count: sql<number>`COUNT(*)` })
       .from(purchases)
-      .where(sql`${purchases.studentId} IN (${sql.join(allStudentIds.map((id: string) => sql`${id}`), sql`, `)})`);
+      .where(inArray(purchases.studentId, allStudentIds));
 
     // Contar items usados
     const [usageCount] = await db
@@ -431,7 +516,7 @@ class HistoryService {
       .from(pointLogs)
       .innerJoin(behaviors, eq(pointLogs.behaviorId, behaviors.id))
       .where(
-        sql`${pointLogs.studentId} IN (${sql.join(allStudentIds.map((id: string) => sql`${id}`), sql`, `)})`
+        inArray(pointLogs.studentId, allStudentIds)
       )
       .groupBy(pointLogs.behaviorId, behaviors.name, behaviors.icon, behaviors.isPositive)
       .orderBy(sql`5 DESC`)

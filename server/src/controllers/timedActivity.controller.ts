@@ -1,11 +1,49 @@
 import { Request, Response } from 'express';
 import { timedActivityService } from '../services/timedActivity.service.js';
 
+const ensureTeacherClassroomAccess = async (
+  req: Request,
+  res: Response,
+  classroomId: string
+): Promise<boolean> => {
+  const userId = req.user?.id;
+
+  if (!userId) {
+    res.status(401).json({ error: 'No autorizado' });
+    return false;
+  }
+
+  const isOwner = await timedActivityService.verifyTeacherOwnsClassroom(userId, classroomId);
+  if (!isOwner) {
+    res.status(403).json({ error: 'No tienes acceso a esta clase' });
+    return false;
+  }
+
+  return true;
+};
+
+const ensureTeacherActivityAccess = async (
+  req: Request,
+  res: Response,
+  activityId: string
+): Promise<boolean> => {
+  const classroomId = await timedActivityService.getClassroomIdByActivity(activityId);
+  if (!classroomId) {
+    res.status(404).json({ error: 'Actividad no encontrada' });
+    return false;
+  }
+
+  return ensureTeacherClassroomAccess(req, res, classroomId);
+};
+
 export const timedActivityController = {
   // Crear actividad
   async create(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+      const hasAccess = await ensureTeacherClassroomAccess(req, res, classroomId);
+      if (!hasAccess) return;
+
       const activity = await timedActivityService.create({
         classroomId,
         ...req.body,
@@ -21,6 +59,9 @@ export const timedActivityController = {
   async getByClassroom(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+      const hasAccess = await ensureTeacherClassroomAccess(req, res, classroomId);
+      if (!hasAccess) return;
+
       const activities = await timedActivityService.getByClassroom(classroomId);
       res.json(activities);
     } catch (error) {
@@ -33,6 +74,9 @@ export const timedActivityController = {
   async getById(req: Request, res: Response) {
     try {
       const { id } = req.params;
+      const hasAccess = await ensureTeacherActivityAccess(req, res, id);
+      if (!hasAccess) return;
+
       const activity = await timedActivityService.getById(id);
       if (!activity) {
         return res.status(404).json({ error: 'Actividad no encontrada' });
@@ -48,6 +92,9 @@ export const timedActivityController = {
   async update(req: Request, res: Response) {
     try {
       const { id } = req.params;
+      const hasAccess = await ensureTeacherActivityAccess(req, res, id);
+      if (!hasAccess) return;
+
       const activity = await timedActivityService.update(id, req.body);
       if (!activity) {
         return res.status(404).json({ error: 'Actividad no encontrada' });
@@ -63,6 +110,9 @@ export const timedActivityController = {
   async delete(req: Request, res: Response) {
     try {
       const { id } = req.params;
+      const hasAccess = await ensureTeacherActivityAccess(req, res, id);
+      if (!hasAccess) return;
+
       await timedActivityService.delete(id);
       res.json({ success: true });
     } catch (error) {
@@ -75,6 +125,9 @@ export const timedActivityController = {
   async start(req: Request, res: Response) {
     try {
       const { id } = req.params;
+      const hasAccess = await ensureTeacherActivityAccess(req, res, id);
+      if (!hasAccess) return;
+
       const activity = await timedActivityService.start(id);
       if (!activity) {
         return res.status(404).json({ error: 'Actividad no encontrada' });
@@ -90,6 +143,9 @@ export const timedActivityController = {
   async pause(req: Request, res: Response) {
     try {
       const { id } = req.params;
+      const hasAccess = await ensureTeacherActivityAccess(req, res, id);
+      if (!hasAccess) return;
+
       const { elapsedSeconds } = req.body;
       const activity = await timedActivityService.pause(id, elapsedSeconds);
       if (!activity) {
@@ -106,6 +162,9 @@ export const timedActivityController = {
   async resume(req: Request, res: Response) {
     try {
       const { id } = req.params;
+      const hasAccess = await ensureTeacherActivityAccess(req, res, id);
+      if (!hasAccess) return;
+
       const activity = await timedActivityService.resume(id);
       if (!activity) {
         return res.status(404).json({ error: 'Actividad no encontrada' });
@@ -121,6 +180,9 @@ export const timedActivityController = {
   async complete(req: Request, res: Response) {
     try {
       const { id } = req.params;
+      const hasAccess = await ensureTeacherActivityAccess(req, res, id);
+      if (!hasAccess) return;
+
       const { elapsedSeconds } = req.body;
       const activity = await timedActivityService.complete(id, elapsedSeconds);
       if (!activity) {
@@ -137,6 +199,9 @@ export const timedActivityController = {
   async reset(req: Request, res: Response) {
     try {
       const { id } = req.params;
+      const hasAccess = await ensureTeacherActivityAccess(req, res, id);
+      if (!hasAccess) return;
+
       const activity = await timedActivityService.reset(id);
       if (!activity) {
         return res.status(404).json({ error: 'Actividad no encontrada' });
@@ -152,6 +217,9 @@ export const timedActivityController = {
   async markStudentComplete(req: Request, res: Response) {
     try {
       const { id } = req.params;
+      const hasAccess = await ensureTeacherActivityAccess(req, res, id);
+      if (!hasAccess) return;
+
       const { studentProfileId, elapsedSeconds } = req.body;
       const result = await timedActivityService.markStudentComplete({
         activityId: id,
@@ -169,6 +237,9 @@ export const timedActivityController = {
   async markStudentExploded(req: Request, res: Response) {
     try {
       const { id } = req.params;
+      const hasAccess = await ensureTeacherActivityAccess(req, res, id);
+      if (!hasAccess) return;
+
       const { studentProfileId } = req.body;
       const result = await timedActivityService.markStudentExploded({
         activityId: id,
@@ -185,6 +256,9 @@ export const timedActivityController = {
   async getActiveActivity(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+      const hasAccess = await ensureTeacherClassroomAccess(req, res, classroomId);
+      if (!hasAccess) return;
+
       const activity = await timedActivityService.getActiveActivity(classroomId);
       res.json(activity);
     } catch (error) {

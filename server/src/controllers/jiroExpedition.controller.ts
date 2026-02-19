@@ -5,6 +5,165 @@ import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 
+const ensureTeacherClassroomAccess = async (
+  req: Request,
+  res: Response,
+  classroomId: string
+): Promise<boolean> => {
+  const user = req.user;
+
+  if (!user) {
+    res.status(401).json({ success: false, message: 'No autorizado' });
+    return false;
+  }
+
+  if (user.role === 'ADMIN') {
+    return true;
+  }
+
+  if (user.role !== 'TEACHER') {
+    res.status(403).json({ success: false, message: 'No tienes permisos para esta acción' });
+    return false;
+  }
+
+  const isOwner = await jiroExpeditionService.verifyTeacherOwnsClassroom(user.id, classroomId);
+  if (!isOwner) {
+    res.status(403).json({ success: false, message: 'No tienes acceso a esta clase' });
+    return false;
+  }
+
+  return true;
+};
+
+const ensureTeacherExpeditionAccess = async (
+  req: Request,
+  res: Response,
+  expeditionId: string
+): Promise<boolean> => {
+  const classroomId = await jiroExpeditionService.getClassroomIdByExpedition(expeditionId);
+  if (!classroomId) {
+    res.status(404).json({ success: false, message: 'Expedición no encontrada' });
+    return false;
+  }
+
+  return ensureTeacherClassroomAccess(req, res, classroomId);
+};
+
+const ensureTeacherDeliveryStationAccess = async (
+  req: Request,
+  res: Response,
+  stationId: string
+): Promise<boolean> => {
+  const classroomId = await jiroExpeditionService.getClassroomIdByDeliveryStation(stationId);
+  if (!classroomId) {
+    res.status(404).json({ success: false, message: 'Estación no encontrada' });
+    return false;
+  }
+
+  return ensureTeacherClassroomAccess(req, res, classroomId);
+};
+
+const ensureTeacherDeliveryAccess = async (
+  req: Request,
+  res: Response,
+  deliveryId: string
+): Promise<boolean> => {
+  const classroomId = await jiroExpeditionService.getClassroomIdByDelivery(deliveryId);
+  if (!classroomId) {
+    res.status(404).json({ success: false, message: 'Entrega no encontrada' });
+    return false;
+  }
+
+  return ensureTeacherClassroomAccess(req, res, classroomId);
+};
+
+const ensureStudentOwnsProfile = async (
+  req: Request,
+  res: Response,
+  studentProfileId: string
+): Promise<boolean> => {
+  const user = req.user;
+
+  if (!user) {
+    res.status(401).json({ success: false, message: 'No autorizado' });
+    return false;
+  }
+
+  if (user.role !== 'STUDENT') {
+    res.status(403).json({ success: false, message: 'No tienes permisos para esta acción' });
+    return false;
+  }
+
+  const isOwner = await jiroExpeditionService.verifyStudentBelongsToUser(studentProfileId, user.id);
+  if (!isOwner) {
+    res.status(403).json({ success: false, message: 'No tienes permiso para este perfil de estudiante' });
+    return false;
+  }
+
+  return true;
+};
+
+const resolveStudentProfileForExpedition = async (
+  req: Request,
+  res: Response,
+  expeditionId: string,
+  requestedStudentProfileId?: string
+): Promise<string | null> => {
+  const user = req.user;
+
+  if (!user) {
+    res.status(401).json({ success: false, message: 'No autorizado' });
+    return null;
+  }
+
+  if (user.role !== 'STUDENT') {
+    res.status(403).json({ success: false, message: 'Solo los estudiantes pueden realizar esta acción' });
+    return null;
+  }
+
+  const classroomId = await jiroExpeditionService.getClassroomIdByExpedition(expeditionId);
+  if (!classroomId) {
+    res.status(404).json({ success: false, message: 'Expedición no encontrada' });
+    return null;
+  }
+
+  const studentProfileId = await jiroExpeditionService.getStudentProfileInClassroomByUser(
+    user.id,
+    classroomId
+  );
+
+  if (!studentProfileId) {
+    res.status(403).json({ success: false, message: 'No tienes acceso a esta clase' });
+    return null;
+  }
+
+  if (requestedStudentProfileId && requestedStudentProfileId !== studentProfileId) {
+    res.status(403).json({ success: false, message: 'No tienes permiso para usar ese perfil de estudiante' });
+    return null;
+  }
+
+  return studentProfileId;
+};
+
+const ensureStudentProfileInClassroom = async (
+  res: Response,
+  studentProfileId: string,
+  classroomId: string
+): Promise<boolean> => {
+  const studentClassroomId = await jiroExpeditionService.getClassroomIdByStudentProfile(studentProfileId);
+  if (!studentClassroomId) {
+    res.status(404).json({ success: false, message: 'Perfil de estudiante no encontrado' });
+    return false;
+  }
+
+  if (studentClassroomId !== classroomId) {
+    res.status(403).json({ success: false, message: 'No tienes acceso a este perfil de estudiante' });
+    return false;
+  }
+
+  return true;
+};
+
 // Configurar multer para archivos de Jiro Expeditions (máximo 10MB)
 const baseUploadDir = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
 const jiroStorage = multer.diskStorage({
@@ -77,6 +236,9 @@ export const jiroExpeditionController = {
       const { classroomId } = req.params;
       const data = req.body;
 
+      const hasAccess = await ensureTeacherClassroomAccess(req, res, classroomId);
+      if (!hasAccess) return;
+
       const expedition = await jiroExpeditionService.createExpedition({
         classroomId,
         ...data,
@@ -94,6 +256,10 @@ export const jiroExpeditionController = {
   async getExpeditionsByClassroom(req: Request, res: Response, next: NextFunction) {
     try {
       const { classroomId } = req.params;
+
+      const hasAccess = await ensureTeacherClassroomAccess(req, res, classroomId);
+      if (!hasAccess) return;
+
       const expeditions = await jiroExpeditionService.getExpeditionsByClassroom(classroomId);
 
       res.json({
@@ -108,6 +274,10 @@ export const jiroExpeditionController = {
   async getExpeditionById(req: Request, res: Response, next: NextFunction) {
     try {
       const { expeditionId } = req.params;
+
+      const hasAccess = await ensureTeacherExpeditionAccess(req, res, expeditionId);
+      if (!hasAccess) return;
+
       const expedition = await jiroExpeditionService.getExpeditionById(expeditionId);
 
       if (!expedition) {
@@ -131,6 +301,9 @@ export const jiroExpeditionController = {
       const { expeditionId } = req.params;
       const data = req.body;
 
+      const hasAccess = await ensureTeacherExpeditionAccess(req, res, expeditionId);
+      if (!hasAccess) return;
+
       const expedition = await jiroExpeditionService.updateExpedition(expeditionId, data);
 
       res.json({
@@ -145,6 +318,10 @@ export const jiroExpeditionController = {
   async deleteExpedition(req: Request, res: Response, next: NextFunction) {
     try {
       const { expeditionId } = req.params;
+
+      const hasAccess = await ensureTeacherExpeditionAccess(req, res, expeditionId);
+      if (!hasAccess) return;
+
       await jiroExpeditionService.deleteExpedition(expeditionId);
 
       res.json({
@@ -162,6 +339,9 @@ export const jiroExpeditionController = {
     try {
       const { expeditionId } = req.params;
       const data = req.body;
+
+      const hasAccess = await ensureTeacherExpeditionAccess(req, res, expeditionId);
+      if (!hasAccess) return;
 
       const station = await jiroExpeditionService.createDeliveryStation({
         expeditionId,
@@ -182,6 +362,9 @@ export const jiroExpeditionController = {
       const { stationId } = req.params;
       const data = req.body;
 
+      const hasAccess = await ensureTeacherDeliveryStationAccess(req, res, stationId);
+      if (!hasAccess) return;
+
       const station = await jiroExpeditionService.updateDeliveryStation(stationId, data);
 
       res.json({
@@ -196,6 +379,10 @@ export const jiroExpeditionController = {
   async deleteDeliveryStation(req: Request, res: Response, next: NextFunction) {
     try {
       const { stationId } = req.params;
+
+      const hasAccess = await ensureTeacherDeliveryStationAccess(req, res, stationId);
+      if (!hasAccess) return;
+
       await jiroExpeditionService.deleteDeliveryStation(stationId);
 
       res.json({
@@ -212,6 +399,10 @@ export const jiroExpeditionController = {
   async openExpedition(req: Request, res: Response, next: NextFunction) {
     try {
       const { expeditionId } = req.params;
+
+      const hasAccess = await ensureTeacherExpeditionAccess(req, res, expeditionId);
+      if (!hasAccess) return;
+
       const expedition = await jiroExpeditionService.openExpedition(expeditionId);
 
       res.json({
@@ -226,6 +417,10 @@ export const jiroExpeditionController = {
   async closeExpedition(req: Request, res: Response, next: NextFunction) {
     try {
       const { expeditionId } = req.params;
+
+      const hasAccess = await ensureTeacherExpeditionAccess(req, res, expeditionId);
+      if (!hasAccess) return;
+
       const expedition = await jiroExpeditionService.closeExpedition(expeditionId);
 
       res.json({
@@ -242,6 +437,10 @@ export const jiroExpeditionController = {
   async getClassProgress(req: Request, res: Response, next: NextFunction) {
     try {
       const { expeditionId } = req.params;
+
+      const hasAccess = await ensureTeacherExpeditionAccess(req, res, expeditionId);
+      if (!hasAccess) return;
+
       const progress = await jiroExpeditionService.getClassProgress(expeditionId);
 
       res.json({
@@ -258,6 +457,10 @@ export const jiroExpeditionController = {
   async getPendingDeliveries(req: Request, res: Response, next: NextFunction) {
     try {
       const { expeditionId } = req.params;
+
+      const hasAccess = await ensureTeacherExpeditionAccess(req, res, expeditionId);
+      if (!hasAccess) return;
+
       const deliveries = await jiroExpeditionService.getPendingDeliveries(expeditionId);
 
       res.json({
@@ -273,7 +476,17 @@ export const jiroExpeditionController = {
     try {
       const { deliveryId } = req.params;
       const { status, feedback } = req.body;
-      const reviewerId = (req as any).user.id;
+
+      const hasAccess = await ensureTeacherDeliveryAccess(req, res, deliveryId);
+      if (!hasAccess) return;
+
+      const reviewerId = req.user?.id;
+      if (!reviewerId) {
+        return res.status(401).json({
+          success: false,
+          message: 'No autorizado',
+        });
+      }
 
       const delivery = await jiroExpeditionService.reviewDelivery({
         deliveryId,
@@ -304,6 +517,9 @@ export const jiroExpeditionController = {
         });
       }
 
+      const hasAccess = await ensureStudentOwnsProfile(req, res, studentProfileId);
+      if (!hasAccess) return;
+
       const expeditions = await jiroExpeditionService.getAvailableExpeditions(studentProfileId);
 
       res.json({
@@ -326,9 +542,17 @@ export const jiroExpeditionController = {
         });
       }
 
-      const progress = await jiroExpeditionService.getStudentExpeditionProgress(
+      const resolvedStudentProfileId = await resolveStudentProfileForExpedition(
+        req,
+        res,
         expeditionId,
         studentProfileId
+      );
+      if (!resolvedStudentProfileId) return;
+
+      const progress = await jiroExpeditionService.getStudentExpeditionProgress(
+        expeditionId,
+        resolvedStudentProfileId
       );
 
       res.json({
@@ -351,9 +575,17 @@ export const jiroExpeditionController = {
         });
       }
 
-      const progress = await jiroExpeditionService.startExpedition(
+      const resolvedStudentProfileId = await resolveStudentProfileForExpedition(
+        req,
+        res,
         expeditionId,
         studentProfileId
+      );
+      if (!resolvedStudentProfileId) return;
+
+      const progress = await jiroExpeditionService.startExpedition(
+        expeditionId,
+        resolvedStudentProfileId
       );
 
       res.json({
@@ -377,10 +609,18 @@ export const jiroExpeditionController = {
         });
       }
 
+      const resolvedStudentProfileId = await resolveStudentProfileForExpedition(
+        req,
+        res,
+        expeditionId,
+        studentProfileId
+      );
+      if (!resolvedStudentProfileId) return;
+
       // Obtener studentExpeditionId
       const progress = await jiroExpeditionService.getStudentExpeditionProgress(
         expeditionId,
-        studentProfileId
+        resolvedStudentProfileId
       );
 
       if (!progress.studentProgress) {
@@ -417,10 +657,18 @@ export const jiroExpeditionController = {
         });
       }
 
+      const resolvedStudentProfileId = await resolveStudentProfileForExpedition(
+        req,
+        res,
+        expeditionId,
+        studentProfileId
+      );
+      if (!resolvedStudentProfileId) return;
+
       // Obtener studentExpeditionId
       const progress = await jiroExpeditionService.getStudentExpeditionProgress(
         expeditionId,
-        studentProfileId
+        resolvedStudentProfileId
       );
 
       if (!progress.studentProgress) {
@@ -459,7 +707,15 @@ export const jiroExpeditionController = {
         });
       }
 
-      const result = await jiroExpeditionService.buyEnergy(expeditionId, studentProfileId);
+      const resolvedStudentProfileId = await resolveStudentProfileForExpedition(
+        req,
+        res,
+        expeditionId,
+        studentProfileId
+      );
+      if (!resolvedStudentProfileId) return;
+
+      const result = await jiroExpeditionService.buyEnergy(expeditionId, resolvedStudentProfileId);
 
       res.json({
         success: true,
@@ -481,9 +737,17 @@ export const jiroExpeditionController = {
         });
       }
 
-      const progress = await jiroExpeditionService.getStudentExpeditionProgress(
+      const resolvedStudentProfileId = await resolveStudentProfileForExpedition(
+        req,
+        res,
         expeditionId,
         studentProfileId
+      );
+      if (!resolvedStudentProfileId) return;
+
+      const progress = await jiroExpeditionService.getStudentExpeditionProgress(
+        expeditionId,
+        resolvedStudentProfileId
       );
 
       res.json({
@@ -511,9 +775,17 @@ export const jiroExpeditionController = {
         });
       }
 
-      const result = await jiroExpeditionService.forceCompleteByTimeout(
+      const resolvedStudentProfileId = await resolveStudentProfileForExpedition(
+        req,
+        res,
         expeditionId,
         studentProfileId
+      );
+      if (!resolvedStudentProfileId) return;
+
+      const result = await jiroExpeditionService.forceCompleteByTimeout(
+        expeditionId,
+        resolvedStudentProfileId
       );
 
       res.json({
@@ -529,6 +801,20 @@ export const jiroExpeditionController = {
   async getStudentAnswers(req: Request, res: Response, next: NextFunction) {
     try {
       const { expeditionId, studentProfileId } = req.params;
+
+      const hasExpeditionAccess = await ensureTeacherExpeditionAccess(req, res, expeditionId);
+      if (!hasExpeditionAccess) return;
+
+      const classroomId = await jiroExpeditionService.getClassroomIdByExpedition(expeditionId);
+      if (!classroomId) {
+        return res.status(404).json({
+          success: false,
+          message: 'Expedición no encontrada',
+        });
+      }
+
+      const hasStudentAccess = await ensureStudentProfileInClassroom(res, studentProfileId, classroomId);
+      if (!hasStudentAccess) return;
 
       const answers = await jiroExpeditionService.getStudentAnswers(
         expeditionId,
@@ -548,6 +834,20 @@ export const jiroExpeditionController = {
   async getStudentDeliveries(req: Request, res: Response, next: NextFunction) {
     try {
       const { expeditionId, studentProfileId } = req.params;
+
+      const hasExpeditionAccess = await ensureTeacherExpeditionAccess(req, res, expeditionId);
+      if (!hasExpeditionAccess) return;
+
+      const classroomId = await jiroExpeditionService.getClassroomIdByExpedition(expeditionId);
+      if (!classroomId) {
+        return res.status(404).json({
+          success: false,
+          message: 'Expedición no encontrada',
+        });
+      }
+
+      const hasStudentAccess = await ensureStudentProfileInClassroom(res, studentProfileId, classroomId);
+      if (!hasStudentAccess) return;
 
       const deliveries = await jiroExpeditionService.getStudentDeliveries(
         expeditionId,

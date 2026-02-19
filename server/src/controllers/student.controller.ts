@@ -25,6 +25,20 @@ const updateProfileSchema = z.object({
   avatarUrl: z.string().url().optional(),
 });
 
+const ensureTeacherCanAccessStudent = async (teacherId: string, studentId: string): Promise<boolean> => {
+  const [student] = await db
+    .select({ id: studentProfiles.id })
+    .from(studentProfiles)
+    .innerJoin(classrooms, eq(studentProfiles.classroomId, classrooms.id))
+    .where(and(
+      eq(studentProfiles.id, studentId),
+      eq(classrooms.teacherId, teacherId)
+    ))
+    .limit(1);
+
+  return !!student;
+};
+
 export class StudentController {
   // Unirse a una clase
   async joinClass(req: Request, res: Response) {
@@ -108,6 +122,15 @@ export class StudentController {
   async getStudent(req: Request, res: Response) {
     try {
       const { studentId } = req.params;
+
+      const hasAccess = await ensureTeacherCanAccessStudent(req.user!.id, studentId);
+      if (!hasAccess) {
+        return res.status(403).json({
+          success: false,
+          message: 'No tienes acceso a este estudiante',
+        });
+      }
+
       const student = await studentService.getStudentById(studentId);
 
       if (!student) {
@@ -174,6 +197,15 @@ export class StudentController {
   async getPointHistory(req: Request, res: Response) {
     try {
       const { studentId } = req.params;
+
+      const hasAccess = await ensureTeacherCanAccessStudent(req.user!.id, studentId);
+      if (!hasAccess) {
+        return res.status(403).json({
+          success: false,
+          message: 'No tienes acceso al historial de este estudiante',
+        });
+      }
+
       const history = await studentService.getPointHistory(studentId);
 
       res.json({
@@ -192,14 +224,42 @@ export class StudentController {
   async getStudentStats(req: Request, res: Response) {
     try {
       const { studentId } = req.params;
-      const stats = await studentService.getStudentStats(studentId);
+      const requester = req.user;
+
+      if (!requester) {
+        return res.status(401).json({
+          success: false,
+          message: 'No autorizado',
+        });
+      }
+
+      const stats = await studentService.getStudentStatsForRequester(
+        studentId,
+        requester.id,
+        requester.role as 'ADMIN' | 'TEACHER' | 'STUDENT'
+      );
 
       res.json({
         success: true,
         data: stats,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error getting student stats:', error);
+
+      if (error.message?.includes('No autorizado')) {
+        return res.status(403).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      if (error.message?.includes('no encontrado')) {
+        return res.status(404).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
       res.status(500).json({
         success: false,
         message: 'Error al obtener estadísticas',

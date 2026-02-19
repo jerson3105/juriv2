@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { eq, or } from 'drizzle-orm';
-import { db, users, refreshTokens as refreshTokensTable, parentProfiles } from '../db/index.js';
-import { generateTokenPair, verifyRefreshToken, revokeRefreshToken, revokeAllUserTokens } from '../utils/jwt.js';
+import { db, users, parentProfiles } from '../db/index.js';
+import { consumeRefreshToken, generateTokenPair, revokeRefreshToken, revokeAllUserTokens } from '../utils/jwt.js';
 import { v4 as uuidv4 } from 'uuid';
 
 // Tipos
@@ -44,68 +44,87 @@ interface AuthResponse {
 
 // Constantes
 const SALT_ROUNDS = 12;
+const DUMMY_PASSWORD_HASH = '$2a$10$7EqJtq98hPqEX7fNZaFWoOHiZy6u9j9l56k97X3CJidb8sRP/6ID.';
+
+const normalizeEmail = (email: string): string => email.trim().toLowerCase();
+const normalizeName = (value: string): string => value.trim();
+const normalizeAvatarUrl = (value?: string | null): string | null => {
+  const normalized = value?.trim();
+  return normalized ? normalized : null;
+};
+
+const isDuplicateEntryError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const dbError = error as { code?: string; errno?: number };
+  return dbError.code === 'ER_DUP_ENTRY' || dbError.errno === 1062;
+};
 
 /**
  * Registrar nuevo usuario
  */
 export const register = async (input: RegisterInput): Promise<AuthResponse> => {
   const { email, password, firstName, lastName, role } = input;
-  
-  // Verificar si el email ya existe
-  const existingUser = await db.query.users.findFirst({
-    where: eq(users.email, email.toLowerCase()),
-  });
-  
-  if (existingUser) {
-    throw new Error('El correo electrónico ya está registrado');
-  }
+  const normalizedEmail = normalizeEmail(email);
+  const normalizedFirstName = normalizeName(firstName);
+  const normalizedLastName = normalizeName(lastName);
   
   // Hashear contraseña
   const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
   const now = new Date();
   const userId = uuidv4();
-  
-  // Crear usuario
-  await db.insert(users).values({
-    id: userId,
-    email: email.toLowerCase(),
-    password: hashedPassword,
-    firstName,
-    lastName,
-    role,
-    provider: 'LOCAL',
-    isActive: true,
-    createdAt: now,
-    updatedAt: now,
-  });
-  
-  // Si es padre, crear el perfil de padre
-  if (role === 'PARENT') {
-    await db.insert(parentProfiles).values({
-      id: uuidv4(),
-      userId,
-      relationship: 'GUARDIAN',
-      notifyByEmail: true,
-      notifyWeeklySummary: true,
-      notifyAlerts: true,
-      createdAt: now,
-      updatedAt: now,
+
+  try {
+    await db.transaction(async (tx) => {
+      await tx.insert(users).values({
+        id: userId,
+        email: normalizedEmail,
+        password: hashedPassword,
+        firstName: normalizedFirstName,
+        lastName: normalizedLastName,
+        role,
+        provider: 'LOCAL',
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      // Si es padre, crear el perfil de padre en la misma transacción
+      if (role === 'PARENT') {
+        await tx.insert(parentProfiles).values({
+          id: uuidv4(),
+          userId,
+          relationship: 'GUARDIAN',
+          notifyByEmail: true,
+          notifyWeeklySummary: true,
+          notifyAlerts: true,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
     });
+  } catch (error) {
+    if (isDuplicateEntryError(error)) {
+      throw new Error('El correo electrónico ya está registrado');
+    }
+    throw error;
   }
   
   // Generar tokens
   const tokens = await generateTokenPair({
     userId,
-    email: email.toLowerCase(),
+    email: normalizedEmail,
     role,
   });
   
   return {
     user: {
       id: userId,
-      email: email.toLowerCase(),
-      firstName,
-      lastName,
+      email: normalizedEmail,
+      firstName: normalizedFirstName,
+      lastName: normalizedLastName,
       role,
       avatarUrl: null,
     },
@@ -118,28 +137,18 @@ export const register = async (input: RegisterInput): Promise<AuthResponse> => {
  */
 export const login = async (input: LoginInput): Promise<AuthResponse> => {
   const { email, password } = input;
+  const normalizedEmail = normalizeEmail(email);
   
   // Buscar usuario
   const user = await db.query.users.findFirst({
-    where: eq(users.email, email.toLowerCase()),
+    where: eq(users.email, normalizedEmail),
   });
-  
-  if (!user) {
-    throw new Error('Credenciales inválidas');
-  }
-  
-  if (!user.isActive) {
-    throw new Error('Tu cuenta ha sido desactivada');
-  }
-  
-  if (user.provider !== 'LOCAL' || !user.password) {
-    throw new Error('Esta cuenta usa inicio de sesión con Google');
-  }
-  
-  // Verificar contraseña
-  const isValidPassword = await bcrypt.compare(password, user.password);
-  
-  if (!isValidPassword) {
+
+  // Verificación constante para reducir filtrado por tiempo
+  const passwordHash = user?.password || DUMMY_PASSWORD_HASH;
+  const isValidPassword = await bcrypt.compare(password, passwordHash);
+
+  if (!user || !user.isActive || user.provider !== 'LOCAL' || !user.password || !isValidPassword) {
     throw new Error('Credenciales inválidas');
   }
   
@@ -168,87 +177,99 @@ export const login = async (input: LoginInput): Promise<AuthResponse> => {
  */
 export const googleAuth = async (input: GoogleAuthInput): Promise<AuthResponse> => {
   const { googleId, email, firstName, lastName, avatarUrl, role } = input;
+  const normalizedGoogleId = googleId.trim();
+  const normalizedEmail = normalizeEmail(email);
+  const normalizedFirstName = normalizeName(firstName) || 'Usuario';
+  const normalizedLastName = normalizeName(lastName);
+  const normalizedAvatarUrl = normalizeAvatarUrl(avatarUrl);
+
+  if (!normalizedGoogleId) {
+    throw new Error('Cuenta de Google inválida');
+  }
   
   // Buscar usuario existente por googleId o email
   let user = await db.query.users.findFirst({
     where: or(
-      eq(users.googleId, googleId),
-      eq(users.email, email.toLowerCase())
+      eq(users.googleId, normalizedGoogleId),
+      eq(users.email, normalizedEmail)
     ),
   });
   
   const now = new Date();
   
   if (user) {
+    if (!user.isActive) {
+      throw new Error('Tu cuenta ha sido desactivada');
+    }
+
+    const shouldUpdateProvider = user.provider !== 'GOOGLE';
+    const shouldUpdateGoogleId = user.googleId !== normalizedGoogleId;
+    const shouldUpdateAvatar = !user.avatarUrl && !!normalizedAvatarUrl;
+
     // Actualizar información de Google si es necesario
-    if (!user.googleId) {
+    if (shouldUpdateProvider || shouldUpdateGoogleId || shouldUpdateAvatar) {
       await db.update(users)
         .set({
-          googleId,
+          googleId: normalizedGoogleId,
           provider: 'GOOGLE',
-          avatarUrl: avatarUrl || user.avatarUrl,
+          avatarUrl: user.avatarUrl || normalizedAvatarUrl,
           updatedAt: now,
         })
         .where(eq(users.id, user.id));
       
-      user = { ...user, googleId, provider: 'GOOGLE', avatarUrl: avatarUrl || user.avatarUrl };
-    }
-    
-    if (!user.isActive) {
-      throw new Error('Tu cuenta ha sido desactivada');
+      user = await db.query.users.findFirst({
+        where: eq(users.id, user.id),
+      });
     }
   } else {
     // Crear nuevo usuario
     const userId = uuidv4();
-    await db.insert(users).values({
-      id: userId,
-      email: email.toLowerCase(),
-      googleId,
-      firstName,
-      lastName,
-      role,
-      provider: 'GOOGLE',
-      avatarUrl,
-      isActive: true,
-      notifyBadges: true,
-      notifyLevelUp: true,
-      createdAt: now,
-      updatedAt: now,
-    });
-    
-    // Si es padre, crear el perfil de padre
-    if (role === 'PARENT') {
-      await db.insert(parentProfiles).values({
-        id: uuidv4(),
-        userId,
-        relationship: 'GUARDIAN',
-        notifyByEmail: true,
-        notifyWeeklySummary: true,
-        notifyAlerts: true,
-        createdAt: now,
-        updatedAt: now,
+    try {
+      await db.transaction(async (tx) => {
+        await tx.insert(users).values({
+          id: userId,
+          email: normalizedEmail,
+          googleId: normalizedGoogleId,
+          firstName: normalizedFirstName,
+          lastName: normalizedLastName,
+          role,
+          provider: 'GOOGLE',
+          avatarUrl: normalizedAvatarUrl,
+          password: '', // No password para usuarios de Google
+          isActive: true,
+          notifyBadges: true,
+          notifyLevelUp: true,
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        // Si es padre, crear el perfil de padre en la misma transacción
+        if (role === 'PARENT') {
+          await tx.insert(parentProfiles).values({
+            id: uuidv4(),
+            userId,
+            relationship: 'GUARDIAN',
+            notifyByEmail: true,
+            notifyWeeklySummary: true,
+            notifyAlerts: true,
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
       });
+    } catch (error) {
+      if (isDuplicateEntryError(error)) {
+        throw new Error('Esta cuenta de Google ya está registrada');
+      }
+      throw error;
     }
-    
-    user = {
-      id: userId,
-      email: email.toLowerCase(),
-      password: null,
-      googleId,
-      firstName,
-      lastName,
-      role,
-      provider: 'GOOGLE',
-      avatarUrl: avatarUrl || null,
-      isActive: true,
-      notifyBadges: true,
-      notifyLevelUp: true,
-      createdAt: now,
-      updatedAt: now,
-    };
+
+    user = await db.query.users.findFirst({
+      where: eq(users.id, userId),
+    });
   }
   
-  if (!user) {
+  if (!user || !user.isActive) {
     throw new Error('Error al autenticar con Google');
   }
   
@@ -276,20 +297,36 @@ export const googleAuth = async (input: GoogleAuthInput): Promise<AuthResponse> 
  * Refrescar tokens
  */
 export const refreshTokens = async (refreshToken: string): Promise<{ accessToken: string; refreshToken: string }> => {
-  const payload = await verifyRefreshToken(refreshToken);
+  const normalizedRefreshToken = refreshToken.trim();
+  if (!normalizedRefreshToken) {
+    throw new Error('Token de actualización requerido');
+  }
+
+  const payload = await consumeRefreshToken(normalizedRefreshToken);
   
   if (!payload) {
     throw new Error('Token de actualización inválido o expirado');
   }
-  
-  // Revocar token anterior
-  await revokeRefreshToken(refreshToken);
+
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, payload.userId),
+    columns: {
+      id: true,
+      email: true,
+      role: true,
+      isActive: true,
+    },
+  });
+
+  if (!user || !user.isActive) {
+    throw new Error('Token de actualización inválido o expirado');
+  }
   
   // Generar nuevos tokens
   const tokens = await generateTokenPair({
-    userId: payload.userId,
-    email: payload.email,
-    role: payload.role,
+    userId: user.id,
+    email: user.email,
+    role: user.role as UserRole,
   });
   
   return tokens;
@@ -299,7 +336,12 @@ export const refreshTokens = async (refreshToken: string): Promise<{ accessToken
  * Cerrar sesión
  */
 export const logout = async (refreshToken: string): Promise<void> => {
-  await revokeRefreshToken(refreshToken);
+  const normalizedRefreshToken = refreshToken.trim();
+  if (!normalizedRefreshToken) {
+    return;
+  }
+
+  await revokeRefreshToken(normalizedRefreshToken);
 };
 
 /**
@@ -439,10 +481,16 @@ export const updateNotifications = async (
 export const generateTokensForUser = async (userId: string): Promise<{ accessToken: string; refreshToken: string }> => {
   const user = await db.query.users.findFirst({
     where: eq(users.id, userId),
+    columns: {
+      id: true,
+      email: true,
+      role: true,
+      isActive: true,
+    },
   });
   
-  if (!user) {
-    throw new Error('Usuario no encontrado');
+  if (!user || !user.isActive) {
+    throw new Error('Usuario no autorizado');
   }
   
   const tokens = await generateTokenPair({
@@ -458,58 +506,98 @@ export const generateTokensForUser = async (userId: string): Promise<{ accessTok
  * Completar registro de usuario de Google con rol seleccionado
  */
 export const completeGoogleRegistration = async (googleData: {
+  googleId: string;
   email: string;
   firstName: string;
   lastName: string;
   avatarUrl?: string | null;
 }, role: UserRole) => {
-  // Verificar que el email no exista
+  const normalizedGoogleId = googleData.googleId.trim();
+  const normalizedEmail = normalizeEmail(googleData.email);
+  const normalizedFirstName = normalizeName(googleData.firstName) || 'Usuario';
+  const normalizedLastName = normalizeName(googleData.lastName);
+  const normalizedAvatarUrl = normalizeAvatarUrl(googleData.avatarUrl);
+
+  if (!normalizedGoogleId) {
+    throw new Error('Cuenta de Google inválida');
+  }
+
+  // Verificar que el email/googleId no existan
   const existingUser = await db.query.users.findFirst({
-    where: eq(users.email, googleData.email),
+    where: or(
+      eq(users.email, normalizedEmail),
+      eq(users.googleId, normalizedGoogleId)
+    ),
+    columns: {
+      email: true,
+      googleId: true,
+    },
   });
   
   if (existingUser) {
+    if (existingUser.googleId === normalizedGoogleId) {
+      throw new Error('Esta cuenta de Google ya está registrada');
+    }
+
     throw new Error('Este email ya está registrado');
   }
   
   const newUserId = uuidv4();
   const now = new Date();
-  
-  await db.insert(users).values({
-    id: newUserId,
-    email: googleData.email,
-    firstName: googleData.firstName,
-    lastName: googleData.lastName,
-    password: '',
-    role: role,
-    provider: 'GOOGLE',
-    avatarUrl: googleData.avatarUrl || null,
-    createdAt: now,
-    updatedAt: now,
-  });
-  
-  const user = await db.query.users.findFirst({
-    where: eq(users.id, newUserId),
-  });
-  
-  if (!user) {
-    throw new Error('Error al crear usuario');
+
+  try {
+    await db.transaction(async (tx) => {
+      await tx.insert(users).values({
+        id: newUserId,
+        email: normalizedEmail,
+        googleId: normalizedGoogleId,
+        firstName: normalizedFirstName,
+        lastName: normalizedLastName,
+        password: '',
+        role,
+        provider: 'GOOGLE',
+        avatarUrl: normalizedAvatarUrl,
+        isActive: true,
+        notifyBadges: true,
+        notifyLevelUp: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      if (role === 'PARENT') {
+        await tx.insert(parentProfiles).values({
+          id: uuidv4(),
+          userId: newUserId,
+          relationship: 'GUARDIAN',
+          notifyByEmail: true,
+          notifyWeeklySummary: true,
+          notifyAlerts: true,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+    });
+  } catch (error) {
+    if (isDuplicateEntryError(error)) {
+      throw new Error('Esta cuenta de Google ya está registrada');
+    }
+    throw error;
   }
   
   const tokens = await generateTokenPair({
-    userId: user.id,
-    email: user.email,
-    role: user.role as UserRole,
+    userId: newUserId,
+    email: normalizedEmail,
+    role,
   });
   
   return {
     user: {
-      id: user.id,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      role: user.role,
-      avatarUrl: user.avatarUrl,
+      id: newUserId,
+      email: normalizedEmail,
+      firstName: normalizedFirstName,
+      lastName: normalizedLastName,
+      role,
+      avatarUrl: normalizedAvatarUrl,
     },
     ...tokens,
   };

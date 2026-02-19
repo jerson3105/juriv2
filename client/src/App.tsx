@@ -36,12 +36,14 @@ import { ReportsPage } from './pages/classroom/ReportsPage';
 import { HistoryPage } from './pages/classroom/HistoryPage';
 import { GradebookPage } from './pages/classroom/GradebookPage';
 import { GradebookStatsPage } from './pages/classroom/GradebookStatsPage';
+import { StorytellingPage } from './pages/classroom/StorytellingPage';
 import { StudentScrollsPage } from './pages/student/StudentScrollsPage';
 import { StudentGradesPage } from './pages/student/StudentGradesPage';
 import { StudentExpeditionsPage } from './pages/student/StudentExpeditionsPage';
 import { StudentCollectiblesPage } from './pages/student/StudentCollectiblesPage';
 import { StudentJiroExpeditionPage } from './pages/student/StudentJiroExpeditionPage';
 import { StudentJiroExpeditionsPage } from './pages/student/StudentJiroExpeditionsPage';
+import { StudentStoryPage } from './pages/student/StudentStoryPage';
 
 // Settings
 import { SettingsPage } from './pages/settings/SettingsPage';
@@ -211,6 +213,7 @@ function App() {
               <Route path="question-banks" element={<QuestionBanksPage />} />
               <Route path="expeditions" element={<ExpeditionsPage />} />
               <Route path="collectibles" element={<CollectiblesPage />} />
+              <Route path="storytelling" element={<StorytellingPage />} />
               <Route path="settings" element={<ClassroomSettingsPage />} />
               <Route path="student/:studentId" element={<StudentDetailPage />} />
             </Route>
@@ -225,6 +228,7 @@ function App() {
             <Route path="jiro-expeditions" element={<StudentJiroExpeditionsPage />} />
             <Route path="jiro-expedition/:expeditionId" element={<StudentJiroExpeditionPage />} />
             <Route path="collectibles" element={<StudentCollectiblesPage />} />
+            <Route path="my-story" element={<StudentStoryPage />} />
             
             {/* Redirigir rutas antiguas */}
             <Route path="my-classroom" element={<Navigate to="/dashboard" replace />} />

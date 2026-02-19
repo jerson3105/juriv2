@@ -1,6 +1,262 @@
 import { Request, Response } from 'express';
+import { z } from 'zod';
 import { gradeService } from '../services/grade.service.js';
 import { gradeExportService } from '../services/gradeExport.service.js';
+
+type AuthRole = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'PARENT';
+
+const BIMESTER_PERIOD_REGEX = /^\d{4}-B[1-4]$/;
+
+const periodSchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .refine(
+    (value) => value === 'CURRENT' || BIMESTER_PERIOD_REGEX.test(value),
+    'Periodo invalido. Usa CURRENT o el formato YYYY-B1..B4'
+  );
+
+const studentProfileParamsSchema = z.object({
+  studentProfileId: z.string().trim().uuid('studentProfileId invalido'),
+});
+
+const classroomParamsSchema = z.object({
+  classroomId: z.string().trim().uuid('classroomId invalido'),
+});
+
+const gradeParamsSchema = z.object({
+  gradeId: z.string().trim().uuid('gradeId invalido'),
+});
+
+const periodQuerySchema = z.object({
+  period: periodSchema.optional().default('CURRENT'),
+});
+
+const calculateStudentBodySchema = z.object({
+  classroomId: z.string().trim().uuid('classroomId invalido'),
+  period: periodSchema.optional().default('CURRENT'),
+});
+
+const calculateClassroomBodySchema = z.object({
+  period: periodSchema.optional().default('CURRENT'),
+});
+
+const manualGradeBodySchema = z.object({
+  manualScore: z.coerce.number().min(0, 'manualScore debe estar entre 0 y 100').max(100, 'manualScore debe estar entre 0 y 100'),
+  manualNote: z.string().trim().max(1000, 'manualNote no puede exceder 1000 caracteres').optional(),
+});
+
+const bimesterStatusQuerySchema = z.object({
+  year: z.coerce.number().int().min(2000).max(2100).optional(),
+});
+
+const bimesterActionBodySchema = z.object({
+  period: periodSchema,
+});
+
+const handleValidationError = (res: Response, error: z.ZodError) => {
+  res.status(400).json({
+    success: false,
+    message: 'Datos invalidos',
+    errors: error.errors,
+  });
+};
+
+const handleControllerError = (res: Response, error: unknown, fallbackMessage: string) => {
+  console.error(fallbackMessage, error);
+
+  const message = error instanceof Error ? error.message : fallbackMessage;
+  const normalizedMessage = message
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  let statusCode = 500;
+  if (normalizedMessage.includes('no encontrado')) {
+    statusCode = 404;
+  } else if (normalizedMessage.includes('sin acceso') || normalizedMessage.includes('no autorizado')) {
+    statusCode = 403;
+  } else if (normalizedMessage.includes('ya esta') || normalizedMessage.includes('ya está')) {
+    statusCode = 409;
+  } else if (
+    normalizedMessage.includes('inval') ||
+    normalizedMessage.includes('requerido') ||
+    normalizedMessage.includes('debe') ||
+    normalizedMessage.includes('formato')
+  ) {
+    statusCode = 400;
+  }
+
+  res.status(statusCode).json({
+    success: false,
+    message: statusCode === 500 ? fallbackMessage : message,
+  });
+};
+
+const ensureTeacherClassroomAccess = async (
+  req: Request,
+  res: Response,
+  classroomId: string
+): Promise<boolean> => {
+  const user = req.user;
+  if (!user) {
+    res.status(401).json({ success: false, message: 'No autenticado' });
+    return false;
+  }
+
+  if (user.role === 'ADMIN') {
+    return true;
+  }
+
+  if (user.role !== 'TEACHER') {
+    res.status(403).json({ success: false, message: 'Sin acceso a este salon' });
+    return false;
+  }
+
+  const hasAccess = await gradeService.verifyTeacherOwnsClassroom(user.id, classroomId);
+  if (!hasAccess) {
+    res.status(403).json({ success: false, message: 'Sin acceso a este salon' });
+    return false;
+  }
+
+  return true;
+};
+
+const ensureTeacherStudentProfileAccess = async (
+  req: Request,
+  res: Response,
+  studentProfileId: string
+): Promise<string | null> => {
+  const user = req.user;
+  if (!user) {
+    res.status(401).json({ success: false, message: 'No autenticado' });
+    return null;
+  }
+
+  const classroomId = await gradeService.getClassroomIdByStudentProfile(studentProfileId);
+  if (!classroomId) {
+    res.status(404).json({ success: false, message: 'Estudiante no encontrado' });
+    return null;
+  }
+
+  if (user.role === 'ADMIN') {
+    return classroomId;
+  }
+
+  if (user.role !== 'TEACHER') {
+    res.status(403).json({ success: false, message: 'Sin acceso a este estudiante' });
+    return null;
+  }
+
+  const hasAccess = await gradeService.verifyTeacherOwnsClassroom(user.id, classroomId);
+  if (!hasAccess) {
+    res.status(403).json({ success: false, message: 'Sin acceso a este estudiante' });
+    return null;
+  }
+
+  return classroomId;
+};
+
+const ensureTeacherGradeAccess = async (
+  req: Request,
+  res: Response,
+  gradeId: string
+): Promise<boolean> => {
+  const user = req.user;
+  if (!user) {
+    res.status(401).json({ success: false, message: 'No autenticado' });
+    return false;
+  }
+
+  const classroomId = await gradeService.getClassroomIdByGrade(gradeId);
+  if (!classroomId) {
+    res.status(404).json({ success: false, message: 'Calificación no encontrada' });
+    return false;
+  }
+
+  if (user.role === 'ADMIN') {
+    return true;
+  }
+
+  if (user.role !== 'TEACHER') {
+    res.status(403).json({ success: false, message: 'Sin acceso a esta calificación' });
+    return false;
+  }
+
+  const hasAccess = await gradeService.verifyTeacherOwnsClassroom(user.id, classroomId);
+  if (!hasAccess) {
+    res.status(403).json({ success: false, message: 'Sin acceso a esta calificación' });
+    return false;
+  }
+
+  return true;
+};
+
+const ensureStudentGradeReadAccess = async (
+  req: Request,
+  res: Response,
+  studentProfileId: string
+): Promise<boolean> => {
+  const user = req.user;
+  if (!user) {
+    res.status(401).json({ success: false, message: 'No autenticado' });
+    return false;
+  }
+
+  const role = user.role as AuthRole;
+  if (role === 'ADMIN') {
+    return true;
+  }
+
+  if (role === 'TEACHER') {
+    return !!(await ensureTeacherStudentProfileAccess(req, res, studentProfileId));
+  }
+
+  if (role === 'STUDENT') {
+    const hasAccess = await gradeService.verifyStudentOwnsProfile(user.id, studentProfileId);
+    if (!hasAccess) {
+      res.status(403).json({ success: false, message: 'Sin acceso a este estudiante' });
+      return false;
+    }
+    return true;
+  }
+
+  res.status(403).json({ success: false, message: 'Sin acceso a este estudiante' });
+  return false;
+};
+
+const ensureBimesterReadAccess = async (
+  req: Request,
+  res: Response,
+  classroomId: string
+): Promise<boolean> => {
+  const user = req.user;
+  if (!user) {
+    res.status(401).json({ success: false, message: 'No autenticado' });
+    return false;
+  }
+
+  const role = user.role as AuthRole;
+  if (role === 'ADMIN') {
+    return true;
+  }
+
+  if (role === 'TEACHER') {
+    return ensureTeacherClassroomAccess(req, res, classroomId);
+  }
+
+  if (role === 'STUDENT') {
+    const hasAccess = await gradeService.verifyStudentInClassroom(user.id, classroomId);
+    if (!hasAccess) {
+      res.status(403).json({ success: false, message: 'Sin acceso a este salon' });
+      return false;
+    }
+    return true;
+  }
+
+  res.status(403).json({ success: false, message: 'Sin acceso a este salon' });
+  return false;
+};
 
 export class GradeController {
   
@@ -10,18 +266,31 @@ export class GradeController {
    */
   async getStudentGrades(req: Request, res: Response) {
     try {
-      const { studentProfileId } = req.params;
-      const { period = 'CURRENT' } = req.query;
+      const paramsValidation = studentProfileParamsSchema.safeParse(req.params);
+      if (!paramsValidation.success) {
+        return handleValidationError(res, paramsValidation.error);
+      }
+
+      const queryValidation = periodQuerySchema.safeParse(req.query);
+      if (!queryValidation.success) {
+        return handleValidationError(res, queryValidation.error);
+      }
+
+      const { studentProfileId } = paramsValidation.data;
+      const { period } = queryValidation.data;
+
+      if (!(await ensureStudentGradeReadAccess(req, res, studentProfileId))) {
+        return;
+      }
 
       const grades = await gradeService.getStudentGrades(
         studentProfileId,
-        period as string
+        period
       );
 
       res.json(grades);
-    } catch (error: any) {
-      console.error('Error getting student grades:', error);
-      res.status(500).json({ error: error.message || 'Error al obtener calificaciones' });
+    } catch (error) {
+      handleControllerError(res, error, 'Error al obtener calificaciones del estudiante');
     }
   }
 
@@ -31,18 +300,31 @@ export class GradeController {
    */
   async getClassroomGrades(req: Request, res: Response) {
     try {
-      const { classroomId } = req.params;
-      const { period = 'CURRENT' } = req.query;
+      const paramsValidation = classroomParamsSchema.safeParse(req.params);
+      if (!paramsValidation.success) {
+        return handleValidationError(res, paramsValidation.error);
+      }
+
+      const queryValidation = periodQuerySchema.safeParse(req.query);
+      if (!queryValidation.success) {
+        return handleValidationError(res, queryValidation.error);
+      }
+
+      const { classroomId } = paramsValidation.data;
+      const { period } = queryValidation.data;
+
+      if (!(await ensureTeacherClassroomAccess(req, res, classroomId))) {
+        return;
+      }
 
       const grades = await gradeService.getClassroomGrades(
         classroomId,
-        period as string
+        period
       );
 
       res.json(grades);
-    } catch (error: any) {
-      console.error('Error getting classroom grades:', error);
-      res.status(500).json({ error: error.message || 'Error al obtener calificaciones' });
+    } catch (error) {
+      handleControllerError(res, error, 'Error al obtener calificaciones del salon');
     }
   }
 
@@ -52,11 +334,29 @@ export class GradeController {
    */
   async calculateStudentGrades(req: Request, res: Response) {
     try {
-      const { studentProfileId } = req.params;
-      const { classroomId, period = 'CURRENT' } = req.body;
+      const paramsValidation = studentProfileParamsSchema.safeParse(req.params);
+      if (!paramsValidation.success) {
+        return handleValidationError(res, paramsValidation.error);
+      }
 
-      if (!classroomId) {
-        return res.status(400).json({ error: 'classroomId es requerido' });
+      const bodyValidation = calculateStudentBodySchema.safeParse(req.body);
+      if (!bodyValidation.success) {
+        return handleValidationError(res, bodyValidation.error);
+      }
+
+      const { studentProfileId } = paramsValidation.data;
+      const { classroomId, period } = bodyValidation.data;
+
+      const studentClassroomId = await ensureTeacherStudentProfileAccess(req, res, studentProfileId);
+      if (!studentClassroomId) {
+        return;
+      }
+
+      if (studentClassroomId !== classroomId) {
+        return res.status(400).json({
+          success: false,
+          message: 'El estudiante no pertenece al classroomId enviado',
+        });
       }
 
       const results = await gradeService.calculateStudentGrades(
@@ -70,9 +370,8 @@ export class GradeController {
         studentProfileId,
         grades: results,
       });
-    } catch (error: any) {
-      console.error('Error calculating student grades:', error);
-      res.status(500).json({ error: error.message || 'Error al calcular calificaciones' });
+    } catch (error) {
+      handleControllerError(res, error, 'Error al calcular calificaciones del estudiante');
     }
   }
 
@@ -82,8 +381,22 @@ export class GradeController {
    */
   async recalculateClassroomGrades(req: Request, res: Response) {
     try {
-      const { classroomId } = req.params;
-      const { period = 'CURRENT' } = req.body;
+      const paramsValidation = classroomParamsSchema.safeParse(req.params);
+      if (!paramsValidation.success) {
+        return handleValidationError(res, paramsValidation.error);
+      }
+
+      const bodyValidation = calculateClassroomBodySchema.safeParse(req.body);
+      if (!bodyValidation.success) {
+        return handleValidationError(res, bodyValidation.error);
+      }
+
+      const { classroomId } = paramsValidation.data;
+      const { period } = bodyValidation.data;
+
+      if (!(await ensureTeacherClassroomAccess(req, res, classroomId))) {
+        return;
+      }
 
       const results = await gradeService.recalculateClassroomGrades(
         classroomId,
@@ -96,9 +409,8 @@ export class GradeController {
         studentsProcessed: results.length,
         results,
       });
-    } catch (error: any) {
-      console.error('Error recalculating classroom grades:', error);
-      res.status(500).json({ error: error.message || 'Error al recalcular calificaciones' });
+    } catch (error) {
+      handleControllerError(res, error, 'Error al recalcular calificaciones del salon');
     }
   }
 
@@ -108,11 +420,21 @@ export class GradeController {
    */
   async setManualGrade(req: Request, res: Response) {
     try {
-      const { gradeId } = req.params;
-      const { manualScore, manualNote } = req.body;
+      const paramsValidation = gradeParamsSchema.safeParse(req.params);
+      if (!paramsValidation.success) {
+        return handleValidationError(res, paramsValidation.error);
+      }
 
-      if (manualScore === undefined || manualScore < 0 || manualScore > 100) {
-        return res.status(400).json({ error: 'manualScore debe estar entre 0 y 100' });
+      const bodyValidation = manualGradeBodySchema.safeParse(req.body);
+      if (!bodyValidation.success) {
+        return handleValidationError(res, bodyValidation.error);
+      }
+
+      const { gradeId } = paramsValidation.data;
+      const { manualScore, manualNote } = bodyValidation.data;
+
+      if (!(await ensureTeacherGradeAccess(req, res, gradeId))) {
+        return;
       }
 
       const result = await gradeService.setManualGrade(
@@ -122,9 +444,8 @@ export class GradeController {
       );
 
       res.json(result);
-    } catch (error: any) {
-      console.error('Error setting manual grade:', error);
-      res.status(500).json({ error: error.message || 'Error al establecer calificación manual' });
+    } catch (error) {
+      handleControllerError(res, error, 'Error al establecer calificación manual');
     }
   }
 
@@ -134,14 +455,22 @@ export class GradeController {
    */
   async clearManualGrade(req: Request, res: Response) {
     try {
-      const { gradeId } = req.params;
+      const paramsValidation = gradeParamsSchema.safeParse(req.params);
+      if (!paramsValidation.success) {
+        return handleValidationError(res, paramsValidation.error);
+      }
+
+      const { gradeId } = paramsValidation.data;
+
+      if (!(await ensureTeacherGradeAccess(req, res, gradeId))) {
+        return;
+      }
 
       const result = await gradeService.clearManualGrade(gradeId);
 
       res.json(result);
-    } catch (error: any) {
-      console.error('Error clearing manual grade:', error);
-      res.status(500).json({ error: error.message || 'Error al restaurar calificación automática' });
+    } catch (error) {
+      handleControllerError(res, error, 'Error al restaurar calificación automática');
     }
   }
 
@@ -151,20 +480,33 @@ export class GradeController {
    */
   async exportPDF(req: Request, res: Response) {
     try {
-      const { classroomId } = req.params;
-      const { period = 'CURRENT' } = req.query;
+      const paramsValidation = classroomParamsSchema.safeParse(req.params);
+      if (!paramsValidation.success) {
+        return handleValidationError(res, paramsValidation.error);
+      }
+
+      const queryValidation = periodQuerySchema.safeParse(req.query);
+      if (!queryValidation.success) {
+        return handleValidationError(res, queryValidation.error);
+      }
+
+      const { classroomId } = paramsValidation.data;
+      const { period } = queryValidation.data;
+
+      if (!(await ensureTeacherClassroomAccess(req, res, classroomId))) {
+        return;
+      }
 
       const pdfBuffer = await gradeExportService.generateGradebookPDF(
         classroomId,
-        period as string
+        period
       );
 
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename=libro-calificaciones-${classroomId}.pdf`);
       res.send(pdfBuffer);
-    } catch (error: any) {
-      console.error('Error exporting PDF:', error);
-      res.status(500).json({ error: error.message || 'Error al exportar PDF' });
+    } catch (error) {
+      handleControllerError(res, error, 'Error al exportar PDF de calificaciones');
     }
   }
 
@@ -174,20 +516,33 @@ export class GradeController {
    */
   async exportExcel(req: Request, res: Response) {
     try {
-      const { classroomId } = req.params;
-      const { period = 'CURRENT' } = req.query;
+      const paramsValidation = classroomParamsSchema.safeParse(req.params);
+      if (!paramsValidation.success) {
+        return handleValidationError(res, paramsValidation.error);
+      }
+
+      const queryValidation = periodQuerySchema.safeParse(req.query);
+      if (!queryValidation.success) {
+        return handleValidationError(res, queryValidation.error);
+      }
+
+      const { classroomId } = paramsValidation.data;
+      const { period } = queryValidation.data;
+
+      if (!(await ensureTeacherClassroomAccess(req, res, classroomId))) {
+        return;
+      }
 
       const excelBuffer = await gradeExportService.generateGradebookExcel(
         classroomId,
-        period as string
+        period
       );
 
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', `attachment; filename=calificaciones-${classroomId}.xlsx`);
       res.send(excelBuffer);
-    } catch (error: any) {
-      console.error('Error exporting Excel:', error);
-      res.status(500).json({ error: error.message || 'Error al exportar Excel' });
+    } catch (error) {
+      handleControllerError(res, error, 'Error al exportar Excel de calificaciones');
     }
   }
 
@@ -201,16 +556,31 @@ export class GradeController {
    */
   async getBimesterStatus(req: Request, res: Response) {
     try {
-      const { classroomId } = req.params;
-      const { year } = req.query;
+      const paramsValidation = classroomParamsSchema.safeParse(req.params);
+      if (!paramsValidation.success) {
+        return handleValidationError(res, paramsValidation.error);
+      }
+
+      const queryValidation = bimesterStatusQuerySchema.safeParse(req.query);
+      if (!queryValidation.success) {
+        return handleValidationError(res, queryValidation.error);
+      }
+
+      const { classroomId } = paramsValidation.data;
+      const { year } = queryValidation.data;
+
+      if (!(await ensureBimesterReadAccess(req, res, classroomId))) {
+        return;
+      }
+
       const status = await gradeService.getBimesterStatus(
         classroomId, 
-        year ? parseInt(year as string) : undefined
+        year
       );
+
       res.json(status);
-    } catch (error: any) {
-      console.error('Error getting bimester status:', error);
-      res.status(500).json({ error: error.message || 'Error al obtener estado de bimestres' });
+    } catch (error) {
+      handleControllerError(res, error, 'Error al obtener estado de bimestres');
     }
   }
 
@@ -220,19 +590,33 @@ export class GradeController {
    */
   async setCurrentBimester(req: Request, res: Response) {
     try {
-      const { classroomId } = req.params;
-      const { period } = req.body;
-      const userId = (req as any).user?.id;
+      const paramsValidation = classroomParamsSchema.safeParse(req.params);
+      if (!paramsValidation.success) {
+        return handleValidationError(res, paramsValidation.error);
+      }
 
-      if (!period) {
-        return res.status(400).json({ error: 'period es requerido' });
+      const bodyValidation = bimesterActionBodySchema.safeParse(req.body);
+      if (!bodyValidation.success) {
+        return handleValidationError(res, bodyValidation.error);
+      }
+
+      const { classroomId } = paramsValidation.data;
+      const { period } = bodyValidation.data;
+
+      if (!(await ensureTeacherClassroomAccess(req, res, classroomId))) {
+        return;
+      }
+
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ success: false, message: 'No autenticado' });
+        return;
       }
 
       const result = await gradeService.setCurrentBimester(classroomId, period, userId);
       res.json(result);
-    } catch (error: any) {
-      console.error('Error setting current bimester:', error);
-      res.status(400).json({ error: error.message || 'Error al establecer bimestre actual' });
+    } catch (error) {
+      handleControllerError(res, error, 'Error al establecer bimestre actual');
     }
   }
 
@@ -242,19 +626,33 @@ export class GradeController {
    */
   async closeBimester(req: Request, res: Response) {
     try {
-      const { classroomId } = req.params;
-      const { period } = req.body;
-      const userId = (req as any).user?.id;
+      const paramsValidation = classroomParamsSchema.safeParse(req.params);
+      if (!paramsValidation.success) {
+        return handleValidationError(res, paramsValidation.error);
+      }
 
-      if (!period) {
-        return res.status(400).json({ error: 'period es requerido' });
+      const bodyValidation = bimesterActionBodySchema.safeParse(req.body);
+      if (!bodyValidation.success) {
+        return handleValidationError(res, bodyValidation.error);
+      }
+
+      const { classroomId } = paramsValidation.data;
+      const { period } = bodyValidation.data;
+
+      if (!(await ensureTeacherClassroomAccess(req, res, classroomId))) {
+        return;
+      }
+
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ success: false, message: 'No autenticado' });
+        return;
       }
 
       const result = await gradeService.closeBimester(classroomId, period, userId);
       res.json(result);
-    } catch (error: any) {
-      console.error('Error closing bimester:', error);
-      res.status(400).json({ error: error.message || 'Error al cerrar bimestre' });
+    } catch (error) {
+      handleControllerError(res, error, 'Error al cerrar bimestre');
     }
   }
 
@@ -264,19 +662,33 @@ export class GradeController {
    */
   async reopenBimester(req: Request, res: Response) {
     try {
-      const { classroomId } = req.params;
-      const { period } = req.body;
-      const userId = (req as any).user?.id;
+      const paramsValidation = classroomParamsSchema.safeParse(req.params);
+      if (!paramsValidation.success) {
+        return handleValidationError(res, paramsValidation.error);
+      }
 
-      if (!period) {
-        return res.status(400).json({ error: 'period es requerido' });
+      const bodyValidation = bimesterActionBodySchema.safeParse(req.body);
+      if (!bodyValidation.success) {
+        return handleValidationError(res, bodyValidation.error);
+      }
+
+      const { classroomId } = paramsValidation.data;
+      const { period } = bodyValidation.data;
+
+      if (!(await ensureTeacherClassroomAccess(req, res, classroomId))) {
+        return;
+      }
+
+      const userId = req.user?.id;
+      if (!userId) {
+        res.status(401).json({ success: false, message: 'No autenticado' });
+        return;
       }
 
       const result = await gradeService.reopenBimester(classroomId, period, userId);
       res.json(result);
-    } catch (error: any) {
-      console.error('Error reopening bimester:', error);
-      res.status(400).json({ error: error.message || 'Error al reabrir bimestre' });
+    } catch (error) {
+      handleControllerError(res, error, 'Error al reabrir bimestre');
     }
   }
 }

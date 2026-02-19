@@ -224,6 +224,33 @@ export const classrooms = mysqlTable('classrooms', {
   // Escuela asociada (opcional)
   schoolId: varchar('school_id', { length: 36 }),
   
+  // Tema visual del aula (independiente de storytelling)
+  themeConfig: json('theme_config').$type<{
+    colors?: {
+      primary?: string;
+      secondary?: string;
+      accent?: string;
+      background?: string;
+      sidebar?: string;
+    };
+    particles?: {
+      type?: string;
+      color?: string;
+      speed?: string;
+      density?: string;
+    };
+    decorations?: Array<{
+      type: string;
+      position: string;
+      asset: string;
+    }>;
+    banner?: {
+      emoji?: string;
+      title?: string;
+    };
+  }>(),
+  themeSource: varchar('theme_source', { length: 20 }).default('DEFAULT'),
+  
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
 }, (table) => ({
@@ -2629,3 +2656,203 @@ export type SchoolBehavior = typeof schoolBehaviors.$inferSelect;
 export type NewSchoolBehavior = typeof schoolBehaviors.$inferInsert;
 export type SchoolBadge = typeof schoolBadges.$inferSelect;
 export type NewSchoolBadge = typeof schoolBadges.$inferInsert;
+
+// ==================== STORYTELLING ====================
+
+export const stories = mysqlTable('stories', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
+  title: varchar('title', { length: 255 }).notNull(),
+  description: text('description'),
+  isActive: boolean('is_active').notNull().default(false),
+  themeConfig: json('theme_config').$type<{
+    colors?: {
+      primary?: string;
+      secondary?: string;
+      accent?: string;
+      background?: string;
+      sidebar?: string;
+    };
+    particles?: {
+      type?: string;
+      color?: string;
+      speed?: string;
+      density?: string;
+    };
+    decorations?: Array<{
+      type: string;
+      position: string;
+      asset: string;
+    }>;
+    banner?: {
+      emoji?: string;
+      title?: string;
+    };
+  }>(),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  classroomIdx: index('idx_stories_classroom').on(table.classroomId),
+  classroomActiveIdx: index('idx_stories_classroom_active').on(table.classroomId, table.isActive),
+}));
+
+export const storiesRelations = relations(stories, ({ one, many }) => ({
+  classroom: one(classrooms, {
+    fields: [stories.classroomId],
+    references: [classrooms.id],
+  }),
+  chapters: many(storyChapters),
+}));
+
+export const storyChapters = mysqlTable('story_chapters', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  storyId: varchar('story_id', { length: 36 }).notNull(),
+  title: varchar('title', { length: 255 }).notNull(),
+  description: text('description'),
+  orderIndex: int('order_index').notNull().default(0),
+  status: varchar('status', { length: 20 }).notNull().default('LOCKED'),
+  completionType: varchar('completion_type', { length: 20 }).notNull().default('BIMESTER'),
+  completionConfig: json('completion_config').$type<{
+    targetXp?: number;
+    donationPercent?: number;
+  }>(),
+  currentProgress: decimal('current_progress', { precision: 12, scale: 2 }).notNull().default('0'),
+  themeOverride: json('theme_override').$type<{
+    colors?: {
+      primary?: string;
+      secondary?: string;
+      accent?: string;
+      background?: string;
+      sidebar?: string;
+    };
+    particles?: {
+      type?: string;
+      color?: string;
+      speed?: string;
+      density?: string;
+    };
+    decorations?: Array<{
+      type: string;
+      position: string;
+      asset: string;
+    }>;
+    banner?: {
+      emoji?: string;
+      title?: string;
+    };
+  }>(),
+  completedAt: datetime('completed_at'),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  storyIdx: index('idx_story_chapters_story').on(table.storyId),
+  storyOrderIdx: index('idx_story_chapters_story_order').on(table.storyId, table.orderIndex),
+}));
+
+export const storyChaptersRelations = relations(storyChapters, ({ one, many }) => ({
+  story: one(stories, {
+    fields: [storyChapters.storyId],
+    references: [stories.id],
+  }),
+  scenes: many(storyScenes),
+  donations: many(storyDonations),
+}));
+
+export const storyScenes = mysqlTable('story_scenes', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  chapterId: varchar('chapter_id', { length: 36 }).notNull(),
+  orderIndex: int('order_index').notNull().default(0),
+  type: varchar('type', { length: 20 }).notNull().default('INTRO'),
+  mediaType: varchar('media_type', { length: 20 }),
+  mediaUrl: varchar('media_url', { length: 500 }),
+  backgroundColor: varchar('background_color', { length: 7 }),
+  triggerConfig: json('trigger_config'),
+  createdAt: datetime('created_at').notNull(),
+}, (table) => ({
+  chapterIdx: index('idx_story_scenes_chapter').on(table.chapterId),
+  chapterOrderIdx: index('idx_story_scenes_chapter_order').on(table.chapterId, table.orderIndex),
+}));
+
+export const storyScenesRelations = relations(storyScenes, ({ one, many }) => ({
+  chapter: one(storyChapters, {
+    fields: [storyScenes.chapterId],
+    references: [storyChapters.id],
+  }),
+  dialogues: many(sceneDialogues),
+  views: many(studentSceneViews),
+}));
+
+export const sceneDialogues = mysqlTable('scene_dialogues', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  sceneId: varchar('scene_id', { length: 36 }).notNull(),
+  orderIndex: int('order_index').notNull().default(0),
+  text: text('text').notNull(),
+  speaker: varchar('speaker', { length: 100 }),
+  emotion: varchar('emotion', { length: 20 }).default('neutral'),
+}, (table) => ({
+  sceneIdx: index('idx_scene_dialogues_scene').on(table.sceneId),
+  sceneOrderIdx: index('idx_scene_dialogues_scene_order').on(table.sceneId, table.orderIndex),
+}));
+
+export const sceneDialoguesRelations = relations(sceneDialogues, ({ one }) => ({
+  scene: one(storyScenes, {
+    fields: [sceneDialogues.sceneId],
+    references: [storyScenes.id],
+  }),
+}));
+
+export const studentSceneViews = mysqlTable('student_scene_views', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),
+  sceneId: varchar('scene_id', { length: 36 }).notNull(),
+  viewedAt: datetime('viewed_at').notNull(),
+}, (table) => ({
+  studentIdx: index('idx_student_scene_views_student').on(table.studentProfileId),
+  uniqueView: unique('idx_student_scene_views_unique').on(table.studentProfileId, table.sceneId),
+}));
+
+export const studentSceneViewsRelations = relations(studentSceneViews, ({ one }) => ({
+  student: one(studentProfiles, {
+    fields: [studentSceneViews.studentProfileId],
+    references: [studentProfiles.id],
+  }),
+  scene: one(storyScenes, {
+    fields: [studentSceneViews.sceneId],
+    references: [storyScenes.id],
+  }),
+}));
+
+export const storyDonations = mysqlTable('story_donations', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  chapterId: varchar('chapter_id', { length: 36 }).notNull(),
+  studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),
+  xpAmount: decimal('xp_amount', { precision: 10, scale: 2 }).notNull().default('0'),
+  createdAt: datetime('created_at').notNull(),
+}, (table) => ({
+  chapterIdx: index('idx_story_donations_chapter').on(table.chapterId),
+  studentIdx: index('idx_story_donations_student').on(table.studentProfileId),
+  chapterCreatedIdx: index('idx_story_donations_chapter_created').on(table.chapterId, table.createdAt),
+}));
+
+export const storyDonationsRelations = relations(storyDonations, ({ one }) => ({
+  chapter: one(storyChapters, {
+    fields: [storyDonations.chapterId],
+    references: [storyChapters.id],
+  }),
+  student: one(studentProfiles, {
+    fields: [storyDonations.studentProfileId],
+    references: [studentProfiles.id],
+  }),
+}));
+
+// Types para Storytelling
+export type Story = typeof stories.$inferSelect;
+export type NewStory = typeof stories.$inferInsert;
+export type StoryChapter = typeof storyChapters.$inferSelect;
+export type NewStoryChapter = typeof storyChapters.$inferInsert;
+export type StoryScene = typeof storyScenes.$inferSelect;
+export type NewStoryScene = typeof storyScenes.$inferInsert;
+export type SceneDialogue = typeof sceneDialogues.$inferSelect;
+export type NewSceneDialogue = typeof sceneDialogues.$inferInsert;
+export type StudentSceneView = typeof studentSceneViews.$inferSelect;
+export type StoryDonation = typeof storyDonations.$inferSelect;

@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
-import { eq, lt } from 'drizzle-orm';
+import crypto from 'crypto';
+import { eq, lt, or } from 'drizzle-orm';
 import { config_app } from '../config/env.js';
 import { db, refreshTokens } from '../db/index.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -16,6 +17,32 @@ interface TokenPair {
   accessToken: string;
   refreshToken: string;
 }
+
+const hashRefreshToken = (token: string): string =>
+  crypto.createHash('sha256').update(token).digest('hex');
+
+const getRefreshTokenExpiryDate = (token: string): Date => {
+  const decoded = jwt.decode(token) as jwt.JwtPayload | null;
+  if (decoded?.exp && typeof decoded.exp === 'number') {
+    return new Date(decoded.exp * 1000);
+  }
+
+  // Fallback defensivo si no hay claim exp
+  const fallbackExpiry = new Date();
+  fallbackExpiry.setDate(fallbackExpiry.getDate() + 7);
+  return fallbackExpiry;
+};
+
+const findStoredRefreshToken = async (token: string) => {
+  const tokenHash = hashRefreshToken(token);
+
+  return db.query.refreshTokens.findFirst({
+    where: or(
+      eq(refreshTokens.token, tokenHash),
+      eq(refreshTokens.token, token)
+    ),
+  });
+};
 
 // Generar Access Token
 export const generateAccessToken = (payload: TokenPayload): string => {
@@ -35,15 +62,15 @@ export const generateRefreshToken = (payload: TokenPayload): string => {
 export const generateTokenPair = async (payload: TokenPayload): Promise<TokenPair> => {
   const accessToken = generateAccessToken(payload);
   const refreshToken = generateRefreshToken(payload);
+  const refreshTokenHash = hashRefreshToken(refreshToken);
   
   // Calcular fecha de expiración del refresh token
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + 7); // 7 días
+  const expiresAt = getRefreshTokenExpiryDate(refreshToken);
   
-  // Guardar refresh token en la base de datos
+  // Guardar hash del refresh token en la base de datos
   await db.insert(refreshTokens).values({
     id: uuidv4(),
-    token: refreshToken,
+    token: refreshTokenHash,
     userId: payload.userId,
     expiresAt,
     createdAt: new Date(),
@@ -54,14 +81,17 @@ export const generateTokenPair = async (payload: TokenPayload): Promise<TokenPai
 
 // Verificar Refresh Token
 export const verifyRefreshToken = async (token: string): Promise<TokenPayload | null> => {
+  const normalizedToken = token.trim();
+  if (!normalizedToken) {
+    return null;
+  }
+
   try {
     // Verificar firma del token
-    const decoded = jwt.verify(token, config_app.jwt.refreshSecret) as TokenPayload;
+    const decoded = jwt.verify(normalizedToken, config_app.jwt.refreshSecret) as TokenPayload;
     
     // Verificar que existe en la base de datos y no ha expirado
-    const storedToken = await db.query.refreshTokens.findFirst({
-      where: eq(refreshTokens.token, token),
-    });
+    const storedToken = await findStoredRefreshToken(normalizedToken);
     
     if (!storedToken || storedToken.expiresAt < new Date()) {
       // Eliminar token expirado si existe
@@ -77,9 +107,53 @@ export const verifyRefreshToken = async (token: string): Promise<TokenPayload | 
   }
 };
 
+// Consumir Refresh Token (single-use)
+export const consumeRefreshToken = async (token: string): Promise<TokenPayload | null> => {
+  const normalizedToken = token.trim();
+  if (!normalizedToken) {
+    return null;
+  }
+
+  try {
+    const decoded = jwt.verify(normalizedToken, config_app.jwt.refreshSecret) as TokenPayload;
+    const storedToken = await findStoredRefreshToken(normalizedToken);
+
+    if (!storedToken) {
+      return null;
+    }
+
+    if (storedToken.expiresAt < new Date()) {
+      await db.delete(refreshTokens).where(eq(refreshTokens.id, storedToken.id));
+      return null;
+    }
+
+    const deleteResult = await db.delete(refreshTokens).where(eq(refreshTokens.id, storedToken.id));
+    const deletedRows = Number((deleteResult as { affectedRows?: number }).affectedRows ?? 0);
+
+    if (deletedRows < 1) {
+      return null;
+    }
+
+    return decoded;
+  } catch {
+    return null;
+  }
+};
+
 // Revocar Refresh Token
 export const revokeRefreshToken = async (token: string): Promise<void> => {
-  await db.delete(refreshTokens).where(eq(refreshTokens.token, token));
+  const normalizedToken = token.trim();
+  if (!normalizedToken) {
+    return;
+  }
+
+  const tokenHash = hashRefreshToken(normalizedToken);
+  await db.delete(refreshTokens).where(
+    or(
+      eq(refreshTokens.token, tokenHash),
+      eq(refreshTokens.token, normalizedToken)
+    )
+  );
 };
 
 // Revocar todos los tokens de un usuario
@@ -91,5 +165,5 @@ export const revokeAllUserTokens = async (userId: string): Promise<void> => {
 export const cleanExpiredTokens = async (): Promise<number> => {
   const result = await db.delete(refreshTokens)
     .where(lt(refreshTokens.expiresAt, new Date()));
-  return 0; // Drizzle no retorna count directamente
+  return Number((result as { affectedRows?: number }).affectedRows ?? 0);
 };

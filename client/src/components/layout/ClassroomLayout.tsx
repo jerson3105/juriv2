@@ -45,6 +45,7 @@ import { ClassroomOnboardingProvider } from '../onboarding';
 import { HelpCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { AIAssistantWidget } from '../classroom/AIAssistantWidget';
+import { ParticleLayer } from '../story/ParticleLayer';
 
 export const ClassroomLayout = () => {
   const { id } = useParams<{ id: string }>();
@@ -76,6 +77,30 @@ export const ClassroomLayout = () => {
     queryFn: () => classroomApi.getById(id!),
     enabled: !!id,
   });
+
+  // Parse storytelling theme from classroom
+  const tc = (() => {
+    const raw = classroom?.themeConfig;
+    if (!raw) return null;
+    if (typeof raw === 'string') {
+      try { return JSON.parse(raw); } catch { return null; }
+    }
+    return raw;
+  })();
+  const hasStoryTheme = !!(tc?.colors?.background && tc?.colors?.sidebar);
+
+  // Calculate if theme is light or dark based on background luminosity
+  const isThemeDark = (() => {
+    if (!hasStoryTheme || !tc?.colors?.background) return false;
+    const hex = tc.colors.background.replace('#', '');
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    // Calculate relative luminance (ITU-R BT.709)
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance < 0.5; // Dark if luminance < 50%
+  })();
+  const storyThemeClass = hasStoryTheme ? (isThemeDark ? 'story-theme-dark' : 'story-theme-light') : '';
 
   const copyCode = async () => {
     if (!classroom) return;
@@ -110,6 +135,7 @@ export const ClassroomLayout = () => {
         { path: `/classroom/${id}/shop`, label: 'Tienda', icon: ShoppingBag, onboardingId: 'shop-menu' },
         { path: `/classroom/${id}/collectibles`, label: 'Coleccionables', icon: Album },
         { path: `/classroom/${id}/rankings`, label: 'Rankings', icon: Trophy },
+        { path: `/classroom/${id}/storytelling`, label: 'Storytelling', icon: Sparkles },
       ],
     },
     { 
@@ -191,10 +217,36 @@ export const ClassroomLayout = () => {
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800">
+    <div
+      className={hasStoryTheme ? `fixed inset-0 z-[100] flex transition-colors duration-500 ${storyThemeClass}` : 'fixed inset-0 z-[100] flex bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800'}
+      style={hasStoryTheme ? {
+        backgroundColor: tc.colors.background,
+        '--story-bg': tc.colors.background,
+        '--story-sidebar': tc.colors.sidebar,
+        '--story-primary': tc.colors.primary,
+        '--story-secondary': tc.colors.secondary,
+        '--story-accent': tc.colors.accent || tc.colors.primary,
+        '--story-primary-rgb': (() => {
+          const hex = (tc.colors.primary || '#6366f1').replace('#', '');
+          const r = parseInt(hex.substring(0, 2), 16);
+          const g = parseInt(hex.substring(2, 4), 16);
+          const b = parseInt(hex.substring(4, 6), 16);
+          return `${r}, ${g}, ${b}`;
+        })(),
+      } as React.CSSProperties : undefined}
+    >
+      {/* Storytelling particles */}
+      {hasStoryTheme && tc.particles && (
+        <ParticleLayer particles={tc.particles} />
+      )}
+
       {/* Decorative elements */}
-      <div className="absolute top-20 right-10 w-64 h-64 bg-blue-200 dark:bg-blue-900 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse pointer-events-none" />
-      <div className="absolute bottom-20 left-1/3 w-64 h-64 bg-purple-200 dark:bg-purple-900 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse pointer-events-none" style={{ animationDelay: '1s' }} />
+      {!hasStoryTheme && (
+        <>
+          <div className="absolute top-20 right-10 w-64 h-64 bg-blue-200 dark:bg-blue-900 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse pointer-events-none" />
+          <div className="absolute bottom-20 left-1/3 w-64 h-64 bg-purple-200 dark:bg-purple-900 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse pointer-events-none" style={{ animationDelay: '1s' }} />
+        </>
+      )}
 
       {/* Mobile Overlay */}
       <AnimatePresence>
@@ -215,14 +267,15 @@ export const ClassroomLayout = () => {
         animate={{ width: collapsed ? 72 : 240 }}
         className={`
           fixed lg:relative z-50 lg:z-10 h-full
-          bg-white/90 dark:bg-gray-800/90 backdrop-blur-xl shadow-xl shadow-blue-500/10 
-          border-r border-white/50 dark:border-gray-700/50 flex flex-col
+          ${hasStoryTheme ? '' : 'bg-white/90 dark:bg-gray-800/90'} backdrop-blur-xl shadow-xl shadow-blue-500/10 
+          ${hasStoryTheme ? 'border-r border-white/10' : 'border-r border-white/50 dark:border-gray-700/50'} flex flex-col
           transform transition-transform duration-300 lg:transform-none
           ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
         `}
+        style={hasStoryTheme ? { backgroundColor: tc.colors.sidebar } : undefined}
       >
         {/* Logo */}
-        <div className="p-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+        <div className={`p-3 flex items-center justify-between ${hasStoryTheme ? 'border-b border-white/10' : 'border-b border-gray-100 dark:border-gray-700'}`}>
           <Link to="/dashboard" className="flex items-center gap-2 justify-center">
             <img 
               src={collapsed ? "/logo-solo.png" : "/logo.png"}
@@ -233,33 +286,33 @@ export const ClassroomLayout = () => {
           {/* Botón cerrar en móvil */}
           <button
             onClick={() => setMobileMenuOpen(false)}
-            className="lg:hidden p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            className={`lg:hidden p-1.5 rounded-lg transition-colors ${hasStoryTheme ? 'text-white/60 hover:text-white hover:bg-white/10' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
           >
             <X size={20} />
           </button>
         </div>
 
         {/* Header del sidebar */}
-        <div className="p-3 border-b border-gray-100 dark:border-gray-700">
+        <div className={`p-3 ${hasStoryTheme ? 'border-b border-white/10' : 'border-b border-gray-100 dark:border-gray-700'}`}>
           <div className="flex items-center gap-2">
             <button
               onClick={() => navigate('/classrooms')}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+              className={`p-2 rounded-xl transition-colors ${hasStoryTheme ? 'text-white/70 hover:text-white hover:bg-white/10' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
               title="Volver a mis clases"
             >
               <ArrowLeft size={18} />
             </button>
             {!collapsed && (
               <div className="flex-1 min-w-0">
-                <h2 className="font-bold text-gray-800 dark:text-white truncate text-sm">
+                <h2 className={`font-bold truncate text-sm ${hasStoryTheme ? 'text-white' : 'text-gray-800 dark:text-white'}`}>
                   {classroom.name}
                 </h2>
                 <button
                   onClick={copyCode}
                   data-onboarding="class-code"
-                  className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 transition-colors"
+                  className={`flex items-center gap-1 text-xs transition-colors ${hasStoryTheme ? 'text-white/60 hover:text-white/80' : 'text-blue-600 hover:text-blue-700'}`}
                 >
-                  <span className="font-mono bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 rounded">{classroom.code}</span>
+                  <span className={`font-mono px-1.5 py-0.5 rounded ${hasStoryTheme ? 'bg-white/10' : 'bg-blue-50 dark:bg-blue-900/30'}`}>{classroom.code}</span>
                   {copiedCode ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
                 </button>
               </div>
@@ -298,10 +351,11 @@ export const ClassroomLayout = () => {
                     className={`
                       w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all duration-200 group
                       ${isSubMenuActive
-                        ? 'bg-gradient-to-r ' + item.gradient + ' text-white shadow-md'
-                        : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        ? hasStoryTheme ? 'text-white shadow-md' : 'bg-gradient-to-r ' + item.gradient + ' text-white shadow-md'
+                        : hasStoryTheme ? 'text-white/80 hover:bg-white/10' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                       }
                     `}
+                    style={isSubMenuActive && hasStoryTheme ? { background: `linear-gradient(to right, ${tc?.colors?.primary || '#6366f1'}, ${tc?.colors?.secondary || '#8b5cf6'})` } : undefined}
                     title={collapsed ? item.label : undefined}
                   >
                     <div className={`
@@ -315,7 +369,7 @@ export const ClassroomLayout = () => {
                     </div>
                     {!collapsed && (
                       <>
-                        <span className={`text-sm font-medium truncate flex-1 text-left ${isSubMenuActive ? '' : 'text-gray-700 dark:text-gray-300'}`}>
+                        <span className={`text-sm font-medium truncate flex-1 text-left ${isSubMenuActive ? '' : hasStoryTheme ? 'text-white/90' : 'text-gray-700 dark:text-gray-300'}`}>
                           {item.label}
                         </span>
                         <ChevronDown 
@@ -357,10 +411,11 @@ export const ClassroomLayout = () => {
                             className={`
                               flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all duration-200
                               ${subActive
-                                ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'
-                                : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
+                                ? hasStoryTheme ? 'text-white' : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'
+                                : hasStoryTheme ? 'text-white/60 hover:bg-white/10 hover:text-white/90' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
                               }
                             `}
+                            style={subActive && hasStoryTheme ? { backgroundColor: `${tc?.colors?.primary || '#6366f1'}40` } : undefined}
                           >
                             <SubIcon size={14} />
                             <span className="text-sm">{subItem.label}</span>
@@ -383,7 +438,7 @@ export const ClassroomLayout = () => {
                   flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all duration-200 group
                   ${active
                     ? 'bg-gradient-to-r ' + item.gradient + ' text-white shadow-md'
-                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    : hasStoryTheme ? 'text-white/80 hover:bg-white/10' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                   }
                 `}
                 title={collapsed ? item.label : undefined}
@@ -398,7 +453,7 @@ export const ClassroomLayout = () => {
                   <Icon size={16} />
                 </div>
                 {!collapsed && (
-                  <span className={`text-sm font-medium truncate ${active ? '' : 'text-gray-700 dark:text-gray-300'}`}>
+                  <span className={`text-sm font-medium truncate ${active ? '' : hasStoryTheme ? 'text-white/90' : 'text-gray-700 dark:text-gray-300'}`}>
                     {item.label}
                   </span>
                 )}
@@ -408,10 +463,10 @@ export const ClassroomLayout = () => {
         </nav>
 
         {/* Toggle collapse - solo en desktop */}
-        <div className="hidden lg:block p-2 border-t border-gray-100 dark:border-gray-700">
+        <div className={`hidden lg:block p-2 ${hasStoryTheme ? 'border-t border-white/10' : 'border-t border-gray-100 dark:border-gray-700'}`}>
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className="w-full flex items-center justify-center gap-2 px-2.5 py-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors"
+            className={`w-full flex items-center justify-center gap-2 px-2.5 py-2 rounded-xl transition-colors ${hasStoryTheme ? 'text-white/50 hover:text-white/80 hover:bg-white/10' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
           >
             {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
             {!collapsed && <span className="text-xs font-medium">Colapsar</span>}
@@ -422,7 +477,10 @@ export const ClassroomLayout = () => {
       {/* Contenido principal */}
       <div className="flex-1 flex flex-col overflow-hidden relative z-10">
         {/* Header */}
-        <header className="h-14 bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg border-b border-white/50 dark:border-gray-700/50 shadow-sm flex items-center justify-between px-4">
+        <header
+          className={`h-14 backdrop-blur-lg shadow-sm flex items-center justify-between px-4 ${hasStoryTheme ? 'border-b border-white/10' : 'bg-white/80 dark:bg-gray-800/80 border-b border-white/50 dark:border-gray-700/50'}`}
+          style={hasStoryTheme ? { backgroundColor: `${tc.colors.background}ee` } : undefined}
+        >
           <div className="flex items-center gap-3">
             {/* Botón menú móvil */}
             <button
@@ -475,7 +533,7 @@ export const ClassroomLayout = () => {
         
         {/* Main content */}
         <main className="flex-1 overflow-auto p-4 md:p-6">
-          <Outlet context={{ classroom, refetch }} />
+          <Outlet context={{ classroom, refetch, storyTheme: hasStoryTheme ? tc : null, isThemeDark }} />
         </main>
       </div>
 

@@ -50,6 +50,63 @@ const teacherPurchaseSchema = z.object({
   quantity: z.number().int().min(1).default(1),
 });
 
+const ensureStudentOwnsProfile = async (
+  req: Request,
+  res: Response,
+  studentId: string
+): Promise<boolean> => {
+  const userId = req.user?.id;
+
+  if (!userId) {
+    res.status(401).json({ message: 'No autorizado' });
+    return false;
+  }
+
+  const isOwner = await shopService.verifyStudentBelongsToUser(studentId, userId);
+  if (!isOwner) {
+    res.status(403).json({ message: 'No tienes permiso para este perfil de estudiante' });
+    return false;
+  }
+
+  return true;
+};
+
+const ensureShopClassroomAccess = async (
+  req: Request,
+  res: Response,
+  classroomId: string
+): Promise<boolean> => {
+  const user = req.user;
+
+  if (!user) {
+    res.status(401).json({ message: 'No autorizado' });
+    return false;
+  }
+
+  if (user.role === 'TEACHER') {
+    const isOwner = await shopService.verifyTeacherOwnsClassroom(user.id, classroomId);
+    if (!isOwner) {
+      res.status(403).json({ message: 'No tienes permiso para esta clase' });
+      return false;
+    }
+
+    return true;
+  }
+
+  if (user.role === 'STUDENT') {
+    const isInClassroom = await shopService.verifyStudentUserInClassroom(user.id, classroomId);
+    if (!isInClassroom) {
+      res.status(403).json({ message: 'No tienes acceso a la tienda de esta clase' });
+      return false;
+    }
+
+    return true;
+  }
+
+  res.status(403).json({ message: 'No tienes permisos para esta acción' });
+  return false;
+};
+
 export class ShopController {
   // ==================== ITEMS (PROFESOR) ====================
 
@@ -129,6 +186,10 @@ export class ShopController {
   async getClassroomItems(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+
+      const hasAccess = await ensureShopClassroomAccess(req, res, classroomId);
+      if (!hasAccess) return;
+
       const items = await shopService.getItemsByClassroom(classroomId);
       res.json(items);
     } catch (error) {
@@ -144,8 +205,8 @@ export class ShopController {
       const data = purchaseSchema.parse(req.body);
       const studentId = req.params.studentId;
 
-      // Verificar que el estudiante es el usuario actual
-      // (esto se debería validar con el perfil del estudiante)
+      const isOwner = await ensureStudentOwnsProfile(req, res, studentId);
+      if (!isOwner) return;
 
       const result = await shopService.purchaseItem({
         studentId,
@@ -172,6 +233,9 @@ export class ShopController {
     try {
       const data = giftSchema.parse(req.body);
       const buyerId = req.params.studentId;
+
+      const isOwner = await ensureStudentOwnsProfile(req, res, buyerId);
+      if (!isOwner) return;
 
       // Verificar que el destinatario está en la misma clase
       const item = await shopService.getItemById(data.itemId);
@@ -259,6 +323,10 @@ export class ShopController {
   async getStudentPurchases(req: Request, res: Response) {
     try {
       const { studentId } = req.params;
+
+      const isOwner = await ensureStudentOwnsProfile(req, res, studentId);
+      if (!isOwner) return;
+
       const purchases = await shopService.getStudentPurchases(studentId);
       res.json(purchases);
     } catch (error) {
@@ -270,6 +338,10 @@ export class ShopController {
   async getGiftsReceived(req: Request, res: Response) {
     try {
       const { studentId } = req.params;
+
+      const isOwner = await ensureStudentOwnsProfile(req, res, studentId);
+      if (!isOwner) return;
+
       const gifts = await shopService.getGiftsReceived(studentId);
       res.json(gifts);
     } catch (error) {
@@ -281,6 +353,10 @@ export class ShopController {
   async getGiftsSent(req: Request, res: Response) {
     try {
       const { studentId } = req.params;
+
+      const isOwner = await ensureStudentOwnsProfile(req, res, studentId);
+      if (!isOwner) return;
+
       const gifts = await shopService.getGiftsSent(studentId);
       res.json(gifts);
     } catch (error) {
@@ -294,6 +370,9 @@ export class ShopController {
   async useItem(req: Request, res: Response) {
     try {
       const { studentId, purchaseId } = req.params;
+
+      const isOwner = await ensureStudentOwnsProfile(req, res, studentId);
+      if (!isOwner) return;
       
       const result = await shopService.useItem(purchaseId, studentId);
       
@@ -411,6 +490,12 @@ export class ShopController {
   async getPendingPurchases(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+
+      const isOwner = await shopService.verifyTeacherOwnsClassroom(req.user!.id, classroomId);
+      if (!isOwner) {
+        return res.status(403).json({ message: 'No tienes permiso para esta clase' });
+      }
+
       const purchases = await shopService.getPendingPurchases(classroomId);
       res.json(purchases);
     } catch (error) {

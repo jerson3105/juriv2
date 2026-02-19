@@ -16,8 +16,7 @@ export const GoogleCallbackPage = () => {
       if (processedRef.current) return;
       processedRef.current = true;
 
-      const accessToken = searchParams.get('accessToken');
-      const refreshToken = searchParams.get('refreshToken');
+      const code = searchParams.get('code');
       const error = searchParams.get('error');
 
       if (error) {
@@ -26,8 +25,17 @@ export const GoogleCallbackPage = () => {
         return;
       }
 
-      if (accessToken && refreshToken) {
+      if (code) {
         try {
+          const exchangeResponse = await authApi.exchangeGoogleCode(code);
+          const tokenData = exchangeResponse.data.data;
+
+          if (!exchangeResponse.data.success || !tokenData) {
+            throw new Error('No se pudo intercambiar el código de autenticación');
+          }
+
+          const { accessToken, refreshToken } = tokenData;
+
           // Guardar tokens temporalmente para hacer la petición
           localStorage.setItem('accessToken', accessToken);
           localStorage.setItem('refreshToken', refreshToken);
@@ -49,13 +57,13 @@ export const GoogleCallbackPage = () => {
             throw new Error('No se pudo obtener el usuario');
           }
         } catch (err) {
-          console.error('Error al procesar tokens:', err);
+          console.error('Error al procesar callback OAuth:', err);
           localStorage.removeItem('accessToken');
           localStorage.removeItem('refreshToken');
           navigate('/login?error=token_error');
         }
       } else {
-        navigate('/login?error=missing_tokens');
+        navigate('/login?error=missing_code');
       }
     };
 

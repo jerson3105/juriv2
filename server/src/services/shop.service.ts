@@ -1,12 +1,14 @@
 import { eq, and, desc, gte, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
+import { badgeService } from './badge.service.js';
 import { 
   shopItems, 
   purchases, 
   studentProfiles, 
   classrooms,
   itemUsages,
+  pointLogs,
   notifications,
   type ShopItem,
   type ItemRarity,
@@ -39,6 +41,29 @@ const DEFAULT_IMAGES: Record<string, Record<string, string>> = {
 };
 
 export class ShopService {
+  private async checkPurchaseBadges(studentProfileId: string, classroomId: string): Promise<void> {
+    try {
+      const [countResult] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(purchases)
+        .where(and(
+          eq(purchases.buyerId, studentProfileId),
+          eq(purchases.status, 'APPROVED')
+        ));
+
+      await badgeService.checkAndAwardBadges({
+        type: 'PURCHASE_MADE',
+        data: {
+          studentProfileId,
+          classroomId,
+          totalPurchases: Number(countResult?.count || 0),
+        },
+      });
+    } catch (error) {
+      // Silently fail - do not break purchase flow because of badge checks
+    }
+  }
+
   // ==================== ITEMS ====================
 
   async createItem(data: {
@@ -229,87 +254,31 @@ export class ShopService {
     }
     // TEACHER: payerId queda null, el profesor paga desde su sistema
 
-    // Si hay un pagador estudiante, verificar GP (solo descontar si no requiere aprobación)
+    let payer: typeof studentProfiles.$inferSelect | null = null;
+
+    // Si hay un pagador estudiante, verificar GP
     if (payerId) {
-      const [payer] = await db
+      const [payerProfile] = await db
         .select()
         .from(studentProfiles)
         .where(eq(studentProfiles.id, payerId));
 
-      if (!payer) {
+      if (!payerProfile) {
         return { success: false, message: 'Comprador no encontrado' };
       }
+
+      payer = payerProfile;
 
       if (payer.gp < totalPrice) {
         return { success: false, message: `GP insuficiente. Necesitas ${totalPrice} GP, tienes ${payer.gp} GP` };
       }
-
-      // Solo descontar GP si no requiere aprobación
-      if (!requiresApproval) {
-        await db
-          .update(studentProfiles)
-          .set({ 
-            gp: payer.gp - totalPrice,
-            updatedAt: new Date()
-          })
-          .where(eq(studentProfiles.id, payerId));
-      }
     }
 
-    // Reducir stock si aplica (solo si no requiere aprobación)
-    if (item.stock !== null && !requiresApproval) {
-      await db
-        .update(shopItems)
-        .set({ 
-          stock: item.stock - quantity,
-          updatedAt: new Date()
-        })
-        .where(eq(shopItems.id, data.itemId));
-    }
+    let purchaseId = '';
+    const now = new Date();
 
-    let purchaseId: string;
-
-    // Para compras propias (SELF) aprobadas, buscar si ya existe una compra del mismo item
-    if (data.purchaseType === 'SELF' && !requiresApproval) {
-      const [existingPurchase] = await db
-        .select()
-        .from(purchases)
-        .where(and(
-          eq(purchases.studentId, data.studentId),
-          eq(purchases.itemId, data.itemId),
-          eq(purchases.purchaseType, 'SELF'),
-          eq(purchases.status, 'APPROVED')
-        ));
-
-      if (existingPurchase) {
-        // Actualizar cantidad existente
-        await db
-          .update(purchases)
-          .set({ 
-            quantity: existingPurchase.quantity + quantity,
-            totalPrice: existingPurchase.totalPrice + totalPrice,
-          })
-          .where(eq(purchases.id, existingPurchase.id));
-        
-        purchaseId = existingPurchase.id;
-      } else {
-        // Crear nuevo registro
-        purchaseId = uuidv4();
-        await db.insert(purchases).values({
-          id: purchaseId,
-          studentId: data.studentId,
-          itemId: data.itemId,
-          quantity,
-          totalPrice,
-          purchaseType: data.purchaseType,
-          status: purchaseStatus,
-          buyerId: payerId,
-          giftMessage: data.giftMessage || null,
-          purchasedAt: new Date(),
-        });
-      }
-    } else {
-      // Para regalos, compras de profesor, o compras pendientes
+    // Si requiere aprobación, solo registrar compra pendiente (sin tocar GP/stock)
+    if (requiresApproval) {
       purchaseId = uuidv4();
       await db.insert(purchases).values({
         id: purchaseId,
@@ -321,8 +290,89 @@ export class ShopService {
         status: purchaseStatus,
         buyerId: payerId,
         giftMessage: data.giftMessage || null,
-        purchasedAt: new Date(),
+        purchasedAt: now,
       });
+    } else {
+      await db.transaction(async (tx) => {
+        if (payerId && payer) {
+          await tx
+            .update(studentProfiles)
+            .set({
+              gp: payer.gp - totalPrice,
+              updatedAt: now,
+            })
+            .where(eq(studentProfiles.id, payerId));
+
+          if (totalPrice > 0) {
+            const reason = data.purchaseType === 'GIFT'
+              ? `Regalo en tienda: ${item.name}`
+              : `Compra en tienda: ${item.name}`;
+
+            await tx.insert(pointLogs).values({
+              id: uuidv4(),
+              studentId: payerId,
+              pointType: 'GP',
+              action: 'REMOVE',
+              amount: totalPrice,
+              reason,
+              createdAt: now,
+            });
+          }
+        }
+
+        if (item.stock !== null) {
+          await tx
+            .update(shopItems)
+            .set({
+              stock: item.stock - quantity,
+              updatedAt: now,
+            })
+            .where(eq(shopItems.id, data.itemId));
+        }
+
+        if (data.purchaseType === 'SELF') {
+          const [existingPurchase] = await tx
+            .select()
+            .from(purchases)
+            .where(and(
+              eq(purchases.studentId, data.studentId),
+              eq(purchases.itemId, data.itemId),
+              eq(purchases.purchaseType, 'SELF'),
+              eq(purchases.status, 'APPROVED')
+            ));
+
+          if (existingPurchase) {
+            await tx
+              .update(purchases)
+              .set({
+                quantity: existingPurchase.quantity + quantity,
+                totalPrice: existingPurchase.totalPrice + totalPrice,
+              })
+              .where(eq(purchases.id, existingPurchase.id));
+
+            purchaseId = existingPurchase.id;
+            return;
+          }
+        }
+
+        purchaseId = uuidv4();
+        await tx.insert(purchases).values({
+          id: purchaseId,
+          studentId: data.studentId,
+          itemId: data.itemId,
+          quantity,
+          totalPrice,
+          purchaseType: data.purchaseType,
+          status: purchaseStatus,
+          buyerId: payerId,
+          giftMessage: data.giftMessage || null,
+          purchasedAt: now,
+        });
+      });
+    }
+
+    if (!purchaseId) {
+      return { success: false, message: 'No se pudo registrar la compra' };
     }
 
     // Obtener compra con detalles
@@ -350,6 +400,10 @@ export class ShopService {
       message = '¡Regalo enviado exitosamente!';
     } else if (requiresApproval) {
       message = 'Compra enviada para aprobación del profesor';
+    }
+
+    if (!requiresApproval && payerId) {
+      await this.checkPurchaseBadges(payerId, item.classroomId);
     }
 
     return { 
@@ -448,43 +502,61 @@ export class ShopService {
       return { success: false, message: 'Stock insuficiente' };
     }
 
-    // Descontar GP
-    await db
-      .update(studentProfiles)
-      .set({ 
-        gp: student.gp - purchase.totalPrice,
-        updatedAt: new Date()
-      })
-      .where(eq(studentProfiles.id, student.id));
+    const now = new Date();
+    const purchaseLabel = item?.name || 'item';
 
-    // Reducir stock si aplica
-    if (item && item.stock !== null) {
-      await db
-        .update(shopItems)
-        .set({ 
-          stock: item.stock - purchase.quantity,
-          updatedAt: new Date()
+    await db.transaction(async (tx) => {
+      await tx
+        .update(studentProfiles)
+        .set({
+          gp: student.gp - purchase.totalPrice,
+          updatedAt: now,
         })
-        .where(eq(shopItems.id, purchase.itemId));
-    }
+        .where(eq(studentProfiles.id, student.id));
 
-    // Aprobar compra
-    await db
-      .update(purchases)
-      .set({ status: 'APPROVED' })
-      .where(eq(purchases.id, purchaseId));
+      if (purchase.totalPrice > 0) {
+        await tx.insert(pointLogs).values({
+          id: uuidv4(),
+          studentId: student.id,
+          pointType: 'GP',
+          action: 'REMOVE',
+          amount: purchase.totalPrice,
+          reason: `Compra aprobada en tienda: ${purchaseLabel}`,
+          createdAt: now,
+        });
+      }
 
-    // Notificar al estudiante (solo si tiene cuenta vinculada)
-    if (student.userId) {
-      await db.insert(notifications).values({
-        id: uuidv4(),
-        userId: student.userId,
-        type: 'PURCHASE_APPROVED',
-        title: '¡Compra aprobada!',
-        message: `Tu compra de ${item?.name || 'item'} ha sido aprobada`,
-        isRead: false,
-        createdAt: new Date(),
-      });
+      if (item && item.stock !== null) {
+        await tx
+          .update(shopItems)
+          .set({
+            stock: item.stock - purchase.quantity,
+            updatedAt: now,
+          })
+          .where(eq(shopItems.id, purchase.itemId));
+      }
+
+      await tx
+        .update(purchases)
+        .set({ status: 'APPROVED' })
+        .where(eq(purchases.id, purchaseId));
+
+      if (student.userId) {
+        await tx.insert(notifications).values({
+          id: uuidv4(),
+          userId: student.userId,
+          type: 'PURCHASE_APPROVED',
+          title: '¡Compra aprobada!',
+          message: `Tu compra de ${purchaseLabel} ha sido aprobada`,
+          isRead: false,
+          createdAt: now,
+        });
+      }
+    });
+
+    const purchaserId = purchase.buyerId || purchase.studentId;
+    if (purchaserId) {
+      await this.checkPurchaseBadges(purchaserId, student.classroomId);
     }
 
     return { success: true, message: 'Compra aprobada exitosamente' };
@@ -656,6 +728,32 @@ export class ShopService {
     return !!student;
   }
 
+  async verifyStudentBelongsToUser(studentId: string, userId: string): Promise<boolean> {
+    const [student] = await db
+      .select({ id: studentProfiles.id })
+      .from(studentProfiles)
+      .where(and(
+        eq(studentProfiles.id, studentId),
+        eq(studentProfiles.userId, userId),
+        eq(studentProfiles.isActive, true)
+      ));
+
+    return !!student;
+  }
+
+  async verifyStudentUserInClassroom(userId: string, classroomId: string): Promise<boolean> {
+    const [student] = await db
+      .select({ id: studentProfiles.id })
+      .from(studentProfiles)
+      .where(and(
+        eq(studentProfiles.userId, userId),
+        eq(studentProfiles.classroomId, classroomId),
+        eq(studentProfiles.isActive, true)
+      ));
+
+    return !!student;
+  }
+
   // ==================== USO DE ITEMS ====================
 
   async useItem(purchaseId: string, studentId: string): Promise<{ success: boolean; message: string; usage?: any }> {
@@ -703,21 +801,22 @@ export class ShopService {
       const usageId = uuidv4();
       const now = new Date();
       
-      await db.insert(itemUsages).values({
-        id: usageId,
-        purchaseId,
-        studentId,
-        itemId: purchase.itemId,
-        classroomId: student.classroomId,
-        status: 'PENDING',
-        usedAt: now,
-      });
+      await db.transaction(async (tx) => {
+        await tx.insert(itemUsages).values({
+          id: usageId,
+          purchaseId,
+          studentId,
+          itemId: purchase.itemId,
+          classroomId: student.classroomId,
+          status: 'PENDING',
+          usedAt: now,
+        });
 
-      // Incrementar usedQuantity
-      await db
-        .update(purchases)
-        .set({ usedQuantity: (purchase.usedQuantity || 0) + 1 })
-        .where(eq(purchases.id, purchaseId));
+        await tx
+          .update(purchases)
+          .set({ usedQuantity: (purchase.usedQuantity || 0) + 1 })
+          .where(eq(purchases.id, purchaseId));
+      });
 
       // Obtener el profesor de la clase
       const [classroom] = await db

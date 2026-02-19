@@ -125,6 +125,313 @@
   }
 }
 
+/* ============================================
+   STORYTELLING THEME OVERRIDES
+   Handles both light and dark storytelling themes
+   ============================================ */
+
+/* --- STORY-CARD: the Card component uses this class ---
+   It reads CSS variables set by ClassroomLayout on the root div.
+   No DOM traversal, no flash, works for both light and dark themes. */
+.story-theme-dark .story-card {
+  background-color: rgba(0, 0, 0, 0.45) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  backdrop-filter: blur(10px);
+  color: rgba(255, 255, 255, 0.9);
+}
+.story-theme-light .story-card {
+  background-color: rgba(255, 255, 255, 0.88) !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  backdrop-filter: blur(8px);
+}
+
+/* --- DARK theme: text colors --- */
+.story-theme-dark .text-gray-900,
+.story-theme-dark .text-gray-800,
+.story-theme-dark .text-gray-700,
+.story-theme-dark .text-gray-600 {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+.story-theme-dark .text-gray-500,
+.story-theme-dark .text-gray-400 {
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+.story-theme-dark .text-gray-300,
+.story-theme-dark .text-gray-200 {
+  color: rgba(255, 255, 255, 0.75) !important;
+}
+
+/* --- DARK theme: border colors --- */
+.story-theme-dark .border-gray-100,
+.story-theme-dark .border-gray-200,
+.story-theme-dark .border-gray-300 {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+/* --- DARK theme: inputs (exclude sr-only hidden inputs) --- */
+.story-theme-dark input:not(.sr-only),
+.story-theme-dark textarea,
+.story-theme-dark select {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  color: white !important;
+}
+.story-theme-dark input:not(.sr-only)::placeholder,
+.story-theme-dark textarea::placeholder {
+  color: rgba(255, 255, 255, 0.4) !important;
+}
+
+/* --- DARK theme: white/light backgrounds become semi-transparent dark --- */
+.story-theme-dark .bg-white,
+.story-theme-dark .rounded-xl.bg-white,
+.story-theme-dark .rounded-2xl.bg-white,
+.story-theme-dark .rounded-lg.bg-white {
+  background-color: rgba(0, 0, 0, 0.45) !important;
+  backdrop-filter: blur(8px);
+}
+.story-theme-dark .bg-white\/80,
+.story-theme-dark .bg-white\/90 {
+  background-color: rgba(0, 0, 0, 0.5) !important;
+  backdrop-filter: blur(8px);
+}
+.story-theme-dark .bg-gray-50,
+.story-theme-dark .bg-gray-100 {
+  background-color: rgba(255, 255, 255, 0.07) !important;
+}
+.story-theme-dark .bg-gray-200 {
+  background-color: rgba(255, 255, 255, 0.12) !important;
+}
+.story-theme-dark .bg-gray-800,
+.story-theme-dark .bg-gray-700,
+.story-theme-dark .bg-gray-600 {
+  background-color: rgba(0, 0, 0, 0.5) !important;
+}
+.story-theme-dark .dark\:bg-gray-800 {
+  background-color: rgba(0, 0, 0, 0.45) !important;
+  backdrop-filter: blur(8px);
+}
+
+/* --- DARK theme: colored light backgrounds use theme primary tint --- */
+.story-theme-dark .bg-green-50,
+.story-theme-dark .bg-emerald-50 {
+  background-color: rgba(16, 185, 129, 0.15) !important;
+}
+.story-theme-dark .bg-red-50,
+.story-theme-dark .bg-rose-50 {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+}
+.story-theme-dark .bg-yellow-50,
+.story-theme-dark .bg-amber-50 {
+  background-color: rgba(245, 158, 11, 0.15) !important;
+}
+.story-theme-dark .bg-blue-50,
+.story-theme-dark .bg-indigo-50 {
+  background-color: rgba(var(--story-primary-rgb, 99, 102, 241), 0.15) !important;
+}
+.story-theme-dark .bg-purple-50,
+.story-theme-dark .bg-purple-100 {
+  background-color: rgba(139, 92, 246, 0.2) !important;
+}
+.story-theme-dark .bg-green-100 {
+  background-color: rgba(16, 185, 129, 0.22) !important;
+}
+.story-theme-dark .bg-red-100 {
+  background-color: rgba(239, 68, 68, 0.22) !important;
+}
+.story-theme-dark .bg-amber-100 {
+  background-color: rgba(245, 158, 11, 0.22) !important;
+}
+.story-theme-dark .bg-blue-100 {
+  background-color: rgba(59, 130, 246, 0.22) !important;
+}
+.story-theme-dark .bg-gray-100 {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* --- DARK theme: badge rarity border colors --- */
+.story-theme-dark .border-purple-300 {
+  border-color: rgba(139, 92, 246, 0.5) !important;
+}
+.story-theme-dark .border-blue-300 {
+  border-color: rgba(59, 130, 246, 0.5) !important;
+}
+.story-theme-dark .border-amber-300 {
+  border-color: rgba(245, 158, 11, 0.5) !important;
+}
+.story-theme-dark .border-gray-300 {
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* --- DARK theme: badge rarity text colors --- */
+.story-theme-dark .text-purple-600 { color: #c084fc !important; }
+.story-theme-dark .text-blue-600 { color: #60a5fa !important; }
+.story-theme-dark .text-amber-600 { color: #fbbf24 !important; }
+
+/* --- DARK theme: gradient backgrounds --- */
+.story-theme-dark .bg-gradient-to-br.from-emerald-50,
+.story-theme-dark .bg-gradient-to-br.from-red-50,
+.story-theme-dark .bg-gradient-to-br.from-amber-50,
+.story-theme-dark .bg-gradient-to-br.from-blue-50 {
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* --- DARK theme: text color overrides for colored text --- */
+.story-theme-dark .text-green-600,
+.story-theme-dark .text-emerald-600 { color: #34d399 !important; }
+.story-theme-dark .text-red-600,
+.story-theme-dark .text-rose-600 { color: #f87171 !important; }
+.story-theme-dark .text-yellow-600,
+.story-theme-dark .text-amber-600 { color: #fbbf24 !important; }
+.story-theme-dark .text-indigo-900 { color: #a5b4fc !important; }
+.story-theme-dark .text-indigo-600 { color: #818cf8 !important; }
+
+/* --- DARK theme: hover states --- */
+.story-theme-dark .hover\:bg-gray-50:hover,
+.story-theme-dark .hover\:bg-gray-100:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+.story-theme-dark .hover\:bg-gray-200:hover {
+  background-color: rgba(255, 255, 255, 0.15) !important;
+}
+.story-theme-dark .hover\:bg-indigo-50:hover {
+  background-color: rgba(var(--story-primary-rgb, 99, 102, 241), 0.18) !important;
+}
+.story-theme-dark .hover\:bg-green-50:hover {
+  background-color: rgba(16, 185, 129, 0.15) !important;
+}
+.story-theme-dark .hover\:bg-red-50:hover {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+}
+
+/* --- DARK theme: tabs and selected buttons --- */
+.story-theme-dark button.bg-white,
+.story-theme-dark [role="tab"].bg-white,
+.story-theme-dark .rounded-lg.bg-white.shadow-sm {
+  background-color: rgba(var(--story-primary-rgb, 99, 102, 241), 0.25) !important;
+  color: white !important;
+}
+.story-theme-dark .bg-indigo-600,
+.story-theme-dark .bg-indigo-500 {
+  background-color: rgba(var(--story-primary-rgb, 99, 102, 241), 0.8) !important;
+}
+
+/* --- DARK theme: table --- */
+.story-theme-dark table { border-color: rgba(255, 255, 255, 0.08) !important; }
+.story-theme-dark thead { background-color: rgba(255, 255, 255, 0.04) !important; }
+.story-theme-dark th { color: rgba(255, 255, 255, 0.85) !important; border-color: rgba(255, 255, 255, 0.08) !important; }
+.story-theme-dark td { border-color: rgba(255, 255, 255, 0.06) !important; }
+.story-theme-dark tbody tr { border-color: rgba(255, 255, 255, 0.06) !important; }
+.story-theme-dark .divide-y > * { border-color: rgba(255, 255, 255, 0.06) !important; }
+.story-theme-dark .divide-gray-100 > *,
+.story-theme-dark .divide-gray-200 > * { border-color: rgba(255, 255, 255, 0.06) !important; }
+
+/* --- DARK theme: scrollbars --- */
+.story-theme-dark ::-webkit-scrollbar { width: 8px; height: 8px; }
+.story-theme-dark ::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); border-radius: 4px; }
+.story-theme-dark ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 4px; }
+.story-theme-dark ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.28); }
+
+/* --- DARK theme: modals --- */
+.story-theme-dark [role="dialog"],
+.story-theme-dark .rounded-2xl.bg-white.shadow-2xl,
+.story-theme-dark .rounded-xl.bg-white.shadow-xl {
+  background-color: rgba(20, 20, 40, 0.97) !important;
+  backdrop-filter: blur(16px);
+}
+
+/* --- DARK theme: stat cards with dark variants --- */
+.story-theme-dark .bg-green-900\/30 { background-color: rgba(16, 185, 129, 0.18) !important; }
+.story-theme-dark .bg-red-900\/30 { background-color: rgba(239, 68, 68, 0.18) !important; }
+.story-theme-dark .bg-amber-900\/30 { background-color: rgba(245, 158, 11, 0.18) !important; }
+.story-theme-dark .bg-indigo-900\/30 { background-color: rgba(var(--story-primary-rgb, 99, 102, 241), 0.2) !important; }
+
+/* --- DARK theme: ring colors --- */
+.story-theme-dark .ring-green-500 { --tw-ring-color: rgba(16, 185, 129, 0.55) !important; }
+.story-theme-dark .ring-indigo-500 { --tw-ring-color: rgba(var(--story-primary-rgb, 99, 102, 241), 0.55) !important; }
+
+/* --- LIGHT theme: inputs --- */
+.story-theme-light input,
+.story-theme-light textarea,
+.story-theme-light select {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+  border-color: rgba(0, 0, 0, 0.15) !important;
+}
+
+/* --- DARK theme: additional overrides for specific patterns --- */
+
+/* Modals */
+.story-theme-light [role="dialog"],
+.story-theme-light .rounded-2xl.bg-white.shadow-2xl,
+.story-theme-light .rounded-xl.bg-white.shadow-xl {
+  background-color: rgba(255, 255, 255, 0.98) !important;
+  backdrop-filter: blur(16px);
+}
+
+/* Gray backgrounds used as toggle/button containers */
+.story-theme-dark .bg-gray-700\/50,
+.story-theme-dark button.bg-gray-600,
+.story-theme-dark button.bg-gray-500 {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+.story-theme-dark .bg-gray-600:hover,
+.story-theme-dark .bg-gray-500:hover,
+.story-theme-dark .hover\:bg-gray-600:hover,
+.story-theme-dark .hover\:bg-gray-500:hover {
+  background-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+/* Purple form containers */
+.story-theme-dark .bg-purple-50,
+.story-theme-dark .bg-purple-50\/50 {
+  background-color: rgba(139, 92, 246, 0.15) !important;
+}
+.story-theme-dark .border-purple-200 {
+  border-color: rgba(139, 92, 246, 0.4) !important;
+}
+
+/* --- story-hover-btn: overrides hover:bg-blue-50 (white) in dark themes --- */
+.story-theme-dark .story-hover-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+/* --- Native select color-scheme for dark themes ---
+   Makes the browser's native dropdown popup use dark colors */
+.story-theme-dark .story-select {
+  color-scheme: dark;
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+.story-theme-dark .story-select option {
+  background-color: #1e1e32;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* --- Cancel/outline buttons in dark theme --- */
+.story-theme-dark button.border-gray-300,
+.story-theme-dark button.border-gray-200 {
+  color: rgba(255, 255, 255, 0.85) !important;
+  border-color: rgba(255, 255, 255, 0.25) !important;
+}
+.story-theme-dark button.border-gray-300:hover,
+.story-theme-dark button.border-gray-200:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Border colors */
+.story-theme-dark .border-green-200 {
+  border-color: rgba(16, 185, 129, 0.4) !important;
+}
+.story-theme-dark .border-red-200 {
+  border-color: rgba(239, 68, 68, 0.4) !important;
+}
+.story-theme-dark .border-gray-200,
+.story-theme-dark .border-gray-300,
+.story-theme-dark .dark\:border-gray-700 {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
 @layer utilities {
   .text-gradient {
     @apply bg-clip-text text-transparent bg-gradient-to-r from-indigo-500 to-sky-500;

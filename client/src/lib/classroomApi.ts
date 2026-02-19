@@ -67,6 +67,15 @@ export interface Classroom {
   
   // Escuela
   schoolId: string | null;
+
+  // Tema visual (storytelling)
+  themeConfig: {
+    colors?: { primary?: string; secondary?: string; accent?: string; background?: string; sidebar?: string };
+    particles?: { type?: string; color?: string; speed?: string; density?: string };
+    decorations?: Array<{ type: string; position: string; asset: string }>;
+    banner?: { emoji?: string; title?: string };
+  } | null;
+  themeSource: string | null;
   
   studentCount?: number;
   createdAt: string;

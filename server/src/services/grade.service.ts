@@ -24,6 +24,14 @@ import {
 import { eq, and, inArray, sql, gte, lte } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 
+type ClosedBimesterEntry = {
+  period: string;
+  closedAt: string;
+  closedBy: string;
+};
+
+const BIMESTER_PERIOD_REGEX = /^\d{4}-B[1-4]$/;
+
 // Escalas de calificación predefinidas
 // Rangos Perú: AD (90-100), A (70-89), B (50-69), C (0-49)
 const GRADE_SCALES: Record<string, Array<{ label: string; minPercent: number }>> = {
@@ -79,6 +87,167 @@ interface BimesterDateRange {
 
 class GradeService {
 
+  private normalizePeriod(period?: string): string {
+    const normalizedPeriod = (period ?? 'CURRENT').trim().toUpperCase();
+
+    if (normalizedPeriod === 'CURRENT') {
+      return 'CURRENT';
+    }
+
+    if (!BIMESTER_PERIOD_REGEX.test(normalizedPeriod)) {
+      throw new Error('Periodo invalido. Usa CURRENT o el formato YYYY-B1..B4');
+    }
+
+    return normalizedPeriod;
+  }
+
+  private parseClosedBimesters(rawValue: unknown): ClosedBimesterEntry[] {
+    if (!rawValue) {
+      return [];
+    }
+
+    let parsed: unknown = rawValue;
+    if (typeof rawValue === 'string') {
+      try {
+        parsed = JSON.parse(rawValue);
+      } catch {
+        return [];
+      }
+    }
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    const validEntries: ClosedBimesterEntry[] = [];
+    for (const entry of parsed) {
+      if (!entry || typeof entry !== 'object') {
+        continue;
+      }
+
+      const candidate = entry as Partial<ClosedBimesterEntry>;
+      if (typeof candidate.period !== 'string' || !BIMESTER_PERIOD_REGEX.test(candidate.period)) {
+        continue;
+      }
+
+      if (typeof candidate.closedAt !== 'string' || Number.isNaN(new Date(candidate.closedAt).getTime())) {
+        continue;
+      }
+
+      validEntries.push({
+        period: candidate.period,
+        closedAt: candidate.closedAt,
+        closedBy: typeof candidate.closedBy === 'string' ? candidate.closedBy : '',
+      });
+    }
+
+    return validEntries;
+  }
+
+  private parseGradeScaleConfig(rawValue: unknown): unknown {
+    if (!rawValue) {
+      return null;
+    }
+
+    if (typeof rawValue === 'string') {
+      try {
+        return JSON.parse(rawValue);
+      } catch {
+        return null;
+      }
+    }
+
+    return rawValue;
+  }
+
+  private async resolveClassroomPeriod(classroomId: string, period: string): Promise<string> {
+    const normalizedPeriod = this.normalizePeriod(period);
+    if (normalizedPeriod !== 'CURRENT') {
+      return normalizedPeriod;
+    }
+
+    const [classroom] = await db.select({
+      currentBimester: classrooms.currentBimester,
+    }).from(classrooms).where(eq(classrooms.id, classroomId));
+
+    const resolvedCurrent = classroom?.currentBimester?.trim().toUpperCase();
+    return resolvedCurrent && BIMESTER_PERIOD_REGEX.test(resolvedCurrent)
+      ? resolvedCurrent
+      : `${new Date().getFullYear()}-B1`;
+  }
+
+  private async ensurePeriodIsOpen(classroomId: string, period: string): Promise<void> {
+    const [classroom] = await db.select({
+      closedBimesters: classrooms.closedBimesters,
+    }).from(classrooms).where(eq(classrooms.id, classroomId));
+
+    if (!classroom) {
+      throw new Error('Clase no encontrada');
+    }
+
+    const closedBimesters = this.parseClosedBimesters(classroom.closedBimesters);
+    if (closedBimesters.some((entry) => entry.period === period)) {
+      throw new Error('El bimestre esta cerrado. Debes reabrirlo para editar calificaciones');
+    }
+  }
+
+  async getClassroomIdByStudentProfile(studentProfileId: string): Promise<string | null> {
+    const [profile] = await db.select({
+      classroomId: studentProfiles.classroomId,
+    }).from(studentProfiles).where(eq(studentProfiles.id, studentProfileId));
+
+    return profile?.classroomId || null;
+  }
+
+  async getClassroomIdByGrade(gradeId: string): Promise<string | null> {
+    const [grade] = await db.select({
+      classroomId: studentGrades.classroomId,
+    }).from(studentGrades).where(eq(studentGrades.id, gradeId));
+
+    return grade?.classroomId || null;
+  }
+
+  async getStudentProfileIdByGrade(gradeId: string): Promise<string | null> {
+    const [grade] = await db.select({
+      studentProfileId: studentGrades.studentProfileId,
+    }).from(studentGrades).where(eq(studentGrades.id, gradeId));
+
+    return grade?.studentProfileId || null;
+  }
+
+  async verifyTeacherOwnsClassroom(teacherId: string, classroomId: string): Promise<boolean> {
+    const [classroom] = await db.select({
+      id: classrooms.id,
+    }).from(classrooms).where(and(
+      eq(classrooms.id, classroomId),
+      eq(classrooms.teacherId, teacherId)
+    ));
+
+    return !!classroom;
+  }
+
+  async verifyStudentOwnsProfile(studentUserId: string, studentProfileId: string): Promise<boolean> {
+    const [profile] = await db.select({
+      id: studentProfiles.id,
+    }).from(studentProfiles).where(and(
+      eq(studentProfiles.id, studentProfileId),
+      eq(studentProfiles.userId, studentUserId)
+    ));
+
+    return !!profile;
+  }
+
+  async verifyStudentInClassroom(studentUserId: string, classroomId: string): Promise<boolean> {
+    const [profile] = await db.select({
+      id: studentProfiles.id,
+    }).from(studentProfiles).where(and(
+      eq(studentProfiles.userId, studentUserId),
+      eq(studentProfiles.classroomId, classroomId)
+    ));
+
+    return !!profile;
+  }
+
   /**
    * Calcula las fechas de inicio y fin de un bimestre basado en los cierres registrados
    */
@@ -86,28 +255,30 @@ class GradeService {
     classroomId: string,
     period: string
   ): Promise<BimesterDateRange> {
+    const resolvedPeriod = await this.resolveClassroomPeriod(classroomId, period);
+
     const [classroom] = await db.select({
       closedBimesters: classrooms.closedBimesters,
       createdAt: classrooms.createdAt,
     }).from(classrooms).where(eq(classrooms.id, classroomId));
 
-    // Parse closedBimesters
-    let closedBimesters: any[] = [];
-    if (classroom?.closedBimesters) {
-      if (typeof classroom.closedBimesters === 'string') {
-        try { closedBimesters = JSON.parse(classroom.closedBimesters); } catch { closedBimesters = []; }
-      } else if (Array.isArray(classroom.closedBimesters)) {
-        closedBimesters = classroom.closedBimesters;
-      }
+    if (!classroom) {
+      throw new Error('Clase no encontrada');
     }
+
+    const closedBimesters = this.parseClosedBimesters(classroom.closedBimesters);
 
     // Ordenar bimestres cerrados por fecha
     closedBimesters.sort((a, b) => new Date(a.closedAt).getTime() - new Date(b.closedAt).getTime());
 
     // Extraer año y número de bimestre del período (ej: "2026-B2" -> year=2026, bimNum=2)
-    const [yearStr, bimPart] = period.split('-B');
-    const year = parseInt(yearStr);
-    const bimNum = parseInt(bimPart);
+    const [yearStr, bimPart] = resolvedPeriod.split('-B');
+    const year = Number(yearStr);
+    const bimNum = Number(bimPart);
+
+    if (!Number.isInteger(year) || !Number.isInteger(bimNum) || bimNum < 1 || bimNum > 4) {
+      throw new Error('Periodo invalido. Usa CURRENT o el formato YYYY-B1..B4');
+    }
 
     // Fecha de inicio: es la fecha de cierre del bimestre anterior, o la fecha de creación de la clase
     let startDate: Date;
@@ -122,7 +293,7 @@ class GradeService {
     }
 
     // Fecha de fin: es la fecha de cierre de este bimestre, o la fecha actual si está abierto
-    const thisBim = closedBimesters.find(cb => cb.period === period);
+    const thisBim = closedBimesters.find(cb => cb.period === resolvedPeriod);
     const endDate = thisBim ? new Date(thisBim.closedAt) : new Date();
 
     return { startDate, endDate };
@@ -132,17 +303,25 @@ class GradeService {
    * Verifica si un período es futuro (no se puede calcular)
    */
   private async isFuturePeriod(classroomId: string, period: string): Promise<boolean> {
+    const normalizedPeriod = this.normalizePeriod(period);
+    if (normalizedPeriod === 'CURRENT') {
+      return false;
+    }
+
     const [classroom] = await db.select({
       currentBimester: classrooms.currentBimester,
     }).from(classrooms).where(eq(classrooms.id, classroomId));
 
     if (!classroom) return true;
 
-    const currentBimester = classroom.currentBimester || `${new Date().getFullYear()}-B1`;
+    const currentRaw = classroom.currentBimester?.trim().toUpperCase();
+    const currentBimester = currentRaw && BIMESTER_PERIOD_REGEX.test(currentRaw)
+      ? currentRaw
+      : `${new Date().getFullYear()}-B1`;
     
     // Comparar períodos
-    const [currentYear, currentBim] = currentBimester.split('-B').map((p, i) => i === 0 ? parseInt(p) : parseInt(p));
-    const [periodYear, periodBim] = period.split('-B').map((p, i) => i === 0 ? parseInt(p) : parseInt(p));
+    const [currentYear, currentBim] = currentBimester.split('-B').map((part) => Number(part));
+    const [periodYear, periodBim] = normalizedPeriod.split('-B').map((part) => Number(part));
 
     // Es futuro si el año es mayor, o si es el mismo año pero el bimestre es mayor
     if (periodYear > currentYear) return true;
@@ -159,22 +338,42 @@ class GradeService {
     studentProfileId: string,
     period: string = 'CURRENT'
   ): Promise<GradeCalculationResult[]> {
+    const resolvedPeriod = await this.resolveClassroomPeriod(classroomId, period);
+
     // 1. Obtener la clase y verificar que use competencias
-    const [classroom] = await db.select().from(classrooms).where(eq(classrooms.id, classroomId));
+    const [classroom] = await db.select({
+      id: classrooms.id,
+      useCompetencies: classrooms.useCompetencies,
+      gradeScaleType: classrooms.gradeScaleType,
+      gradeScaleConfig: classrooms.gradeScaleConfig,
+    }).from(classrooms).where(eq(classrooms.id, classroomId));
     if (!classroom) {
-      return [];
+      throw new Error('Clase no encontrada');
     }
+
     if (!classroom.useCompetencies) {
       return [];
     }
 
+    const [studentProfile] = await db.select({
+      id: studentProfiles.id,
+    }).from(studentProfiles).where(and(
+      eq(studentProfiles.id, studentProfileId),
+      eq(studentProfiles.classroomId, classroomId),
+      eq(studentProfiles.isActive, true)
+    ));
+
+    if (!studentProfile) {
+      throw new Error('Estudiante no encontrado en esta clase');
+    }
+
     // 1.5. Validar que no sea un bimestre futuro
-    if (await this.isFuturePeriod(classroomId, period)) {
+    if (await this.isFuturePeriod(classroomId, resolvedPeriod)) {
       throw new Error('No se pueden calcular calificaciones de un bimestre futuro');
     }
 
     // 1.6. Obtener el rango de fechas del bimestre
-    const dateRange = await this.getBimesterDateRange(classroomId, period);
+    const dateRange = await this.getBimesterDateRange(classroomId, resolvedPeriod);
 
     // 2. Obtener competencias de la clase
     const classCompetencies = await db.select({
@@ -194,8 +393,51 @@ class GradeService {
       return [];
     }
 
+    const competencyIds = classCompetencies.map((comp) => comp.competencyId);
+    const existingGrades = await db.select({
+      id: studentGrades.id,
+      competencyId: studentGrades.competencyId,
+      isManualOverride: studentGrades.isManualOverride,
+    })
+      .from(studentGrades)
+      .where(and(
+        eq(studentGrades.studentProfileId, studentProfileId),
+        eq(studentGrades.period, resolvedPeriod),
+        inArray(studentGrades.competencyId, competencyIds)
+      ));
+
+    const existingGradesByCompetency = new Map(
+      existingGrades.map((grade) => [grade.competencyId, grade])
+    );
+
     const results: GradeCalculationResult[] = [];
     const now = new Date();
+    const parsedScaleConfig = this.parseGradeScaleConfig(classroom.gradeScaleConfig);
+    const gradesToPersist: Array<{
+      existingGradeId?: string;
+      data: {
+        classroomId: string;
+        studentProfileId: string;
+        competencyId: string;
+        period: string;
+        score: string;
+        gradeLabel: string;
+        calculationDetails: {
+          activities: Array<{
+            type: string;
+            id: string;
+            name: string;
+            score: number;
+            weight: number;
+          }>;
+          totalWeight: number;
+          rawScore: number;
+        };
+        activitiesCount: number;
+        calculatedAt: Date;
+        updatedAt: Date;
+      };
+    }> = [];
 
     // 3. Para cada competencia, calcular el puntaje
     for (const comp of classCompetencies) {
@@ -216,16 +458,7 @@ class GradeService {
       }
 
       const rawScore = totalWeight > 0 ? totalWeightedScore / totalWeight : 0;
-      const gradeLabel = this.convertToGradeLabel(rawScore, classroom.gradeScaleType, classroom.gradeScaleConfig);
-
-      // 4. Guardar o actualizar la calificación
-      const existingGrade = await db.select()
-        .from(studentGrades)
-        .where(and(
-          eq(studentGrades.studentProfileId, studentProfileId),
-          eq(studentGrades.competencyId, comp.competencyId),
-          eq(studentGrades.period, period)
-        ));
+      const gradeLabel = this.convertToGradeLabel(rawScore, classroom.gradeScaleType, parsedScaleConfig);
 
       const calculationDetails = {
         activities: activities.map(a => ({
@@ -243,7 +476,7 @@ class GradeService {
         classroomId,
         studentProfileId,
         competencyId: comp.competencyId,
-        period,
+        period: resolvedPeriod,
         score: rawScore.toFixed(2),
         gradeLabel,
         calculationDetails,
@@ -252,16 +485,11 @@ class GradeService {
         updatedAt: now,
       };
 
-      if (existingGrade.length > 0) {
-        if (!existingGrade[0].isManualOverride) {
-          await db.update(studentGrades)
-            .set(gradeData)
-            .where(eq(studentGrades.id, existingGrade[0].id));
-        }
-      } else {
-        await db.insert(studentGrades).values({
-          id: uuidv4(),
-          ...gradeData,
+      const existingGrade = existingGradesByCompetency.get(comp.competencyId);
+      if (!existingGrade || !existingGrade.isManualOverride) {
+        gradesToPersist.push({
+          existingGradeId: existingGrade?.id,
+          data: gradeData,
         });
       }
 
@@ -272,6 +500,23 @@ class GradeService {
         gradeLabel,
         activitiesCount: activities.length,
         activities,
+      });
+    }
+
+    if (gradesToPersist.length > 0) {
+      await db.transaction(async (tx) => {
+        for (const gradeToPersist of gradesToPersist) {
+          if (gradeToPersist.existingGradeId) {
+            await tx.update(studentGrades)
+              .set(gradeToPersist.data)
+              .where(eq(studentGrades.id, gradeToPersist.existingGradeId));
+          } else {
+            await tx.insert(studentGrades).values({
+              id: uuidv4(),
+              ...gradeToPersist.data,
+            });
+          }
+        }
       });
     }
 
@@ -552,6 +797,24 @@ class GradeService {
 
     if (competencyBehaviors.length === 0) return scores;
 
+    const behaviorIds = competencyBehaviors.map((behavior) => behavior.id);
+    const behaviorLogCounts = await db.select({
+      behaviorId: pointLogs.behaviorId,
+      count: sql<number>`COUNT(DISTINCT ${pointLogs.createdAt})`,
+    })
+      .from(pointLogs)
+      .where(and(
+        eq(pointLogs.studentId, studentProfileId),
+        inArray(pointLogs.behaviorId, behaviorIds),
+        gte(pointLogs.createdAt, dateRange.startDate),
+        lte(pointLogs.createdAt, dateRange.endDate)
+      ))
+      .groupBy(pointLogs.behaviorId);
+
+    const behaviorCountMap = new Map<string, number>(
+      behaviorLogCounts.map((entry) => [entry.behaviorId || '', Number(entry.count) || 0])
+    );
+
     // Calcular score neto basado en comportamientos positivos y negativos
     // Usar impacto total (XP + HP + GP), no solo XP
     let totalPositivePoints = 0;
@@ -560,17 +823,7 @@ class GradeService {
     const behaviorDetails: Array<{ name: string; count: number; points: number; isPositive: boolean }> = [];
 
     for (const behavior of competencyBehaviors) {
-      // Contar aplicaciones únicas (deduplicar combinados con mismo createdAt)
-      const logs = await db.select({ count: sql<number>`COUNT(DISTINCT ${pointLogs.createdAt})` })
-        .from(pointLogs)
-        .where(and(
-          eq(pointLogs.studentId, studentProfileId),
-          eq(pointLogs.behaviorId, behavior.id),
-          gte(pointLogs.createdAt, dateRange.startDate),
-          lte(pointLogs.createdAt, dateRange.endDate)
-        ));
-
-      const count = Number(logs[0]?.count) || 0;
+      const count = behaviorCountMap.get(behavior.id) || 0;
       if (count > 0) {
         hasAnyBehavior = true;
         // Impacto total del comportamiento: XP + HP (GP es moneda de tienda, no afecta calificaciones)
@@ -677,8 +930,24 @@ class GradeService {
       return Math.round(score).toString();
     }
 
-    if (scaleType === 'CUSTOM' && customConfig?.ranges) {
-      const ranges = [...customConfig.ranges].sort((a: any, b: any) => b.minPercent - a.minPercent);
+    if (
+      scaleType === 'CUSTOM' &&
+      customConfig &&
+      typeof customConfig === 'object' &&
+      Array.isArray((customConfig as { ranges?: unknown }).ranges)
+    ) {
+      const ranges = (customConfig as { ranges: Array<{ label?: unknown; minPercent?: unknown }> }).ranges
+        .map((range) => ({
+          label: typeof range.label === 'string' ? range.label : '',
+          minPercent: Number(range.minPercent),
+        }))
+        .filter((range) => range.label && Number.isFinite(range.minPercent))
+        .sort((a, b) => b.minPercent - a.minPercent);
+
+      if (ranges.length === 0) {
+        return score.toFixed(0);
+      }
+
       for (const range of ranges) {
         if (score >= range.minPercent) {
           return range.label;
@@ -705,21 +974,12 @@ class GradeService {
   // ═══════════════════════════════════════════════════════════
 
   async getStudentGrades(studentProfileId: string, period: string = 'CURRENT') {
-    // Si es CURRENT, resolver el período actual del classroom
-    let resolvedPeriod = period;
-    if (period === 'CURRENT') {
-      const [profile] = await db.select({
-        classroomId: studentProfiles.classroomId,
-      }).from(studentProfiles).where(eq(studentProfiles.id, studentProfileId));
-
-      if (profile) {
-        const [classroom] = await db.select({
-          currentBimester: classrooms.currentBimester,
-        }).from(classrooms).where(eq(classrooms.id, profile.classroomId));
-
-        resolvedPeriod = classroom?.currentBimester || `${new Date().getFullYear()}-B1`;
-      }
+    const classroomId = await this.getClassroomIdByStudentProfile(studentProfileId);
+    if (!classroomId) {
+      throw new Error('Estudiante no encontrado');
     }
+
+    const resolvedPeriod = await this.resolveClassroomPeriod(classroomId, period);
 
     return db.select({
       id: studentGrades.id,
@@ -743,15 +1003,7 @@ class GradeService {
   }
 
   async getClassroomGrades(classroomId: string, period: string = 'CURRENT') {
-    // Si es CURRENT, resolver el período actual del classroom
-    let resolvedPeriod = period;
-    if (period === 'CURRENT') {
-      const [classroom] = await db.select({
-        currentBimester: classrooms.currentBimester,
-      }).from(classrooms).where(eq(classrooms.id, classroomId));
-
-      resolvedPeriod = classroom?.currentBimester || `${new Date().getFullYear()}-B1`;
-    }
+    const resolvedPeriod = await this.resolveClassroomPeriod(classroomId, period);
 
     return db.select({
       id: studentGrades.id,
@@ -777,13 +1029,18 @@ class GradeService {
   }
 
   async recalculateClassroomGrades(classroomId: string, period: string = 'CURRENT') {
+    const resolvedPeriod = await this.resolveClassroomPeriod(classroomId, period);
+
     const students = await db.select({ id: studentProfiles.id })
       .from(studentProfiles)
-      .where(eq(studentProfiles.classroomId, classroomId));
+      .where(and(
+        eq(studentProfiles.classroomId, classroomId),
+        eq(studentProfiles.isActive, true)
+      ));
 
     const results = [];
     for (const student of students) {
-      const grades = await this.calculateStudentGrades(classroomId, student.id, period);
+      const grades = await this.calculateStudentGrades(classroomId, student.id, resolvedPeriod);
       results.push({ studentId: student.id, grades });
     }
 
@@ -791,22 +1048,34 @@ class GradeService {
   }
 
   async setManualGrade(gradeId: string, manualScore: number, manualNote?: string) {
+    if (!Number.isFinite(manualScore) || manualScore < 0 || manualScore > 100) {
+      throw new Error('manualScore debe estar entre 0 y 100');
+    }
+
     const now = new Date();
     
     const [grade] = await db.select({
       classroomId: studentGrades.classroomId,
+      period: studentGrades.period,
     }).from(studentGrades).where(eq(studentGrades.id, gradeId));
 
     if (!grade) throw new Error('Calificación no encontrada');
 
-    const [classroom] = await db.select().from(classrooms).where(eq(classrooms.id, grade.classroomId));
-    const gradeLabel = this.convertToGradeLabel(manualScore, classroom?.gradeScaleType || null, classroom?.gradeScaleConfig);
+    await this.ensurePeriodIsOpen(grade.classroomId, grade.period);
+
+    const [classroom] = await db.select({
+      gradeScaleType: classrooms.gradeScaleType,
+      gradeScaleConfig: classrooms.gradeScaleConfig,
+    }).from(classrooms).where(eq(classrooms.id, grade.classroomId));
+    const parsedScaleConfig = this.parseGradeScaleConfig(classroom?.gradeScaleConfig);
+    const gradeLabel = this.convertToGradeLabel(manualScore, classroom?.gradeScaleType || null, parsedScaleConfig);
+    const normalizedManualNote = manualNote?.trim() || null;
 
     await db.update(studentGrades)
       .set({
         isManualOverride: true,
         manualScore: manualScore.toFixed(2),
-        manualNote,
+        manualNote: normalizedManualNote,
         gradeLabel,
         updatedAt: now,
       })
@@ -816,8 +1085,24 @@ class GradeService {
   }
 
   async clearManualGrade(gradeId: string) {
-    const [grade] = await db.select().from(studentGrades).where(eq(studentGrades.id, gradeId));
+    const [grade] = await db.select({
+      classroomId: studentGrades.classroomId,
+      studentProfileId: studentGrades.studentProfileId,
+      period: studentGrades.period,
+    }).from(studentGrades).where(eq(studentGrades.id, gradeId));
+
     if (!grade) throw new Error('Calificación no encontrada');
+
+    await this.ensurePeriodIsOpen(grade.classroomId, grade.period);
+
+    await db.update(studentGrades)
+      .set({
+        isManualOverride: false,
+        manualScore: null,
+        manualNote: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(studentGrades.id, gradeId));
 
     await this.calculateStudentGrades(grade.classroomId, grade.studentProfileId, grade.period);
     
@@ -840,25 +1125,16 @@ class GradeService {
 
     if (!classroom) throw new Error('Clase no encontrada');
 
-    // Parse seguro de closedBimesters (puede venir como string JSON desde MySQL)
-    let closedBimesters: any[] = [];
-    if (classroom.closedBimesters) {
-      if (typeof classroom.closedBimesters === 'string') {
-        try {
-          closedBimesters = JSON.parse(classroom.closedBimesters);
-        } catch {
-          closedBimesters = [];
-        }
-      } else if (Array.isArray(classroom.closedBimesters)) {
-        closedBimesters = classroom.closedBimesters;
-      }
-    }
+    const closedBimesters = this.parseClosedBimesters(classroom.closedBimesters);
     const currentYear = new Date().getFullYear();
-    const selectedYear = year || currentYear;
+    const selectedYear = Number.isInteger(year) ? Number(year) : currentYear;
     
     // El bimestre actual por defecto usa el año actual
     const defaultBimester = `${currentYear}-B1`;
-    const currentBimester = classroom.currentBimester || defaultBimester;
+    const normalizedCurrent = classroom.currentBimester?.trim().toUpperCase();
+    const currentBimester = normalizedCurrent && BIMESTER_PERIOD_REGEX.test(normalizedCurrent)
+      ? normalizedCurrent
+      : defaultBimester;
 
     // Definir todos los bimestres del año seleccionado
     const allBimesters = [
@@ -884,8 +1160,8 @@ class GradeService {
         period: b,
         label: `Bimestre ${b.split('-B')[1]}`,
         isCurrent: b === currentBimester,
-        isClosed: closedBimesters.some((cb: any) => cb.period === b),
-        closedAt: closedBimesters.find((cb: any) => cb.period === b)?.closedAt,
+        isClosed: closedBimesters.some((cb) => cb.period === b),
+        closedAt: closedBimesters.find((cb) => cb.period === b)?.closedAt,
       })),
     };
   }
@@ -894,73 +1170,80 @@ class GradeService {
    * Establece el bimestre actual de trabajo
    */
   async setCurrentBimester(classroomId: string, period: string, userId: string) {
+    if (!userId) {
+      throw new Error('Usuario no autorizado');
+    }
+
+    const normalizedPeriod = this.normalizePeriod(period);
+    if (normalizedPeriod === 'CURRENT') {
+      throw new Error('Periodo invalido. Usa el formato YYYY-B1..B4');
+    }
+
     const [classroom] = await db.select().from(classrooms).where(eq(classrooms.id, classroomId));
     if (!classroom) throw new Error('Clase no encontrada');
 
-    // Parse seguro de closedBimesters
-    let closedBimesters: any[] = [];
-    if (classroom.closedBimesters) {
-      if (typeof classroom.closedBimesters === 'string') {
-        try { closedBimesters = JSON.parse(classroom.closedBimesters); } catch { closedBimesters = []; }
-      } else if (Array.isArray(classroom.closedBimesters)) {
-        closedBimesters = classroom.closedBimesters;
-      }
-    }
+    const closedBimesters = this.parseClosedBimesters(classroom.closedBimesters);
     
     // Verificar si el bimestre está cerrado
-    if (closedBimesters.some((cb: any) => cb.period === period)) {
+    if (closedBimesters.some((cb) => cb.period === normalizedPeriod)) {
       throw new Error('Este bimestre está cerrado. Debes reabrirlo primero.');
     }
 
     await db.update(classrooms)
       .set({ 
-        currentBimester: period,
+        currentBimester: normalizedPeriod,
         updatedAt: new Date(),
       })
       .where(eq(classrooms.id, classroomId));
 
-    return { success: true, currentBimester: period };
+    return { success: true, currentBimester: normalizedPeriod };
   }
 
   /**
    * Cierra un bimestre (congela las calificaciones)
    */
   async closeBimester(classroomId: string, period: string, userId: string) {
+    if (!userId) {
+      throw new Error('Usuario no autorizado');
+    }
+
+    const normalizedPeriod = this.normalizePeriod(period);
+    if (normalizedPeriod === 'CURRENT') {
+      throw new Error('Periodo invalido. Usa el formato YYYY-B1..B4');
+    }
+
     const [classroom] = await db.select().from(classrooms).where(eq(classrooms.id, classroomId));
     if (!classroom) throw new Error('Clase no encontrada');
 
-    // Parse seguro de closedBimesters
-    let closedBimesters: any[] = [];
-    if (classroom.closedBimesters) {
-      if (typeof classroom.closedBimesters === 'string') {
-        try { closedBimesters = JSON.parse(classroom.closedBimesters); } catch { closedBimesters = []; }
-      } else if (Array.isArray(classroom.closedBimesters)) {
-        closedBimesters = classroom.closedBimesters;
-      }
-    }
+    const closedBimesters = this.parseClosedBimesters(classroom.closedBimesters);
     
     // Verificar si ya está cerrado
-    if (closedBimesters.some((cb: any) => cb.period === period)) {
+    if (closedBimesters.some((cb) => cb.period === normalizedPeriod)) {
       throw new Error('Este bimestre ya está cerrado');
     }
 
     // Agregar a la lista de bimestres cerrados
     closedBimesters.push({
-      period,
+      period: normalizedPeriod,
       closedAt: new Date().toISOString(),
       closedBy: userId,
     });
 
     // Si el bimestre que se cierra es el actual, avanzar al siguiente
-    let newCurrentBimester = classroom.currentBimester;
-    if (classroom.currentBimester === period) {
-      const [yearPart] = period.split('-B');
-      const bimesterNum = parseInt(period.split('-B')[1]);
+    const currentRaw = classroom.currentBimester?.trim().toUpperCase();
+    const currentBimester = currentRaw && BIMESTER_PERIOD_REGEX.test(currentRaw)
+      ? currentRaw
+      : `${new Date().getFullYear()}-B1`;
+
+    let newCurrentBimester = currentBimester;
+    if (currentBimester === normalizedPeriod) {
+      const [yearPart] = normalizedPeriod.split('-B');
+      const bimesterNum = Number(normalizedPeriod.split('-B')[1]);
       if (bimesterNum < 4) {
         newCurrentBimester = `${yearPart}-B${bimesterNum + 1}`;
       } else {
         // Si es B4, pasar a B1 del siguiente año
-        newCurrentBimester = `${parseInt(yearPart) + 1}-B1`;
+        newCurrentBimester = `${Number(yearPart) + 1}-B1`;
       }
     }
 
@@ -972,9 +1255,17 @@ class GradeService {
       })
       .where(eq(classrooms.id, classroomId));
 
+    // Storytelling: completar capítulos tipo BIMESTER
+    try {
+      const { storyService } = await import('./story.service.js');
+      await storyService.onBimesterClosed(classroomId);
+    } catch (error) {
+      // Silently fail - don't break bimester close
+    }
+
     return { 
       success: true, 
-      closedPeriod: period,
+      closedPeriod: normalizedPeriod,
       newCurrentBimester,
     };
   }
@@ -983,21 +1274,22 @@ class GradeService {
    * Reabre un bimestre cerrado
    */
   async reopenBimester(classroomId: string, period: string, userId: string) {
+    if (!userId) {
+      throw new Error('Usuario no autorizado');
+    }
+
+    const normalizedPeriod = this.normalizePeriod(period);
+    if (normalizedPeriod === 'CURRENT') {
+      throw new Error('Periodo invalido. Usa el formato YYYY-B1..B4');
+    }
+
     const [classroom] = await db.select().from(classrooms).where(eq(classrooms.id, classroomId));
     if (!classroom) throw new Error('Clase no encontrada');
 
-    // Parse seguro de closedBimesters
-    let closedBimesters: any[] = [];
-    if (classroom.closedBimesters) {
-      if (typeof classroom.closedBimesters === 'string') {
-        try { closedBimesters = JSON.parse(classroom.closedBimesters); } catch { closedBimesters = []; }
-      } else if (Array.isArray(classroom.closedBimesters)) {
-        closedBimesters = classroom.closedBimesters;
-      }
-    }
+    const closedBimesters = this.parseClosedBimesters(classroom.closedBimesters);
     
     // Verificar si está cerrado
-    const closedIndex = closedBimesters.findIndex((cb: any) => cb.period === period);
+    const closedIndex = closedBimesters.findIndex((cb) => cb.period === normalizedPeriod);
     if (closedIndex === -1) {
       throw new Error('Este bimestre no está cerrado');
     }
@@ -1012,7 +1304,7 @@ class GradeService {
       })
       .where(eq(classrooms.id, classroomId));
 
-    return { success: true, reopenedPeriod: period };
+    return { success: true, reopenedPeriod: normalizedPeriod };
   }
 }
 

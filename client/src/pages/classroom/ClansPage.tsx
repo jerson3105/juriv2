@@ -25,7 +25,7 @@ const CLAN_COLORS = [
 ];
 
 export const ClansPage = () => {
-  const { classroom } = useOutletContext<{ classroom: any }>();
+  const { classroom, isThemeDark } = useOutletContext<{ classroom: any; isThemeDark?: boolean }>();
   const queryClient = useQueryClient();
   
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -168,16 +168,16 @@ export const ClansPage = () => {
 
       {/* Ranking rápido */}
       {clans && clans.length > 0 && (
-        <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 rounded-xl p-4 border border-amber-200 dark:border-amber-800">
+        <div className={`rounded-xl p-4 border ${isThemeDark ? 'bg-[rgba(var(--story-primary-rgb),0.15)] border-[rgba(var(--story-primary-rgb),0.3)]' : 'bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border-amber-200 dark:border-amber-800'}`}>
           <div className="flex items-center gap-2 mb-3">
-            <Trophy className="w-5 h-5 text-amber-500" />
-            <span className="font-semibold text-amber-800 dark:text-amber-200">Ranking de Clanes</span>
+            <Trophy className={`w-5 h-5 ${isThemeDark ? 'text-white' : 'text-amber-500'}`} />
+            <span className={`font-semibold ${isThemeDark ? 'text-white' : 'text-amber-800 dark:text-amber-200'}`}>Ranking de Clanes</span>
           </div>
           <div className="flex gap-4 overflow-x-auto pb-2">
             {[...clans].sort((a, b) => b.totalXp - a.totalXp).map((clan, index) => (
               <div
                 key={clan.id}
-                className="flex items-center gap-2 bg-white dark:bg-gray-800 rounded-lg px-3 py-2 shadow-sm min-w-fit"
+                className={`flex items-center gap-2 rounded-lg px-3 py-2 shadow-sm min-w-fit ${isThemeDark ? 'bg-[rgba(30,30,50,0.6)] border border-[rgba(255,255,255,0.1)]' : 'bg-white dark:bg-gray-800'}`}
               >
                 <span className={`text-lg font-bold ${
                   index === 0 ? 'text-amber-500' : index === 1 ? 'text-gray-400' : index === 2 ? 'text-amber-700' : 'text-gray-500'

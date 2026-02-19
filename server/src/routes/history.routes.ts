@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { historyController } from '../controllers/history.controller.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, authorize } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -8,9 +8,9 @@ const router = Router();
 router.use(authenticate);
 
 // Obtener historial de una clase
-router.get('/classroom/:classroomId', historyController.getClassroomHistory);
+router.get('/classroom/:classroomId', authorize('TEACHER', 'ADMIN'), historyController.getClassroomHistory);
 
 // Obtener estadísticas de una clase
-router.get('/classroom/:classroomId/stats', historyController.getClassroomStats);
+router.get('/classroom/:classroomId/stats', authorize('TEACHER', 'ADMIN'), historyController.getClassroomStats);
 
 export default router;

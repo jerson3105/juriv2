@@ -55,6 +55,19 @@ export const authLimiter = rateLimit({
   skipSuccessfulRequests: true, // No contar logins exitosos
 });
 
+// Rate limiter para operaciones con tokens (refresh/logout)
+export const authTokenLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: config_app.isDev ? 120 : 30,
+  message: {
+    success: false,
+    message: 'Demasiadas operaciones de sesión, intenta nuevamente en unos minutos.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: false,
+});
+
 // Aplicar middleware de seguridad
 export const applySecurityMiddleware = (app: Express): void => {
   // Request ID para trazabilidad

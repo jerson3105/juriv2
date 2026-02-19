@@ -1415,7 +1415,7 @@ const AIBadgeModal = ({
                     <select
                       value={level}
                       onChange={(e) => setLevel(e.target.value)}
-                      className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm"
+                      className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm story-select"
                     >
                       <option value="">Seleccionar...</option>
                       <option value="Primaria (6-11 años)">Primaria (6-11 años)</option>
@@ -1516,11 +1516,11 @@ const AIBadgeModal = ({
                       <Award size={14} className="inline mr-1 text-emerald-500" />
                       Competencias a considerar <span className="font-normal text-gray-500">(la IA las asignará)</span>
                     </label>
-                    <div className="grid grid-cols-1 gap-1.5 max-h-32 overflow-y-auto p-2 bg-gray-50 dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-600">
+                    <div className="grid grid-cols-1 gap-1.5 max-h-32 overflow-y-auto overflow-x-hidden p-2 bg-gray-50 dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-600">
                       {classroomCompetencies.map((c: any) => (
                         <label
                           key={c.id}
-                          className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all ${
+                          className={`relative overflow-hidden flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all ${
                             selectedCompetencies.includes(c.id)
                               ? 'bg-emerald-100 dark:bg-emerald-900/50 ring-1 ring-emerald-500'
                               : 'bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700'
@@ -1841,7 +1841,7 @@ const AIBadgeModal = ({
               <div className="flex gap-3 ml-auto">
                 <button
                   onClick={handleClose}
-                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
                 >
                   Cancelar
                 </button>

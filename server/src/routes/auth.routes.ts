@@ -5,8 +5,13 @@ import { v4 as uuidv4 } from 'uuid';
 import passport from 'passport';
 import * as authController from '../controllers/auth.controller.js';
 import { authenticate } from '../middleware/auth.js';
-import { authLimiter } from '../middleware/security.js';
+import { authLimiter, authTokenLimiter } from '../middleware/security.js';
 import { config_app } from '../config/env.js';
+import {
+  generateOAuthState,
+  OAUTH_STATE_COOKIE_NAME,
+  OAUTH_STATE_MAX_AGE_MS,
+} from '../utils/oauth-state.js';
 
 const router = Router();
 
@@ -37,8 +42,8 @@ const avatarUpload = multer({
 // Rutas públicas (con rate limiting estricto)
 router.post('/register', authLimiter, authController.register);
 router.post('/login', authLimiter, authController.login);
-router.post('/refresh', authController.refresh);
-router.post('/logout', authController.logout);
+router.post('/refresh', authTokenLimiter, authController.refresh);
+router.post('/logout', authTokenLimiter, authController.logout);
 
 // Rutas protegidas
 router.get('/me', authenticate, authController.getMe);
@@ -51,11 +56,21 @@ router.put('/change-password', authenticate, authController.changePassword);
 // ==================== GOOGLE OAUTH ====================
 // Iniciar autenticación con Google
 router.get('/google', (req, res, next) => {
-  const role = req.query.role || 'TEACHER';
+  const role = typeof req.query.role === 'string' ? req.query.role : undefined;
+  const { state, nonce } = generateOAuthState(role);
+
+  res.cookie(OAUTH_STATE_COOKIE_NAME, nonce, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: config_app.isProd,
+    maxAge: OAUTH_STATE_MAX_AGE_MS,
+    path: '/api/auth',
+  });
+
   passport.authenticate('google', { 
     scope: ['profile', 'email'],
     session: false,
-    state: role as string, // Pasar el rol como state para recuperarlo en el callback
+    state,
   })(req, res, next);
 });
 
@@ -69,6 +84,7 @@ router.get('/google/callback',
 );
 
 // Completar registro de Google con rol seleccionado
-router.post('/google/complete-registration', authController.completeGoogleRegistration);
+router.post('/google/complete-registration', authLimiter, authController.completeGoogleRegistration);
+router.post('/google/exchange-code', authLimiter, authController.exchangeGoogleCode);
 
 export default router;

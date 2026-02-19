@@ -650,14 +650,14 @@ const ItemCard = ({
         <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
           <button
             onClick={() => onGive(item)}
-            className="flex-1 flex items-center justify-center gap-1 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
+            className="flex-1 flex items-center justify-center gap-1 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 story-hover-btn rounded-lg transition-colors"
           >
             <Gift size={14} />
             Dar a estudiante
           </button>
           <button
             onClick={() => onEdit(item)}
-            className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
+            className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 story-hover-btn rounded-lg transition-colors"
           >
             <Edit2 size={14} />
           </button>
@@ -1406,7 +1406,7 @@ const AIShopModal = ({
                     <select
                       value={level}
                       onChange={(e) => setLevel(e.target.value)}
-                      className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm"
+                      className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm story-select"
                     >
                       <option value="">Seleccionar...</option>
                       <option value="Primaria (6-11 años)">Primaria (6-11 años)</option>
@@ -1596,7 +1596,7 @@ const AIShopModal = ({
               <div className="flex gap-3 ml-auto">
                 <button
                   onClick={handleClose}
-                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
                 >
                   Cancelar
                 </button>

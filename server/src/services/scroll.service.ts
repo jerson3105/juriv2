@@ -18,6 +18,8 @@ import type {
   ScrollRecipientType 
 } from '../db/schema.js';
 
+const ALLOWED_REACTION_TYPES = new Set(['heart', 'star', 'fire', 'clap', 'smile']);
+
 // Interfaces
 interface CreateScrollData {
   classroomId: string;
@@ -54,9 +56,89 @@ interface ScrollWithDetails extends Scroll {
 }
 
 class ScrollService {
+  async getClassroomIdByScroll(scrollId: string): Promise<string | null> {
+    const [scroll] = await db.select({ classroomId: scrolls.classroomId })
+      .from(scrolls)
+      .where(eq(scrolls.id, scrollId));
+
+    return scroll?.classroomId ?? null;
+  }
+
+  async getAuthorIdByScroll(scrollId: string): Promise<string | null> {
+    const [scroll] = await db.select({ authorId: scrolls.authorId })
+      .from(scrolls)
+      .where(eq(scrolls.id, scrollId));
+
+    return scroll?.authorId ?? null;
+  }
+
+  async getClassroomIdByStudentProfile(studentProfileId: string): Promise<string | null> {
+    const [student] = await db.select({ classroomId: studentProfiles.classroomId })
+      .from(studentProfiles)
+      .where(eq(studentProfiles.id, studentProfileId));
+
+    return student?.classroomId ?? null;
+  }
+
+  async verifyTeacherOwnsClassroom(teacherId: string, classroomId: string): Promise<boolean> {
+    const [classroom] = await db.select({ id: classrooms.id })
+      .from(classrooms)
+      .where(and(
+        eq(classrooms.id, classroomId),
+        eq(classrooms.teacherId, teacherId)
+      ));
+
+    return !!classroom;
+  }
+
+  async verifyStudentBelongsToUser(studentProfileId: string, userId: string): Promise<boolean> {
+    const [student] = await db.select({ id: studentProfiles.id })
+      .from(studentProfiles)
+      .where(and(
+        eq(studentProfiles.id, studentProfileId),
+        eq(studentProfiles.userId, userId),
+        eq(studentProfiles.isActive, true)
+      ));
+
+    return !!student;
+  }
+
+  async verifyStudentUserInClassroom(userId: string, classroomId: string): Promise<boolean> {
+    const [student] = await db.select({ id: studentProfiles.id })
+      .from(studentProfiles)
+      .where(and(
+        eq(studentProfiles.userId, userId),
+        eq(studentProfiles.classroomId, classroomId),
+        eq(studentProfiles.isActive, true)
+      ));
+
+    return !!student;
+  }
+
+  async getStudentProfileInClassroomByUser(userId: string, classroomId: string): Promise<string | null> {
+    const [student] = await db.select({ id: studentProfiles.id })
+      .from(studentProfiles)
+      .where(and(
+        eq(studentProfiles.userId, userId),
+        eq(studentProfiles.classroomId, classroomId),
+        eq(studentProfiles.isActive, true)
+      ));
+
+    return student?.id ?? null;
+  }
+
   // Crear un nuevo pergamino
   async createScroll(data: CreateScrollData): Promise<Scroll> {
     const now = new Date();
+    const message = data.message.trim();
+
+    if (!message) {
+      throw new Error('El mensaje no puede estar vacío');
+    }
+
+    if (message.length > 2000) {
+      throw new Error('El mensaje no puede superar los 2000 caracteres');
+    }
     
     // Verificar que el aula existe y tiene pergaminos habilitados
     const classroom = await db.query.classrooms.findFirst({
@@ -74,6 +156,77 @@ class ScrollService {
     if (!classroom.scrollsOpen) {
       throw new Error('El mural de pergaminos está cerrado actualmente');
     }
+
+    // Verificar que el autor pertenece al aula
+    const [author] = await db.select({
+      id: studentProfiles.id,
+      classroomId: studentProfiles.classroomId,
+      isActive: studentProfiles.isActive,
+    })
+      .from(studentProfiles)
+      .where(eq(studentProfiles.id, data.authorId));
+
+    if (!author || author.classroomId !== data.classroomId || !author.isActive) {
+      throw new Error('El autor no pertenece a esta clase');
+    }
+
+    const uniqueRecipientIds = [...new Set((data.recipientIds || []).filter(Boolean))];
+    let normalizedRecipientIds: string[] | null = null;
+
+    if (data.recipientType === 'STUDENT') {
+      if (uniqueRecipientIds.length !== 1) {
+        throw new Error('Debes seleccionar un único estudiante destinatario');
+      }
+
+      const [recipient] = await db.select({ id: studentProfiles.id })
+        .from(studentProfiles)
+        .where(and(
+          eq(studentProfiles.id, uniqueRecipientIds[0]),
+          eq(studentProfiles.classroomId, data.classroomId),
+          eq(studentProfiles.isActive, true)
+        ));
+
+      if (!recipient) {
+        throw new Error('El destinatario no pertenece a esta clase');
+      }
+
+      normalizedRecipientIds = [recipient.id];
+    } else if (data.recipientType === 'MULTIPLE') {
+      if (uniqueRecipientIds.length === 0) {
+        throw new Error('Debes seleccionar al menos un destinatario');
+      }
+
+      const recipients = await db.select({ id: studentProfiles.id })
+        .from(studentProfiles)
+        .where(and(
+          eq(studentProfiles.classroomId, data.classroomId),
+          eq(studentProfiles.isActive, true),
+          inArray(studentProfiles.id, uniqueRecipientIds)
+        ));
+
+      if (recipients.length !== uniqueRecipientIds.length) {
+        throw new Error('Uno o más destinatarios no pertenecen a esta clase');
+      }
+
+      normalizedRecipientIds = uniqueRecipientIds;
+    } else if (data.recipientType === 'CLAN') {
+      if (uniqueRecipientIds.length !== 1) {
+        throw new Error('Debes seleccionar un único clan destinatario');
+      }
+
+      const [team] = await db.select({ id: teams.id })
+        .from(teams)
+        .where(and(
+          eq(teams.id, uniqueRecipientIds[0]),
+          eq(teams.classroomId, data.classroomId)
+        ));
+
+      if (!team) {
+        throw new Error('El clan no pertenece a esta clase');
+      }
+
+      normalizedRecipientIds = [team.id];
+    }
     
     // Verificar límite diario
     const todayStart = new Date();
@@ -87,7 +240,7 @@ class ScrollService {
         gte(scrolls.createdAt, todayStart)
       ));
     
-    if (todayScrolls[0].count >= classroom.scrollsMaxPerDay) {
+    if (Number(todayScrolls[0]?.count || 0) >= classroom.scrollsMaxPerDay) {
       throw new Error(`Has alcanzado el límite de ${classroom.scrollsMaxPerDay} pergaminos por día`);
     }
     
@@ -100,11 +253,11 @@ class ScrollService {
       id: scrollId,
       classroomId: data.classroomId,
       authorId: data.authorId,
-      message: data.message,
+      message,
       imageUrl: data.imageUrl || null,
       category: data.category,
       recipientType: data.recipientType,
-      recipientIds: data.recipientIds || null,
+      recipientIds: normalizedRecipientIds,
       status: initialStatus,
       createdAt: now,
       updatedAt: now,
@@ -112,7 +265,11 @@ class ScrollService {
     
     // Si no requiere aprobación, notificar a los destinatarios
     if (!classroom.scrollsRequireApproval) {
-      await this.notifyRecipients(scrollId);
+      try {
+        await this.notifyRecipients(scrollId);
+      } catch {
+        // Silently fail - don't break scroll creation
+      }
     }
     
     const scroll = await db.query.scrolls.findFirst({
@@ -181,22 +338,51 @@ class ScrollService {
 
   // Aprobar un pergamino
   async approveScroll(scrollId: string, reviewerId: string): Promise<Scroll> {
+    const [existing] = await db.select()
+      .from(scrolls)
+      .where(eq(scrolls.id, scrollId));
+
+    if (!existing) {
+      throw new Error('Pergamino no encontrado');
+    }
+
+    if (existing.status === 'APPROVED') {
+      return existing;
+    }
+
+    if (existing.status === 'REJECTED') {
+      throw new Error('No se puede aprobar un pergamino rechazado');
+    }
+
     const now = new Date();
     
-    await db.update(scrolls)
-      .set({
-        status: 'APPROVED',
-        reviewedAt: now,
-        reviewedBy: reviewerId,
-        updatedAt: now,
-      })
-      .where(eq(scrolls.id, scrollId));
+    await db.transaction(async (tx) => {
+      await tx.update(scrolls)
+        .set({
+          status: 'APPROVED',
+          reviewedAt: now,
+          reviewedBy: reviewerId,
+          updatedAt: now,
+        })
+        .where(and(
+          eq(scrolls.id, scrollId),
+          eq(scrolls.status, 'PENDING')
+        ));
+    });
     
     // Notificar a los destinatarios
-    await this.notifyRecipients(scrollId);
+    try {
+      await this.notifyRecipients(scrollId);
+    } catch {
+      // Silently fail
+    }
     
     // Notificar al autor que fue aprobado
-    await this.notifyAuthor(scrollId, true);
+    try {
+      await this.notifyAuthor(scrollId, true);
+    } catch {
+      // Silently fail
+    }
     
     const scroll = await db.query.scrolls.findFirst({
       where: eq(scrolls.id, scrollId),
@@ -207,20 +393,50 @@ class ScrollService {
 
   // Rechazar un pergamino
   async rejectScroll(scrollId: string, reviewerId: string, reason: string): Promise<Scroll> {
+    const [existing] = await db.select()
+      .from(scrolls)
+      .where(eq(scrolls.id, scrollId));
+
+    if (!existing) {
+      throw new Error('Pergamino no encontrado');
+    }
+
+    if (existing.status === 'REJECTED') {
+      return existing;
+    }
+
+    if (existing.status === 'APPROVED') {
+      throw new Error('No se puede rechazar un pergamino aprobado');
+    }
+
+    const sanitizedReason = reason.trim();
+    if (!sanitizedReason) {
+      throw new Error('Debes indicar una razón para el rechazo');
+    }
+
     const now = new Date();
     
-    await db.update(scrolls)
-      .set({
-        status: 'REJECTED',
-        rejectionReason: reason,
-        reviewedAt: now,
-        reviewedBy: reviewerId,
-        updatedAt: now,
-      })
-      .where(eq(scrolls.id, scrollId));
+    await db.transaction(async (tx) => {
+      await tx.update(scrolls)
+        .set({
+          status: 'REJECTED',
+          rejectionReason: sanitizedReason,
+          reviewedAt: now,
+          reviewedBy: reviewerId,
+          updatedAt: now,
+        })
+        .where(and(
+          eq(scrolls.id, scrollId),
+          eq(scrolls.status, 'PENDING')
+        ));
+    });
     
     // Notificar al autor que fue rechazado
-    await this.notifyAuthor(scrollId, false, reason);
+    try {
+      await this.notifyAuthor(scrollId, false, sanitizedReason);
+    } catch {
+      // Silently fail
+    }
     
     const scroll = await db.query.scrolls.findFirst({
       where: eq(scrolls.id, scrollId),
@@ -231,39 +447,67 @@ class ScrollService {
 
   // Agregar reacción
   async addReaction(scrollId: string, studentProfileId: string, reactionType: string): Promise<void> {
-    const existingReaction = await db.query.scrollReactions.findFirst({
-      where: and(
-        eq(scrollReactions.scrollId, scrollId),
-        eq(scrollReactions.studentProfileId, studentProfileId),
-        eq(scrollReactions.reactionType, reactionType)
-      ),
-    });
-    
-    if (existingReaction) {
-      // Si ya existe, la quitamos (toggle)
-      await db.delete(scrollReactions)
-        .where(eq(scrollReactions.id, existingReaction.id));
-    } else {
-      // Si no existe, la agregamos
-      await db.insert(scrollReactions).values({
-        id: uuidv4(),
-        scrollId,
-        studentProfileId,
-        reactionType,
-        createdAt: new Date(),
-      });
+    if (!ALLOWED_REACTION_TYPES.has(reactionType)) {
+      throw new Error('Tipo de reacción inválido');
     }
+
+    const [scroll] = await db.select({
+      id: scrolls.id,
+      classroomId: scrolls.classroomId,
+      status: scrolls.status,
+    })
+      .from(scrolls)
+      .where(eq(scrolls.id, scrollId));
+
+    if (!scroll || scroll.status !== 'APPROVED') {
+      throw new Error('El pergamino no está disponible para reacciones');
+    }
+
+    const [student] = await db.select({
+      id: studentProfiles.id,
+      classroomId: studentProfiles.classroomId,
+      isActive: studentProfiles.isActive,
+    })
+      .from(studentProfiles)
+      .where(eq(studentProfiles.id, studentProfileId));
+
+    if (!student || !student.isActive || student.classroomId !== scroll.classroomId) {
+      throw new Error('No tienes acceso para reaccionar a este pergamino');
+    }
+
+    await db.transaction(async (tx) => {
+      const existingReaction = await tx.query.scrollReactions.findFirst({
+        where: and(
+          eq(scrollReactions.scrollId, scrollId),
+          eq(scrollReactions.studentProfileId, studentProfileId),
+          eq(scrollReactions.reactionType, reactionType)
+        ),
+      });
+
+      if (existingReaction) {
+        await tx.delete(scrollReactions)
+          .where(eq(scrollReactions.id, existingReaction.id));
+      } else {
+        await tx.insert(scrollReactions).values({
+          id: uuidv4(),
+          scrollId,
+          studentProfileId,
+          reactionType,
+          createdAt: new Date(),
+        });
+      }
+    });
   }
 
   // Eliminar pergamino (solo el autor o el profesor)
   async deleteScroll(scrollId: string): Promise<void> {
-    // Eliminar reacciones primero
-    await db.delete(scrollReactions)
-      .where(eq(scrollReactions.scrollId, scrollId));
-    
-    // Eliminar el pergamino
-    await db.delete(scrolls)
-      .where(eq(scrolls.id, scrollId));
+    await db.transaction(async (tx) => {
+      await tx.delete(scrollReactions)
+        .where(eq(scrollReactions.scrollId, scrollId));
+
+      await tx.delete(scrolls)
+        .where(eq(scrolls.id, scrollId));
+    });
   }
 
   // Obtener pergaminos del estudiante (enviados)
@@ -288,22 +532,35 @@ class ScrollService {
     rejected: number;
     byCategory: Record<string, number>;
   }> {
-    const allScrolls = await db.select()
+    const [totals] = await db.select({
+      total: sql<number>`count(*)`,
+      pending: sql<number>`sum(case when ${scrolls.status} = 'PENDING' then 1 else 0 end)`,
+      approved: sql<number>`sum(case when ${scrolls.status} = 'APPROVED' then 1 else 0 end)`,
+      rejected: sql<number>`sum(case when ${scrolls.status} = 'REJECTED' then 1 else 0 end)`,
+    })
       .from(scrolls)
       .where(eq(scrolls.classroomId, classroomId));
-    
-    const stats = {
-      total: allScrolls.length,
-      pending: allScrolls.filter(s => s.status === 'PENDING').length,
-      approved: allScrolls.filter(s => s.status === 'APPROVED').length,
-      rejected: allScrolls.filter(s => s.status === 'REJECTED').length,
-      byCategory: {} as Record<string, number>,
-    };
-    
-    // Contar por categoría
-    allScrolls.forEach(scroll => {
-      stats.byCategory[scroll.category] = (stats.byCategory[scroll.category] || 0) + 1;
+
+    const byCategoryRows = await db.select({
+      category: scrolls.category,
+      count: sql<number>`count(*)`,
+    })
+      .from(scrolls)
+      .where(eq(scrolls.classroomId, classroomId))
+      .groupBy(scrolls.category);
+
+    const byCategory: Record<string, number> = {};
+    byCategoryRows.forEach((row) => {
+      byCategory[row.category] = Number(row.count || 0);
     });
+
+    const stats = {
+      total: Number(totals?.total || 0),
+      pending: Number(totals?.pending || 0),
+      approved: Number(totals?.approved || 0),
+      rejected: Number(totals?.rejected || 0),
+      byCategory,
+    };
     
     return stats;
   }
@@ -347,6 +604,27 @@ class ScrollService {
 
   // ==================== MÉTODOS PRIVADOS ====================
 
+  private parseRecipientIds(recipientIds: unknown): string[] {
+    if (!recipientIds) return [];
+
+    if (Array.isArray(recipientIds)) {
+      return recipientIds.filter((id): id is string => typeof id === 'string' && id.length > 0);
+    }
+
+    if (typeof recipientIds === 'string') {
+      try {
+        const parsed = JSON.parse(recipientIds);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((id): id is string => typeof id === 'string' && id.length > 0);
+        }
+      } catch {
+        return [];
+      }
+    }
+
+    return [];
+  }
+
   // Enriquecer pergamino con detalles
   private async enrichScroll(scroll: Scroll, currentStudentId?: string): Promise<ScrollWithDetails> {
     // Obtener autor
@@ -357,23 +635,24 @@ class ScrollService {
     // Obtener destinatarios si aplica
     let recipients: ScrollWithDetails['recipients'] = undefined;
     let clan: ScrollWithDetails['clan'] = undefined;
+    const recipientIds = this.parseRecipientIds(scroll.recipientIds);
     
     if (scroll.recipientType === 'STUDENT' || scroll.recipientType === 'MULTIPLE') {
-      if (scroll.recipientIds && scroll.recipientIds.length > 0) {
+      if (recipientIds.length > 0) {
         const recipientProfiles = await db.select({
           id: studentProfiles.id,
           characterName: studentProfiles.characterName,
           displayName: studentProfiles.displayName,
         })
           .from(studentProfiles)
-          .where(inArray(studentProfiles.id, scroll.recipientIds));
+          .where(inArray(studentProfiles.id, recipientIds));
         
         recipients = recipientProfiles;
       }
     } else if (scroll.recipientType === 'CLAN') {
-      if (scroll.recipientIds && scroll.recipientIds.length > 0) {
+      if (recipientIds.length > 0) {
         const team = await db.query.teams.findFirst({
-          where: eq(teams.id, scroll.recipientIds[0]),
+          where: eq(teams.id, recipientIds[0]),
         });
         
         if (team) {
@@ -424,27 +703,36 @@ class ScrollService {
     });
     
     const authorName = author?.characterName || author?.displayName || 'Un compañero';
-    let recipientUserIds: string[] = [];
+    const recipientIds = this.parseRecipientIds(scroll.recipientIds);
+    const recipientUserSet = new Set<string>();
     
     if (scroll.recipientType === 'STUDENT' || scroll.recipientType === 'MULTIPLE') {
-      if (scroll.recipientIds && scroll.recipientIds.length > 0) {
+      if (recipientIds.length > 0) {
         const profiles = await db.select({ userId: studentProfiles.userId })
           .from(studentProfiles)
-          .where(inArray(studentProfiles.id, scroll.recipientIds));
+          .where(inArray(studentProfiles.id, recipientIds));
         
-        recipientUserIds = profiles
+        profiles
           .filter(p => p.userId)
-          .map(p => p.userId!);
+          .forEach((p) => {
+            recipientUserSet.add(p.userId!);
+          });
       }
     } else if (scroll.recipientType === 'CLAN') {
-      if (scroll.recipientIds && scroll.recipientIds.length > 0) {
+      if (recipientIds.length > 0) {
         const clanMembers = await db.select({ userId: studentProfiles.userId })
           .from(studentProfiles)
-          .where(eq(studentProfiles.teamId, scroll.recipientIds[0]));
+          .where(and(
+            eq(studentProfiles.teamId, recipientIds[0]),
+            eq(studentProfiles.classroomId, scroll.classroomId),
+            eq(studentProfiles.isActive, true)
+          ));
         
-        recipientUserIds = clanMembers
+        clanMembers
           .filter(m => m.userId)
-          .map(m => m.userId!);
+          .forEach((member) => {
+            recipientUserSet.add(member.userId!);
+          });
       }
     } else if (scroll.recipientType === 'CLASS') {
       const classStudents = await db.select({ userId: studentProfiles.userId })
@@ -454,18 +742,23 @@ class ScrollService {
           eq(studentProfiles.isActive, true)
         ));
       
-      recipientUserIds = classStudents
-        .filter(s => s.userId && s.userId !== author?.userId)
-        .map(s => s.userId!);
+      classStudents
+        .filter(s => s.userId)
+        .forEach((student) => {
+          recipientUserSet.add(student.userId!);
+        });
     } else if (scroll.recipientType === 'TEACHER') {
       const classroom = await db.query.classrooms.findFirst({
         where: eq(classrooms.id, scroll.classroomId),
       });
       
       if (classroom) {
-        recipientUserIds = [classroom.teacherId];
+        recipientUserSet.add(classroom.teacherId);
       }
     }
+
+    const recipientUserIds = Array.from(recipientUserSet)
+      .filter(userId => userId && userId !== author?.userId);
     
     // Crear notificaciones
     const now = new Date();

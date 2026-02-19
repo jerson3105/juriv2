@@ -1,6 +1,8 @@
 import { eq, and, desc, asc, inArray, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
+import { clanService } from './clan.service.js';
+import { storyService } from './story.service.js';
 import {
   tournaments,
   tournamentParticipants,
@@ -13,6 +15,7 @@ import {
   pointLogs,
   notifications,
   activityCompetencies,
+  classrooms,
   type Tournament,
   type TournamentParticipant,
   type TournamentMatch,
@@ -124,80 +127,114 @@ class TournamentService {
     const maxParticipants = data.maxParticipants || 16;
     const totalRounds = Math.ceil(Math.log2(maxParticipants));
 
-    await db.insert(tournaments).values({
-      id,
-      classroomId,
-      name: data.name,
-      description: data.description,
-      icon: data.icon || '🏆',
-      type: data.type,
-      participantType: data.participantType,
-      questionBankIds: data.questionBankIds,
-      maxParticipants,
-      timePerQuestion: data.timePerQuestion || 30,
-      questionsPerMatch: data.questionsPerMatch || 3,
-      pointsPerCorrect: data.pointsPerCorrect || 100,
-      bonusTimePoints: data.bonusTimePoints || 10,
-      rewardXpFirst: data.rewardXpFirst || 100,
-      rewardXpSecond: data.rewardXpSecond || 50,
-      rewardXpThird: data.rewardXpThird || 25,
-      rewardGpFirst: data.rewardGpFirst || 50,
-      rewardGpSecond: data.rewardGpSecond || 25,
-      rewardGpThird: data.rewardGpThird || 10,
-      rewardXpParticipation: data.rewardXpParticipation || 10,
-      status: 'DRAFT',
-      totalRounds,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    // Guardar competencias asociadas si existen
-    if (data.competencyIds && data.competencyIds.length > 0) {
-      const competencyValues = data.competencyIds.map(competencyId => ({
-        id: uuidv4(),
-        activityType: 'TOURNAMENT' as const,
-        activityId: id,
-        competencyId,
-        weight: 100,
+    await db.transaction(async (tx) => {
+      await tx.insert(tournaments).values({
+        id,
+        classroomId,
+        name: data.name,
+        description: data.description,
+        icon: data.icon || '🏆',
+        type: data.type,
+        participantType: data.participantType,
+        questionBankIds: data.questionBankIds,
+        maxParticipants,
+        timePerQuestion: data.timePerQuestion || 30,
+        questionsPerMatch: data.questionsPerMatch || 3,
+        pointsPerCorrect: data.pointsPerCorrect || 100,
+        bonusTimePoints: data.bonusTimePoints || 10,
+        rewardXpFirst: data.rewardXpFirst || 100,
+        rewardXpSecond: data.rewardXpSecond || 50,
+        rewardXpThird: data.rewardXpThird || 25,
+        rewardGpFirst: data.rewardGpFirst || 50,
+        rewardGpSecond: data.rewardGpSecond || 25,
+        rewardGpThird: data.rewardGpThird || 10,
+        rewardXpParticipation: data.rewardXpParticipation || 10,
+        status: 'DRAFT',
+        totalRounds,
         createdAt: now,
-      }));
-      await db.insert(activityCompetencies).values(competencyValues);
-    }
+        updatedAt: now,
+      });
+
+      if (data.competencyIds && data.competencyIds.length > 0) {
+        const competencyValues = data.competencyIds.map(competencyId => ({
+          id: uuidv4(),
+          activityType: 'TOURNAMENT' as const,
+          activityId: id,
+          competencyId,
+          weight: 100,
+          createdAt: now,
+        }));
+        await tx.insert(activityCompetencies).values(competencyValues);
+      }
+    });
 
     const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, id));
     return tournament;
   }
 
   async updateTournament(tournamentId: string, data: UpdateTournamentDto): Promise<Tournament> {
-    const updateData: any = { ...data, updatedAt: new Date() };
+    const { competencyIds, ...tournamentData } = data;
+    const now = new Date();
+    const updateData: any = { ...tournamentData, updatedAt: now };
 
     // Recalcular rondas si cambia maxParticipants
     if (data.maxParticipants) {
       updateData.totalRounds = Math.ceil(Math.log2(data.maxParticipants));
     }
 
-    await db.update(tournaments)
-      .set(updateData)
-      .where(eq(tournaments.id, tournamentId));
+    await db.transaction(async (tx) => {
+      await tx.update(tournaments)
+        .set(updateData)
+        .where(eq(tournaments.id, tournamentId));
+
+      if (typeof competencyIds !== 'undefined') {
+        await tx
+          .delete(activityCompetencies)
+          .where(and(
+            eq(activityCompetencies.activityType, 'TOURNAMENT'),
+            eq(activityCompetencies.activityId, tournamentId)
+          ));
+
+        if (competencyIds.length > 0) {
+          await tx.insert(activityCompetencies).values(
+            competencyIds.map((competencyId) => ({
+              id: uuidv4(),
+              activityType: 'TOURNAMENT' as const,
+              activityId: tournamentId,
+              competencyId,
+              weight: 100,
+              createdAt: now,
+            }))
+          );
+        }
+      }
+    });
 
     const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, tournamentId));
     return tournament;
   }
 
   async deleteTournament(tournamentId: string): Promise<void> {
-    // Eliminar en orden: answers -> matches -> participants -> tournament
-    const matchIds = await db.select({ id: tournamentMatches.id })
-      .from(tournamentMatches)
-      .where(eq(tournamentMatches.tournamentId, tournamentId));
+    await db.transaction(async (tx) => {
+      const matchIds = await tx.select({ id: tournamentMatches.id })
+        .from(tournamentMatches)
+        .where(eq(tournamentMatches.tournamentId, tournamentId));
 
-    if (matchIds.length > 0) {
-      await db.delete(tournamentAnswers)
-        .where(inArray(tournamentAnswers.matchId, matchIds.map(m => m.id)));
-    }
+      if (matchIds.length > 0) {
+        await tx.delete(tournamentAnswers)
+          .where(inArray(tournamentAnswers.matchId, matchIds.map((m) => m.id)));
+      }
 
-    await db.delete(tournamentMatches).where(eq(tournamentMatches.tournamentId, tournamentId));
-    await db.delete(tournamentParticipants).where(eq(tournamentParticipants.tournamentId, tournamentId));
-    await db.delete(tournaments).where(eq(tournaments.id, tournamentId));
+      await tx.delete(tournamentMatches).where(eq(tournamentMatches.tournamentId, tournamentId));
+      await tx.delete(tournamentParticipants).where(eq(tournamentParticipants.tournamentId, tournamentId));
+      await tx
+        .delete(activityCompetencies)
+        .where(and(
+          eq(activityCompetencies.activityType, 'TOURNAMENT'),
+          eq(activityCompetencies.activityId, tournamentId)
+        ));
+      await tx.delete(tournaments).where(eq(tournaments.id, tournamentId));
+    });
   }
 
   async getTournament(tournamentId: string): Promise<TournamentWithDetails | null> {
@@ -244,6 +281,20 @@ class TournamentService {
     }
     let banksData: { id: string; name: string; questionCount: number }[] = [];
     if (bankIds.length > 0) {
+      const questionCounts = await db
+        .select({
+          bankId: questions.bankId,
+          count: sql<number>`count(*)`,
+        })
+        .from(questions)
+        .where(inArray(questions.bankId, bankIds))
+        .groupBy(questions.bankId);
+
+      const countByBankId = new Map<string, number>();
+      for (const row of questionCounts) {
+        countByBankId.set(row.bankId, Number(row.count || 0));
+      }
+
       const banks = await db.select({
         id: questionBanks.id,
         name: questionBanks.name,
@@ -251,16 +302,10 @@ class TournamentService {
         .from(questionBanks)
         .where(inArray(questionBanks.id, bankIds));
 
-      // Contar preguntas por banco
-      for (const bank of banks) {
-        const [countResult] = await db.select({ count: sql<number>`count(*)` })
-          .from(questions)
-          .where(eq(questions.bankId, bank.id));
-        banksData.push({
-          ...bank,
-          questionCount: Number(countResult?.count || 0),
-        });
-      }
+      banksData = banks.map((bank) => ({
+        ...bank,
+        questionCount: countByBankId.get(bank.id) || 0,
+      }));
     }
 
     return {
@@ -280,6 +325,47 @@ class TournamentService {
       .from(tournaments)
       .where(eq(tournaments.classroomId, classroomId))
       .orderBy(desc(tournaments.createdAt));
+  }
+
+  async getClassroomIdByTournament(tournamentId: string): Promise<string | null> {
+    const [tournament] = await db
+      .select({ classroomId: tournaments.classroomId })
+      .from(tournaments)
+      .where(eq(tournaments.id, tournamentId));
+
+    return tournament?.classroomId || null;
+  }
+
+  async getClassroomIdByMatch(matchId: string): Promise<string | null> {
+    const [match] = await db
+      .select({ classroomId: tournaments.classroomId })
+      .from(tournamentMatches)
+      .innerJoin(tournaments, eq(tournamentMatches.tournamentId, tournaments.id))
+      .where(eq(tournamentMatches.id, matchId));
+
+    return match?.classroomId || null;
+  }
+
+  async getClassroomIdByParticipant(participantId: string): Promise<string | null> {
+    const [participant] = await db
+      .select({ classroomId: tournaments.classroomId })
+      .from(tournamentParticipants)
+      .innerJoin(tournaments, eq(tournamentParticipants.tournamentId, tournaments.id))
+      .where(eq(tournamentParticipants.id, participantId));
+
+    return participant?.classroomId || null;
+  }
+
+  async verifyTeacherOwnsClassroom(teacherId: string, classroomId: string): Promise<boolean> {
+    const [classroom] = await db
+      .select({ id: classrooms.id })
+      .from(classrooms)
+      .where(and(
+        eq(classrooms.id, classroomId),
+        eq(classrooms.teacherId, teacherId)
+      ));
+
+    return !!classroom;
   }
 
   // ==================== PARTICIPANTES ====================
@@ -839,20 +925,22 @@ class TournamentService {
       tournament.questionsPerMatch
     );
 
-    await db.update(tournamentMatches)
-      .set({
-        status: 'IN_PROGRESS',
-        questionIds,
-        currentQuestionIndex: 0,
-        startedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(tournamentMatches.id, matchId));
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      await tx.update(tournamentMatches)
+        .set({
+          status: 'IN_PROGRESS',
+          questionIds,
+          currentQuestionIndex: 0,
+          startedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(tournamentMatches.id, matchId));
 
-    // Actualizar estado del torneo si es necesario
-    await db.update(tournaments)
-      .set({ status: 'ACTIVE', updatedAt: new Date() })
-      .where(eq(tournaments.id, match.tournamentId));
+      await tx.update(tournaments)
+        .set({ status: 'ACTIVE', updatedAt: now })
+        .where(eq(tournaments.id, match.tournamentId));
+    });
 
     return this.getMatch(matchId) as Promise<MatchWithDetails>;
   }
@@ -888,13 +976,18 @@ class TournamentService {
     const match = await this.getMatch(matchId);
     if (!match) throw new Error('Match no encontrado');
     if (match.status !== 'IN_PROGRESS') throw new Error('El match no está en progreso');
-    if (!match.currentQuestion) throw new Error('No hay pregunta actual');
+    const currentQuestion = match.currentQuestion;
+    if (!currentQuestion) throw new Error('No hay pregunta actual');
 
     const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, match.tournamentId));
     if (!tournament) throw new Error('Torneo no encontrado');
 
+    if (participantId !== match.participant1Id && participantId !== match.participant2Id) {
+      throw new Error('El participante no pertenece a este match');
+    }
+
     // Verificar si la respuesta es correcta
-    const isCorrect = this.checkAnswer(match.currentQuestion, answer);
+    const isCorrect = this.checkAnswer(currentQuestion, answer);
 
     // Calcular puntos
     let pointsEarned = 0;
@@ -906,47 +999,47 @@ class TournamentService {
       }
     }
 
-    // Guardar respuesta
     const answerId = uuidv4();
-    await db.insert(tournamentAnswers).values({
-      id: answerId,
-      matchId,
-      participantId,
-      questionId: match.currentQuestion.id,
-      answer,
-      isCorrect,
-      pointsEarned,
-      timeSpent,
-      answeredAt: new Date(),
-    });
-
-    // Actualizar puntuación del participante en el match
+    const now = new Date();
     const isParticipant1 = match.participant1Id === participantId;
-    if (isParticipant1) {
-      await db.update(tournamentMatches)
-        .set({
-          participant1Score: match.participant1Score + pointsEarned,
-          updatedAt: new Date(),
-        })
-        .where(eq(tournamentMatches.id, matchId));
-    } else {
-      await db.update(tournamentMatches)
-        .set({
-          participant2Score: match.participant2Score + pointsEarned,
-          updatedAt: new Date(),
-        })
-        .where(eq(tournamentMatches.id, matchId));
-    }
+    await db.transaction(async (tx) => {
+      await tx.insert(tournamentAnswers).values({
+        id: answerId,
+        matchId,
+        participantId,
+        questionId: currentQuestion.id,
+        answer,
+        isCorrect,
+        pointsEarned,
+        timeSpent,
+        answeredAt: now,
+      });
 
-    // Actualizar estadísticas del participante
-    await db.update(tournamentParticipants)
-      .set({
-        totalPoints: sql`total_points + ${pointsEarned}`,
-        questionsCorrect: isCorrect ? sql`questions_correct + 1` : sql`questions_correct`,
-        questionsTotal: sql`questions_total + 1`,
-        updatedAt: new Date(),
-      })
-      .where(eq(tournamentParticipants.id, participantId));
+      if (isParticipant1) {
+        await tx.update(tournamentMatches)
+          .set({
+            participant1Score: sql`${tournamentMatches.participant1Score} + ${pointsEarned}`,
+            updatedAt: now,
+          })
+          .where(eq(tournamentMatches.id, matchId));
+      } else {
+        await tx.update(tournamentMatches)
+          .set({
+            participant2Score: sql`${tournamentMatches.participant2Score} + ${pointsEarned}`,
+            updatedAt: now,
+          })
+          .where(eq(tournamentMatches.id, matchId));
+      }
+
+      await tx.update(tournamentParticipants)
+        .set({
+          totalPoints: sql`total_points + ${pointsEarned}`,
+          questionsCorrect: isCorrect ? sql`questions_correct + 1` : sql`questions_correct`,
+          questionsTotal: sql`questions_total + 1`,
+          updatedAt: now,
+        })
+        .where(eq(tournamentParticipants.id, participantId));
+    });
 
     const [savedAnswer] = await db.select().from(tournamentAnswers).where(eq(tournamentAnswers.id, answerId));
 
@@ -1051,6 +1144,7 @@ class TournamentService {
   async completeMatch(matchId: string): Promise<MatchWithDetails> {
     const match = await this.getMatch(matchId);
     if (!match) throw new Error('Match no encontrado');
+    if (match.status !== 'IN_PROGRESS') throw new Error('El match no está en progreso');
 
     // Obtener tipo de torneo
     const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, match.tournamentId));
@@ -1072,61 +1166,62 @@ class TournamentService {
     }
     // En Liga, empate = winnerId queda null
 
-    await db.update(tournamentMatches)
-      .set({
-        status: 'COMPLETED',
-        winnerId,
-        completedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(tournamentMatches.id, matchId));
+    const now = new Date();
 
-    // Actualizar estadísticas de participantes
-    if (isTie && isLeague) {
-      // Empate en Liga: ambos ganan 1 punto (matchesDrawn)
-      if (match.participant1Id) {
-        await db.update(tournamentParticipants)
-          .set({
-            matchesDrawn: sql`matches_drawn + 1`,
-            updatedAt: new Date(),
-          })
-          .where(eq(tournamentParticipants.id, match.participant1Id));
-      }
-
-      if (match.participant2Id) {
-        await db.update(tournamentParticipants)
-          .set({
-            matchesDrawn: sql`matches_drawn + 1`,
-            updatedAt: new Date(),
-          })
-          .where(eq(tournamentParticipants.id, match.participant2Id));
-      }
-    } else if (winnerId) {
-      const loserId = winnerId === match.participant1Id ? match.participant2Id : match.participant1Id;
-
-      await db.update(tournamentParticipants)
+    await db.transaction(async (tx) => {
+      await tx.update(tournamentMatches)
         .set({
-          matchesWon: sql`matches_won + 1`,
-          updatedAt: new Date(),
+          status: 'COMPLETED',
+          winnerId,
+          completedAt: now,
+          updatedAt: now,
         })
-        .where(eq(tournamentParticipants.id, winnerId));
+        .where(eq(tournamentMatches.id, matchId));
 
-      if (loserId) {
-        await db.update(tournamentParticipants)
+      if (isTie && isLeague) {
+        if (match.participant1Id) {
+          await tx.update(tournamentParticipants)
+            .set({
+              matchesDrawn: sql`matches_drawn + 1`,
+              updatedAt: now,
+            })
+            .where(eq(tournamentParticipants.id, match.participant1Id));
+        }
+
+        if (match.participant2Id) {
+          await tx.update(tournamentParticipants)
+            .set({
+              matchesDrawn: sql`matches_drawn + 1`,
+              updatedAt: now,
+            })
+            .where(eq(tournamentParticipants.id, match.participant2Id));
+        }
+      } else if (winnerId) {
+        const loserId = winnerId === match.participant1Id ? match.participant2Id : match.participant1Id;
+
+        await tx.update(tournamentParticipants)
           .set({
-            matchesLost: sql`matches_lost + 1`,
-            isEliminated: !isLeague, // Solo eliminar en torneos de eliminación
-            eliminatedInRound: !isLeague ? match.round : null,
-            updatedAt: new Date(),
+            matchesWon: sql`matches_won + 1`,
+            updatedAt: now,
           })
-          .where(eq(tournamentParticipants.id, loserId));
-      }
-    }
+          .where(eq(tournamentParticipants.id, winnerId));
 
-    // Avanzar ganador a la siguiente ronda (solo en eliminación)
-    if (winnerId && !isLeague) {
-      await this.advanceWinner(matchId, winnerId);
-    }
+        if (loserId) {
+          await tx.update(tournamentParticipants)
+            .set({
+              matchesLost: sql`matches_lost + 1`,
+              isEliminated: !isLeague,
+              eliminatedInRound: !isLeague ? match.round : null,
+              updatedAt: now,
+            })
+            .where(eq(tournamentParticipants.id, loserId));
+        }
+      }
+
+      if (winnerId && !isLeague) {
+        await this.advanceWinner(matchId, winnerId, tx);
+      }
+    });
 
     // Verificar si el torneo terminó
     await this.checkTournamentCompletion(match.tournamentId);
@@ -1134,11 +1229,11 @@ class TournamentService {
     return this.getMatch(matchId) as Promise<MatchWithDetails>;
   }
 
-  private async advanceWinner(matchId: string, winnerId: string): Promise<void> {
-    const [match] = await db.select().from(tournamentMatches).where(eq(tournamentMatches.id, matchId));
+  private async advanceWinner(matchId: string, winnerId: string, tx: any = db): Promise<void> {
+    const [match] = await tx.select().from(tournamentMatches).where(eq(tournamentMatches.id, matchId));
     if (!match) return;
 
-    const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, match.tournamentId));
+    const [tournament] = await tx.select().from(tournaments).where(eq(tournaments.id, match.tournamentId));
     if (!tournament) return;
 
     // Si es la final, no hay siguiente ronda
@@ -1148,7 +1243,7 @@ class TournamentService {
     const nextRound = match.round + 1;
     const nextMatchNumber = Math.ceil(match.matchNumber / 2);
 
-    const [nextMatch] = await db.select()
+    const [nextMatch] = await tx.select()
       .from(tournamentMatches)
       .where(and(
         eq(tournamentMatches.tournamentId, match.tournamentId),
@@ -1161,7 +1256,7 @@ class TournamentService {
       const isOddMatch = match.matchNumber % 2 === 1;
       const updateField = isOddMatch ? 'participant1Id' : 'participant2Id';
 
-      await db.update(tournamentMatches)
+      await tx.update(tournamentMatches)
         .set({
           [updateField]: winnerId,
           updatedAt: new Date(),
@@ -1172,7 +1267,7 @@ class TournamentService {
 
   private async checkTournamentCompletion(tournamentId: string): Promise<void> {
     const [tournament] = await db.select().from(tournaments).where(eq(tournaments.id, tournamentId));
-    if (!tournament) return;
+    if (!tournament || tournament.status === 'FINISHED') return;
 
     // Buscar la final
     const [finalMatch] = await db.select()
@@ -1228,7 +1323,10 @@ class TournamentService {
           .where(eq(tournamentParticipants.id, thirdPlaceId));
       }
 
-      // Actualizar torneo
+      // Otorgar recompensas
+      await this.grantRewards(tournamentId);
+
+      // Marcar torneo finalizado solo cuando recompensas se otorgaron correctamente
       await db.update(tournaments)
         .set({
           status: 'FINISHED',
@@ -1239,9 +1337,6 @@ class TournamentService {
           updatedAt: new Date(),
         })
         .where(eq(tournaments.id, tournamentId));
-
-      // Otorgar recompensas
-      await this.grantRewards(tournamentId);
     }
   }
 
@@ -1249,72 +1344,104 @@ class TournamentService {
     const tournament = await this.getTournament(tournamentId);
     if (!tournament || !tournament.participants) return;
 
+    const [classroomConfig] = await db
+      .select({ xpPerLevel: classrooms.xpPerLevel })
+      .from(classrooms)
+      .where(eq(classrooms.id, tournament.classroomId));
+
+    const xpPerLevel = classroomConfig?.xpPerLevel || 100;
+
     const now = new Date();
+    const xpAwardsForSideEffects: { studentProfileId: string; xpReward: number; reason: string }[] = [];
 
-    for (const participant of tournament.participants) {
-      let xpReward = tournament.rewardXpParticipation;
-      let gpReward = 0;
-      let notificationTitle = '🏆 Torneo finalizado';
-      let notificationMessage = `Participaste en el torneo "${tournament.name}"`;
+    await db.transaction(async (tx) => {
+      for (const participant of tournament.participants!) {
+        let xpReward = tournament.rewardXpParticipation;
+        let gpReward = 0;
+        let notificationTitle = '🏆 Torneo finalizado';
+        let notificationMessage = `Participaste en el torneo "${tournament.name}"`;
 
-      if (participant.finalPosition === 1) {
-        xpReward = tournament.rewardXpFirst;
-        gpReward = tournament.rewardGpFirst;
-        notificationTitle = '🥇 ¡Campeón del Torneo!';
-        notificationMessage = `¡Ganaste el torneo "${tournament.name}"! +${xpReward} XP, +${gpReward} GP`;
-      } else if (participant.finalPosition === 2) {
-        xpReward = tournament.rewardXpSecond;
-        gpReward = tournament.rewardGpSecond;
-        notificationTitle = '🥈 ¡Segundo lugar!';
-        notificationMessage = `Obtuviste el segundo lugar en "${tournament.name}". +${xpReward} XP, +${gpReward} GP`;
-      } else if (participant.finalPosition === 3) {
-        xpReward = tournament.rewardXpThird;
-        gpReward = tournament.rewardGpThird;
-        notificationTitle = '🥉 ¡Tercer lugar!';
-        notificationMessage = `Obtuviste el tercer lugar en "${tournament.name}". +${xpReward} XP, +${gpReward} GP`;
-      }
+        if (participant.finalPosition === 1) {
+          xpReward = tournament.rewardXpFirst;
+          gpReward = tournament.rewardGpFirst;
+          notificationTitle = '🥇 ¡Campeón del Torneo!';
+          notificationMessage = `¡Ganaste el torneo "${tournament.name}"! +${xpReward} XP, +${gpReward} GP`;
+        } else if (participant.finalPosition === 2) {
+          xpReward = tournament.rewardXpSecond;
+          gpReward = tournament.rewardGpSecond;
+          notificationTitle = '🥈 ¡Segundo lugar!';
+          notificationMessage = `Obtuviste el segundo lugar en "${tournament.name}". +${xpReward} XP, +${gpReward} GP`;
+        } else if (participant.finalPosition === 3) {
+          xpReward = tournament.rewardXpThird;
+          gpReward = tournament.rewardGpThird;
+          notificationTitle = '🥉 ¡Tercer lugar!';
+          notificationMessage = `Obtuviste el tercer lugar en "${tournament.name}". +${xpReward} XP, +${gpReward} GP`;
+        }
 
-      // Solo dar recompensas a participantes individuales (no clanes por ahora)
-      if (participant.studentProfileId && participant.student) {
-        // Actualizar XP y GP del estudiante
-        await db.update(studentProfiles)
+        if (!participant.studentProfileId || !participant.student) {
+          continue;
+        }
+
+        const [studentProfile] = await tx.select().from(studentProfiles)
+          .where(eq(studentProfiles.id, participant.studentProfileId));
+
+        if (!studentProfile) {
+          continue;
+        }
+
+        const newXp = studentProfile.xp + xpReward;
+        const newLevel = xpReward > 0
+          ? this.calculateLevel(newXp, xpPerLevel)
+          : studentProfile.level;
+        const leveledUp = newLevel > studentProfile.level;
+
+        await tx.update(studentProfiles)
           .set({
-            xp: sql`xp + ${xpReward}`,
-            gp: sql`gp + ${gpReward}`,
+            xp: newXp,
+            gp: studentProfile.gp + gpReward,
+            level: newLevel,
             updatedAt: now,
           })
           .where(eq(studentProfiles.id, participant.studentProfileId));
 
-        // Registrar en pointLogs
+        const reason = `Torneo: ${tournament.name} - Posición ${participant.finalPosition || 'Participación'}`;
+        const logsBatch: typeof pointLogs.$inferInsert[] = [];
+
         if (xpReward > 0) {
-          await db.insert(pointLogs).values({
+          logsBatch.push({
             id: uuidv4(),
             studentId: participant.studentProfileId,
             pointType: 'XP',
             action: 'ADD',
             amount: xpReward,
-            reason: `Torneo: ${tournament.name} - Posición ${participant.finalPosition || 'Participación'}`,
+            reason,
             createdAt: now,
           });
+          xpAwardsForSideEffects.push({
+            studentProfileId: participant.studentProfileId,
+            xpReward,
+            reason,
+          });
         }
+
         if (gpReward > 0) {
-          await db.insert(pointLogs).values({
+          logsBatch.push({
             id: uuidv4(),
             studentId: participant.studentProfileId,
             pointType: 'GP',
             action: 'ADD',
             amount: gpReward,
-            reason: `Torneo: ${tournament.name} - Posición ${participant.finalPosition || 'Participación'}`,
+            reason,
             createdAt: now,
           });
         }
 
-        // Crear notificación
-        const [studentProfile] = await db.select().from(studentProfiles)
-          .where(eq(studentProfiles.id, participant.studentProfileId));
-        
-        if (studentProfile?.userId) {
-          await db.insert(notifications).values({
+        if (logsBatch.length > 0) {
+          await tx.insert(pointLogs).values(logsBatch);
+        }
+
+        if (studentProfile.userId) {
+          await tx.insert(notifications).values({
             id: uuidv4(),
             userId: studentProfile.userId,
             type: 'POINTS',
@@ -1323,9 +1450,41 @@ class TournamentService {
             isRead: false,
             createdAt: now,
           });
+
+          if (leveledUp) {
+            await tx.insert(notifications).values({
+              id: uuidv4(),
+              userId: studentProfile.userId,
+              classroomId: tournament.classroomId,
+              type: 'LEVEL_UP',
+              title: '🎉 ¡Subiste de nivel!',
+              message: `¡Felicidades! Has alcanzado el nivel ${newLevel}`,
+              isRead: false,
+              createdAt: now,
+            });
+          }
         }
       }
+    });
+
+    for (const xpAward of xpAwardsForSideEffects) {
+      try {
+        await clanService.contributeXpToClan(xpAward.studentProfileId, xpAward.xpReward, xpAward.reason);
+      } catch {
+        // Silently fail
+      }
+
+      try {
+        await storyService.onXpAwarded(tournament.classroomId, xpAward.studentProfileId, xpAward.xpReward);
+      } catch {
+        // Silently fail
+      }
     }
+  }
+
+  private calculateLevel(totalXp: number, xpPerLevel: number = 100): number {
+    const level = Math.floor((1 + Math.sqrt(1 + (8 * totalXp) / xpPerLevel)) / 2);
+    return Math.max(1, level);
   }
 
   // ==================== UTILITIES ====================

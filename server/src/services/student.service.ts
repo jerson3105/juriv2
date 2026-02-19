@@ -5,10 +5,12 @@ import { v4 as uuidv4 } from 'uuid';
 import { avatarService } from './avatar.service.js';
 import { clanService } from './clan.service.js';
 import { badgeService } from './badge.service.js';
+import { storyService } from './story.service.js';
 
 type CharacterClass = 'GUARDIAN' | 'ARCANE' | 'EXPLORER' | 'ALCHEMIST';
 type PointType = 'XP' | 'HP' | 'GP';
 type AvatarGender = 'MALE' | 'FEMALE';
+type StatsRequesterRole = 'ADMIN' | 'TEACHER' | 'STUDENT';
 
 interface JoinClassData {
   userId: string;
@@ -199,9 +201,11 @@ export class StudentService {
       newValue = Math.min(newValue, classroom.maxHp);
     }
 
+    const now = new Date();
+
     // Actualizar perfil
     const updateData: Record<string, unknown> = {
-      updatedAt: new Date(),
+      updatedAt: now,
     };
     updateData[data.pointType.toLowerCase()] = newValue;
 
@@ -215,12 +219,7 @@ export class StudentService {
       }
     }
 
-    await db.update(studentProfiles)
-      .set(updateData)
-      .where(eq(studentProfiles.id, data.studentId));
-
-    // Registrar en el log
-    await db.insert(pointLogs).values({
+    const pointLogEntry: typeof pointLogs.$inferInsert = {
       id: uuidv4(),
       studentId: data.studentId,
       pointType: data.pointType,
@@ -228,7 +227,53 @@ export class StudentService {
       amount: Math.abs(data.amount),
       reason: data.reason,
       givenBy: data.teacherId,
-      createdAt: new Date(),
+      createdAt: now,
+    };
+
+    const notificationsBatch: typeof notifications.$inferInsert[] = [];
+
+    // Crear notificación de puntos (solo si tiene cuenta vinculada y la clase lo permite)
+    if (profile.userId && classroom.notifyOnPoints) {
+      const actionText = data.amount >= 0 ? 'recibiste' : 'perdiste';
+      const pointTypeEmoji = data.pointType === 'XP' ? '⚡' : data.pointType === 'HP' ? '❤️' : '🪙';
+      const pointTypeName = data.pointType === 'XP' ? 'XP' : data.pointType === 'HP' ? 'HP' : 'Oro';
+      
+      notificationsBatch.push({
+        id: uuidv4(),
+        userId: profile.userId,
+        type: 'POINTS',
+        title: data.amount >= 0 ? '¡Puntos recibidos!' : 'Puntos perdidos',
+        message: classroom.showReasonToStudent && data.reason
+          ? `${actionText} ${pointTypeEmoji}${Math.abs(data.amount)} ${pointTypeName} por: ${data.reason}`
+          : `${actionText} ${pointTypeEmoji}${Math.abs(data.amount)} ${pointTypeName}`,
+        isRead: false,
+        createdAt: now,
+      });
+    }
+
+    // Crear notificación de subida de nivel (solo si tiene cuenta vinculada)
+    if (leveledUp && profile.userId) {
+      notificationsBatch.push({
+        id: uuidv4(),
+        userId: profile.userId,
+        type: 'LEVEL_UP',
+        title: '🎉 ¡Subiste de nivel!',
+        message: `¡Felicidades! Has alcanzado el nivel ${newLevel}`,
+        isRead: false,
+        createdAt: now,
+      });
+    }
+
+    await db.transaction(async (tx) => {
+      await tx.update(studentProfiles)
+        .set(updateData)
+        .where(eq(studentProfiles.id, data.studentId));
+
+      await tx.insert(pointLogs).values(pointLogEntry);
+
+      if (notificationsBatch.length > 0) {
+        await tx.insert(notifications).values(notificationsBatch);
+      }
     });
 
     // Contribuir XP al clan si está habilitado
@@ -238,38 +283,12 @@ export class StudentService {
       } catch (error) {
         // Silently fail - don't break point update
       }
-    }
-
-    // Crear notificación de puntos (solo si tiene cuenta vinculada y la clase lo permite)
-    if (profile.userId && classroom.notifyOnPoints) {
-      const actionText = data.amount >= 0 ? 'recibiste' : 'perdiste';
-      const pointTypeEmoji = data.pointType === 'XP' ? '⚡' : data.pointType === 'HP' ? '❤️' : '🪙';
-      const pointTypeName = data.pointType === 'XP' ? 'XP' : data.pointType === 'HP' ? 'HP' : 'Oro';
-      
-      await db.insert(notifications).values({
-        id: uuidv4(),
-        userId: profile.userId,
-        type: 'POINTS',
-        title: data.amount >= 0 ? '¡Puntos recibidos!' : 'Puntos perdidos',
-        message: classroom.showReasonToStudent && data.reason
-          ? `${actionText} ${pointTypeEmoji}${Math.abs(data.amount)} ${pointTypeName} por: ${data.reason}`
-          : `${actionText} ${pointTypeEmoji}${Math.abs(data.amount)} ${pointTypeName}`,
-        isRead: false,
-        createdAt: new Date(),
-      });
-    }
-
-    // Crear notificación de subida de nivel (solo si tiene cuenta vinculada)
-    if (leveledUp && profile.userId) {
-      await db.insert(notifications).values({
-        id: uuidv4(),
-        userId: profile.userId,
-        type: 'LEVEL_UP',
-        title: '🎉 ¡Subiste de nivel!',
-        message: `¡Felicidades! Has alcanzado el nivel ${newLevel}`,
-        isRead: false,
-        createdAt: new Date(),
-      });
+      // Storytelling: procesar donaciones virtuales
+      try {
+        await storyService.onXpAwarded(profile.classroomId, data.studentId, data.amount);
+      } catch (error) {
+        // Silently fail
+      }
     }
 
     // Verificar insignias
@@ -443,6 +462,49 @@ export class StudentService {
   }
 
   // Obtener estadísticas detalladas del estudiante
+  async getStudentStatsForRequester(studentId: string, requesterId: string, requesterRole: StatsRequesterRole) {
+    const [studentProfile] = await db
+      .select({
+        id: studentProfiles.id,
+        userId: studentProfiles.userId,
+        classroomId: studentProfiles.classroomId,
+      })
+      .from(studentProfiles)
+      .where(eq(studentProfiles.id, studentId))
+      .limit(1);
+
+    if (!studentProfile) {
+      throw new Error('Estudiante no encontrado');
+    }
+
+    if (requesterRole === 'ADMIN') {
+      return this.getStudentStats(studentId);
+    }
+
+    if (requesterRole === 'STUDENT') {
+      if (studentProfile.userId !== requesterId) {
+        throw new Error('No autorizado para ver estas estadísticas');
+      }
+
+      return this.getStudentStats(studentId);
+    }
+
+    const [ownedClassroom] = await db
+      .select({ id: classrooms.id })
+      .from(classrooms)
+      .where(and(
+        eq(classrooms.id, studentProfile.classroomId),
+        eq(classrooms.teacherId, requesterId)
+      ))
+      .limit(1);
+
+    if (!ownedClassroom) {
+      throw new Error('No autorizado para ver estas estadísticas');
+    }
+
+    return this.getStudentStats(studentId);
+  }
+
   async getStudentStats(studentId: string) {
     const student = await this.getStudentById(studentId);
     if (!student) {

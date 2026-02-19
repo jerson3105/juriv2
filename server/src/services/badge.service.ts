@@ -1,6 +1,8 @@
 import { v4 as uuid } from 'uuid';
 import { eq, and, or, inArray, gte } from 'drizzle-orm';
 import { db } from '../db/index.js';
+import { clanService } from './clan.service.js';
+import { storyService } from './story.service.js';
 import { 
   badges, 
   studentBadges, 
@@ -383,28 +385,66 @@ class BadgeService {
       awardReason: reason || null,
       isDisplayed: false,
     };
-    
-    await db.insert(studentBadges).values(newStudentBadge);
-    
-    // Dar recompensa si tiene
-    if (badge.rewardXp > 0 || badge.rewardGp > 0) {
-      await this.giveReward(studentProfileId, badge.rewardXp, badge.rewardGp);
-    }
-    
-    // Crear notificación para el estudiante (solo si tiene cuenta vinculada)
-    const student = await db.select().from(studentProfiles).where(eq(studentProfiles.id, studentProfileId));
-    if (student.length > 0 && student[0].userId) {
-      const newCount = existingCount + 1;
-      const countText = newCount > 1 ? ` (x${newCount})` : '';
-      await db.insert(notifications).values({
-        id: uuid(),
-        userId: student[0].userId,
-        type: 'BADGE',
-        title: '🏅 ¡Nueva insignia recibida!',
-        message: `Tu profesor te ha otorgado la insignia "${badge.name}"${countText}`,
-        isRead: false,
-        createdAt: new Date(),
-      });
+
+    await db.transaction(async (tx) => {
+      await tx.insert(studentBadges).values(newStudentBadge);
+
+      if (badge.rewardXp > 0 || badge.rewardGp > 0) {
+        await this.giveReward(
+          studentProfileId,
+          badge.rewardXp,
+          badge.rewardGp,
+          `Insignia: ${badge.name}`,
+          tx
+        );
+      }
+
+      const [student] = await tx.select().from(studentProfiles).where(eq(studentProfiles.id, studentProfileId));
+      if (student?.userId) {
+        const newCount = existingCount + 1;
+        const countText = newCount > 1 ? ` (x${newCount})` : '';
+        await tx.insert(notifications).values({
+          id: uuid(),
+          userId: student.userId,
+          type: 'BADGE',
+          title: '🏅 ¡Nueva insignia recibida!',
+          message: `Tu profesor te ha otorgado la insignia "${badge.name}"${countText}`,
+          isRead: false,
+          createdAt: new Date(),
+        });
+      }
+    });
+
+    if (badge.rewardXp > 0) {
+      const [student] = await db
+        .select({ id: studentProfiles.id, classroomId: studentProfiles.classroomId })
+        .from(studentProfiles)
+        .where(eq(studentProfiles.id, studentProfileId));
+
+      if (!student) {
+        return newStudentBadge as StudentBadge;
+      }
+
+      const reasonText = `Insignia: ${badge.name}`;
+      try {
+        await clanService.contributeXpToClan(
+          student.id,
+          badge.rewardXp,
+          reasonText
+        );
+      } catch {
+        // Silently fail
+      }
+
+      try {
+        await storyService.onXpAwarded(
+          student.classroomId,
+          student.id,
+          badge.rewardXp
+        );
+      } catch {
+        // Silently fail
+      }
     }
     
     return newStudentBadge as StudentBadge;
@@ -431,22 +471,29 @@ class BadgeService {
       awardReason: null,
       isDisplayed: false,
     };
-    
-    await db.insert(studentBadges).values(newStudentBadge);
-    
-    // Dar recompensa si tiene
-    if (badge.rewardXp > 0 || badge.rewardGp > 0) {
-      await this.giveReward(studentProfileId, badge.rewardXp, badge.rewardGp);
-    }
-    
-    // Crear notificaciones
-    const student = await db.select().from(studentProfiles).where(eq(studentProfiles.id, studentProfileId));
-    if (student.length > 0) {
-      // Notificación para el estudiante (solo si tiene cuenta vinculada)
-      if (student[0].userId) {
-        await db.insert(notifications).values({
+
+    await db.transaction(async (tx) => {
+      await tx.insert(studentBadges).values(newStudentBadge);
+
+      if (badge.rewardXp > 0 || badge.rewardGp > 0) {
+        await this.giveReward(
+          studentProfileId,
+          badge.rewardXp,
+          badge.rewardGp,
+          `Insignia: ${badge.name}`,
+          tx
+        );
+      }
+
+      const [student] = await tx.select().from(studentProfiles).where(eq(studentProfiles.id, studentProfileId));
+      if (!student) {
+        return;
+      }
+
+      if (student.userId) {
+        await tx.insert(notifications).values({
           id: uuid(),
-          userId: student[0].userId,
+          userId: student.userId,
           type: 'BADGE',
           title: '🏅 ¡Nueva insignia desbloqueada!',
           message: `Has obtenido la insignia "${badge.name}"`,
@@ -454,22 +501,55 @@ class BadgeService {
           createdAt: new Date(),
         });
       }
-      
-      // Notificación para el profesor (obtener de la clase)
-      const classroom = await db.query.classrooms.findFirst({
-        where: eq(classrooms.id, student[0].classroomId),
-      });
+
+      const [classroom] = await tx
+        .select({ id: classrooms.id, teacherId: classrooms.teacherId })
+        .from(classrooms)
+        .where(eq(classrooms.id, student.classroomId));
+
       if (classroom) {
-        await db.insert(notifications).values({
+        await tx.insert(notifications).values({
           id: uuid(),
           userId: classroom.teacherId,
           classroomId: classroom.id,
           type: 'BADGE',
           title: '🏅 ¡Insignia desbloqueada!',
-          message: `${student[0].characterName || 'Un estudiante'} ha obtenido la insignia "${badge.name}"`,
+          message: `${student.characterName || 'Un estudiante'} ha obtenido la insignia "${badge.name}"`,
           isRead: false,
           createdAt: new Date(),
         });
+      }
+    });
+
+    if (badge.rewardXp > 0) {
+      const [student] = await db
+        .select({ id: studentProfiles.id, classroomId: studentProfiles.classroomId })
+        .from(studentProfiles)
+        .where(eq(studentProfiles.id, studentProfileId));
+
+      if (!student) {
+        return newStudentBadge as StudentBadge;
+      }
+
+      const reasonText = `Insignia: ${badge.name}`;
+      try {
+        await clanService.contributeXpToClan(
+          student.id,
+          badge.rewardXp,
+          reasonText
+        );
+      } catch {
+        // Silently fail
+      }
+
+      try {
+        await storyService.onXpAwarded(
+          student.classroomId,
+          student.id,
+          badge.rewardXp
+        );
+      } catch {
+        // Silently fail
       }
     }
     
@@ -688,42 +768,68 @@ class BadgeService {
     return uniqueApplications.size;
   }
   
-  private async giveReward(studentProfileId: string, xp: number, gp: number): Promise<void> {
+  private async giveReward(
+    studentProfileId: string,
+    xp: number,
+    gp: number,
+    reason: string,
+    tx: any = db
+  ): Promise<void> {
     if (xp === 0 && gp === 0) return;
-    
-    const student = await db.select().from(studentProfiles).where(eq(studentProfiles.id, studentProfileId));
-    if (student.length === 0) return;
-    
-    const current = student[0];
-    const newXp = current.xp + xp;
-    
-    // Obtener configuración de la clase para calcular nivel
-    const classroom = await db.query.classrooms.findFirst({
-      where: eq(classrooms.id, current.classroomId),
-    });
-    
+
+    const [current] = await tx.select().from(studentProfiles).where(eq(studentProfiles.id, studentProfileId));
+    if (!current) return;
+
+    const [classroom] = await tx
+      .select({ xpPerLevel: classrooms.xpPerLevel })
+      .from(classrooms)
+      .where(eq(classrooms.id, current.classroomId));
+
     const xpPerLevel = classroom?.xpPerLevel || 100;
-    
-    // Calcular nuevo nivel usando la fórmula progresiva
-    const calculateLevel = (totalXp: number, xpPerLvl: number): number => {
-      const level = Math.floor((1 + Math.sqrt(1 + (8 * totalXp) / xpPerLvl)) / 2);
-      return Math.max(1, level);
-    };
-    
-    const newLevel = xp > 0 ? calculateLevel(newXp, xpPerLevel) : current.level;
+    const newXp = current.xp + xp;
+    const newLevel = xp > 0 ? this.calculateLevel(newXp, xpPerLevel) : current.level;
     const leveledUp = newLevel > current.level;
-    
-    await db.update(studentProfiles)
+    const now = new Date();
+
+    await tx.update(studentProfiles)
       .set({
         xp: newXp,
         gp: current.gp + gp,
         level: newLevel,
+        updatedAt: now,
       })
       .where(eq(studentProfiles.id, studentProfileId));
-    
-    // Notificar subida de nivel si aplica
+
+    const logsBatch: typeof pointLogs.$inferInsert[] = [];
+    if (xp > 0) {
+      logsBatch.push({
+        id: uuid(),
+        studentId: studentProfileId,
+        pointType: 'XP',
+        action: 'ADD',
+        amount: xp,
+        reason,
+        createdAt: now,
+      });
+    }
+    if (gp > 0) {
+      logsBatch.push({
+        id: uuid(),
+        studentId: studentProfileId,
+        pointType: 'GP',
+        action: 'ADD',
+        amount: gp,
+        reason,
+        createdAt: now,
+      });
+    }
+
+    if (logsBatch.length > 0) {
+      await tx.insert(pointLogs).values(logsBatch);
+    }
+
     if (leveledUp && current.userId) {
-      await db.insert(notifications).values({
+      await tx.insert(notifications).values({
         id: uuid(),
         userId: current.userId,
         classroomId: current.classroomId,
@@ -731,9 +837,16 @@ class BadgeService {
         title: '🎉 ¡Subiste de nivel!',
         message: `¡Felicidades! Has alcanzado el nivel ${newLevel}`,
         isRead: false,
-        createdAt: new Date(),
+        createdAt: now,
       });
     }
+
+    return;
+  }
+
+  private calculateLevel(totalXp: number, xpPerLevel: number = 100): number {
+    const level = Math.floor((1 + Math.sqrt(1 + (8 * totalXp) / xpPerLevel)) / 2);
+    return Math.max(1, level);
   }
   
   // ═══════════════════════════════════════════════════════════

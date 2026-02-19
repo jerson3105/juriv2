@@ -1,6 +1,27 @@
 import { Request, Response } from 'express';
 import { eventsService } from '../services/events.service.js';
 
+const ensureTeacherClassroomAccess = async (
+  req: Request,
+  res: Response,
+  classroomId: string
+): Promise<string | null> => {
+  const userId = req.user?.id;
+
+  if (!userId) {
+    res.status(401).json({ message: 'No autorizado' });
+    return null;
+  }
+
+  const isOwner = await eventsService.verifyTeacherOwnsClassroom(userId, classroomId);
+  if (!isOwner) {
+    res.status(403).json({ message: 'No tienes permiso para esta clase' });
+    return null;
+  }
+
+  return userId;
+};
+
 class EventsController {
   /**
    * Obtener eventos de una clase
@@ -8,6 +29,9 @@ class EventsController {
   async getClassroomEvents(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+      const userId = await ensureTeacherClassroomAccess(req, res, classroomId);
+      if (!userId) return;
+
       const events = await eventsService.getClassroomEvents(classroomId);
 
       res.json({
@@ -45,6 +69,9 @@ class EventsController {
       const { classroomId } = req.params;
       const eventData = req.body;
 
+      const userId = await ensureTeacherClassroomAccess(req, res, classroomId);
+      if (!userId) return;
+
       const event = await eventsService.createEvent({
         ...eventData,
         classroomId,
@@ -66,11 +93,8 @@ class EventsController {
   async triggerEvent(req: Request, res: Response) {
     try {
       const { classroomId, eventId } = req.params;
-      const userId = (req as any).user?.id;
-
-      if (!userId) {
-        return res.status(401).json({ message: 'No autorizado' });
-      }
+      const userId = await ensureTeacherClassroomAccess(req, res, classroomId);
+      if (!userId) return;
 
       const result = await eventsService.triggerEvent(eventId, classroomId, userId);
 
@@ -95,11 +119,8 @@ class EventsController {
     try {
       const { classroomId } = req.params;
       const { eventIndex } = req.body;
-      const userId = (req as any).user?.id;
-
-      if (!userId) {
-        return res.status(401).json({ message: 'No autorizado' });
-      }
+      const userId = await ensureTeacherClassroomAccess(req, res, classroomId);
+      if (!userId) return;
 
       if (eventIndex === undefined || eventIndex === null) {
         return res.status(400).json({ message: 'eventIndex es requerido' });
@@ -132,6 +153,9 @@ class EventsController {
   async getEventLogs(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+      const userId = await ensureTeacherClassroomAccess(req, res, classroomId);
+      if (!userId) return;
+
       const limit = parseInt(req.query.limit as string) || 20;
 
       const logs = await eventsService.getEventLogs(classroomId, limit);
@@ -152,6 +176,9 @@ class EventsController {
   async getCustomEvents(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+      const userId = await ensureTeacherClassroomAccess(req, res, classroomId);
+      if (!userId) return;
+
       const events = await eventsService.getCustomEvents(classroomId);
 
       res.json({
@@ -176,6 +203,18 @@ class EventsController {
         return res.status(404).json({ message: 'Evento no encontrado' });
       }
 
+      if (!event.isGlobal && event.classroomId) {
+        const userId = req.user?.id;
+        if (!userId) {
+          return res.status(401).json({ message: 'No autorizado' });
+        }
+
+        const isOwner = await eventsService.verifyTeacherOwnsClassroom(userId, event.classroomId);
+        if (!isOwner) {
+          return res.status(403).json({ message: 'No tienes permiso para esta clase' });
+        }
+      }
+
       res.json({
         success: true,
         data: event,
@@ -193,6 +232,9 @@ class EventsController {
     try {
       const { classroomId, eventId } = req.params;
       const updateData = req.body;
+
+      const userId = await ensureTeacherClassroomAccess(req, res, classroomId);
+      if (!userId) return;
 
       const result = await eventsService.updateEvent(eventId, classroomId, updateData);
 
@@ -217,6 +259,9 @@ class EventsController {
     try {
       const { classroomId, eventId } = req.params;
 
+      const userId = await ensureTeacherClassroomAccess(req, res, classroomId);
+      if (!userId) return;
+
       const result = await eventsService.deleteEvent(eventId, classroomId);
 
       if (!result.success) {
@@ -239,11 +284,8 @@ class EventsController {
   async spinRoulette(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
-      const userId = (req as any).user?.id;
-
-      if (!userId) {
-        return res.status(401).json({ message: 'No autorizado' });
-      }
+      const userId = await ensureTeacherClassroomAccess(req, res, classroomId);
+      if (!userId) return;
 
       const result = await eventsService.spinEventRoulette(classroomId, userId);
 
@@ -268,6 +310,9 @@ class EventsController {
     try {
       const { classroomId, eventId } = req.params;
 
+      const userId = await ensureTeacherClassroomAccess(req, res, classroomId);
+      if (!userId) return;
+
       const result = await eventsService.startChallenge(eventId, classroomId);
 
       if (!result.success) {
@@ -290,7 +335,8 @@ class EventsController {
   async resolveChallenge(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
-      const userId = (req as any).user?.id;
+      const userId = await ensureTeacherClassroomAccess(req, res, classroomId);
+      if (!userId) return;
       const { studentIds, effects, completed, eventName } = req.body;
 
       if (!studentIds || !effects || completed === undefined) {

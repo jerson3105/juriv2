@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -23,7 +23,7 @@ import toast from 'react-hot-toast';
 const EMOJI_OPTIONS = ['⭐', '🎯', '📚', '✅', '🏆', '💪', '🧠', '❤️', '💔', '⚡', '🔥', '❌', '😴', '📵'];
 
 export const BehaviorsPage = () => {
-  const { classroom } = useOutletContext<{ classroom: Classroom }>();
+  const { classroom, isThemeDark } = useOutletContext<{ classroom: Classroom; isThemeDark?: boolean }>();
   const queryClient = useQueryClient();
   const [showModal, setShowModal] = useState(false);
   const [editingBehavior, setEditingBehavior] = useState<Behavior | null>(null);
@@ -121,11 +121,11 @@ export const BehaviorsPage = () => {
 
       {/* Comportamientos positivos */}
       <Card className="p-0 overflow-hidden">
-        <div className="flex items-center gap-2 p-4 border-b border-gray-100 dark:border-gray-700 bg-emerald-50/50 dark:bg-emerald-900/20">
+        <div className={`flex items-center gap-2 p-4 border-b ${isThemeDark ? 'border-[rgba(var(--story-primary-rgb),0.3)] bg-[rgba(var(--story-primary-rgb),0.2)]' : 'border-gray-100 dark:border-gray-700 bg-emerald-50/50 dark:bg-emerald-900/20'}`}>
           <div className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-lg flex items-center justify-center">
             <Sparkles size={16} className="text-white" />
           </div>
-          <span className="font-semibold text-emerald-700 dark:text-emerald-400">Para dar puntos ({positiveBehaviors.length})</span>
+          <span className={`font-semibold ${isThemeDark ? 'text-white' : 'text-emerald-700 dark:text-emerald-400'}`}>Para dar puntos ({positiveBehaviors.length})</span>
         </div>
         <div className="p-4">
           {positiveBehaviors.length === 0 ? (
@@ -149,11 +149,11 @@ export const BehaviorsPage = () => {
 
       {/* Comportamientos negativos */}
       <Card className="p-0 overflow-hidden">
-        <div className="flex items-center gap-2 p-4 border-b border-gray-100 dark:border-gray-700 bg-red-50/50 dark:bg-red-900/20">
+        <div className={`flex items-center gap-2 p-4 border-b ${isThemeDark ? 'border-[rgba(var(--story-primary-rgb),0.3)] bg-[rgba(var(--story-primary-rgb),0.15)]' : 'border-gray-100 dark:border-gray-700 bg-red-50/50 dark:bg-red-900/20'}`}>
           <div className="w-8 h-8 bg-gradient-to-br from-red-500 to-orange-500 rounded-lg flex items-center justify-center">
             <Heart size={16} className="text-white" />
           </div>
-          <span className="font-semibold text-red-700 dark:text-red-400">Para quitar puntos ({negativeBehaviors.length})</span>
+          <span className={`font-semibold ${isThemeDark ? 'text-white' : 'text-red-700 dark:text-red-400'}`}>Para quitar puntos ({negativeBehaviors.length})</span>
         </div>
         <div className="p-4">
           {negativeBehaviors.length === 0 ? (
@@ -234,6 +234,15 @@ const BehaviorCard = ({
   onEdit: () => void;
   onDelete: () => void;
 }) => {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [isStoryDark, setIsStoryDark] = useState(false);
+
+  useEffect(() => {
+    if (cardRef.current) {
+      setIsStoryDark(!!cardRef.current.closest('.story-theme-dark'));
+    }
+  }, []);
+
   // Usar valores combinados con fallback a legacy
   const xpVal = behavior.xpValue ?? (behavior.pointType === 'XP' ? behavior.pointValue : 0);
   const hpVal = behavior.hpValue ?? (behavior.pointType === 'HP' ? behavior.pointValue : 0);
@@ -246,15 +255,18 @@ const BehaviorCard = ({
 
   return (
     <motion.div
+      ref={cardRef}
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       className={`
-        flex items-center justify-between p-3 rounded-xl border-2 bg-white dark:bg-gray-800
-        ${behavior.isPositive
-          ? 'border-emerald-200 dark:border-emerald-800 hover:border-emerald-300 dark:hover:border-emerald-700'
-          : 'border-red-200 dark:border-red-800 hover:border-red-300 dark:hover:border-red-700'
+        flex items-center justify-between p-3 rounded-xl border-2 transition-colors
+        ${isStoryDark
+          ? 'bg-[rgba(30,30,50,0.6)] border-[rgba(var(--story-primary-rgb),0.3)] hover:border-[rgba(var(--story-primary-rgb),0.5)]'
+          : `bg-white dark:bg-gray-800 ${behavior.isPositive
+              ? 'border-emerald-200 dark:border-emerald-800 hover:border-emerald-300 dark:hover:border-emerald-700'
+              : 'border-red-200 dark:border-red-800 hover:border-red-300 dark:hover:border-red-700'
+            }`
         }
-        transition-colors
       `}
     >
       <div className="flex items-center gap-3">
@@ -905,7 +917,7 @@ const AIBehaviorModal = ({
                     <select
                       value={level}
                       onChange={(e) => setLevel(e.target.value)}
-                      className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-purple-500"
+                      className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-purple-500 story-select"
                     >
                       <option value="">Seleccionar...</option>
                       <option value="Primaria (6-11 años)">Primaria (6-11 años)</option>
@@ -1273,7 +1285,7 @@ const AIBehaviorModal = ({
               <div className="flex gap-3 ml-auto">
                 <button
                   onClick={handleClose}
-                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
                 >
                   Cancelar
                 </button>

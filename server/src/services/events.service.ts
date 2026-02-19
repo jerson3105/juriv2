@@ -3,9 +3,10 @@ import {
   randomEvents, 
   eventLogs, 
   studentProfiles,
-  pointLogs
+  pointLogs,
+  classrooms,
 } from '../db/schema.js';
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, desc, sql, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 
 interface EventEffect {
@@ -57,6 +58,10 @@ interface TriggerResult {
   isChallenge?: boolean;
   challengeData?: any;
 }
+
+type PointStatField = 'xp' | 'hp' | 'gp';
+type EventTargetType = CreateEventData['targetType'];
+type StudentProfileRow = typeof studentProfiles.$inferSelect;
 
 // Eventos predefinidos del sistema
 const SYSTEM_EVENTS: CreateEventData[] = [
@@ -399,6 +404,10 @@ class EventsService {
       return { success: false, message: 'Evento no encontrado' };
     }
 
+    if (!event.isGlobal && event.classroomId !== classroomId) {
+      return { success: false, message: 'El evento no pertenece a esta clase' };
+    }
+
     // Obtener estudiantes de la clase
     const students = await db
       .select()
@@ -409,64 +418,39 @@ class EventsService {
       return { success: false, message: 'No hay estudiantes en la clase' };
     }
 
-    // Seleccionar estudiantes según targetType
-    let targetStudents = [...students];
-    
-    // Parsear effects si es string
-    let effects: EventEffect[];
-    if (typeof event.effects === 'string') {
-      try {
-        effects = JSON.parse(event.effects);
-      } catch {
-        effects = [];
-      }
-    } else {
-      effects = (event.effects as EventEffect[]) || [];
-    }
-    
-
-    switch (event.targetType) {
-      case 'RANDOM_ONE':
-        targetStudents = [students[Math.floor(Math.random() * students.length)]];
-        break;
-      
-      case 'RANDOM_SOME':
-        const count = Math.min(event.targetCount || 1, students.length);
-        targetStudents = this.shuffleArray([...students]).slice(0, count);
-        break;
-      
-      case 'TOP':
-        targetStudents = [...students]
-          .sort((a, b) => b.xp - a.xp)
-          .slice(0, event.targetCount || 1);
-        break;
-      
-      case 'BOTTOM':
-        targetStudents = [...students]
-          .sort((a, b) => a.xp - b.xp)
-          .slice(0, event.targetCount || 1);
-        break;
-      
-      // 'ALL' - ya tiene todos los estudiantes
-    }
+    const effects = this.parseEventEffects(event.effects);
+    const targetStudents = this.selectTargetStudents(
+      students,
+      event.targetType,
+      event.targetCount,
+      1
+    );
 
     // Aplicar efectos a cada estudiante
-    const affectedStudents: TriggerResult['affectedStudents'] = [];
+    const affectedStudents: TriggerResult['affectedStudents'] = targetStudents.map((student) => ({
+      id: student.id,
+      name: student.characterName || 'Estudiante',
+      changes: effects,
+    }));
     const now = new Date();
+    const pointLogsBatch: typeof pointLogs.$inferInsert[] = [];
+    const studentUpdates: { studentId: string; updates: Partial<Record<PointStatField, number>> }[] = [];
 
     for (const student of targetStudents) {
-      const updates: Partial<{ xp: number; hp: number; gp: number }> = {};
-      
-      for (const effect of effects) {
-        const currentValue = student[effect.type.toLowerCase() as 'xp' | 'hp' | 'gp'];
-        const newValue = effect.action === 'ADD' 
-          ? currentValue + effect.value 
-          : Math.max(0, currentValue - effect.value);
-        
-        updates[effect.type.toLowerCase() as 'xp' | 'hp' | 'gp'] = newValue;
+      const nextValues: Record<PointStatField, number> = {
+        xp: student.xp,
+        hp: student.hp,
+        gp: student.gp,
+      };
 
-        // Registrar en point_logs
-        await db.insert(pointLogs).values({
+      for (const effect of effects) {
+        const field = this.effectTypeToField(effect.type);
+        const currentValue = nextValues[field];
+        nextValues[field] = effect.action === 'ADD'
+          ? currentValue + effect.value
+          : Math.max(0, currentValue - effect.value);
+
+        pointLogsBatch.push({
           id: uuidv4(),
           studentId: student.id,
           pointType: effect.type,
@@ -478,29 +462,40 @@ class EventsService {
         });
       }
 
-      // Actualizar estudiante
-      await db
-        .update(studentProfiles)
-        .set(updates)
-        .where(eq(studentProfiles.id, student.id));
+      const updates: Partial<Record<PointStatField, number>> = {};
+      if (nextValues.xp !== student.xp) updates.xp = nextValues.xp;
+      if (nextValues.hp !== student.hp) updates.hp = nextValues.hp;
+      if (nextValues.gp !== student.gp) updates.gp = nextValues.gp;
 
-      affectedStudents.push({
-        id: student.id,
-        name: student.characterName || 'Estudiante',
-        changes: effects,
-      });
+      if (Object.keys(updates).length > 0) {
+        studentUpdates.push({ studentId: student.id, updates });
+      }
     }
 
     // Registrar en event_logs
     const logId = uuidv4();
-    await db.insert(eventLogs).values({
-      id: logId,
-      eventId,
-      classroomId,
-      triggeredBy,
-      affectedStudents: affectedStudents.map(s => s.id),
-      appliedEffects: effects,
-      triggeredAt: now,
+
+    await db.transaction(async (tx) => {
+      for (const update of studentUpdates) {
+        await tx
+          .update(studentProfiles)
+          .set(update.updates)
+          .where(eq(studentProfiles.id, update.studentId));
+      }
+
+      if (pointLogsBatch.length > 0) {
+        await tx.insert(pointLogs).values(pointLogsBatch);
+      }
+
+      await tx.insert(eventLogs).values({
+        id: logId,
+        eventId,
+        classroomId,
+        triggeredBy,
+        affectedStudents: affectedStudents.map(s => s.id),
+        appliedEffects: effects,
+        triggeredAt: now,
+      });
     });
 
     return {
@@ -560,7 +555,7 @@ class EventsService {
     eventData: {
       name: string;
       description: string;
-      targetType: string;
+      targetType: EventTargetType;
       targetCount?: number;
       effects: EventEffect[];
       icon: string;
@@ -579,51 +574,44 @@ class EventsService {
       return { success: false, message: 'No hay estudiantes en la clase' };
     }
 
-    // Seleccionar estudiantes según targetType
-    let selectedStudents = [...students];
-    
-    switch (eventData.targetType) {
-      case 'RANDOM_ONE':
-        selectedStudents = [students[Math.floor(Math.random() * students.length)]];
-        break;
-      case 'RANDOM_SOME':
-        const count = Math.min(eventData.targetCount || 3, students.length);
-        selectedStudents = students.sort(() => Math.random() - 0.5).slice(0, count);
-        break;
-      case 'TOP':
-        selectedStudents = students.sort((a, b) => b.xp - a.xp).slice(0, eventData.targetCount || 1);
-        break;
-      case 'BOTTOM':
-        selectedStudents = students.sort((a, b) => a.xp - b.xp).slice(0, eventData.targetCount || 1);
-        break;
-      // ALL: todos los estudiantes (default)
-    }
+    const selectedStudents = this.selectTargetStudents(
+      students,
+      eventData.targetType,
+      eventData.targetCount,
+      3
+    );
 
     const now = new Date();
-    const effects = eventData.effects;
+    const effects = this.parseEventEffects(eventData.effects);
     const affectedStudents: { id: string; name: string; changes: any }[] = [];
+    const pointLogsBatch: typeof pointLogs.$inferInsert[] = [];
+    const studentUpdates: { studentId: string; updates: Partial<Record<PointStatField, number>> }[] = [];
 
     // Aplicar efectos a cada estudiante seleccionado
     for (const student of selectedStudents) {
       const changes: any = {};
+      const nextValues: Record<PointStatField, number> = {
+        xp: student.xp,
+        hp: student.hp,
+        gp: student.gp,
+      };
       
       for (const effect of effects) {
-        const field = effect.type.toLowerCase() as 'xp' | 'hp' | 'gp';
-        const currentValue = student[field] || 0;
+        const field = this.effectTypeToField(effect.type);
+        const currentValue = nextValues[field];
         const newValue = effect.action === 'ADD' 
           ? currentValue + effect.value 
           : Math.max(0, currentValue - effect.value);
-        
-        changes[field] = { from: currentValue, to: newValue };
-        
-        // Actualizar estudiante
-        await db
-          .update(studentProfiles)
-          .set({ [field]: newValue })
-          .where(eq(studentProfiles.id, student.id));
 
-        // Registrar en point_logs
-        await db.insert(pointLogs).values({
+        nextValues[field] = newValue;
+        
+        if (changes[field]) {
+          changes[field].to = newValue;
+        } else {
+          changes[field] = { from: currentValue, to: newValue };
+        }
+
+        pointLogsBatch.push({
           id: uuidv4(),
           studentId: student.id,
           pointType: effect.type,
@@ -635,6 +623,15 @@ class EventsService {
         });
       }
 
+      const updates: Partial<Record<PointStatField, number>> = {};
+      if (nextValues.xp !== student.xp) updates.xp = nextValues.xp;
+      if (nextValues.hp !== student.hp) updates.hp = nextValues.hp;
+      if (nextValues.gp !== student.gp) updates.gp = nextValues.gp;
+
+      if (Object.keys(updates).length > 0) {
+        studentUpdates.push({ studentId: student.id, updates });
+      }
+
       affectedStudents.push({
         id: student.id,
         name: student.characterName || 'Estudiante',
@@ -642,19 +639,32 @@ class EventsService {
       });
     }
 
-    // Solo registrar en event_logs si es un evento de DB (no sistema)
-    if (!eventId.startsWith('system-')) {
-      const logId = uuidv4();
-      await db.insert(eventLogs).values({
-        id: logId,
-        eventId,
-        classroomId,
-        triggeredBy,
-        affectedStudents: affectedStudents.map(s => s.id),
-        appliedEffects: effects,
-        triggeredAt: now,
-      });
-    }
+    await db.transaction(async (tx) => {
+      for (const update of studentUpdates) {
+        await tx
+          .update(studentProfiles)
+          .set(update.updates)
+          .where(eq(studentProfiles.id, update.studentId));
+      }
+
+      if (pointLogsBatch.length > 0) {
+        await tx.insert(pointLogs).values(pointLogsBatch);
+      }
+
+      // Solo registrar en event_logs si es un evento de DB (no sistema)
+      if (!eventId.startsWith('system-')) {
+        const logId = uuidv4();
+        await tx.insert(eventLogs).values({
+          id: logId,
+          eventId,
+          classroomId,
+          triggeredBy,
+          affectedStudents: affectedStudents.map(s => s.id),
+          appliedEffects: effects,
+          triggeredAt: now,
+        });
+      }
+    });
 
     return {
       success: true,
@@ -746,6 +756,10 @@ class EventsService {
       return { success: false, message: 'Evento no encontrado' };
     }
 
+    if (!event.isGlobal && event.classroomId !== classroomId) {
+      return { success: false, message: 'El evento no pertenece a esta clase' };
+    }
+
     // Obtener estudiantes de la clase
     const students = await db
       .select()
@@ -756,32 +770,13 @@ class EventsService {
       return { success: false, message: 'No hay estudiantes en la clase' };
     }
 
-    // Parsear effects
-    let effects: EventEffect[];
-    if (typeof event.effects === 'string') {
-      effects = JSON.parse(event.effects);
-    } else {
-      effects = event.effects as EventEffect[];
-    }
-
-    // Seleccionar estudiantes según targetType
-    let selectedStudents = [...students];
-    
-    switch (event.targetType) {
-      case 'RANDOM_ONE':
-        selectedStudents = [students[Math.floor(Math.random() * students.length)]];
-        break;
-      case 'RANDOM_SOME':
-        const count = Math.min(event.targetCount || 3, students.length);
-        selectedStudents = this.shuffleArray([...students]).slice(0, count);
-        break;
-      case 'TOP':
-        selectedStudents = students.sort((a, b) => b.xp - a.xp).slice(0, event.targetCount || 1);
-        break;
-      case 'BOTTOM':
-        selectedStudents = students.sort((a, b) => a.xp - b.xp).slice(0, event.targetCount || 1);
-        break;
-    }
+    const effects = this.parseEventEffects(event.effects);
+    const selectedStudents = this.selectTargetStudents(
+      students,
+      event.targetType,
+      event.targetCount,
+      3
+    );
 
     return {
       success: true,
@@ -811,53 +806,81 @@ class EventsService {
     completed: boolean, // true = cumplió, false = no cumplió
     eventName: string
   ): Promise<TriggerResult> {
+    if (studentIds.length === 0) {
+      return {
+        success: false,
+        message: 'No se seleccionaron estudiantes para resolver el desafío',
+      };
+    }
+
     const now = new Date();
     const affectedStudents: { id: string; name: string; changes?: any }[] = [];
+    const pointLogsBatch: typeof pointLogs.$inferInsert[] = [];
+    const studentUpdates: { studentId: string; updates: Partial<Record<PointStatField, number>> }[] = [];
+    const effectsToApply = effects.filter(
+      (effect) =>
+        (effect.action === 'REMOVE' && !completed) ||
+        (effect.action === 'ADD' && completed)
+    );
 
     // Obtener los estudiantes
     const students = await db
       .select()
       .from(studentProfiles)
-      .where(sql`${studentProfiles.id} IN (${sql.join(studentIds.map(id => sql`${id}`), sql`, `)})`);
+      .where(and(
+        inArray(studentProfiles.id, studentIds),
+        eq(studentProfiles.classroomId, classroomId)
+      ));
 
-    // Determinar si aplicar efectos
-    // Si es un efecto de RESTAR: aplicar solo si NO cumplió
-    // Si es un efecto de SUMAR: aplicar solo si SÍ cumplió
+    if (students.length === 0) {
+      return {
+        success: false,
+        message: 'No se encontraron estudiantes válidos para este desafío',
+      };
+    }
+
     for (const student of students) {
       const changes: any = {};
+      const nextValues: Record<PointStatField, number> = {
+        xp: student.xp,
+        hp: student.hp,
+        gp: student.gp,
+      };
       
-      for (const effect of effects) {
-        const shouldApply = 
-          (effect.action === 'REMOVE' && !completed) || 
-          (effect.action === 'ADD' && completed);
+      for (const effect of effectsToApply) {
+        const field = this.effectTypeToField(effect.type);
+        const currentValue = nextValues[field];
+        const newValue = effect.action === 'ADD'
+          ? currentValue + effect.value
+          : Math.max(0, currentValue - effect.value);
 
-        if (shouldApply) {
-          const field = effect.type.toLowerCase() as 'xp' | 'hp' | 'gp';
-          const currentValue = student[field] || 0;
-          const newValue = effect.action === 'ADD' 
-            ? currentValue + effect.value 
-            : Math.max(0, currentValue - effect.value);
-          
+        nextValues[field] = newValue;
+
+        if (changes[field]) {
+          changes[field].to = newValue;
+        } else {
           changes[field] = { from: currentValue, to: newValue };
-          
-          // Actualizar estudiante
-          await db
-            .update(studentProfiles)
-            .set({ [field]: newValue })
-            .where(eq(studentProfiles.id, student.id));
-
-          // Registrar en point_logs
-          await db.insert(pointLogs).values({
-            id: uuidv4(),
-            studentId: student.id,
-            pointType: effect.type,
-            action: effect.action,
-            amount: effect.value,
-            reason: `Desafío ${completed ? 'completado' : 'fallido'}: ${eventName}`,
-            givenBy: triggeredBy,
-            createdAt: now,
-          });
         }
+
+        pointLogsBatch.push({
+          id: uuidv4(),
+          studentId: student.id,
+          pointType: effect.type,
+          action: effect.action,
+          amount: effect.value,
+          reason: `Desafío ${completed ? 'completado' : 'fallido'}: ${eventName}`,
+          givenBy: triggeredBy,
+          createdAt: now,
+        });
+      }
+
+      const updates: Partial<Record<PointStatField, number>> = {};
+      if (nextValues.xp !== student.xp) updates.xp = nextValues.xp;
+      if (nextValues.hp !== student.hp) updates.hp = nextValues.hp;
+      if (nextValues.gp !== student.gp) updates.gp = nextValues.gp;
+
+      if (Object.keys(updates).length > 0) {
+        studentUpdates.push({ studentId: student.id, updates });
       }
 
       affectedStudents.push({
@@ -866,6 +889,19 @@ class EventsService {
         changes,
       });
     }
+
+    await db.transaction(async (tx) => {
+      for (const update of studentUpdates) {
+        await tx
+          .update(studentProfiles)
+          .set(update.updates)
+          .where(eq(studentProfiles.id, update.studentId));
+      }
+
+      if (pointLogsBatch.length > 0) {
+        await tx.insert(pointLogs).values(pointLogsBatch);
+      }
+    });
 
     const resultMessage = completed 
       ? `¡Desafío completado! ${affectedStudents.length} estudiante(s) recompensado(s)`
@@ -881,12 +917,102 @@ class EventsService {
   /**
    * Mezclar array aleatoriamente
    */
+  private effectTypeToField(effectType: EventEffect['type']): PointStatField {
+    switch (effectType) {
+      case 'XP':
+        return 'xp';
+      case 'HP':
+        return 'hp';
+      case 'GP':
+        return 'gp';
+    }
+  }
+
+  private parseEventEffects(rawEffects: unknown): EventEffect[] {
+    const parsed = typeof rawEffects === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(rawEffects);
+          } catch {
+            return [];
+          }
+        })()
+      : rawEffects;
+
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.filter((effect): effect is EventEffect => {
+      if (!effect || typeof effect !== 'object') {
+        return false;
+      }
+
+      const candidate = effect as Partial<EventEffect>;
+      const isValidType = candidate.type === 'XP' || candidate.type === 'HP' || candidate.type === 'GP';
+      const isValidAction = candidate.action === 'ADD' || candidate.action === 'REMOVE';
+      const isValidValue = typeof candidate.value === 'number' && Number.isFinite(candidate.value) && candidate.value >= 0;
+
+      return isValidType && isValidAction && isValidValue;
+    });
+  }
+
+  private selectTargetStudents(
+    students: StudentProfileRow[],
+    targetType: EventTargetType,
+    targetCount?: number | null,
+    randomSomeDefaultCount = 1
+  ): StudentProfileRow[] {
+    if (students.length === 0) {
+      return [];
+    }
+
+    const defaultCount = targetCount && targetCount > 0 ? targetCount : 1;
+
+    switch (targetType) {
+      case 'RANDOM_ONE':
+        return [students[Math.floor(Math.random() * students.length)]];
+
+      case 'RANDOM_SOME': {
+        const someCount = targetCount && targetCount > 0 ? targetCount : randomSomeDefaultCount;
+        const count = Math.min(someCount, students.length);
+        return this.shuffleArray([...students]).slice(0, count);
+      }
+
+      case 'TOP':
+        return [...students]
+          .sort((a, b) => b.xp - a.xp)
+          .slice(0, defaultCount);
+
+      case 'BOTTOM':
+        return [...students]
+          .sort((a, b) => a.xp - b.xp)
+          .slice(0, defaultCount);
+
+      case 'ALL':
+      default:
+        return [...students];
+    }
+  }
+
   private shuffleArray<T>(array: T[]): T[] {
     for (let i = array.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [array[i], array[j]] = [array[j], array[i]];
     }
     return array;
+  }
+
+  async verifyTeacherOwnsClassroom(teacherId: string, classroomId: string): Promise<boolean> {
+    const [classroom] = await db
+      .select({ id: classrooms.id })
+      .from(classrooms)
+      .where(and(
+        eq(classrooms.id, classroomId),
+        eq(classrooms.teacherId, teacherId)
+      ));
+
+    return !!classroom;
   }
 }
 

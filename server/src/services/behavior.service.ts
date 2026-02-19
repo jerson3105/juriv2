@@ -4,6 +4,7 @@ import { eq, and, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { badgeService } from './badge.service.js';
 import { clanService } from './clan.service.js';
+import { storyService } from './story.service.js';
 
 type PointType = 'XP' | 'HP' | 'GP';
 
@@ -291,6 +292,8 @@ export class BehaviorService {
     // Preparar datos para batch inserts
     const pointLogsBatch: typeof pointLogs.$inferInsert[] = [];
     const notificationsBatch: typeof notifications.$inferInsert[] = [];
+    const studentUpdates: { studentId: string; updateData: Record<string, unknown> }[] = [];
+    const xpAwardsForSideEffects: { studentId: string; xpAmount: number }[] = [];
 
     // Calcular nuevos valores para cada estudiante
     for (const student of students) {
@@ -332,18 +335,18 @@ export class BehaviorService {
         gp: newGp,
       };
       if (leveledUp) updateData.level = newLevel;
-      
-      await db.update(studentProfiles)
-        .set(updateData)
-        .where(eq(studentProfiles.id, student.id));
 
-      // Contribuir XP al clan si es comportamiento positivo con XP
+      studentUpdates.push({
+        studentId: student.id,
+        updateData,
+      });
+
+      // Contribuir XP al clan y procesar storytelling después del commit
       if (behavior.isPositive && xpChange > 0) {
-        try {
-          await clanService.contributeXpToClan(student.id, xpChange, behavior.name);
-        } catch (error) {
-          // Silently fail - don't break behavior application
-        }
+        xpAwardsForSideEffects.push({
+          studentId: student.id,
+          xpAmount: xpChange,
+        });
       }
 
       // Preparar logs para cada tipo de punto que cambió
@@ -451,12 +454,35 @@ export class BehaviorService {
       });
     }
 
-    // Batch inserts - mucho más eficiente
-    if (pointLogsBatch.length > 0) {
-      await db.insert(pointLogs).values(pointLogsBatch);
-    }
-    if (notificationsBatch.length > 0) {
-      await db.insert(notifications).values(notificationsBatch);
+    await db.transaction(async (tx) => {
+      for (const update of studentUpdates) {
+        await tx.update(studentProfiles)
+          .set(update.updateData)
+          .where(eq(studentProfiles.id, update.studentId));
+      }
+
+      if (pointLogsBatch.length > 0) {
+        await tx.insert(pointLogs).values(pointLogsBatch);
+      }
+
+      if (notificationsBatch.length > 0) {
+        await tx.insert(notifications).values(notificationsBatch);
+      }
+    });
+
+    // Side effects externos: ejecutar solo después de confirmar cambios de puntos
+    for (const xpAward of xpAwardsForSideEffects) {
+      try {
+        await clanService.contributeXpToClan(xpAward.studentId, xpAward.xpAmount, behavior.name);
+      } catch (error) {
+        // Silently fail - don't break behavior application
+      }
+
+      try {
+        await storyService.onXpAwarded(behavior.classroomId, xpAward.studentId, xpAward.xpAmount);
+      } catch (error) {
+        // Silently fail - don't break behavior application
+      }
     }
 
     // Verificar insignias para cada estudiante

@@ -9,20 +9,128 @@ import {
   studentProfiles,
   pointLogs,
   notifications,
-  teams,
-  clanLogs,
   classrooms,
   activityCompetencies,
   type ExpeditionStatus,
   type ExpeditionPinType,
   type ExpeditionProgressStatus,
 } from '../db/schema.js';
-import { eq, and, desc, asc, sql } from 'drizzle-orm';
+import { eq, and, desc, asc, sql, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
+import { clanService } from './clan.service.js';
+import { storyService } from './story.service.js';
 
 // ==================== EXPEDITION CRUD ====================
 
 export class ExpeditionService {
+
+  private calculateLevel(totalXp: number, xpPerLevel: number): number {
+    const level = Math.floor((1 + Math.sqrt(1 + (8 * totalXp) / xpPerLevel)) / 2);
+    return Math.max(1, level);
+  }
+
+  private parseJsonArray(value: unknown): string[] | null {
+    if (value == null) return null;
+    if (Array.isArray(value)) return value as string[];
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  async getClassroomIdByExpedition(expeditionId: string): Promise<string | null> {
+    const [row] = await db.select({ classroomId: expeditions.classroomId })
+      .from(expeditions)
+      .where(eq(expeditions.id, expeditionId));
+
+    return row?.classroomId ?? null;
+  }
+
+  async getClassroomIdByPin(pinId: string): Promise<string | null> {
+    const [row] = await db.select({ classroomId: expeditions.classroomId })
+      .from(expeditionPins)
+      .innerJoin(expeditions, eq(expeditionPins.expeditionId, expeditions.id))
+      .where(eq(expeditionPins.id, pinId));
+
+    return row?.classroomId ?? null;
+  }
+
+  async getClassroomIdByConnection(connectionId: string): Promise<string | null> {
+    const [row] = await db.select({ classroomId: expeditions.classroomId })
+      .from(expeditionConnections)
+      .innerJoin(expeditions, eq(expeditionConnections.expeditionId, expeditions.id))
+      .where(eq(expeditionConnections.id, connectionId));
+
+    return row?.classroomId ?? null;
+  }
+
+  async getClassroomIdByStudentProfile(studentProfileId: string): Promise<string | null> {
+    const [row] = await db.select({ classroomId: studentProfiles.classroomId })
+      .from(studentProfiles)
+      .where(eq(studentProfiles.id, studentProfileId));
+
+    return row?.classroomId ?? null;
+  }
+
+  async verifyTeacherOwnsClassroom(teacherId: string, classroomId: string): Promise<boolean> {
+    const [classroom] = await db.select({ id: classrooms.id })
+      .from(classrooms)
+      .where(and(
+        eq(classrooms.id, classroomId),
+        eq(classrooms.teacherId, teacherId)
+      ));
+
+    return !!classroom;
+  }
+
+  async verifyStudentBelongsToUser(studentProfileId: string, userId: string): Promise<boolean> {
+    const [student] = await db.select({ id: studentProfiles.id })
+      .from(studentProfiles)
+      .where(and(
+        eq(studentProfiles.id, studentProfileId),
+        eq(studentProfiles.userId, userId),
+        eq(studentProfiles.isActive, true)
+      ));
+
+    return !!student;
+  }
+
+  async verifyStudentUserInClassroom(userId: string, classroomId: string): Promise<boolean> {
+    const [student] = await db.select({ id: studentProfiles.id })
+      .from(studentProfiles)
+      .where(and(
+        eq(studentProfiles.userId, userId),
+        eq(studentProfiles.classroomId, classroomId),
+        eq(studentProfiles.isActive, true)
+      ));
+
+    return !!student;
+  }
+
+  async getStudentProfileInClassroomByUser(userId: string, classroomId: string): Promise<string | null> {
+    const [student] = await db.select({ id: studentProfiles.id })
+      .from(studentProfiles)
+      .where(and(
+        eq(studentProfiles.userId, userId),
+        eq(studentProfiles.classroomId, classroomId),
+        eq(studentProfiles.isActive, true)
+      ));
+
+    return student?.id ?? null;
+  }
+
+  async getExpeditionIdByPin(pinId: string): Promise<string | null> {
+    const [row] = await db.select({ expeditionId: expeditionPins.expeditionId })
+      .from(expeditionPins)
+      .where(eq(expeditionPins.id, pinId));
+
+    return row?.expeditionId ?? null;
+  }
   
   // Crear una nueva expedición
   async create(data: {
@@ -34,31 +142,36 @@ export class ExpeditionService {
   }) {
     const now = new Date();
     const id = uuidv4();
-    
-    await db.insert(expeditions).values({
-      id,
-      classroomId: data.classroomId,
-      name: data.name,
-      description: data.description || null,
-      mapImageUrl: data.mapImageUrl,
-      status: 'DRAFT',
-      autoProgress: false,
-      createdAt: now,
-      updatedAt: now,
-    });
 
-    // Guardar competencias asociadas si existen
-    if (data.competencyIds && data.competencyIds.length > 0) {
-      const competencyValues = data.competencyIds.map(competencyId => ({
-        id: uuidv4(),
-        activityType: 'EXPEDITION' as const,
-        activityId: id,
-        competencyId,
-        weight: 100,
+    await db.transaction(async (tx) => {
+      await tx.insert(expeditions).values({
+        id,
+        classroomId: data.classroomId,
+        name: data.name,
+        description: data.description || null,
+        mapImageUrl: data.mapImageUrl,
+        status: 'DRAFT',
+        autoProgress: false,
         createdAt: now,
-      }));
-      await db.insert(activityCompetencies).values(competencyValues);
-    }
+        updatedAt: now,
+      });
+
+      // Guardar competencias asociadas si existen
+      if (data.competencyIds && data.competencyIds.length > 0) {
+        const competencyIds = [...new Set(data.competencyIds.filter(Boolean))];
+        if (competencyIds.length > 0) {
+          const competencyValues = competencyIds.map(competencyId => ({
+            id: uuidv4(),
+            activityType: 'EXPEDITION' as const,
+            activityId: id,
+            competencyId,
+            weight: 100,
+            createdAt: now,
+          }));
+          await tx.insert(activityCompetencies).values(competencyValues);
+        }
+      }
+    });
     
     return this.getById(id);
   }
@@ -82,8 +195,8 @@ export class ExpeditionService {
     // Parsear campos JSON que pueden venir como string
     const pins = pinsRaw.map(pin => ({
       ...pin,
-      storyFiles: typeof pin.storyFiles === 'string' ? JSON.parse(pin.storyFiles) : pin.storyFiles,
-      taskFiles: typeof pin.taskFiles === 'string' ? JSON.parse(pin.taskFiles) : pin.taskFiles,
+      storyFiles: this.parseJsonArray(pin.storyFiles),
+      taskFiles: this.parseJsonArray(pin.taskFiles),
     }));
     
     // Obtener conexiones por separado
@@ -110,17 +223,32 @@ export class ExpeditionService {
       .from(expeditions)
       .where(and(...conditions))
       .orderBy(desc(expeditions.createdAt));
-    
-    // Obtener pines para cada expedición
-    const result = await Promise.all(
-      expeditionList.map(async (exp) => {
-        const pins = await db.select()
-          .from(expeditionPins)
-          .where(eq(expeditionPins.expeditionId, exp.id))
-          .orderBy(asc(expeditionPins.orderIndex));
-        return { ...exp, pins };
-      })
-    );
+
+    if (expeditionList.length === 0) {
+      return [];
+    }
+
+    const expeditionIds = expeditionList.map((exp) => exp.id);
+    const allPins = await db.select()
+      .from(expeditionPins)
+      .where(inArray(expeditionPins.expeditionId, expeditionIds))
+      .orderBy(asc(expeditionPins.orderIndex));
+
+    const pinsByExpedition = new Map<string, typeof allPins>();
+    allPins.forEach((pin) => {
+      const list = pinsByExpedition.get(pin.expeditionId) || [];
+      list.push({
+        ...pin,
+        storyFiles: this.parseJsonArray(pin.storyFiles),
+        taskFiles: this.parseJsonArray(pin.taskFiles),
+      } as any);
+      pinsByExpedition.set(pin.expeditionId, list);
+    });
+
+    const result = expeditionList.map((exp) => ({
+      ...exp,
+      pins: pinsByExpedition.get(exp.id) || [],
+    }));
     
     return result;
   }
@@ -177,13 +305,19 @@ export class ExpeditionService {
   
   // Eliminar expedición (solo si está en DRAFT)
   async delete(id: string) {
-    // Eliminar en orden: submissions -> pin_progress -> student_progress -> connections -> pins -> expedition
-    await db.delete(expeditionSubmissions).where(eq(expeditionSubmissions.expeditionId, id));
-    await db.delete(expeditionPinProgress).where(eq(expeditionPinProgress.expeditionId, id));
-    await db.delete(expeditionStudentProgress).where(eq(expeditionStudentProgress.expeditionId, id));
-    await db.delete(expeditionConnections).where(eq(expeditionConnections.expeditionId, id));
-    await db.delete(expeditionPins).where(eq(expeditionPins.expeditionId, id));
-    await db.delete(expeditions).where(eq(expeditions.id, id));
+    await db.transaction(async (tx) => {
+      // Eliminar en orden: submissions -> pin_progress -> student_progress -> connections -> pins -> competencias -> expedition
+      await tx.delete(expeditionSubmissions).where(eq(expeditionSubmissions.expeditionId, id));
+      await tx.delete(expeditionPinProgress).where(eq(expeditionPinProgress.expeditionId, id));
+      await tx.delete(expeditionStudentProgress).where(eq(expeditionStudentProgress.expeditionId, id));
+      await tx.delete(expeditionConnections).where(eq(expeditionConnections.expeditionId, id));
+      await tx.delete(expeditionPins).where(eq(expeditionPins.expeditionId, id));
+      await tx.delete(activityCompetencies).where(and(
+        eq(activityCompetencies.activityType, 'EXPEDITION'),
+        eq(activityCompetencies.activityId, id)
+      ));
+      await tx.delete(expeditions).where(eq(expeditions.id, id));
+    });
   }
   
   // ==================== PIN CRUD ====================
@@ -212,6 +346,14 @@ export class ExpeditionService {
   }) {
     const now = new Date();
     const id = uuidv4();
+
+    const [expedition] = await db.select({ id: expeditions.id })
+      .from(expeditions)
+      .where(eq(expeditions.id, data.expeditionId));
+
+    if (!expedition) {
+      throw new Error('Expedición no encontrada');
+    }
     
     // Obtener el siguiente orderIndex
     const existingPins = await db.select()
@@ -260,8 +402,8 @@ export class ExpeditionService {
     // Parsear campos JSON que pueden venir como string
     return {
       ...pin,
-      storyFiles: typeof pin.storyFiles === 'string' ? JSON.parse(pin.storyFiles) : pin.storyFiles,
-      taskFiles: typeof pin.taskFiles === 'string' ? JSON.parse(pin.taskFiles) : pin.taskFiles,
+      storyFiles: this.parseJsonArray(pin.storyFiles),
+      taskFiles: this.parseJsonArray(pin.taskFiles),
     };
   }
   
@@ -297,21 +439,23 @@ export class ExpeditionService {
   
   // Eliminar pin
   async deletePin(id: string) {
-    // Eliminar conexiones relacionadas
-    await db.delete(expeditionConnections)
-      .where(eq(expeditionConnections.fromPinId, id));
-    await db.delete(expeditionConnections)
-      .where(eq(expeditionConnections.toPinId, id));
-    
-    // Eliminar progreso y submissions
-    await db.delete(expeditionSubmissions)
-      .where(eq(expeditionSubmissions.pinId, id));
-    await db.delete(expeditionPinProgress)
-      .where(eq(expeditionPinProgress.pinId, id));
-    
-    // Eliminar el pin
-    await db.delete(expeditionPins)
-      .where(eq(expeditionPins.id, id));
+    await db.transaction(async (tx) => {
+      // Eliminar conexiones relacionadas
+      await tx.delete(expeditionConnections)
+        .where(eq(expeditionConnections.fromPinId, id));
+      await tx.delete(expeditionConnections)
+        .where(eq(expeditionConnections.toPinId, id));
+
+      // Eliminar progreso y submissions
+      await tx.delete(expeditionSubmissions)
+        .where(eq(expeditionSubmissions.pinId, id));
+      await tx.delete(expeditionPinProgress)
+        .where(eq(expeditionPinProgress.pinId, id));
+
+      // Eliminar el pin
+      await tx.delete(expeditionPins)
+        .where(eq(expeditionPins.id, id));
+    });
   }
   
   // ==================== CONNECTIONS ====================
@@ -323,6 +467,18 @@ export class ExpeditionService {
     toPinId: string;
     onSuccess?: boolean | null;
   }) {
+    const [fromPin] = await db.select({ expeditionId: expeditionPins.expeditionId })
+      .from(expeditionPins)
+      .where(eq(expeditionPins.id, data.fromPinId));
+
+    const [toPin] = await db.select({ expeditionId: expeditionPins.expeditionId })
+      .from(expeditionPins)
+      .where(eq(expeditionPins.id, data.toPinId));
+
+    if (!fromPin || !toPin || fromPin.expeditionId !== data.expeditionId || toPin.expeditionId !== data.expeditionId) {
+      throw new Error('Los pines seleccionados no pertenecen a la expedición');
+    }
+
     const id = uuidv4();
     
     await db.insert(expeditionConnections).values({
@@ -364,43 +520,70 @@ export class ExpeditionService {
   
   // Inicializar progreso de estudiantes cuando se publica la expedición
   async initializeStudentProgress(expedition: any) {
-    const students = await db.select()
+    const students = await db.select({ id: studentProfiles.id })
       .from(studentProfiles)
-      .where(eq(studentProfiles.classroomId, expedition.classroomId));
-    
+      .where(and(
+        eq(studentProfiles.classroomId, expedition.classroomId),
+        eq(studentProfiles.isActive, true)
+      ));
+
+    if (!students.length || !Array.isArray(expedition.pins) || expedition.pins.length === 0) {
+      return;
+    }
+
     const introPin = expedition.pins.find((p: any) => p.pinType === 'INTRO');
     const now = new Date();
-    
-    for (const student of students) {
-      // Crear progreso general
-      const progressId = uuidv4();
-      await db.insert(expeditionStudentProgress).values({
-        id: progressId,
+    const studentIds = students.map((student) => student.id);
+
+    const existingProgressRows = await db.select({
+      studentProfileId: expeditionStudentProgress.studentProfileId,
+    })
+      .from(expeditionStudentProgress)
+      .where(and(
+        eq(expeditionStudentProgress.expeditionId, expedition.id),
+        inArray(expeditionStudentProgress.studentProfileId, studentIds)
+      ));
+
+    const existingStudentSet = new Set(existingProgressRows.map((row) => row.studentProfileId));
+    const targetStudents = students.filter((student) => !existingStudentSet.has(student.id));
+
+    if (!targetStudents.length) {
+      return;
+    }
+
+    await db.transaction(async (tx) => {
+      const progressRows = targetStudents.map((student) => ({
+        id: uuidv4(),
         expeditionId: expedition.id,
         studentProfileId: student.id,
         isCompleted: false,
         currentPinId: introPin?.id || null,
         startedAt: now,
         updatedAt: now,
-      });
-      
-      // Crear progreso por pin
-      for (const pin of expedition.pins) {
-        const pinProgressId = uuidv4();
-        const isIntro = pin.pinType === 'INTRO';
-        
-        await db.insert(expeditionPinProgress).values({
-          id: pinProgressId,
-          expeditionId: expedition.id,
-          pinId: pin.id,
-          studentProfileId: student.id,
-          status: isIntro ? 'UNLOCKED' : 'LOCKED',
-          unlockedAt: isIntro ? now : null,
-          createdAt: now,
-          updatedAt: now,
+      }));
+
+      await tx.insert(expeditionStudentProgress).values(progressRows);
+
+      const pinProgressRows = targetStudents.flatMap((student) => {
+        return expedition.pins.map((pin: any) => {
+          const isIntro = pin.pinType === 'INTRO';
+          return {
+            id: uuidv4(),
+            expeditionId: expedition.id,
+            pinId: pin.id,
+            studentProfileId: student.id,
+            status: isIntro ? 'UNLOCKED' as ExpeditionProgressStatus : 'LOCKED' as ExpeditionProgressStatus,
+            unlockedAt: isIntro ? now : null,
+            createdAt: now,
+            updatedAt: now,
+          };
         });
+      });
+
+      if (pinProgressRows.length > 0) {
+        await tx.insert(expeditionPinProgress).values(pinProgressRows);
       }
-    }
+    });
   }
   
   // Obtener progreso de un estudiante en una expedición
@@ -422,12 +605,17 @@ export class ExpeditionService {
         eq(expeditionPinProgress.studentProfileId, studentProfileId)
       ));
     
-    const submissions = await db.select()
+    const rawSubmissions = await db.select()
       .from(expeditionSubmissions)
       .where(and(
         eq(expeditionSubmissions.expeditionId, expeditionId),
         eq(expeditionSubmissions.studentProfileId, studentProfileId)
       ));
+
+    const submissions = rawSubmissions.map((submission) => ({
+      ...submission,
+      files: this.parseJsonArray(submission.files) || [],
+    }));
     
     return {
       ...progress,
@@ -438,26 +626,35 @@ export class ExpeditionService {
   
   // Obtener progreso de todos los estudiantes en un pin
   async getPinStudentProgress(pinId: string) {
-    // Consulta separada para evitar LATERAL JOIN
-    const progressList = await db.select()
+    const rows = await db.select({
+      progress: expeditionPinProgress,
+      student: studentProfiles,
+    })
       .from(expeditionPinProgress)
+      .leftJoin(studentProfiles, eq(expeditionPinProgress.studentProfileId, studentProfiles.id))
       .where(eq(expeditionPinProgress.pinId, pinId));
-    
-    // Obtener estudiantes para cada progreso
-    const result = await Promise.all(
-      progressList.map(async (prog) => {
-        const studentResults = await db.select()
-          .from(studentProfiles)
-          .where(eq(studentProfiles.id, prog.studentProfileId));
-        return { ...prog, student: studentResults[0] || null };
-      })
-    );
-    
-    return result;
+
+    return rows.map(({ progress, student }) => ({
+      ...progress,
+      student: student || null,
+    }));
   }
   
   // Decisión del profesor sobre un estudiante en un pin
   async setTeacherDecision(pinId: string, studentProfileId: string, passed: boolean) {
+    const existing = await this.getPinProgressByStudent(pinId, studentProfileId);
+    if (!existing) {
+      throw new Error('Progreso no encontrado');
+    }
+
+    if (passed && (existing.status === 'PASSED' || existing.status === 'COMPLETED')) {
+      return existing;
+    }
+
+    if (!passed && existing.status === 'FAILED') {
+      return existing;
+    }
+
     const now = new Date();
     
     // Actualizar decisión
@@ -487,136 +684,129 @@ export class ExpeditionService {
   
   // Otorgar recompensas de un pin al estudiante
   async grantPinRewards(pinId: string, studentProfileId: string) {
-    const now = new Date();
-    
-    // Obtener el pin y sus recompensas
     const pin = await this.getPinById(pinId);
     if (!pin || (pin.rewardXp === 0 && pin.rewardGp === 0)) return;
-    
-    // Obtener el estudiante
-    const [student] = await db.select().from(studentProfiles)
-      .where(eq(studentProfiles.id, studentProfileId));
-    if (!student) return;
-    
-    // Obtener la expedición para el nombre
+
     const expedition = await this.getById(pin.expeditionId);
+    if (!expedition) return;
+
     const reason = `Expedición "${expedition?.name || 'Desconocida'}" - Pin: ${pin.name}`;
-    
-    // Obtener configuración del aula
-    const [classroom] = await db.select().from(classrooms)
-      .where(eq(classrooms.id, student.classroomId));
-    
-    // Calcular XP para el clan (si aplica)
-    let xpForStudent = pin.rewardXp;
-    let xpForClan = 0;
-    
-    // Verificar si el estudiante tiene clan y si el aula tiene clanes habilitados
-    if (student.teamId) {
-      if (classroom?.clansEnabled && classroom.clanXpPercentage > 0) {
-        // Calcular porcentaje para el clan
-        xpForClan = Math.floor(pin.rewardXp * (classroom.clanXpPercentage / 100));
-        xpForStudent = pin.rewardXp - xpForClan;
-        
-        // Actualizar XP del clan
-        await db.update(teams)
-          .set({
-            totalXp: sql`${teams.totalXp} + ${xpForClan}`,
-            updatedAt: now,
-          })
-          .where(eq(teams.id, student.teamId));
-        
-        // Registrar en clanLogs
-        await db.insert(clanLogs).values({
+
+    const now = new Date();
+    let awardedXp = 0;
+    let shouldTriggerXpSideEffects = false;
+
+    await db.transaction(async (tx) => {
+      const [student] = await tx.select()
+        .from(studentProfiles)
+        .where(eq(studentProfiles.id, studentProfileId));
+
+      if (!student) return;
+
+      // Evitar duplicar recompensas para el mismo pin/estudiante
+      const [existingRewardLog] = await tx.select({ id: pointLogs.id })
+        .from(pointLogs)
+        .where(and(
+          eq(pointLogs.studentId, studentProfileId),
+          eq(pointLogs.action, 'ADD'),
+          eq(pointLogs.reason, reason),
+          inArray(pointLogs.pointType, ['XP', 'GP'])
+        ));
+
+      if (existingRewardLog) {
+        return;
+      }
+
+      const [classroom] = await tx.select({ xpPerLevel: classrooms.xpPerLevel })
+        .from(classrooms)
+        .where(eq(classrooms.id, student.classroomId));
+
+      const newXp = student.xp + pin.rewardXp;
+      const newGp = student.gp + pin.rewardGp;
+      const xpPerLevel = classroom?.xpPerLevel || 100;
+      const newLevel = pin.rewardXp > 0 ? this.calculateLevel(newXp, xpPerLevel) : student.level;
+      const leveledUp = newLevel > student.level;
+
+      await tx.update(studentProfiles)
+        .set({
+          xp: newXp,
+          gp: newGp,
+          level: newLevel,
+          updatedAt: now,
+        })
+        .where(eq(studentProfiles.id, studentProfileId));
+
+      if (pin.rewardXp > 0) {
+        await tx.insert(pointLogs).values({
           id: uuidv4(),
-          clanId: student.teamId,
           studentId: studentProfileId,
-          action: 'XP_CONTRIBUTED',
-          xpAmount: xpForClan,
-          gpAmount: 0,
+          pointType: 'XP',
+          action: 'ADD',
+          amount: pin.rewardXp,
           reason,
           createdAt: now,
         });
       }
-    }
-    
-    // Calcular nuevo nivel si se otorga XP
-    const newXp = student.xp + xpForStudent;
-    const xpPerLevel = classroom?.xpPerLevel || 100;
-    
-    // Calcular nuevo nivel usando la fórmula progresiva
-    const calculateLevel = (totalXp: number, xpPerLvl: number): number => {
-      const level = Math.floor((1 + Math.sqrt(1 + (8 * totalXp) / xpPerLvl)) / 2);
-      return Math.max(1, level);
-    };
-    
-    const newLevel = xpForStudent > 0 ? calculateLevel(newXp, xpPerLevel) : student.level;
-    const leveledUp = newLevel > student.level;
-    
-    // Actualizar puntos del estudiante
-    await db.update(studentProfiles)
-      .set({
-        xp: newXp,
-        gp: student.gp + pin.rewardGp,
-        level: newLevel,
-        updatedAt: now,
-      })
-      .where(eq(studentProfiles.id, studentProfileId));
-    
-    // Notificar subida de nivel si aplica
-    if (leveledUp && student.userId) {
-      await db.insert(notifications).values({
-        id: uuidv4(),
-        userId: student.userId,
-        classroomId: student.classroomId,
-        type: 'LEVEL_UP',
-        title: '🎉 ¡Subiste de nivel!',
-        message: `¡Felicidades! Has alcanzado el nivel ${newLevel}`,
-        isRead: false,
-        createdAt: now,
-      });
-    }
-    
-    // Registrar en pointLogs
-    if (xpForStudent > 0) {
-      await db.insert(pointLogs).values({
-        id: uuidv4(),
-        studentId: studentProfileId,
-        pointType: 'XP',
-        action: 'ADD',
-        amount: xpForStudent,
-        reason,
-        createdAt: now,
-      });
-    }
-    if (pin.rewardGp > 0) {
-      await db.insert(pointLogs).values({
-        id: uuidv4(),
-        studentId: studentProfileId,
-        pointType: 'GP',
-        action: 'ADD',
-        amount: pin.rewardGp,
-        reason,
-        createdAt: now,
-      });
-    }
-    
-    // Crear notificación
-    if (student.userId) {
-      const rewardText = [
-        xpForStudent > 0 ? `+${xpForStudent} XP` : '',
-        pin.rewardGp > 0 ? `+${pin.rewardGp} 💰` : '',
-        xpForClan > 0 ? `(+${xpForClan} XP al clan)` : '',
-      ].filter(Boolean).join(' ');
-      
-      await db.insert(notifications).values({
-        id: uuidv4(),
-        userId: student.userId,
-        type: 'POINTS',
-        title: '🗺️ ¡Objetivo completado!',
-        message: `Has recibido ${rewardText} por completar "${pin.name}"`,
-        isRead: false,
-        createdAt: now,
-      });
+
+      if (pin.rewardGp > 0) {
+        await tx.insert(pointLogs).values({
+          id: uuidv4(),
+          studentId: studentProfileId,
+          pointType: 'GP',
+          action: 'ADD',
+          amount: pin.rewardGp,
+          reason,
+          createdAt: now,
+        });
+      }
+
+      if (student.userId) {
+        const rewardText = [
+          pin.rewardXp > 0 ? `+${pin.rewardXp} XP` : '',
+          pin.rewardGp > 0 ? `+${pin.rewardGp} 💰` : '',
+        ].filter(Boolean).join(' ');
+
+        await tx.insert(notifications).values({
+          id: uuidv4(),
+          userId: student.userId,
+          classroomId: student.classroomId,
+          type: 'POINTS',
+          title: '🗺️ ¡Objetivo completado!',
+          message: `Has recibido ${rewardText} por completar "${pin.name}"`,
+          isRead: false,
+          createdAt: now,
+        });
+
+        if (leveledUp) {
+          await tx.insert(notifications).values({
+            id: uuidv4(),
+            userId: student.userId,
+            classroomId: student.classroomId,
+            type: 'LEVEL_UP',
+            title: '🎉 ¡Subiste de nivel!',
+            message: `¡Felicidades! Has alcanzado el nivel ${newLevel}`,
+            isRead: false,
+            createdAt: now,
+          });
+        }
+      }
+
+      awardedXp = pin.rewardXp;
+      shouldTriggerXpSideEffects = pin.rewardXp > 0;
+    });
+
+    if (shouldTriggerXpSideEffects && awardedXp > 0) {
+      try {
+        await clanService.contributeXpToClan(studentProfileId, awardedXp, reason);
+      } catch {
+        // Silently fail
+      }
+
+      try {
+        await storyService.onXpAwarded(expedition.classroomId, studentProfileId, awardedXp);
+      } catch {
+        // Silently fail
+      }
     }
   }
   
@@ -708,31 +898,54 @@ export class ExpeditionService {
     
     // Verificar si es entrega temprana
     const pin = await this.getPinById(data.pinId);
+    if (!pin) {
+      throw new Error('Pin no encontrado');
+    }
+
+    if (pin.expeditionId !== data.expeditionId) {
+      throw new Error('El pin no pertenece a esta expedición');
+    }
+
+    const pinProgress = await this.getPinProgressByStudent(data.pinId, data.studentProfileId);
+    if (!pinProgress) {
+      throw new Error('No tienes progreso para este pin');
+    }
+
+    if (pinProgress.status === 'LOCKED') {
+      throw new Error('El pin está bloqueado');
+    }
+
+    if (pinProgress.status === 'PASSED' || pinProgress.status === 'COMPLETED') {
+      throw new Error('Este pin ya fue completado');
+    }
+
     const isEarly = pin?.earlySubmissionEnabled && 
                     pin.earlySubmissionDate && 
                     now < new Date(pin.earlySubmissionDate);
-    
-    await db.insert(expeditionSubmissions).values({
-      id,
-      expeditionId: data.expeditionId,
-      pinId: data.pinId,
-      studentProfileId: data.studentProfileId,
-      files: data.files,
-      comment: data.comment || null,
-      isEarlySubmission: isEarly || false,
-      submittedAt: now,
+
+    await db.transaction(async (tx) => {
+      await tx.insert(expeditionSubmissions).values({
+        id,
+        expeditionId: data.expeditionId,
+        pinId: data.pinId,
+        studentProfileId: data.studentProfileId,
+        files: data.files,
+        comment: data.comment || null,
+        isEarlySubmission: isEarly || false,
+        submittedAt: now,
+      });
+
+      // Actualizar estado del pin a IN_PROGRESS
+      await tx.update(expeditionPinProgress)
+        .set({
+          status: 'IN_PROGRESS',
+          updatedAt: now,
+        })
+        .where(and(
+          eq(expeditionPinProgress.pinId, data.pinId),
+          eq(expeditionPinProgress.studentProfileId, data.studentProfileId)
+        ));
     });
-    
-    // Actualizar estado del pin a IN_PROGRESS
-    await db.update(expeditionPinProgress)
-      .set({
-        status: 'IN_PROGRESS',
-        updatedAt: now,
-      })
-      .where(and(
-        eq(expeditionPinProgress.pinId, data.pinId),
-        eq(expeditionPinProgress.studentProfileId, data.studentProfileId)
-      ));
     
     // Si autoProgress está habilitado, aprobar automáticamente
     const expedition = await this.getById(data.expeditionId);
@@ -750,27 +963,31 @@ export class ExpeditionService {
     const results = await db.select()
       .from(expeditionSubmissions)
       .where(eq(expeditionSubmissions.id, id));
-    return results[0] || null;
+
+    const submission = results[0];
+    if (!submission) return null;
+
+    return {
+      ...submission,
+      files: this.parseJsonArray(submission.files) || [],
+    };
   }
   
   // Obtener entregas de un pin
   async getSubmissionsByPin(pinId: string) {
-    // Consulta separada para evitar LATERAL JOIN
-    const submissionsList = await db.select()
+    const rows = await db.select({
+      submission: expeditionSubmissions,
+      student: studentProfiles,
+    })
       .from(expeditionSubmissions)
+      .leftJoin(studentProfiles, eq(expeditionSubmissions.studentProfileId, studentProfiles.id))
       .where(eq(expeditionSubmissions.pinId, pinId));
-    
-    // Obtener estudiantes para cada entrega
-    const result = await Promise.all(
-      submissionsList.map(async (sub) => {
-        const studentResults = await db.select()
-          .from(studentProfiles)
-          .where(eq(studentProfiles.id, sub.studentProfileId));
-        return { ...sub, student: studentResults[0] || null };
-      })
-    );
-    
-    return result;
+
+    return rows.map(({ submission, student }) => ({
+      ...submission,
+      files: this.parseJsonArray(submission.files) || [],
+      student: student || null,
+    }));
   }
 
   // Completar un pin (para INTRO y OBJECTIVE sin entrega requerida)
@@ -826,63 +1043,104 @@ export class ExpeditionService {
       .where(eq(studentProfiles.classroomId, classroomId));
     const totalStudents = Number(studentsResult[0]?.count || 0);
 
-    // Estadísticas por expedición
-    const expeditionStats = await Promise.all(
-      expeditionsList.map(async (exp) => {
-        // Obtener progreso de estudiantes en esta expedición
-        const progressList = await db.select()
-          .from(expeditionStudentProgress)
-          .where(eq(expeditionStudentProgress.expeditionId, exp.id));
-
-        const completedCount = progressList.filter(p => p.isCompleted).length;
-        const inProgressCount = progressList.filter(p => !p.isCompleted).length;
-        const startedCount = progressList.length;
-
-        // Obtener pines de la expedición
-        const pinsList = await db.select()
-          .from(expeditionPins)
-          .where(eq(expeditionPins.expeditionId, exp.id));
-
-        // Calcular recompensas totales
-        const totalXp = pinsList.reduce((sum, pin) => sum + (pin.rewardXp || 0), 0);
-        const totalGp = pinsList.reduce((sum, pin) => sum + (pin.rewardGp || 0), 0);
-
-        // Obtener entregas pendientes de revisión
-        const pendingSubmissions = await db.select({ count: sql<number>`count(*)` })
-          .from(expeditionPinProgress)
-          .where(and(
-            eq(expeditionPinProgress.expeditionId, exp.id),
-            eq(expeditionPinProgress.status, 'IN_PROGRESS')
-          ));
-
-        // Última actividad
-        const lastActivity = progressList.length > 0
-          ? progressList.reduce((latest, p) => 
-              new Date(p.updatedAt) > new Date(latest.updatedAt) ? p : latest
-            ).updatedAt
-          : null;
-
-        return {
-          expeditionId: exp.id,
-          name: exp.name,
-          status: exp.status,
-          mapImageUrl: exp.mapImageUrl,
-          autoProgress: exp.autoProgress,
-          publishedAt: exp.publishedAt,
-          createdAt: exp.createdAt,
-          pinsCount: pinsList.length,
+    if (expeditionsList.length === 0) {
+      return {
+        summary: {
+          totalExpeditions: 0,
+          published: 0,
+          draft: 0,
+          archived: 0,
           totalStudents,
-          startedCount,
-          completedCount,
-          inProgressCount,
-          completionRate: totalStudents > 0 ? Math.round((completedCount / totalStudents) * 100) : 0,
-          totalXp,
-          totalGp,
-          pendingReviews: Number(pendingSubmissions[0]?.count || 0),
-          lastActivity,
-        };
-      })
-    );
+          totalStarted: 0,
+          totalCompleted: 0,
+          totalPendingReviews: 0,
+          overallCompletionRate: 0,
+        },
+        expeditions: [],
+      };
+    }
+
+    const expeditionIds = expeditionsList.map((exp) => exp.id);
+
+    const allProgressRows = await db.select()
+      .from(expeditionStudentProgress)
+      .where(inArray(expeditionStudentProgress.expeditionId, expeditionIds));
+
+    const allPins = await db.select({
+      expeditionId: expeditionPins.expeditionId,
+      rewardXp: expeditionPins.rewardXp,
+      rewardGp: expeditionPins.rewardGp,
+    })
+      .from(expeditionPins)
+      .where(inArray(expeditionPins.expeditionId, expeditionIds));
+
+    const pendingReviewRows = await db.select({
+      expeditionId: expeditionPinProgress.expeditionId,
+      count: sql<number>`count(*)`,
+    })
+      .from(expeditionPinProgress)
+      .where(and(
+        inArray(expeditionPinProgress.expeditionId, expeditionIds),
+        eq(expeditionPinProgress.status, 'IN_PROGRESS')
+      ))
+      .groupBy(expeditionPinProgress.expeditionId);
+
+    const progressByExpedition = new Map<string, typeof allProgressRows>();
+    allProgressRows.forEach((row) => {
+      const list = progressByExpedition.get(row.expeditionId) || [];
+      list.push(row);
+      progressByExpedition.set(row.expeditionId, list);
+    });
+
+    const pinsByExpedition = new Map<string, typeof allPins>();
+    allPins.forEach((pin) => {
+      const list = pinsByExpedition.get(pin.expeditionId) || [];
+      list.push(pin);
+      pinsByExpedition.set(pin.expeditionId, list);
+    });
+
+    const pendingByExpedition = new Map<string, number>();
+    pendingReviewRows.forEach((row) => {
+      pendingByExpedition.set(row.expeditionId, Number(row.count || 0));
+    });
+
+    const expeditionStats = expeditionsList.map((exp) => {
+      const progressList = progressByExpedition.get(exp.id) || [];
+      const pinsList = pinsByExpedition.get(exp.id) || [];
+
+      const completedCount = progressList.filter((p) => p.isCompleted).length;
+      const startedCount = progressList.length;
+      const inProgressCount = startedCount - completedCount;
+
+      const totalXp = pinsList.reduce((sum, pin) => sum + (pin.rewardXp || 0), 0);
+      const totalGp = pinsList.reduce((sum, pin) => sum + (pin.rewardGp || 0), 0);
+
+      const lastActivity = progressList.length > 0
+        ? progressList.reduce((latest, p) =>
+            new Date(p.updatedAt) > new Date(latest.updatedAt) ? p : latest
+          ).updatedAt
+        : null;
+
+      return {
+        expeditionId: exp.id,
+        name: exp.name,
+        status: exp.status,
+        mapImageUrl: exp.mapImageUrl,
+        autoProgress: exp.autoProgress,
+        publishedAt: exp.publishedAt,
+        createdAt: exp.createdAt,
+        pinsCount: pinsList.length,
+        totalStudents,
+        startedCount,
+        completedCount,
+        inProgressCount,
+        completionRate: totalStudents > 0 ? Math.round((completedCount / totalStudents) * 100) : 0,
+        totalXp,
+        totalGp,
+        pendingReviews: pendingByExpedition.get(exp.id) || 0,
+        lastActivity,
+      };
+    });
 
     // Estadísticas generales
     const published = expeditionsList.filter(e => e.status === 'PUBLISHED').length;

@@ -7,11 +7,13 @@ import {
   studentGrades, 
   studentProfiles, 
   classrooms,
+  classroomCompetencies,
   curriculumCompetencies,
   users
 } from '../db/schema.js';
-import { eq, and } from 'drizzle-orm';
-import { classroomCompetencies } from '../db/schema.js';
+import { eq, and, asc } from 'drizzle-orm';
+
+const BIMESTER_PERIOD_REGEX = /^\d{4}-B[1-4]$/;
 
 interface StudentGradeData {
   studentId: string;
@@ -37,6 +39,45 @@ interface GradeStats {
 class GradeExportService {
   private ai: GoogleGenAI | null = null;
 
+  private normalizePeriod(period?: string): string {
+    const normalized = (period ?? 'CURRENT').trim().toUpperCase();
+
+    if (normalized === 'CURRENT') {
+      return normalized;
+    }
+
+    if (!BIMESTER_PERIOD_REGEX.test(normalized)) {
+      throw new Error('Periodo invalido. Usa CURRENT o el formato YYYY-B1..B4');
+    }
+
+    return normalized;
+  }
+
+  private async resolvePeriodForClassroom(classroomId: string, period?: string): Promise<string> {
+    const normalizedPeriod = this.normalizePeriod(period);
+    if (normalizedPeriod !== 'CURRENT') {
+      return normalizedPeriod;
+    }
+
+    const [classroom] = await db.select({
+      currentBimester: classrooms.currentBimester,
+    }).from(classrooms).where(eq(classrooms.id, classroomId));
+
+    const currentBimester = classroom?.currentBimester?.trim().toUpperCase();
+    return currentBimester && BIMESTER_PERIOD_REGEX.test(currentBimester)
+      ? currentBimester
+      : `${new Date().getFullYear()}-B1`;
+  }
+
+  private toGradeBucket(label: string, score: number): keyof GradeStats {
+    const normalizedLabel = label.trim().toUpperCase();
+    if (normalizedLabel === 'AD' || normalizedLabel === 'A' || normalizedLabel === 'B' || normalizedLabel === 'C') {
+      return normalizedLabel;
+    }
+
+    return this.scoreToLabel(score);
+  }
+
   private getAI(): GoogleGenAI {
     if (!this.ai) {
       const apiKey = process.env.GEMINI_API_KEY;
@@ -54,6 +95,10 @@ class GradeExportService {
    */
   private async generateConclusionForC(competencyName: string): Promise<string> {
     try {
+      if (!process.env.GEMINI_API_KEY?.trim()) {
+        return `Requiere apoyo adicional para desarrollar la competencia ${competencyName}.`;
+      }
+
       const ai = this.getAI();
       
       const prompt = `Eres un experto en educación peruana. Genera UNA SOLA oración breve (máximo 25 palabras) que explique por qué un estudiante está "En inicio" (nota C) en la competencia "${competencyName}".
@@ -91,11 +136,13 @@ Responde SOLO con la oración, sin comillas ni explicaciones adicionales.`;
       throw new Error('Clase no encontrada');
     }
 
-    const studentsData = await this.getStudentsWithGrades(classroomId, period);
+    const resolvedPeriod = await this.resolvePeriodForClassroom(classroomId, period);
+
+    const studentsData = await this.getStudentsWithGrades(classroomId, resolvedPeriod);
     const competencies = await this.getClassroomCompetencies(classroomId);
     const stats = this.calculateStats(studentsData);
 
-    return this.createPDF(classroom, studentsData, competencies, stats, period);
+    return this.createPDF(classroom, studentsData, competencies, stats, resolvedPeriod);
   }
 
   private async getStudentsWithGrades(classroomId: string, period: string): Promise<StudentGradeData[]> {
@@ -123,8 +170,15 @@ Responde SOLO con la oración, sin comillas ni explicaciones adicionales.`;
       eq(studentGrades.period, period)
     ));
 
+    const gradesByStudent = new Map<string, typeof grades>();
+    for (const grade of grades) {
+      const studentGradeList = gradesByStudent.get(grade.studentProfileId) || [];
+      studentGradeList.push(grade);
+      gradesByStudent.set(grade.studentProfileId, studentGradeList);
+    }
+
     return students.map(student => {
-      const studentGradesList = grades.filter(g => g.studentProfileId === student.id);
+      const studentGradesList = gradesByStudent.get(student.id) || [];
       const scores = studentGradesList.map(g => parseFloat(String(g.score)) || 0);
       const average = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
 
@@ -144,21 +198,25 @@ Responde SOLO con la oración, sin comillas ni explicaciones adicionales.`;
         average,
         averageLabel: this.scoreToLabel(average),
       };
-    }).sort((a, b) => a.displayName.localeCompare(b.displayName));
+    }).sort((a, b) => a.displayName.localeCompare(b.displayName, 'es'));
   }
 
   private async getClassroomCompetencies(classroomId: string): Promise<{ id: string; name: string }[]> {
-    const grades = await db.selectDistinct({
-      competencyId: studentGrades.competencyId,
+    const competencies = await db.select({
+      competencyId: classroomCompetencies.competencyId,
       competencyName: curriculumCompetencies.name,
     })
-    .from(studentGrades)
-    .leftJoin(curriculumCompetencies, eq(studentGrades.competencyId, curriculumCompetencies.id))
-    .where(eq(studentGrades.classroomId, classroomId));
+    .from(classroomCompetencies)
+    .leftJoin(curriculumCompetencies, eq(classroomCompetencies.competencyId, curriculumCompetencies.id))
+    .where(and(
+      eq(classroomCompetencies.classroomId, classroomId),
+      eq(classroomCompetencies.isActive, true)
+    ))
+    .orderBy(asc(classroomCompetencies.createdAt));
 
-    return grades.map(g => ({
-      id: g.competencyId,
-      name: g.competencyName || 'Competencia',
+    return competencies.map(c => ({
+      id: c.competencyId,
+      name: c.competencyName || 'Competencia',
     }));
   }
 
@@ -176,17 +234,20 @@ Responde SOLO con la oración, sin comillas ni explicaciones adicionales.`;
           byCompetency.set(grade.competencyId, { AD: 0, A: 0, B: 0, C: 0, total: 0 });
         }
         const compStats = byCompetency.get(grade.competencyId)!;
-        compStats[grade.gradeLabel as keyof GradeStats]++;
+        const gradeBucket = this.toGradeBucket(grade.gradeLabel, grade.score);
+        compStats[gradeBucket]++;
         compStats.total++;
       }
-      overall[student.averageLabel as keyof GradeStats]++;
+
+      const averageBucket = this.toGradeBucket(student.averageLabel, student.average);
+      overall[averageBucket]++;
       overall.total++;
     }
 
     return { byCompetency, overall, studentCount: students.length };
   }
 
-  private scoreToLabel(score: number): string {
+  private scoreToLabel(score: number): keyof GradeStats {
     if (score >= 85) return 'AD';
     if (score >= 65) return 'A';
     if (score >= 50) return 'B';
@@ -507,7 +568,9 @@ Responde SOLO con la oración, sin comillas ni explicaciones adicionales.`;
       throw new Error('Clase no encontrada');
     }
 
-    const studentsData = await this.getStudentsWithGrades(classroomId, period);
+    const resolvedPeriod = await this.resolvePeriodForClassroom(classroomId, period);
+
+    const studentsData = await this.getStudentsWithGrades(classroomId, resolvedPeriod);
     const competencies = await this.getClassroomCompetenciesOrdered(classroomId);
 
     // Identificar competencias que tienen al menos un estudiante con C
@@ -521,14 +584,18 @@ Responde SOLO con la oración, sin comillas ni explicaciones adicionales.`;
     }
 
     // Generar conclusiones con IA solo para competencias con notas C
-    const conclusionsMap = new Map<string, string>();
-    for (const compId of competenciesWithC) {
+    const conclusionEntries = await Promise.all(Array.from(competenciesWithC).map(async (compId) => {
       const comp = competencies.find(c => c.id === compId);
       if (comp) {
         const conclusion = await this.generateConclusionForC(comp.name);
-        conclusionsMap.set(compId, conclusion);
+        return [compId, conclusion] as const;
       }
-    }
+      return null;
+    }));
+
+    const conclusionsMap = new Map<string, string>(
+      conclusionEntries.filter((entry): entry is readonly [string, string] => !!entry)
+    );
 
     return this.createExcel(classroom, studentsData, competencies, conclusionsMap);
   }
@@ -543,7 +610,11 @@ Responde SOLO con la oración, sin comillas ni explicaciones adicionales.`;
     })
     .from(classroomCompetencies)
     .leftJoin(curriculumCompetencies, eq(classroomCompetencies.competencyId, curriculumCompetencies.id))
-    .where(eq(classroomCompetencies.classroomId, classroomId));
+    .where(and(
+      eq(classroomCompetencies.classroomId, classroomId),
+      eq(classroomCompetencies.isActive, true)
+    ))
+    .orderBy(asc(classroomCompetencies.createdAt));
 
     return comps.map((c, idx) => ({
       id: c.competencyId,

@@ -1,6 +1,6 @@
 import { db } from '../db/index.js';
-import { questionBanks, questions, type BankQuestionType, type QuestionDifficulty } from '../db/schema.js';
-import { eq, and } from 'drizzle-orm';
+import { classrooms, questionBanks, questions, type BankQuestionType, type QuestionDifficulty } from '../db/schema.js';
+import { eq, and, inArray, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 
 // Interfaces
@@ -58,59 +58,261 @@ interface UpdateQuestionData {
   isActive?: boolean;
 }
 
+type QuestionRow = typeof questions.$inferSelect;
+
+interface ParsedQuestion extends Omit<QuestionRow, 'options' | 'correctAnswer' | 'pairs'> {
+  options: QuestionOption[] | null;
+  correctAnswer: boolean | null;
+  pairs: MatchingPair[] | null;
+}
+
+const DEFAULT_BANK_COLOR = '#6366f1';
+const DEFAULT_BANK_ICON = 'book';
+const MAX_RANDOM_QUESTIONS = 100;
+
 class QuestionBankService {
+  private isValidHexColor(color: string): boolean {
+    return /^#[0-9A-Fa-f]{6}$/.test(color);
+  }
+
+  private normalizeText(value: string): string {
+    return value.trim();
+  }
+
+  private parseJsonValue<T>(value: unknown): T | null {
+    if (value === null || value === undefined) {
+      return null;
+    }
+
+    let current: unknown = value;
+    while (typeof current === 'string') {
+      try {
+        current = JSON.parse(current);
+      } catch {
+        break;
+      }
+    }
+
+    return current as T;
+  }
+
+  private parseBooleanValue(value: unknown): boolean | null {
+    if (typeof value === 'boolean') {
+      return value;
+    }
+
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === 'true') return true;
+      if (normalized === 'false') return false;
+    }
+
+    return null;
+  }
+
+  private sanitizeOptions(options?: QuestionOption[] | null): QuestionOption[] | null {
+    if (!options) {
+      return null;
+    }
+
+    const sanitized = options
+      .map((option) => ({
+        text: this.normalizeText(option.text),
+        isCorrect: !!option.isCorrect,
+      }))
+      .filter((option) => option.text.length > 0);
+
+    return sanitized.length > 0 ? sanitized : null;
+  }
+
+  private sanitizePairs(pairs?: MatchingPair[] | null): MatchingPair[] | null {
+    if (!pairs) {
+      return null;
+    }
+
+    const sanitized = pairs
+      .map((pair) => ({
+        left: this.normalizeText(pair.left),
+        right: this.normalizeText(pair.right),
+      }))
+      .filter((pair) => pair.left.length > 0 && pair.right.length > 0);
+
+    return sanitized.length > 0 ? sanitized : null;
+  }
+
+  private normalizeQuestionRow(question: QuestionRow): ParsedQuestion {
+    const parsedOptions = this.parseJsonValue<unknown>(question.options);
+    const parsedPairs = this.parseJsonValue<unknown>(question.pairs);
+    const parsedCorrectAnswer = this.parseJsonValue<unknown>(question.correctAnswer);
+
+    return {
+      ...question,
+      options: Array.isArray(parsedOptions) ? (parsedOptions as QuestionOption[]) : null,
+      pairs: Array.isArray(parsedPairs) ? (parsedPairs as MatchingPair[]) : null,
+      correctAnswer: this.parseBooleanValue(parsedCorrectAnswer),
+    };
+  }
+
+  private validateQuestionData(data: {
+    type: BankQuestionType;
+    questionText: string;
+    options?: QuestionOption[] | null;
+    correctAnswer?: boolean | null;
+    pairs?: MatchingPair[] | null;
+  }) {
+    const questionText = this.normalizeText(data.questionText);
+    if (!questionText) {
+      throw new Error('El texto de la pregunta es requerido');
+    }
+
+    switch (data.type) {
+      case 'TRUE_FALSE':
+        if (typeof data.correctAnswer !== 'boolean') {
+          throw new Error('TRUE_FALSE requiere correctAnswer (boolean)');
+        }
+        break;
+      case 'SINGLE_CHOICE': {
+        if (!data.options || data.options.length < 2) {
+          throw new Error('SINGLE_CHOICE requiere al menos 2 opciones');
+        }
+        if (data.options.filter((o) => o.isCorrect).length !== 1) {
+          throw new Error('SINGLE_CHOICE debe tener exactamente 1 respuesta correcta');
+        }
+        break;
+      }
+      case 'MULTIPLE_CHOICE': {
+        if (!data.options || data.options.length < 2) {
+          throw new Error('MULTIPLE_CHOICE requiere al menos 2 opciones');
+        }
+        if (data.options.filter((o) => o.isCorrect).length < 1) {
+          throw new Error('MULTIPLE_CHOICE debe tener al menos 1 respuesta correcta');
+        }
+        break;
+      }
+      case 'MATCHING':
+        if (!data.pairs || data.pairs.length < 2) {
+          throw new Error('MATCHING requiere al menos 2 pares');
+        }
+        break;
+    }
+  }
+
+  async getClassroomIdByBank(bankId: string): Promise<string | null> {
+    const [bank] = await db
+      .select({ classroomId: questionBanks.classroomId })
+      .from(questionBanks)
+      .where(eq(questionBanks.id, bankId));
+
+    return bank?.classroomId ?? null;
+  }
+
+  async getClassroomIdByQuestion(questionId: string): Promise<string | null> {
+    const [question] = await db
+      .select({ classroomId: questionBanks.classroomId })
+      .from(questions)
+      .innerJoin(questionBanks, eq(questions.bankId, questionBanks.id))
+      .where(eq(questions.id, questionId));
+
+    return question?.classroomId ?? null;
+  }
+
+  async verifyTeacherOwnsClassroom(teacherId: string, classroomId: string): Promise<boolean> {
+    const [classroom] = await db
+      .select({ id: classrooms.id })
+      .from(classrooms)
+      .where(
+        and(
+          eq(classrooms.id, classroomId),
+          eq(classrooms.teacherId, teacherId)
+        )
+      );
+
+    return !!classroom;
+  }
+
+  private async getQuestionByIdRaw(questionId: string): Promise<QuestionRow | null> {
+    const [question] = await db
+      .select()
+      .from(questions)
+      .where(
+        and(
+          eq(questions.id, questionId),
+          eq(questions.isActive, true)
+        )
+      );
+
+    return question ?? null;
+  }
+
   // ==================== BANCOS ====================
 
   async getBanksByClassroom(classroomId: string) {
-    // Obtener bancos
-    const banks = await db.select()
+    const banks = await db
+      .select()
       .from(questionBanks)
-      .where(and(
-        eq(questionBanks.classroomId, classroomId),
-        eq(questionBanks.isActive, true)
-      ))
+      .where(
+        and(
+          eq(questionBanks.classroomId, classroomId),
+          eq(questionBanks.isActive, true)
+        )
+      )
       .orderBy(questionBanks.createdAt);
 
-    // Contar preguntas por banco
-    const banksWithCount = await Promise.all(
-      banks.map(async (bank) => {
-        const bankQuestions = await db.select()
-          .from(questions)
-          .where(and(
-            eq(questions.bankId, bank.id),
-            eq(questions.isActive, true)
-          ));
-        return {
-          ...bank,
-          questionCount: bankQuestions.length,
-        };
-      })
-    );
+    if (banks.length === 0) {
+      return [];
+    }
 
-    return banksWithCount;
+    const bankIds = banks.map((bank) => bank.id);
+    const questionCounts = await db
+      .select({
+        bankId: questions.bankId,
+        count: sql<number>`count(*)`,
+      })
+      .from(questions)
+      .where(
+        and(
+          inArray(questions.bankId, bankIds),
+          eq(questions.isActive, true)
+        )
+      )
+      .groupBy(questions.bankId);
+
+    const countByBank = new Map(questionCounts.map((row) => [row.bankId, Number(row.count)]));
+
+    return banks.map((bank) => ({
+      ...bank,
+      questionCount: countByBank.get(bank.id) || 0,
+    }));
   }
 
   async getBankById(bankId: string) {
-    // Obtener banco
-    const bank = await db.select()
+    const bank = await db
+      .select()
       .from(questionBanks)
-      .where(eq(questionBanks.id, bankId))
+      .where(
+        and(
+          eq(questionBanks.id, bankId),
+          eq(questionBanks.isActive, true)
+        )
+      )
       .limit(1);
 
     if (!bank[0]) return null;
 
-    // Obtener preguntas del banco
-    const bankQuestions = await db.select()
+    const bankQuestions = await db
+      .select()
       .from(questions)
-      .where(and(
-        eq(questions.bankId, bankId),
-        eq(questions.isActive, true)
-      ))
+      .where(
+        and(
+          eq(questions.bankId, bankId),
+          eq(questions.isActive, true)
+        )
+      )
       .orderBy(questions.createdAt);
 
     return {
       ...bank[0],
-      questions: bankQuestions,
+      questions: bankQuestions.map((question) => this.normalizeQuestionRow(question)),
     };
   }
 
@@ -118,158 +320,433 @@ class QuestionBankService {
     const id = uuidv4();
     const now = new Date();
 
-    await db.insert(questionBanks).values({
-      id,
-      classroomId: data.classroomId,
-      name: data.name,
-      description: data.description || null,
-      color: data.color || '#6366f1',
-      icon: data.icon || 'book',
-      isActive: true,
-      createdAt: now,
-      updatedAt: now,
+    const normalizedName = this.normalizeText(data.name);
+    if (!normalizedName) {
+      throw new Error('El nombre del banco es requerido');
+    }
+
+    const normalizedDescription = data.description ? this.normalizeText(data.description) : null;
+
+    const color = data.color ? this.normalizeText(data.color) : DEFAULT_BANK_COLOR;
+    if (!this.isValidHexColor(color)) {
+      throw new Error('Color de banco inválido');
+    }
+
+    const icon = data.icon ? this.normalizeText(data.icon) : DEFAULT_BANK_ICON;
+    if (!icon) {
+      throw new Error('Ícono de banco inválido');
+    }
+
+    await db.transaction(async (tx) => {
+      const [classroom] = await tx
+        .select({ id: classrooms.id })
+        .from(classrooms)
+        .where(eq(classrooms.id, data.classroomId));
+
+      if (!classroom) {
+        throw new Error('Clase no encontrada');
+      }
+
+      const [existingBank] = await tx
+        .select({ id: questionBanks.id })
+        .from(questionBanks)
+        .where(
+          and(
+            eq(questionBanks.classroomId, data.classroomId),
+            eq(questionBanks.isActive, true),
+            sql`LOWER(${questionBanks.name}) = ${normalizedName.toLowerCase()}`
+          )
+        );
+
+      if (existingBank) {
+        throw new Error('Ya existe un banco activo con ese nombre');
+      }
+
+      await tx.insert(questionBanks).values({
+        id,
+        classroomId: data.classroomId,
+        name: normalizedName,
+        description: normalizedDescription,
+        color,
+        icon,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      });
     });
 
     return this.getBankById(id);
   }
 
   async updateBank(bankId: string, data: UpdateBankData) {
-    await db.update(questionBanks)
-      .set({
-        ...data,
-        updatedAt: new Date(),
-      })
+    const now = new Date();
+    const updateData: Record<string, unknown> = { updatedAt: now };
+
+    if (typeof data.name !== 'undefined') {
+      const normalizedName = this.normalizeText(data.name);
+      if (!normalizedName) {
+        throw new Error('El nombre del banco es requerido');
+      }
+      updateData.name = normalizedName;
+    }
+
+    if (typeof data.description !== 'undefined') {
+      const normalizedDescription = this.normalizeText(data.description);
+      updateData.description = normalizedDescription || null;
+    }
+
+    if (typeof data.color !== 'undefined') {
+      if (!this.isValidHexColor(data.color)) {
+        throw new Error('Color de banco inválido');
+      }
+      updateData.color = data.color;
+    }
+
+    if (typeof data.icon !== 'undefined') {
+      const normalizedIcon = this.normalizeText(data.icon);
+      if (!normalizedIcon) {
+        throw new Error('Ícono de banco inválido');
+      }
+      updateData.icon = normalizedIcon;
+    }
+
+    if (typeof data.isActive !== 'undefined') {
+      updateData.isActive = data.isActive;
+    }
+
+    await db.transaction(async (tx) => {
+      const [bank] = await tx
+        .select()
+        .from(questionBanks)
+        .where(eq(questionBanks.id, bankId));
+
+      if (!bank) {
+        throw new Error('Banco no encontrado');
+      }
+
+      if (typeof updateData.name === 'string') {
+        const [existingBank] = await tx
+          .select({ id: questionBanks.id })
+          .from(questionBanks)
+          .where(
+            and(
+              eq(questionBanks.classroomId, bank.classroomId),
+              eq(questionBanks.isActive, true),
+              sql`LOWER(${questionBanks.name}) = ${String(updateData.name).toLowerCase()}`
+            )
+          );
+
+        if (existingBank && existingBank.id !== bankId) {
+          throw new Error('Ya existe un banco activo con ese nombre');
+        }
+      }
+
+      await tx
+        .update(questionBanks)
+        .set(updateData)
+        .where(eq(questionBanks.id, bankId));
+
+      if (updateData.isActive === false) {
+        await tx
+          .update(questions)
+          .set({ isActive: false, updatedAt: now })
+          .where(eq(questions.bankId, bankId));
+      }
+    });
+
+    const [updatedBank] = await db
+      .select()
+      .from(questionBanks)
       .where(eq(questionBanks.id, bankId));
+
+    if (!updatedBank) {
+      return null;
+    }
+
+    if (!updatedBank.isActive) {
+      return {
+        ...updatedBank,
+        questions: [],
+      };
+    }
 
     return this.getBankById(bankId);
   }
 
   async deleteBank(bankId: string) {
-    // Soft delete - marcar como inactivo
-    await db.update(questionBanks)
-      .set({ isActive: false, updatedAt: new Date() })
-      .where(eq(questionBanks.id, bankId));
+    const now = new Date();
+
+    await db.transaction(async (tx) => {
+      const [bank] = await tx
+        .select({ id: questionBanks.id })
+        .from(questionBanks)
+        .where(
+          and(
+            eq(questionBanks.id, bankId),
+            eq(questionBanks.isActive, true)
+          )
+        );
+
+      if (!bank) {
+        throw new Error('Banco no encontrado');
+      }
+
+      await tx
+        .update(questions)
+        .set({ isActive: false, updatedAt: now })
+        .where(eq(questions.bankId, bankId));
+
+      await tx
+        .update(questionBanks)
+        .set({ isActive: false, updatedAt: now })
+        .where(eq(questionBanks.id, bankId));
+    });
   }
 
   // ==================== PREGUNTAS ====================
 
   async getQuestionsByBank(bankId: string) {
-    return db.select()
+    const bankQuestions = await db
+      .select()
       .from(questions)
-      .where(and(
-        eq(questions.bankId, bankId),
-        eq(questions.isActive, true)
-      ))
+      .where(
+        and(
+          eq(questions.bankId, bankId),
+          eq(questions.isActive, true)
+        )
+      )
       .orderBy(questions.createdAt);
+
+    return bankQuestions.map((question) => this.normalizeQuestionRow(question));
   }
 
   async getQuestionById(questionId: string) {
-    const result = await db.select()
-      .from(questions)
-      .where(eq(questions.id, questionId))
-      .limit(1);
-    return result[0] || null;
+    const question = await this.getQuestionByIdRaw(questionId);
+    if (!question) {
+      return null;
+    }
+
+    return this.normalizeQuestionRow(question);
   }
 
   async createQuestion(data: CreateQuestionData) {
     const id = uuidv4();
     const now = new Date();
 
-    // Validar datos según el tipo
-    this.validateQuestionData(data);
+    const sanitizedOptions = this.sanitizeOptions(data.options);
+    const sanitizedPairs = this.sanitizePairs(data.pairs);
+    const normalizedCorrectAnswer = this.parseBooleanValue(data.correctAnswer);
+    const normalizedQuestionText = this.normalizeText(data.questionText);
+    const normalizedExplanation = data.explanation ? this.normalizeText(data.explanation) : null;
 
-    // Normalizar correctAnswer a booleano para TRUE_FALSE
-    let normalizedCorrectAnswer: any = data.correctAnswer;
-    if (data.type === 'TRUE_FALSE' && normalizedCorrectAnswer !== undefined) {
-      if (typeof normalizedCorrectAnswer === 'string') {
-        normalizedCorrectAnswer = (normalizedCorrectAnswer as string).toLowerCase() === 'true';
-      }
-    }
-
-    await db.insert(questions).values({
-      id,
-      bankId: data.bankId,
+    this.validateQuestionData({
       type: data.type,
-      difficulty: data.difficulty || 'MEDIUM',
-      points: data.points || 10,
-      questionText: data.questionText,
-      imageUrl: data.imageUrl || null,
-      options: data.options ? JSON.stringify(data.options) : null,
-      correctAnswer: normalizedCorrectAnswer !== undefined ? JSON.stringify(normalizedCorrectAnswer) : null,
-      pairs: data.pairs ? JSON.stringify(data.pairs) : null,
-      explanation: data.explanation || null,
-      timeLimitSeconds: data.timeLimitSeconds || 30,
-      isActive: true,
-      createdAt: now,
-      updatedAt: now,
+      questionText: normalizedQuestionText,
+      options: sanitizedOptions,
+      correctAnswer: normalizedCorrectAnswer,
+      pairs: sanitizedPairs,
     });
 
-    // Actualizar fecha del banco
-    await db.update(questionBanks)
-      .set({ updatedAt: now })
-      .where(eq(questionBanks.id, data.bankId));
+    await db.transaction(async (tx) => {
+      const [bank] = await tx
+        .select({ id: questionBanks.id })
+        .from(questionBanks)
+        .where(
+          and(
+            eq(questionBanks.id, data.bankId),
+            eq(questionBanks.isActive, true)
+          )
+        );
+
+      if (!bank) {
+        throw new Error('Banco no encontrado');
+      }
+
+      await tx.insert(questions).values({
+        id,
+        bankId: data.bankId,
+        type: data.type,
+        difficulty: data.difficulty || 'MEDIUM',
+        points: data.points || 10,
+        questionText: normalizedQuestionText,
+        imageUrl: data.imageUrl || null,
+        options: data.type === 'SINGLE_CHOICE' || data.type === 'MULTIPLE_CHOICE' ? sanitizedOptions : null,
+        correctAnswer: data.type === 'TRUE_FALSE' ? normalizedCorrectAnswer : null,
+        pairs: data.type === 'MATCHING' ? sanitizedPairs : null,
+        explanation: normalizedExplanation,
+        timeLimitSeconds: data.timeLimitSeconds || 30,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      await tx
+        .update(questionBanks)
+        .set({ updatedAt: now })
+        .where(eq(questionBanks.id, data.bankId));
+    });
 
     return this.getQuestionById(id);
   }
 
   async updateQuestion(questionId: string, data: UpdateQuestionData) {
-    const question = await this.getQuestionById(questionId);
-    if (!question) throw new Error('Pregunta no encontrada');
+    const now = new Date();
 
-    const updateData: Record<string, any> = {
-      updatedAt: new Date(),
-    };
+    await db.transaction(async (tx) => {
+      const [existingQuestion] = await tx
+        .select()
+        .from(questions)
+        .where(
+          and(
+            eq(questions.id, questionId),
+            eq(questions.isActive, true)
+          )
+        );
 
-    if (data.type !== undefined) updateData.type = data.type;
-    if (data.difficulty !== undefined) updateData.difficulty = data.difficulty;
-    if (data.points !== undefined) updateData.points = data.points;
-    if (data.questionText !== undefined) updateData.questionText = data.questionText;
-    if (data.imageUrl !== undefined) updateData.imageUrl = data.imageUrl;
-    if (data.options !== undefined) updateData.options = JSON.stringify(data.options);
-    if (data.correctAnswer !== undefined) {
-      // Normalizar correctAnswer a booleano para TRUE_FALSE
-      let normalizedCA: any = data.correctAnswer;
-      const questionType = data.type || question.type;
-      if (questionType === 'TRUE_FALSE' && typeof normalizedCA === 'string') {
-        normalizedCA = (normalizedCA as string).toLowerCase() === 'true';
+      if (!existingQuestion) {
+        throw new Error('Pregunta no encontrada');
       }
-      updateData.correctAnswer = JSON.stringify(normalizedCA);
-    }
-    if (data.pairs !== undefined) updateData.pairs = JSON.stringify(data.pairs);
-    if (data.explanation !== undefined) updateData.explanation = data.explanation;
-    if (data.timeLimitSeconds !== undefined) updateData.timeLimitSeconds = data.timeLimitSeconds;
-    if (data.isActive !== undefined) updateData.isActive = data.isActive;
 
-    await db.update(questions)
-      .set(updateData)
+      const [bank] = await tx
+        .select({ id: questionBanks.id, isActive: questionBanks.isActive })
+        .from(questionBanks)
+        .where(eq(questionBanks.id, existingQuestion.bankId));
+
+      if (!bank || !bank.isActive) {
+        throw new Error('Banco no encontrado');
+      }
+
+      const currentQuestion = this.normalizeQuestionRow(existingQuestion);
+      const resolvedType = data.type ?? currentQuestion.type;
+      const resolvedQuestionText = data.questionText !== undefined
+        ? this.normalizeText(data.questionText)
+        : currentQuestion.questionText;
+      const resolvedOptions = data.options !== undefined
+        ? this.sanitizeOptions(data.options)
+        : currentQuestion.options;
+      const resolvedCorrectAnswer = data.correctAnswer !== undefined
+        ? this.parseBooleanValue(data.correctAnswer)
+        : currentQuestion.correctAnswer;
+      const resolvedPairs = data.pairs !== undefined
+        ? this.sanitizePairs(data.pairs)
+        : currentQuestion.pairs;
+
+      this.validateQuestionData({
+        type: resolvedType,
+        questionText: resolvedQuestionText,
+        options: resolvedOptions,
+        correctAnswer: resolvedCorrectAnswer,
+        pairs: resolvedPairs,
+      });
+
+      const updateData: Record<string, unknown> = {
+        type: resolvedType,
+        questionText: resolvedQuestionText,
+        options: null,
+        correctAnswer: null,
+        pairs: null,
+        updatedAt: now,
+      };
+
+      if (typeof data.difficulty !== 'undefined') updateData.difficulty = data.difficulty;
+      if (typeof data.points !== 'undefined') updateData.points = data.points;
+      if (typeof data.imageUrl !== 'undefined') updateData.imageUrl = data.imageUrl || null;
+      if (typeof data.explanation !== 'undefined') {
+        updateData.explanation = data.explanation ? this.normalizeText(data.explanation) : null;
+      }
+      if (typeof data.timeLimitSeconds !== 'undefined') updateData.timeLimitSeconds = data.timeLimitSeconds;
+      if (typeof data.isActive !== 'undefined') updateData.isActive = data.isActive;
+
+      if (resolvedType === 'TRUE_FALSE') {
+        updateData.correctAnswer = resolvedCorrectAnswer;
+      }
+
+      if (resolvedType === 'SINGLE_CHOICE' || resolvedType === 'MULTIPLE_CHOICE') {
+        updateData.options = resolvedOptions;
+      }
+
+      if (resolvedType === 'MATCHING') {
+        updateData.pairs = resolvedPairs;
+      }
+
+      await tx
+        .update(questions)
+        .set(updateData)
+        .where(eq(questions.id, questionId));
+
+      await tx
+        .update(questionBanks)
+        .set({ updatedAt: now })
+        .where(eq(questionBanks.id, existingQuestion.bankId));
+    });
+
+    const [updatedQuestion] = await db
+      .select()
+      .from(questions)
       .where(eq(questions.id, questionId));
 
-    // Actualizar fecha del banco
-    await db.update(questionBanks)
-      .set({ updatedAt: new Date() })
-      .where(eq(questionBanks.id, question.bankId));
+    if (!updatedQuestion) {
+      return null;
+    }
 
-    return this.getQuestionById(questionId);
+    return this.normalizeQuestionRow(updatedQuestion);
   }
 
   async deleteQuestion(questionId: string) {
-    const question = await this.getQuestionById(questionId);
-    if (!question) throw new Error('Pregunta no encontrada');
+    const now = new Date();
 
-    // Soft delete
-    await db.update(questions)
-      .set({ isActive: false, updatedAt: new Date() })
-      .where(eq(questions.id, questionId));
+    await db.transaction(async (tx) => {
+      const [question] = await tx
+        .select({ id: questions.id, bankId: questions.bankId })
+        .from(questions)
+        .where(
+          and(
+            eq(questions.id, questionId),
+            eq(questions.isActive, true)
+          )
+        );
 
-    // Actualizar fecha del banco
-    await db.update(questionBanks)
-      .set({ updatedAt: new Date() })
-      .where(eq(questionBanks.id, question.bankId));
+      if (!question) {
+        throw new Error('Pregunta no encontrada');
+      }
+
+      await tx
+        .update(questions)
+        .set({ isActive: false, updatedAt: now })
+        .where(eq(questions.id, questionId));
+
+      await tx
+        .update(questionBanks)
+        .set({ updatedAt: now })
+        .where(eq(questionBanks.id, question.bankId));
+    });
   }
 
   // ==================== UTILIDADES ====================
 
   async getRandomQuestions(bankId: string, count: number, difficulty?: QuestionDifficulty) {
+    const safeCount = Number.isFinite(count)
+      ? Math.max(1, Math.min(MAX_RANDOM_QUESTIONS, Math.floor(count)))
+      : 10;
+
+    if (difficulty && !['EASY', 'MEDIUM', 'HARD'].includes(difficulty)) {
+      throw new Error('Dificultad inválida');
+    }
+
+    const [bank] = await db
+      .select({ id: questionBanks.id })
+      .from(questionBanks)
+      .where(
+        and(
+          eq(questionBanks.id, bankId),
+          eq(questionBanks.isActive, true)
+        )
+      );
+
+    if (!bank) {
+      throw new Error('Banco no encontrado');
+    }
+
     const conditions = [
       eq(questions.bankId, bankId),
       eq(questions.isActive, true),
@@ -279,25 +756,61 @@ class QuestionBankService {
       conditions.push(eq(questions.difficulty, difficulty));
     }
 
-    const allQuestions = await db.select()
+    const randomQuestions = await db
+      .select()
       .from(questions)
-      .where(and(...conditions));
+      .where(and(...conditions))
+      .orderBy(sql`RAND()`)
+      .limit(safeCount);
 
-    // Mezclar y tomar N preguntas
-    const shuffled = allQuestions.sort(() => Math.random() - 0.5);
-    return shuffled.slice(0, count);
+    return randomQuestions.map((question) => this.normalizeQuestionRow(question));
   }
 
   async getQuestionStats(bankId: string) {
-    const bankQuestions = await db.select()
+    const [bank] = await db
+      .select({ id: questionBanks.id })
+      .from(questionBanks)
+      .where(
+        and(
+          eq(questionBanks.id, bankId),
+          eq(questionBanks.isActive, true)
+        )
+      );
+
+    if (!bank) {
+      throw new Error('Banco no encontrado');
+    }
+
+    const baseConditions = and(
+      eq(questions.bankId, bankId),
+      eq(questions.isActive, true)
+    );
+
+    const [totalRow] = await db
+      .select({ count: sql<number>`count(*)` })
       .from(questions)
-      .where(and(
-        eq(questions.bankId, bankId),
-        eq(questions.isActive, true)
-      ));
+      .where(baseConditions);
+
+    const byTypeRows = await db
+      .select({
+        type: questions.type,
+        count: sql<number>`count(*)`,
+      })
+      .from(questions)
+      .where(baseConditions)
+      .groupBy(questions.type);
+
+    const byDifficultyRows = await db
+      .select({
+        difficulty: questions.difficulty,
+        count: sql<number>`count(*)`,
+      })
+      .from(questions)
+      .where(baseConditions)
+      .groupBy(questions.difficulty);
 
     const stats = {
-      total: bankQuestions.length,
+      total: Number(totalRow?.count || 0),
       byType: {
         TRUE_FALSE: 0,
         SINGLE_CHOICE: 0,
@@ -311,81 +824,86 @@ class QuestionBankService {
       },
     };
 
-    bankQuestions.forEach(q => {
-      stats.byType[q.type as keyof typeof stats.byType]++;
-      stats.byDifficulty[q.difficulty as keyof typeof stats.byDifficulty]++;
+    byTypeRows.forEach((row) => {
+      stats.byType[row.type as keyof typeof stats.byType] = Number(row.count || 0);
+    });
+
+    byDifficultyRows.forEach((row) => {
+      stats.byDifficulty[row.difficulty as keyof typeof stats.byDifficulty] = Number(row.count || 0);
     });
 
     return stats;
   }
 
-  private validateQuestionData(data: CreateQuestionData) {
-    switch (data.type) {
-      case 'TRUE_FALSE':
-        if (data.correctAnswer === undefined) {
-          throw new Error('TRUE_FALSE requiere correctAnswer (boolean)');
-        }
-        break;
-      case 'SINGLE_CHOICE':
-        if (!data.options || data.options.length < 2) {
-          throw new Error('SINGLE_CHOICE requiere al menos 2 opciones');
-        }
-        if (data.options.filter(o => o.isCorrect).length !== 1) {
-          throw new Error('SINGLE_CHOICE debe tener exactamente 1 respuesta correcta');
-        }
-        break;
-      case 'MULTIPLE_CHOICE':
-        if (!data.options || data.options.length < 2) {
-          throw new Error('MULTIPLE_CHOICE requiere al menos 2 opciones');
-        }
-        if (data.options.filter(o => o.isCorrect).length < 1) {
-          throw new Error('MULTIPLE_CHOICE debe tener al menos 1 respuesta correcta');
-        }
-        break;
-      case 'MATCHING':
-        if (!data.pairs || data.pairs.length < 2) {
-          throw new Error('MATCHING requiere al menos 2 pares');
-        }
-        break;
-    }
-  }
-
   // Verificar respuesta
-  checkAnswer(question: any, userAnswer: any): { correct: boolean; correctAnswer: any } {
-    const type = question.type as BankQuestionType;
-    
+  checkAnswer(question: unknown, userAnswer: unknown): { correct: boolean; correctAnswer: unknown } {
+    const normalizedQuestion = this.normalizeQuestionRow(question as QuestionRow);
+    const type = normalizedQuestion.type;
+
     switch (type) {
       case 'TRUE_FALSE': {
-        const correct = JSON.parse(question.correctAnswer);
-        return { correct: userAnswer === correct, correctAnswer: correct };
+        if (typeof normalizedQuestion.correctAnswer !== 'boolean') {
+          return { correct: false, correctAnswer: null };
+        }
+
+        const userBoolean = this.parseBooleanValue(userAnswer);
+        return {
+          correct: userBoolean === normalizedQuestion.correctAnswer,
+          correctAnswer: normalizedQuestion.correctAnswer,
+        };
       }
+
       case 'SINGLE_CHOICE': {
-        const options = typeof question.options === 'string' 
-          ? JSON.parse(question.options) 
-          : question.options;
-        const correctIndex = options.findIndex((o: QuestionOption) => o.isCorrect);
-        return { correct: userAnswer === correctIndex, correctAnswer: correctIndex };
+        const options = normalizedQuestion.options || [];
+        const correctIndex = options.findIndex((option) => option.isCorrect);
+        if (correctIndex < 0) {
+          return { correct: false, correctAnswer: null };
+        }
+
+        const answerIndex = typeof userAnswer === 'number' ? userAnswer : Number(userAnswer);
+        const isValidAnswer = Number.isInteger(answerIndex);
+        return {
+          correct: isValidAnswer && answerIndex === correctIndex,
+          correctAnswer: correctIndex,
+        };
       }
+
       case 'MULTIPLE_CHOICE': {
-        const options = typeof question.options === 'string' 
-          ? JSON.parse(question.options) 
-          : question.options;
+        const options = normalizedQuestion.options || [];
         const correctIndices = options
-          .map((o: QuestionOption, i: number) => o.isCorrect ? i : -1)
-          .filter((i: number) => i !== -1);
-        const userIndices = Array.isArray(userAnswer) ? userAnswer.sort() : [];
-        const correct = JSON.stringify(userIndices) === JSON.stringify(correctIndices.sort());
+          .map((option, index) => (option.isCorrect ? index : -1))
+          .filter((index) => index !== -1)
+          .sort((a, b) => a - b);
+
+        const userIndices = Array.isArray(userAnswer)
+          ? [...new Set(userAnswer
+              .map((value) => Number(value))
+              .filter((value) => Number.isInteger(value)))]
+              .sort((a, b) => a - b)
+          : [];
+
+        const correct =
+          userIndices.length === correctIndices.length &&
+          userIndices.every((value, index) => value === correctIndices[index]);
+
         return { correct, correctAnswer: correctIndices };
       }
+
       case 'MATCHING': {
-        const pairs = typeof question.pairs === 'string' 
-          ? JSON.parse(question.pairs) 
-          : question.pairs;
-        // userAnswer debería ser un array de índices que mapean left[i] -> right[userAnswer[i]]
-        const correctMapping = pairs.map((_: MatchingPair, i: number) => i);
-        const correct = JSON.stringify(userAnswer) === JSON.stringify(correctMapping);
+        const pairs = normalizedQuestion.pairs || [];
+        const correctMapping = pairs.map((_, index) => index);
+
+        const userMapping = Array.isArray(userAnswer)
+          ? userAnswer.map((value) => Number(value))
+          : [];
+
+        const correct =
+          userMapping.length === correctMapping.length &&
+          userMapping.every((value, index) => value === correctMapping[index]);
+
         return { correct, correctAnswer: correctMapping };
       }
+
       default:
         return { correct: false, correctAnswer: null };
     }

@@ -14,6 +14,7 @@ import {
   classrooms,
   users,
   pointLogs,
+  notifications,
   type JiroExpedition,
   type NewJiroExpedition,
   type JiroDeliveryStation,
@@ -24,6 +25,8 @@ import {
   type JiroStudentStatus,
   type JiroDeliveryStatus,
 } from '../db/schema.js';
+import { clanService } from './clan.service.js';
+import { storyService } from './story.service.js';
 
 // ==================== TIPOS ====================
 
@@ -77,47 +80,242 @@ interface ReviewDeliveryData {
   reviewerId: string;
 }
 
+interface XpSideEffectPayload {
+  studentProfileId: string;
+  classroomId: string;
+  awardedXp: number;
+  reason: string;
+}
+
 // ==================== SERVICIO ====================
 
 export const jiroExpeditionService = {
+  parseJsonArray(value: unknown): any[] | null {
+    if (value == null) return null;
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) return parsed;
+        if (parsed && typeof parsed === 'object') return Object.values(parsed);
+      } catch {
+        return null;
+      }
+    }
+
+    if (value && typeof value === 'object') {
+      return Object.values(value as Record<string, unknown>);
+    }
+
+    return null;
+  },
+
+  parseCompletedStations(value: unknown): string[] {
+    const parsed = this.parseJsonArray(value);
+    if (!parsed) return [];
+    return parsed.filter((item): item is string => typeof item === 'string' && item.length > 0);
+  },
+
+  calculateLevel(totalXp: number, xpPerLevel: number): number {
+    const level = Math.floor((1 + Math.sqrt(1 + (8 * totalXp) / xpPerLevel)) / 2);
+    return Math.max(1, level);
+  },
+
+  getCurrentEnergySnapshot(
+    studentExpedition: JiroStudentExpedition,
+    expedition: JiroExpedition,
+    referenceDate: Date = new Date()
+  ): { currentEnergy: number; lastEnergyRegenAt: Date | null } {
+    if (expedition.mode === 'EXAM') {
+      return {
+        currentEnergy: studentExpedition.currentEnergy,
+        lastEnergyRegenAt: studentExpedition.lastEnergyRegenAt
+          ? new Date(studentExpedition.lastEnergyRegenAt)
+          : null,
+      };
+    }
+
+    if (!studentExpedition.lastEnergyRegenAt) {
+      return {
+        currentEnergy: studentExpedition.currentEnergy,
+        lastEnergyRegenAt: null,
+      };
+    }
+
+    if (expedition.energyRegenMinutes <= 0) {
+      return {
+        currentEnergy: studentExpedition.currentEnergy,
+        lastEnergyRegenAt: new Date(studentExpedition.lastEnergyRegenAt),
+      };
+    }
+
+    const lastRegenAt = new Date(studentExpedition.lastEnergyRegenAt);
+    const minutesPassed = (referenceDate.getTime() - lastRegenAt.getTime()) / 60000;
+    const regenCycles = Math.max(0, Math.floor(minutesPassed / expedition.energyRegenMinutes));
+
+    if (regenCycles <= 0) {
+      return {
+        currentEnergy: studentExpedition.currentEnergy,
+        lastEnergyRegenAt: lastRegenAt,
+      };
+    }
+
+    const newEnergy = Math.min(
+      expedition.initialEnergy,
+      studentExpedition.currentEnergy + regenCycles
+    );
+
+    const nextRegenAt = new Date(
+      lastRegenAt.getTime() + regenCycles * expedition.energyRegenMinutes * 60000
+    );
+
+    return {
+      currentEnergy: newEnergy,
+      lastEnergyRegenAt: nextRegenAt,
+    };
+  },
+
+  async getClassroomIdByExpedition(expeditionId: string): Promise<string | null> {
+    const [row] = await db.select({ classroomId: jiroExpeditions.classroomId })
+      .from(jiroExpeditions)
+      .where(eq(jiroExpeditions.id, expeditionId));
+
+    return row?.classroomId ?? null;
+  },
+
+  async getClassroomIdByDeliveryStation(stationId: string): Promise<string | null> {
+    const [row] = await db.select({ classroomId: jiroExpeditions.classroomId })
+      .from(jiroDeliveryStations)
+      .innerJoin(jiroExpeditions, eq(jiroDeliveryStations.expeditionId, jiroExpeditions.id))
+      .where(eq(jiroDeliveryStations.id, stationId));
+
+    return row?.classroomId ?? null;
+  },
+
+  async getClassroomIdByDelivery(deliveryId: string): Promise<string | null> {
+    const [row] = await db.select({ classroomId: jiroExpeditions.classroomId })
+      .from(jiroDeliveries)
+      .innerJoin(jiroStudentExpeditions, eq(jiroDeliveries.studentExpeditionId, jiroStudentExpeditions.id))
+      .innerJoin(jiroExpeditions, eq(jiroStudentExpeditions.expeditionId, jiroExpeditions.id))
+      .where(eq(jiroDeliveries.id, deliveryId));
+
+    return row?.classroomId ?? null;
+  },
+
+  async getClassroomIdByStudentProfile(studentProfileId: string): Promise<string | null> {
+    const [row] = await db.select({ classroomId: studentProfiles.classroomId })
+      .from(studentProfiles)
+      .where(eq(studentProfiles.id, studentProfileId));
+
+    return row?.classroomId ?? null;
+  },
+
+  async getStudentProfileInClassroomByUser(userId: string, classroomId: string): Promise<string | null> {
+    const [student] = await db.select({ id: studentProfiles.id })
+      .from(studentProfiles)
+      .where(and(
+        eq(studentProfiles.userId, userId),
+        eq(studentProfiles.classroomId, classroomId),
+        eq(studentProfiles.isActive, true)
+      ));
+
+    return student?.id ?? null;
+  },
+
+  async verifyTeacherOwnsClassroom(teacherId: string, classroomId: string): Promise<boolean> {
+    const [classroom] = await db.select({ id: classrooms.id })
+      .from(classrooms)
+      .where(and(
+        eq(classrooms.id, classroomId),
+        eq(classrooms.teacherId, teacherId)
+      ));
+
+    return !!classroom;
+  },
+
+  async verifyStudentBelongsToUser(studentProfileId: string, userId: string): Promise<boolean> {
+    const [student] = await db.select({ id: studentProfiles.id })
+      .from(studentProfiles)
+      .where(and(
+        eq(studentProfiles.id, studentProfileId),
+        eq(studentProfiles.userId, userId),
+        eq(studentProfiles.isActive, true)
+      ));
+
+    return !!student;
+  },
+
+  async verifyStudentUserInClassroom(userId: string, classroomId: string): Promise<boolean> {
+    const [student] = await db.select({ id: studentProfiles.id })
+      .from(studentProfiles)
+      .where(and(
+        eq(studentProfiles.userId, userId),
+        eq(studentProfiles.classroomId, classroomId),
+        eq(studentProfiles.isActive, true)
+      ));
+
+    return !!student;
+  },
+
+  async getExpeditionIdByDeliveryStation(stationId: string): Promise<string | null> {
+    const [station] = await db.select({ expeditionId: jiroDeliveryStations.expeditionId })
+      .from(jiroDeliveryStations)
+      .where(eq(jiroDeliveryStations.id, stationId));
+
+    return station?.expeditionId ?? null;
+  },
+
+  async getStudentProfileIdByStudentExpedition(studentExpeditionId: string): Promise<string | null> {
+    const [row] = await db.select({ studentProfileId: jiroStudentExpeditions.studentProfileId })
+      .from(jiroStudentExpeditions)
+      .where(eq(jiroStudentExpeditions.id, studentExpeditionId));
+
+    return row?.studentProfileId ?? null;
+  },
+
   // ==================== EXPEDICIONES (PROFESOR) ====================
 
   async createExpedition(data: CreateExpeditionData): Promise<JiroExpedition> {
     const now = new Date();
     const id = uuidv4();
 
-    await db.insert(jiroExpeditions).values({
-      id,
-      classroomId: data.classroomId,
-      questionBankId: data.questionBankId,
-      name: data.name,
-      description: data.description || null,
-      coverImageUrl: data.coverImageUrl || null,
-      mode: data.mode,
-      status: 'DRAFT',
-      timeLimitMinutes: data.timeLimitMinutes || null,
-      initialEnergy: data.initialEnergy ?? 5,
-      energyRegenMinutes: data.energyRegenMinutes ?? 30,
-      energyPurchasePrice: data.energyPurchasePrice ?? 5,
-      rewardXpPerCorrect: data.rewardXpPerCorrect ?? 10,
-      rewardGpPerCorrect: data.rewardGpPerCorrect ?? 2,
-      gradeWeight: data.gradeWeight ? String(data.gradeWeight) : null,
-      competencyId: data.competencyId || null,
-      requiresReview: false,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    // Guardar competencias asociadas
-    if (data.competencyIds && data.competencyIds.length > 0) {
-      const competencyValues = data.competencyIds.map(competencyId => ({
-        id: uuidv4(),
-        expeditionId: id,
-        competencyId,
+    await db.transaction(async (tx) => {
+      await tx.insert(jiroExpeditions).values({
+        id,
+        classroomId: data.classroomId,
+        questionBankId: data.questionBankId,
+        name: data.name,
+        description: data.description || null,
+        coverImageUrl: data.coverImageUrl || null,
+        mode: data.mode,
+        status: 'DRAFT',
+        timeLimitMinutes: data.timeLimitMinutes || null,
+        initialEnergy: data.initialEnergy ?? 5,
+        energyRegenMinutes: data.energyRegenMinutes ?? 30,
+        energyPurchasePrice: data.energyPurchasePrice ?? 5,
+        rewardXpPerCorrect: data.rewardXpPerCorrect ?? 10,
+        rewardGpPerCorrect: data.rewardGpPerCorrect ?? 2,
+        gradeWeight: data.gradeWeight ? String(data.gradeWeight) : null,
+        competencyId: data.competencyId || null,
+        requiresReview: false,
         createdAt: now,
-      }));
-      await db.insert(jiroExpeditionCompetencies).values(competencyValues);
-    }
+        updatedAt: now,
+      });
+
+      // Guardar competencias asociadas
+      if (data.competencyIds && data.competencyIds.length > 0) {
+        const competencyIds = [...new Set(data.competencyIds.filter(Boolean))];
+        if (competencyIds.length > 0) {
+          const competencyValues = competencyIds.map((competencyId) => ({
+            id: uuidv4(),
+            expeditionId: id,
+            competencyId,
+            createdAt: now,
+          }));
+          await tx.insert(jiroExpeditionCompetencies).values(competencyValues);
+        }
+      }
+    });
 
     const [expedition] = await db
       .select()
@@ -143,37 +341,53 @@ export const jiroExpeditionService = {
       .where(eq(jiroExpeditions.classroomId, classroomId))
       .orderBy(desc(jiroExpeditions.createdAt));
 
-    // Obtener conteo de estaciones de entrega y estudiantes
-    const expeditionIds = expeditions.map(e => e.expedition.id);
-    
-    const results = await Promise.all(
-      expeditions.map(async ({ expedition, questionBank }) => {
-        const [deliveryStations] = await db
-          .select({ count: sql<number>`count(*)` })
-          .from(jiroDeliveryStations)
-          .where(eq(jiroDeliveryStations.expeditionId, expedition.id));
+    if (expeditions.length === 0) {
+      return [];
+    }
 
-        const [studentCount] = await db
-          .select({ count: sql<number>`count(*)` })
-          .from(jiroStudentExpeditions)
-          .where(eq(jiroStudentExpeditions.expeditionId, expedition.id));
+    const expeditionIds = expeditions.map((e) => e.expedition.id);
+    const bankIds = [...new Set(expeditions.map((e) => e.expedition.questionBankId))];
 
-        const [questionCount] = await db
-          .select({ count: sql<number>`count(*)` })
-          .from(questions)
-          .where(eq(questions.bankId, expedition.questionBankId));
-
-        return {
-          ...expedition,
-          questionBank,
-          deliveryStationsCount: Number(deliveryStations?.count || 0),
-          studentsStarted: Number(studentCount?.count || 0),
-          totalQuestions: Number(questionCount?.count || 0),
-        };
+    const deliveryCounts = await db
+      .select({
+        expeditionId: jiroDeliveryStations.expeditionId,
+        count: sql<number>`count(*)`,
       })
-    );
+      .from(jiroDeliveryStations)
+      .where(inArray(jiroDeliveryStations.expeditionId, expeditionIds))
+      .groupBy(jiroDeliveryStations.expeditionId);
 
-    return results;
+    const studentCounts = await db
+      .select({
+        expeditionId: jiroStudentExpeditions.expeditionId,
+        count: sql<number>`count(*)`,
+      })
+      .from(jiroStudentExpeditions)
+      .where(inArray(jiroStudentExpeditions.expeditionId, expeditionIds))
+      .groupBy(jiroStudentExpeditions.expeditionId);
+
+    const questionCounts = bankIds.length > 0
+      ? await db
+          .select({
+            bankId: questions.bankId,
+            count: sql<number>`count(*)`,
+          })
+          .from(questions)
+          .where(inArray(questions.bankId, bankIds))
+          .groupBy(questions.bankId)
+      : [];
+
+    const deliveryCountMap = new Map(deliveryCounts.map((row) => [row.expeditionId, Number(row.count || 0)]));
+    const studentCountMap = new Map(studentCounts.map((row) => [row.expeditionId, Number(row.count || 0)]));
+    const questionCountMap = new Map(questionCounts.map((row) => [row.bankId, Number(row.count || 0)]));
+
+    return expeditions.map(({ expedition, questionBank }) => ({
+      ...expedition,
+      questionBank,
+      deliveryStationsCount: deliveryCountMap.get(expedition.id) || 0,
+      studentsStarted: studentCountMap.get(expedition.id) || 0,
+      totalQuestions: questionCountMap.get(expedition.questionBankId) || 0,
+    }));
   },
 
   async getExpeditionById(expeditionId: string) {
@@ -190,18 +404,29 @@ export const jiroExpeditionService = {
       .from(questionBanks)
       .where(eq(questionBanks.id, expedition.questionBankId));
 
-    const bankQuestions = await db
+    const rawQuestions = await db
       .select()
       .from(questions)
       .where(eq(questions.bankId, expedition.questionBankId))
       .orderBy(questions.createdAt);
 
+    const bankQuestions = rawQuestions.map((question) => ({
+      ...question,
+      options: this.parseJsonArray(question.options),
+      pairs: this.parseJsonArray(question.pairs),
+    }));
+
     // Obtener estaciones de entrega
-    const deliveryStations = await db
+    const rawDeliveryStations = await db
       .select()
       .from(jiroDeliveryStations)
       .where(eq(jiroDeliveryStations.expeditionId, expeditionId))
       .orderBy(jiroDeliveryStations.orderIndex);
+
+    const deliveryStations = rawDeliveryStations.map((station) => ({
+      ...station,
+      allowedFileTypes: this.parseJsonArray(station.allowedFileTypes) || ['PDF', 'IMAGE'],
+    }));
 
     return {
       ...expedition,
@@ -214,8 +439,9 @@ export const jiroExpeditionService = {
   },
 
   async updateExpedition(expeditionId: string, data: Partial<CreateExpeditionData>) {
+    const now = new Date();
     const updateData: any = {
-      updatedAt: new Date(),
+      updatedAt: now,
     };
 
     if (data.name !== undefined) updateData.name = data.name;
@@ -232,29 +458,58 @@ export const jiroExpeditionService = {
     if (data.competencyId !== undefined) updateData.competencyId = data.competencyId;
     if (data.questionBankId !== undefined) updateData.questionBankId = data.questionBankId;
 
-    await db
-      .update(jiroExpeditions)
-      .set(updateData)
-      .where(eq(jiroExpeditions.id, expeditionId));
+    await db.transaction(async (tx) => {
+      await tx
+        .update(jiroExpeditions)
+        .set(updateData)
+        .where(eq(jiroExpeditions.id, expeditionId));
+
+      if (Array.isArray(data.competencyIds)) {
+        await tx.delete(jiroExpeditionCompetencies)
+          .where(eq(jiroExpeditionCompetencies.expeditionId, expeditionId));
+
+        const competencyIds = [...new Set(data.competencyIds.filter(Boolean))];
+        if (competencyIds.length > 0) {
+          await tx.insert(jiroExpeditionCompetencies).values(
+            competencyIds.map((competencyId) => ({
+              id: uuidv4(),
+              expeditionId,
+              competencyId,
+              createdAt: now,
+            }))
+          );
+        }
+      }
+    });
 
     return this.getExpeditionById(expeditionId);
   },
 
   async deleteExpedition(expeditionId: string) {
-    // Eliminar en orden por dependencias
-    const studentExpeditions = await db
-      .select({ id: jiroStudentExpeditions.id })
-      .from(jiroStudentExpeditions)
-      .where(eq(jiroStudentExpeditions.expeditionId, expeditionId));
+    await db.transaction(async (tx) => {
+      // Eliminar en orden por dependencias
+      const studentExpeditions = await tx
+        .select({ id: jiroStudentExpeditions.id })
+        .from(jiroStudentExpeditions)
+        .where(eq(jiroStudentExpeditions.expeditionId, expeditionId));
 
-    for (const se of studentExpeditions) {
-      await db.delete(jiroQuestionAnswers).where(eq(jiroQuestionAnswers.studentExpeditionId, se.id));
-      await db.delete(jiroDeliveries).where(eq(jiroDeliveries.studentExpeditionId, se.id));
-    }
+      const studentExpeditionIds = studentExpeditions.map((se) => se.id);
+      if (studentExpeditionIds.length > 0) {
+        await tx.delete(jiroQuestionAnswers)
+          .where(inArray(jiroQuestionAnswers.studentExpeditionId, studentExpeditionIds));
+        await tx.delete(jiroDeliveries)
+          .where(inArray(jiroDeliveries.studentExpeditionId, studentExpeditionIds));
+      }
 
-    await db.delete(jiroStudentExpeditions).where(eq(jiroStudentExpeditions.expeditionId, expeditionId));
-    await db.delete(jiroDeliveryStations).where(eq(jiroDeliveryStations.expeditionId, expeditionId));
-    await db.delete(jiroExpeditions).where(eq(jiroExpeditions.id, expeditionId));
+      await tx.delete(jiroStudentExpeditions)
+        .where(eq(jiroStudentExpeditions.expeditionId, expeditionId));
+      await tx.delete(jiroDeliveryStations)
+        .where(eq(jiroDeliveryStations.expeditionId, expeditionId));
+      await tx.delete(jiroExpeditionCompetencies)
+        .where(eq(jiroExpeditionCompetencies.expeditionId, expeditionId));
+      await tx.delete(jiroExpeditions)
+        .where(eq(jiroExpeditions.id, expeditionId));
+    });
   },
 
   // ==================== ESTACIONES DE ENTREGA ====================
@@ -263,83 +518,128 @@ export const jiroExpeditionService = {
     const now = new Date();
     const id = uuidv4();
 
-    await db.insert(jiroDeliveryStations).values({
-      id,
-      expeditionId: data.expeditionId,
-      name: data.name,
-      description: data.description || null,
-      instructions: data.instructions || null,
-      orderIndex: data.orderIndex ?? 0,
-      allowedFileTypes: data.allowedFileTypes || ['PDF', 'IMAGE'],
-      maxFileSizeMb: data.maxFileSizeMb ?? 10,
-      createdAt: now,
-      updatedAt: now,
+    await db.transaction(async (tx) => {
+      const [expedition] = await tx.select({ id: jiroExpeditions.id })
+        .from(jiroExpeditions)
+        .where(eq(jiroExpeditions.id, data.expeditionId));
+
+      if (!expedition) {
+        throw new Error('Expedición no encontrada');
+      }
+
+      const existingOrderRows = await tx.select({ orderIndex: jiroDeliveryStations.orderIndex })
+        .from(jiroDeliveryStations)
+        .where(eq(jiroDeliveryStations.expeditionId, data.expeditionId));
+
+      const nextOrderIndex = existingOrderRows.length > 0
+        ? Math.max(...existingOrderRows.map((row) => row.orderIndex)) + 1
+        : 0;
+
+      const allowedFileTypes = Array.isArray(data.allowedFileTypes) && data.allowedFileTypes.length > 0
+        ? [...new Set(data.allowedFileTypes)]
+        : ['PDF', 'IMAGE'];
+
+      await tx.insert(jiroDeliveryStations).values({
+        id,
+        expeditionId: data.expeditionId,
+        name: data.name,
+        description: data.description || null,
+        instructions: data.instructions || null,
+        orderIndex: data.orderIndex ?? nextOrderIndex,
+        allowedFileTypes,
+        maxFileSizeMb: data.maxFileSizeMb ?? 10,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      // Actualizar requiresReview en la expedición
+      await tx
+        .update(jiroExpeditions)
+        .set({ requiresReview: true, updatedAt: now })
+        .where(eq(jiroExpeditions.id, data.expeditionId));
     });
 
-    // Actualizar requiresReview en la expedición
-    await db
-      .update(jiroExpeditions)
-      .set({ requiresReview: true, updatedAt: now })
-      .where(eq(jiroExpeditions.id, data.expeditionId));
-
-    const [station] = await db
-      .select()
+    const [station] = await db.select()
       .from(jiroDeliveryStations)
       .where(eq(jiroDeliveryStations.id, id));
 
-    return station;
+    if (!station) {
+      throw new Error('No se pudo crear la estación de entrega');
+    }
+
+    return {
+      ...station,
+      allowedFileTypes: this.parseJsonArray(station.allowedFileTypes) || ['PDF', 'IMAGE'],
+    };
   },
 
   async updateDeliveryStation(stationId: string, data: Partial<CreateDeliveryStationData>) {
+    const now = new Date();
     const updateData: any = {
-      updatedAt: new Date(),
+      updatedAt: now,
     };
 
     if (data.name !== undefined) updateData.name = data.name;
     if (data.description !== undefined) updateData.description = data.description;
     if (data.instructions !== undefined) updateData.instructions = data.instructions;
     if (data.orderIndex !== undefined) updateData.orderIndex = data.orderIndex;
-    if (data.allowedFileTypes !== undefined) updateData.allowedFileTypes = data.allowedFileTypes;
+    if (data.allowedFileTypes !== undefined) {
+      updateData.allowedFileTypes = Array.isArray(data.allowedFileTypes)
+        ? [...new Set(data.allowedFileTypes.filter(Boolean))]
+        : ['PDF', 'IMAGE'];
+    }
     if (data.maxFileSizeMb !== undefined) updateData.maxFileSizeMb = data.maxFileSizeMb;
 
-    await db
-      .update(jiroDeliveryStations)
-      .set(updateData)
-      .where(eq(jiroDeliveryStations.id, stationId));
+    await db.transaction(async (tx) => {
+      await tx
+        .update(jiroDeliveryStations)
+        .set(updateData)
+        .where(eq(jiroDeliveryStations.id, stationId));
+    });
 
     const [station] = await db
       .select()
       .from(jiroDeliveryStations)
       .where(eq(jiroDeliveryStations.id, stationId));
 
-    return station;
+    if (!station) return null;
+
+    return {
+      ...station,
+      allowedFileTypes: this.parseJsonArray(station.allowedFileTypes) || ['PDF', 'IMAGE'],
+    };
   },
 
   async deleteDeliveryStation(stationId: string) {
-    // Obtener expeditionId antes de eliminar
-    const [station] = await db
-      .select()
-      .from(jiroDeliveryStations)
-      .where(eq(jiroDeliveryStations.id, stationId));
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      // Obtener expeditionId antes de eliminar
+      const [station] = await tx
+        .select()
+        .from(jiroDeliveryStations)
+        .where(eq(jiroDeliveryStations.id, stationId));
 
-    if (!station) return;
+      if (!station) return;
 
-    // Eliminar entregas asociadas
-    await db.delete(jiroDeliveries).where(eq(jiroDeliveries.deliveryStationId, stationId));
-    await db.delete(jiroDeliveryStations).where(eq(jiroDeliveryStations.id, stationId));
+      // Eliminar entregas asociadas
+      await tx.delete(jiroDeliveries)
+        .where(eq(jiroDeliveries.deliveryStationId, stationId));
+      await tx.delete(jiroDeliveryStations)
+        .where(eq(jiroDeliveryStations.id, stationId));
 
-    // Verificar si quedan estaciones de entrega
-    const [remaining] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(jiroDeliveryStations)
-      .where(eq(jiroDeliveryStations.expeditionId, station.expeditionId));
+      // Verificar si quedan estaciones de entrega
+      const [remaining] = await tx
+        .select({ count: sql<number>`count(*)` })
+        .from(jiroDeliveryStations)
+        .where(eq(jiroDeliveryStations.expeditionId, station.expeditionId));
 
-    if (Number(remaining?.count || 0) === 0) {
-      await db
-        .update(jiroExpeditions)
-        .set({ requiresReview: false, updatedAt: new Date() })
-        .where(eq(jiroExpeditions.id, station.expeditionId));
-    }
+      if (Number(remaining?.count || 0) === 0) {
+        await tx
+          .update(jiroExpeditions)
+          .set({ requiresReview: false, updatedAt: now })
+          .where(eq(jiroExpeditions.id, station.expeditionId));
+      }
+    });
   },
 
   // ==================== CONTROL DE EXPEDICIÓN ====================
@@ -436,20 +736,6 @@ export const jiroExpeditionService = {
 
     const progress = classStudents.map(student => {
       const se = seMap.get(student.id);
-      // Parsear completedStations de forma segura (puede venir como string corrupto)
-      const parseCompletedStations = (cs: any): number => {
-        if (!cs) return 0;
-        if (Array.isArray(cs)) return cs.length;
-        if (typeof cs === 'string') {
-          try {
-            const parsed = JSON.parse(cs);
-            return Array.isArray(parsed) ? parsed.length : 0;
-          } catch {
-            return 0;
-          }
-        }
-        return 0;
-      };
 
       return {
         student: {
@@ -461,7 +747,7 @@ export const jiroExpeditionService = {
         status: se?.status || 'NOT_STARTED',
         correctAnswers: se?.correctAnswers || 0,
         wrongAnswers: se?.wrongAnswers || 0,
-        completedStations: parseCompletedStations(se?.completedStations),
+        completedStations: this.parseCompletedStations(se?.completedStations).length,
         totalStations,
         currentEnergy: se?.currentEnergy ?? expedition.initialEnergy,
         finalScore: se?.finalScore,
@@ -483,12 +769,23 @@ export const jiroExpeditionService = {
     const deliveries = await db
       .select({
         delivery: jiroDeliveries,
-        station: jiroDeliveryStations,
-        studentExpedition: jiroStudentExpeditions,
+        station: {
+          id: jiroDeliveryStations.id,
+          name: jiroDeliveryStations.name,
+        },
+        student: {
+          id: studentProfiles.id,
+          characterName: studentProfiles.characterName,
+          displayName: studentProfiles.displayName,
+          firstName: users.firstName,
+          lastName: users.lastName,
+        },
       })
       .from(jiroDeliveries)
       .innerJoin(jiroDeliveryStations, eq(jiroDeliveries.deliveryStationId, jiroDeliveryStations.id))
       .innerJoin(jiroStudentExpeditions, eq(jiroDeliveries.studentExpeditionId, jiroStudentExpeditions.id))
+      .innerJoin(studentProfiles, eq(jiroStudentExpeditions.studentProfileId, studentProfiles.id))
+      .leftJoin(users, eq(studentProfiles.userId, users.id))
       .where(
         and(
           eq(jiroDeliveryStations.expeditionId, expeditionId),
@@ -497,60 +794,40 @@ export const jiroExpeditionService = {
       )
       .orderBy(jiroDeliveries.submittedAt);
 
-    // Obtener info de estudiantes
-    const results = await Promise.all(
-      deliveries.map(async ({ delivery, station, studentExpedition }) => {
-        const [student] = await db
-          .select({
-            id: studentProfiles.id,
-            characterName: studentProfiles.characterName,
-            displayName: studentProfiles.displayName,
-            user: {
-              firstName: users.firstName,
-              lastName: users.lastName,
-            },
-          })
-          .from(studentProfiles)
-          .leftJoin(users, eq(studentProfiles.userId, users.id))
-          .where(eq(studentProfiles.id, studentExpedition.studentProfileId));
-
-        return {
-          ...delivery,
-          station: {
-            id: station.id,
-            name: station.name,
-          },
-          student: {
-            id: student.id,
-            name: student.characterName || student.displayName ||
-                  (student.user ? `${student.user.firstName} ${student.user.lastName}` : 'Sin nombre'),
-          },
-        };
-      })
-    );
-
-    return results;
+    return deliveries.map(({ delivery, station, student }) => ({
+      ...delivery,
+      station,
+      student: {
+        id: student.id,
+        name: student.characterName || student.displayName ||
+              ((student.firstName || student.lastName)
+                ? `${student.firstName || ''} ${student.lastName || ''}`.trim()
+                : 'Sin nombre'),
+      },
+    }));
   },
 
   async reviewDelivery(data: ReviewDeliveryData) {
     const now = new Date();
+    const delivery = await db.transaction(async (tx): Promise<JiroDelivery | null> => {
+      await tx
+        .update(jiroDeliveries)
+        .set({
+          status: data.status,
+          feedback: data.feedback || null,
+          reviewedAt: now,
+        })
+        .where(eq(jiroDeliveries.id, data.deliveryId));
 
-    await db
-      .update(jiroDeliveries)
-      .set({
-        status: data.status,
-        feedback: data.feedback || null,
-        reviewedAt: now,
-      })
-      .where(eq(jiroDeliveries.id, data.deliveryId));
+      const [updatedDelivery] = await tx
+        .select()
+        .from(jiroDeliveries)
+        .where(eq(jiroDeliveries.id, data.deliveryId));
 
-    // Obtener la entrega para verificar si el estudiante completó todo
-    const [delivery] = await db
-      .select()
-      .from(jiroDeliveries)
-      .where(eq(jiroDeliveries.id, data.deliveryId));
+      return updatedDelivery ?? null;
+    });
 
-    if (delivery) {
+    if (delivery?.studentExpeditionId) {
       await this.checkAndCompleteExpedition(delivery.studentExpeditionId, data.reviewerId);
     }
 
@@ -589,60 +866,70 @@ export const jiroExpeditionService = {
       )
       .orderBy(desc(jiroExpeditions.createdAt));
 
-    // Obtener progreso del estudiante en cada expedición
-    const results = await Promise.all(
-      expeditions.map(async ({ expedition, questionBank }) => {
-        const [studentExpedition] = await db
-          .select()
-          .from(jiroStudentExpeditions)
-          .where(
-            and(
-              eq(jiroStudentExpeditions.expeditionId, expedition.id),
-              eq(jiroStudentExpeditions.studentProfileId, studentProfileId)
-            )
-          );
+    if (expeditions.length === 0) {
+      return [];
+    }
 
-        const [questionCount] = await db
-          .select({ count: sql<number>`count(*)` })
+    const expeditionIds = expeditions.map(({ expedition }) => expedition.id);
+    const bankIds = [...new Set(expeditions.map(({ expedition }) => expedition.questionBankId))];
+
+    const studentExpeditions = await db
+      .select()
+      .from(jiroStudentExpeditions)
+      .where(and(
+        inArray(jiroStudentExpeditions.expeditionId, expeditionIds),
+        eq(jiroStudentExpeditions.studentProfileId, studentProfileId)
+      ));
+
+    const questionCounts = bankIds.length > 0
+      ? await db
+          .select({
+            bankId: questions.bankId,
+            count: sql<number>`count(*)`,
+          })
           .from(questions)
-          .where(eq(questions.bankId, expedition.questionBankId));
+          .where(inArray(questions.bankId, bankIds))
+          .groupBy(questions.bankId)
+      : [];
 
-        const [deliveryCount] = await db
-          .select({ count: sql<number>`count(*)` })
-          .from(jiroDeliveryStations)
-          .where(eq(jiroDeliveryStations.expeditionId, expedition.id));
-
-        const totalStations = Number(questionCount?.count || 0) + Number(deliveryCount?.count || 0);
-
-        // Parsear completedStations de forma segura
-        const parseCompletedStations = (cs: any): number => {
-          if (!cs) return 0;
-          if (Array.isArray(cs)) return cs.length;
-          if (typeof cs === 'string') {
-            try {
-              const parsed = JSON.parse(cs);
-              return Array.isArray(parsed) ? parsed.length : 0;
-            } catch {
-              return 0;
-            }
-          }
-          return 0;
-        };
-
-        return {
-          ...expedition,
-          questionBank,
-          totalStations,
-          studentProgress: studentExpedition ? {
-            status: studentExpedition.status,
-            completedStations: parseCompletedStations(studentExpedition.completedStations),
-            currentEnergy: this.calculateCurrentEnergy(studentExpedition, expedition),
-          } : null,
-        };
+    const deliveryCounts = await db
+      .select({
+        expeditionId: jiroDeliveryStations.expeditionId,
+        count: sql<number>`count(*)`,
       })
+      .from(jiroDeliveryStations)
+      .where(inArray(jiroDeliveryStations.expeditionId, expeditionIds))
+      .groupBy(jiroDeliveryStations.expeditionId);
+
+    const studentExpeditionMap = new Map(
+      studentExpeditions.map((se) => [se.expeditionId, se])
+    );
+    const questionCountMap = new Map(
+      questionCounts.map((row) => [row.bankId, Number(row.count || 0)])
+    );
+    const deliveryCountMap = new Map(
+      deliveryCounts.map((row) => [row.expeditionId, Number(row.count || 0)])
     );
 
-    return results;
+    return expeditions.map(({ expedition, questionBank }) => {
+      const studentExpedition = studentExpeditionMap.get(expedition.id);
+      const totalStations =
+        (questionCountMap.get(expedition.questionBankId) || 0) +
+        (deliveryCountMap.get(expedition.id) || 0);
+
+      return {
+        ...expedition,
+        questionBank,
+        totalStations,
+        studentProgress: studentExpedition
+          ? {
+              status: studentExpedition.status,
+              completedStations: this.parseCompletedStations(studentExpedition.completedStations).length,
+              currentEnergy: this.calculateCurrentEnergy(studentExpedition, expedition),
+            }
+          : null,
+      };
+    });
   },
 
   async getStudentExpeditionProgress(expeditionId: string, studentProfileId: string) {
@@ -714,8 +1001,8 @@ export const jiroExpeditionService = {
           type: q.type,
           questionText: q.questionText,
           imageUrl: q.imageUrl,
-          options: q.options,
-          pairs: q.pairs,
+          options: this.parseJsonArray(q.options),
+          pairs: this.parseJsonArray(q.pairs),
           timeLimitSeconds: q.timeLimitSeconds,
         },
         status: answer
@@ -731,7 +1018,10 @@ export const jiroExpeditionService = {
         type: 'DELIVERY' as const,
         id: ds.id,
         orderIndex: bankQuestions.length + index,
-        station: ds,
+        station: {
+          ...ds,
+          allowedFileTypes: this.parseJsonArray(ds.allowedFileTypes) || ['PDF', 'IMAGE'],
+        },
         status: delivery
           ? delivery.status
           : 'PENDING',
@@ -768,7 +1058,7 @@ export const jiroExpeditionService = {
         currentEnergy,
         correctAnswers: studentExpedition.correctAnswers,
         wrongAnswers: studentExpedition.wrongAnswers,
-        completedStations: studentExpedition.completedStations,
+        completedStations: this.parseCompletedStations(studentExpedition.completedStations),
         earnedXp: studentExpedition.earnedXp,
         earnedGp: studentExpedition.earnedGp,
         finalScore: studentExpedition.finalScore,
@@ -828,288 +1118,286 @@ export const jiroExpeditionService = {
   },
 
   async answerQuestion(data: AnswerQuestionData) {
-    const [studentExpedition] = await db
-      .select()
-      .from(jiroStudentExpeditions)
-      .where(eq(jiroStudentExpeditions.id, data.studentExpeditionId));
+    let result: {
+      isCorrect: boolean;
+      correctAnswer: any;
+      explanation: string | null;
+      currentEnergy: number;
+    } | null = null;
 
-    if (!studentExpedition) throw new Error('Progreso no encontrado');
-    if (studentExpedition.status !== 'IN_PROGRESS') {
-      throw new Error('La expedición no está en progreso');
-    }
+    await db.transaction(async (tx) => {
+      const [studentExpedition] = await tx
+        .select()
+        .from(jiroStudentExpeditions)
+        .where(eq(jiroStudentExpeditions.id, data.studentExpeditionId));
 
-    const [expedition] = await db
-      .select()
-      .from(jiroExpeditions)
-      .where(eq(jiroExpeditions.id, studentExpedition.expeditionId));
+      if (!studentExpedition) throw new Error('Progreso no encontrado');
+      if (studentExpedition.status !== 'IN_PROGRESS') {
+        throw new Error('La expedición no está en progreso');
+      }
 
-    // Verificar tiempo en modo EXAM
-    if (expedition.mode === 'EXAM' && expedition.endsAt) {
-      if (new Date() > new Date(expedition.endsAt)) {
+      const [expedition] = await tx
+        .select()
+        .from(jiroExpeditions)
+        .where(eq(jiroExpeditions.id, studentExpedition.expeditionId));
+
+      if (!expedition) throw new Error('Expedición no encontrada');
+
+      const now = new Date();
+
+      // Verificar tiempo en modo EXAM
+      if (expedition.mode === 'EXAM' && expedition.endsAt && now > new Date(expedition.endsAt)) {
         throw new Error('El tiempo ha terminado');
       }
-    }
 
-    // Calcular energía actual
-    const currentEnergy = this.calculateCurrentEnergy(studentExpedition, expedition);
-    if (currentEnergy <= 0) {
-      throw new Error('No tienes energía suficiente');
-    }
+      const energySnapshot = this.getCurrentEnergySnapshot(studentExpedition, expedition, now);
+      const currentEnergy = energySnapshot.currentEnergy;
+      if (currentEnergy <= 0) {
+        throw new Error('No tienes energía suficiente');
+      }
 
-    // Verificar si ya respondió esta pregunta
-    const [existingAnswer] = await db
-      .select()
-      .from(jiroQuestionAnswers)
-      .where(
-        and(
-          eq(jiroQuestionAnswers.studentExpeditionId, data.studentExpeditionId),
-          eq(jiroQuestionAnswers.questionId, data.questionId)
-        )
-      );
+      // Verificar si ya respondió esta pregunta
+      const [existingAnswer] = await tx
+        .select()
+        .from(jiroQuestionAnswers)
+        .where(
+          and(
+            eq(jiroQuestionAnswers.studentExpeditionId, data.studentExpeditionId),
+            eq(jiroQuestionAnswers.questionId, data.questionId)
+          )
+        );
 
-    if (existingAnswer) {
-      throw new Error('Ya respondiste esta pregunta');
-    }
+      if (existingAnswer) {
+        throw new Error('Ya respondiste esta pregunta');
+      }
 
-    // Obtener la pregunta y verificar respuesta
-    const [question] = await db
-      .select()
-      .from(questions)
-      .where(eq(questions.id, data.questionId));
+      // Obtener la pregunta, validar pertenencia a banco y verificar respuesta
+      const [question] = await tx
+        .select()
+        .from(questions)
+        .where(and(
+          eq(questions.id, data.questionId),
+          eq(questions.bankId, expedition.questionBankId)
+        ));
 
-    if (!question) throw new Error('Pregunta no encontrada');
+      if (!question) throw new Error('Pregunta no encontrada en esta expedición');
 
-    const isCorrect = this.checkAnswer(question, data.answer);
-    const now = new Date();
+      const isCorrect = this.checkAnswer(question, data.answer);
 
-    // Guardar respuesta
-    await db.insert(jiroQuestionAnswers).values({
-      id: uuidv4(),
-      studentExpeditionId: data.studentExpeditionId,
-      questionId: data.questionId,
-      answer: data.answer,
-      isCorrect,
-      energyLost: isCorrect ? 0 : 1,
-      answeredAt: now,
+      await tx.insert(jiroQuestionAnswers).values({
+        id: uuidv4(),
+        studentExpeditionId: data.studentExpeditionId,
+        questionId: data.questionId,
+        answer: data.answer,
+        isCorrect,
+        energyLost: isCorrect ? 0 : 1,
+        answeredAt: now,
+      });
+
+      const completedStations = this.parseCompletedStations(studentExpedition.completedStations);
+      if (!completedStations.includes(data.questionId)) {
+        completedStations.push(data.questionId);
+      }
+
+      const newEnergy = isCorrect ? currentEnergy : currentEnergy - 1;
+      const nextLastEnergyRegenAt = expedition.mode === 'ASYNC'
+        ? (isCorrect ? energySnapshot.lastEnergyRegenAt : now)
+        : studentExpedition.lastEnergyRegenAt;
+
+      await tx
+        .update(jiroStudentExpeditions)
+        .set({
+          currentEnergy: newEnergy,
+          lastEnergyRegenAt: nextLastEnergyRegenAt,
+          correctAnswers: isCorrect ? studentExpedition.correctAnswers + 1 : studentExpedition.correctAnswers,
+          wrongAnswers: isCorrect ? studentExpedition.wrongAnswers : studentExpedition.wrongAnswers + 1,
+          completedStations,
+          updatedAt: now,
+        })
+        .where(eq(jiroStudentExpeditions.id, data.studentExpeditionId));
+
+      result = {
+        isCorrect,
+        correctAnswer: isCorrect ? null : this.getCorrectAnswer(question),
+        explanation: question.explanation,
+        currentEnergy: newEnergy,
+      };
     });
 
-    // Actualizar progreso del estudiante
-    // completedStations guarda TODAS las preguntas respondidas (correctas e incorrectas)
-    // Parsear completedStations si viene como string (puede estar corrupto)
-    let existingStations: string[] = [];
-    if (studentExpedition.completedStations) {
-      if (Array.isArray(studentExpedition.completedStations)) {
-        existingStations = studentExpedition.completedStations;
-      } else if (typeof studentExpedition.completedStations === 'string') {
-        try {
-          const parsed = JSON.parse(studentExpedition.completedStations);
-          existingStations = Array.isArray(parsed) ? parsed : [];
-        } catch {
-          existingStations = [];
-        }
-      }
-    }
-    const completedStations = [...existingStations];
-    if (!completedStations.includes(data.questionId)) {
-      completedStations.push(data.questionId);
-    }
-
-    const newEnergy = isCorrect ? currentEnergy : currentEnergy - 1;
-
-    await db
-      .update(jiroStudentExpeditions)
-      .set({
-        currentEnergy: newEnergy,
-        lastEnergyRegenAt: isCorrect ? studentExpedition.lastEnergyRegenAt : now,
-        correctAnswers: isCorrect ? studentExpedition.correctAnswers + 1 : studentExpedition.correctAnswers,
-        wrongAnswers: isCorrect ? studentExpedition.wrongAnswers : studentExpedition.wrongAnswers + 1,
-        completedStations,
-        updatedAt: now,
-      })
-      .where(eq(jiroStudentExpeditions.id, data.studentExpeditionId));
-
-    // Verificar si completó la expedición
     await this.checkAndCompleteExpedition(data.studentExpeditionId);
 
-    return {
-      isCorrect,
-      correctAnswer: isCorrect ? null : this.getCorrectAnswer(question),
-      explanation: question.explanation,
-      currentEnergy: newEnergy,
-    };
+    if (!result) {
+      throw new Error('No se pudo registrar la respuesta');
+    }
+
+    return result;
   },
 
   async submitDelivery(data: SubmitDeliveryData) {
-    const [studentExpedition] = await db
-      .select()
-      .from(jiroStudentExpeditions)
-      .where(eq(jiroStudentExpeditions.id, data.studentExpeditionId));
+    await db.transaction(async (tx) => {
+      const [studentExpedition] = await tx
+        .select()
+        .from(jiroStudentExpeditions)
+        .where(eq(jiroStudentExpeditions.id, data.studentExpeditionId));
 
-    if (!studentExpedition) throw new Error('Progreso no encontrado');
-    if (studentExpedition.status !== 'IN_PROGRESS') {
-      throw new Error('La expedición no está en progreso');
-    }
+      if (!studentExpedition) throw new Error('Progreso no encontrado');
+      if (studentExpedition.status !== 'IN_PROGRESS') {
+        throw new Error('La expedición no está en progreso');
+      }
 
-    // Verificar si ya subió a esta estación
-    const [existing] = await db
-      .select()
-      .from(jiroDeliveries)
-      .where(
-        and(
-          eq(jiroDeliveries.studentExpeditionId, data.studentExpeditionId),
-          eq(jiroDeliveries.deliveryStationId, data.deliveryStationId)
-        )
-      );
+      const [station] = await tx
+        .select()
+        .from(jiroDeliveryStations)
+        .where(and(
+          eq(jiroDeliveryStations.id, data.deliveryStationId),
+          eq(jiroDeliveryStations.expeditionId, studentExpedition.expeditionId)
+        ));
 
-    if (existing) {
-      throw new Error('Ya subiste un archivo a esta estación');
-    }
+      if (!station) {
+        throw new Error('Estación de entrega no encontrada para esta expedición');
+      }
 
-    const now = new Date();
-    const id = uuidv4();
+      const allowedFileTypes = this.parseJsonArray(station.allowedFileTypes) || ['PDF', 'IMAGE'];
+      if (!allowedFileTypes.includes(data.fileType)) {
+        throw new Error('Tipo de archivo no permitido para esta estación');
+      }
 
-    await db.insert(jiroDeliveries).values({
-      id,
-      studentExpeditionId: data.studentExpeditionId,
-      deliveryStationId: data.deliveryStationId,
-      fileUrl: data.fileUrl,
-      fileName: data.fileName,
-      fileType: data.fileType,
-      fileSizeBytes: data.fileSizeBytes,
-      status: 'PENDING',
-      submittedAt: now,
+      // Verificar si ya subió a esta estación
+      const [existing] = await tx
+        .select()
+        .from(jiroDeliveries)
+        .where(
+          and(
+            eq(jiroDeliveries.studentExpeditionId, data.studentExpeditionId),
+            eq(jiroDeliveries.deliveryStationId, data.deliveryStationId)
+          )
+        );
+
+      if (existing) {
+        throw new Error('Ya subiste un archivo a esta estación');
+      }
+
+      const now = new Date();
+
+      await tx.insert(jiroDeliveries).values({
+        id: uuidv4(),
+        studentExpeditionId: data.studentExpeditionId,
+        deliveryStationId: data.deliveryStationId,
+        fileUrl: data.fileUrl,
+        fileName: data.fileName,
+        fileType: data.fileType,
+        fileSizeBytes: data.fileSizeBytes,
+        status: 'PENDING',
+        submittedAt: now,
+      });
+
+      const completedStations = this.parseCompletedStations(studentExpedition.completedStations);
+      if (!completedStations.includes(data.deliveryStationId)) {
+        completedStations.push(data.deliveryStationId);
+      }
+
+      await tx
+        .update(jiroStudentExpeditions)
+        .set({
+          completedStations,
+          updatedAt: now,
+        })
+        .where(eq(jiroStudentExpeditions.id, data.studentExpeditionId));
     });
 
-    // Actualizar estaciones completadas (entregas siempre avanzan)
-    // Parsear completedStations si viene como string
-    let existingStations: string[] = [];
-    if (studentExpedition.completedStations) {
-      if (Array.isArray(studentExpedition.completedStations)) {
-        existingStations = studentExpedition.completedStations;
-      } else if (typeof studentExpedition.completedStations === 'string') {
-        try {
-          const parsed = JSON.parse(studentExpedition.completedStations);
-          existingStations = Array.isArray(parsed) ? parsed : [];
-        } catch {
-          existingStations = [];
-        }
-      }
-    }
-    const completedStations = [...existingStations];
-    if (!completedStations.includes(data.deliveryStationId)) {
-      completedStations.push(data.deliveryStationId);
-    }
-
-    await db
-      .update(jiroStudentExpeditions)
-      .set({
-        completedStations,
-        updatedAt: now,
-      })
-      .where(eq(jiroStudentExpeditions.id, data.studentExpeditionId));
-
-    // Verificar si completó la expedición
     await this.checkAndCompleteExpedition(data.studentExpeditionId);
 
     return { success: true };
   },
 
   async buyEnergy(expeditionId: string, studentProfileId: string) {
-    const [expedition] = await db
-      .select()
-      .from(jiroExpeditions)
-      .where(eq(jiroExpeditions.id, expeditionId));
+    let result: { newEnergy: number; gpSpent: number; remainingGp: number } | null = null;
 
-    if (!expedition) throw new Error('Expedición no encontrada');
+    await db.transaction(async (tx) => {
+      const [expedition] = await tx
+        .select()
+        .from(jiroExpeditions)
+        .where(eq(jiroExpeditions.id, expeditionId));
 
-    const [studentExpedition] = await db
-      .select()
-      .from(jiroStudentExpeditions)
-      .where(
-        and(
-          eq(jiroStudentExpeditions.expeditionId, expeditionId),
-          eq(jiroStudentExpeditions.studentProfileId, studentProfileId)
-        )
-      );
+      if (!expedition) throw new Error('Expedición no encontrada');
 
-    if (!studentExpedition) throw new Error('No has iniciado esta expedición');
+      const [studentExpedition] = await tx
+        .select()
+        .from(jiroStudentExpeditions)
+        .where(
+          and(
+            eq(jiroStudentExpeditions.expeditionId, expeditionId),
+            eq(jiroStudentExpeditions.studentProfileId, studentProfileId)
+          )
+        );
 
-    // Verificar GP del estudiante
-    const [student] = await db
-      .select()
-      .from(studentProfiles)
-      .where(eq(studentProfiles.id, studentProfileId));
+      if (!studentExpedition) throw new Error('No has iniciado esta expedición');
+      if (studentExpedition.status !== 'IN_PROGRESS') {
+        throw new Error('La expedición no está en progreso');
+      }
 
-    if (!student) throw new Error('Estudiante no encontrado');
-    if (student.gp < expedition.energyPurchasePrice) {
-      throw new Error('No tienes suficiente GP');
+      const [student] = await tx
+        .select()
+        .from(studentProfiles)
+        .where(eq(studentProfiles.id, studentProfileId));
+
+      if (!student) throw new Error('Estudiante no encontrado');
+      if (student.gp < expedition.energyPurchasePrice) {
+        throw new Error('No tienes suficiente GP');
+      }
+
+      const now = new Date();
+      const energySnapshot = this.getCurrentEnergySnapshot(studentExpedition, expedition, now);
+      const newEnergy = energySnapshot.currentEnergy + 1;
+      const remainingGp = student.gp - expedition.energyPurchasePrice;
+
+      await tx
+        .update(studentProfiles)
+        .set({
+          gp: remainingGp,
+          updatedAt: now,
+        })
+        .where(eq(studentProfiles.id, studentProfileId));
+
+      await tx
+        .update(jiroStudentExpeditions)
+        .set({
+          currentEnergy: newEnergy,
+          lastEnergyRegenAt: expedition.mode === 'ASYNC'
+            ? (energySnapshot.lastEnergyRegenAt || now)
+            : studentExpedition.lastEnergyRegenAt,
+          updatedAt: now,
+        })
+        .where(eq(jiroStudentExpeditions.id, studentExpedition.id));
+
+      await tx.insert(pointLogs).values({
+        id: uuidv4(),
+        studentId: studentProfileId,
+        pointType: 'GP',
+        action: 'REMOVE',
+        amount: expedition.energyPurchasePrice,
+        reason: `Compra de energía - Expedición: ${expedition.name}`,
+        createdAt: now,
+      });
+
+      result = {
+        newEnergy,
+        gpSpent: expedition.energyPurchasePrice,
+        remainingGp,
+      };
+    });
+
+    if (!result) {
+      throw new Error('No se pudo completar la compra de energía');
     }
 
-    const now = new Date();
-
-    // Descontar GP
-    await db
-      .update(studentProfiles)
-      .set({
-        gp: student.gp - expedition.energyPurchasePrice,
-        updatedAt: now,
-      })
-      .where(eq(studentProfiles.id, studentProfileId));
-
-    // Agregar energía
-    const currentEnergy = this.calculateCurrentEnergy(studentExpedition, expedition);
-    await db
-      .update(jiroStudentExpeditions)
-      .set({
-        currentEnergy: currentEnergy + 1,
-        updatedAt: now,
-      })
-      .where(eq(jiroStudentExpeditions.id, studentExpedition.id));
-
-    return {
-      newEnergy: currentEnergy + 1,
-      gpSpent: expedition.energyPurchasePrice,
-      remainingGp: student.gp - expedition.energyPurchasePrice,
-    };
+    return result;
   },
 
   // ==================== HELPERS ====================
 
   calculateCurrentEnergy(studentExpedition: JiroStudentExpedition, expedition: JiroExpedition): number {
-    // En modo EXAM no hay regeneración
-    if (expedition.mode === 'EXAM') {
-      return studentExpedition.currentEnergy;
-    }
-
-    // Modo ASYNC: calcular regeneración
-    if (!studentExpedition.lastEnergyRegenAt) {
-      return studentExpedition.currentEnergy;
-    }
-
-    const lastRegen = new Date(studentExpedition.lastEnergyRegenAt);
-    const now = new Date();
-    const minutesPassed = (now.getTime() - lastRegen.getTime()) / 60000;
-    const regenCycles = Math.floor(minutesPassed / expedition.energyRegenMinutes);
-
-    if (regenCycles > 0) {
-      const newEnergy = Math.min(
-        expedition.initialEnergy,
-        studentExpedition.currentEnergy + regenCycles
-      );
-
-      // Actualizar en BD si regeneró
-      db.update(jiroStudentExpeditions)
-        .set({
-          currentEnergy: newEnergy,
-          lastEnergyRegenAt: now,
-        })
-        .where(eq(jiroStudentExpeditions.id, studentExpedition.id))
-        .then(() => {});
-
-      return newEnergy;
-    }
-
-    return studentExpedition.currentEnergy;
+    return this.getCurrentEnergySnapshot(studentExpedition, expedition).currentEnergy;
   },
 
   checkAnswer(question: any, answer: any): boolean {
@@ -1225,248 +1513,431 @@ export const jiroExpeditionService = {
   },
 
   async checkAndCompleteExpedition(studentExpeditionId: string, reviewerId?: string) {
-    const [studentExpedition] = await db
-      .select()
-      .from(jiroStudentExpeditions)
-      .where(eq(jiroStudentExpeditions.id, studentExpeditionId));
-
-    if (!studentExpedition || studentExpedition.status === 'COMPLETED') return;
-
-    const [expedition] = await db
-      .select()
-      .from(jiroExpeditions)
-      .where(eq(jiroExpeditions.id, studentExpedition.expeditionId));
-
-    // Contar estaciones totales
-    const [questionCount] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(questions)
-      .where(eq(questions.bankId, expedition.questionBankId));
-
-    const [deliveryCount] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(jiroDeliveryStations)
-      .where(eq(jiroDeliveryStations.expeditionId, expedition.id));
-
-    const totalStations = Number(questionCount?.count || 0) + Number(deliveryCount?.count || 0);
-    
-    // Contar respuestas reales en la BD, no usar completedStations que puede estar corrupto
-    const [answerCount] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(jiroQuestionAnswers)
-      .where(eq(jiroQuestionAnswers.studentExpeditionId, studentExpeditionId));
-    
-    const completedCount = Number(answerCount?.count || 0);
-
-    // Si no completó todas las estaciones, no hacer nada
-    if (completedCount < totalStations) return;
-
-    // Si hay entregas, verificar si todas están revisadas
-    if (expedition.requiresReview) {
-      const pendingDeliveries = await db
-        .select()
-        .from(jiroDeliveries)
-        .where(
-          and(
-            eq(jiroDeliveries.studentExpeditionId, studentExpeditionId),
-            eq(jiroDeliveries.status, 'PENDING')
-          )
-        );
-
-      if (pendingDeliveries.length > 0) {
-        // Marcar como pendiente de revisión
-        await db
-          .update(jiroStudentExpeditions)
-          .set({ status: 'PENDING_REVIEW', updatedAt: new Date() })
-          .where(eq(jiroStudentExpeditions.id, studentExpeditionId));
-        return;
-      }
-    }
-
-    // Calcular recompensas
-    const earnedXp = studentExpedition.correctAnswers * expedition.rewardXpPerCorrect;
-    const earnedGp = studentExpedition.correctAnswers * expedition.rewardGpPerCorrect;
-    const finalScore = totalStations > 0
-      ? (studentExpedition.correctAnswers / Number(questionCount?.count || 1)) * 100
-      : 0;
-
     const now = new Date();
+    const xpSideEffects = await db.transaction(async (tx): Promise<XpSideEffectPayload | null> => {
+      const [studentExpedition] = await tx
+        .select()
+        .from(jiroStudentExpeditions)
+        .where(eq(jiroStudentExpeditions.id, studentExpeditionId));
 
-    // Actualizar progreso del estudiante
-    await db
-      .update(jiroStudentExpeditions)
-      .set({
-        status: 'COMPLETED',
-        earnedXp,
-        earnedGp,
-        finalScore: String(finalScore.toFixed(2)),
-        completedAt: now,
-        reviewedAt: reviewerId ? now : null,
-        reviewedBy: reviewerId || null,
-        updatedAt: now,
-      })
-      .where(eq(jiroStudentExpeditions.id, studentExpeditionId));
+      if (!studentExpedition || studentExpedition.status === 'COMPLETED') return null;
 
-    // Dar recompensas al estudiante
-    const [student] = await db
-      .select()
-      .from(studentProfiles)
-      .where(eq(studentProfiles.id, studentExpedition.studentProfileId));
+      const [expedition] = await tx
+        .select()
+        .from(jiroExpeditions)
+        .where(eq(jiroExpeditions.id, studentExpedition.expeditionId));
 
-    if (student) {
-      await db
+      if (!expedition) return null;
+
+      const [questionCount] = await tx
+        .select({ count: sql<number>`count(*)` })
+        .from(questions)
+        .where(eq(questions.bankId, expedition.questionBankId));
+
+      const [deliveryCount] = await tx
+        .select({ count: sql<number>`count(*)` })
+        .from(jiroDeliveryStations)
+        .where(eq(jiroDeliveryStations.expeditionId, expedition.id));
+
+      const [answerCount] = await tx
+        .select({ count: sql<number>`count(*)` })
+        .from(jiroQuestionAnswers)
+        .where(eq(jiroQuestionAnswers.studentExpeditionId, studentExpeditionId));
+
+      const [submittedDeliveryCount] = await tx
+        .select({ count: sql<number>`count(*)` })
+        .from(jiroDeliveries)
+        .where(eq(jiroDeliveries.studentExpeditionId, studentExpeditionId));
+
+      const totalStations = Number(questionCount?.count || 0) + Number(deliveryCount?.count || 0);
+      const completedCount = Number(answerCount?.count || 0) + Number(submittedDeliveryCount?.count || 0);
+
+      if (completedCount < totalStations) return null;
+
+      if (expedition.requiresReview) {
+        const [pendingDeliveryCount] = await tx
+          .select({ count: sql<number>`count(*)` })
+          .from(jiroDeliveries)
+          .where(
+            and(
+              eq(jiroDeliveries.studentExpeditionId, studentExpeditionId),
+              eq(jiroDeliveries.status, 'PENDING')
+            )
+          );
+
+        if (Number(pendingDeliveryCount?.count || 0) > 0) {
+          await tx
+            .update(jiroStudentExpeditions)
+            .set({ status: 'PENDING_REVIEW', updatedAt: now })
+            .where(eq(jiroStudentExpeditions.id, studentExpeditionId));
+          return null;
+        }
+      }
+
+      const totalQuestions = Number(questionCount?.count || 0);
+      const earnedXp = studentExpedition.correctAnswers * expedition.rewardXpPerCorrect;
+      const earnedGp = studentExpedition.correctAnswers * expedition.rewardGpPerCorrect;
+      const finalScore = totalQuestions > 0
+        ? (studentExpedition.correctAnswers / totalQuestions) * 100
+        : 0;
+
+      await tx
+        .update(jiroStudentExpeditions)
+        .set({
+          status: 'COMPLETED',
+          earnedXp,
+          earnedGp,
+          finalScore: String(finalScore.toFixed(2)),
+          completedAt: now,
+          reviewedAt: reviewerId ? now : null,
+          reviewedBy: reviewerId || null,
+          updatedAt: now,
+        })
+        .where(eq(jiroStudentExpeditions.id, studentExpeditionId));
+
+      const [student] = await tx
+        .select()
+        .from(studentProfiles)
+        .where(eq(studentProfiles.id, studentExpedition.studentProfileId));
+
+      if (!student) return null;
+
+      const [classroom] = await tx
+        .select({ xpPerLevel: classrooms.xpPerLevel })
+        .from(classrooms)
+        .where(eq(classrooms.id, student.classroomId));
+
+      const newXp = student.xp + earnedXp;
+      const newGp = student.gp + earnedGp;
+      const xpPerLevel = classroom?.xpPerLevel || 100;
+      const newLevel = earnedXp > 0 ? this.calculateLevel(newXp, xpPerLevel) : student.level;
+      const leveledUp = newLevel > student.level;
+
+      await tx
         .update(studentProfiles)
         .set({
-          xp: student.xp + earnedXp,
-          gp: student.gp + earnedGp,
+          xp: newXp,
+          gp: newGp,
+          level: newLevel,
           updatedAt: now,
         })
         .where(eq(studentProfiles.id, student.id));
 
-      // Registrar en pointLogs para historial
+      const reason = `Expedición Jiro completada: ${expedition.name}`;
+
       if (earnedXp > 0) {
-        await db.insert(pointLogs).values({
+        await tx.insert(pointLogs).values({
           id: uuidv4(),
           studentId: student.id,
           pointType: 'XP',
           action: 'ADD',
           amount: earnedXp,
-          reason: `Expedición completada: ${expedition.name}`,
+          reason,
           createdAt: now,
         });
       }
+
       if (earnedGp > 0) {
-        await db.insert(pointLogs).values({
+        await tx.insert(pointLogs).values({
           id: uuidv4(),
           studentId: student.id,
           pointType: 'GP',
           action: 'ADD',
           amount: earnedGp,
-          reason: `Expedición completada: ${expedition.name}`,
+          reason,
           createdAt: now,
         });
+      }
+
+      if (student.userId) {
+        const rewardText = [
+          earnedXp > 0 ? `+${earnedXp} XP` : '',
+          earnedGp > 0 ? `+${earnedGp} GP` : '',
+        ].filter(Boolean).join(' ');
+
+        if (rewardText) {
+          await tx.insert(notifications).values({
+            id: uuidv4(),
+            userId: student.userId,
+            classroomId: expedition.classroomId,
+            type: 'POINTS',
+            title: '🚀 ¡Expedición completada!',
+            message: `Has recibido ${rewardText} por completar "${expedition.name}"`,
+            isRead: false,
+            createdAt: now,
+          });
+        }
+
+        if (leveledUp) {
+          await tx.insert(notifications).values({
+            id: uuidv4(),
+            userId: student.userId,
+            classroomId: expedition.classroomId,
+            type: 'LEVEL_UP',
+            title: '🎉 ¡Subiste de nivel!',
+            message: `¡Felicidades! Has alcanzado el nivel ${newLevel}`,
+            isRead: false,
+            createdAt: now,
+          });
+        }
+      }
+
+      if (earnedXp > 0) {
+        return {
+          studentProfileId: student.id,
+          classroomId: expedition.classroomId,
+          awardedXp: earnedXp,
+          reason,
+        };
+      }
+
+      return null;
+    });
+
+    if (xpSideEffects) {
+      try {
+        await clanService.contributeXpToClan(
+          xpSideEffects.studentProfileId,
+          xpSideEffects.awardedXp,
+          xpSideEffects.reason
+        );
+      } catch {
+        // Silently fail
+      }
+
+      try {
+        await storyService.onXpAwarded(
+          xpSideEffects.classroomId,
+          xpSideEffects.studentProfileId,
+          xpSideEffects.awardedXp
+        );
+      } catch {
+        // Silently fail
       }
     }
   },
 
-  async forceCompleteByTimeout(expeditionId: string, studentProfileId: string): Promise<{ success: boolean; message: string }> {
-    const [studentExpedition] = await db
-      .select()
-      .from(jiroStudentExpeditions)
-      .where(
-        and(
-          eq(jiroStudentExpeditions.expeditionId, expeditionId),
-          eq(jiroStudentExpeditions.studentProfileId, studentProfileId)
-        )
-      );
-
-    if (!studentExpedition) {
-      return { success: false, message: 'Expedición no encontrada' };
-    }
-
-    if (studentExpedition.status === 'COMPLETED') {
-      return { success: true, message: 'Ya completada' };
-    }
-
-    const [expedition] = await db
-      .select()
-      .from(jiroExpeditions)
-      .where(eq(jiroExpeditions.id, expeditionId));
-
-    if (!expedition || expedition.mode !== 'EXAM') {
-      return { success: false, message: 'Solo aplica para modo examen' };
-    }
-
+  async forceCompleteByTimeout(expeditionId: string, studentProfileId: string): Promise<{
+    success: boolean;
+    message: string;
+    finalScore?: string;
+    earnedXp?: number;
+    earnedGp?: number;
+  }> {
     const now = new Date();
+    const { result, xpSideEffects } = await db.transaction(async (tx): Promise<{
+      result: {
+        success: boolean;
+        message: string;
+        finalScore?: string;
+        earnedXp?: number;
+        earnedGp?: number;
+      };
+      xpSideEffects: XpSideEffectPayload | null;
+    }> => {
+      const [studentExpedition] = await tx
+        .select()
+        .from(jiroStudentExpeditions)
+        .where(
+          and(
+            eq(jiroStudentExpeditions.expeditionId, expeditionId),
+            eq(jiroStudentExpeditions.studentProfileId, studentProfileId)
+          )
+        );
 
-    // Calcular puntuación final basada en respuestas correctas
-    const correctAnswers = studentExpedition.correctAnswers || 0;
-    
-    // Obtener total de estaciones (preguntas del banco + entregas)
-    let questionCountNum = 0;
-    if (expedition.questionBankId) {
-      const [questionCount] = await db
+      if (!studentExpedition) {
+        return {
+          result: { success: false, message: 'Expedición no encontrada' },
+          xpSideEffects: null,
+        };
+      }
+
+      if (studentExpedition.status === 'COMPLETED') {
+        return {
+          result: { success: true, message: 'Ya completada' },
+          xpSideEffects: null,
+        };
+      }
+
+      const [expedition] = await tx
+        .select()
+        .from(jiroExpeditions)
+        .where(eq(jiroExpeditions.id, expeditionId));
+
+      if (!expedition || expedition.mode !== 'EXAM') {
+        return {
+          result: { success: false, message: 'Solo aplica para modo examen' },
+          xpSideEffects: null,
+        };
+      }
+
+      if (!expedition.endsAt || now < new Date(expedition.endsAt)) {
+        return {
+          result: { success: false, message: 'El examen aún no ha terminado' },
+          xpSideEffects: null,
+        };
+      }
+
+      const [questionCount] = await tx
         .select({ count: sql<number>`count(*)` })
         .from(questions)
         .where(eq(questions.bankId, expedition.questionBankId));
-      questionCountNum = Number(questionCount?.count || 0);
-    }
-    
-    const [deliveryCount] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(jiroDeliveryStations)
-      .where(eq(jiroDeliveryStations.expeditionId, expeditionId));
-    
-    const totalStations = questionCountNum + Number(deliveryCount?.count || 0);
-    
-    // Calcular puntuación: (correctas / total) * 100
-    const finalScore = totalStations > 0 ? (correctAnswers / totalStations) * 100 : 0;
-    
-    // Calcular recompensas ganadas hasta el momento
-    const earnedXp = correctAnswers * expedition.rewardXpPerCorrect;
-    const earnedGp = correctAnswers * expedition.rewardGpPerCorrect;
 
-    // Marcar como completado por timeout
-    await db
-      .update(jiroStudentExpeditions)
-      .set({
-        status: 'COMPLETED',
-        earnedXp,
-        earnedGp,
-        finalScore: String(finalScore.toFixed(2)),
-        completedAt: now,
-        updatedAt: now,
-      })
-      .where(eq(jiroStudentExpeditions.id, studentExpedition.id));
+      const [deliveryCount] = await tx
+        .select({ count: sql<number>`count(*)` })
+        .from(jiroDeliveryStations)
+        .where(eq(jiroDeliveryStations.expeditionId, expeditionId));
 
-    // Dar recompensas al estudiante
-    const [student] = await db
-      .select()
-      .from(studentProfiles)
-      .where(eq(studentProfiles.id, studentProfileId));
+      const totalStations = Number(questionCount?.count || 0) + Number(deliveryCount?.count || 0);
+      const correctAnswers = studentExpedition.correctAnswers || 0;
+      const finalScore = totalStations > 0 ? (correctAnswers / totalStations) * 100 : 0;
+      const earnedXp = correctAnswers * expedition.rewardXpPerCorrect;
+      const earnedGp = correctAnswers * expedition.rewardGpPerCorrect;
+      let transactionSideEffects: XpSideEffectPayload | null = null;
 
-    if (student) {
-      await db
-        .update(studentProfiles)
+      await tx
+        .update(jiroStudentExpeditions)
         .set({
-          xp: student.xp + earnedXp,
-          gp: student.gp + earnedGp,
+          status: 'COMPLETED',
+          earnedXp,
+          earnedGp,
+          finalScore: String(finalScore.toFixed(2)),
+          completedAt: now,
           updatedAt: now,
         })
-        .where(eq(studentProfiles.id, student.id));
+        .where(eq(jiroStudentExpeditions.id, studentExpedition.id));
 
-      // Registrar en pointLogs para historial
-      if (earnedXp > 0) {
-        await db.insert(pointLogs).values({
-          id: uuidv4(),
-          studentId: student.id,
-          pointType: 'XP',
-          action: 'ADD',
-          amount: earnedXp,
-          reason: `Expedición completada: ${expedition.name}`,
-          createdAt: now,
-        });
+      const [student] = await tx
+        .select()
+        .from(studentProfiles)
+        .where(eq(studentProfiles.id, studentProfileId));
+
+      if (student) {
+        const [classroom] = await tx
+          .select({ xpPerLevel: classrooms.xpPerLevel })
+          .from(classrooms)
+          .where(eq(classrooms.id, student.classroomId));
+
+        const newXp = student.xp + earnedXp;
+        const newGp = student.gp + earnedGp;
+        const xpPerLevel = classroom?.xpPerLevel || 100;
+        const newLevel = earnedXp > 0 ? this.calculateLevel(newXp, xpPerLevel) : student.level;
+        const leveledUp = newLevel > student.level;
+
+        await tx
+          .update(studentProfiles)
+          .set({
+            xp: newXp,
+            gp: newGp,
+            level: newLevel,
+            updatedAt: now,
+          })
+          .where(eq(studentProfiles.id, student.id));
+
+        const reason = `Expedición Jiro finalizada por tiempo: ${expedition.name}`;
+
+        if (earnedXp > 0) {
+          await tx.insert(pointLogs).values({
+            id: uuidv4(),
+            studentId: student.id,
+            pointType: 'XP',
+            action: 'ADD',
+            amount: earnedXp,
+            reason,
+            createdAt: now,
+          });
+        }
+
+        if (earnedGp > 0) {
+          await tx.insert(pointLogs).values({
+            id: uuidv4(),
+            studentId: student.id,
+            pointType: 'GP',
+            action: 'ADD',
+            amount: earnedGp,
+            reason,
+            createdAt: now,
+          });
+        }
+
+        if (student.userId) {
+          const rewardText = [
+            earnedXp > 0 ? `+${earnedXp} XP` : '',
+            earnedGp > 0 ? `+${earnedGp} GP` : '',
+          ].filter(Boolean).join(' ');
+
+          if (rewardText) {
+            await tx.insert(notifications).values({
+              id: uuidv4(),
+              userId: student.userId,
+              classroomId: expedition.classroomId,
+              type: 'POINTS',
+              title: '⏱️ Examen finalizado',
+              message: `Has recibido ${rewardText} al finalizar "${expedition.name}" por tiempo`,
+              isRead: false,
+              createdAt: now,
+            });
+          }
+
+          if (leveledUp) {
+            await tx.insert(notifications).values({
+              id: uuidv4(),
+              userId: student.userId,
+              classroomId: expedition.classroomId,
+              type: 'LEVEL_UP',
+              title: '🎉 ¡Subiste de nivel!',
+              message: `¡Felicidades! Has alcanzado el nivel ${newLevel}`,
+              isRead: false,
+              createdAt: now,
+            });
+          }
+        }
+
+        if (earnedXp > 0) {
+          transactionSideEffects = {
+            studentProfileId: student.id,
+            classroomId: expedition.classroomId,
+            awardedXp: earnedXp,
+            reason,
+          };
+        }
       }
-      if (earnedGp > 0) {
-        await db.insert(pointLogs).values({
-          id: uuidv4(),
-          studentId: student.id,
-          pointType: 'GP',
-          action: 'ADD',
-          amount: earnedGp,
-          reason: `Expedición completada: ${expedition.name}`,
-          createdAt: now,
-        });
+
+      return {
+        result: {
+          success: true,
+          message: 'Examen finalizado por tiempo',
+          finalScore: finalScore.toFixed(2),
+          earnedXp,
+          earnedGp,
+        },
+        xpSideEffects: transactionSideEffects,
+      };
+    });
+
+    if (xpSideEffects) {
+      try {
+        await clanService.contributeXpToClan(
+          xpSideEffects.studentProfileId,
+          xpSideEffects.awardedXp,
+          xpSideEffects.reason
+        );
+      } catch {
+        // Silently fail
+      }
+
+      try {
+        await storyService.onXpAwarded(
+          xpSideEffects.classroomId,
+          xpSideEffects.studentProfileId,
+          xpSideEffects.awardedXp
+        );
+      } catch {
+        // Silently fail
       }
     }
 
-    return { 
-      success: true, 
-      message: 'Examen finalizado por tiempo',
-      finalScore: finalScore.toFixed(2),
-      earnedXp,
-      earnedGp,
-    } as any;
+    return result;
   },
 
   // Obtener respuestas de un estudiante para una expedición (para profesor)

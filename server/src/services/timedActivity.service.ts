@@ -3,6 +3,7 @@ import {
   timedActivities, 
   timedActivityResults, 
   studentProfiles,
+  classrooms,
   behaviors,
   pointLogs,
   activityCompetencies,
@@ -10,9 +11,10 @@ import {
   type TimedActivityMode,
   type TimedActivityStatus,
 } from '../db/schema.js';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { clanService } from './clan.service.js';
+import { storyService } from './story.service.js';
 
 // DTOs
 export interface CreateTimedActivityDto {
@@ -60,41 +62,42 @@ class TimedActivityService {
     const id = uuidv4();
     const now = new Date();
 
-    await db.insert(timedActivities).values({
-      id,
-      classroomId: data.classroomId,
-      name: data.name,
-      description: data.description || null,
-      mode: data.mode,
-      status: 'DRAFT',
-      timeLimitSeconds: data.timeLimitSeconds || null,
-      bombMinSeconds: data.bombMinSeconds || null,
-      bombMaxSeconds: data.bombMaxSeconds || null,
-      behaviorId: data.behaviorId || null,
-      basePoints: data.basePoints || 10,
-      pointType: data.pointType || 'XP',
-      useMultipliers: data.useMultipliers || false,
-      multiplier50: data.multiplier50 || 200,
-      multiplier75: data.multiplier75 || 150,
-      negativeBehaviorId: data.negativeBehaviorId || null,
-      bombPenaltyPoints: data.bombPenaltyPoints || 10,
-      bombPenaltyType: data.bombPenaltyType || 'HP',
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    // Guardar competencias asociadas si existen
-    if (data.competencyIds && data.competencyIds.length > 0) {
-      const competencyValues = data.competencyIds.map(competencyId => ({
-        id: uuidv4(),
-        activityType: 'TIMED' as const,
-        activityId: id,
-        competencyId,
-        weight: 30,
+    await db.transaction(async (tx) => {
+      await tx.insert(timedActivities).values({
+        id,
+        classroomId: data.classroomId,
+        name: data.name,
+        description: data.description || null,
+        mode: data.mode,
+        status: 'DRAFT',
+        timeLimitSeconds: data.timeLimitSeconds || null,
+        bombMinSeconds: data.bombMinSeconds || null,
+        bombMaxSeconds: data.bombMaxSeconds || null,
+        behaviorId: data.behaviorId || null,
+        basePoints: data.basePoints || 10,
+        pointType: data.pointType || 'XP',
+        useMultipliers: data.useMultipliers || false,
+        multiplier50: data.multiplier50 || 200,
+        multiplier75: data.multiplier75 || 150,
+        negativeBehaviorId: data.negativeBehaviorId || null,
+        bombPenaltyPoints: data.bombPenaltyPoints || 10,
+        bombPenaltyType: data.bombPenaltyType || 'HP',
         createdAt: now,
-      }));
-      await db.insert(activityCompetencies).values(competencyValues);
-    }
+        updatedAt: now,
+      });
+
+      if (data.competencyIds && data.competencyIds.length > 0) {
+        const competencyValues = data.competencyIds.map(competencyId => ({
+          id: uuidv4(),
+          activityType: 'TIMED' as const,
+          activityId: id,
+          competencyId,
+          weight: 30,
+          createdAt: now,
+        }));
+        await tx.insert(activityCompetencies).values(competencyValues);
+      }
+    });
 
     const [activity] = await db
       .select()
@@ -112,59 +115,76 @@ class TimedActivityService {
       .where(eq(timedActivities.classroomId, classroomId))
       .orderBy(desc(timedActivities.createdAt));
 
-    // Obtener resultados y comportamientos para cada actividad
-    const activitiesWithData = await Promise.all(
-      activities.map(async (activity) => {
-        const results = await db
-          .select({
-            id: timedActivityResults.id,
-            studentProfileId: timedActivityResults.studentProfileId,
-            completedAt: timedActivityResults.completedAt,
-            elapsedSeconds: timedActivityResults.elapsedSeconds,
-            multiplierApplied: timedActivityResults.multiplierApplied,
-            pointsAwarded: timedActivityResults.pointsAwarded,
-            wasExploded: timedActivityResults.wasExploded,
-            penaltyApplied: timedActivityResults.penaltyApplied,
-            student: {
-              id: studentProfiles.id,
-              characterName: studentProfiles.characterName,
-              displayName: studentProfiles.displayName,
-              characterClass: studentProfiles.characterClass,
-              avatarGender: studentProfiles.avatarGender,
-            },
-          })
-          .from(timedActivityResults)
-          .leftJoin(studentProfiles, eq(timedActivityResults.studentProfileId, studentProfiles.id))
-          .where(eq(timedActivityResults.activityId, activity.id));
+    if (activities.length === 0) {
+      return [];
+    }
 
-        let behavior = null;
-        if (activity.behaviorId) {
-          const [b] = await db
-            .select()
-            .from(behaviors)
-            .where(eq(behaviors.id, activity.behaviorId));
-          behavior = b;
-        }
+    const activityIds = activities.map((activity) => activity.id);
 
-        let negativeBehavior = null;
-        if (activity.negativeBehaviorId) {
-          const [nb] = await db
-            .select()
-            .from(behaviors)
-            .where(eq(behaviors.id, activity.negativeBehaviorId));
-          negativeBehavior = nb;
-        }
-
-        return {
-          ...activity,
-          results,
-          behavior,
-          negativeBehavior,
-        };
+    const results = await db
+      .select({
+        activityId: timedActivityResults.activityId,
+        id: timedActivityResults.id,
+        studentProfileId: timedActivityResults.studentProfileId,
+        completedAt: timedActivityResults.completedAt,
+        elapsedSeconds: timedActivityResults.elapsedSeconds,
+        multiplierApplied: timedActivityResults.multiplierApplied,
+        pointsAwarded: timedActivityResults.pointsAwarded,
+        wasExploded: timedActivityResults.wasExploded,
+        penaltyApplied: timedActivityResults.penaltyApplied,
+        student: {
+          id: studentProfiles.id,
+          characterName: studentProfiles.characterName,
+          displayName: studentProfiles.displayName,
+          characterClass: studentProfiles.characterClass,
+          avatarGender: studentProfiles.avatarGender,
+        },
       })
-    );
+      .from(timedActivityResults)
+      .leftJoin(studentProfiles, eq(timedActivityResults.studentProfileId, studentProfiles.id))
+      .where(inArray(timedActivityResults.activityId, activityIds));
 
-    return activitiesWithData;
+    const resultsByActivity = new Map<string, any[]>();
+    for (const result of results) {
+      const current = resultsByActivity.get(result.activityId) || [];
+      current.push({
+        id: result.id,
+        studentProfileId: result.studentProfileId,
+        completedAt: result.completedAt,
+        elapsedSeconds: result.elapsedSeconds,
+        multiplierApplied: result.multiplierApplied,
+        pointsAwarded: result.pointsAwarded,
+        wasExploded: result.wasExploded,
+        penaltyApplied: result.penaltyApplied,
+        student: result.student,
+      });
+      resultsByActivity.set(result.activityId, current);
+    }
+
+    const behaviorIds = Array.from(new Set(
+      activities
+        .flatMap((activity) => [activity.behaviorId, activity.negativeBehaviorId])
+        .filter((id): id is string => Boolean(id))
+    ));
+
+    const behaviorById = new Map<string, any>();
+    if (behaviorIds.length > 0) {
+      const behaviorRows = await db
+        .select()
+        .from(behaviors)
+        .where(inArray(behaviors.id, behaviorIds));
+
+      for (const behavior of behaviorRows) {
+        behaviorById.set(behavior.id, behavior);
+      }
+    }
+
+    return activities.map((activity) => ({
+      ...activity,
+      results: resultsByActivity.get(activity.id) || [],
+      behavior: activity.behaviorId ? (behaviorById.get(activity.behaviorId) || null) : null,
+      negativeBehavior: activity.negativeBehaviorId ? (behaviorById.get(activity.negativeBehaviorId) || null) : null,
+    }));
   }
 
   // Obtener una actividad por ID
@@ -226,23 +246,56 @@ class TimedActivityService {
 
   // Actualizar actividad
   async update(id: string, data: UpdateTimedActivityDto): Promise<TimedActivity | null> {
-    await db
-      .update(timedActivities)
-      .set({
-        ...data,
-        updatedAt: new Date(),
-      })
-      .where(eq(timedActivities.id, id));
+    const { competencyIds, classroomId: _ignoredClassroomId, ...activityData } = data;
+    const now = new Date();
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(timedActivities)
+        .set({
+          ...activityData,
+          updatedAt: now,
+        })
+        .where(eq(timedActivities.id, id));
+
+      if (typeof competencyIds !== 'undefined') {
+        await tx
+          .delete(activityCompetencies)
+          .where(and(
+            eq(activityCompetencies.activityType, 'TIMED'),
+            eq(activityCompetencies.activityId, id)
+          ));
+
+        if (competencyIds.length > 0) {
+          await tx.insert(activityCompetencies).values(
+            competencyIds.map((competencyId) => ({
+              id: uuidv4(),
+              activityType: 'TIMED' as const,
+              activityId: id,
+              competencyId,
+              weight: 30,
+              createdAt: now,
+            }))
+          );
+        }
+      }
+    });
 
     return this.getById(id);
   }
 
   // Eliminar actividad
   async delete(id: string): Promise<void> {
-    // Primero eliminar resultados
-    await db.delete(timedActivityResults).where(eq(timedActivityResults.activityId, id));
-    // Luego eliminar actividad
-    await db.delete(timedActivities).where(eq(timedActivities.id, id));
+    await db.transaction(async (tx) => {
+      await tx.delete(timedActivityResults).where(eq(timedActivityResults.activityId, id));
+      await tx
+        .delete(activityCompetencies)
+        .where(and(
+          eq(activityCompetencies.activityType, 'TIMED'),
+          eq(activityCompetencies.activityId, id)
+        ));
+      await tx.delete(timedActivities).where(eq(timedActivities.id, id));
+    });
   }
 
   // Iniciar actividad
@@ -333,21 +386,22 @@ class TimedActivityService {
   async reset(id: string): Promise<TimedActivity | null> {
     const now = new Date();
 
-    // Eliminar resultados anteriores
-    await db.delete(timedActivityResults).where(eq(timedActivityResults.activityId, id));
+    await db.transaction(async (tx) => {
+      await tx.delete(timedActivityResults).where(eq(timedActivityResults.activityId, id));
 
-    await db
-      .update(timedActivities)
-      .set({
-        status: 'DRAFT',
-        startedAt: null,
-        pausedAt: null,
-        completedAt: null,
-        elapsedSeconds: 0,
-        actualBombTime: null,
-        updatedAt: now,
-      })
-      .where(eq(timedActivities.id, id));
+      await tx
+        .update(timedActivities)
+        .set({
+          status: 'DRAFT',
+          startedAt: null,
+          pausedAt: null,
+          completedAt: null,
+          elapsedSeconds: 0,
+          actualBombTime: null,
+          updatedAt: now,
+        })
+        .where(eq(timedActivities.id, id));
+    });
 
     return this.getById(id);
   }
@@ -388,51 +442,104 @@ class TimedActivityService {
 
     const pointsAwarded = Math.round((basePoints * multiplier) / 100);
 
-    // Verificar si ya existe resultado para este estudiante
-    const [existingResult] = await db
-      .select()
-      .from(timedActivityResults)
-      .where(
-        and(
+    const pointType = activity.pointType || 'XP';
+
+    const result = await db.transaction(async (tx) => {
+      const [student] = await tx
+        .select({
+          id: studentProfiles.id,
+          classroomId: studentProfiles.classroomId,
+          xp: studentProfiles.xp,
+          hp: studentProfiles.hp,
+          gp: studentProfiles.gp,
+        })
+        .from(studentProfiles)
+        .where(and(
+          eq(studentProfiles.id, data.studentProfileId),
+          eq(studentProfiles.classroomId, activity.classroomId),
+          eq(studentProfiles.isActive, true)
+        ));
+
+      if (!student) {
+        throw new Error('El estudiante no pertenece a esta actividad');
+      }
+
+      const [existingResult] = await tx
+        .select({
+          id: timedActivityResults.id,
+          pointsAwarded: timedActivityResults.pointsAwarded,
+        })
+        .from(timedActivityResults)
+        .where(and(
           eq(timedActivityResults.activityId, data.activityId),
           eq(timedActivityResults.studentProfileId, data.studentProfileId)
-        )
-      );
+        ));
 
-    const resultId = existingResult?.id || uuidv4();
-    const now = new Date();
+      const resultId = existingResult?.id || uuidv4();
+      const now = new Date();
 
-    if (existingResult) {
-      await db
-        .update(timedActivityResults)
-        .set({
+      if (existingResult) {
+        await tx
+          .update(timedActivityResults)
+          .set({
+            completedAt: now,
+            elapsedSeconds: data.elapsedSeconds,
+            multiplierApplied: multiplier,
+            pointsAwarded,
+          })
+          .where(eq(timedActivityResults.id, existingResult.id));
+      } else {
+        await tx.insert(timedActivityResults).values({
+          id: resultId,
+          activityId: data.activityId,
+          studentProfileId: data.studentProfileId,
           completedAt: now,
           elapsedSeconds: data.elapsedSeconds,
           multiplierApplied: multiplier,
           pointsAwarded,
-        })
-        .where(eq(timedActivityResults.id, existingResult.id));
-    } else {
-      await db.insert(timedActivityResults).values({
-        id: resultId,
-        activityId: data.activityId,
-        studentProfileId: data.studentProfileId,
-        completedAt: now,
-        elapsedSeconds: data.elapsedSeconds,
-        multiplierApplied: multiplier,
+          createdAt: now,
+        });
+      }
+
+      const previousPoints = Number(existingResult?.pointsAwarded || 0);
+      const pointsDelta = pointsAwarded - previousPoints;
+      let xpDeltaForSideEffects = 0;
+
+      if (pointsDelta !== 0) {
+        const deltaAmount = Math.abs(pointsDelta);
+        const deltaAction = pointsDelta > 0 ? 'ADD' as const : 'REMOVE' as const;
+
+        const pointUpdate = await this.applyPointsInTransaction(
+          tx,
+          student,
+          pointType as 'XP' | 'HP' | 'GP',
+          deltaAmount,
+          deltaAction,
+          activity.name
+        );
+
+        if (pointUpdate.triggerXpSideEffects) {
+          xpDeltaForSideEffects = pointUpdate.appliedAmount;
+        }
+      }
+
+      return {
+        resultId,
+        multiplier,
         pointsAwarded,
-        createdAt: now,
-      });
+        classroomId: student.classroomId,
+        xpDeltaForSideEffects,
+      };
+    });
+
+    if (result.xpDeltaForSideEffects > 0) {
+      await this.runXpSideEffects(result.classroomId, data.studentProfileId, result.xpDeltaForSideEffects, activity.name);
     }
 
-    // Aplicar puntos al estudiante
-    const pointType = activity.pointType || 'XP';
-    await this.applyPoints(data.studentProfileId, pointType as 'XP' | 'HP' | 'GP', pointsAwarded, 'ADD', activity.name);
-
     return {
-      resultId,
-      multiplier,
-      pointsAwarded,
+      resultId: result.resultId,
+      multiplier: result.multiplier,
+      pointsAwarded: result.pointsAwarded,
     };
   }
 
@@ -460,77 +567,185 @@ class TimedActivityService {
       }
     }
 
-    const resultId = uuidv4();
-    const now = new Date();
+    const penaltyType = activity.bombPenaltyType || 'HP';
 
-    await db.insert(timedActivityResults).values({
-      id: resultId,
-      activityId: data.activityId,
-      studentProfileId: data.studentProfileId,
-      wasExploded: true,
-      penaltyApplied: penaltyPoints,
-      createdAt: now,
+    const result = await db.transaction(async (tx) => {
+      const [student] = await tx
+        .select({
+          id: studentProfiles.id,
+          classroomId: studentProfiles.classroomId,
+          xp: studentProfiles.xp,
+          hp: studentProfiles.hp,
+          gp: studentProfiles.gp,
+        })
+        .from(studentProfiles)
+        .where(and(
+          eq(studentProfiles.id, data.studentProfileId),
+          eq(studentProfiles.classroomId, activity.classroomId),
+          eq(studentProfiles.isActive, true)
+        ));
+
+      if (!student) {
+        throw new Error('El estudiante no pertenece a esta actividad');
+      }
+
+      const [existingResult] = await tx
+        .select({
+          id: timedActivityResults.id,
+          wasExploded: timedActivityResults.wasExploded,
+          penaltyApplied: timedActivityResults.penaltyApplied,
+        })
+        .from(timedActivityResults)
+        .where(and(
+          eq(timedActivityResults.activityId, data.activityId),
+          eq(timedActivityResults.studentProfileId, data.studentProfileId)
+        ));
+
+      const resultId = existingResult?.id || uuidv4();
+      const now = new Date();
+
+      if (existingResult) {
+        await tx
+          .update(timedActivityResults)
+          .set({
+            wasExploded: true,
+            penaltyApplied: penaltyPoints,
+          })
+          .where(eq(timedActivityResults.id, existingResult.id));
+      } else {
+        await tx.insert(timedActivityResults).values({
+          id: resultId,
+          activityId: data.activityId,
+          studentProfileId: data.studentProfileId,
+          wasExploded: true,
+          penaltyApplied: penaltyPoints,
+          createdAt: now,
+        });
+      }
+
+      const previousPenalty = existingResult?.wasExploded ? Number(existingResult.penaltyApplied || 0) : 0;
+      const penaltyDelta = penaltyPoints - previousPenalty;
+      let xpDeltaForSideEffects = 0;
+
+      if (penaltyDelta !== 0) {
+        const deltaAmount = Math.abs(penaltyDelta);
+        const deltaAction = penaltyDelta > 0 ? 'REMOVE' as const : 'ADD' as const;
+
+        const pointUpdate = await this.applyPointsInTransaction(
+          tx,
+          student,
+          penaltyType as 'XP' | 'HP' | 'GP',
+          deltaAmount,
+          deltaAction,
+          `Bomba - ${activity.name}`
+        );
+
+        if (pointUpdate.triggerXpSideEffects) {
+          xpDeltaForSideEffects = pointUpdate.appliedAmount;
+        }
+      }
+
+      return {
+        resultId,
+        penaltyApplied: penaltyPoints,
+        classroomId: student.classroomId,
+        xpDeltaForSideEffects,
+      };
     });
 
-    // Aplicar penalización al estudiante
-    const penaltyType = activity.bombPenaltyType || 'HP';
-    await this.applyPoints(data.studentProfileId, penaltyType as 'XP' | 'HP' | 'GP', penaltyPoints, 'REMOVE', `Bomba - ${activity.name}`);
+    if (result.xpDeltaForSideEffects > 0) {
+      await this.runXpSideEffects(result.classroomId, data.studentProfileId, result.xpDeltaForSideEffects, `Bomba - ${activity.name}`);
+    }
 
     return {
-      resultId,
-      penaltyApplied: penaltyPoints,
+      resultId: result.resultId,
+      penaltyApplied: result.penaltyApplied,
     };
   }
 
-  // Aplicar puntos a un estudiante
-  private async applyPoints(
-    studentProfileId: string,
+  private async applyPointsInTransaction(
+    tx: any,
+    student: { id: string; classroomId: string; xp: number; hp: number; gp: number },
     pointType: 'XP' | 'HP' | 'GP',
     amount: number,
     action: 'ADD' | 'REMOVE',
     reason: string
-  ): Promise<void> {
-    const [student] = await db
-      .select()
-      .from(studentProfiles)
-      .where(eq(studentProfiles.id, studentProfileId));
-
-    if (!student) return;
-
+  ): Promise<{ triggerXpSideEffects: boolean; appliedAmount: number }> {
     const currentValue = pointType === 'XP' ? student.xp : pointType === 'HP' ? student.hp : student.gp;
     const newValue = action === 'ADD' ? currentValue + amount : Math.max(0, currentValue - amount);
+    const appliedAmount = Math.abs(newValue - currentValue);
+
+    if (appliedAmount === 0) {
+      return {
+        triggerXpSideEffects: false,
+        appliedAmount: 0,
+      };
+    }
 
     const updateData: any = {};
     if (pointType === 'XP') updateData.xp = newValue;
     if (pointType === 'HP') updateData.hp = newValue;
     if (pointType === 'GP') updateData.gp = newValue;
 
-    await db
+    await tx
       .update(studentProfiles)
       .set(updateData)
-      .where(eq(studentProfiles.id, studentProfileId));
+      .where(eq(studentProfiles.id, student.id));
 
-    // Registrar en log
-    await db.insert(pointLogs).values({
+    await tx.insert(pointLogs).values({
       id: uuidv4(),
-      studentId: studentProfileId,
+      studentId: student.id,
       pointType,
-      amount,
+      amount: appliedAmount,
       action,
       reason,
       createdAt: new Date(),
     });
 
-    // Contribuir XP al clan si es una adición de XP
-    if (pointType === 'XP' && action === 'ADD' && amount > 0) {
-      try {
-        await clanService.contributeXpToClan(studentProfileId, amount, reason);
-      } catch (error) {
-        // Silently fail - don't break timed activity
-        console.error('Error contributing XP to clan:', error);
-      }
+    return {
+      triggerXpSideEffects: pointType === 'XP' && action === 'ADD' && appliedAmount > 0,
+      appliedAmount,
+    };
+  }
+
+  private async runXpSideEffects(
+    classroomId: string,
+    studentProfileId: string,
+    amount: number,
+    reason: string
+  ): Promise<void> {
+    try {
+      await clanService.contributeXpToClan(studentProfileId, amount, reason);
+    } catch (error) {
+      console.error('Error contributing XP to clan:', error);
     }
 
+    try {
+      await storyService.onXpAwarded(classroomId, studentProfileId, amount);
+    } catch {
+      // Silently fail
+    }
+  }
+
+  async getClassroomIdByActivity(activityId: string): Promise<string | null> {
+    const [activity] = await db
+      .select({ classroomId: timedActivities.classroomId })
+      .from(timedActivities)
+      .where(eq(timedActivities.id, activityId));
+
+    return activity?.classroomId || null;
+  }
+
+  async verifyTeacherOwnsClassroom(teacherId: string, classroomId: string): Promise<boolean> {
+    const [classroom] = await db
+      .select({ id: classrooms.id })
+      .from(classrooms)
+      .where(and(
+        eq(classrooms.id, classroomId),
+        eq(classrooms.teacherId, teacherId)
+      ));
+
+    return !!classroom;
   }
 
   // Obtener actividad activa de una clase

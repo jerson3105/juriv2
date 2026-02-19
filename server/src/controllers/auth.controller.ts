@@ -1,7 +1,10 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
+import { v4 as uuidv4 } from 'uuid';
 import * as authService from '../services/auth.service.js';
 import { config_app } from '../config/env.js';
+import { cache } from '../utils/cache.js';
+import { OAUTH_STATE_COOKIE_NAME } from '../utils/oauth-state.js';
 
 // Schema de validación de contraseña robusta
 const passwordSchema = z.string()
@@ -13,20 +16,24 @@ const passwordSchema = z.string()
 
 // Schemas de validación
 const registerSchema = z.object({
-  email: z.string().email('Email inválido'),
+  email: z.string().trim().email('Email inválido'),
   password: passwordSchema,
-  firstName: z.string().min(2, 'El nombre debe tener al menos 2 caracteres'),
-  lastName: z.string().min(2, 'El apellido debe tener al menos 2 caracteres'),
+  firstName: z.string().trim().min(2, 'El nombre debe tener al menos 2 caracteres'),
+  lastName: z.string().trim().min(2, 'El apellido debe tener al menos 2 caracteres'),
   role: z.enum(['TEACHER', 'STUDENT', 'PARENT']),
 });
 
 const loginSchema = z.object({
-  email: z.string().email('Email inválido'),
+  email: z.string().trim().email('Email inválido'),
   password: z.string().min(1, 'La contraseña es requerida'),
 });
 
 const refreshSchema = z.object({
-  refreshToken: z.string().min(1, 'Token de actualización requerido'),
+  refreshToken: z.string().trim().min(1, 'Token de actualización requerido'),
+});
+
+const logoutSchema = z.object({
+  refreshToken: z.string().trim().min(1, 'Token de actualización requerido'),
 });
 
 const changePasswordSchema = z.object({
@@ -39,6 +46,192 @@ const updateProfileSchema = z.object({
   lastName: z.string().min(2, 'El apellido debe tener al menos 2 caracteres').optional(),
   avatarUrl: z.string().url('URL de avatar inválida').nullable().optional(),
 });
+
+const googleCodeExchangeSchema = z.object({
+  code: z.string().trim().uuid('Código inválido'),
+});
+
+const completeGoogleRegistrationSchema = z.object({
+  code: z.string().trim().uuid('Código inválido'),
+  role: z.enum(['TEACHER', 'STUDENT', 'PARENT']),
+});
+
+type PendingGoogleRegistrationData = {
+  googleId: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  avatarUrl?: string | null;
+};
+
+const OAUTH_CODE_TTL_SECONDS = 60;
+const OAUTH_REGISTRATION_CODE_TTL_SECONDS = 300;
+const oauthCodeKey = (code: string) => `oauth:code:${code}`;
+const oauthRegistrationCodeKey = (code: string) => `oauth:registration:${code}`;
+
+const clearOAuthStateCookie = (res: Response) => {
+  res.clearCookie(OAUTH_STATE_COOKIE_NAME, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: config_app.isProd,
+    path: '/api/auth',
+  });
+};
+
+const issueOAuthCode = (tokens: { accessToken: string; refreshToken: string }): string => {
+  const code = uuidv4();
+  cache.set(oauthCodeKey(code), tokens, OAUTH_CODE_TTL_SECONDS);
+  return code;
+};
+
+const consumeOAuthCode = (code: string): { accessToken: string; refreshToken: string } | null => {
+  const key = oauthCodeKey(code);
+  const tokens = cache.get<{ accessToken: string; refreshToken: string }>(key);
+  if (!tokens) return null;
+
+  cache.delete(key);
+  return tokens;
+};
+
+const issueOAuthRegistrationCode = (googleData: PendingGoogleRegistrationData): string => {
+  const code = uuidv4();
+  cache.set(oauthRegistrationCodeKey(code), googleData, OAUTH_REGISTRATION_CODE_TTL_SECONDS);
+  return code;
+};
+
+const consumeOAuthRegistrationCode = (code: string): PendingGoogleRegistrationData | null => {
+  const key = oauthRegistrationCodeKey(code);
+  const googleData = cache.get<PendingGoogleRegistrationData>(key);
+  if (!googleData) return null;
+
+  cache.delete(key);
+  return googleData;
+};
+
+const isPendingGoogleRegistrationData = (value: unknown): value is PendingGoogleRegistrationData => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<PendingGoogleRegistrationData>;
+  if (typeof candidate.googleId !== 'string' || !candidate.googleId.trim()) {
+    return false;
+  }
+
+  if (typeof candidate.email !== 'string' || !candidate.email.trim()) {
+    return false;
+  }
+
+  if (typeof candidate.firstName !== 'string') {
+    return false;
+  }
+
+  if (typeof candidate.lastName !== 'string') {
+    return false;
+  }
+
+  if (
+    candidate.avatarUrl !== undefined &&
+    candidate.avatarUrl !== null &&
+    typeof candidate.avatarUrl !== 'string'
+  ) {
+    return false;
+  }
+
+  return true;
+};
+
+const getAuthStatusCode = (error: Error): number => {
+  const normalizedMessage = error.message
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  if (normalizedMessage.includes('credenciales invalidas')) {
+    return 401;
+  }
+
+  if (
+    normalizedMessage.includes('token de actualizacion invalido') ||
+    normalizedMessage.includes('token de actualizacion expirado') ||
+    normalizedMessage.includes('token de actualizacion invalido o expirado')
+  ) {
+    return 401;
+  }
+
+  if (normalizedMessage.includes('token de actualizacion requerido')) {
+    return 400;
+  }
+
+  if (
+    normalizedMessage.includes('codigo invalido') ||
+    normalizedMessage.includes('codigo expirado') ||
+    normalizedMessage.includes('codigo de registro invalido') ||
+    normalizedMessage.includes('codigo de registro expirado')
+  ) {
+    return 400;
+  }
+
+  if (normalizedMessage.includes('desactivada') || normalizedMessage.includes('no autorizado')) {
+    return 403;
+  }
+
+  if (normalizedMessage.includes('no encontrado')) {
+    return 404;
+  }
+
+  if (
+    normalizedMessage.includes('ya esta registrado') ||
+    normalizedMessage.includes('ya esta registrada') ||
+    normalizedMessage.includes('ya está registrado') ||
+    normalizedMessage.includes('ya está registrada')
+  ) {
+    return 409;
+  }
+
+  if (
+    normalizedMessage.includes('datos invalidos') ||
+    normalizedMessage.includes('datos inválidos') ||
+    normalizedMessage.includes('invalido') ||
+    normalizedMessage.includes('invalida') ||
+    normalizedMessage.includes('inválido') ||
+    normalizedMessage.includes('inválida') ||
+    normalizedMessage.includes('requerido')
+  ) {
+    return 400;
+  }
+
+  return 500;
+};
+
+const handleValidationError = (res: Response, error: z.ZodError) => {
+  res.status(400).json({
+    success: false,
+    message: 'Datos de entrada inválidos',
+    errors: error.errors,
+  });
+};
+
+const handleAuthError = (res: Response, error: unknown, fallbackMessage = 'Error interno del servidor') => {
+  if (error instanceof z.ZodError) {
+    handleValidationError(res, error);
+    return;
+  }
+
+  if (error instanceof Error) {
+    const statusCode = getAuthStatusCode(error);
+    res.status(statusCode).json({
+      success: false,
+      message: statusCode === 500 ? fallbackMessage : error.message,
+    });
+    return;
+  }
+
+  res.status(500).json({
+    success: false,
+    message: fallbackMessage,
+  });
+};
 
 /**
  * POST /api/auth/register
@@ -55,27 +248,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       data: result,
     });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      res.status(400).json({
-        success: false,
-        message: 'Datos de entrada inválidos',
-        errors: error.errors,
-      });
-      return;
-    }
-    
-    if (error instanceof Error) {
-      res.status(400).json({
-        success: false,
-        message: error.message,
-      });
-      return;
-    }
-    
-    res.status(500).json({
-      success: false,
-      message: 'Error interno del servidor',
-    });
+    handleAuthError(res, error, 'Error al registrar usuario');
   }
 };
 
@@ -94,27 +267,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       data: result,
     });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      res.status(400).json({
-        success: false,
-        message: 'Datos de entrada inválidos',
-        errors: error.errors,
-      });
-      return;
-    }
-    
-    if (error instanceof Error) {
-      res.status(401).json({
-        success: false,
-        message: error.message,
-      });
-      return;
-    }
-    
-    res.status(500).json({
-      success: false,
-      message: 'Error interno del servidor',
-    });
+    handleAuthError(res, error);
   }
 };
 
@@ -133,26 +286,7 @@ export const refresh = async (req: Request, res: Response): Promise<void> => {
       data: tokens,
     });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      res.status(400).json({
-        success: false,
-        message: 'Token de actualización requerido',
-      });
-      return;
-    }
-    
-    if (error instanceof Error) {
-      res.status(401).json({
-        success: false,
-        message: error.message,
-      });
-      return;
-    }
-    
-    res.status(500).json({
-      success: false,
-      message: 'Error interno del servidor',
-    });
+    handleAuthError(res, error);
   }
 };
 
@@ -162,21 +296,15 @@ export const refresh = async (req: Request, res: Response): Promise<void> => {
  */
 export const logout = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { refreshToken } = req.body;
-    
-    if (refreshToken) {
-      await authService.logout(refreshToken);
-    }
+    const { refreshToken } = logoutSchema.parse(req.body);
+    await authService.logout(refreshToken);
     
     res.json({
       success: true,
       message: 'Sesión cerrada exitosamente',
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Error al cerrar sesión',
-    });
+    handleAuthError(res, error, 'Error al cerrar sesión');
   }
 };
 
@@ -433,30 +561,74 @@ export const googleCallback = async (req: Request, res: Response): Promise<void>
     const user = req.user as any;
     
     if (!user) {
+      clearOAuthStateCookie(res);
       res.redirect(`${config_app.clientUrl}/login?error=google_auth_failed`);
       return;
     }
 
     // Verificar si es un usuario nuevo que necesita seleccionar rol
     if (user.needsRoleSelection && user.googleData) {
-      // Codificar los datos de Google en base64 para pasarlos al frontend
-      const googleDataEncoded = Buffer.from(JSON.stringify(user.googleData)).toString('base64');
-      res.redirect(`${config_app.clientUrl}/auth/select-role?data=${googleDataEncoded}`);
+      if (!isPendingGoogleRegistrationData(user.googleData)) {
+        clearOAuthStateCookie(res);
+        res.redirect(`${config_app.clientUrl}/login?error=google_auth_failed`);
+        return;
+      }
+
+      const registrationCode = issueOAuthRegistrationCode(user.googleData);
+      const redirectUrl = new URL(`${config_app.clientUrl}/auth/select-role`);
+      redirectUrl.searchParams.set('code', registrationCode);
+
+      clearOAuthStateCookie(res);
+      res.redirect(redirectUrl.toString());
+      return;
+    }
+
+    if (typeof user.id !== 'string' || !user.id.trim()) {
+      clearOAuthStateCookie(res);
+      res.redirect(`${config_app.clientUrl}/login?error=google_auth_failed`);
       return;
     }
 
     // Generar tokens JWT para el usuario
     const tokens = await authService.generateTokensForUser(user.id);
+    const code = issueOAuthCode(tokens);
     
-    // Redirigir al frontend con los tokens en la URL
+    // Redirigir al frontend con un código de un solo uso (evita exponer tokens en URL)
     const redirectUrl = new URL(`${config_app.clientUrl}/auth/google/callback`);
-    redirectUrl.searchParams.set('accessToken', tokens.accessToken);
-    redirectUrl.searchParams.set('refreshToken', tokens.refreshToken);
+    redirectUrl.searchParams.set('code', code);
     
+    clearOAuthStateCookie(res);
     res.redirect(redirectUrl.toString());
   } catch (error) {
     console.error('Error en Google callback:', error);
+    clearOAuthStateCookie(res);
     res.redirect(`${config_app.clientUrl}/login?error=google_auth_failed`);
+  }
+};
+
+/**
+ * POST /api/auth/google/exchange-code
+ * Intercambiar código OAuth de un solo uso por tokens JWT
+ */
+export const exchangeGoogleCode = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { code } = googleCodeExchangeSchema.parse(req.body);
+    const tokens = consumeOAuthCode(code);
+
+    if (!tokens) {
+      res.status(400).json({
+        success: false,
+        message: 'Código inválido o expirado',
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      data: tokens,
+    });
+  } catch (error) {
+    handleAuthError(res, error, 'Error al completar autenticación con Google');
   }
 };
 
@@ -466,24 +638,17 @@ export const googleCallback = async (req: Request, res: Response): Promise<void>
  */
 export const completeGoogleRegistration = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { googleData, role } = req.body;
-    
-    if (!googleData || !role) {
+    const { code, role } = completeGoogleRegistrationSchema.parse(req.body);
+    const googleData = consumeOAuthRegistrationCode(code);
+
+    if (!googleData) {
       res.status(400).json({
         success: false,
-        message: 'Datos incompletos',
+        message: 'Código de registro inválido o expirado',
       });
       return;
     }
-    
-    if (!['TEACHER', 'STUDENT', 'PARENT'].includes(role)) {
-      res.status(400).json({
-        success: false,
-        message: 'Rol inválido',
-      });
-      return;
-    }
-    
+
     const result = await authService.completeGoogleRegistration(googleData, role);
     
     res.json({
@@ -492,17 +657,6 @@ export const completeGoogleRegistration = async (req: Request, res: Response): P
       data: result,
     });
   } catch (error) {
-    console.error('Error completing Google registration:', error);
-    if (error instanceof Error) {
-      res.status(400).json({
-        success: false,
-        message: error.message,
-      });
-      return;
-    }
-    res.status(500).json({
-      success: false,
-      message: 'Error interno del servidor',
-    });
+    handleAuthError(res, error, 'Error al completar registro con Google');
   }
 };

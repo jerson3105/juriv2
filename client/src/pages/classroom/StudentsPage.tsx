@@ -43,7 +43,7 @@ import { placeholderStudentApi } from '../../lib/placeholderStudentApi';
 import toast from 'react-hot-toast';
 
 export const StudentsPage = () => {
-  const { classroom } = useOutletContext<{ classroom: Classroom & { showCharacterName?: boolean } }>();
+  const { classroom, storyTheme, isThemeDark } = useOutletContext<{ classroom: Classroom & { showCharacterName?: boolean }, storyTheme?: any, isThemeDark?: boolean }>();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
@@ -254,14 +254,14 @@ export const StudentsPage = () => {
     return placeholder?.linkCode || null;
   };
 
-  // Calcular estadísticas del curso
-  const totalXP = students.reduce((sum, s) => sum + s.xp, 0);
-  const totalGP = students.reduce((sum, s) => sum + s.gp, 0);
-  const avgLevel = students.length > 0 
-    ? Math.round(students.reduce((sum, s) => sum + s.level, 0) / students.length * 10) / 10
+  // Calcular estadísticas del curso (siempre sobre TODOS los estudiantes, no los filtrados)
+  const totalXP = allStudents.reduce((sum, s) => sum + s.xp, 0);
+  const totalGP = allStudents.reduce((sum, s) => sum + s.gp, 0);
+  const avgLevel = allStudents.length > 0 
+    ? Math.round(allStudents.reduce((sum, s) => sum + s.level, 0) / allStudents.length * 10) / 10
     : 0;
-  const topStudent = students.length > 0 
-    ? [...students].sort((a, b) => b.xp - a.xp)[0]
+  const topStudent = allStudents.length > 0 
+    ? [...allStudents].sort((a, b) => b.xp - a.xp)[0]
     : null;
 
   if (isLoading) {
@@ -443,7 +443,7 @@ export const StudentsPage = () => {
       ) : (
         <>
           {/* Vista de Cards - Layout Dividido */}
-          {viewMode === 'cards' && students.length > 0 && (() => {
+          {viewMode === 'cards' && allStudents.length > 0 && (() => {
             // Obtener estudiante seleccionado para el panel de detalle
             const detailStudent = selectedStudentId 
               ? students.find(s => s.id === selectedStudentId) || students[0]
@@ -477,7 +477,12 @@ export const StudentsPage = () => {
                     </div>
                   </div>
                   <div className="flex-1 overflow-y-auto">
-                    {students.map((student) => {
+                    {students.length === 0 && searchQuery.trim() ? (
+                      <div className="text-center py-8 px-3">
+                        <Search className="w-8 h-8 mx-auto mb-2 text-gray-300 dark:text-gray-600" />
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Sin resultados para "{searchQuery}"</p>
+                      </div>
+                    ) : students.map((student) => {
                       const classInfo = CHARACTER_CLASSES[student.characterClass];
                       const isActive = detailStudent?.id === student.id;
                       
@@ -487,15 +492,22 @@ export const StudentsPage = () => {
                           onClick={() => setSelectedStudentId(student.id)}
                           className={`flex items-center gap-2 px-3 py-2.5 cursor-pointer border-l-4 transition-all ${
                             isActive 
-                              ? 'bg-indigo-50 dark:bg-indigo-900/30 border-l-indigo-500' 
-                              : 'border-l-transparent hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                              ? storyTheme ? '' : 'bg-indigo-50 dark:bg-indigo-900/30 border-l-indigo-500' 
+                              : storyTheme ? 'border-l-transparent hover:bg-white/10' : 'border-l-transparent hover:bg-gray-50 dark:hover:bg-gray-700/50'
                           }`}
+                          style={isActive && storyTheme ? { 
+                            backgroundColor: isThemeDark ? `${storyTheme.colors?.primary}30` : `${storyTheme.colors?.primary}20`,
+                            borderLeftColor: storyTheme.colors?.primary || '#6366f1'
+                          } : undefined}
                         >
                           {/* Info del estudiante */}
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5">
                               <span className="text-sm">{classInfo?.icon}</span>
-                              <span className={`text-sm font-medium truncate ${isActive ? 'text-indigo-700 dark:text-indigo-300' : 'text-gray-700 dark:text-gray-200'}`}>
+                              <span 
+                                className={`text-sm font-medium truncate ${isActive && !storyTheme ? 'text-indigo-700 dark:text-indigo-300' : storyTheme && isThemeDark ? 'text-white' : 'text-gray-700 dark:text-gray-200'}`}
+                                style={isActive && storyTheme ? { color: isThemeDark ? '#fff' : storyTheme.colors?.primary } : undefined}
+                              >
                                 {getDisplayName(student)}
                               </span>
                               {topStudent?.id === student.id && <Crown size={12} className="text-amber-500 flex-shrink-0" />}
@@ -722,7 +734,6 @@ export const StudentsPage = () => {
                   <table className="w-full min-w-[700px]">
                 <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
                   <tr>
-                    <th className="w-10 px-4 py-3"></th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Estudiante</th>
                     <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Nivel</th>
                     <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">XP</th>
@@ -741,30 +752,17 @@ export const StudentsPage = () => {
                     return (
                       <tr 
                         key={student.id}
-                        className={`hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/30' : ''}`}
+                        onClick={() => toggleStudent(student.id)}
+                        className={`cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/30' : ''}`}
                       >
-                        {/* Checkbox */}
-                        <td className="px-4 py-3">
-                          <button
-                            onClick={() => toggleStudent(student.id)}
-                            className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                              isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300 hover:border-indigo-400'
-                            }`}
-                          >
-                            {isSelected && <Check size={12} className="text-white" />}
-                          </button>
-                        </td>
-
                         {/* Estudiante */}
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-lg overflow-hidden bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center flex-shrink-0">
-                              <StudentAvatarMini
-                                studentProfileId={student.id}
-                                gender={student.avatarGender || 'MALE'}
-                                size="xl"
-                                className="scale-[0.22] origin-top"
-                              />
+                            {/* Checkbox inline */}
+                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors flex-shrink-0 ${
+                              isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300 dark:border-gray-600'
+                            }`}>
+                              {isSelected && <Check size={12} className="text-white" />}
                             </div>
                             <div>
                               <div className="flex items-center gap-2">
@@ -856,7 +854,7 @@ export const StudentsPage = () => {
           )}
 
           {/* Vista por Clanes */}
-          {viewMode === 'clans' && students.length > 0 && (() => {
+          {viewMode === 'clans' && allStudents.length > 0 && (() => {
             // Agrupar estudiantes por clan
             const studentsByClan: Record<string, { 
               clanId: string | null; 
@@ -887,6 +885,17 @@ export const StudentsPage = () => {
 
             return (
               <div className="space-y-6">
+                {students.length === 0 && searchQuery.trim() && (
+                  <Card className="text-center py-12 px-4">
+                    <Search className="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-gray-600" />
+                    <h3 className="text-lg font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      No se encontraron resultados
+                    </h3>
+                    <p className="text-sm text-gray-500">
+                      No hay estudiantes que coincidan con "<span className="font-medium">{searchQuery}</span>"
+                    </p>
+                  </Card>
+                )}
                 {sortedClans.map((clan) => {
                   const clanStudentIds = clan.students.map(s => s.id);
                   const allClanSelected = clanStudentIds.every(id => selectedStudents.has(id));
@@ -903,7 +912,7 @@ export const StudentsPage = () => {
                   };
 
                   return (
-                    <Card key={clan.clanId} className="overflow-hidden">
+                    <Card key={clan.clanId} className="overflow-hidden !p-0">
                       {/* Header del Clan */}
                       <div 
                         className="p-4 flex items-center justify-between cursor-pointer hover:opacity-90 transition-opacity"

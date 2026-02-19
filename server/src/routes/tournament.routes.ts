@@ -32,7 +32,7 @@ router.get('/classroom/:classroomId', authorize('TEACHER', 'ADMIN'), getTourname
 router.post('/classroom/:classroomId', authorize('TEACHER', 'ADMIN'), createTournament);
 
 // Obtener torneo específico
-router.get('/:tournamentId', getTournament);
+router.get('/:tournamentId', authorize('TEACHER', 'ADMIN'), getTournament);
 
 // Actualizar torneo
 router.put('/:tournamentId', authorize('TEACHER', 'ADMIN'), updateTournament);
@@ -62,7 +62,7 @@ router.post('/:tournamentId/bracket', authorize('TEACHER', 'ADMIN'), generateBra
 // ==================== MATCHES ====================
 
 // Obtener match
-router.get('/matches/:matchId', getMatch);
+router.get('/matches/:matchId', authorize('TEACHER', 'ADMIN'), getMatch);
 
 // Iniciar match
 router.post('/matches/:matchId/start', authorize('TEACHER', 'ADMIN'), startMatch);

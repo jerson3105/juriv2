@@ -14,6 +14,51 @@ interface JwtPayload {
   role: UserRole;
 }
 
+interface CachedAuthUser {
+  id: string;
+  email: string;
+  role: string;
+  firstName: string;
+  lastName: string;
+  isActive: boolean;
+}
+
+const parseBearerToken = (authHeader?: string): string | null => {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return null;
+  }
+
+  const token = authHeader.slice(7).trim();
+  return token || null;
+};
+
+const getUserFromCacheOrDb = async (userId: string): Promise<CachedAuthUser | null> => {
+  const cacheKey = CACHE_KEYS.user(userId);
+  const cachedUser = cache.get<CachedAuthUser>(cacheKey);
+  if (cachedUser) {
+    return cachedUser;
+  }
+
+  const dbUser = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+    columns: {
+      id: true,
+      email: true,
+      role: true,
+      firstName: true,
+      lastName: true,
+      isActive: true,
+    },
+  });
+
+  if (!dbUser) {
+    return null;
+  }
+
+  cache.set(cacheKey, dbUser, CACHE_TTL.SHORT);
+  return dbUser;
+};
+
 // Middleware de autenticación
 export const authenticate = async (
   req: Request,
@@ -21,50 +66,20 @@ export const authenticate = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const token = parseBearerToken(req.headers.authorization);
+
+    if (!token) {
       res.status(401).json({
         success: false,
         message: 'Token de acceso no proporcionado',
       });
       return;
     }
-    
-    const token = authHeader.split(' ')[1];
-    
+
     // Verificar token
     const decoded = jwt.verify(token, config_app.jwt.secret) as JwtPayload;
-    
-    // Buscar usuario en caché o base de datos
-    const cacheKey = CACHE_KEYS.user(decoded.userId);
-    let user = cache.get<{
-      id: string;
-      email: string;
-      role: string;
-      firstName: string;
-      lastName: string;
-      isActive: boolean;
-    }>(cacheKey);
-    
-    if (!user) {
-      const dbUser = await db.query.users.findFirst({
-        where: eq(users.id, decoded.userId),
-        columns: {
-          id: true,
-          email: true,
-          role: true,
-          firstName: true,
-          lastName: true,
-          isActive: true,
-        },
-      });
-      
-      if (dbUser) {
-        user = dbUser;
-        cache.set(cacheKey, user, CACHE_TTL.SHORT); // 30 segundos
-      }
-    }
+
+    const user = await getUserFromCacheOrDb(decoded.userId);
     
     if (!user || !user.isActive) {
       res.status(401).json({
@@ -139,27 +154,15 @@ export const optionalAuth = async (
   next: NextFunction
 ): Promise<void> => {
   try {
-    const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const token = parseBearerToken(req.headers.authorization);
+    if (!token) {
       next();
       return;
     }
-    
-    const token = authHeader.split(' ')[1];
+
     const decoded = jwt.verify(token, config_app.jwt.secret) as JwtPayload;
-    
-    const user = await db.query.users.findFirst({
-      where: eq(users.id, decoded.userId),
-      columns: {
-        id: true,
-        email: true,
-        role: true,
-        firstName: true,
-        lastName: true,
-        isActive: true,
-      },
-    });
+
+    const user = await getUserFromCacheOrDb(decoded.userId);
     
     if (user && user.isActive) {
       req.user = {

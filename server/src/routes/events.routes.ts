@@ -8,19 +8,19 @@ const router = Router();
 router.use(authenticate);
 
 // Obtener eventos predefinidos del sistema
-router.get('/system', eventsController.getSystemEvents);
+router.get('/system', authorize('TEACHER'), eventsController.getSystemEvents);
 
 // Obtener eventos de una clase (incluye globales)
-router.get('/classroom/:classroomId', eventsController.getClassroomEvents);
+router.get('/classroom/:classroomId', authorize('TEACHER'), eventsController.getClassroomEvents);
 
 // Obtener solo eventos personalizados de una clase
-router.get('/classroom/:classroomId/custom', eventsController.getCustomEvents);
+router.get('/classroom/:classroomId/custom', authorize('TEACHER'), eventsController.getCustomEvents);
 
 // Obtener historial de eventos de una clase
-router.get('/classroom/:classroomId/logs', eventsController.getEventLogs);
+router.get('/classroom/:classroomId/logs', authorize('TEACHER'), eventsController.getEventLogs);
 
 // Obtener un evento específico
-router.get('/:eventId', eventsController.getEventById);
+router.get('/:eventId', authorize('TEACHER'), eventsController.getEventById);
 
 // Crear evento personalizado (solo profesores)
 router.post(

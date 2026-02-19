@@ -409,6 +409,22 @@ const ClassroomCard = ({
   onClone: (id: string) => void;
   onView: (id: string) => void;
 }) => {
+  // Safely parse themeConfig (MySQL/Drizzle may return JSON as string)
+  const tc = (() => {
+    const raw = classroom.themeConfig;
+    if (!raw) return null;
+    if (typeof raw === 'string') {
+      try { return JSON.parse(raw); } catch { return null; }
+    }
+    return raw;
+  })();
+
+  const hasTheme = !!(tc?.colors?.primary && tc?.colors?.secondary);
+  const primary = tc?.colors?.primary || '#8b5cf6';
+  const secondary = tc?.colors?.secondary || '#7c3aed';
+  const emoji = tc?.banner?.emoji;
+  const particleColor = tc?.particles?.color || primary;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -416,78 +432,151 @@ const ClassroomCard = ({
       transition={{ delay: index * 0.1 }}
       onClick={() => onView(classroom.id)}
       data-onboarding={index === 0 ? 'first-class' : undefined}
-      className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg p-4 cursor-pointer hover:shadow-xl hover:scale-[1.02] transition-all"
+      className="rounded-xl shadow-lg cursor-pointer hover:shadow-xl hover:scale-[1.02] transition-all overflow-hidden relative"
+      style={hasTheme ? {
+        border: `1.5px solid ${primary}30`,
+      } : undefined}
     >
-      {/* Header */}
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-gray-800 dark:text-white truncate">{classroom.name}</h3>
-          <p className="text-xs text-gray-500 truncate">
-            {classroom.description || 'Sin descripción'}
-          </p>
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onClone(classroom.id);
-            }}
-            title="Duplicar aula"
-            className="p-1.5 text-gray-400 hover:text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-900/30 rounded-lg transition-colors"
-          >
-            <Layers size={16} />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(classroom.id);
-            }}
-            title="Eliminar aula"
-            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
-          >
-            <Trash2 size={16} />
-          </button>
-        </div>
-      </div>
+      {/* Mini floating particles for themed cards */}
+      {hasTheme && (
+        <>
+          <style>{`
+            @keyframes card-float-${classroom.id.slice(0,8)} {
+              0%, 100% { transform: translateY(0px) scale(1); opacity: 0.4; }
+              50% { transform: translateY(-18px) scale(1.3); opacity: 0.7; }
+            }
+          `}</style>
+          <div className="absolute inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 10 }}>
+            {[
+              { left: '12%', bottom: '15%', size: 5, delay: 0, dur: 5 },
+              { left: '75%', bottom: '25%', size: 4, delay: 1.2, dur: 6 },
+              { left: '45%', bottom: '60%', size: 3, delay: 2.5, dur: 4.5 },
+              { left: '88%', bottom: '50%', size: 5, delay: 0.8, dur: 5.5 },
+              { left: '30%', bottom: '40%', size: 3, delay: 3, dur: 6.5 },
+            ].map((p, i) => (
+              <div
+                key={i}
+                style={{
+                  position: 'absolute',
+                  left: p.left,
+                  bottom: p.bottom,
+                  width: p.size,
+                  height: p.size,
+                  borderRadius: '50%',
+                  backgroundColor: particleColor,
+                  animation: `card-float-${classroom.id.slice(0,8)} ${p.dur}s ${p.delay}s infinite ease-in-out`,
+                  opacity: 0.4,
+                }}
+              />
+            ))}
+          </div>
+        </>
+      )}
 
-      {/* Código de clase */}
-      <div 
-        className="flex items-center justify-between bg-gradient-to-r from-violet-50 to-purple-50 dark:from-violet-900/30 dark:to-purple-900/30 border border-violet-100 dark:border-violet-800/50 rounded-xl px-3 py-2.5 mb-3"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div>
-          <p className="text-[10px] text-violet-500 font-medium">Código de clase</p>
-          <p className="text-lg font-mono font-bold text-violet-600">
-            {classroom.code}
-          </p>
-        </div>
-        <button
-          onClick={() => onCopyCode(classroom.code)}
-          className="p-2 hover:bg-violet-100 rounded-lg transition-colors"
-        >
-          {copiedCode === classroom.code ? (
-            <Check size={18} className="text-green-500" />
-          ) : (
-            <Copy size={18} className="text-violet-400" />
-          )}
-        </button>
-      </div>
+      {/* Theme gradient banner */}
+      {hasTheme && (
+        <div
+          className="h-2.5 relative"
+          style={{ background: `linear-gradient(90deg, ${primary}, ${secondary})`, zIndex: 2 }}
+        />
+      )}
 
-      {/* Footer */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5 text-gray-500">
-          <Users size={14} />
-          <span className="text-xs">{classroom.studentCount || 0} estudiantes</span>
+      <div className={`p-4 relative ${hasTheme ? '' : 'border border-white/50 dark:border-gray-700/50 rounded-xl'} bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm`} style={hasTheme ? { zIndex: 2 } : undefined}>
+        {/* Header */}
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex items-center gap-2.5 flex-1 min-w-0">
+            {hasTheme && emoji && (
+              <div
+                className="w-9 h-9 rounded-lg flex items-center justify-center text-lg flex-shrink-0 shadow-md"
+                style={{ background: `linear-gradient(135deg, ${primary}, ${secondary})` }}
+              >
+                <span className="drop-shadow-sm">{emoji}</span>
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold text-gray-800 dark:text-white truncate">{classroom.name}</h3>
+              <p className="text-xs text-gray-500 truncate">
+                {classroom.description || 'Sin descripción'}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onClone(classroom.id);
+              }}
+              title="Duplicar aula"
+              className="p-1.5 text-gray-400 hover:text-violet-500 hover:bg-violet-50 dark:hover:bg-violet-900/30 rounded-lg transition-colors"
+            >
+              <Layers size={16} />
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(classroom.id);
+              }}
+              title="Eliminar aula"
+              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
         </div>
-        <button 
-          onClick={(e: React.MouseEvent) => {
-            e.stopPropagation();
-            onView(classroom.id);
-          }}
-          className="text-xs text-violet-500 hover:text-violet-600 font-medium"
+
+        {/* Código de clase */}
+        <div 
+          className={hasTheme
+            ? "flex items-center justify-between rounded-xl px-3 py-2.5 mb-3"
+            : "flex items-center justify-between bg-gradient-to-r from-violet-50 to-purple-50 dark:from-violet-900/30 dark:to-purple-900/30 border border-violet-100 dark:border-violet-800/50 rounded-xl px-3 py-2.5 mb-3"
+          }
+          style={hasTheme ? {
+            background: `linear-gradient(135deg, ${primary}12, ${secondary}12)`,
+            border: `1px solid ${primary}25`,
+          } : undefined}
+          onClick={(e) => e.stopPropagation()}
         >
-          Ver detalles →
-        </button>
+          <div>
+            <p className="text-[10px] font-medium" style={hasTheme ? { color: primary } : undefined}>
+              {!hasTheme && <span className="text-violet-500">Código de clase</span>}
+              {hasTheme && 'Código de clase'}
+            </p>
+            <p className="text-lg font-mono font-bold" style={hasTheme ? { color: primary } : undefined}>
+              {!hasTheme && <span className="text-violet-600">{classroom.code}</span>}
+              {hasTheme && classroom.code}
+            </p>
+          </div>
+          <button
+            onClick={() => onCopyCode(classroom.code)}
+            className="p-2 rounded-lg transition-colors"
+            style={hasTheme ? { color: `${primary}90` } : undefined}
+          >
+            {copiedCode === classroom.code ? (
+              <Check size={18} className="text-green-500" />
+            ) : (
+              <Copy size={18} className={hasTheme ? '' : 'text-violet-400'} />
+            )}
+          </button>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-gray-500">
+            <Users size={14} />
+            <span className="text-xs">{classroom.studentCount || 0} estudiantes</span>
+          </div>
+          <button 
+            onClick={(e: React.MouseEvent) => {
+              e.stopPropagation();
+              onView(classroom.id);
+            }}
+            className="text-xs font-medium"
+            style={hasTheme ? { color: primary } : undefined}
+          >
+            {!hasTheme && <span className="text-violet-500 hover:text-violet-600">Ver detalles →</span>}
+            {hasTheme && 'Ver detalles →'}
+          </button>
+        </div>
       </div>
     </motion.div>
   );

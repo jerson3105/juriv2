@@ -10,6 +10,8 @@ import {
   Menu,
   X,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Heart,
   Coins,
   Zap,
@@ -22,6 +24,7 @@ import {
   BookOpen,
   Album,
   School,
+  BookMarked,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useStudentStore } from '../../store/studentStore';
@@ -31,6 +34,7 @@ import { expeditionApi } from '../../lib/expeditionApi';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { NotificationsBell, NotificationsPanel } from '../NotificationsPanel';
 import { BugReportButton } from '../BugReportButton';
+import { ParticleLayer } from '../story/ParticleLayer';
 
 const teacherNavItems = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, gradient: 'from-blue-500 to-indigo-500' },
@@ -50,6 +54,7 @@ export const MainLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [showClassSelector, setShowClassSelector] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -77,13 +82,60 @@ export const MainLayout = () => {
   const hasActiveExpeditions = studentExpeditions.some(exp => !exp.studentProgress?.isCompleted);
   const characterInfo = currentProfile ? CHARACTER_CLASSES[currentProfile.characterClass] : null;
 
+  // Parse storytelling theme from student's classroom
+  const tc = (() => {
+    if (isTeacher) return null;
+    const raw = currentProfile?.classroom?.themeConfig;
+    if (!raw) return null;
+    if (typeof raw === 'string') {
+      try { return JSON.parse(raw); } catch { return null; }
+    }
+    return raw;
+  })();
+  const hasStoryTheme = !isTeacher && !!(tc?.colors?.background && tc?.colors?.sidebar);
+
+  const isThemeDark = (() => {
+    if (!hasStoryTheme || !tc?.colors?.background) return false;
+    const hex = tc.colors.background.replace('#', '');
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance < 0.5;
+  })();
+  const storyThemeClass = hasStoryTheme ? (isThemeDark ? 'story-theme-dark' : 'story-theme-light') : '';
+
+  const storyThemeStyle = hasStoryTheme ? {
+    backgroundColor: tc.colors.background,
+    '--story-bg': tc.colors.background,
+    '--story-sidebar': tc.colors.sidebar,
+    '--story-primary': tc.colors.primary,
+    '--story-secondary': tc.colors.secondary,
+    '--story-accent': tc.colors.accent || tc.colors.primary,
+    '--story-primary-rgb': (() => {
+      const hex = (tc.colors.primary || '#6366f1').replace('#', '');
+      const r = parseInt(hex.substring(0, 2), 16);
+      const g = parseInt(hex.substring(2, 4), 16);
+      const b = parseInt(hex.substring(4, 6), 16);
+      return `${r}, ${g}, ${b}`;
+    })(),
+  } as React.CSSProperties : undefined;
+
   const handleLogout = async () => {
     await logout();
     navigate('/login');
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800">
+    <div
+      className={`min-h-screen ${hasStoryTheme ? storyThemeClass : 'bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800'}`}
+      style={storyThemeStyle}
+    >
+      {/* Storytelling particles */}
+      {hasStoryTheme && tc.particles && (
+        <ParticleLayer particles={tc.particles} />
+      )}
+
       {/* Sidebar Mobile Overlay */}
       <AnimatePresence>
         {sidebarOpen && (
@@ -98,54 +150,57 @@ export const MainLayout = () => {
       </AnimatePresence>
 
       {/* Sidebar */}
-      <aside
+      <motion.aside
+        initial={false}
+        animate={{ width: !isTeacher && collapsed ? 72 : 240 }}
         className={`
-          fixed top-0 left-0 z-50 h-full w-60
-          bg-white/90 dark:bg-gray-800/90 backdrop-blur-xl shadow-xl shadow-blue-500/10
-          border-r border-white/50 dark:border-gray-700/50
+          fixed top-0 left-0 z-50 h-full flex flex-col
+          ${hasStoryTheme ? '' : 'bg-white/90 dark:bg-gray-800/90'} backdrop-blur-xl shadow-xl shadow-blue-500/10
+          ${hasStoryTheme ? 'border-r border-white/10' : 'border-r border-white/50 dark:border-gray-700/50'}
           transform transition-transform duration-300 ease-in-out
           lg:translate-x-0
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
+        style={hasStoryTheme ? { backgroundColor: tc.colors.sidebar } : undefined}
       >
         {/* Logo */}
-        <div className="flex items-center justify-between h-14 px-4 border-b border-gray-100 dark:border-gray-700">
-          <Link to="/dashboard" className="flex items-center gap-2">
+        <div className={`flex items-center justify-between h-14 px-4 ${hasStoryTheme ? 'border-b border-white/10' : 'border-b border-gray-100 dark:border-gray-700'}`}>
+          <Link to="/dashboard" className="flex items-center gap-2 justify-center">
             <img 
-              src="/logo.png" 
+              src={!isTeacher && collapsed ? '/logo-solo.png' : '/logo.png'}
               alt="Juried" 
-              className="h-8 w-auto"
+              className={`${!isTeacher && collapsed ? 'h-8 w-8' : 'h-8'} w-auto transition-all`}
             />
           </Link>
           <button
             onClick={() => setSidebarOpen(false)}
-            className="lg:hidden p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            className={`lg:hidden p-1.5 rounded-lg transition-colors ${hasStoryTheme ? 'text-white/60 hover:text-white hover:bg-white/10' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
           >
             <X size={20} />
           </button>
         </div>
 
         {/* Student Stats (solo para estudiantes) */}
-        {!isTeacher && currentProfile && (
-          <div className="p-3 border-b border-gray-100 dark:border-gray-700">
+        {!isTeacher && currentProfile && !collapsed && (
+          <div className={`p-3 ${hasStoryTheme ? 'border-b border-white/10' : 'border-b border-gray-100 dark:border-gray-700'}`}>
             {/* Selector de clase si tiene múltiples */}
             {myClasses && myClasses.length > 1 && (
               <div className="mb-2 relative">
                 <button
                   onClick={() => setShowClassSelector(!showClassSelector)}
-                  className="w-full flex items-center justify-between px-3 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg text-sm transition-colors"
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${hasStoryTheme ? 'bg-white/10 hover:bg-white/20' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
                 >
                   <div className="flex items-center gap-2">
                     <span className="text-lg">{characterInfo?.icon}</span>
-                    <span className="font-medium text-gray-700 dark:text-gray-200 truncate max-w-[120px]">
+                    <span className={`font-medium truncate max-w-[120px] ${hasStoryTheme ? 'text-white' : 'text-gray-700 dark:text-gray-200'}`}>
                       {currentProfile.classroom?.name}
                     </span>
                   </div>
-                  <ChevronDown size={14} className={`text-gray-500 transition-transform ${showClassSelector ? 'rotate-180' : ''}`} />
+                  <ChevronDown size={14} className={`transition-transform ${hasStoryTheme ? 'text-white/60' : 'text-gray-500'} ${showClassSelector ? 'rotate-180' : ''}`} />
                 </button>
                 
                 {showClassSelector && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-lg shadow-xl z-20 border border-gray-200 dark:border-gray-700 overflow-hidden">
+                  <div className={`absolute top-full left-0 right-0 mt-1 rounded-lg shadow-xl z-20 overflow-hidden ${hasStoryTheme ? 'bg-gray-900/95 border border-white/20' : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700'}`}>
                     {myClasses.map((profile, index) => {
                       const classInfo = CHARACTER_CLASSES[profile.characterClass];
                       return (
@@ -155,16 +210,17 @@ export const MainLayout = () => {
                             setSelectedClassIndex(index);
                             setShowClassSelector(false);
                           }}
-                          className={`w-full flex items-center gap-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
-                            index === selectedClassIndex ? 'bg-indigo-50 dark:bg-indigo-900/30' : ''
+                          className={`w-full flex items-center gap-2 p-2 transition-colors ${hasStoryTheme
+                            ? (index === selectedClassIndex ? 'bg-white/15' : 'hover:bg-white/10')
+                            : (index === selectedClassIndex ? 'bg-indigo-50 dark:bg-indigo-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700')
                           }`}
                         >
                           <span className="text-lg">{classInfo?.icon}</span>
                           <div className="flex-1 text-left">
-                            <p className="text-sm font-medium text-gray-800 dark:text-white truncate">{profile.classroom?.name}</p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">Nivel {profile.level}</p>
+                            <p className={`text-sm font-medium truncate ${hasStoryTheme ? 'text-white' : 'text-gray-800 dark:text-white'}`}>{profile.classroom?.name}</p>
+                            <p className={`text-xs ${hasStoryTheme ? 'text-white/60' : 'text-gray-500 dark:text-gray-400'}`}>Nivel {profile.level}</p>
                           </div>
-                          {index === selectedClassIndex && <Check size={14} className="text-indigo-600 dark:text-indigo-400" />}
+                          {index === selectedClassIndex && <Check size={14} className={hasStoryTheme ? 'text-white' : 'text-indigo-600 dark:text-indigo-400'} />}
                         </button>
                       );
                     })}
@@ -173,49 +229,11 @@ export const MainLayout = () => {
               </div>
             )}
 
-            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl p-3 text-white">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-6 h-6 bg-white/20 rounded-lg flex items-center justify-center">
-                    <Zap size={14} />
-                  </div>
-                  <span className="text-xs font-medium">Nivel {currentProfile.level}</span>
-                </div>
-                <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full font-medium">
-                  {currentProfile.xp} XP
-                </span>
-              </div>
-              
-              {/* HP Bar */}
-              <div className="mb-2">
-                <div className="flex items-center justify-between text-xs mb-1 text-white/80">
-                  <span className="flex items-center gap-1">
-                    <Heart size={10} /> HP
-                  </span>
-                  <span>{currentProfile.hp}/100</span>
-                </div>
-                <div className="h-1.5 bg-white/20 rounded-full overflow-hidden">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${Math.min(currentProfile.hp, 100)}%` }}
-                    className="h-full bg-gradient-to-r from-red-400 to-pink-400 rounded-full"
-                  />
-                </div>
-              </div>
-
-              {/* GP */}
-              <div className="flex items-center justify-between text-xs">
-                <span className="flex items-center gap-1 text-white/80">
-                  <Coins size={12} /> Oro
-                </span>
-                <span className="font-bold text-amber-300">{currentProfile.gp}</span>
-              </div>
-            </div>
           </div>
         )}
 
         {/* Navigation */}
-        <nav className="p-3 space-y-1">
+        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
           {navItems.map((item) => {
             const isActivePath = location.pathname === item.path || 
               (item.path === '/classrooms' && location.pathname.startsWith('/classroom'));
@@ -232,7 +250,7 @@ export const MainLayout = () => {
                   transition-all duration-200 group
                   ${isActivePath
                     ? 'bg-gradient-to-r ' + item.gradient + ' text-white shadow-md'
-                    : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                   }
                 `}
               >
@@ -245,9 +263,11 @@ export const MainLayout = () => {
                 `}>
                   <item.icon size={16} />
                 </div>
-                <span className={`text-sm font-medium ${isActivePath ? '' : 'text-gray-700 dark:text-gray-300'}`}>
-                  {item.label}
-                </span>
+                {!(!isTeacher && collapsed) && (
+                  <span className={`text-sm font-medium ${isActivePath ? '' : hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
+                    {item.label}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -262,7 +282,7 @@ export const MainLayout = () => {
                 transition-all duration-200 group
                 ${location.pathname === '/my-clan'
                   ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white shadow-md'
-                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                 }
               `}
             >
@@ -275,9 +295,11 @@ export const MainLayout = () => {
               `}>
                 <Shield size={16} />
               </div>
-              <span className={`text-sm font-medium ${location.pathname === '/my-clan' ? '' : 'text-gray-700 dark:text-gray-300'}`}>
-                Mi Clan
-              </span>
+              {!collapsed && (
+                <span className={`text-sm font-medium ${location.pathname === '/my-clan' ? '' : hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
+                  Mi Clan
+                </span>
+              )}
             </Link>
           )}
 
@@ -291,7 +313,7 @@ export const MainLayout = () => {
                 transition-all duration-200 group
                 ${location.pathname === '/my-attendance'
                   ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-md'
-                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                 }
               `}
             >
@@ -304,9 +326,11 @@ export const MainLayout = () => {
               `}>
                 <Calendar size={16} />
               </div>
-              <span className={`text-sm font-medium ${location.pathname === '/my-attendance' ? '' : 'text-gray-700 dark:text-gray-300'}`}>
-                Mi Asistencia
-              </span>
+              {!collapsed && (
+                <span className={`text-sm font-medium ${location.pathname === '/my-attendance' ? '' : hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
+                  Mi Asistencia
+                </span>
+              )}
             </Link>
           )}
 
@@ -320,7 +344,7 @@ export const MainLayout = () => {
                 transition-all duration-200 group relative
                 ${location.pathname === '/scrolls'
                   ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-md'
-                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                 }
               `}
             >
@@ -333,9 +357,11 @@ export const MainLayout = () => {
               `}>
                 <ScrollText size={16} />
               </div>
-              <span className={`text-sm font-medium ${location.pathname === '/scrolls' ? '' : 'text-gray-700 dark:text-gray-300'}`}>
-                Pergaminos
-              </span>
+              {!collapsed && (
+                <span className={`text-sm font-medium ${location.pathname === '/scrolls' ? '' : hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
+                  Pergaminos
+                </span>
+              )}
               {/* Indicador animado cuando el mural está abierto */}
               {currentProfile?.classroom?.scrollsOpen && location.pathname !== '/scrolls' && (
                 <motion.span
@@ -360,7 +386,7 @@ export const MainLayout = () => {
                 transition-all duration-200 group relative
                 ${location.pathname === '/collectibles'
                   ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-white shadow-md'
-                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                 }
               `}
             >
@@ -373,9 +399,11 @@ export const MainLayout = () => {
               `}>
                 <Album size={16} />
               </div>
-              <span className={`text-sm font-medium ${location.pathname === '/collectibles' ? '' : 'text-gray-700 dark:text-gray-300'}`}>
-                Álbum de Cromos
-              </span>
+              {!collapsed && (
+                <span className={`text-sm font-medium ${location.pathname === '/collectibles' ? '' : hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
+                  Álbum de Cromos
+                </span>
+              )}
             </Link>
           )}
 
@@ -389,7 +417,7 @@ export const MainLayout = () => {
                 transition-all duration-200 group relative
                 ${location.pathname === '/expeditions'
                   ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-md'
-                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                 }
               `}
             >
@@ -402,9 +430,11 @@ export const MainLayout = () => {
               `}>
                 <Map size={16} />
               </div>
-              <span className={`text-sm font-medium ${location.pathname === '/expeditions' ? '' : 'text-gray-700 dark:text-gray-300'}`}>
-                Expediciones
-              </span>
+              {!collapsed && (
+                <span className={`text-sm font-medium ${location.pathname === '/expeditions' ? '' : hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
+                  Expediciones
+                </span>
+              )}
               {/* Indicador animado cuando hay expediciones activas */}
               {hasActiveExpeditions && location.pathname !== '/expeditions' && (
                 <motion.span
@@ -429,7 +459,7 @@ export const MainLayout = () => {
                 transition-all duration-200 group relative
                 ${location.pathname.startsWith('/jiro-expedition')
                   ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md'
-                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                 }
               `}
             >
@@ -442,9 +472,11 @@ export const MainLayout = () => {
               `}>
                 <span className="text-sm">🦊</span>
               </div>
-              <span className={`text-sm font-medium ${location.pathname.startsWith('/jiro-expedition') ? '' : 'text-gray-700 dark:text-gray-300'}`}>
-                Expedición de Jiro
-              </span>
+              {!collapsed && (
+                <span className={`text-sm font-medium ${location.pathname.startsWith('/jiro-expedition') ? '' : hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
+                  Expedición de Jiro
+                </span>
+              )}
             </Link>
           )}
 
@@ -458,7 +490,7 @@ export const MainLayout = () => {
                 transition-all duration-200 group relative
                 ${location.pathname === '/my-grades'
                   ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-md'
-                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                 }
               `}
             >
@@ -471,64 +503,139 @@ export const MainLayout = () => {
               `}>
                 <BookOpen size={16} />
               </div>
-              <span className={`text-sm font-medium ${location.pathname === '/my-grades' ? '' : 'text-gray-700 dark:text-gray-300'}`}>
-                Mis Calificaciones
-              </span>
+              {!collapsed && (
+                <span className={`text-sm font-medium ${location.pathname === '/my-grades' ? '' : hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
+                  Mis Calificaciones
+                </span>
+              )}
+            </Link>
+          )}
+
+          {/* Historia - solo para estudiantes con storytelling activo */}
+          {!isTeacher && hasStoryTheme && (
+            <Link
+              to="/my-story"
+              onClick={() => setSidebarOpen(false)}
+              className={`
+                flex items-center gap-3 px-3 py-2.5 rounded-xl
+                transition-all duration-200 group relative
+                ${location.pathname === '/my-story'
+                  ? 'bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white shadow-md'
+                  : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }
+              `}
+            >
+              <div className={`
+                w-8 h-8 rounded-lg flex items-center justify-center transition-all
+                ${location.pathname === '/my-story'
+                  ? 'bg-white/20' 
+                  : 'bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-sm group-hover:scale-105'
+                }
+              `}>
+                <BookMarked size={16} />
+              </div>
+              {!collapsed && (
+                <span className={`text-sm font-medium ${location.pathname === '/my-story' ? '' : hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
+                  Historia
+                </span>
+              )}
             </Link>
           )}
 
         </nav>
 
-        {/* User Card */}
-        <div className="absolute bottom-0 left-0 right-0 p-3 border-t border-gray-100 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50">
-          <div className="flex items-center gap-3 p-2 rounded-xl bg-gray-50 dark:bg-gray-700 mb-2">
-            {user?.avatarUrl ? (
-              <img 
-                src={user.avatarUrl.startsWith('http') ? user.avatarUrl : `${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}${user.avatarUrl.startsWith('/api') ? user.avatarUrl.replace('/api', '') : user.avatarUrl}`}
-                alt="Avatar"
-                className="w-9 h-9 rounded-xl object-cover shadow-md"
-              />
-            ) : (
-              <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-md">
-                <span className="text-white text-sm font-bold">
-                  {user?.firstName?.[0]}{user?.lastName?.[0]}
-                </span>
+        {/* User Card - solo para profesores */}
+        {isTeacher && (
+          <div className={`absolute bottom-0 left-0 right-0 p-3 ${hasStoryTheme ? 'border-t border-white/10 bg-black/10' : 'border-t border-gray-100 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50'}`}>
+            <div className={`flex items-center gap-3 p-2 rounded-xl mb-2 ${hasStoryTheme ? 'bg-white/10' : 'bg-gray-50 dark:bg-gray-700'}`}>
+              {user?.avatarUrl ? (
+                <img 
+                  src={user.avatarUrl.startsWith('http') ? user.avatarUrl : `${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}${user.avatarUrl.startsWith('/api') ? user.avatarUrl.replace('/api', '') : user.avatarUrl}`}
+                  alt="Avatar"
+                  className="w-9 h-9 rounded-xl object-cover shadow-md"
+                />
+              ) : (
+                <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-md">
+                  <span className="text-white text-sm font-bold">
+                    {user?.firstName?.[0]}{user?.lastName?.[0]}
+                  </span>
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className={`text-sm font-semibold truncate ${hasStoryTheme ? 'text-white' : 'text-gray-800 dark:text-white'}`}>
+                  {user?.firstName} {user?.lastName}
+                </p>
+                <p className={`text-xs ${hasStoryTheme ? 'text-white/60' : 'text-gray-500'}`}>
+                  Docente
+                </p>
               </div>
-            )}
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">
-                {user?.firstName} {user?.lastName}
-              </p>
-              <p className="text-xs text-gray-500">
-                {isTeacher ? 'Docente' : 'Estudiante'}
-              </p>
             </div>
+            <button
+              onClick={handleLogout}
+              className={`flex items-center gap-2 px-3 py-2 w-full rounded-xl transition-colors text-sm font-medium ${hasStoryTheme ? 'text-red-400 hover:bg-red-500/20' : 'text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'}`}
+            >
+              <LogOut size={16} />
+              Cerrar sesión
+            </button>
           </div>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-2 px-3 py-2 w-full rounded-xl text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-sm font-medium"
-          >
-            <LogOut size={16} />
-            Cerrar sesión
-          </button>
-        </div>
-      </aside>
+        )}
+        {/* Toggle collapse - solo en desktop para estudiantes */}
+        {!isTeacher && (
+          <div className={`hidden lg:block p-2 ${hasStoryTheme ? 'border-t border-white/10' : 'border-t border-gray-100 dark:border-gray-700'}`}>
+            <button
+              onClick={() => setCollapsed(!collapsed)}
+              className={`w-full flex items-center justify-center gap-2 px-2.5 py-2 rounded-xl transition-colors ${hasStoryTheme ? 'text-white/50 hover:text-white/80 hover:bg-white/10' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+            >
+              {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+              {!collapsed && <span className="text-xs font-medium">Colapsar</span>}
+            </button>
+          </div>
+        )}
+      </motion.aside>
 
       {/* Main Content */}
-      <div className="lg:pl-60">
+      <div className={`transition-all duration-300 ${!isTeacher && collapsed ? 'lg:pl-[72px]' : 'lg:pl-60'}`}>
         {/* Top Bar */}
-        <header className="sticky top-0 z-30 h-14 bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg border-b border-white/50 dark:border-gray-700/50 shadow-sm">
+        <header
+          className={`sticky top-0 z-30 h-14 backdrop-blur-lg shadow-sm ${hasStoryTheme ? 'border-b border-white/10' : 'bg-white/80 dark:bg-gray-800/80 border-b border-white/50 dark:border-gray-700/50'}`}
+          style={hasStoryTheme ? { backgroundColor: `${tc.colors.background}cc` } : undefined}
+        >
           <div className="flex items-center justify-between h-full px-4">
             {/* Mobile Menu Button */}
             <button
               onClick={() => setSidebarOpen(true)}
-              className="lg:hidden p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
+              className={`lg:hidden p-2 rounded-xl transition-colors ${hasStoryTheme ? 'text-white/70 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
             >
               <Menu size={20} />
             </button>
 
-            {/* Spacer */}
-            <div className="flex-1" />
+            {/* Student Stats in header */}
+            {!isTeacher && currentProfile && (
+              <div className="flex items-center gap-2 md:gap-3 flex-1 justify-center md:justify-start md:ml-2">
+                {/* Nivel + XP */}
+                <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${hasStoryTheme && isThemeDark ? 'bg-white/10 text-white' : hasStoryTheme ? 'bg-white/40 text-gray-800' : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300'}`}>
+                  <Zap size={13} className={hasStoryTheme ? 'text-amber-400' : 'text-amber-500'} />
+                  <span>Nv.{currentProfile.level}</span>
+                  <span className={`${hasStoryTheme && isThemeDark ? 'text-white/50' : hasStoryTheme ? 'text-gray-500' : 'text-indigo-400 dark:text-indigo-500'}`}>•</span>
+                  <span>{currentProfile.xp} XP</span>
+                </div>
+
+                {/* HP */}
+                <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${hasStoryTheme && isThemeDark ? 'bg-white/10 text-white' : hasStoryTheme ? 'bg-white/40 text-gray-800' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'}`}>
+                  <Heart size={13} className="text-red-500" />
+                  <span>{currentProfile.hp}/100</span>
+                </div>
+
+                {/* Oro */}
+                <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${hasStoryTheme && isThemeDark ? 'bg-white/10 text-white' : hasStoryTheme ? 'bg-white/40 text-gray-800' : 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400'}`}>
+                  <Coins size={13} className="text-amber-500" />
+                  <span>{currentProfile.gp}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Spacer (solo para profesores) */}
+            {isTeacher && <div className="flex-1" />}
 
             {/* Botón de ayuda / tour (solo para profesores) */}
             {isTeacher && (
@@ -553,7 +660,7 @@ export const MainLayout = () => {
             <div className="relative">
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
-                className="flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl px-2 py-1.5 transition-colors"
+                className={`flex items-center gap-2 rounded-xl px-2 py-1.5 transition-colors ${hasStoryTheme ? 'hover:bg-white/10' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
               >
                 {user?.avatarUrl ? (
                   <img 
@@ -569,11 +676,11 @@ export const MainLayout = () => {
                   </div>
                 )}
                 <div className="hidden md:block text-left">
-                  <p className="text-sm font-medium text-gray-800 dark:text-white">
+                  <p className={`text-sm font-medium ${hasStoryTheme && isThemeDark ? 'text-white' : 'text-gray-800 dark:text-white'}`}>
                     {user?.firstName}
                   </p>
                 </div>
-                <ChevronDown size={14} className="text-gray-400" />
+                <ChevronDown size={14} className={hasStoryTheme && isThemeDark ? 'text-white/50' : 'text-gray-400'} />
               </button>
 
               <AnimatePresence>
@@ -618,7 +725,7 @@ export const MainLayout = () => {
 
         {/* Page Content */}
         <main className="p-4 md:p-6 lg:p-8">
-          <Outlet />
+          <Outlet context={{ storyTheme: hasStoryTheme ? tc : null, isThemeDark, hasStoryTheme }} />
         </main>
       </div>
 

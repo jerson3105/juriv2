@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -46,12 +46,13 @@ export const HistoryPage = () => {
   };
 
   // Obtener historial
-  const { data: historyData, isLoading: historyLoading } = useQuery({
-    queryKey: ['history', classroom?.id, filterType, selectedStudent],
+  const { data: historyData, isLoading: historyLoading, isFetching: historyFetching, isError: historyError } = useQuery({
+    queryKey: ['history', classroom?.id, filterType, selectedStudent, currentPage],
     queryFn: () => historyApi.getClassroomHistory(classroom.id, {
       type: filterType,
       studentId: selectedStudent,
-      limit: 500, // Traer más para paginar en cliente
+      limit: ITEMS_PER_PAGE,
+      offset: (currentPage - 1) * ITEMS_PER_PAGE,
     }),
     enabled: !!classroom?.id,
   });
@@ -68,11 +69,17 @@ export const HistoryPage = () => {
   };
 
   // Calcular paginación
-  const totalItems = historyData?.logs.length || 0;
+  const totalItems = historyData?.total || 0;
   const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = startIndex + ITEMS_PER_PAGE;
-  const paginatedLogs = historyData?.logs.slice(startIndex, endIndex) || [];
+  const endIndex = startIndex + (historyData?.logs.length || 0);
+  const paginatedLogs = historyData?.logs || [];
+
+  useEffect(() => {
+    if (totalPages > 0 && currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   // Obtener estadísticas
   const { data: stats } = useQuery({
@@ -376,6 +383,13 @@ export const HistoryPage = () => {
                     <div key={i} className="h-14 bg-gray-100 dark:bg-gray-700 rounded-xl animate-pulse" />
                   ))}
                 </div>
+              ) : historyError ? (
+                <div className="text-center py-12">
+                  <div className="w-14 h-14 mx-auto mb-3 bg-red-100 dark:bg-red-900/20 rounded-2xl flex items-center justify-center">
+                    <ScrollText className="text-red-400" size={24} />
+                  </div>
+                  <p className="text-red-500 dark:text-red-300 text-sm">No se pudo cargar el historial</p>
+                </div>
               ) : totalItems === 0 ? (
                 <div className="text-center py-12">
                   <div className="w-14 h-14 mx-auto mb-3 bg-gray-100 dark:bg-gray-700 rounded-2xl flex items-center justify-center">
@@ -424,6 +438,7 @@ export const HistoryPage = () => {
                     <div className="flex items-center justify-between pt-4 mt-4 border-t border-gray-100 dark:border-gray-700">
                       <p className="text-xs text-gray-500">
                         Mostrando {startIndex + 1}-{Math.min(endIndex, totalItems)} de {totalItems}
+                        {historyFetching ? ' • Actualizando...' : ''}
                       </p>
                       <div className="flex items-center gap-1">
                         <button

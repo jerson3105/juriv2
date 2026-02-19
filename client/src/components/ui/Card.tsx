@@ -11,8 +11,17 @@ export const Card = ({
   hover = false,
   glass = false,
   className = '',
+  style,
   ...props
 }: CardProps) => {
+  const hasCustomBg = className.includes('bg-');
+
+  const baseClasses = hasCustomBg
+    ? (glass ? 'story-card backdrop-blur-lg' : 'story-card backdrop-blur-sm shadow-lg')
+    : glass
+      ? 'story-card bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg border border-white/50 dark:border-gray-700/50'
+      : 'story-card bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm shadow-lg shadow-blue-500/5 dark:shadow-gray-900/20 border border-white/50 dark:border-gray-700/50';
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -21,12 +30,10 @@ export const Card = ({
       whileHover={hover ? { y: -4, boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' } : undefined}
       className={`
         rounded-xl p-6 transition-all duration-200
-        ${glass 
-          ? 'bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg border border-white/50 dark:border-gray-700/50' 
-          : 'bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm shadow-lg shadow-blue-500/5 dark:shadow-gray-900/20 border border-white/50 dark:border-gray-700/50'
-        }
+        ${baseClasses}
         ${className}
       `}
+      style={style}
       {...props}
     >
       {children}

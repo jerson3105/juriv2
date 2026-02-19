@@ -1,10 +1,28 @@
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
-import { db } from '../db/index.js';
-import { users } from '../db/schema.js';
-import { eq } from 'drizzle-orm';
+import { db, users, parentProfiles } from '../db/index.js';
+import { eq, or } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { config_app } from './env.js';
+import { OAUTH_STATE_COOKIE_NAME, verifyOAuthState } from '../utils/oauth-state.js';
+
+type UserRole = 'TEACHER' | 'STUDENT' | 'PARENT';
+
+const normalizeEmail = (email: string): string => email.trim().toLowerCase();
+const normalizeName = (value: string): string => value.trim();
+const normalizeAvatarUrl = (value?: string | null): string | null => {
+  const normalized = value?.trim();
+  return normalized ? normalized : null;
+};
+
+const isDuplicateEntryError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const dbError = error as { code?: string; errno?: number };
+  return dbError.code === 'ER_DUP_ENTRY' || dbError.errno === 1062;
+};
 
 export const configurePassport = () => {
   // Solo configurar si las credenciales están disponibles
@@ -25,27 +43,58 @@ export const configurePassport = () => {
       async (req, accessToken, refreshToken, profile, done) => {
         try {
           const email = profile.emails?.[0]?.value;
-          // Obtener rol del state (pasado desde la ruta inicial)
-          // Si no hay rol o es vacío, significa que viene del login sin rol seleccionado
-          const stateRole = req.query.state as string;
-          const hasSelectedRole = stateRole && stateRole !== '' && stateRole !== 'undefined';
+          const googleId = typeof profile.id === 'string' ? profile.id.trim() : '';
+          const stateToken = typeof req.query.state === 'string' ? req.query.state : undefined;
+          const stateNonce = (req as any).cookies?.[OAUTH_STATE_COOKIE_NAME] as string | undefined;
+          const stateValidation = verifyOAuthState(stateToken, stateNonce);
+
+          if (!stateValidation.isValid) {
+            return done(new Error('Estado OAuth inválido o expirado'), undefined);
+          }
+
+          const selectedRole = stateValidation.role;
+          const hasSelectedRole = !!selectedRole;
           
           if (!email) {
             return done(new Error('No se pudo obtener el email de Google'), undefined);
           }
 
+          if (!googleId) {
+            return done(new Error('No se pudo obtener el identificador de Google'), undefined);
+          }
+
+          const normalizedEmail = normalizeEmail(email);
+          const normalizedFirstName =
+            normalizeName(profile.name?.givenName || profile.displayName?.split(' ')[0] || '') || 'Usuario';
+          const normalizedLastName = normalizeName(
+            profile.name?.familyName || profile.displayName?.split(' ').slice(1).join(' ') || ''
+          );
+          const normalizedAvatarUrl = normalizeAvatarUrl(profile.photos?.[0]?.value || null);
+
           // Buscar usuario existente por email
           let user = await db.query.users.findFirst({
-            where: eq(users.email, email),
+            where: or(
+              eq(users.email, normalizedEmail),
+              eq(users.googleId, googleId)
+            ),
           });
 
           if (user) {
-            // Usuario existe - actualizar provider si era LOCAL
-            if (user.provider === 'LOCAL') {
+            if (!user.isActive) {
+              return done(new Error('Tu cuenta ha sido desactivada'), undefined);
+            }
+
+            // Usuario existe - actualizar vínculo con Google si hace falta
+            const shouldUpdateProvider = user.provider !== 'GOOGLE';
+            const shouldUpdateGoogleId = user.googleId !== googleId;
+            const shouldUpdateAvatar = !user.avatarUrl && !!normalizedAvatarUrl;
+
+            if (shouldUpdateProvider || shouldUpdateGoogleId || shouldUpdateAvatar) {
               await db.update(users)
                 .set({ 
+                  googleId,
                   provider: 'GOOGLE',
-                  avatarUrl: user.avatarUrl || profile.photos?.[0]?.value || null,
+                  avatarUrl: user.avatarUrl || normalizedAvatarUrl,
                   updatedAt: new Date(),
                 })
                 .where(eq(users.id, user.id));
@@ -65,10 +114,11 @@ export const configurePassport = () => {
                 isNewUser: true,
                 needsRoleSelection: true,
                 googleData: {
-                  email,
-                  firstName: profile.name?.givenName || profile.displayName?.split(' ')[0] || 'Usuario',
-                  lastName: profile.name?.familyName || profile.displayName?.split(' ').slice(1).join(' ') || '',
-                  avatarUrl: profile.photos?.[0]?.value || null,
+                  googleId,
+                  email: normalizedEmail,
+                  firstName: normalizedFirstName,
+                  lastName: normalizedLastName,
+                  avatarUrl: normalizedAvatarUrl,
                 }
               } as any);
             }
@@ -76,25 +126,62 @@ export const configurePassport = () => {
             // Tiene rol seleccionado - crear usuario
             const newUserId = uuidv4();
             const now = new Date();
-            
-            await db.insert(users).values({
-              id: newUserId,
-              email,
-              firstName: profile.name?.givenName || profile.displayName?.split(' ')[0] || 'Usuario',
-              lastName: profile.name?.familyName || profile.displayName?.split(' ').slice(1).join(' ') || '',
-              password: '', // No password para usuarios de Google
-              role: stateRole as 'TEACHER' | 'STUDENT' | 'PARENT',
-              provider: 'GOOGLE',
-              avatarUrl: profile.photos?.[0]?.value || null,
-              createdAt: now,
-              updatedAt: now,
-            });
+
+            try {
+              await db.transaction(async (tx) => {
+                await tx.insert(users).values({
+                  id: newUserId,
+                  email: normalizedEmail,
+                  googleId,
+                  firstName: normalizedFirstName,
+                  lastName: normalizedLastName,
+                  password: '', // No password para usuarios de Google
+                  role: selectedRole as UserRole,
+                  provider: 'GOOGLE',
+                  avatarUrl: normalizedAvatarUrl,
+                  isActive: true,
+                  notifyBadges: true,
+                  notifyLevelUp: true,
+                  createdAt: now,
+                  updatedAt: now,
+                });
+
+                if (selectedRole === 'PARENT') {
+                  await tx.insert(parentProfiles).values({
+                    id: uuidv4(),
+                    userId: newUserId,
+                    relationship: 'GUARDIAN',
+                    notifyByEmail: true,
+                    notifyWeeklySummary: true,
+                    notifyAlerts: true,
+                    createdAt: now,
+                    updatedAt: now,
+                  });
+                }
+              });
+            } catch (error) {
+              if (!isDuplicateEntryError(error)) {
+                throw error;
+              }
+            }
 
             user = await db.query.users.findFirst({
-              where: eq(users.id, newUserId),
+              where: or(
+                eq(users.id, newUserId),
+                eq(users.email, normalizedEmail),
+                eq(users.googleId, googleId)
+              ),
             });
-            
-            return done(null, user || undefined);
+
+            if (!user) {
+              return done(new Error('Error al completar autenticación con Google'), undefined);
+            }
+
+            if (!user.isActive) {
+              return done(new Error('Tu cuenta ha sido desactivada'), undefined);
+            }
+
+            return done(null, user);
           }
         } catch (error) {
           console.error('Error en Google OAuth:', error);

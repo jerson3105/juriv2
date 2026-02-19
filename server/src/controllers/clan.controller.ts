@@ -23,6 +23,169 @@ const assignStudentSchema = z.object({
   studentId: z.string().uuid(),
 });
 
+const historyLimitSchema = z.coerce.number().int().min(1).max(200).default(50);
+
+const handleControllerError = (res: Response, error: unknown, fallbackMessage: string) => {
+  if (error instanceof z.ZodError) {
+    return res.status(400).json({
+      success: false,
+      message: 'Datos inválidos',
+      errors: error.errors,
+    });
+  }
+
+  if (error instanceof Error) {
+    return res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+
+  console.error(fallbackMessage, error);
+  return res.status(500).json({
+    success: false,
+    message: fallbackMessage,
+  });
+};
+
+const ensureTeacherClassroomAccess = async (
+  req: Request,
+  res: Response,
+  classroomId: string
+): Promise<boolean> => {
+  const user = req.user;
+
+  if (!user) {
+    res.status(401).json({ success: false, message: 'No autorizado' });
+    return false;
+  }
+
+  if (user.role === 'ADMIN') {
+    return true;
+  }
+
+  if (user.role !== 'TEACHER') {
+    res.status(403).json({ success: false, message: 'No tienes permisos para esta acción' });
+    return false;
+  }
+
+  const isOwner = await clanService.verifyTeacherOwnsClassroom(user.id, classroomId);
+  if (!isOwner) {
+    res.status(403).json({ success: false, message: 'No tienes acceso a esta clase' });
+    return false;
+  }
+
+  return true;
+};
+
+const ensureClassroomReadAccess = async (
+  req: Request,
+  res: Response,
+  classroomId: string
+): Promise<boolean> => {
+  const user = req.user;
+
+  if (!user) {
+    res.status(401).json({ success: false, message: 'No autorizado' });
+    return false;
+  }
+
+  if (user.role === 'ADMIN') {
+    return true;
+  }
+
+  if (user.role === 'TEACHER') {
+    const isOwner = await clanService.verifyTeacherOwnsClassroom(user.id, classroomId);
+    if (!isOwner) {
+      res.status(403).json({ success: false, message: 'No tienes acceso a esta clase' });
+      return false;
+    }
+
+    return true;
+  }
+
+  if (user.role === 'STUDENT') {
+    const isMember = await clanService.verifyStudentUserInClassroom(user.id, classroomId);
+    if (!isMember) {
+      res.status(403).json({ success: false, message: 'No tienes acceso a esta clase' });
+      return false;
+    }
+
+    return true;
+  }
+
+  res.status(403).json({ success: false, message: 'No tienes permisos para esta acción' });
+  return false;
+};
+
+const ensureTeacherClanAccess = async (
+  req: Request,
+  res: Response,
+  clanId: string
+): Promise<boolean> => {
+  const classroomId = await clanService.getClassroomIdByClan(clanId);
+  if (!classroomId) {
+    res.status(404).json({ success: false, message: 'Clan no encontrado' });
+    return false;
+  }
+
+  return ensureTeacherClassroomAccess(req, res, classroomId);
+};
+
+const ensureClanReadAccess = async (
+  req: Request,
+  res: Response,
+  clanId: string
+): Promise<boolean> => {
+  const classroomId = await clanService.getClassroomIdByClan(clanId);
+  if (!classroomId) {
+    res.status(404).json({ success: false, message: 'Clan no encontrado' });
+    return false;
+  }
+
+  return ensureClassroomReadAccess(req, res, classroomId);
+};
+
+const ensureTeacherStudentAccess = async (
+  req: Request,
+  res: Response,
+  studentProfileId: string
+): Promise<boolean> => {
+  const classroomId = await clanService.getClassroomIdByStudentProfile(studentProfileId);
+  if (!classroomId) {
+    res.status(404).json({ success: false, message: 'Estudiante no encontrado' });
+    return false;
+  }
+
+  return ensureTeacherClassroomAccess(req, res, classroomId);
+};
+
+const ensureStudentOwnsProfile = async (
+  req: Request,
+  res: Response,
+  studentProfileId: string
+): Promise<boolean> => {
+  const user = req.user;
+
+  if (!user) {
+    res.status(401).json({ success: false, message: 'No autorizado' });
+    return false;
+  }
+
+  if (user.role !== 'STUDENT') {
+    res.status(403).json({ success: false, message: 'No tienes permisos para esta acción' });
+    return false;
+  }
+
+  const isOwner = await clanService.verifyStudentBelongsToUser(studentProfileId, user.id);
+  if (!isOwner) {
+    res.status(403).json({ success: false, message: 'No tienes permiso para este perfil de estudiante' });
+    return false;
+  }
+
+  return true;
+};
+
 class ClanController {
   // Obtener opciones disponibles (emblemas y colores)
   async getOptions(_req: Request, res: Response) {
@@ -39,6 +202,10 @@ class ClanController {
   async getClassroomClans(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+
+      const hasAccess = await ensureTeacherClassroomAccess(req, res, classroomId);
+      if (!hasAccess) return;
+
       const clans = await clanService.getClassroomClans(classroomId);
 
       res.json({
@@ -46,11 +213,7 @@ class ClanController {
         data: clans,
       });
     } catch (error) {
-      console.error('Error getting clans:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error al obtener clanes',
-      });
+      return handleControllerError(res, error, 'Error al obtener clanes');
     }
   }
 
@@ -58,6 +221,10 @@ class ClanController {
   async getClan(req: Request, res: Response) {
     try {
       const { clanId } = req.params;
+
+      const hasAccess = await ensureClanReadAccess(req, res, clanId);
+      if (!hasAccess) return;
+
       const clan = await clanService.getClanById(clanId);
 
       if (!clan) {
@@ -72,11 +239,7 @@ class ClanController {
         data: clan,
       });
     } catch (error) {
-      console.error('Error getting clan:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error al obtener clan',
-      });
+      return handleControllerError(res, error, 'Error al obtener clan');
     }
   }
 
@@ -85,6 +248,9 @@ class ClanController {
     try {
       const { classroomId } = req.params;
       const data = createClanSchema.parse(req.body);
+
+      const hasAccess = await ensureTeacherClassroomAccess(req, res, classroomId);
+      if (!hasAccess) return;
 
       const clan = await clanService.createClan({
         classroomId,
@@ -97,18 +263,7 @@ class ClanController {
         data: clan,
       });
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({
-          success: false,
-          message: 'Datos inválidos',
-          errors: error.errors,
-        });
-      }
-      console.error('Error creating clan:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error al crear clan',
-      });
+      return handleControllerError(res, error, 'Error al crear clan');
     }
   }
 
@@ -118,6 +273,9 @@ class ClanController {
       const { clanId } = req.params;
       const data = updateClanSchema.parse(req.body);
 
+      const hasAccess = await ensureTeacherClanAccess(req, res, clanId);
+      if (!hasAccess) return;
+
       const clan = await clanService.updateClan(clanId, data);
 
       res.json({
@@ -126,18 +284,7 @@ class ClanController {
         data: clan,
       });
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({
-          success: false,
-          message: 'Datos inválidos',
-          errors: error.errors,
-        });
-      }
-      console.error('Error updating clan:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error al actualizar clan',
-      });
+      return handleControllerError(res, error, 'Error al actualizar clan');
     }
   }
 
@@ -145,6 +292,10 @@ class ClanController {
   async deleteClan(req: Request, res: Response) {
     try {
       const { clanId } = req.params;
+
+      const hasAccess = await ensureTeacherClanAccess(req, res, clanId);
+      if (!hasAccess) return;
+
       await clanService.deleteClan(clanId);
 
       res.json({
@@ -152,11 +303,7 @@ class ClanController {
         message: 'Clan eliminado',
       });
     } catch (error) {
-      console.error('Error deleting clan:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error al eliminar clan',
-      });
+      return handleControllerError(res, error, 'Error al eliminar clan');
     }
   }
 
@@ -166,6 +313,12 @@ class ClanController {
       const { clanId } = req.params;
       const { studentId } = assignStudentSchema.parse(req.body);
 
+      const hasClanAccess = await ensureTeacherClanAccess(req, res, clanId);
+      if (!hasClanAccess) return;
+
+      const hasStudentAccess = await ensureTeacherStudentAccess(req, res, studentId);
+      if (!hasStudentAccess) return;
+
       const clan = await clanService.assignStudentToClan(studentId, clanId);
 
       res.json({
@@ -174,24 +327,7 @@ class ClanController {
         data: clan,
       });
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({
-          success: false,
-          message: 'Datos inválidos',
-          errors: error.errors,
-        });
-      }
-      if (error instanceof Error) {
-        return res.status(400).json({
-          success: false,
-          message: error.message,
-        });
-      }
-      console.error('Error assigning student:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error al asignar estudiante',
-      });
+      return handleControllerError(res, error, 'Error al asignar estudiante');
     }
   }
 
@@ -199,6 +335,10 @@ class ClanController {
   async removeStudent(req: Request, res: Response) {
     try {
       const { studentId } = req.params;
+
+      const hasAccess = await ensureTeacherStudentAccess(req, res, studentId);
+      if (!hasAccess) return;
+
       await clanService.removeStudentFromClan(studentId);
 
       res.json({
@@ -206,11 +346,7 @@ class ClanController {
         message: 'Estudiante removido del clan',
       });
     } catch (error) {
-      console.error('Error removing student:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error al remover estudiante',
-      });
+      return handleControllerError(res, error, 'Error al remover estudiante');
     }
   }
 
@@ -218,6 +354,10 @@ class ClanController {
   async assignRandomly(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+
+      const hasAccess = await ensureTeacherClassroomAccess(req, res, classroomId);
+      if (!hasAccess) return;
+
       const result = await clanService.assignStudentsRandomly(classroomId);
 
       res.json({
@@ -226,17 +366,7 @@ class ClanController {
         data: result,
       });
     } catch (error) {
-      if (error instanceof Error) {
-        return res.status(400).json({
-          success: false,
-          message: error.message,
-        });
-      }
-      console.error('Error assigning randomly:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error al asignar estudiantes',
-      });
+      return handleControllerError(res, error, 'Error al asignar estudiantes');
     }
   }
 
@@ -244,6 +374,10 @@ class ClanController {
   async getRanking(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+
+      const hasAccess = await ensureClassroomReadAccess(req, res, classroomId);
+      if (!hasAccess) return;
+
       const ranking = await clanService.getClanRanking(classroomId);
 
       res.json({
@@ -251,11 +385,7 @@ class ClanController {
         data: ranking,
       });
     } catch (error) {
-      console.error('Error getting ranking:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error al obtener ranking',
-      });
+      return handleControllerError(res, error, 'Error al obtener ranking');
     }
   }
 
@@ -263,7 +393,11 @@ class ClanController {
   async getClanHistory(req: Request, res: Response) {
     try {
       const { clanId } = req.params;
-      const limit = parseInt(req.query.limit as string) || 50;
+
+      const hasAccess = await ensureClanReadAccess(req, res, clanId);
+      if (!hasAccess) return;
+
+      const limit = historyLimitSchema.parse(req.query.limit ?? 50);
       const history = await clanService.getClanHistory(clanId, limit);
 
       res.json({
@@ -271,11 +405,7 @@ class ClanController {
         data: history,
       });
     } catch (error) {
-      console.error('Error getting clan history:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error al obtener historial',
-      });
+      return handleControllerError(res, error, 'Error al obtener historial');
     }
   }
 
@@ -283,6 +413,10 @@ class ClanController {
   async getStudentClanInfo(req: Request, res: Response) {
     try {
       const { studentId } = req.params;
+
+      const hasAccess = await ensureStudentOwnsProfile(req, res, studentId);
+      if (!hasAccess) return;
+
       const info = await clanService.getStudentClanInfo(studentId);
 
       res.json({
@@ -290,11 +424,7 @@ class ClanController {
         data: info,
       });
     } catch (error) {
-      console.error('Error getting student clan info:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error al obtener información del clan',
-      });
+      return handleControllerError(res, error, 'Error al obtener información del clan');
     }
   }
 }

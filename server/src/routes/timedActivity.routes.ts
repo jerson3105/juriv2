@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { timedActivityController } from '../controllers/timedActivity.controller.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, authorize } from '../middleware/auth.js';
 
 const router = Router();
 
 // Todas las rutas requieren autenticación
 router.use(authenticate);
+router.use(authorize('TEACHER'));
 
 // CRUD de actividades
 router.post('/classroom/:classroomId', timedActivityController.create);

@@ -8,44 +8,33 @@ import toast from 'react-hot-toast';
 
 type UserRole = 'TEACHER' | 'STUDENT' | 'PARENT';
 
-interface GoogleData {
-  email: string;
-  firstName: string;
-  lastName: string;
-  avatarUrl?: string | null;
-}
-
 export const SelectRolePage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { setAuth } = useAuthStore();
-  const [googleData, setGoogleData] = useState<GoogleData | null>(null);
+  const [registrationCode, setRegistrationCode] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
 
   useEffect(() => {
-    const dataParam = searchParams.get('data');
-    if (dataParam) {
-      try {
-        const decoded = JSON.parse(atob(dataParam));
-        setGoogleData(decoded);
-      } catch {
-        toast.error('Error al procesar datos de Google');
-        navigate('/login');
-      }
-    } else {
+    const code = searchParams.get('code');
+    if (!code) {
+      toast.error('Código de registro inválido o ausente');
       navigate('/login');
+      return;
     }
+
+    setRegistrationCode(code);
   }, [searchParams, navigate]);
 
   const handleSelectRole = async (role: UserRole) => {
-    if (!googleData || isLoading) return;
+    if (!registrationCode || isLoading) return;
     
     setSelectedRole(role);
     setIsLoading(true);
 
     try {
-      const response = await authApi.completeGoogleRegistration({ googleData, role });
+      const response = await authApi.completeGoogleRegistration({ code: registrationCode, role });
       
       if (response.data.success && response.data.data) {
         const { user, accessToken, refreshToken } = response.data.data;
@@ -63,7 +52,7 @@ export const SelectRolePage = () => {
     }
   };
 
-  if (!googleData) {
+  if (!registrationCode) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-900 via-primary-800 to-primary-950">
         <Loader2 className="w-12 h-12 animate-spin text-primary-400" />
@@ -140,29 +129,12 @@ export const SelectRolePage = () => {
           transition={{ delay: 0.2 }}
           className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8"
         >
-          {/* User info */}
-          <div className="flex items-center gap-4 mb-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
-            {googleData.avatarUrl ? (
-              <img 
-                src={googleData.avatarUrl} 
-                alt={googleData.firstName}
-                className="w-12 h-12 rounded-full"
-              />
-            ) : (
-              <div className="w-12 h-12 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">
-                <span className="text-lg font-bold text-primary-600">
-                  {googleData.firstName[0]}{googleData.lastName[0]}
-                </span>
-              </div>
-            )}
-            <div>
-              <p className="font-semibold text-gray-900 dark:text-white">
-                {googleData.firstName} {googleData.lastName}
-              </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                {googleData.email}
-              </p>
-            </div>
+          {/* Info */}
+          <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl text-center">
+            <p className="font-semibold text-gray-900 dark:text-white">Cuenta de Google verificada</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Elige tu rol para finalizar el registro
+            </p>
           </div>
 
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2 text-center">

@@ -25,19 +25,19 @@ router.delete('/items/:id', authorize('TEACHER'), (req, res) =>
 );
 
 // Obtener items de una clase (profesor y estudiante)
-router.get('/classroom/:classroomId/items', (req, res) => 
+router.get('/classroom/:classroomId/items', authorize('TEACHER', 'STUDENT'), (req, res) => 
   shopController.getClassroomItems(req, res)
 );
 
 // ==================== RUTAS DE COMPRAS ====================
 
 // Compra por estudiante
-router.post('/student/:studentId/purchase', (req, res) => 
+router.post('/student/:studentId/purchase', authorize('STUDENT'), (req, res) => 
   shopController.purchaseItem(req, res)
 );
 
 // Regalar item a otro estudiante
-router.post('/student/:studentId/gift', (req, res) => 
+router.post('/student/:studentId/gift', authorize('STUDENT'), (req, res) => 
   shopController.giftItem(req, res)
 );
 
@@ -49,24 +49,24 @@ router.post('/teacher/purchase', authorize('TEACHER'), (req, res) =>
 // ==================== RUTAS DE HISTORIAL ====================
 
 // Historial de compras del estudiante
-router.get('/student/:studentId/purchases', (req, res) => 
+router.get('/student/:studentId/purchases', authorize('STUDENT'), (req, res) => 
   shopController.getStudentPurchases(req, res)
 );
 
 // Regalos recibidos
-router.get('/student/:studentId/gifts/received', (req, res) => 
+router.get('/student/:studentId/gifts/received', authorize('STUDENT'), (req, res) => 
   shopController.getGiftsReceived(req, res)
 );
 
 // Regalos enviados
-router.get('/student/:studentId/gifts/sent', (req, res) => 
+router.get('/student/:studentId/gifts/sent', authorize('STUDENT'), (req, res) => 
   shopController.getGiftsSent(req, res)
 );
 
 // ==================== RUTAS DE USO DE ITEMS ====================
 
 // Usar un item (estudiante)
-router.post('/student/:studentId/use/:purchaseId', (req, res) => 
+router.post('/student/:studentId/use/:purchaseId', authorize('STUDENT'), (req, res) => 
   shopController.useItem(req, res)
 );
 

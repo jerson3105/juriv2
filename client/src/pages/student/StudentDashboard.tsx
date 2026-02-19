@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import { 
   Sparkles, 
   Heart, 
@@ -33,11 +33,15 @@ import { badgeApi, type Badge, RARITY_COLORS, RARITY_LABELS } from '../../lib/ba
 import { BadgeUnlockModal } from '../../components/badges/BadgeUnlockModal';
 import { LevelUpAnimation } from '../../components/effects/LevelUpAnimation';
 import { LoginStreakWidget } from '../../components/student/LoginStreakWidget';
+import { storyApi, type StoryScene } from '../../lib/storyApi';
+import { SceneCinematic } from '../../components/story/SceneCinematic';
 
 export const StudentDashboard = () => {
   const { user } = useAuthStore();
   const { selectedClassIndex } = useStudentStore();
   const navigate = useNavigate();
+  const { storyTheme, isThemeDark } = useOutletContext<{ storyTheme?: any; isThemeDark?: boolean; hasStoryTheme?: boolean }>();
+  const hasTheme = !!storyTheme;
   const [activeView, setActiveView] = useState<'dashboard' | 'shop' | 'avatar-shop' | 'badges' | 'progress' | 'clan-ranking'>('dashboard');
   
   // Estado para animación de subida de nivel
@@ -84,6 +88,30 @@ export const StudentDashboard = () => {
 
   // Estado para animación de insignia desbloqueada
   const [unlockedBadge, setUnlockedBadge] = useState<Badge | null>(null);
+
+  // Cinematic auto-trigger state
+  const [cinematicScene, setCinematicScene] = useState<StoryScene | null>(null);
+  const [cinematicQueue, setCinematicQueue] = useState<StoryScene[]>([]);
+  const cinematicTriggered = useRef(false);
+
+  // Fetch student story data for auto-cinematic
+  const { data: storyData } = useQuery({
+    queryKey: ['student-story', currentProfile?.classroomId, currentProfile?.id],
+    queryFn: () => storyApi.getStudentStoryData(currentProfile!.classroomId),
+    enabled: !!currentProfile?.classroomId && !!currentProfile?.id,
+  });
+
+  // Auto-trigger cinematic for unseen scenes (only once per session)
+  useEffect(() => {
+    if (cinematicTriggered.current) return;
+    if (!storyData?.unseenScenes?.length) return;
+    if (!currentProfile) return;
+
+    cinematicTriggered.current = true;
+    const scenes = storyData.unseenScenes;
+    setCinematicScene(scenes[0]);
+    setCinematicQueue(scenes.slice(1));
+  }, [storyData, currentProfile]);
 
   // Formatear items equipados para el renderer
   const equippedForRenderer = equippedItems.map((item: any) => ({
@@ -421,7 +449,7 @@ export const StudentDashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 -m-4 md:-m-6 lg:-m-8 p-4 md:p-6 lg:p-8">
+    <div className={`min-h-screen -m-4 md:-m-6 lg:-m-8 p-4 md:p-6 lg:p-8 ${hasTheme ? '' : 'bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50'}`}>
       {/* Animación de subida de nivel */}
       <LevelUpAnimation
         show={showLevelUp}
@@ -430,8 +458,12 @@ export const StudentDashboard = () => {
       />
 
       {/* Decorative elements */}
-      <div className="absolute top-20 right-10 w-64 h-64 bg-blue-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse" />
-      <div className="absolute top-40 left-10 w-64 h-64 bg-purple-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse" style={{ animationDelay: '1s' }} />
+      {!hasTheme && (
+        <>
+          <div className="absolute top-20 right-10 w-64 h-64 bg-blue-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse" />
+          <div className="absolute top-40 left-10 w-64 h-64 bg-purple-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse" style={{ animationDelay: '1s' }} />
+        </>
+      )}
 
       <div className="relative z-10">
         {/* Layout de 2 columnas */}
@@ -443,14 +475,14 @@ export const StudentDashboard = () => {
             animate={{ opacity: 1, x: 0 }}
             className="lg:w-[300px] flex-shrink-0"
           >
-            <div className="bg-white/80 backdrop-blur-lg rounded-2xl p-6 shadow-lg shadow-blue-500/10 border border-white/50 sticky top-4">
+            <div className={`backdrop-blur-lg rounded-2xl p-6 shadow-lg sticky top-4 ${hasTheme && isThemeDark ? 'bg-white/10 border border-white/10 shadow-black/20' : hasTheme ? 'bg-white/70 border border-white/40 shadow-black/5' : 'bg-white/80 shadow-blue-500/10 border border-white/50'}`}>
               {/* Avatar grande 255x444 */}
               <motion.div 
                 animate={{ y: [0, -5, 0] }}
                 transition={{ duration: 3, repeat: Infinity }}
                 className="flex justify-center mb-4"
               >
-                <div className="bg-gradient-to-br from-indigo-100 to-purple-100 rounded-2xl p-3 shadow-lg">
+                <div className={`rounded-2xl p-3 shadow-lg ${hasTheme && isThemeDark ? 'bg-white/10' : 'bg-gradient-to-br from-indigo-100 to-purple-100'}`}>
                   <AvatarRenderer
                     gender={currentProfile.avatarGender || 'MALE'}
                     size="xl"
@@ -461,12 +493,14 @@ export const StudentDashboard = () => {
 
               {/* Nombre y clase */}
               <div className="text-center mb-4">
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                <h1 className={`text-2xl font-bold ${hasTheme && isThemeDark ? 'text-white' : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent'}`}
+                  style={hasTheme && isThemeDark ? undefined : hasTheme ? { color: storyTheme.colors?.primary } : undefined}
+                >
                   {currentProfile.characterName || user?.firstName}
                 </h1>
                 <div className="flex items-center justify-center gap-2 mt-1">
                   <span className="text-lg">{characterInfo?.icon}</span>
-                  <p className="text-gray-500 text-sm">
+                  <p className={`text-sm ${hasTheme && isThemeDark ? 'text-white/60' : 'text-gray-500'}`}>
                     {characterInfo?.name} • Nivel {currentProfile.level}
                   </p>
                 </div>
@@ -474,14 +508,14 @@ export const StudentDashboard = () => {
 
               {/* Barra de XP */}
               <div className="mt-4">
-                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                <div className={`flex justify-between text-xs mb-1 ${hasTheme && isThemeDark ? 'text-white/60' : 'text-gray-500'}`}>
                   <span className="flex items-center gap-1">
                     <Zap className="w-3 h-3 text-amber-500" />
                     Nivel {currentProfile.level}
                   </span>
                   <span>{xpInLevel} / {xpNeeded} XP</span>
                 </div>
-                <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                <div className={`h-2.5 rounded-full overflow-hidden ${hasTheme && isThemeDark ? 'bg-white/15' : 'bg-gray-100'}`}>
                   <motion.div
                     initial={{ width: 0 }}
                     animate={{ width: `${Math.min(xpProgress, 100)}%` }}
@@ -499,7 +533,8 @@ export const StudentDashboard = () => {
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 rounded-2xl p-4 shadow-lg shadow-purple-500/20"
+              className={`rounded-2xl p-4 shadow-lg ${hasTheme ? 'shadow-black/20' : 'bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 shadow-purple-500/20'}`}
+              style={hasTheme ? { background: `linear-gradient(135deg, ${storyTheme.colors?.primary || '#6366f1'}, ${storyTheme.colors?.secondary || '#9333ea'})` } : undefined}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -798,6 +833,37 @@ export const StudentDashboard = () => {
         isOpen={!!unlockedBadge}
         onClose={() => setUnlockedBadge(null)}
       />
+
+      {/* Auto-cinematic for unseen story scenes */}
+      <AnimatePresence>
+        {cinematicScene && (
+          <SceneCinematic
+            key={cinematicScene.id}
+            scene={cinematicScene}
+            onComplete={() => {
+              // Mark scene as viewed
+              storyApi.markSceneViewed(cinematicScene.id);
+              // Play next in queue or close
+              if (cinematicQueue.length > 0) {
+                const [next, ...rest] = cinematicQueue;
+                setCinematicScene(next);
+                setCinematicQueue(rest);
+              } else {
+                setCinematicScene(null);
+                setCinematicQueue([]);
+              }
+            }}
+            onClose={() => {
+              // Mark current as viewed even if skipped
+              if (cinematicScene) {
+                storyApi.markSceneViewed(cinematicScene.id);
+              }
+              setCinematicScene(null);
+              setCinematicQueue([]);
+            }}
+          />
+        )}
+      </AnimatePresence>
 
     </div>
   );

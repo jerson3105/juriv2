@@ -125,14 +125,12 @@ export const authApi = {
     api.put<ApiResponse<null>>('/auth/change-password', data),
 
   completeGoogleRegistration: (data: {
-    googleData: {
-      email: string;
-      firstName: string;
-      lastName: string;
-      avatarUrl?: string | null;
-    };
+    code: string;
     role: 'TEACHER' | 'STUDENT' | 'PARENT';
   }) => api.post<ApiResponse<AuthData>>('/auth/google/complete-registration', data),
+
+  exchangeGoogleCode: (code: string) =>
+    api.post<ApiResponse<{ accessToken: string; refreshToken: string }>>('/auth/google/exchange-code', { code }),
 };
 
 // Tipos
