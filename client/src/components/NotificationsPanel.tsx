@@ -11,6 +11,19 @@ interface NotificationsPanelProps {
   classroomId?: string; // Opcional: filtrar notificaciones por clase
 }
 
+const getHttpStatusFromError = (error: unknown): number | undefined => {
+  if (!error || typeof error !== 'object') {
+    return undefined;
+  }
+
+  const candidate = error as { response?: { status?: number } };
+  return candidate.response?.status;
+};
+
+const getPollingInterval = (error: unknown, intervalMs: number): number | false => {
+  return getHttpStatusFromError(error) === 429 ? false : intervalMs;
+};
+
 export const NotificationsPanel = ({ isOpen, onClose, classroomId }: NotificationsPanelProps) => {
   const queryClient = useQueryClient();
 
@@ -18,7 +31,8 @@ export const NotificationsPanel = ({ isOpen, onClose, classroomId }: Notificatio
     queryKey: ['notifications', classroomId],
     queryFn: () => shopApi.getNotifications({ classroomId }),
     enabled: isOpen,
-    refetchInterval: 30000, // Refrescar cada 30 segundos
+    refetchInterval: (query) => getPollingInterval(query.state.error, 30000), // Refrescar cada 30 segundos
+    refetchIntervalInBackground: false,
   });
 
   const markReadMutation = useMutation({
@@ -282,7 +296,8 @@ export const NotificationsBell = ({ onClick, classroomId }: { onClick: () => voi
   const { data: count = 0 } = useQuery({
     queryKey: ['unread-count', classroomId],
     queryFn: () => shopApi.getUnreadCount(classroomId),
-    refetchInterval: 30000,
+    refetchInterval: (query) => getPollingInterval(query.state.error, 30000),
+    refetchIntervalInBackground: false,
   });
 
   return (
