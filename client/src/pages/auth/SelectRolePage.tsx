@@ -8,6 +8,16 @@ import toast from 'react-hot-toast';
 
 type UserRole = 'TEACHER' | 'STUDENT' | 'PARENT';
 
+const getHashParam = (paramName: string): string | null => {
+  const hash = window.location.hash;
+  if (!hash || hash.length <= 1) {
+    return null;
+  }
+
+  const hashParams = new URLSearchParams(hash.slice(1));
+  return hashParams.get(paramName);
+};
+
 export const SelectRolePage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -17,7 +27,7 @@ export const SelectRolePage = () => {
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
 
   useEffect(() => {
-    const code = searchParams.get('code');
+    const code = searchParams.get('code') || getHashParam('code');
     if (!code) {
       toast.error('Código de registro inválido o ausente');
       navigate('/login');

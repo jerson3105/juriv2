@@ -4,6 +4,16 @@ import { useAuthStore } from '../../store/authStore';
 import { Loader2 } from 'lucide-react';
 import { authApi } from '../../lib/api';
 
+const getHashParam = (paramName: string): string | null => {
+  const hash = window.location.hash;
+  if (!hash || hash.length <= 1) {
+    return null;
+  }
+
+  const hashParams = new URLSearchParams(hash.slice(1));
+  return hashParams.get(paramName);
+};
+
 export const GoogleCallbackPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -16,8 +26,8 @@ export const GoogleCallbackPage = () => {
       if (processedRef.current) return;
       processedRef.current = true;
 
-      const code = searchParams.get('code');
-      const error = searchParams.get('error');
+      const code = searchParams.get('code') || getHashParam('code');
+      const error = searchParams.get('error') || getHashParam('error');
 
       if (error) {
         console.error('Error en autenticación con Google:', error);

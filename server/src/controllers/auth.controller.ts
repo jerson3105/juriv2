@@ -577,6 +577,7 @@ export const googleCallback = async (req: Request, res: Response): Promise<void>
       const registrationCode = issueOAuthRegistrationCode(user.googleData);
       const redirectUrl = new URL(`${config_app.clientUrl}/auth/select-role`);
       redirectUrl.searchParams.set('code', registrationCode);
+      redirectUrl.hash = `code=${encodeURIComponent(registrationCode)}`;
 
       clearOAuthStateCookie(res);
       res.redirect(redirectUrl.toString());
@@ -596,6 +597,7 @@ export const googleCallback = async (req: Request, res: Response): Promise<void>
     // Redirigir al frontend con un código de un solo uso (evita exponer tokens en URL)
     const redirectUrl = new URL(`${config_app.clientUrl}/auth/google/callback`);
     redirectUrl.searchParams.set('code', code);
+    redirectUrl.hash = `code=${encodeURIComponent(code)}`;
     
     clearOAuthStateCookie(res);
     res.redirect(redirectUrl.toString());
