@@ -8,8 +8,9 @@ module.exports = {
     name: 'juried-api',
     script: 'dist/index.js',
     cwd: './server',
-    instances: 'max', // Usar todos los CPUs disponibles (cluster mode)
-    exec_mode: 'cluster',
+    instances: '1', 
+    exec_mode: 'fork',  // fork es más eficiente que cluster con 1 instancia
+    node_args: '--max-old-space-size=512',  // darle más heap
     
     // Variables de entorno para producción
     env_production: {
@@ -24,7 +25,7 @@ module.exports = {
     },
     
     // Configuración de memoria y reinicio
-    max_memory_restart: '1G', // Reiniciar si excede 1GB
+    max_memory_restart: '600M',  // bajar de 1G a algo realista
     min_uptime: '10s', // Tiempo mínimo antes de considerar iniciado
     max_restarts: 10, // Máximo 10 reinicios en 1 minuto
     autorestart: true,
