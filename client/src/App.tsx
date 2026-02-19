@@ -159,9 +159,9 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
 // Public Route Component (redirect if authenticated)
 const PublicRoute = ({ children }: { children: React.ReactNode }) => {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, accessToken } = useAuthStore();
 
-  if (isAuthenticated) {
+  if (isAuthenticated && accessToken) {
     return <Navigate to="/dashboard" replace />;
   }
 

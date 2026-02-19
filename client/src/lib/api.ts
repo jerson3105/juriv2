@@ -13,6 +13,16 @@ export const api = axios.create({
 
 let refreshPromise: Promise<{ accessToken: string; refreshToken: string }> | null = null;
 
+const clearClientAuthSession = (): void => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.removeItem('accessToken');
+  window.localStorage.removeItem('refreshToken');
+  window.localStorage.removeItem('auth-storage');
+};
+
 const runTokenRefresh = async () => {
   if (refreshPromise) return refreshPromise;
 
@@ -81,9 +91,8 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch (refreshError) {
         // Si falla el refresh, limpiar tokens y redirigir a login
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
-        window.location.href = '/login';
+        clearClientAuthSession();
+        window.location.replace('/login');
         return Promise.reject(refreshError);
       }
     }

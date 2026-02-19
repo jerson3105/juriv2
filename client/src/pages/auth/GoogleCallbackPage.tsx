@@ -63,6 +63,7 @@ export const GoogleCallbackPage = () => {
           console.error('Error al procesar callback OAuth legacy:', err);
           localStorage.removeItem('accessToken');
           localStorage.removeItem('refreshToken');
+          localStorage.removeItem('auth-storage');
           navigate('/login?error=token_error');
           return;
         }
@@ -102,6 +103,7 @@ export const GoogleCallbackPage = () => {
         console.error('Error al procesar callback OAuth:', err);
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
+        localStorage.removeItem('auth-storage');
 
         if (!code) {
           navigate('/login?error=missing_code');
