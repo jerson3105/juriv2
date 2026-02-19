@@ -48,13 +48,15 @@ const updateProfileSchema = z.object({
 });
 
 const googleCodeExchangeSchema = z.object({
-  code: z.string().trim().uuid('Código inválido'),
+  code: z.string().trim().optional(),
 });
 
 const completeGoogleRegistrationSchema = z.object({
-  code: z.string().trim().uuid('Código inválido'),
+  code: z.string().trim().optional(),
   role: z.enum(['TEACHER', 'STUDENT', 'PARENT']),
 });
+
+const oauthCodeSchema = z.string().trim().uuid('Código inválido');
 
 type PendingGoogleRegistrationData = {
   googleId: string;
@@ -68,6 +70,81 @@ const OAUTH_CODE_TTL_SECONDS = 60;
 const OAUTH_REGISTRATION_CODE_TTL_SECONDS = 300;
 const oauthCodeKey = (code: string) => `oauth:code:${code}`;
 const oauthRegistrationCodeKey = (code: string) => `oauth:registration:${code}`;
+const OAUTH_CODE_COOKIE_NAME = 'oauth_code_nonce';
+const OAUTH_REGISTRATION_CODE_COOKIE_NAME = 'oauth_registration_code_nonce';
+
+const getOAuthCookieDomain = (): string | undefined => {
+  if (!config_app.isProd) {
+    return undefined;
+  }
+
+  try {
+    const hostname = new URL(config_app.clientUrl).hostname;
+
+    if (hostname === 'localhost' || /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) {
+      return undefined;
+    }
+
+    const parts = hostname.split('.').filter(Boolean);
+    if (parts.length < 2) {
+      return undefined;
+    }
+
+    return `.${parts.slice(-2).join('.')}`;
+  } catch {
+    return undefined;
+  }
+};
+
+const oauthCookieDomain = getOAuthCookieDomain();
+const oauthCookieBaseOptions = {
+  httpOnly: true,
+  sameSite: 'lax' as const,
+  secure: config_app.isProd,
+  path: '/api/auth',
+  ...(oauthCookieDomain ? { domain: oauthCookieDomain } : {}),
+};
+
+const getCookieValue = (req: Request, cookieName: string): string | undefined => {
+  const cookieBag = (req as Request & { cookies?: Record<string, unknown> }).cookies;
+  const value = cookieBag?.[cookieName];
+  return typeof value === 'string' ? value : undefined;
+};
+
+const parseOAuthCode = (value: string | undefined): string | null => {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = oauthCodeSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+};
+
+const resolveOAuthCode = (req: Request, bodyCode: string | undefined, cookieName: string): string | null => {
+  return parseOAuthCode(bodyCode) || parseOAuthCode(getCookieValue(req, cookieName));
+};
+
+const setOAuthCodeCookie = (res: Response, code: string) => {
+  res.cookie(OAUTH_CODE_COOKIE_NAME, code, {
+    ...oauthCookieBaseOptions,
+    maxAge: OAUTH_CODE_TTL_SECONDS * 1000,
+  });
+};
+
+const clearOAuthCodeCookie = (res: Response) => {
+  res.clearCookie(OAUTH_CODE_COOKIE_NAME, oauthCookieBaseOptions);
+};
+
+const setOAuthRegistrationCodeCookie = (res: Response, code: string) => {
+  res.cookie(OAUTH_REGISTRATION_CODE_COOKIE_NAME, code, {
+    ...oauthCookieBaseOptions,
+    maxAge: OAUTH_REGISTRATION_CODE_TTL_SECONDS * 1000,
+  });
+};
+
+const clearOAuthRegistrationCodeCookie = (res: Response) => {
+  res.clearCookie(OAUTH_REGISTRATION_CODE_COOKIE_NAME, oauthCookieBaseOptions);
+};
 
 const clearOAuthStateCookie = (res: Response) => {
   res.clearCookie(OAUTH_STATE_COOKIE_NAME, {
@@ -558,6 +635,9 @@ export const updateNotifications = async (req: Request, res: Response): Promise<
  */
 export const googleCallback = async (req: Request, res: Response): Promise<void> => {
   try {
+    clearOAuthCodeCookie(res);
+    clearOAuthRegistrationCodeCookie(res);
+
     const user = req.user as any;
     
     if (!user) {
@@ -575,6 +655,8 @@ export const googleCallback = async (req: Request, res: Response): Promise<void>
       }
 
       const registrationCode = issueOAuthRegistrationCode(user.googleData);
+      setOAuthRegistrationCodeCookie(res, registrationCode);
+
       const redirectUrl = new URL(`${config_app.clientUrl}/auth/select-role`);
       redirectUrl.searchParams.set('code', registrationCode);
       redirectUrl.hash = `code=${encodeURIComponent(registrationCode)}`;
@@ -593,6 +675,7 @@ export const googleCallback = async (req: Request, res: Response): Promise<void>
     // Generar tokens JWT para el usuario
     const tokens = await authService.generateTokensForUser(user.id);
     const code = issueOAuthCode(tokens);
+    setOAuthCodeCookie(res, code);
     
     // Redirigir al frontend con un código de un solo uso (evita exponer tokens en URL)
     const redirectUrl = new URL(`${config_app.clientUrl}/auth/google/callback`);
@@ -614,7 +697,18 @@ export const googleCallback = async (req: Request, res: Response): Promise<void>
  */
 export const exchangeGoogleCode = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { code } = googleCodeExchangeSchema.parse(req.body);
+    const { code: bodyCode } = googleCodeExchangeSchema.parse(req.body);
+    const code = resolveOAuthCode(req, bodyCode, OAUTH_CODE_COOKIE_NAME);
+    clearOAuthCodeCookie(res);
+
+    if (!code) {
+      res.status(400).json({
+        success: false,
+        message: 'Código inválido o ausente',
+      });
+      return;
+    }
+
     const tokens = consumeOAuthCode(code);
 
     if (!tokens) {
@@ -640,7 +734,18 @@ export const exchangeGoogleCode = async (req: Request, res: Response): Promise<v
  */
 export const completeGoogleRegistration = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { code, role } = completeGoogleRegistrationSchema.parse(req.body);
+    const { code: bodyCode, role } = completeGoogleRegistrationSchema.parse(req.body);
+    const code = resolveOAuthCode(req, bodyCode, OAUTH_REGISTRATION_CODE_COOKIE_NAME);
+    clearOAuthRegistrationCodeCookie(res);
+
+    if (!code) {
+      res.status(400).json({
+        success: false,
+        message: 'Código de registro inválido o ausente',
+      });
+      return;
+    }
+
     const googleData = consumeOAuthRegistrationCode(code);
 
     if (!googleData) {

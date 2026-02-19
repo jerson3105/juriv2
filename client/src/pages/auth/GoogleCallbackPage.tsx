@@ -35,45 +35,47 @@ export const GoogleCallbackPage = () => {
         return;
       }
 
-      if (code) {
-        try {
-          const exchangeResponse = await authApi.exchangeGoogleCode(code);
-          const tokenData = exchangeResponse.data.data;
+      try {
+        const exchangeResponse = await authApi.exchangeGoogleCode(code || undefined);
+        const tokenData = exchangeResponse.data.data;
 
-          if (!exchangeResponse.data.success || !tokenData) {
-            throw new Error('No se pudo intercambiar el código de autenticación');
-          }
-
-          const { accessToken, refreshToken } = tokenData;
-
-          // Guardar tokens temporalmente para hacer la petición
-          localStorage.setItem('accessToken', accessToken);
-          localStorage.setItem('refreshToken', refreshToken);
-          
-          // Obtener datos del usuario
-          const response = await authApi.getMe();
-          
-          if (response.data.success && response.data.data) {
-            // Guardar en el store con los datos del usuario
-            setAuth({
-              user: response.data.data,
-              accessToken,
-              refreshToken,
-            });
-            
-            // Redirigir al dashboard
-            navigate('/dashboard');
-          } else {
-            throw new Error('No se pudo obtener el usuario');
-          }
-        } catch (err) {
-          console.error('Error al procesar callback OAuth:', err);
-          localStorage.removeItem('accessToken');
-          localStorage.removeItem('refreshToken');
-          navigate('/login?error=token_error');
+        if (!exchangeResponse.data.success || !tokenData) {
+          throw new Error('No se pudo intercambiar el código de autenticación');
         }
-      } else {
-        navigate('/login?error=missing_code');
+
+        const { accessToken, refreshToken } = tokenData;
+
+        // Guardar tokens temporalmente para hacer la petición
+        localStorage.setItem('accessToken', accessToken);
+        localStorage.setItem('refreshToken', refreshToken);
+        
+        // Obtener datos del usuario
+        const response = await authApi.getMe();
+        
+        if (response.data.success && response.data.data) {
+          // Guardar en el store con los datos del usuario
+          setAuth({
+            user: response.data.data,
+            accessToken,
+            refreshToken,
+          });
+          
+          // Redirigir al dashboard
+          navigate('/dashboard');
+        } else {
+          throw new Error('No se pudo obtener el usuario');
+        }
+      } catch (err) {
+        console.error('Error al procesar callback OAuth:', err);
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+
+        if (!code) {
+          navigate('/login?error=missing_code');
+          return;
+        }
+
+        navigate('/login?error=token_error');
       }
     };
 

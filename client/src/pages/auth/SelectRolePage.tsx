@@ -22,29 +22,28 @@ export const SelectRolePage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { setAuth } = useAuthStore();
-  const [registrationCode, setRegistrationCode] = useState<string | null>(null);
+  const [registrationCode, setRegistrationCode] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
 
   useEffect(() => {
     const code = searchParams.get('code') || getHashParam('code');
-    if (!code) {
-      toast.error('Código de registro inválido o ausente');
-      navigate('/login');
-      return;
+    if (code) {
+      setRegistrationCode(code);
     }
-
-    setRegistrationCode(code);
   }, [searchParams, navigate]);
 
   const handleSelectRole = async (role: UserRole) => {
-    if (!registrationCode || isLoading) return;
+    if (isLoading) return;
     
     setSelectedRole(role);
     setIsLoading(true);
 
     try {
-      const response = await authApi.completeGoogleRegistration({ code: registrationCode, role });
+      const response = await authApi.completeGoogleRegistration({
+        role,
+        ...(registrationCode ? { code: registrationCode } : {}),
+      });
       
       if (response.data.success && response.data.data) {
         const { user, accessToken, refreshToken } = response.data.data;
@@ -61,14 +60,6 @@ export const SelectRolePage = () => {
       setIsLoading(false);
     }
   };
-
-  if (!registrationCode) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-900 via-primary-800 to-primary-950">
-        <Loader2 className="w-12 h-12 animate-spin text-primary-400" />
-      </div>
-    );
-  }
 
   const roles = [
     {
