@@ -28,11 +28,44 @@ export const GoogleCallbackPage = () => {
 
       const code = searchParams.get('code') || getHashParam('code');
       const error = searchParams.get('error') || getHashParam('error');
+      const accessTokenFromUrl =
+        searchParams.get('accessToken') ||
+        searchParams.get('token') ||
+        getHashParam('accessToken') ||
+        getHashParam('token');
+      const refreshTokenFromUrl = searchParams.get('refreshToken') || getHashParam('refreshToken');
 
       if (error) {
         console.error('Error en autenticación con Google:', error);
         navigate('/login?error=google_auth_failed');
         return;
+      }
+
+      if (accessTokenFromUrl && refreshTokenFromUrl) {
+        try {
+          localStorage.setItem('accessToken', accessTokenFromUrl);
+          localStorage.setItem('refreshToken', refreshTokenFromUrl);
+
+          const response = await authApi.getMe();
+          if (!response.data.success || !response.data.data) {
+            throw new Error('No se pudo obtener el usuario');
+          }
+
+          setAuth({
+            user: response.data.data,
+            accessToken: accessTokenFromUrl,
+            refreshToken: refreshTokenFromUrl,
+          });
+
+          navigate('/dashboard');
+          return;
+        } catch (err) {
+          console.error('Error al procesar callback OAuth legacy:', err);
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+          navigate('/login?error=token_error');
+          return;
+        }
       }
 
       try {
