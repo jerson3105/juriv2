@@ -989,11 +989,11 @@ export class ShopService {
       conditions.push(eq(notifications.classroomId, classroomId));
     }
     
-    const result = await db
-      .select()
+    const [result] = await db
+      .select({ count: sql<number>`COUNT(*)` })
       .from(notifications)
       .where(and(...conditions));
-    return result.length;
+    return result?.count ?? 0;
   }
 }
 

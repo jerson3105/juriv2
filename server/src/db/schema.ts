@@ -139,6 +139,19 @@ export const parentStudentLinksRelations = relations(parentStudentLinks, ({ one 
   }),
 }));
 
+// ==================== CACHE DE INFORMES IA ====================
+
+export const parentAiReports = mysqlTable('parent_ai_reports', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  parentProfileId: varchar('parent_profile_id', { length: 36 }).notNull(),
+  studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),
+  reportJson: json('report_json').notNull(), // Cached AI report data
+  generatedAt: datetime('generated_at').notNull(),
+  expiresAt: datetime('expires_at').notNull(), // generatedAt + 24h
+}, (table) => ({
+  parentStudentIdx: index('idx_parent_ai_reports_ps').on(table.parentProfileId, table.studentProfileId),
+}));
+
 // ==================== AULAS ====================
 
 export const classrooms = mysqlTable('classrooms', {

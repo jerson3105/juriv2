@@ -8,8 +8,7 @@ import {
   ChevronRight,
   Plus,
   BookOpen,
-  LogOut,
-  User
+  BarChart3,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { parentApi } from '../../lib/parentApi';
@@ -22,19 +21,13 @@ import { useAuthStore } from '../../store/authStore';
 
 export default function ParentDashboard() {
   const [showLinkModal, setShowLinkModal] = useState(false);
-  const [showUserMenu, setShowUserMenu] = useState(false);
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
   const navigate = useNavigate();
 
   const { data: children = [], isLoading } = useQuery({
     queryKey: ['parent-children'],
     queryFn: parentApi.getChildren,
   });
-
-  const handleLogout = async () => {
-    await logout();
-    navigate('/login');
-  };
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Sin actividad';
@@ -59,83 +52,26 @@ export default function ParentDashboard() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="animate-pulse space-y-4">
-            <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-48"></div>
-            <div className="h-40 bg-gray-200 dark:bg-gray-700 rounded"></div>
-            <div className="h-40 bg-gray-200 dark:bg-gray-700 rounded"></div>
-          </div>
+      <div>
+        <div className="animate-pulse space-y-4">
+          <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-48"></div>
+          <div className="h-40 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          <div className="h-40 bg-gray-200 dark:bg-gray-700 rounded"></div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800">
-      {/* Header con logo */}
-      <header className="bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 sticky top-0 z-40">
-        <div className="max-w-5xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <img 
-                src="/logo.png" 
-                alt="Juried" 
-                className="h-9 w-auto"
-              />
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <Button onClick={() => setShowLinkModal(true)} size="sm">
-                <Plus size={18} />
-                Vincular hijo
-              </Button>
-              
-              {/* Menú de usuario */}
-              <div className="relative">
-                <button
-                  onClick={() => setShowUserMenu(!showUserMenu)}
-                  className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                >
-                  <div className="w-8 h-8 bg-pink-100 dark:bg-pink-900/30 rounded-full flex items-center justify-center">
-                    <User size={18} className="text-pink-600 dark:text-pink-400" />
-                  </div>
-                </button>
-                
-                {showUserMenu && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50">
-                    <div className="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-                      <p className="text-sm font-medium text-gray-900 dark:text-white">
-                        {user?.firstName} {user?.lastName}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {user?.email}
-                      </p>
-                    </div>
-                    <button
-                      onClick={handleLogout}
-                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                    >
-                      <LogOut size={16} />
-                      Cerrar sesión
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Contenido principal */}
-      <main className="max-w-5xl mx-auto px-4 py-6">
-        {/* Bienvenida */}
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-6"
-        >
-          <div className="flex items-center gap-3 mb-2">
+    <div>
+      {/* Bienvenida */}
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mb-6"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
             <div className="p-2 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl">
               <Users className="w-6 h-6 text-white" />
             </div>
@@ -148,54 +84,59 @@ export default function ParentDashboard() {
               </p>
             </div>
           </div>
+          <Button onClick={() => setShowLinkModal(true)} size="sm">
+            <Plus size={18} />
+            Ingresar código de clase
+          </Button>
+        </div>
+      </motion.div>
+
+      {/* Lista de hijos */}
+      {children.length === 0 ? (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+        >
+          <Card className="p-8 text-center bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">
+            <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-900/30 dark:to-purple-900/30 rounded-full flex items-center justify-center">
+              <GraduationCap className="text-indigo-500" size={40} />
+            </div>
+            <h3 className="text-xl font-semibold text-gray-800 dark:text-white mb-2">
+              Sin hijos vinculados
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-6 max-w-md mx-auto">
+              Solicita el código de vinculación al profesor de tu hijo para comenzar a ver su progreso académico.
+            </p>
+            <Button onClick={() => setShowLinkModal(true)} className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700">
+              <Plus size={18} />
+              Ingresar código de clase
+            </Button>
+          </Card>
         </motion.div>
+      ) : (
+        <div className="space-y-4">
+          {children.map((child: ChildSummary, index: number) => (
+            <motion.div
+              key={child.studentProfileId}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.1 }}
+            >
+              <ChildCard 
+                child={child} 
+                formatDate={formatDate}
+                getGradeColor={getGradeColor}
+                navigate={navigate}
+              />
+            </motion.div>
+          ))}
+        </div>
+      )}
 
-        {/* Lista de hijos */}
-        {children.length === 0 ? (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-          >
-            <Card className="p-8 text-center bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm">
-              <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-900/30 dark:to-purple-900/30 rounded-full flex items-center justify-center">
-                <GraduationCap className="text-indigo-500" size={40} />
-              </div>
-              <h3 className="text-xl font-semibold text-gray-800 dark:text-white mb-2">
-                Sin hijos vinculados
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-6 max-w-md mx-auto">
-                Solicita el código de vinculación al profesor de tu hijo para comenzar a ver su progreso académico.
-              </p>
-              <Button onClick={() => setShowLinkModal(true)} className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700">
-                <Plus size={18} />
-                Vincular mi primer hijo
-              </Button>
-            </Card>
-          </motion.div>
-        ) : (
-          <div className="space-y-4">
-            {children.map((child: ChildSummary, index: number) => (
-              <motion.div
-                key={child.studentProfileId}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-              >
-                <ChildCard 
-                  child={child} 
-                  formatDate={formatDate}
-                  getGradeColor={getGradeColor}
-                />
-              </motion.div>
-            ))}
-          </div>
-        )}
-
-        {/* Modal para vincular hijo */}
-        {showLinkModal && (
-          <LinkChildModal onClose={() => setShowLinkModal(false)} />
-        )}
-      </main>
+      {/* Modal para vincular hijo */}
+      {showLinkModal && (
+        <LinkChildModal onClose={() => setShowLinkModal(false)} />
+      )}
     </div>
   );
 }
@@ -203,11 +144,13 @@ export default function ParentDashboard() {
 function ChildCard({ 
   child, 
   formatDate, 
-  getGradeColor 
+  getGradeColor,
+  navigate 
 }: { 
   child: ChildSummary;
   formatDate: (date: string | null) => string;
   getGradeColor: (grade: string | null) => string;
+  navigate: ReturnType<typeof useNavigate>;
 }) {
   return (
     <Link to={`/parent/child/${child.studentProfileId}`}>
@@ -255,6 +198,19 @@ function ChildCard({
                 <Clock size={16} className="text-gray-400" />
                 <span className="text-sm text-gray-600 dark:text-gray-400">{formatDate(child.lastActivityDate)}</span>
               </div>
+
+              {/* Ver reporte */}
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  navigate(`/parent/report/${child.studentProfileId}`);
+                }}
+                className="flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors"
+              >
+                <BarChart3 size={14} />
+                Ver reporte
+              </button>
             </div>
           </div>
 

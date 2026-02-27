@@ -14,7 +14,9 @@ router.get('/children', authenticate, authorize('PARENT'), parentController.getC
 router.get('/child/:studentId', authenticate, authorize('PARENT'), parentController.getChildDetail);
 router.get('/child/:studentId/grades', authenticate, authorize('PARENT'), parentController.getChildGrades);
 router.get('/child/:studentId/activity', authenticate, authorize('PARENT'), parentController.getChildActivity);
-router.get('/child/:studentId/ai-report', authenticate, authorize('PARENT'), parentController.generateAIReport);
+router.get('/child/:studentId/report', authenticate, authorize('PARENT'), parentController.getChildReport);
+router.get('/child/:studentId/ai-report', authenticate, authorize('PARENT'), parentController.getAIReport);
+router.post('/child/:studentId/ai-report/regenerate', authenticate, authorize('PARENT'), parentController.regenerateAIReport);
 router.delete('/child/:studentId', authenticate, authorize('PARENT'), parentController.unlinkChild);
 router.put('/preferences', authenticate, authorize('PARENT'), parentController.updatePreferences);
 

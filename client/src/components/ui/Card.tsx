@@ -29,7 +29,7 @@ export const Card = ({
       transition={{ duration: 0.3 }}
       whileHover={hover ? { y: -4, boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' } : undefined}
       className={`
-        rounded-xl p-6 transition-all duration-200
+        rounded-xl ${className.includes('p-') ? '' : 'p-6'} transition-all duration-200
         ${baseClasses}
         ${className}
       `}

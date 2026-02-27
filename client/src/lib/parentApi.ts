@@ -96,20 +96,111 @@ export interface AIStudentReport {
   studentName: string;
   classroomName: string;
   generatedAt: string;
-  usesCompetencies: boolean;
+  expiresAt: string;
+  cached: boolean;
   summary: string;
+  behaviorAnalysis: string;
   strengths: string[];
   areasToImprove: string[];
   recommendations: string[];
   predictions: string;
   parentTips: string[];
+  weeklyHighlights: string[];
   stats: {
     positiveActions: number;
     negativeActions: number;
     totalXP: number;
-    totalActivities: number;
     badges: number;
+    attendanceRate: number;
+    averageGrade: string | null;
+    loginStreak: number;
   };
+}
+
+export interface ChildReport {
+  studentName: string;
+  classroomName: string;
+  teacherName: string;
+  gradeLevel: string | null;
+  currentBimester: string;
+  generatedAt: string;
+
+  profile: {
+    level: number;
+    xp: number;
+    hp: number;
+    maxHp: number;
+    gp: number;
+    characterClass: string;
+  };
+
+  behaviors: {
+    totalPositive: number;
+    totalNegative: number;
+    recentPositive: number;
+    recentNegative: number;
+    topPositive: Array<{ name: string; description: string | null; icon: string | null; count: number; totalXp: number }>;
+    topNegative: Array<{ name: string; description: string | null; icon: string | null; count: number }>;
+    weeklyPattern: Array<{ day: string; count: number }>;
+    xpByWeek: Array<{ weekLabel: string; xp: number }>;
+  };
+
+  badges: {
+    total: number;
+    list: Array<{
+      name: string;
+      description: string;
+      icon: string;
+      rarity: string;
+      category: string;
+      unlockedAt: string;
+      reason: string | null;
+    }>;
+  };
+
+  attendance: {
+    total: number;
+    present: number;
+    absent: number;
+    late: number;
+    excused: number;
+    rate: number | null;
+    recent: Array<{ date: string; status: string }>;
+  };
+
+  grades: {
+    list: Array<{ competencyName: string; score: number; gradeLabel: string }>;
+    average: number | null;
+    averageLabel: string | null;
+  };
+
+  shop: {
+    totalSpent: number;
+    purchaseCount: number;
+    currentGp: number;
+    recentPurchases: Array<{ itemName: string; category: string | null; price: number; date: string }>;
+  };
+
+  loginStreak: {
+    current: number;
+    longest: number;
+    totalLogins: number;
+    lastLogin: string | null;
+  } | null;
+
+  timedActivities: {
+    total: number;
+    totalPoints: number;
+    exploded: number;
+    recent: Array<{ name: string; points: number; seconds: number | null; date: string }>;
+  };
+
+  clan: {
+    name: string;
+    totalXp: number;
+    wins: number;
+    losses: number;
+  } | null;
 }
 
 // API Functions
@@ -192,10 +283,22 @@ export const parentApi = {
     return response.data.data;
   },
 
-  // Obtener informe IA del estudiante
+  // Obtener reporte completo de un hijo
+  getChildReport: async (studentId: string): Promise<ChildReport> => {
+    const response = await api.get(`/parent/child/${studentId}/report`);
+    return response.data;
+  },
+
+  // Obtener informe IA del estudiante (con cache 24h)
   getAIReport: async (studentId: string): Promise<AIStudentReport> => {
     const response = await api.get(`/parent/child/${studentId}/ai-report`);
-    return response.data;
+    return response.data.data;
+  },
+
+  // Regenerar informe IA (forzar nueva generación)
+  regenerateAIReport: async (studentId: string): Promise<AIStudentReport> => {
+    const response = await api.post(`/parent/child/${studentId}/ai-report/regenerate`);
+    return response.data.data;
   },
 };
 

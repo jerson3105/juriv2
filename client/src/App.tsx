@@ -63,10 +63,15 @@ import { SchoolsPage } from './pages/schools/SchoolsPage';
 // Parent pages
 import ParentDashboard from './pages/parent/ParentDashboard';
 import ChildDetailPage from './pages/parent/ChildDetailPage';
+import ParentReportPage from './pages/parent/ParentReportPage';
+import ParentReportSelector from './pages/parent/ParentReportSelector';
+import ParentAIReportPage from './pages/parent/ParentAIReportPage';
+import ParentAIReportSelector from './pages/parent/ParentAIReportSelector';
 
 // Layout
 import { MainLayout } from './components/layout/MainLayout';
 import { ClassroomLayout } from './components/layout/ClassroomLayout';
+import { ParentLayout } from './components/layout/ParentLayout';
 
 // Store
 import { useAuthStore } from './store/authStore';
@@ -331,18 +336,17 @@ function App() {
             path="/parent"
             element={
               <ProtectedRoute>
-                <ParentDashboard />
+                <ParentLayout />
               </ProtectedRoute>
             }
-          />
-          <Route
-            path="/parent/child/:studentId"
-            element={
-              <ProtectedRoute>
-                <ChildDetailPage />
-              </ProtectedRoute>
-            }
-          />
+          >
+            <Route index element={<ParentDashboard />} />
+            <Route path="child/:studentId" element={<ChildDetailPage />} />
+            <Route path="report" element={<ParentReportSelector />} />
+            <Route path="report/:studentId" element={<ParentReportPage />} />
+            <Route path="ai-report" element={<ParentAIReportSelector />} />
+            <Route path="ai-report/:studentId" element={<ParentAIReportPage />} />
+          </Route>
 
             {/* Catch all */}
             <Route path="*" element={<Navigate to="/dashboard" replace />} />

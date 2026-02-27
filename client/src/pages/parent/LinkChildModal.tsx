@@ -17,7 +17,7 @@ export default function LinkChildModal({ onClose }: LinkChildModalProps) {
     mutationFn: (code: string) => parentApi.linkChild(code),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['parent-children'] });
-      toast.success('¡Hijo vinculado exitosamente!');
+      toast.success('¡Clase vinculada exitosamente!');
       onClose();
     },
     onError: (error: any) => {
@@ -42,7 +42,7 @@ export default function LinkChildModal({ onClose }: LinkChildModalProps) {
           <div className="flex items-center gap-2">
             <Link2 className="text-indigo-600" size={20} />
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Vincular Hijo
+              Ingresar código de clase
             </h2>
           </div>
           <button
@@ -60,14 +60,14 @@ export default function LinkChildModal({ onClose }: LinkChildModalProps) {
               ¿Cómo obtener el código?
             </h3>
             <p className="text-sm text-blue-700 dark:text-blue-400">
-              Solicita el <strong>código de vinculación de padre</strong> al profesor de tu hijo. 
-              El profesor puede generarlo desde la lista de estudiantes de la clase.
+              Solicita el <strong>código de clase</strong> al profesor de tu hijo. 
+              El profesor puede compartirlo desde la configuración de la clase.
             </p>
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Código de vinculación
+              Código de clase
             </label>
             <input
               type="text"
@@ -100,7 +100,7 @@ export default function LinkChildModal({ onClose }: LinkChildModalProps) {
                   Vinculando...
                 </>
               ) : (
-                'Vincular'
+                'Vincular clase'
               )}
             </Button>
           </div>
