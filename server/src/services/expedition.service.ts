@@ -1,4 +1,5 @@
 import { db } from '../db/index.js';
+import { emitUnreadCount } from '../utils/notificationEmitter.js';
 import { 
   expeditions, 
   expeditionPins, 
@@ -794,6 +795,12 @@ export class ExpeditionService {
       awardedXp = pin.rewardXp;
       shouldTriggerXpSideEffects = pin.rewardXp > 0;
     });
+
+    // Emit after tx commit — look up userId since student is scoped inside tx
+    if (shouldTriggerXpSideEffects || awardedXp > 0) {
+      const [sp] = await db.select({ userId: studentProfiles.userId }).from(studentProfiles).where(eq(studentProfiles.id, studentProfileId));
+      if (sp?.userId) await emitUnreadCount(sp.userId);
+    }
 
     if (shouldTriggerXpSideEffects && awardedXp > 0) {
       try {

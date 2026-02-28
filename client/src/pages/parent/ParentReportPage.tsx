@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
+import { useSelectedClassroom } from '../../contexts/SelectedClassroomContext';
 import { motion } from 'framer-motion';
 import {
-  ArrowLeft,
   Heart,
   Zap,
   Coins,
@@ -30,7 +30,9 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 
 export default function ParentReportPage() {
-  const { studentId } = useParams<{ studentId: string }>();
+  const { studentId: paramStudentId } = useParams<{ studentId: string }>();
+  const { selected } = useSelectedClassroom();
+  const studentId = paramStudentId || selected?.studentProfileId;
 
   const { data: report, isLoading, error } = useQuery({
     queryKey: ['parent-child-report', studentId],
@@ -78,10 +80,6 @@ export default function ParentReportPage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <Link to="/parent" className="inline-flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 mb-4 text-sm font-medium transition-colors">
-          <ArrowLeft size={18} />
-          Volver
-        </Link>
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">

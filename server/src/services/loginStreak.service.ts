@@ -3,6 +3,7 @@ import { loginStreaks, studentProfiles, classrooms, notifications, shopItems, pu
 import { eq, and, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { clanService } from './clan.service.js';
+import { createNotification } from '../utils/notificationEmitter.js';
 
 // Configuración por defecto para login streak
 const DEFAULT_LOGIN_STREAK_CONFIG = {
@@ -265,13 +266,11 @@ export const loginStreakService = {
         .where(eq(studentProfiles.id, studentProfileId));
 
       if (profile?.userId) {
-        await db.insert(notifications).values({
-          id: uuidv4(),
+        await createNotification({
           userId: profile.userId,
           type: 'BADGE',
           title: `🔥 ¡Racha de ${milestone.day} días!`,
           message: `Has mantenido tu racha por ${milestone.day} días. Recompensa: +${milestone.xp} XP${milestone.gp > 0 ? `, +${milestone.gp} GP` : ''}${milestone.randomItem ? ' + Item sorpresa' : ''}`,
-          isRead: false,
           createdAt: now,
         });
       }
@@ -294,14 +293,12 @@ export const loginStreakService = {
       
       // Notificar subida de nivel si aplica
       if (leveledUp && student.userId) {
-        await db.insert(notifications).values({
-          id: uuidv4(),
+        await createNotification({
           userId: student.userId,
           classroomId: student.classroomId,
           type: 'LEVEL_UP',
           title: '🎉 ¡Subiste de nivel!',
           message: `¡Felicidades! Has alcanzado el nivel ${newLevel}`,
-          isRead: false,
           createdAt: now,
         });
       }

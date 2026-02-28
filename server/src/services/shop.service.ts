@@ -2,6 +2,7 @@ import { eq, and, desc, gte, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import { badgeService } from './badge.service.js';
+import { createNotification, emitUnreadCount } from '../utils/notificationEmitter.js';
 import { 
   shopItems, 
   purchases, 
@@ -554,6 +555,11 @@ export class ShopService {
       }
     });
 
+    // Emit after tx commit
+    if (student.userId) {
+      await emitUnreadCount(student.userId);
+    }
+
     const purchaserId = purchase.buyerId || purchase.studentId;
     if (purchaserId) {
       await this.checkPurchaseBadges(purchaserId, student.classroomId);
@@ -606,16 +612,13 @@ export class ShopService {
 
     // Notificar al estudiante (solo si tiene cuenta vinculada)
     if (student.userId) {
-      await db.insert(notifications).values({
-        id: uuidv4(),
+      await createNotification({
         userId: student.userId,
         type: 'PURCHASE_REJECTED',
         title: 'Compra rechazada',
         message: reason 
           ? `Tu compra de ${item?.name || 'item'} fue rechazada: ${reason}`
           : `Tu compra de ${item?.name || 'item'} fue rechazada`,
-        isRead: false,
-        createdAt: new Date(),
       });
     }
 
@@ -827,8 +830,7 @@ export class ShopService {
       if (classroom) {
         // Crear notificación para el profesor
         try {
-          await db.insert(notifications).values({
-            id: uuidv4(),
+          await createNotification({
             userId: classroom.teacherId,
             classroomId: student.classroomId,
             type: 'ITEM_USED',
@@ -843,8 +845,6 @@ export class ShopService {
               itemIcon: item.icon,
               itemDescription: item.description,
             },
-            isRead: false,
-            createdAt: now,
           });
         } catch (notifError) {
           console.error('Error creating notification:', notifError);
@@ -970,6 +970,7 @@ export class ShopService {
         eq(notifications.id, notificationId),
         eq(notifications.userId, userId)
       ));
+    await emitUnreadCount(userId);
   }
 
   async markAllNotificationsRead(userId: string) {
@@ -977,6 +978,7 @@ export class ShopService {
       .update(notifications)
       .set({ isRead: true })
       .where(eq(notifications.userId, userId));
+    await emitUnreadCount(userId);
   }
 
   async getUnreadCount(userId: string, classroomId?: string): Promise<number> {

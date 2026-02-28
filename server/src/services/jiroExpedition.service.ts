@@ -1,6 +1,7 @@
 import { eq, and, desc, sql, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
+import { emitUnreadCount } from '../utils/notificationEmitter.js';
 import {
   jiroExpeditions,
   jiroDeliveryStations,
@@ -1694,6 +1695,12 @@ export const jiroExpeditionService = {
       return null;
     });
 
+    // Emit after tx commit — get userId from the xpSideEffects or look up
+    if (xpSideEffects) {
+      const [sp] = await db.select({ userId: studentProfiles.userId }).from(studentProfiles).where(eq(studentProfiles.id, xpSideEffects.studentProfileId));
+      if (sp?.userId) await emitUnreadCount(sp.userId);
+    }
+
     if (xpSideEffects) {
       try {
         await clanService.contributeXpToClan(
@@ -1914,6 +1921,12 @@ export const jiroExpeditionService = {
         xpSideEffects: transactionSideEffects,
       };
     });
+
+    // Emit after tx commit
+    if (xpSideEffects) {
+      const [sp] = await db.select({ userId: studentProfiles.userId }).from(studentProfiles).where(eq(studentProfiles.id, xpSideEffects.studentProfileId));
+      if (sp?.userId) await emitUnreadCount(sp.userId);
+    }
 
     if (xpSideEffects) {
       try {

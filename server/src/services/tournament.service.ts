@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import { clanService } from './clan.service.js';
 import { storyService } from './story.service.js';
+import { emitUnreadCount } from '../utils/notificationEmitter.js';
 import {
   tournaments,
   tournamentParticipants,
@@ -1353,6 +1354,7 @@ class TournamentService {
 
     const now = new Date();
     const xpAwardsForSideEffects: { studentProfileId: string; xpReward: number; reason: string }[] = [];
+    const notifiedUserIds: string[] = [];
 
     await db.transaction(async (tx) => {
       for (const participant of tournament.participants!) {
@@ -1450,6 +1452,7 @@ class TournamentService {
             isRead: false,
             createdAt: now,
           });
+          notifiedUserIds.push(studentProfile.userId);
 
           if (leveledUp) {
             await tx.insert(notifications).values({
@@ -1466,6 +1469,11 @@ class TournamentService {
         }
       }
     });
+
+    // Emit after tx commit
+    for (const uid of [...new Set(notifiedUserIds)]) {
+      await emitUnreadCount(uid);
+    }
 
     for (const xpAward of xpAwardsForSideEffects) {
       try {

@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TimerProvider } from './contexts/TimerContext';
+import { NotificationProvider } from './contexts/NotificationContext';
 
 // Pages
 import { LoginPage } from './pages/auth/LoginPage';
@@ -37,6 +38,7 @@ import { HistoryPage } from './pages/classroom/HistoryPage';
 import { GradebookPage } from './pages/classroom/GradebookPage';
 import { GradebookStatsPage } from './pages/classroom/GradebookStatsPage';
 import { StorytellingPage } from './pages/classroom/StorytellingPage';
+import { AnnouncementsPage } from './pages/classroom/AnnouncementsPage';
 import { StudentScrollsPage } from './pages/student/StudentScrollsPage';
 import { StudentGradesPage } from './pages/student/StudentGradesPage';
 import { StudentExpeditionsPage } from './pages/student/StudentExpeditionsPage';
@@ -64,9 +66,8 @@ import { SchoolsPage } from './pages/schools/SchoolsPage';
 import ParentDashboard from './pages/parent/ParentDashboard';
 import ChildDetailPage from './pages/parent/ChildDetailPage';
 import ParentReportPage from './pages/parent/ParentReportPage';
-import ParentReportSelector from './pages/parent/ParentReportSelector';
 import ParentAIReportPage from './pages/parent/ParentAIReportPage';
-import ParentAIReportSelector from './pages/parent/ParentAIReportSelector';
+import ParentAnnouncementsPage from './pages/parent/ParentAnnouncementsPage';
 
 // Layout
 import { MainLayout } from './components/layout/MainLayout';
@@ -176,6 +177,7 @@ const PublicRoute = ({ children }: { children: React.ReactNode }) => {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <NotificationProvider>
       <TimerProvider>
         <BrowserRouter>
           <Routes>
@@ -240,6 +242,7 @@ function App() {
               <Route path="expeditions" element={<ExpeditionsPage />} />
               <Route path="collectibles" element={<CollectiblesPage />} />
               <Route path="storytelling" element={<StorytellingPage />} />
+              <Route path="announcements" element={<AnnouncementsPage />} />
               <Route path="settings" element={<ClassroomSettingsPage />} />
               <Route path="student/:studentId" element={<StudentDetailPage />} />
             </Route>
@@ -342,10 +345,12 @@ function App() {
           >
             <Route index element={<ParentDashboard />} />
             <Route path="child/:studentId" element={<ChildDetailPage />} />
-            <Route path="report" element={<ParentReportSelector />} />
+            <Route path="report" element={<ParentReportPage />} />
             <Route path="report/:studentId" element={<ParentReportPage />} />
-            <Route path="ai-report" element={<ParentAIReportSelector />} />
+            <Route path="ai-report" element={<ParentAIReportPage />} />
             <Route path="ai-report/:studentId" element={<ParentAIReportPage />} />
+            <Route path="chat" element={<ParentAnnouncementsPage />} />
+            <Route path="chat/announcements/:classroomId" element={<ParentAnnouncementsPage />} />
           </Route>
 
             {/* Catch all */}
@@ -378,6 +383,7 @@ function App() {
           }}
         />
       </TimerProvider>
+      </NotificationProvider>
     </QueryClientProvider>
   );
 }

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { classroomController } from '../controllers/classroom.controller.js';
+import { announcementController } from '../controllers/announcement.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { aiAssistantService } from '../services/aiAssistant.service.js';
 
@@ -60,6 +61,10 @@ router.post('/:id/ai-assistant/execute', authorize('TEACHER'), async (req, res) 
     res.status(500).json({ success: false, message: error.message });
   }
 });
+
+// Avisos (profesor → padres)
+router.post('/:id/announcements', authorize('TEACHER'), announcementController.create.bind(announcementController));
+router.get('/:id/announcements', authorize('TEACHER', 'PARENT'), announcementController.list.bind(announcementController));
 
 // Rutas para estudiantes
 router.post('/join', authorize('STUDENT'), classroomController.join.bind(classroomController));

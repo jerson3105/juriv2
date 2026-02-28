@@ -12,7 +12,9 @@ import { configurePassport } from './config/passport.js';
 import routes from './routes/index.js';
 import { logger, replaceConsole } from './utils/logger.js';
 import { AppError } from './utils/errors.js';
+import { setIO } from './utils/notificationEmitter.js';
 import { eq } from 'drizzle-orm';
+import { announcementService } from './services/announcement.service.js';
 
 // Crear aplicación Express
 const app = express();
@@ -161,9 +163,28 @@ io.use(async (socket, next) => {
   }
 });
 
+// Registrar io en el emitter centralizado
+setIO(io);
+
 // Socket.io eventos con autenticación
 io.on('connection', (socket) => {
   const user = socket.data.user;
+  
+  // Auto-join user to their personal room for notifications
+  socket.join(`user:${user.id}`);
+
+  // Auto-join parents to their children's classroom rooms for announcements
+  if (user.role === 'PARENT') {
+    announcementService.getClassroomIdsForParent(user.id).then(classroomIds => {
+      for (const cid of classroomIds) {
+        socket.join(`classroom:${cid}`);
+      }
+      if (classroomIds.length > 0) {
+        logger.info(`📚 Padre auto-unido a ${classroomIds.length} aula(s)`, { userId: user.id });
+      }
+    }).catch(() => {});
+  }
+  
   logger.info(`🔌 Cliente conectado autenticado`, {
     socketId: socket.id,
     userId: user.id,

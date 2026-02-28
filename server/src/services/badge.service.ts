@@ -3,6 +3,7 @@ import { eq, and, or, inArray, gte } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { clanService } from './clan.service.js';
 import { storyService } from './story.service.js';
+import { emitUnreadCount } from '../utils/notificationEmitter.js';
 import { 
   badges, 
   studentBadges, 
@@ -386,6 +387,8 @@ class BadgeService {
       isDisplayed: false,
     };
 
+    const notifiedUserIds: string[] = [];
+
     await db.transaction(async (tx) => {
       await tx.insert(studentBadges).values(newStudentBadge);
 
@@ -395,7 +398,8 @@ class BadgeService {
           badge.rewardXp,
           badge.rewardGp,
           `Insignia: ${badge.name}`,
-          tx
+          tx,
+          notifiedUserIds
         );
       }
 
@@ -412,8 +416,14 @@ class BadgeService {
           isRead: false,
           createdAt: new Date(),
         });
+        notifiedUserIds.push(student.userId);
       }
     });
+
+    // Emit after tx commit
+    for (const uid of [...new Set(notifiedUserIds)]) {
+      await emitUnreadCount(uid);
+    }
 
     if (badge.rewardXp > 0) {
       const [student] = await db
@@ -472,6 +482,8 @@ class BadgeService {
       isDisplayed: false,
     };
 
+    const notifiedUserIds: string[] = [];
+
     await db.transaction(async (tx) => {
       await tx.insert(studentBadges).values(newStudentBadge);
 
@@ -481,7 +493,8 @@ class BadgeService {
           badge.rewardXp,
           badge.rewardGp,
           `Insignia: ${badge.name}`,
-          tx
+          tx,
+          notifiedUserIds
         );
       }
 
@@ -500,6 +513,7 @@ class BadgeService {
           isRead: false,
           createdAt: new Date(),
         });
+        notifiedUserIds.push(student.userId);
       }
 
       const [classroom] = await tx
@@ -518,8 +532,14 @@ class BadgeService {
           isRead: false,
           createdAt: new Date(),
         });
+        notifiedUserIds.push(classroom.teacherId);
       }
     });
+
+    // Emit after tx commit
+    for (const uid of [...new Set(notifiedUserIds)]) {
+      await emitUnreadCount(uid);
+    }
 
     if (badge.rewardXp > 0) {
       const [student] = await db
@@ -773,7 +793,8 @@ class BadgeService {
     xp: number,
     gp: number,
     reason: string,
-    tx: any = db
+    tx: any = db,
+    notifiedUserIds: string[] = []
   ): Promise<void> {
     if (xp === 0 && gp === 0) return;
 
@@ -839,6 +860,7 @@ class BadgeService {
         isRead: false,
         createdAt: now,
       });
+      notifiedUserIds.push(current.userId);
     }
 
     return;

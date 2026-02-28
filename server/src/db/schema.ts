@@ -710,7 +710,7 @@ export const notifications = mysqlTable('notifications', {
   id: varchar('id', { length: 36 }).primaryKey(),
   userId: varchar('user_id', { length: 36 }).notNull(), // a quien va dirigida
   classroomId: varchar('classroom_id', { length: 36 }),
-  type: mysqlEnum('notification_type', ['ITEM_USED', 'GIFT_RECEIVED', 'BATTLE_STARTED', 'LEVEL_UP', 'POINTS', 'PURCHASE_APPROVED', 'PURCHASE_REJECTED', 'BADGE', 'SCROLL_RECEIVED', 'SCROLL_APPROVED', 'SCROLL_REJECTED']).notNull(),
+  type: mysqlEnum('notification_type', ['ITEM_USED', 'GIFT_RECEIVED', 'BATTLE_STARTED', 'LEVEL_UP', 'POINTS', 'PURCHASE_APPROVED', 'PURCHASE_REJECTED', 'BADGE', 'SCROLL_RECEIVED', 'SCROLL_APPROVED', 'SCROLL_REJECTED', 'ANNOUNCEMENT']).notNull(),
   title: varchar('title', { length: 255 }).notNull(),
   message: text('message').notNull(),
   data: json('data'), // datos adicionales (itemId, studentId, etc)
@@ -2869,3 +2869,30 @@ export type SceneDialogue = typeof sceneDialogues.$inferSelect;
 export type NewSceneDialogue = typeof sceneDialogues.$inferInsert;
 export type StudentSceneView = typeof studentSceneViews.$inferSelect;
 export type StoryDonation = typeof storyDonations.$inferSelect;
+
+// ==================== AVISOS (PROFESOR → PADRES) ====================
+
+export const announcements = mysqlTable('announcements', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
+  teacherId: varchar('teacher_id', { length: 36 }).notNull(),
+  message: text('message').notNull(),
+  createdAt: datetime('created_at').notNull(),
+}, (table) => ({
+  classroomIdx: index('idx_announcements_classroom').on(table.classroomId),
+  classroomDateIdx: index('idx_announcements_classroom_date').on(table.classroomId, table.createdAt),
+}));
+
+export const announcementsRelations = relations(announcements, ({ one }) => ({
+  classroom: one(classrooms, {
+    fields: [announcements.classroomId],
+    references: [classrooms.id],
+  }),
+  teacher: one(users, {
+    fields: [announcements.teacherId],
+    references: [users.id],
+  }),
+}));
+
+export type Announcement = typeof announcements.$inferSelect;
+export type NewAnnouncement = typeof announcements.$inferInsert;

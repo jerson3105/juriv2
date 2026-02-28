@@ -4,6 +4,7 @@ import { Bell, X, Check, CheckCheck, Clock, XCircle } from 'lucide-react';
 import { shopApi, type Notification } from '../lib/shopApi';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/authStore';
+import { useNotifications } from '../contexts/NotificationContext';
 
 interface NotificationsPanelProps {
   isOpen: boolean;
@@ -11,52 +12,47 @@ interface NotificationsPanelProps {
   classroomId?: string; // Opcional: filtrar notificaciones por clase
 }
 
-const getHttpStatusFromError = (error: unknown): number | undefined => {
-  if (!error || typeof error !== 'object') {
-    return undefined;
-  }
-
-  const candidate = error as { response?: { status?: number } };
-  return candidate.response?.status;
-};
-
-const getPollingInterval = (error: unknown, intervalMs: number): number | false => {
-  return getHttpStatusFromError(error) === 429 ? false : intervalMs;
-};
 
 export const NotificationsPanel = ({ isOpen, onClose, classroomId }: NotificationsPanelProps) => {
   const queryClient = useQueryClient();
+  const { unreadCount: contextUnreadCount, setUnreadCount } = useNotifications();
 
   const { data: notifications = [], isLoading } = useQuery({
     queryKey: ['notifications', classroomId],
     queryFn: () => shopApi.getNotifications({ classroomId }),
     enabled: isOpen,
-    refetchInterval: (query) => getPollingInterval(query.state.error, 30000), // Refrescar cada 30 segundos
-    refetchIntervalInBackground: false,
   });
 
   const markReadMutation = useMutation({
     mutationFn: shopApi.markNotificationRead,
+    onMutate: () => {
+      // Optimistic: decrement count
+      setUnreadCount(Math.max(0, contextUnreadCount - 1));
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
-      queryClient.invalidateQueries({ queryKey: ['unread-count'] });
     },
   });
 
   const markAllReadMutation = useMutation({
     mutationFn: shopApi.markAllNotificationsRead,
+    onMutate: () => {
+      // Optimistic: set count to 0
+      setUnreadCount(0);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
-      queryClient.invalidateQueries({ queryKey: ['unread-count'] });
       toast.success('Todas las notificaciones marcadas como leídas');
     },
   });
 
   const approveUsageMutation = useMutation({
     mutationFn: (usageId: string) => shopApi.reviewUsage(usageId, 'APPROVED'),
+    onMutate: () => {
+      setUnreadCount(Math.max(0, contextUnreadCount - 1));
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
-      queryClient.invalidateQueries({ queryKey: ['unread-count'] });
       queryClient.invalidateQueries({ queryKey: ['pending-usages'] });
       toast.success('Uso de item aprobado');
     },
@@ -65,9 +61,11 @@ export const NotificationsPanel = ({ isOpen, onClose, classroomId }: Notificatio
 
   const rejectUsageMutation = useMutation({
     mutationFn: (usageId: string) => shopApi.reviewUsage(usageId, 'REJECTED'),
+    onMutate: () => {
+      setUnreadCount(Math.max(0, contextUnreadCount - 1));
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
-      queryClient.invalidateQueries({ queryKey: ['unread-count'] });
       queryClient.invalidateQueries({ queryKey: ['pending-usages'] });
       toast.success('Uso de item rechazado');
     },
@@ -291,14 +289,9 @@ const NotificationItem = ({
   );
 };
 
-// Botón de notificaciones para el header
-export const NotificationsBell = ({ onClick, classroomId }: { onClick: () => void; classroomId?: string }) => {
-  const { data: count = 0 } = useQuery({
-    queryKey: ['unread-count', classroomId],
-    queryFn: () => shopApi.getUnreadCount(classroomId),
-    refetchInterval: (query) => getPollingInterval(query.state.error, 30000),
-    refetchIntervalInBackground: false,
-  });
+// Botón de notificaciones para el header — uses socket-driven context, no polling
+export const NotificationsBell = ({ onClick }: { onClick: () => void; classroomId?: string }) => {
+  const { unreadCount: count } = useNotifications();
 
   return (
     <button

@@ -6,6 +6,7 @@ import { avatarService } from './avatar.service.js';
 import { clanService } from './clan.service.js';
 import { badgeService } from './badge.service.js';
 import { storyService } from './story.service.js';
+import { prepareForTx } from '../utils/notificationEmitter.js';
 
 type CharacterClass = 'GUARDIAN' | 'ARCANE' | 'EXPLORER' | 'ALCHEMIST';
 type PointType = 'XP' | 'HP' | 'GP';
@@ -264,6 +265,8 @@ export class StudentService {
       });
     }
 
+    const notifTx = prepareForTx(notificationsBatch);
+
     await db.transaction(async (tx) => {
       await tx.update(studentProfiles)
         .set(updateData)
@@ -271,10 +274,12 @@ export class StudentService {
 
       await tx.insert(pointLogs).values(pointLogEntry);
 
-      if (notificationsBatch.length > 0) {
-        await tx.insert(notifications).values(notificationsBatch);
+      if (notifTx.entries.length > 0) {
+        await tx.insert(notifications).values(notifTx.entries);
       }
     });
+
+    await notifTx.emitAfterCommit();
 
     // Contribuir XP al clan si está habilitado
     if (data.pointType === 'XP' && data.amount > 0) {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -9,17 +9,109 @@ import {
   Menu,
   X,
   ChevronDown,
+  Megaphone,
+  GraduationCap,
+  Check,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { ThemeToggle } from '../ui/ThemeToggle';
+import { SelectedClassroomProvider, useSelectedClassroom } from '../../contexts/SelectedClassroomContext';
+import type { ChildSummary } from '../../lib/parentApi';
 
 const parentNavItems = [
   { path: '/parent', label: 'Inicio', icon: Home, gradient: 'from-indigo-500 to-purple-500', exact: true },
   { path: '/parent/report', label: 'Reportes', icon: BarChart3, gradient: 'from-emerald-500 to-teal-500', exact: false },
   { path: '/parent/ai-report', label: 'Informe inteligente', icon: Sparkles, gradient: 'from-purple-500 to-pink-500', exact: false },
+  { path: '/parent/chat', label: 'Avisos', icon: Megaphone, gradient: 'from-cyan-500 to-blue-500', exact: false },
 ];
 
 export const ParentLayout = () => {
+  return (
+    <SelectedClassroomProvider>
+      <ParentLayoutInner />
+    </SelectedClassroomProvider>
+  );
+};
+
+function ClassroomSelector() {
+  const { children, selected, setSelected, hasMultipleChildren, isLoading } = useSelectedClassroom();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  if (isLoading || !hasMultipleChildren || !selected) return null;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors max-w-[260px]"
+      >
+        <GraduationCap size={16} className="text-indigo-500 flex-shrink-0" />
+        <span className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">
+          {selected.classroomName}
+        </span>
+        <ChevronDown size={14} className={`text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -8, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.95 }}
+            transition={{ duration: 0.15 }}
+            className="absolute left-0 mt-1 w-72 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 py-1 z-50"
+          >
+            <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-700">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Seleccionar clase</p>
+            </div>
+            {children.map((child: ChildSummary) => {
+              const isActive = child.studentProfileId === selected.studentProfileId;
+              return (
+                <button
+                  key={child.studentProfileId}
+                  onClick={() => { setSelected(child); setOpen(false); }}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${
+                    isActive
+                      ? 'bg-indigo-50 dark:bg-indigo-900/30'
+                      : 'hover:bg-gray-50 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                    isActive
+                      ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-500'
+                  }`}>
+                    <GraduationCap size={14} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium truncate ${isActive ? 'text-indigo-700 dark:text-indigo-300' : 'text-gray-800 dark:text-white'}`}>
+                      {child.classroomName}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                      {child.studentName} · {child.teacherName}
+                    </p>
+                  </div>
+                  {isActive && <Check size={16} className="text-indigo-500 flex-shrink-0" />}
+                </button>
+              );
+            })}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+const ParentLayoutInner = () => {
   const { user, logout } = useAuthStore();
   const location = useLocation();
   const navigate = useNavigate();
@@ -160,6 +252,9 @@ export const ParentLayout = () => {
             >
               <Menu size={20} />
             </button>
+
+            {/* Classroom Selector */}
+            <ClassroomSelector />
 
             {/* Spacer */}
             <div className="flex-1" />

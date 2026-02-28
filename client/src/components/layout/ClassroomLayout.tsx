@@ -33,6 +33,7 @@ import {
   Scroll,
   ClipboardList,
   Album,
+  Megaphone,
 } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
@@ -163,6 +164,12 @@ export const ClassroomLayout = () => {
       icon: ClipboardList,
       gradient: 'from-pink-500 to-rose-500',
     }] : []),
+    { 
+      path: `/classroom/${id}/announcements`, 
+      label: 'Avisos', 
+      icon: Megaphone,
+      gradient: 'from-cyan-500 to-blue-500',
+    },
     { 
       path: `/classroom/${id}/reports`, 
       label: 'Estadísticas', 

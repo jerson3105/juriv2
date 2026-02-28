@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { badgeService } from './badge.service.js';
 import { clanService } from './clan.service.js';
 import { storyService } from './story.service.js';
+import { prepareForTx } from '../utils/notificationEmitter.js';
 
 type PointType = 'XP' | 'HP' | 'GP';
 
@@ -454,6 +455,8 @@ export class BehaviorService {
       });
     }
 
+    const notifTx = prepareForTx(notificationsBatch);
+
     await db.transaction(async (tx) => {
       for (const update of studentUpdates) {
         await tx.update(studentProfiles)
@@ -465,10 +468,12 @@ export class BehaviorService {
         await tx.insert(pointLogs).values(pointLogsBatch);
       }
 
-      if (notificationsBatch.length > 0) {
-        await tx.insert(notifications).values(notificationsBatch);
+      if (notifTx.entries.length > 0) {
+        await tx.insert(notifications).values(notifTx.entries);
       }
     });
+
+    await notifTx.emitAfterCommit();
 
     // Side effects externos: ejecutar solo después de confirmar cambios de puntos
     for (const xpAward of xpAwardsForSideEffects) {

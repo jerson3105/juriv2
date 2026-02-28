@@ -10,6 +10,7 @@ import {
   notifications,
   teams
 } from '../db/index.js';
+import { createNotification, createNotifications } from '../utils/notificationEmitter.js';
 import type { 
   Scroll, 
   NewScroll, 
@@ -162,6 +163,7 @@ class ScrollService {
       id: studentProfiles.id,
       classroomId: studentProfiles.classroomId,
       isActive: studentProfiles.isActive,
+      characterName: studentProfiles.characterName,
     })
       .from(studentProfiles)
       .where(eq(studentProfiles.id, data.authorId));
@@ -267,6 +269,20 @@ class ScrollService {
     if (!classroom.scrollsRequireApproval) {
       try {
         await this.notifyRecipients(scrollId);
+      } catch {
+        // Silently fail - don't break scroll creation
+      }
+    } else {
+      // Notificar al profesor que hay un pergamino pendiente de aprobación
+      try {
+        await createNotification({
+          userId: classroom.teacherId,
+          classroomId: data.classroomId,
+          type: 'SCROLL_RECEIVED',
+          title: '📜 Pergamino pendiente de aprobación',
+          message: `${author.characterName || 'Un estudiante'} ha enviado un pergamino que requiere tu aprobación`,
+          data: JSON.stringify({ scrollId }),
+        });
       } catch {
         // Silently fail - don't break scroll creation
       }
@@ -775,7 +791,7 @@ class ScrollService {
     }));
     
     if (notificationValues.length > 0) {
-      await db.insert(notifications).values(notificationValues);
+      await createNotifications(notificationValues);
     }
   }
 
@@ -793,8 +809,7 @@ class ScrollService {
     
     if (!author?.userId) return;
     
-    await db.insert(notifications).values({
-      id: uuidv4(),
+    await createNotification({
       userId: author.userId,
       classroomId: scroll.classroomId,
       type: approved ? 'SCROLL_APPROVED' : 'SCROLL_REJECTED',
@@ -803,8 +818,6 @@ class ScrollService {
         ? 'Tu mensaje ha sido aprobado y ya está visible en el mural'
         : `Tu mensaje fue rechazado: ${reason || 'Sin razón especificada'}`,
       data: JSON.stringify({ scrollId }),
-      isRead: false,
-      createdAt: new Date(),
     });
   }
 }

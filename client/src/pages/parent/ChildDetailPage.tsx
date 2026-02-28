@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useParams, Link } from 'react-router-dom';
+import { useSelectedClassroom } from '../../contexts/SelectedClassroomContext';
 import { 
-  ArrowLeft, 
   BookOpen, 
   Activity, 
   AlertTriangle,
@@ -31,7 +31,9 @@ import { useState } from 'react';
 type TabType = 'resumen' | 'calificaciones' | 'actividad';
 
 export default function ChildDetailPage() {
-  const { studentId } = useParams<{ studentId: string }>();
+  const { studentId: paramStudentId } = useParams<{ studentId: string }>();
+  const { selected } = useSelectedClassroom();
+  const studentId = paramStudentId || selected?.studentProfileId;
   const [activeTab, setActiveTab] = useState<TabType>('resumen');
   const { data: detail, isLoading, error } = useQuery({
     queryKey: ['parent-child-detail', studentId],
@@ -76,11 +78,6 @@ export default function ChildDetailPage() {
     <div>
       {/* Info del estudiante */}
       <div className="mb-6">
-        <Link to="/parent" className="inline-flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 mb-4 text-sm font-medium transition-colors">
-          <ArrowLeft size={18} />
-          Volver
-        </Link>
-        
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">

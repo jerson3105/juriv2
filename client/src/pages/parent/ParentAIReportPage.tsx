@@ -1,8 +1,7 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
-  ArrowLeft,
   Sparkles,
   RefreshCw,
   Clock,
@@ -21,6 +20,7 @@ import {
 import { parentApi } from '../../lib/parentApi';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
+import { useSelectedClassroom } from '../../contexts/SelectedClassroomContext';
 
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('es-PE', {
@@ -42,7 +42,9 @@ function timeUntilExpiry(expiresAt: string) {
 }
 
 export default function ParentAIReportPage() {
-  const { studentId } = useParams<{ studentId: string }>();
+  const { studentId: paramStudentId } = useParams<{ studentId: string }>();
+  const { selected } = useSelectedClassroom();
+  const studentId = paramStudentId || selected?.studentProfileId;
   const queryClient = useQueryClient();
 
   const { data: report, isLoading, error } = useQuery({
@@ -64,9 +66,6 @@ export default function ParentAIReportPage() {
     return (
       <div>
         <div className="flex items-center gap-3 mb-6">
-          <Link to="/parent/ai-report" className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
-            <ArrowLeft size={20} className="text-gray-600 dark:text-gray-400" />
-          </Link>
           <div className="p-2 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl">
             <Sparkles className="w-6 h-6 text-white" />
           </div>
@@ -91,9 +90,9 @@ export default function ParentAIReportPage() {
     return (
       <div>
         <div className="flex items-center gap-3 mb-6">
-          <Link to="/parent/ai-report" className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
-            <ArrowLeft size={20} className="text-gray-600 dark:text-gray-400" />
-          </Link>
+          <div className="p-2 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl">
+            <Sparkles className="w-6 h-6 text-white" />
+          </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Informe inteligente</h1>
         </div>
         <Card className="p-8 text-center">
@@ -117,9 +116,6 @@ export default function ParentAIReportPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div className="flex items-center gap-3">
-          <Link to="/parent/ai-report" className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
-            <ArrowLeft size={20} className="text-gray-600 dark:text-gray-400" />
-          </Link>
           <div className="p-2 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl">
             <Sparkles className="w-6 h-6 text-white" />
           </div>
