@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { useAuthStore } from '../store/authStore';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
@@ -38,8 +39,7 @@ const runTokenRefresh = async () => {
 
     const { accessToken, refreshToken: newRefreshToken } = response.data.data;
 
-    localStorage.setItem('accessToken', accessToken);
-    localStorage.setItem('refreshToken', newRefreshToken);
+    useAuthStore.getState().setTokens(accessToken, newRefreshToken);
 
     return { accessToken, refreshToken: newRefreshToken };
   })();
@@ -79,7 +79,7 @@ api.interceptors.response.use(
       status === 401 &&
       !isAuthRoute &&
       !originalRequest._retry &&
-      (code === 'TOKEN_EXPIRED' || message === 'Token de acceso no proporcionado' || message === 'Token inválido')
+      (code === 'TOKEN_EXPIRED' || message === 'Token expirado' || message === 'Token de acceso no proporcionado' || message === 'Token inválido')
     ) {
       originalRequest._retry = true;
 

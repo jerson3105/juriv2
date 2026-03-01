@@ -24,6 +24,7 @@ interface AuthState {
   fetchUser: () => Promise<void>;
   clearError: () => void;
   setAuth: (data: AuthData) => void;
+  setTokens: (accessToken: string, refreshToken: string) => void;
   updateUser: (data: Partial<User>) => void;
 }
 
@@ -47,6 +48,12 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: true,
           error: null,
         });
+      },
+
+      setTokens: (accessToken: string, refreshToken: string) => {
+        localStorage.setItem('accessToken', accessToken);
+        localStorage.setItem('refreshToken', refreshToken);
+        set({ accessToken, refreshToken });
       },
 
       updateUser: (data: Partial<User>) => {
