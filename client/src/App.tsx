@@ -78,7 +78,8 @@ import { ParentLayout } from './components/layout/ParentLayout';
 import { useAuthStore } from './store/authStore';
 
 // Onboarding
-import { OnboardingProvider } from './components/onboarding';
+import { TeacherOnboardingProvider, useTeacherOnboarding } from './contexts/TeacherOnboardingContext';
+import TeacherOnboardingFlow from './pages/onboarding/TeacherOnboardingFlow';
 
 // Dashboard Router - redirige según el rol
 const DashboardRouter = () => {
@@ -99,16 +100,25 @@ const DashboardRouter = () => {
   return <TeacherDashboard />;
 };
 
-// Teacher Layout - envuelve las rutas de profesor con OnboardingProvider
+// Inner component that checks onboarding status
+const TeacherOnboardingGate = () => {
+  const { needsOnboarding, isLoading } = useTeacherOnboarding();
+
+  if (isLoading) return null; // Don't flash anything while loading
+  if (needsOnboarding) return <TeacherOnboardingFlow />;
+
+  return <MainLayout />;
+};
+
+// Teacher Layout - envuelve las rutas de profesor con providers
 const TeacherMainLayout = () => {
   const { user } = useAuthStore();
   
-  // Solo envolver en OnboardingProvider si es profesor
   if (user?.role === 'TEACHER') {
     return (
-      <OnboardingProvider>
-        <MainLayout />
-      </OnboardingProvider>
+      <TeacherOnboardingProvider>
+        <TeacherOnboardingGate />
+      </TeacherOnboardingProvider>
     );
   }
   

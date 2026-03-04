@@ -349,7 +349,6 @@ export const StudentsPage = () => {
                 size="sm"
                 onClick={() => openBehaviorModal('positive')}
                 disabled={selectedStudents.size === 0}
-                data-onboarding="give-points-btn"
                 className="!bg-green-500 hover:!bg-green-600 !text-white text-xs px-2 py-1.5"
               >
                 <Zap size={14} />
@@ -422,10 +421,13 @@ export const StudentsPage = () => {
             <Users className="w-8 h-8 text-blue-500" />
           </div>
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-2">
-            Sin estudiantes
+            Agregá a tus estudiantes
           </h3>
+          <p className="text-gray-600 dark:text-gray-300 text-sm mb-2 max-w-md mx-auto">
+            Agregá a tus estudiantes para empezar a gamificar tu clase. Podés hacerlo uno por uno o compartiendo el código de clase.
+          </p>
           <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
-            Comparte el código <span className="font-mono font-bold px-2 py-1 bg-blue-100 text-blue-700 rounded">{classroom.code}</span> con tus estudiantes
+            Código: <span className="font-mono font-bold px-2 py-1 bg-blue-100 text-blue-700 rounded">{classroom.code}</span>
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <Button
@@ -433,11 +435,11 @@ export const StudentsPage = () => {
               onClick={() => setShowAddPlaceholderModal(true)}
             >
               <Users className="w-4 h-4 mr-2" />
-              Añadir estudiantes sin cuenta
+              Agregar estudiante
             </Button>
           </div>
           <p className="text-xs text-gray-400 mt-4">
-            Crea estudiantes que podrán vincular su cuenta después
+            Los estudiantes también pueden unirse con el código de clase desde su cuenta
           </p>
         </Card>
       ) : (
@@ -1450,7 +1452,7 @@ const PointsModal = ({
             </div>
 
             {/* Tabs */}
-            <div data-onboarding="points-modal-tabs" className="flex border-b border-gray-200 dark:border-gray-700">
+            <div className="flex border-b border-gray-200 dark:border-gray-700">
               <button
                 onClick={() => setActiveTab('behaviors')}
                 className={`flex-1 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
@@ -1466,7 +1468,6 @@ const PointsModal = ({
               </button>
               <button
                 onClick={() => setActiveTab('manual')}
-                data-onboarding="manual-tab-btn"
                 className={`flex-1 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
                   activeTab === 'manual'
                     ? isPositive 
@@ -1610,7 +1611,7 @@ const PointsModal = ({
                   </ul>
                 </div>
 
-                <form onSubmit={handleManualSubmit} data-onboarding="manual-section" className="space-y-4">
+                <form onSubmit={handleManualSubmit} className="space-y-4">
                   {/* Tipo de punto */}
                   <div>
                     <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">

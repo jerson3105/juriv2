@@ -575,7 +575,7 @@ export const QuestionBanksPage = () => {
           </div>
           <div>
             <h1 className="text-xl font-bold text-gray-800 dark:text-white">
-              {viewMode === 'banks' ? 'Banco de Preguntas' : selectedBank?.name}
+              {viewMode === 'banks' ? 'Preguntas' : selectedBank?.name}
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">
               {viewMode === 'banks' 
@@ -1449,7 +1449,7 @@ const BankModal = ({ isOpen, onClose, onSubmit, onDelete, initialData, isLoading
                 <BookOpen className="w-5 h-5 text-white" />
               </div>
               <h2 className="text-xl font-bold text-gray-800 dark:text-white">
-                {initialData ? 'Editar Banco' : 'Nuevo Banco de Preguntas'}
+                {initialData ? 'Editar banco' : 'Nuevo banco de preguntas'}
               </h2>
             </div>
             <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">

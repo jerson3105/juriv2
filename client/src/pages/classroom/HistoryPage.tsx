@@ -259,7 +259,7 @@ export const HistoryPage = () => {
         </div>
         <div>
           <h1 className="text-lg font-bold text-gray-800 dark:text-white">
-            Historial de Actividades
+            Registro de actividad
           </h1>
           <p className="text-xs text-gray-500 dark:text-gray-400">
             Registro completo de puntos, compras y uso de items

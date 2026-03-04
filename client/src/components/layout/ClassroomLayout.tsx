@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Outlet, useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -34,19 +34,48 @@ import {
   ClipboardList,
   Album,
   Megaphone,
+  MessageCircle,
+  BookMarked,
 } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
-import { useClassroomOnboardingStore } from '../../store/classroomOnboardingStore';
 import { classroomApi } from '../../lib/classroomApi';
 import { NotificationsBell, NotificationsPanel } from '../NotificationsPanel';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { BugReportButton } from '../BugReportButton';
-import { ClassroomOnboardingProvider } from '../onboarding';
-import { HelpCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { AIAssistantWidget } from '../classroom/AIAssistantWidget';
 import { ParticleLayer } from '../story/ParticleLayer';
+import { useTeacherOnboardingSafe } from '../../contexts/TeacherOnboardingContext';
+
+const FEATURE_LABELS: Record<string, string> = {
+  students: 'Estudiantes',
+  behaviors: 'Comportamientos',
+  rankings: 'Rankings',
+  grades: 'Calificaciones',
+  settings: 'Configuración',
+  badges: 'Insignias',
+  shop: 'Tienda',
+  clans: 'Clanes',
+  attendance: 'Asistencia',
+  collectibles: 'Coleccionables',
+  storytelling: 'Historia de clase',
+  expedition: 'Expediciones',
+  question_bank: 'Preguntas',
+  activities: 'Actividades',
+};
+
+const FEATURE_INFO: Record<string, { emoji: string; description: string }> = {
+  badges: { emoji: '\u{1F3C5}', description: 'Reconoce logros específicos de tus estudiantes con trofeos permanentes.' },
+  shop: { emoji: '\u{1F6CD}\uFE0F', description: 'Tus estudiantes canjean sus puntos por recompensas que vos creás.' },
+  clans: { emoji: '\u2694\uFE0F', description: 'Divide tu clase en equipos que compiten y colaboran entre sí.' },
+  attendance: { emoji: '\u{1F4CB}', description: 'Registra la asistencia diaria de tus estudiantes desde el aula.' },
+  collectibles: { emoji: '\u{1F4E6}', description: 'Tus estudiantes coleccionan cromos que pueden comprar con sus monedas (GP).' },
+  storytelling: { emoji: '\u{1F4D6}', description: 'Crea una historia narrativa de fondo para tu clase que ambienta la experiencia.' },
+  expedition: { emoji: '\u{1F5FA}\uFE0F', description: 'Aventuras de aprendizaje con mapas interactivos donde los estudiantes exploran y completan misiones. Incluye la Expedición de Jiro con bancos de preguntas y sistema de energía.' },
+  question_bank: { emoji: '\u2753', description: 'Crea y organiza preguntas para usar en Expediciones y Torneos.' },
+  activities: { emoji: '\u26A1', description: 'Herramientas interactivas para dinamizar tu clase: Ruleta del Destino, Torneos, Aula Zen, Actividades de Tiempo, Pergaminos del Aula y más.' },
+};
 
 export const ClassroomLayout = () => {
   const { id } = useParams<{ id: string }>();
@@ -57,21 +86,14 @@ export const ClassroomLayout = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [studentsMenuOpen, setStudentsMenuOpen] = useState(true);
   const [gamificationMenuOpen, setGamificationMenuOpen] = useState(false);
+  const [claseMenuOpen, setClaseMenuOpen] = useState(false);
+  const [comunicacionMenuOpen, setComunicacionMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showExpeditionsModal, setShowExpeditionsModal] = useState(false);
+  const [showUnlockModal, setShowUnlockModal] = useState(false);
+  const [earlyUnlockConfirm, setEarlyUnlockConfirm] = useState<{ features: string[]; label: string } | null>(null);
   const { logout } = useAuthStore();
-  const { openWelcomeModal, hasCompletedForClassroom, isActive: isOnboardingActive, currentStep } = useClassroomOnboardingStore();
-
-  // Abrir submenús automáticamente durante el onboarding
-  // Pasos: 0=welcome, 1=students-menu, 2=students-list, 3=select-student, 4=give-points-btn, 5=modal-tabs, 6=manual-tab, 7=complete
-  useEffect(() => {
-    if (isOnboardingActive) {
-      // Paso 1-2: Menú de estudiantes
-      if (currentStep === 1 || currentStep === 2) {
-        setStudentsMenuOpen(true);
-      }
-    }
-  }, [isOnboardingActive, currentStep]);
+  const onboarding = useTeacherOnboardingSafe();
 
   const { data: classroom, isLoading, refetch } = useQuery({
     queryKey: ['classroom', id],
@@ -111,17 +133,18 @@ export const ClassroomLayout = () => {
     setTimeout(() => setCopiedCode(false), 2000);
   };
 
-  const menuItems = [
+  const allMenuItems = [
     { 
       label: 'Estudiantes', 
       icon: Users,
       gradient: 'from-blue-500 to-indigo-500',
       menuKey: 'students',
       onboardingId: 'students-menu',
+      featureKey: 'students',
       subItems: [
-        { path: `/classroom/${id}/students`, label: 'Lista', icon: List, onboardingId: 'students-list' },
-        { path: `/classroom/${id}/clans`, label: 'Clanes', icon: Users },
-        { path: `/classroom/${id}/attendance`, label: 'Asistencia', icon: CalendarCheck },
+        { path: `/classroom/${id}/students`, label: 'Lista', icon: List, onboardingId: 'students-list', featureKey: 'students' },
+        { path: `/classroom/${id}/clans`, label: 'Clanes', icon: Users, featureKey: 'clans' },
+        { path: `/classroom/${id}/attendance`, label: 'Asistencia', icon: CalendarCheck, featureKey: 'attendance' },
       ],
     },
     { 
@@ -130,46 +153,43 @@ export const ClassroomLayout = () => {
       gradient: 'from-amber-500 to-orange-500',
       menuKey: 'gamification',
       onboardingId: 'gamification-menu',
+      featureKey: 'behaviors',
       subItems: [
-        { path: `/classroom/${id}/behaviors`, label: 'Comportamientos', icon: Award, onboardingId: 'behaviors-menu' },
-        { path: `/classroom/${id}/badges`, label: 'Insignias', icon: Medal },
-        { path: `/classroom/${id}/shop`, label: 'Tienda', icon: ShoppingBag, onboardingId: 'shop-menu' },
-        { path: `/classroom/${id}/collectibles`, label: 'Coleccionables', icon: Album },
-        { path: `/classroom/${id}/rankings`, label: 'Rankings', icon: Trophy },
-        { path: `/classroom/${id}/storytelling`, label: 'Storytelling', icon: Sparkles },
+        { path: `/classroom/${id}/behaviors`, label: 'Comportamientos', icon: Award, onboardingId: 'behaviors-menu', featureKey: 'behaviors' },
+        { path: `/classroom/${id}/badges`, label: 'Insignias', icon: Medal, featureKey: 'badges' },
+        { path: `/classroom/${id}/shop`, label: 'Tienda', icon: ShoppingBag, onboardingId: 'shop-menu', featureKey: 'shop' },
+        { path: `/classroom/${id}/collectibles`, label: 'Coleccionables', icon: Album, featureKey: 'collectibles' },
+        { path: `/classroom/${id}/rankings`, label: 'Rankings', icon: Trophy, featureKey: 'rankings' },
+        { path: `/classroom/${id}/storytelling`, label: 'Historia de clase', icon: Sparkles, featureKey: 'storytelling' },
       ],
     },
     { 
-      path: `/classroom/${id}/activities`, 
-      label: 'Actividades', 
-      icon: Dices,
+      label: 'Clase', 
+      icon: BookMarked,
       gradient: 'from-emerald-500 to-teal-500',
+      menuKey: 'clase',
+      featureKey: 'activities',
+      subItems: [
+        { path: `/classroom/${id}/activities`, label: 'Actividades', icon: Dices, featureKey: 'activities' },
+        { path: `/classroom/${id}/question-banks`, label: 'Preguntas', icon: BookOpen, featureKey: 'question_bank' },
+        ...(classroom?.useCompetencies ? [{ path: `/classroom/${id}/gradebook`, label: 'Calificaciones', icon: ClipboardList, featureKey: 'grades' }] : []),
+        { path: `/classroom/${id}/history`, label: 'Registro de actividad', icon: Scroll },
+      ],
     },
     { 
-      path: `/classroom/${id}/question-banks`, 
-      label: 'Banco de Preguntas', 
-      icon: BookOpen,
-      gradient: 'from-indigo-500 to-purple-500',
-    },
-    { 
-      path: `/classroom/${id}/history`, 
-      label: 'Historial', 
-      icon: Scroll,
-      gradient: 'from-blue-500 to-cyan-500',
-    },
-    // Solo mostrar Calificaciones si la clase usa competencias
-    ...(classroom?.useCompetencies ? [{ 
-      path: `/classroom/${id}/gradebook`, 
-      label: 'Calificaciones', 
-      icon: ClipboardList,
-      gradient: 'from-pink-500 to-rose-500',
-    }] : []),
-    { 
-      path: `/classroom/${id}/announcements`, 
-      label: 'Avisos', 
+      label: 'Comunicación', 
       icon: Megaphone,
       gradient: 'from-cyan-500 to-blue-500',
+      menuKey: 'comunicacion',
+      subItems: [
+        { path: `/classroom/${id}/announcements`, label: 'Avisos', icon: Megaphone },
+        ...(classroom?.scrollsEnabled ? [{ path: `/classroom/${id}/activities`, label: 'Chats', icon: MessageCircle }] : []),
+      ],
     },
+  ];
+
+  // Bottom items — separated visually from groups
+  const bottomMenuItems = [
     { 
       path: `/classroom/${id}/reports`, 
       label: 'Estadísticas', 
@@ -182,8 +202,36 @@ export const ClassroomLayout = () => {
       label: 'Configuración', 
       icon: Settings,
       gradient: 'from-gray-500 to-slate-500',
+      featureKey: 'settings',
     },
   ];
+
+  // Helper: check if a feature is unlocked
+  const isUnlocked = (featureKey?: string) => {
+    if (!featureKey) return true; // Items without featureKey are always visible
+    if (!onboarding) return true; // No onboarding context → show everything
+    return onboarding.isFeatureUnlocked(featureKey);
+  };
+
+  // Helper: check if a feature has "¡Nuevo!" badge
+  const isNewFeature = (featureKey?: string) => {
+    if (!featureKey || !onboarding) return false;
+    return onboarding.isFeatureNew(featureKey);
+  };
+
+  // Filter menu items based on unlocked features
+  const menuItems = allMenuItems
+    .map((item) => {
+      if ('subItems' in item && item.subItems) {
+        const filteredSubs = item.subItems.filter(sub => isUnlocked((sub as any).featureKey));
+        // Show parent menu if at least one sub-item is visible
+        if (filteredSubs.length === 0) return null;
+        return { ...item, subItems: filteredSubs };
+      }
+      if (!isUnlocked((item as any).featureKey)) return null;
+      return item;
+    })
+    .filter(Boolean) as typeof allMenuItems;
 
   const isActive = (path: string, exact?: boolean) => {
     if (!path) return false;
@@ -316,7 +364,6 @@ export const ClassroomLayout = () => {
                 </h2>
                 <button
                   onClick={copyCode}
-                  data-onboarding="class-code"
                   className={`flex items-center gap-1 text-xs transition-colors ${hasStoryTheme ? 'text-white/60 hover:text-white/80' : 'text-blue-600 hover:text-blue-700'}`}
                 >
                   <span className={`font-mono px-1.5 py-0.5 rounded ${hasStoryTheme ? 'bg-white/10' : 'bg-blue-50 dark:bg-blue-900/30'}`}>{classroom.code}</span>
@@ -329,145 +376,221 @@ export const ClassroomLayout = () => {
 
         {/* Menú */}
         <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
+          {/* Collapsible groups */}
           {menuItems.map((item) => {
             const Icon = item.icon;
-            const hasSubItems = 'subItems' in item && item.subItems;
-            const isSubMenuActive = hasSubItems && item.subItems?.some(sub => isActive(sub.path));
-            const active = item.path ? isActive(item.path) : isSubMenuActive;
+            const isSubMenuActive = item.subItems?.some(sub => isActive(sub.path));
+            const menuKey = (item as any).menuKey;
+            const isMenuOpen = 
+              menuKey === 'students' ? studentsMenuOpen :
+              menuKey === 'gamification' ? gamificationMenuOpen :
+              menuKey === 'clase' ? claseMenuOpen :
+              menuKey === 'comunicacion' ? comunicacionMenuOpen : false;
             
-            // Item con submenú
-            if (hasSubItems) {
-              const menuKey = (item as any).menuKey;
-              const isMenuOpen = 
-                menuKey === 'students' ? studentsMenuOpen :
-                menuKey === 'gamification' ? gamificationMenuOpen : false;
-              
-              const toggleMenu = () => {
-                if (menuKey === 'students') {
-                  setStudentsMenuOpen(!studentsMenuOpen);
-                } else if (menuKey === 'gamification') {
-                  setGamificationMenuOpen(!gamificationMenuOpen);
-                }
-              };
-              
-              return (
-                <div key={item.label}>
-                  <button
-                    onClick={toggleMenu}
-                    data-onboarding={(item as any).onboardingId}
-                    className={`
-                      w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all duration-200 group
-                      ${isSubMenuActive
-                        ? hasStoryTheme ? 'text-white shadow-md' : 'bg-gradient-to-r ' + item.gradient + ' text-white shadow-md'
-                        : hasStoryTheme ? 'text-white/80 hover:bg-white/10' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                      }
-                    `}
-                    style={isSubMenuActive && hasStoryTheme ? { background: `linear-gradient(to right, ${tc?.colors?.primary || '#6366f1'}, ${tc?.colors?.secondary || '#8b5cf6'})` } : undefined}
-                    title={collapsed ? item.label : undefined}
-                  >
-                    <div className={`
-                      w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0
-                      ${isSubMenuActive 
-                        ? 'bg-white/20' 
-                        : 'bg-gradient-to-br ' + item.gradient + ' text-white shadow-sm group-hover:scale-105'
-                      }
-                    `}>
-                      <Icon size={16} />
-                    </div>
-                    {!collapsed && (
-                      <>
-                        <span className={`text-sm font-medium truncate flex-1 text-left ${isSubMenuActive ? '' : hasStoryTheme ? 'text-white/90' : 'text-gray-700 dark:text-gray-300'}`}>
-                          {item.label}
-                        </span>
-                        <ChevronDown 
-                          size={14} 
-                          className={`transition-transform ${isMenuOpen ? 'rotate-180' : ''} ${isSubMenuActive ? 'text-white' : 'text-gray-400'}`} 
-                        />
-                      </>
-                    )}
-                  </button>
-                  
-                  {/* Submenú */}
-                  {isMenuOpen && !collapsed && (
-                    <div className="ml-4 mt-1 space-y-1">
-                      {item.subItems?.map((subItem) => {
-                        const SubIcon = subItem.icon;
-                        const subActive = isActive(subItem.path);
-                        const isLocked = (subItem as any).locked;
-                        
-                        // Item bloqueado (próximamente)
-                        if (isLocked) {
-                          return (
-                            <button
-                              key={subItem.label}
-                              onClick={() => setShowExpeditionsModal(true)}
-                              className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all duration-200 text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
-                            >
-                              <SubIcon size={14} />
-                              <span className="text-sm">{subItem.label}</span>
-                              <Lock size={12} className="ml-auto text-gray-400" />
-                            </button>
-                          );
-                        }
-                        
+            const toggleMenu = () => {
+              if (menuKey === 'students') {
+                setStudentsMenuOpen(!studentsMenuOpen);
+              } else if (menuKey === 'gamification') {
+                setGamificationMenuOpen(!gamificationMenuOpen);
+              } else if (menuKey === 'clase') {
+                setClaseMenuOpen(!claseMenuOpen);
+              } else if (menuKey === 'comunicacion') {
+                setComunicacionMenuOpen(!comunicacionMenuOpen);
+              }
+            };
+            
+            return (
+              <div key={item.label}>
+                <button
+                  onClick={toggleMenu}
+                  className={`
+                    w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all duration-200 group
+                    ${isSubMenuActive
+                      ? hasStoryTheme ? 'text-white shadow-md' : 'bg-gradient-to-r ' + item.gradient + ' text-white shadow-md'
+                      : hasStoryTheme ? 'text-white/80 hover:bg-white/10' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    }
+                  `}
+                  style={isSubMenuActive && hasStoryTheme ? { background: `linear-gradient(to right, ${tc?.colors?.primary || '#6366f1'}, ${tc?.colors?.secondary || '#8b5cf6'})` } : undefined}
+                  title={collapsed ? item.label : undefined}
+                >
+                  <div className={`
+                    w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0
+                    ${isSubMenuActive 
+                      ? 'bg-white/20' 
+                      : 'bg-gradient-to-br ' + item.gradient + ' text-white shadow-sm group-hover:scale-105'
+                    }
+                  `}>
+                    <Icon size={16} />
+                  </div>
+                  {!collapsed && (
+                    <>
+                      <span className={`text-sm font-medium truncate flex-1 text-left ${isSubMenuActive ? '' : hasStoryTheme ? 'text-white/90' : 'text-gray-700 dark:text-gray-300'}`}>
+                        {item.label}
+                      </span>
+                      <ChevronDown 
+                        size={14} 
+                        className={`transition-transform ${isMenuOpen ? 'rotate-180' : ''} ${isSubMenuActive ? 'text-white' : 'text-gray-400'}`} 
+                      />
+                    </>
+                  )}
+                </button>
+                
+                {/* Submenú */}
+                {isMenuOpen && !collapsed && (
+                  <div className="ml-4 mt-1 space-y-1">
+                    {item.subItems?.map((subItem) => {
+                      const SubIcon = subItem.icon;
+                      const subActive = isActive(subItem.path);
+                      const isLocked = (subItem as any).locked;
+                      
+                      // Item bloqueado (próximamente)
+                      if (isLocked) {
                         return (
-                          <Link
-                            key={subItem.path}
-                            to={subItem.path}
-                            data-onboarding={(subItem as any).onboardingId}
-                            className={`
-                              flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all duration-200
-                              ${subActive
-                                ? hasStoryTheme ? 'text-white' : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'
-                                : hasStoryTheme ? 'text-white/60 hover:bg-white/10 hover:text-white/90' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
-                              }
-                            `}
-                            style={subActive && hasStoryTheme ? { backgroundColor: `${tc?.colors?.primary || '#6366f1'}40` } : undefined}
+                          <button
+                            key={subItem.label}
+                            onClick={() => setShowExpeditionsModal(true)}
+                            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all duration-200 text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
                           >
                             <SubIcon size={14} />
                             <span className="text-sm">{subItem.label}</span>
-                          </Link>
+                            <Lock size={12} className="ml-auto text-gray-400" />
+                          </button>
                         );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            }
-            
-            // Item normal sin submenú
+                      }
+                      
+                      return (
+                        <Link
+                          key={subItem.path}
+                          to={subItem.path}
+                          onClick={() => {
+                            const fk = (subItem as any).featureKey;
+                            if (fk && isNewFeature(fk)) onboarding?.dismissBadge(fk);
+                          }}
+                          className={`
+                            flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all duration-200
+                            ${subActive
+                              ? hasStoryTheme ? 'text-white' : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'
+                              : hasStoryTheme ? 'text-white/60 hover:bg-white/10 hover:text-white/90' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
+                            }
+                          `}
+                          style={subActive && hasStoryTheme ? { backgroundColor: `${tc?.colors?.primary || '#6366f1'}40` } : undefined}
+                        >
+                          <SubIcon size={14} />
+                          <span className="text-sm">{subItem.label}</span>
+                          {isNewFeature((subItem as any).featureKey) && (
+                            <span className="ml-auto px-1.5 py-0.5 text-[10px] font-bold bg-gradient-to-r from-amber-400 to-orange-500 text-white rounded-full leading-none">
+                              Nuevo
+                            </span>
+                          )}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Divider — only show if groups are visible above */}
+          {menuItems.length > 0 && (
+            <div className={`my-2 mx-2 h-px ${hasStoryTheme ? 'bg-white/10' : 'bg-gray-200 dark:bg-gray-700'}`} />
+          )}
+
+          {/* Bottom items: Estadísticas + Configuración */}
+          {bottomMenuItems.filter(bi => isUnlocked((bi as any).featureKey)).map((bItem) => {
+            const BIcon = bItem.icon;
+            const bActive = isActive(bItem.path);
+            const bIsNew = isNewFeature((bItem as any).featureKey);
             return (
               <Link
-                key={item.path}
-                to={item.path!}
-                data-onboarding={(item as any).onboardingId}
+                key={bItem.path}
+                to={bItem.path}
+                onClick={() => {
+                  const fk = (bItem as any).featureKey;
+                  if (fk && bIsNew) onboarding?.dismissBadge(fk);
+                }}
                 className={`
                   flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all duration-200 group
-                  ${active
-                    ? 'bg-gradient-to-r ' + item.gradient + ' text-white shadow-md'
+                  ${bActive
+                    ? 'bg-gradient-to-r ' + bItem.gradient + ' text-white shadow-md'
                     : hasStoryTheme ? 'text-white/80 hover:bg-white/10' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                   }
                 `}
-                title={collapsed ? item.label : undefined}
+                title={collapsed ? bItem.label : undefined}
               >
                 <div className={`
                   w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0
-                  ${active 
+                  ${bActive 
                     ? 'bg-white/20' 
-                    : 'bg-gradient-to-br ' + item.gradient + ' text-white shadow-sm group-hover:scale-105'
+                    : 'bg-gradient-to-br ' + bItem.gradient + ' text-white shadow-sm group-hover:scale-105'
                   }
                 `}>
-                  <Icon size={16} />
+                  <BIcon size={16} />
                 </div>
                 {!collapsed && (
-                  <span className={`text-sm font-medium truncate ${active ? '' : hasStoryTheme ? 'text-white/90' : 'text-gray-700 dark:text-gray-300'}`}>
-                    {item.label}
-                  </span>
+                  <>
+                    <span className={`text-sm font-medium truncate flex-1 ${bActive ? '' : hasStoryTheme ? 'text-white/90' : 'text-gray-700 dark:text-gray-300'}`}>
+                      {bItem.label}
+                    </span>
+                    {bIsNew && (
+                      <span className="px-1.5 py-0.5 text-[10px] font-bold bg-gradient-to-r from-amber-400 to-orange-500 text-white rounded-full leading-none">
+                        Nuevo
+                      </span>
+                    )}
+                  </>
                 )}
               </Link>
             );
           })}
         </nav>
+
+        {/* Onboarding sidebar bottom: pending unlocks + unlock link + level */}
+        {onboarding && !onboarding.data?.isExperienced && !collapsed && (
+          <div className={`p-2 space-y-1 ${hasStoryTheme ? 'border-t border-white/10' : 'border-t border-gray-100 dark:border-gray-700'}`}>
+            {/* Pending unlocks notification */}
+            {onboarding.hasPendingUnlocks && (
+              <button
+                onClick={() => setShowUnlockModal(true)}
+                className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 hover:from-amber-500/20 hover:to-orange-500/20 transition-all text-left"
+              >
+                <div className="w-6 h-6 bg-gradient-to-br from-amber-400 to-orange-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <Sparkles size={12} className="text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 truncate">
+                    ¡Nuevas funciones disponibles!
+                  </p>
+                </div>
+                <span className="w-5 h-5 bg-amber-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center flex-shrink-0">
+                  {(onboarding.data?.pendingUnlocks ?? []).length}
+                </span>
+              </button>
+            )}
+
+            {/* Desbloquear más funciones */}
+            {onboarding.data && onboarding.data.lockedFeatures.length > 0 && (
+              <button
+                onClick={() => setShowUnlockModal(true)}
+                className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
+                  hasStoryTheme
+                    ? 'text-white/40 hover:text-white/70 hover:bg-white/5'
+                    : 'text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                }`}
+              >
+                <Lock size={12} />
+                <span>Desbloquear más funciones →</span>
+              </button>
+            )}
+
+            {/* Level indicator */}
+            {onboarding.data?.level && (
+              <div className={`flex items-center gap-2 px-2.5 py-1 ${hasStoryTheme ? 'text-white/30' : 'text-gray-400 dark:text-gray-500'}`}>
+                <Rocket size={12} />
+                <span className="text-[11px] font-medium">Nivel: {onboarding.data.level}</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Toggle collapse - solo en desktop */}
         <div className={`hidden lg:block p-2 ${hasStoryTheme ? 'border-t border-white/10' : 'border-t border-gray-100 dark:border-gray-700'}`}>
@@ -505,15 +628,6 @@ export const ClassroomLayout = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {/* Botón de ayuda / tour */}
-            <button
-              onClick={() => openWelcomeModal(classroom.id)}
-              className="p-2 text-gray-500 hover:text-violet-600 dark:text-gray-400 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 rounded-xl transition-colors"
-              title={hasCompletedForClassroom(classroom.id) ? "Repetir tour guiado" : "Ver tour guiado"}
-            >
-              <HelpCircle size={18} />
-            </button>
-
             {/* Botón de reportar bug */}
             <BugReportButton variant="icon" />
             
@@ -550,14 +664,6 @@ export const ClassroomLayout = () => {
         onClose={() => setShowNotifications(false)}
         classroomId={classroom.id}
       />
-
-      {/* Onboarding de la clase */}
-      <ClassroomOnboardingProvider 
-        classroomId={classroom.id}
-        studentCount={classroom.students?.length || 0}
-      >
-        <></>
-      </ClassroomOnboardingProvider>
 
       {/* Modal de Expediciones - Próximamente */}
       <AnimatePresence>
@@ -693,6 +799,210 @@ export const ClassroomLayout = () => {
               >
                 <X size={20} />
               </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Unlock Features Modal */}
+      <AnimatePresence>
+        {showUnlockModal && onboarding?.data && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            onClick={() => setShowUnlockModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="relative w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Fixed Header */}
+              <div className="px-6 pt-6 pb-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+                <div className="flex items-center gap-3 mb-2">
+                  <img src="/logo-solo.png" alt="Juried" className="w-10 h-10" />
+                  <div>
+                    <h3 className="font-bold text-gray-900 dark:text-white text-lg">Funciones disponibles</h3>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Activá nuevas funciones para tu clase</p>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-400 dark:text-gray-500">
+                  Estas funciones se activan gradualmente para que puedas dominar una a la vez.
+                </p>
+              </div>
+
+              {/* Scrollable Body */}
+              <div className="px-6 py-4 overflow-y-auto flex-1 min-h-0">
+                {/* Pending unlocks */}
+                {(onboarding.data.pendingUnlocks ?? []).length > 0 && (
+                  <div className="mb-5">
+                    <p className="text-sm font-semibold text-amber-600 dark:text-amber-400 mb-2">¡Listas para activar!</p>
+                    <div className="space-y-2">
+                      {(onboarding.data.pendingUnlocks ?? []).map(f => {
+                        const info = FEATURE_INFO[f];
+                        return (
+                          <div key={f} className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-gray-800 dark:text-white">
+                                  {info?.emoji && <span className="mr-1.5">{info.emoji}</span>}
+                                  {FEATURE_LABELS[f] || f}
+                                </p>
+                                {info?.description && (
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">{info.description}</p>
+                                )}
+                              </div>
+                              <button
+                                onClick={async () => {
+                                  await onboarding.activateFeatures([f]);
+                                }}
+                                className="px-3 py-1 text-xs font-semibold bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-lg hover:shadow-md transition-all flex-shrink-0 mt-0.5"
+                              >
+                                Activar
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {(onboarding.data.pendingUnlocks ?? []).length > 1 && (
+                      <button
+                        onClick={async () => {
+                          await onboarding.activateFeatures(onboarding.data!.pendingUnlocks ?? []);
+                        }}
+                        className="w-full mt-2 py-2 text-xs font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/10 rounded-lg transition-colors"
+                      >
+                        Activar todas
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Schedule tiers */}
+                {onboarding.data.schedule.filter(t => !t.allUnlocked).length > 0 && (
+                  <div>
+                    <p className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-3">Próximamente</p>
+                    <div className="space-y-3">
+                      {onboarding.data.schedule.filter(t => !t.allUnlocked).map((tier, idx) => {
+                        const lockedFeatures = tier.features.filter(f => !(onboarding.data!.unlockedFeatures ?? []).includes(f));
+                        if (lockedFeatures.length === 0) return null;
+                        const tierLabel = tier.available ? 'Disponible ahora' : `En ${tier.daysRemaining} días`;
+                        return (
+                          <div key={idx} className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-xl border border-gray-200 dark:border-gray-600">
+                            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">
+                              {tierLabel}
+                            </p>
+                            <div className="space-y-2.5">
+                              {lockedFeatures.map(f => {
+                                const info = FEATURE_INFO[f];
+                                return (
+                                  <div key={f} className="flex items-start gap-2">
+                                    {info?.emoji && <span className="text-base leading-5 flex-shrink-0">{info.emoji}</span>}
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-semibold text-gray-800 dark:text-white">{FEATURE_LABELS[f] || f}</p>
+                                      {info?.description && (
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">{info.description}</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            {!tier.available && (
+                              <button
+                                onClick={() => {
+                                  setEarlyUnlockConfirm({ features: lockedFeatures, label: tierLabel });
+                                }}
+                                className="mt-3 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                              >
+                                Activar antes
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Fixed Footer */}
+              <div className="px-6 py-3 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
+                <button
+                  onClick={() => { setShowUnlockModal(false); setEarlyUnlockConfirm(null); }}
+                  className="w-full py-2.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors"
+                >
+                  Cerrar
+                </button>
+              </div>
+
+              {/* Early Unlock Confirmation Dialog */}
+              <AnimatePresence>
+                {earlyUnlockConfirm && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute inset-0 z-10 flex items-center justify-center bg-black/40 rounded-2xl"
+                    onClick={() => setEarlyUnlockConfirm(null)}
+                  >
+                    <motion.div
+                      initial={{ scale: 0.92, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0.92, opacity: 0 }}
+                      transition={{ duration: 0.15 }}
+                      className="mx-4 w-full max-w-sm bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-600 p-5"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <h4 className="font-bold text-gray-900 dark:text-white mb-1">
+                        ¿Activar funciones antes de tiempo?
+                      </h4>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                        Grupo: <span className="font-semibold text-gray-700 dark:text-gray-300">{earlyUnlockConfirm.label}</span>
+                      </p>
+                      <div className="mb-3">
+                        <div className="flex flex-wrap gap-1.5 mt-1.5">
+                          {earlyUnlockConfirm.features.map(f => {
+                            const info = FEATURE_INFO[f];
+                            return (
+                              <span key={f} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-full font-medium">
+                                {info?.emoji && <span>{info.emoji}</span>}
+                                {FEATURE_LABELS[f] || f}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+                        Estas funciones aparecerán en tu menú lateral inmediatamente.
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setEarlyUnlockConfirm(null)}
+                          className="flex-1 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          onClick={async () => {
+                            await onboarding.earlyUnlock(earlyUnlockConfirm.features);
+                            setEarlyUnlockConfirm(null);
+                          }}
+                          className="flex-1 py-2 text-sm font-semibold bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-lg hover:shadow-md transition-all"
+                        >
+                          Activar
+                        </button>
+                      </div>
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </motion.div>
           </motion.div>
         )}

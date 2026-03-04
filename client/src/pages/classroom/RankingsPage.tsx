@@ -211,6 +211,21 @@ export const RankingsPage = () => {
         })}
       </div>
 
+      {/* Empty state when no students */}
+      {students.length === 0 && activeTab !== 'clans' && (
+        <div className={`rounded-2xl p-8 text-center ${isFullscreen ? 'bg-white/10' : 'bg-white dark:bg-gray-800'} shadow-lg`}>
+          <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-violet-100 to-purple-100 dark:from-violet-900/30 dark:to-purple-900/30 rounded-2xl flex items-center justify-center">
+            <Trophy className="w-8 h-8 text-violet-500" />
+          </div>
+          <h3 className={`text-lg font-semibold mb-2 ${isFullscreen ? 'text-white' : 'text-gray-800 dark:text-white'}`}>
+            El ranking muestra el progreso en tiempo real
+          </h3>
+          <p className={`text-sm max-w-md mx-auto ${isFullscreen ? 'text-gray-300' : 'text-gray-600 dark:text-gray-300'}`}>
+            Se actualiza automáticamente cada vez que aplicás un comportamiento. Agregá estudiantes y empezá a dar puntos para ver el ranking en acción.
+          </p>
+        </div>
+      )}
+
       {/* Contenido del ranking */}
       <AnimatePresence mode="wait">
         <motion.div

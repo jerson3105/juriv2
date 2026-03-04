@@ -302,34 +302,36 @@ export const refreshTokens = async (refreshToken: string): Promise<{ accessToken
     throw new Error('Token de actualización requerido');
   }
 
-  const payload = await consumeRefreshToken(normalizedRefreshToken);
-  
-  if (!payload) {
-    throw new Error('Token de actualización inválido o expirado');
-  }
+  return await db.transaction(async (tx) => {
+    const payload = await consumeRefreshToken(normalizedRefreshToken, tx);
+    
+    if (!payload) {
+      throw new Error('Token de actualización inválido o expirado');
+    }
 
-  const user = await db.query.users.findFirst({
-    where: eq(users.id, payload.userId),
-    columns: {
-      id: true,
-      email: true,
-      role: true,
-      isActive: true,
-    },
-  });
+    const user = await tx.query.users.findFirst({
+      where: eq(users.id, payload.userId),
+      columns: {
+        id: true,
+        email: true,
+        role: true,
+        isActive: true,
+      },
+    });
 
-  if (!user || !user.isActive) {
-    throw new Error('Token de actualización inválido o expirado');
-  }
-  
-  // Generar nuevos tokens
-  const tokens = await generateTokenPair({
-    userId: user.id,
-    email: user.email,
-    role: user.role as UserRole,
+    if (!user || !user.isActive) {
+      throw new Error('Token de actualización inválido o expirado');
+    }
+    
+    // Generar nuevos tokens
+    const tokens = await generateTokenPair({
+      userId: user.id,
+      email: user.email,
+      role: user.role as UserRole,
+    }, tx);
+    
+    return tokens;
   });
-  
-  return tokens;
 };
 
 /**

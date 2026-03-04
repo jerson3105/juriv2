@@ -129,9 +129,18 @@ export const BehaviorsPage = () => {
         </div>
         <div className="p-4">
           {positiveBehaviors.length === 0 ? (
-            <p className="text-center text-gray-500 dark:text-gray-400 py-8 text-sm">
-              No hay comportamientos positivos configurados
-            </p>
+            <div className="text-center py-8 px-4">
+              <p className="text-gray-600 dark:text-gray-300 text-sm mb-2 max-w-md mx-auto">
+                Los comportamientos te permiten premiar a tus estudiantes con un solo clic. Creá acciones como "Participación activa" o "Tarea completa".
+              </p>
+              <button
+                onClick={openCreateModal}
+                className="inline-flex items-center gap-2 px-4 py-2 mt-2 text-sm font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors"
+              >
+                <Plus size={16} />
+                Crear mi primer comportamiento
+              </button>
+            </div>
           ) : (
             <div className="grid md:grid-cols-2 gap-3">
               {positiveBehaviors.map((behavior) => (
@@ -157,9 +166,18 @@ export const BehaviorsPage = () => {
         </div>
         <div className="p-4">
           {negativeBehaviors.length === 0 ? (
-            <p className="text-center text-gray-500 dark:text-gray-400 py-8 text-sm">
-              No hay comportamientos negativos configurados
-            </p>
+            <div className="text-center py-8 px-4">
+              <p className="text-gray-600 dark:text-gray-300 text-sm mb-2 max-w-md mx-auto">
+                Creá comportamientos negativos como "Tarea incompleta" o "Interrupción en clase" para descontar puntos cuando sea necesario.
+              </p>
+              <button
+                onClick={openCreateModal}
+                className="inline-flex items-center gap-2 px-4 py-2 mt-2 text-sm font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+              >
+                <Plus size={16} />
+                Crear comportamiento negativo
+              </button>
+            </div>
           ) : (
             <div className="grid md:grid-cols-2 gap-3">
               {negativeBehaviors.map((behavior) => (

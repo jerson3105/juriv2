@@ -164,7 +164,7 @@ export const StorytellingPage = () => {
           </div>
           <div>
             <h1 className="text-base sm:text-lg font-bold text-gray-800 dark:text-white">
-              Storytelling
+              Historia de clase
             </h1>
             <p className="text-xs text-gray-500 dark:text-gray-400 hidden sm:block">
               Crea historias interactivas para tu clase con temas visuales y capítulos

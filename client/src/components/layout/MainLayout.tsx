@@ -16,7 +16,6 @@ import {
   Coins,
   Zap,
   Check,
-  HelpCircle,
   Shield,
   Calendar,
   ScrollText,
@@ -28,7 +27,6 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useStudentStore } from '../../store/studentStore';
-import { useOnboardingStore } from '../../store/onboardingStore';
 import { studentApi, CHARACTER_CLASSES } from '../../lib/studentApi';
 import { expeditionApi } from '../../lib/expeditionApi';
 import { ThemeToggle } from '../ui/ThemeToggle';
@@ -50,7 +48,6 @@ const studentNavItems = [
 export const MainLayout = () => {
   const { user, logout } = useAuthStore();
   const { selectedClassIndex, setSelectedClassIndex } = useStudentStore();
-  const { resetOnboarding, hasCompletedOnboarding } = useOnboardingStore();
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -237,14 +234,11 @@ export const MainLayout = () => {
           {navItems.map((item) => {
             const isActivePath = location.pathname === item.path || 
               (item.path === '/classrooms' && location.pathname.startsWith('/classroom'));
-            // Agregar data-onboarding para el tour
-            const onboardingId = item.path === '/classrooms' ? 'nav-classrooms' : undefined;
             return (
               <Link
                 key={item.path}
                 to={item.path}
                 onClick={() => setSidebarOpen(false)}
-                data-onboarding={onboardingId}
                 className={`
                   flex items-center gap-3 px-3 py-2.5 rounded-xl
                   transition-all duration-200 group
@@ -637,16 +631,6 @@ export const MainLayout = () => {
             {/* Spacer (solo para profesores) */}
             {isTeacher && <div className="flex-1" />}
 
-            {/* Botón de ayuda / tour (solo para profesores) */}
-            {isTeacher && (
-              <button
-                onClick={resetOnboarding}
-                className="p-2 text-gray-500 hover:text-violet-600 dark:text-gray-400 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/20 rounded-xl transition-colors"
-                title={hasCompletedOnboarding ? "Repetir tour guiado" : "Ver tour guiado"}
-              >
-                <HelpCircle size={20} />
-              </button>
-            )}
 
             {/* Notificaciones (solo para estudiantes) */}
             {!isTeacher && (

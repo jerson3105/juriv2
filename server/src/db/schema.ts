@@ -2883,7 +2883,7 @@ export const announcements = mysqlTable('announcements', {
   classroomDateIdx: index('idx_announcements_classroom_date').on(table.classroomId, table.createdAt),
 }));
 
-export const announcementsRelations = relations(announcements, ({ one }) => ({
+export const announcementsRelations = relations(announcements, ({ one, many }) => ({
   classroom: one(classrooms, {
     fields: [announcements.classroomId],
     references: [classrooms.id],
@@ -2892,7 +2892,65 @@ export const announcementsRelations = relations(announcements, ({ one }) => ({
     fields: [announcements.teacherId],
     references: [users.id],
   }),
+  reads: many(announcementReads),
 }));
 
 export type Announcement = typeof announcements.$inferSelect;
 export type NewAnnouncement = typeof announcements.$inferInsert;
+
+// ==================== ANNOUNCEMENT READS ====================
+
+export const announcementReads = mysqlTable('announcement_reads', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  announcementId: varchar('announcement_id', { length: 36 }).notNull(),
+  userId: varchar('user_id', { length: 36 }).notNull(),
+  readAt: datetime('read_at').notNull(),
+}, (table) => ({
+  announcementIdx: index('idx_announcement_reads_announcement').on(table.announcementId),
+  userIdx: index('idx_announcement_reads_user').on(table.userId),
+  uniqueRead: unique('unique_announcement_user_read').on(table.announcementId, table.userId),
+}));
+
+export const announcementReadsRelations = relations(announcementReads, ({ one }) => ({
+  announcement: one(announcements, {
+    fields: [announcementReads.announcementId],
+    references: [announcements.id],
+  }),
+  user: one(users, {
+    fields: [announcementReads.userId],
+    references: [users.id],
+  }),
+}));
+
+export type AnnouncementRead = typeof announcementReads.$inferSelect;
+export type NewAnnouncementRead = typeof announcementReads.$inferInsert;
+
+// ==================== ONBOARDING PROGRESIVO (PROFESORES) ====================
+
+export const teacherObjectiveEnum = mysqlEnum('objective', ['participation', 'behavior', 'learning', 'unknown']);
+
+export const teacherOnboarding = mysqlTable('teacher_onboarding', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  teacherId: varchar('teacher_id', { length: 36 }).notNull().unique(),
+  isExperienced: boolean('is_experienced').notNull().default(false),
+  objective: teacherObjectiveEnum.default('unknown'),
+  onboardingCompleted: boolean('onboarding_completed').notNull().default(false),
+  completedAt: datetime('completed_at'),
+  unlockedFeatures: json('unlocked_features').$type<string[]>().notNull().default([]),
+  pendingUnlocks: json('pending_unlocks').$type<string[]>().notNull().default([]),
+  newFeatures: json('new_features').$type<string[]>().notNull().default([]),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  teacherIdx: index('idx_teacher_onboarding_teacher').on(table.teacherId),
+}));
+
+export const teacherOnboardingRelations = relations(teacherOnboarding, ({ one }) => ({
+  teacher: one(users, {
+    fields: [teacherOnboarding.teacherId],
+    references: [users.id],
+  }),
+}));
+
+export type TeacherOnboarding = typeof teacherOnboarding.$inferSelect;
+export type NewTeacherOnboarding = typeof teacherOnboarding.$inferInsert;

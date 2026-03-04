@@ -65,6 +65,9 @@ router.post('/:id/ai-assistant/execute', authorize('TEACHER'), async (req, res) 
 // Avisos (profesor → padres)
 router.post('/:id/announcements', authorize('TEACHER'), announcementController.create.bind(announcementController));
 router.get('/:id/announcements', authorize('TEACHER', 'PARENT'), announcementController.list.bind(announcementController));
+router.get('/:id/announcements/parent-stats', authorize('TEACHER'), announcementController.parentStats.bind(announcementController));
+router.get('/:id/announcements/families', authorize('TEACHER'), announcementController.families.bind(announcementController));
+router.post('/:id/announcements/mark-read', authorize('PARENT'), announcementController.markRead.bind(announcementController));
 
 // Rutas para estudiantes
 router.post('/join', authorize('STUDENT'), classroomController.join.bind(classroomController));

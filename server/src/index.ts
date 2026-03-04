@@ -181,6 +181,12 @@ io.on('connection', (socket) => {
       }
       if (classroomIds.length > 0) {
         logger.info(`📚 Padre auto-unido a ${classroomIds.length} aula(s)`, { userId: user.id });
+        // Emit parent stats update to each classroom so teachers see updated connected count
+        for (const cid of classroomIds) {
+          announcementService.getParentStats(cid).then(stats => {
+            io.to(`classroom:${cid}`).emit('announcement:parent_stats', stats);
+          }).catch(() => {});
+        }
       }
     }).catch(() => {});
   }
@@ -196,6 +202,16 @@ io.on('connection', (socket) => {
       socketId: socket.id,
       userId: user.id,
     });
+    // If a parent disconnects, update parent stats for their classrooms
+    if (user.role === 'PARENT') {
+      announcementService.getClassroomIdsForParent(user.id).then(classroomIds => {
+        for (const cid of classroomIds) {
+          announcementService.getParentStats(cid).then(stats => {
+            io.to(`classroom:${cid}`).emit('announcement:parent_stats', stats);
+          }).catch(() => {});
+        }
+      }).catch(() => {});
+    }
   });
   
   // Unirse a sala de aula (con validación de permisos)

@@ -66,6 +66,15 @@ const ParentAnnouncementsPage = () => {
     }
   }, [data]);
 
+  // Auto mark announcements as read when parent views the page
+  const didMarkRead = useRef(false);
+  useEffect(() => {
+    if (data && classroomId && data.announcements.length > 0 && !didMarkRead.current) {
+      didMarkRead.current = true;
+      announcementApi.markRead(classroomId).catch(() => {});
+    }
+  }, [data, classroomId]);
+
   // Listen for real-time announcements via socket
   useEffect(() => {
     const socket = getSocket();
@@ -74,6 +83,8 @@ const ParentAnnouncementsPage = () => {
     const handleNewAnnouncement = (announcement: Announcement) => {
       if (announcement.classroomId === classroomId) {
         queryClient.invalidateQueries({ queryKey: ['announcements', classroomId] });
+        // Mark new announcement as read since parent is viewing this page
+        announcementApi.markRead(classroomId).catch(() => {});
         setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 200);
       }
     };

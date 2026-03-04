@@ -5,7 +5,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Users, Copy, Check, Trash2, X, GraduationCap, Sparkles, BookOpen, Layers, Award, ShoppingBag, HelpCircle, School, MoreVertical, ChevronDown, User } from 'lucide-react';
 import { classroomApi, type Classroom, type CreateClassroomData } from '../../lib/classroomApi';
 import { schoolApi, type MySchool } from '../../lib/schoolApi';
-import { useOnboardingStore } from '../../store/onboardingStore';
 import { AIClassroomWizard } from '../../components/classroom/AIClassroomWizard';
 import toast from 'react-hot-toast';
 
@@ -20,8 +19,6 @@ export const ClassroomsPage = () => {
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
   
-  const { isActive, currentStep, nextStep } = useOnboardingStore();
-
   const { data: classrooms, isLoading, isError } = useQuery({
     queryKey: ['classrooms'],
     queryFn: classroomApi.getMyClassrooms,
@@ -76,11 +73,6 @@ export const ClassroomsPage = () => {
       queryClient.invalidateQueries({ queryKey: ['classrooms'] });
       setShowCreateModal(false);
       toast.success('¡Clase creada exitosamente!');
-      
-      // Avanzar al paso final del onboarding si está activo
-      if (isActive && currentStep === 2) {
-        setTimeout(() => nextStep(), 500);
-      }
     },
     onError: () => {
       toast.error('Error al crear la clase');
@@ -182,7 +174,6 @@ export const ClassroomsPage = () => {
             </button>
             <button 
               onClick={() => setShowCreateModal(true)}
-              data-onboarding="create-class-btn"
               className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-violet-500 to-purple-500 text-white text-sm font-medium rounded-xl shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 transition-shadow"
             >
               <Plus size={18} />
@@ -431,7 +422,6 @@ const ClassroomCard = ({
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.1 }}
       onClick={() => onView(classroom.id)}
-      data-onboarding={index === 0 ? 'first-class' : undefined}
       className="rounded-xl shadow-lg cursor-pointer hover:shadow-xl hover:scale-[1.02] transition-all overflow-hidden relative"
       style={hasTheme ? {
         border: `1.5px solid ${primary}30`,

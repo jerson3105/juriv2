@@ -532,7 +532,7 @@ export const StudentDetailPage = () => {
             <div className="w-8 h-8 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-lg flex items-center justify-center">
               <Calendar className="w-4 h-4 text-white" />
             </div>
-            <h3 className="font-bold text-gray-800 dark:text-white">Historial de Actividad</h3>
+            <h3 className="font-bold text-gray-800 dark:text-white">Registro de actividad</h3>
             <span className="text-sm text-gray-400">({totalItems})</span>
           </div>
           

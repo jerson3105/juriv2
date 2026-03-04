@@ -59,7 +59,7 @@ export const generateRefreshToken = (payload: TokenPayload): string => {
 };
 
 // Generar par de tokens
-export const generateTokenPair = async (payload: TokenPayload): Promise<TokenPair> => {
+export const generateTokenPair = async (payload: TokenPayload, tx: any = db): Promise<TokenPair> => {
   const accessToken = generateAccessToken(payload);
   const refreshToken = generateRefreshToken(payload);
   const refreshTokenHash = hashRefreshToken(refreshToken);
@@ -68,7 +68,7 @@ export const generateTokenPair = async (payload: TokenPayload): Promise<TokenPai
   const expiresAt = getRefreshTokenExpiryDate(refreshToken);
   
   // Guardar hash del refresh token en la base de datos
-  await db.insert(refreshTokens).values({
+  await tx.insert(refreshTokens).values({
     id: uuidv4(),
     token: refreshTokenHash,
     userId: payload.userId,
@@ -108,7 +108,7 @@ export const verifyRefreshToken = async (token: string): Promise<TokenPayload | 
 };
 
 // Consumir Refresh Token (single-use)
-export const consumeRefreshToken = async (token: string): Promise<TokenPayload | null> => {
+export const consumeRefreshToken = async (token: string, tx: any = db): Promise<TokenPayload | null> => {
   const normalizedToken = token.trim();
   if (!normalizedToken) {
     return null;
@@ -123,11 +123,11 @@ export const consumeRefreshToken = async (token: string): Promise<TokenPayload |
     }
 
     if (storedToken.expiresAt < new Date()) {
-      await db.delete(refreshTokens).where(eq(refreshTokens.id, storedToken.id));
+      await tx.delete(refreshTokens).where(eq(refreshTokens.id, storedToken.id));
       return null;
     }
 
-    const deleteResult = await db.delete(refreshTokens).where(eq(refreshTokens.id, storedToken.id));
+    const deleteResult = await tx.delete(refreshTokens).where(eq(refreshTokens.id, storedToken.id));
     const deletedRows = Number((deleteResult as { affectedRows?: number }).affectedRows ?? 0);
 
     if (deletedRows < 1) {

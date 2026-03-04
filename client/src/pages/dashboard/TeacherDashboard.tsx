@@ -155,7 +155,6 @@ export const TeacherDashboard = () => {
             className="lg:col-span-2"
           >
             <div 
-              data-onboarding="classes-list"
               className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg rounded-xl p-4 shadow-lg shadow-blue-500/10 border border-white/50 dark:border-gray-700/50 h-full"
             >
               <div className="flex items-center justify-between mb-4">
@@ -241,7 +240,6 @@ export const TeacherDashboard = () => {
                   whileHover={{ scale: 1.01 }}
                   whileTap={{ scale: 0.99 }}
                   onClick={() => navigate('/classrooms')}
-                  data-onboarding="create-class"
                   className="w-full py-2.5 bg-gradient-to-r from-gray-100 to-gray-50 dark:from-gray-700 dark:to-gray-600 hover:from-blue-50 hover:to-indigo-50 dark:hover:from-blue-900/30 dark:hover:to-indigo-900/30 text-gray-700 dark:text-gray-200 hover:text-blue-700 dark:hover:text-blue-400 text-sm font-medium rounded-xl transition-all flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-600 hover:border-blue-200 dark:hover:border-blue-700"
                 >
                   <ArrowRight size={16} />

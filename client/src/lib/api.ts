@@ -13,6 +13,7 @@ export const api = axios.create({
 });
 
 let refreshPromise: Promise<{ accessToken: string; refreshToken: string }> | null = null;
+let isLoggingOut = false;
 
 const clearClientAuthSession = (): void => {
   if (typeof window === 'undefined') {
@@ -90,9 +91,12 @@ api.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;
         return api(originalRequest);
       } catch (refreshError) {
-        // Si falla el refresh, limpiar tokens y redirigir a login
-        clearClientAuthSession();
-        window.location.replace('/login');
+        // Solo el primer caller ejecuta limpieza y redirect
+        if (!isLoggingOut) {
+          isLoggingOut = true;
+          clearClientAuthSession();
+          window.location.replace('/login');
+        }
         return Promise.reject(refreshError);
       }
     }

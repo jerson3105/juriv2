@@ -450,12 +450,12 @@ export const GradebookPage = () => {
         <Card className="p-8 text-center">
           <Award className="mx-auto text-gray-400 mb-4" size={48} />
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-2">
-            Sin calificaciones registradas
+            {isFuturePeriod ? 'Bimestre futuro' : 'Registrá calificaciones'}
           </h3>
-          <p className="text-gray-600 dark:text-gray-400 mb-4">
+          <p className="text-gray-600 dark:text-gray-400 mb-4 max-w-md mx-auto">
             {isFuturePeriod 
               ? 'Este es un bimestre futuro. No se pueden calcular calificaciones hasta que sea el bimestre actual.'
-              : 'Haz clic en "Recalcular" para generar las calificaciones basadas en las actividades completadas.'
+              : 'Registrá las notas de tus estudiantes y hacé un seguimiento de su rendimiento académico a lo largo del tiempo. Hacé clic en "Recalcular" para generar las calificaciones.'
             }
           </p>
           <Button 

@@ -37,6 +37,9 @@ export interface Classroom {
   clanBattlesEnabled: boolean;
   clanGpRewardEnabled: boolean;
   
+  // Configuración de Pergaminos del Aula
+  scrollsEnabled: boolean;
+  
   // Configuración de racha de login
   loginStreakEnabled: boolean;
   loginStreakConfig: {
