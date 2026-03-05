@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from './lib/queryClient';
 import { TimerProvider } from './contexts/TimerContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 
@@ -39,6 +40,7 @@ import { GradebookPage } from './pages/classroom/GradebookPage';
 import { GradebookStatsPage } from './pages/classroom/GradebookStatsPage';
 import { StorytellingPage } from './pages/classroom/StorytellingPage';
 import { AnnouncementsPage } from './pages/classroom/AnnouncementsPage';
+import { ClassroomChatPage } from './pages/classroom/ClassroomChatPage';
 import { StudentScrollsPage } from './pages/student/StudentScrollsPage';
 import { StudentGradesPage } from './pages/student/StudentGradesPage';
 import { StudentExpeditionsPage } from './pages/student/StudentExpeditionsPage';
@@ -68,6 +70,7 @@ import ChildDetailPage from './pages/parent/ChildDetailPage';
 import ParentReportPage from './pages/parent/ParentReportPage';
 import ParentAIReportPage from './pages/parent/ParentAIReportPage';
 import ParentAnnouncementsPage from './pages/parent/ParentAnnouncementsPage';
+import ParentGroupChatPage from './pages/parent/ParentGroupChatPage';
 
 // Layout
 import { MainLayout } from './components/layout/MainLayout';
@@ -125,36 +128,6 @@ const TeacherMainLayout = () => {
   return <MainLayout />;
 };
 
-const getHttpStatusFromError = (error: unknown): number | undefined => {
-  if (!error || typeof error !== 'object') {
-    return undefined;
-  }
-
-  const candidate = error as { response?: { status?: number } };
-  return candidate.response?.status;
-};
-
-const shouldRetryQuery = (failureCount: number, error: unknown): boolean => {
-  const status = getHttpStatusFromError(error);
-
-  // Evitar ráfagas de reintentos para errores no recuperables o rate-limit.
-  if (status === 401 || status === 403 || status === 404 || status === 429) {
-    return false;
-  }
-
-  return failureCount < 1;
-};
-
-// Query Client
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: shouldRetryQuery,
-      refetchOnWindowFocus: false,
-      refetchOnReconnect: false,
-    },
-  },
-});
 
 // Protected Route Component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -253,6 +226,7 @@ function App() {
               <Route path="collectibles" element={<CollectiblesPage />} />
               <Route path="storytelling" element={<StorytellingPage />} />
               <Route path="announcements" element={<AnnouncementsPage />} />
+              <Route path="chat" element={<ClassroomChatPage />} />
               <Route path="settings" element={<ClassroomSettingsPage />} />
               <Route path="student/:studentId" element={<StudentDetailPage />} />
             </Route>
@@ -361,6 +335,8 @@ function App() {
             <Route path="ai-report/:studentId" element={<ParentAIReportPage />} />
             <Route path="chat" element={<ParentAnnouncementsPage />} />
             <Route path="chat/announcements/:classroomId" element={<ParentAnnouncementsPage />} />
+            <Route path="chat/group" element={<ParentGroupChatPage />} />
+            <Route path="chat/group/:classroomId" element={<ParentGroupChatPage />} />
           </Route>
 
             {/* Catch all */}

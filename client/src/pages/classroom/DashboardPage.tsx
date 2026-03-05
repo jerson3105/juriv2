@@ -65,7 +65,7 @@ export const DashboardPage = () => {
   // Obtener historial para análisis
   const { data: historyData } = useQuery({
     queryKey: ['history', classroom.id],
-    queryFn: () => historyApi.getClassroomHistory(classroom.id, { limit: 500 }),
+    queryFn: () => historyApi.getClassroomHistory(classroom.id, { limit: 200 }),
     enabled: !!classroom.id,
   });
 

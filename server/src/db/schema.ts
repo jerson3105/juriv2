@@ -2925,6 +2925,55 @@ export const announcementReadsRelations = relations(announcementReads, ({ one })
 export type AnnouncementRead = typeof announcementReads.$inferSelect;
 export type NewAnnouncementRead = typeof announcementReads.$inferInsert;
 
+// ==================== CHAT GRUPAL (PROFESOR ↔ PADRES) ====================
+
+export const chatSenderRoleEnum = mysqlEnum('sender_role', ['TEACHER', 'PARENT']);
+
+export const classroomMessages = mysqlTable('classroom_messages', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
+  senderId: varchar('sender_id', { length: 36 }).notNull(),
+  senderRole: chatSenderRoleEnum.notNull(),
+  message: text('message').notNull(),
+  deletedAt: datetime('deleted_at'),
+  deletedBy: varchar('deleted_by', { length: 36 }),
+  createdAt: datetime('created_at').notNull(),
+}, (table) => ({
+  classroomIdx: index('idx_classroom_messages_classroom').on(table.classroomId),
+  classroomDateIdx: index('idx_classroom_messages_classroom_date').on(table.classroomId, table.createdAt),
+  senderIdx: index('idx_classroom_messages_sender').on(table.senderId),
+}));
+
+export const classroomMessagesRelations = relations(classroomMessages, ({ one }) => ({
+  classroom: one(classrooms, {
+    fields: [classroomMessages.classroomId],
+    references: [classrooms.id],
+  }),
+  sender: one(users, {
+    fields: [classroomMessages.senderId],
+    references: [users.id],
+  }),
+}));
+
+export type ClassroomMessage = typeof classroomMessages.$inferSelect;
+export type NewClassroomMessage = typeof classroomMessages.$inferInsert;
+
+export const classroomChatSettings = mysqlTable('classroom_chat_settings', {
+  classroomId: varchar('classroom_id', { length: 36 }).primaryKey(),
+  isOpen: boolean('is_open').notNull().default(true),
+  closedAt: datetime('closed_at'),
+  closedBy: varchar('closed_by', { length: 36 }),
+});
+
+export const classroomChatSettingsRelations = relations(classroomChatSettings, ({ one }) => ({
+  classroom: one(classrooms, {
+    fields: [classroomChatSettings.classroomId],
+    references: [classrooms.id],
+  }),
+}));
+
+export type ClassroomChatSettings = typeof classroomChatSettings.$inferSelect;
+
 // ==================== ONBOARDING PROGRESIVO (PROFESORES) ====================
 
 export const teacherObjectiveEnum = mysqlEnum('objective', ['participation', 'behavior', 'learning', 'unknown']);

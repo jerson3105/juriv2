@@ -15,6 +15,7 @@ import { AppError } from './utils/errors.js';
 import { setIO } from './utils/notificationEmitter.js';
 import { eq } from 'drizzle-orm';
 import { announcementService } from './services/announcement.service.js';
+import { chatService } from './services/chat.service.js';
 
 // Crear aplicación Express
 const app = express();
@@ -173,14 +174,15 @@ io.on('connection', (socket) => {
   // Auto-join user to their personal room for notifications
   socket.join(`user:${user.id}`);
 
-  // Auto-join parents to their children's classroom rooms for announcements
+  // Auto-join parents to their children's classroom rooms for announcements + chat
   if (user.role === 'PARENT') {
     announcementService.getClassroomIdsForParent(user.id).then(classroomIds => {
       for (const cid of classroomIds) {
         socket.join(`classroom:${cid}`);
+        socket.join(`classroom:${cid}:chat`);
       }
       if (classroomIds.length > 0) {
-        logger.info(`📚 Padre auto-unido a ${classroomIds.length} aula(s)`, { userId: user.id });
+        logger.info(`📚 Padre auto-unido a ${classroomIds.length} aula(s) (anuncios + chat)`, { userId: user.id });
         // Emit parent stats update to each classroom so teachers see updated connected count
         for (const cid of classroomIds) {
           announcementService.getParentStats(cid).then(stats => {
@@ -238,6 +240,26 @@ io.on('connection', (socket) => {
   socket.on('leave-classroom', (classroomId: string) => {
     socket.leave(`classroom:${classroomId}`);
     logger.info(`📚 Usuario salió del aula`, {
+      socketId: socket.id,
+      userId: user.id,
+      classroomId,
+    });
+  });
+
+  // Unirse a sala de chat grupal
+  socket.on('join-chat', (classroomId: string) => {
+    socket.join(`classroom:${classroomId}:chat`);
+    logger.info(`💬 Usuario se unió al chat`, {
+      socketId: socket.id,
+      userId: user.id,
+      classroomId,
+    });
+  });
+
+  // Salir de sala de chat grupal
+  socket.on('leave-chat', (classroomId: string) => {
+    socket.leave(`classroom:${classroomId}:chat`);
+    logger.info(`💬 Usuario salió del chat`, {
       socketId: socket.id,
       userId: user.id,
       classroomId,

@@ -1,5 +1,7 @@
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
+import { updateSocketToken } from './socket';
+import { queryClient } from './queryClient';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
@@ -12,44 +14,31 @@ export const api = axios.create({
   withCredentials: true,
 });
 
-let refreshPromise: Promise<{ accessToken: string; refreshToken: string }> | null = null;
+let isRefreshing = false;
 let isLoggingOut = false;
+let refreshQueue: Array<{
+  resolve: (token: string) => void;
+  reject: (error: unknown) => void;
+}> = [];
+
+const processQueue = (error: unknown, token: string | null = null) => {
+  refreshQueue.forEach(({ resolve, reject }) => {
+    if (error) reject(error);
+    else resolve(token!);
+  });
+  refreshQueue = [];
+};
 
 const clearClientAuthSession = (): void => {
   if (typeof window === 'undefined') {
     return;
   }
 
+  console.error('[clearClientAuthSession] Limpiando sesión desde interceptor — stack:', new Error().stack);
+
   window.localStorage.removeItem('accessToken');
   window.localStorage.removeItem('refreshToken');
   window.localStorage.removeItem('auth-storage');
-};
-
-const runTokenRefresh = async () => {
-  if (refreshPromise) return refreshPromise;
-
-  refreshPromise = (async () => {
-    const refreshToken = localStorage.getItem('refreshToken');
-    if (!refreshToken) {
-      throw new Error('No refresh token');
-    }
-
-    const response = await axios.post(`${API_URL}/auth/refresh`, {
-      refreshToken,
-    });
-
-    const { accessToken, refreshToken: newRefreshToken } = response.data.data;
-
-    useAuthStore.getState().setTokens(accessToken, newRefreshToken);
-
-    return { accessToken, refreshToken: newRefreshToken };
-  })();
-
-  try {
-    return await refreshPromise;
-  } finally {
-    refreshPromise = null;
-  }
 };
 
 // Interceptor para añadir token de autenticación
@@ -73,7 +62,17 @@ api.interceptors.response.use(
     const status = error.response?.status;
     const code = error.response?.data?.code;
     const message = error.response?.data?.message as string | undefined;
-    const isAuthRoute = typeof originalRequest?.url === 'string' && originalRequest.url.includes('/auth/');
+    const noRefreshRoutes = [
+      '/auth/login',
+      '/auth/register',
+      '/auth/refresh',
+      '/auth/logout',
+      '/auth/google',
+      '/auth/google/callback',
+      '/auth/google/complete-registration',
+      '/auth/google/exchange-code',
+    ];
+    const isAuthRoute = noRefreshRoutes.some(route => originalRequest?.url?.includes(route));
 
     // Si el token expiró, intentar refrescarlo
     if (
@@ -84,13 +83,46 @@ api.interceptors.response.use(
     ) {
       originalRequest._retry = true;
 
-      try {
-        const { accessToken } = await runTokenRefresh();
+      // Si ya hay un refresh en curso, encolar este request
+      if (isRefreshing) {
+        return new Promise<string>((resolve, reject) => {
+          refreshQueue.push({ resolve, reject });
+        }).then(() => {
+          delete originalRequest.headers?.Authorization;
+          return api(originalRequest);
+        });
+      }
 
-        originalRequest.headers = originalRequest.headers || {};
-        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+      isRefreshing = true;
+
+      try {
+        const refreshToken = localStorage.getItem('refreshToken');
+        if (!refreshToken) {
+          throw new Error('No refresh token');
+        }
+
+        const response = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
+        const { accessToken, refreshToken: newRefreshToken } = response.data.data;
+
+        // Write to localStorage FIRST — the request interceptor reads from here.
+        // Then update Zustand state (which also triggers persist to auth-storage).
+        localStorage.setItem('accessToken', accessToken);
+        localStorage.setItem('refreshToken', newRefreshToken);
+        useAuthStore.getState().setTokens(accessToken, newRefreshToken);
+        updateSocketToken(accessToken);
+
+        processQueue(null, accessToken);
+
+        // Invalidar queries para que refresquen con el token nuevo
+        queryClient.invalidateQueries();
+
+        // Don't set header here — let the request interceptor read
+        // the fresh token from localStorage (already saved above).
+        delete originalRequest.headers?.Authorization;
         return api(originalRequest);
       } catch (refreshError) {
+        processQueue(refreshError);
+
         // Solo el primer caller ejecuta limpieza y redirect
         if (!isLoggingOut) {
           isLoggingOut = true;
@@ -98,6 +130,8 @@ api.interceptors.response.use(
           window.location.replace('/login');
         }
         return Promise.reject(refreshError);
+      } finally {
+        isRefreshing = false;
       }
     }
 

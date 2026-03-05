@@ -30,7 +30,29 @@ export function connectSocket(): Socket | null {
     reconnectionDelay: 2000,
   });
 
+  // On auth errors, stop auto-reconnect — let axios interceptor handle the refresh.
+  // updateSocketToken() will be called after a successful refresh to reconnect.
+  socket.on('connect_error', (error) => {
+    const msg = error.message || '';
+    if (msg.includes('jwt expired') || msg.includes('401') || msg.includes('Token')) {
+      console.warn('[socket] Auth error, pausing reconnect — waiting for token refresh:', msg);
+      socket?.io.opts.reconnection && (socket.io.opts.reconnection = false);
+    }
+  });
+
   return socket;
+}
+
+export function updateSocketToken(token: string): void {
+  if (!socket) return;
+
+  // Re-enable reconnection and set new token
+  socket.io.opts.reconnection = true;
+  socket.auth = { token };
+
+  if (!socket.connected) {
+    socket.connect();
+  }
 }
 
 export function disconnectSocket(): void {

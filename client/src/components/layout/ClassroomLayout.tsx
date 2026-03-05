@@ -183,6 +183,7 @@ export const ClassroomLayout = () => {
       menuKey: 'comunicacion',
       subItems: [
         { path: `/classroom/${id}/announcements`, label: 'Avisos', icon: Megaphone },
+        { path: `/classroom/${id}/chat`, label: 'Chat grupal', icon: MessageCircle },
         ...(classroom?.scrollsEnabled ? [{ path: `/classroom/${id}/activities`, label: 'Chats', icon: MessageCircle }] : []),
       ],
     },

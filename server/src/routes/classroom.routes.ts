@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { classroomController } from '../controllers/classroom.controller.js';
 import { announcementController } from '../controllers/announcement.controller.js';
+import { chatController } from '../controllers/chat.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { aiAssistantService } from '../services/aiAssistant.service.js';
 
@@ -68,6 +69,13 @@ router.get('/:id/announcements', authorize('TEACHER', 'PARENT'), announcementCon
 router.get('/:id/announcements/parent-stats', authorize('TEACHER'), announcementController.parentStats.bind(announcementController));
 router.get('/:id/announcements/families', authorize('TEACHER'), announcementController.families.bind(announcementController));
 router.post('/:id/announcements/mark-read', authorize('PARENT'), announcementController.markRead.bind(announcementController));
+
+// Chat grupal (profesor ↔ padres)
+router.get('/:id/chat', authorize('TEACHER', 'PARENT'), chatController.getMessages.bind(chatController));
+router.post('/:id/chat', authorize('TEACHER', 'PARENT'), chatController.sendMessage.bind(chatController));
+router.delete('/:id/chat/:messageId', authorize('TEACHER'), chatController.deleteMessage.bind(chatController));
+router.get('/:id/chat/settings', authorize('TEACHER', 'PARENT'), chatController.getSettings.bind(chatController));
+router.patch('/:id/chat/settings', authorize('TEACHER'), chatController.updateSettings.bind(chatController));
 
 // Rutas para estudiantes
 router.post('/join', authorize('STUDENT'), classroomController.join.bind(classroomController));

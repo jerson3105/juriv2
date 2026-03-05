@@ -25,6 +25,8 @@ import {
   Award,
   Settings,
   UserMinus,
+  AlertTriangle,
+  ChevronDown,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -35,6 +37,8 @@ import { behaviorApi, type Behavior } from '../../lib/behaviorApi';
 import { studentApi, CHARACTER_CLASSES, type PointType } from '../../lib/studentApi';
 import { badgeApi, type Badge, RARITY_COLORS, RARITY_LABELS } from '../../lib/badgeApi';
 import { CLAN_EMBLEMS } from '../../lib/clanApi';
+import { attendanceApi, type AttendanceRecord } from '../../lib/attendanceApi';
+import { historyApi } from '../../lib/historyApi';
 import { LevelUpAnimation } from '../../components/effects/LevelUpAnimation';
 import { MultiPointsAnimation, useMultiPointsEffect } from '../../components/effects/PurchaseEffects';
 import { TeacherBadgeAwardedModal } from '../../components/badges/TeacherBadgeAwardedModal';
@@ -67,6 +71,11 @@ export const StudentsPage = () => {
   // Estado para modal de añadir estudiantes placeholder
   const [showAddPlaceholderModal, setShowAddPlaceholderModal] = useState(false);
 
+  // Estado para filtros de vista lista
+  const [listFilter, setListFilter] = useState<'all' | 'low_hp' | 'no_activity'>('all');
+  const [clanFilter, setClanFilter] = useState<string | null>(null);
+  const [showClanDropdown, setShowClanDropdown] = useState(false);
+
   // Estado para "Aplicar a Restantes"
   const [showApplyToRestModal, setShowApplyToRestModal] = useState(false);
   const [lastAppliedStudentIds, setLastAppliedStudentIds] = useState<Set<string>>(new Set());
@@ -92,6 +101,20 @@ export const StudentsPage = () => {
     queryFn: () => placeholderStudentApi.getAll(classroom.id),
   });
 
+  // Asistencia de hoy (usar fecha local, no UTC)
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const { data: todayAttendance = [] } = useQuery<AttendanceRecord[]>({
+    queryKey: ['attendance-today', classroom.id, todayStr],
+    queryFn: () => attendanceApi.getAttendanceByDate(classroom.id, todayStr),
+  });
+
+  // Historial de hoy (para filtro "Sin actividad hoy")
+  const { data: todayHistory } = useQuery({
+    queryKey: ['history-today', classroom.id, todayStr],
+    queryFn: () => historyApi.getClassroomHistory(classroom.id, { limit: 200 }),
+  });
+
   const applyBehaviorMutation = useMutation({
     mutationFn: (data: any) => behaviorApi.apply(data),
     onSuccess: async (result, variables) => {
@@ -115,7 +138,20 @@ export const StudentsPage = () => {
         showMultiPointsEffect(xp, hp, gp, behavior.isPositive);
       }
       
-      toast.success(`${result.behavior.name} aplicado a ${result.studentsAffected} estudiante(s)`);
+      // Detailed feedback toast
+      const beh = result.behavior;
+      const txp = beh.xpValue || (beh.pointType === 'XP' ? beh.pointValue : 0);
+      const thp = beh.hpValue || (beh.pointType === 'HP' ? beh.pointValue : 0);
+      const tgp = beh.gpValue || (beh.pointType === 'GP' ? beh.pointValue : 0);
+      const sign = beh.isPositive ? '+' : '-';
+      const parts = [];
+      if (txp > 0) parts.push(`${sign}${txp} XP`);
+      if (thp > 0) parts.push(`${sign}${thp} HP`);
+      if (tgp > 0) parts.push(`${sign}${tgp} GP`);
+      const pointsSummary = parts.length > 0 ? parts.join(', ') : '';
+      toast.success(`${pointsSummary ? pointsSummary + ' aplicado' : 'Aplicado'} — ${beh.name}`, { duration: 2500 });
+      
+      queryClient.invalidateQueries({ queryKey: ['history-today', classroom.id] });
       
       // Si hay subidas de nivel, mostrar animación
       if (result.levelUps && result.levelUps.length > 0) {
@@ -195,14 +231,66 @@ export const StudentsPage = () => {
     return student.characterName || 'Sin nombre';
   };
 
+  // Mapa de asistencia de hoy por studentProfileId
+  const attendanceMap = new Map<string, AttendanceRecord>();
+  todayAttendance.forEach(r => attendanceMap.set(r.studentProfileId, r));
+
+  // Set de estudiantes con actividad de comportamiento hoy
+  const studentsWithActivityToday = new Set<string>();
+  if (todayHistory?.logs) {
+    const todayStart = new Date(todayStr).getTime();
+    const todayEnd = todayStart + 86400000;
+    todayHistory.logs.forEach(log => {
+      const ts = new Date(log.timestamp).getTime();
+      if (ts >= todayStart && ts < todayEnd && log.type === 'POINTS') {
+        studentsWithActivityToday.add(log.studentId);
+      }
+    });
+  }
+
+  // Extraer lista de clanes únicos para filtro dropdown
+  const uniqueClans: { id: string; name: string; color: string }[] = [];
+  const seenClans = new Set<string>();
+  allStudents.forEach((s: any) => {
+    const clanId = s.teamId || s.clanId;
+    if (clanId && s.clanName && !seenClans.has(clanId)) {
+      seenClans.add(clanId);
+      uniqueClans.push({ id: clanId, name: s.clanName, color: s.clanColor || '#6366f1' });
+    }
+  });
+  uniqueClans.sort((a, b) => a.name.localeCompare(b.name, 'es'));
+
+  // Helper: HP color semántico
+  const getHpColor = (hp: number, maxHp: number) => {
+    const pct = (hp / maxHp) * 100;
+    if (pct < 30) return { bar: 'bg-red-500', text: 'text-red-600', warning: true };
+    if (pct <= 60) return { bar: 'bg-amber-500', text: 'text-amber-600', warning: false };
+    return { bar: 'bg-emerald-500', text: 'text-emerald-600', warning: false };
+  };
+
   // Filtrar y ordenar estudiantes alfabéticamente
   const students = allStudents.filter((student) => {
-    if (!searchQuery.trim()) return true;
-    const query = searchQuery.toLowerCase();
-    const displayName = getDisplayName(student).toLowerCase();
-    const realName = `${student.realName || ''} ${student.realLastName || ''}`.toLowerCase();
-    const className = CHARACTER_CLASSES[student.characterClass]?.name.toLowerCase() || '';
-    return displayName.includes(query) || realName.includes(query) || className.includes(query);
+    // Filtro de búsqueda
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      const displayName = getDisplayName(student).toLowerCase();
+      const realName = `${student.realName || ''} ${student.realLastName || ''}`.toLowerCase();
+      const className = CHARACTER_CLASSES[student.characterClass]?.name.toLowerCase() || '';
+      if (!displayName.includes(query) && !realName.includes(query) && !className.includes(query)) return false;
+    }
+    // Filtros de lista
+    if (listFilter === 'low_hp') {
+      const pct = (student.hp / (classroom.maxHp || 100)) * 100;
+      if (pct >= 40) return false;
+    }
+    if (listFilter === 'no_activity') {
+      if (studentsWithActivityToday.has(student.id)) return false;
+    }
+    if (clanFilter) {
+      const sClan = (student as any).teamId || (student as any).clanId;
+      if (sClan !== clanFilter) return false;
+    }
+    return true;
   }).sort((a, b) => getDisplayName(a).localeCompare(getDisplayName(b), 'es'));
 
   const toggleStudent = (studentId: string) => {
@@ -320,7 +408,10 @@ export const StudentsPage = () => {
           {topStudent && (
             <div className="flex items-center gap-1.5 pl-3 border-l border-gray-200 dark:border-gray-600" title="Líder en XP">
               <Crown size={14} className="text-amber-500" />
-              <span className="text-xs text-gray-600 dark:text-gray-300 truncate max-w-[120px]">{getDisplayName(topStudent)}</span>
+              <div className="flex flex-col leading-tight">
+                <span className="text-[10px] text-gray-400">Líder XP</span>
+                <span className="text-xs font-bold text-gray-700 dark:text-gray-200 truncate max-w-[120px]">{getDisplayName(topStudent)}</span>
+              </div>
             </div>
           )}
         </div>
@@ -518,6 +609,9 @@ export const StudentsPage = () => {
                               <span>Nv.{student.level}</span>
                               <span>•</span>
                               <span className="text-emerald-600">{student.xp} XP</span>
+                              {((student.hp / (classroom.maxHp || 100)) * 100) < 30 && (
+                                <span className="text-red-500 font-semibold">HP bajo</span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -529,7 +623,7 @@ export const StudentsPage = () => {
                 {/* Panel central - Detalle del estudiante */}
                 {detailStudent && (
                   <div className="flex-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col">
-                    {/* Header con gradiente */}
+                    {/* Header con info contextual */}
                     <div className={`relative h-32 bg-gradient-to-br ${
                       detailStudent.characterClass === 'GUARDIAN' ? 'from-blue-500 to-cyan-600' :
                       detailStudent.characterClass === 'ARCANE' ? 'from-purple-500 to-pink-600' :
@@ -544,12 +638,28 @@ export const StudentsPage = () => {
                         <ChevronLeft size={14} />
                         <span>Lista</span>
                       </button>
-                      {isTopStudent && (
-                        <div className="absolute top-3 right-3 flex items-center gap-1 bg-white/20 backdrop-blur text-white text-xs font-bold px-2 py-1 rounded-full">
-                          <Crown size={12} />
-                          <span>Líder en XP</span>
-                        </div>
-                      )}
+                      {/* Parent code + leader badge in top-right */}
+                      <div className="absolute top-3 right-3 flex items-center gap-2">
+                        {isTopStudent && (
+                          <div className="flex items-center gap-1 bg-white/20 backdrop-blur text-white text-xs font-bold px-2 py-1 rounded-full">
+                            <Crown size={12} />
+                            <span>Líder en XP</span>
+                          </div>
+                        )}
+                        {getStudentLinkCode(detailStudent.id) && (
+                          <button
+                            onClick={() => copyLinkCode(getStudentLinkCode(detailStudent.id)!)}
+                            className="flex flex-col items-end bg-white/20 backdrop-blur text-white text-xs px-2.5 py-1.5 rounded-lg hover:bg-white/30 transition-colors"
+                            title="Clic para copiar código del estudiante"
+                          >
+                            <span className="text-[9px] text-white/70 leading-none">Código del estudiante</span>
+                            <span className="font-mono font-bold flex items-center gap-1">
+                              {getStudentLinkCode(detailStudent.id)}
+                              <Copy size={10} className="opacity-70" />
+                            </span>
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     {/* Contenido principal */}
@@ -591,19 +701,34 @@ export const StudentsPage = () => {
                           <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-1">
                             {getDisplayName(detailStudent)}
                           </h2>
-                          <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300 mb-4">
+                          <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300 mb-2">
                             <span className="text-xl">{detailClassInfo?.icon}</span>
                             <span className="font-medium">{detailClassInfo?.name}</span>
-                            {classroom.clansEnabled && (detailStudent as any).clanName && (
-                              <>
-                                <span className="text-gray-300 dark:text-gray-600">•</span>
-                                <span 
-                                  className="px-2 py-0.5 rounded-full text-white text-sm"
-                                  style={{ backgroundColor: (detailStudent as any).clanColor || '#6366f1' }}
-                                >
-                                  🛡️ {(detailStudent as any).clanName}
+                            <span className="text-gray-300 dark:text-gray-600">•</span>
+                            <span className="text-sm">Nv. {detailStudent.level}</span>
+                          </div>
+                          {/* Context chips */}
+                          <div className="flex flex-wrap gap-1.5 mb-4">
+                            {classroom.clansEnabled && (
+                              <span 
+                                className="px-2 py-0.5 rounded-full text-white text-xs font-medium"
+                                style={{ backgroundColor: (detailStudent as any).clanColor || '#6b7280' }}
+                              >
+                                🛡️ {(detailStudent as any).clanName || 'Sin clan'}
+                              </span>
+                            )}
+                            {(() => {
+                              const streak = (detailStudent as any).loginStreak || 0;
+                              return streak > 0 ? (
+                                <span className="px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 text-xs font-medium">
+                                  🔥 {streak} días seguidos
                                 </span>
-                              </>
+                              ) : null;
+                            })()}
+                            {(detailStudent as any).badgeCount > 0 && (
+                              <span className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-xs font-medium">
+                                🏅 {(detailStudent as any).badgeCount} insignias
+                              </span>
                             )}
                           </div>
 
@@ -637,7 +762,7 @@ export const StudentsPage = () => {
                                   XP
                                 </span>
                                 <span className="text-lg font-bold text-gray-700 dark:text-gray-200">
-                                  {detailStudent.xp} <span className="text-sm font-normal text-gray-400">({Math.round(xpInLevel)}/{xpNeeded})</span>
+                                  {Math.round(xpInLevel)} <span className="text-sm font-normal text-gray-400">/ {xpNeeded} para Nv. {lvl + 1}</span>
                                 </span>
                               </div>
                               <div className="h-3 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
@@ -691,7 +816,7 @@ export const StudentsPage = () => {
                               size="sm"
                               variant="secondary"
                               onClick={() => navigate(`/classroom/${classroom.id}/student/${detailStudent.id}`)}
-                              className="!bg-indigo-500 hover:!bg-indigo-600 !text-white"
+                              className="!bg-white dark:!bg-gray-700 !text-gray-600 dark:!text-gray-300 !border !border-gray-300 dark:!border-gray-600 hover:!bg-gray-50 dark:hover:!bg-gray-600"
                             >
                               <Eye size={14} className="mr-1" /> Ver perfil
                             </Button>
@@ -708,20 +833,109 @@ export const StudentsPage = () => {
           {/* Vista de Lista */}
           {viewMode === 'list' && (
             <Card className="overflow-hidden !p-0">
-              {/* Barra de búsqueda */}
+              {/* Barra de búsqueda + filtros */}
               <div className="p-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-                <div className="relative max-w-xs">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Buscar estudiante..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative flex-shrink-0">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Buscar estudiante..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-56 pl-9 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                  {/* Filtros */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <button
+                      onClick={() => { setListFilter('all'); setClanFilter(null); }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                        listFilter === 'all' && !clanFilter
+                          ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-700'
+                          : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      Todos ({allStudents.length})
+                    </button>
+                    <button
+                      onClick={() => { setListFilter('low_hp'); setClanFilter(null); }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 ${
+                        listFilter === 'low_hp'
+                          ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-300 dark:border-red-700'
+                          : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      <Heart size={12} /> HP bajo
+                    </button>
+                    <button
+                      onClick={() => { setListFilter('no_activity'); setClanFilter(null); }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                        listFilter === 'no_activity'
+                          ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
+                          : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      Sin actividad hoy
+                    </button>
+                    {classroom.clansEnabled && uniqueClans.length > 0 && (
+                      <div className="relative">
+                        <button
+                          onClick={() => setShowClanDropdown(!showClanDropdown)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 ${
+                            clanFilter
+                              ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border border-violet-300 dark:border-violet-700'
+                              : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+                          }`}
+                        >
+                          <Shield size={12} />
+                          {clanFilter ? uniqueClans.find(c => c.id === clanFilter)?.name || 'Clan' : 'Por clan'}
+                          <ChevronDown size={12} />
+                        </button>
+                        {showClanDropdown && (
+                          <div className="absolute top-full left-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-20 min-w-[160px] py-1">
+                            {uniqueClans.map(clan => (
+                              <button
+                                key={clan.id}
+                                onClick={() => { setClanFilter(clan.id); setListFilter('all'); setShowClanDropdown(false); }}
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                              >
+                                <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: clan.color }} />
+                                {clan.name}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-              {students.length === 0 && searchQuery.trim() ? (
+
+              {/* Seleccionar todos */}
+              {students.length > 0 && (
+                <div
+                  onClick={selectAll}
+                  className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 cursor-pointer hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10 transition-colors"
+                >
+                  <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors flex-shrink-0 ${
+                    selectedStudents.size === students.length && students.length > 0 ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300 dark:border-gray-500'
+                  }`}>
+                    {selectedStudents.size === students.length && students.length > 0 && <Check size={12} className="text-white" />}
+                    {selectedStudents.size > 0 && selectedStudents.size < students.length && <div className="w-2 h-2 bg-indigo-600 rounded-sm" />}
+                  </div>
+                  <span className="text-sm text-gray-600 dark:text-gray-300">
+                    Seleccionar todos los <span className="font-semibold">{students.length}</span> estudiantes
+                  </span>
+                  {selectedStudents.size > 0 && (
+                    <span className="text-xs bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-full font-medium">
+                      {selectedStudents.size} seleccionado{selectedStudents.size !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {students.length === 0 && (searchQuery.trim() || listFilter !== 'all' || clanFilter) ? (
                 <div className="text-center py-12 px-4">
                   <Search className="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-gray-600" />
                   <h3 className="text-lg font-medium text-gray-600 dark:text-gray-400 mb-1">
@@ -772,8 +986,26 @@ export const StudentsPage = () => {
                                 {isTopStudent && <Crown size={14} className="text-amber-500" />}
                               </div>
                               <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                                {/* Attendance indicator dot */}
+                                {(() => {
+                                  const att = attendanceMap.get(student.id);
+                                  const dotColor = att
+                                    ? (att.status === 'PRESENT' || att.status === 'LATE') ? 'bg-emerald-500' : 'bg-red-500'
+                                    : 'bg-gray-300 dark:bg-gray-600';
+                                  const dotTitle = att
+                                    ? att.status === 'PRESENT' ? 'Presente hoy' : att.status === 'LATE' ? 'Tarde hoy' : att.status === 'EXCUSED' ? 'Justificado' : 'Ausente hoy'
+                                    : 'Sin registrar';
+                                  return <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${dotColor}`} title={dotTitle} />;
+                                })()}
                                 <span className="text-lg leading-none">{classInfo?.icon || '🎮'}</span>
                                 <span>{classInfo?.name || 'Sin clase'}</span>
+                                {(() => {
+                                  const att = attendanceMap.get(student.id);
+                                  const label = att
+                                    ? att.status === 'PRESENT' ? 'Presente hoy' : att.status === 'LATE' ? 'Tarde hoy' : att.status === 'EXCUSED' ? 'Justificado' : 'Ausente hoy'
+                                    : null;
+                                  return label ? <><span className="text-gray-300">·</span><span className="text-[10px]">{label}</span></> : null;
+                                })()}
                                 {classroom.clansEnabled && (
                                   <>
                                     <span className="text-gray-300">•</span>
@@ -810,18 +1042,24 @@ export const StudentsPage = () => {
                           </div>
                         </td>
 
-                        {/* HP */}
+                        {/* HP — semantic color */}
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <Heart size={14} className="text-red-500 fill-red-500 flex-shrink-0" />
-                            <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden max-w-[80px]">
-                              <div 
-                                className="h-full rounded-full bg-red-500"
-                                style={{ width: `${hpPercent}%` }}
-                              />
-                            </div>
-                            <span className="text-sm text-gray-600 w-16">{student.hp}/{classroom.maxHp || 100}</span>
-                          </div>
+                          {(() => {
+                            const hpStyle = getHpColor(student.hp, classroom.maxHp || 100);
+                            return (
+                              <div className="flex items-center gap-2">
+                                <Heart size={14} className={`${hpStyle.text} flex-shrink-0`} />
+                                <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden max-w-[80px]">
+                                  <div 
+                                    className={`h-full rounded-full ${hpStyle.bar}`}
+                                    style={{ width: `${hpPercent}%` }}
+                                  />
+                                </div>
+                                <span className={`text-sm font-medium w-16 ${hpStyle.text}`}>{student.hp}/{classroom.maxHp || 100}</span>
+                                {hpStyle.warning && <AlertTriangle size={14} className="text-red-500 flex-shrink-0" />}
+                              </div>
+                            );
+                          })()}
                         </td>
 
                         {/* GP */}
@@ -1044,6 +1282,10 @@ export const StudentsPage = () => {
         onClose={() => setShowBehaviorModal(false)}
         isPositive={behaviorType === 'positive'}
         selectedCount={selectedStudents.size}
+        selectedStudentNames={Array.from(selectedStudents).map(id => {
+          const s = allStudents.find(st => st.id === id);
+          return s ? getDisplayName(s) : 'Estudiante';
+        })}
         behaviors={behaviorType === 'positive' ? positiveBehaviors : negativeBehaviors}
         onApplyBehavior={applyBehavior}
         onApplyManual={async (pointType, amount, reason) => {
@@ -1369,6 +1611,7 @@ const PointsModal = ({
   onClose,
   isPositive,
   selectedCount,
+  selectedStudentNames,
   behaviors,
   onApplyBehavior,
   onApplyManual,
@@ -1379,6 +1622,7 @@ const PointsModal = ({
   onClose: () => void;
   isPositive: boolean;
   selectedCount: number;
+  selectedStudentNames: string[];
   behaviors: Behavior[];
   onApplyBehavior: (behavior: Behavior) => void;
   onApplyManual: (pointType: PointType, amount: number, reason: string) => Promise<void>;
@@ -1482,10 +1726,19 @@ const PointsModal = ({
             </div>
 
             <div className="flex-1 p-5 overflow-y-auto">
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 flex items-center gap-2">
-                <Users size={14} />
-                Aplicar a {selectedCount} estudiante{selectedCount !== 1 ? 's' : ''}
-              </p>
+              {/* Destinatario prominente */}
+              <div className="mb-4 p-3 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 rounded-xl">
+                <p className="text-sm font-medium text-violet-700 dark:text-violet-300 flex items-center gap-2">
+                  <Users size={14} />
+                  Aplicar a <span className="font-bold">{selectedCount}</span> estudiante{selectedCount !== 1 ? 's' : ''}
+                  {selectedCount <= 3 && selectedStudentNames.length > 0 && (
+                    <span className="text-violet-500 dark:text-violet-400">— {selectedStudentNames.join(', ')}</span>
+                  )}
+                  {selectedCount > 3 && (
+                    <span className="text-violet-500 dark:text-violet-400">— {selectedCount} seleccionados</span>
+                  )}
+                </p>
+              </div>
 
             {/* Tab: Comportamientos */}
             {activeTab === 'behaviors' && (
@@ -1528,8 +1781,13 @@ const PointsModal = ({
                               {behavior.name}
                             </p>
                             {behavior.description && (
-                              <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                                {behavior.description}
+                              <p 
+                                className="text-sm text-gray-500 dark:text-gray-400"
+                                title={behavior.description.length > 120 ? behavior.description : undefined}
+                              >
+                                {behavior.description.length > 120 
+                                  ? behavior.description.slice(0, 120) + '...' 
+                                  : behavior.description}
                               </p>
                             )}
                             {behavior.competency && (

@@ -9,7 +9,9 @@ import {
   Menu,
   X,
   ChevronDown,
+  ChevronUp,
   Megaphone,
+  MessageCircle,
   GraduationCap,
   Check,
 } from 'lucide-react';
@@ -18,11 +20,24 @@ import { ThemeToggle } from '../ui/ThemeToggle';
 import { SelectedClassroomProvider, useSelectedClassroom } from '../../contexts/SelectedClassroomContext';
 import type { ChildSummary } from '../../lib/parentApi';
 
-const parentNavItems = [
+type NavItem = { path: string; label: string; icon: any; gradient: string; exact?: boolean };
+type NavGroup = { label: string; icon: any; gradient: string; menuKey: string; subItems: NavItem[] };
+type ParentNavEntry = NavItem | NavGroup;
+
+const parentNavItems: ParentNavEntry[] = [
   { path: '/parent', label: 'Inicio', icon: Home, gradient: 'from-indigo-500 to-purple-500', exact: true },
-  { path: '/parent/report', label: 'Reportes', icon: BarChart3, gradient: 'from-emerald-500 to-teal-500', exact: false },
-  { path: '/parent/ai-report', label: 'Informe inteligente', icon: Sparkles, gradient: 'from-purple-500 to-pink-500', exact: false },
-  { path: '/parent/chat', label: 'Avisos', icon: Megaphone, gradient: 'from-cyan-500 to-blue-500', exact: false },
+  { path: '/parent/report', label: 'Reportes', icon: BarChart3, gradient: 'from-emerald-500 to-teal-500' },
+  { path: '/parent/ai-report', label: 'Informe inteligente', icon: Sparkles, gradient: 'from-purple-500 to-pink-500' },
+  {
+    label: 'Comunicación',
+    icon: Megaphone,
+    gradient: 'from-cyan-500 to-blue-500',
+    menuKey: 'comunicacion',
+    subItems: [
+      { path: '/parent/chat', label: 'Avisos', icon: Megaphone, gradient: 'from-cyan-500 to-blue-500', exact: true },
+      { path: '/parent/chat/group', label: 'Chat grupal', icon: MessageCircle, gradient: 'from-indigo-500 to-purple-500' },
+    ],
+  },
 ];
 
 export const ParentLayout = () => {
@@ -111,12 +126,21 @@ function ClassroomSelector() {
   );
 }
 
+function isNavGroup(entry: ParentNavEntry): entry is NavGroup {
+  return 'subItems' in entry;
+}
+
 const ParentLayoutInner = () => {
   const { user, logout } = useAuthStore();
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({ comunicacion: true });
+
+  const toggleMenu = (key: string) => {
+    setOpenMenus(prev => ({ ...prev, [key]: !prev[key] }));
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -170,7 +194,79 @@ const ParentLayoutInner = () => {
 
         {/* Navigation */}
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {parentNavItems.map((item) => {
+          {parentNavItems.map((entry) => {
+            if (isNavGroup(entry)) {
+              const isGroupActive = entry.subItems.some(s => location.pathname.startsWith(s.path));
+              const isExpanded = openMenus[entry.menuKey];
+              return (
+                <div key={entry.menuKey}>
+                  <button
+                    onClick={() => toggleMenu(entry.menuKey)}
+                    className={`
+                      flex items-center gap-3 px-3 py-2.5 rounded-xl w-full
+                      transition-all duration-200 group
+                      ${isGroupActive
+                        ? 'bg-gradient-to-r ' + entry.gradient + ' text-white shadow-md'
+                        : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      }
+                    `}
+                  >
+                    <div className={`
+                      w-8 h-8 rounded-lg flex items-center justify-center transition-all
+                      ${isGroupActive
+                        ? 'bg-white/20'
+                        : 'bg-gradient-to-br ' + entry.gradient + ' text-white shadow-sm group-hover:scale-105'
+                      }
+                    `}>
+                      <entry.icon size={16} />
+                    </div>
+                    <span className={`text-sm font-medium flex-1 text-left ${isGroupActive ? '' : 'text-gray-700 dark:text-gray-300'}`}>
+                      {entry.label}
+                    </span>
+                    {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </button>
+                  <AnimatePresence initial={false}>
+                    {isExpanded && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="ml-5 pl-3 border-l-2 border-gray-200 dark:border-gray-600 mt-1 space-y-0.5">
+                          {entry.subItems.map((sub) => {
+                            const isSubActive = sub.exact
+                              ? (location.pathname === sub.path || location.pathname.startsWith(sub.path + '/announcements'))
+                              : location.pathname.startsWith(sub.path);
+                            return (
+                              <Link
+                                key={sub.path}
+                                to={sub.path}
+                                onClick={() => setSidebarOpen(false)}
+                                className={`
+                                  flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm
+                                  transition-all duration-200
+                                  ${isSubActive
+                                    ? 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 font-medium'
+                                    : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
+                                  }
+                                `}
+                              >
+                                <sub.icon size={15} />
+                                {sub.label}
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            }
+
+            const item = entry as NavItem;
             const isActivePath = item.exact
               ? location.pathname === item.path
               : location.pathname.startsWith(item.path);

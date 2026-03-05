@@ -128,19 +128,13 @@ export const useAuthStore = create<AuthState>()(
           }
         } catch (error) {
           const status = (error as any)?.response?.status;
+          const errMsg = (error as any)?.response?.data?.message || (error as any)?.message;
+          console.error('[fetchUser] ERROR — status:', status, '| message:', errMsg, '| url:', (error as any)?.config?.url);
 
-          // Solo limpiar sesión si realmente no está autorizado.
-          // Evita desloguear por errores transitorios (red, 5xx, etc.).
-          if (status === 401 || status === 403) {
-            localStorage.removeItem('accessToken');
-            localStorage.removeItem('refreshToken');
-            set({
-              user: null,
-              accessToken: null,
-              refreshToken: null,
-              isAuthenticated: false,
-            });
-          }
+          // NO limpiar sesión aquí — el interceptor de axios en api.ts se encarga
+          // del refresh y, si falla, de clearClientAuthSession + redirect a /login.
+          // Limpiar aquí causaba race conditions: fetchUser borraba tokens que el
+          // interceptor acababa de renovar.
         } finally {
           set({ isLoading: false });
         }
