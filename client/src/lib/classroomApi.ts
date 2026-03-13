@@ -181,6 +181,18 @@ export interface UpdateClassroomSettings {
   gradeScaleType?: 'PERU_LETTERS' | 'PERU_VIGESIMAL' | 'CENTESIMAL' | 'USA_LETTERS' | 'CUSTOM' | null;
 }
 
+export interface ResetOptions {
+  points?: boolean;
+  history?: boolean;
+  purchases?: boolean;
+  badges?: boolean;
+  attendance?: boolean;
+  streaks?: boolean;
+  clans?: boolean;
+  scrolls?: boolean;
+  powerUsages?: boolean;
+}
+
 export interface JoinClassroomData {
   code: string;
   characterName: string;
@@ -226,6 +238,12 @@ export const classroomApi = {
   // Resetear puntos de todos los estudiantes
   resetAllPoints: async (id: string): Promise<void> => {
     await api.post(`/classrooms/${id}/reset-points`);
+  },
+
+  // Reseteo selectivo del aula
+  resetClassroomSelective: async (id: string, options: ResetOptions): Promise<{ cleaned: string[] }> => {
+    const response = await api.post(`/classrooms/${id}/reset-selective`, options);
+    return response.data.data;
   },
 
   // Sincronizar competencias del classroom con el área curricular

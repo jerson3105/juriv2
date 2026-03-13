@@ -544,25 +544,143 @@ export class ClassroomService {
     return { classroom, profileId: id };
   }
 
-  // Resetear puntos de todos los estudiantes
+  // Resetear puntos de todos los estudiantes (legacy — llama al selectivo con solo puntos)
   async resetAllPoints(classroomId: string, teacherId: string) {
+    return this.resetClassroomSelective(classroomId, teacherId, { points: true });
+  }
+
+  // Reseteo selectivo del aula
+  async resetClassroomSelective(
+    classroomId: string,
+    teacherId: string,
+    options: {
+      points?: boolean;
+      history?: boolean;
+      purchases?: boolean;
+      badges?: boolean;
+      attendance?: boolean;
+      streaks?: boolean;
+      clans?: boolean;
+      scrolls?: boolean;
+      powerUsages?: boolean;
+    }
+  ) {
     const classroom = await this.getById(classroomId);
     if (!classroom || classroom.teacherId !== teacherId) {
       throw new Error('No autorizado');
     }
 
-    const now = new Date();
-    
-    // Resetear XP, HP y GP a los valores por defecto de la clase
-    await db.update(studentProfiles).set({
-      xp: classroom.defaultXp,
-      hp: classroom.defaultHp,
-      gp: classroom.defaultGp,
-      level: 1,
-      updatedAt: now,
-    }).where(eq(studentProfiles.classroomId, classroomId));
+    const students = await db.query.studentProfiles.findMany({
+      where: eq(studentProfiles.classroomId, classroomId),
+      columns: { id: true }
+    });
+    const studentIds = students.map(s => s.id);
 
-    return { success: true, message: 'Puntos reseteados' };
+    const now = new Date();
+    const cleaned: string[] = [];
+
+    // 1. Historial de puntos
+    if (options.history && studentIds.length > 0) {
+      await db.delete(pointLogs).where(inArray(pointLogs.studentId, studentIds));
+      cleaned.push('history');
+    }
+
+    // 2. Compras e items usados
+    if (options.purchases && studentIds.length > 0) {
+      const items = await db.query.shopItems.findMany({
+        where: eq(shopItems.classroomId, classroomId),
+        columns: { id: true }
+      });
+      const itemIds = items.map(i => i.id);
+
+      if (itemIds.length > 0) {
+        const itemPurchases = await db.query.purchases.findMany({
+          where: inArray(purchases.itemId, itemIds),
+          columns: { id: true }
+        });
+        const purchaseIds = itemPurchases.map(p => p.id);
+        if (purchaseIds.length > 0) {
+          await db.delete(itemUsages).where(inArray(itemUsages.purchaseId, purchaseIds));
+        }
+        await db.delete(purchases).where(inArray(purchases.itemId, itemIds));
+      }
+      cleaned.push('purchases');
+    }
+
+    // 3. Insignias ganadas + progreso
+    if (options.badges && studentIds.length > 0) {
+      await db.delete(badgeProgress).where(inArray(badgeProgress.studentProfileId, studentIds));
+      await db.delete(studentBadges).where(inArray(studentBadges.studentProfileId, studentIds));
+      cleaned.push('badges');
+    }
+
+    // 4. Asistencia
+    if (options.attendance) {
+      await db.delete(attendanceRecords).where(eq(attendanceRecords.classroomId, classroomId));
+      cleaned.push('attendance');
+    }
+
+    // 5. Rachas (login streaks + student streaks)
+    if (options.streaks) {
+      await db.delete(loginStreaks).where(eq(loginStreaks.classroomId, classroomId));
+      await db.delete(studentStreaks).where(eq(studentStreaks.classroomId, classroomId));
+      cleaned.push('streaks');
+    }
+
+    // 6. Clanes — resetear stats, no eliminar
+    if (options.clans) {
+      const classTeams = await db.query.teams.findMany({
+        where: eq(teams.classroomId, classroomId),
+        columns: { id: true }
+      });
+      const teamIds = classTeams.map(t => t.id);
+
+      if (teamIds.length > 0) {
+        await db.delete(clanLogs).where(inArray(clanLogs.clanId, teamIds));
+        await db.update(teams).set({
+          totalXp: 0,
+          totalGp: 0,
+          wins: 0,
+          losses: 0,
+          updatedAt: now,
+        }).where(eq(teams.classroomId, classroomId));
+      }
+      cleaned.push('clans');
+    }
+
+    // 7. Pergaminos
+    if (options.scrolls) {
+      const classScrolls = await db.query.scrolls.findMany({
+        where: eq(scrolls.classroomId, classroomId),
+        columns: { id: true }
+      });
+      const scrollIds = classScrolls.map(s => s.id);
+      if (scrollIds.length > 0) {
+        await db.delete(scrollReactions).where(inArray(scrollReactions.scrollId, scrollIds));
+        await db.delete(scrolls).where(inArray(scrolls.id, scrollIds));
+      }
+      cleaned.push('scrolls');
+    }
+
+    // 8. Uso de poderes
+    if (options.powerUsages && studentIds.length > 0) {
+      await db.delete(powerUsages).where(inArray(powerUsages.studentId, studentIds));
+      cleaned.push('powerUsages');
+    }
+
+    // 9. Puntos — siempre al final para que el historial ya esté limpio
+    if (options.points) {
+      await db.update(studentProfiles).set({
+        xp: classroom.defaultXp,
+        hp: classroom.defaultHp,
+        gp: classroom.defaultGp,
+        level: 1,
+        updatedAt: now,
+      }).where(eq(studentProfiles.classroomId, classroomId));
+      cleaned.push('points');
+    }
+
+    return { success: true, cleaned };
   }
 
   // Obtener cantidades de elementos clonables del aula

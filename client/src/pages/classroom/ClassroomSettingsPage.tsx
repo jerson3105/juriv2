@@ -44,6 +44,7 @@ export const ClassroomSettingsPage = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetConfirmText, setResetConfirmText] = useState('');
   const [showDemoDeleteConfirm, setShowDemoDeleteConfirm] = useState(false);
   const [showAddPlaceholderModal, setShowAddPlaceholderModal] = useState(false);
   const [generatingFlyers, setGeneratingFlyers] = useState(false);
@@ -171,16 +172,27 @@ export const ClassroomSettingsPage = () => {
     onError: () => toast.error('Error al eliminar'),
   });
 
-  // Mutation para resetear puntos
+  // Mutation para resetear clase completa
   const resetPointsMutation = useMutation({
-    mutationFn: () => classroomApi.resetAllPoints(classroom.id),
+    mutationFn: () => classroomApi.resetClassroomSelective(classroom.id, {
+      points: true,
+      history: true,
+      purchases: true,
+      badges: true,
+      attendance: true,
+      streaks: true,
+      clans: true,
+      scrolls: true,
+      powerUsages: true,
+    }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['classroom', classroom.id] });
       queryClient.invalidateQueries({ queryKey: ['students', classroom.id] });
+      queryClient.invalidateQueries({ queryKey: ['history', classroom.id] });
       refetch();
-      toast.success('Puntos de todos los estudiantes reseteados');
+      toast.success('Clase reseteada a cero correctamente');
     },
-    onError: () => toast.error('Error al resetear puntos'),
+    onError: () => toast.error('Error al resetear la clase'),
   });
 
   // Query para verificar si hay estudiante demo
@@ -1198,7 +1210,7 @@ ${(() => {
                 className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-white dark:bg-gray-800 border border-red-200 dark:border-red-800 text-red-600 rounded-xl text-sm font-medium hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors disabled:opacity-50"
               >
                 <RefreshCw size={16} className={resetPointsMutation.isPending ? 'animate-spin' : ''} />
-                {resetPointsMutation.isPending ? 'Reseteando...' : 'Resetear puntos de todos'}
+                {resetPointsMutation.isPending ? 'Reseteando...' : 'Resetear clase a cero'}
               </button>
               
               <button
@@ -1266,20 +1278,62 @@ ${(() => {
         </div>
       )}
 
-      {/* Modal de confirmación para resetear puntos */}
-      <ConfirmModal
-        isOpen={showResetConfirm}
-        onClose={() => setShowResetConfirm(false)}
-        onConfirm={() => {
-          resetPointsMutation.mutate();
-          setShowResetConfirm(false);
-        }}
-        title="¿Resetear puntos?"
-        message="Se resetearán los puntos de TODOS los estudiantes. Esta acción no se puede deshacer."
-        confirmText="Resetear"
-        variant="warning"
-        isLoading={resetPointsMutation.isPending}
-      />
+      {/* Modal de confirmación para resetear clase a cero */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-gray-900 rounded-2xl p-6 max-w-md w-full border border-gray-800"
+          >
+            <div className="text-center mb-4">
+              <div className="w-14 h-14 mx-auto mb-3 bg-red-500/20 rounded-2xl flex items-center justify-center">
+                <AlertTriangle size={28} className="text-red-500" />
+              </div>
+              <h3 className="text-lg font-bold text-white mb-1">¿Resetear clase a cero?</h3>
+              <p className="text-sm text-gray-400">
+                Se eliminarán <span className="text-red-400 font-medium">todos</span> los datos de actividad: puntos, historial, compras, insignias, asistencia, rachas, clanes, pergaminos y uso de poderes. Los estudiantes, comportamientos y configuración se mantienen.
+              </p>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-xs text-gray-400 mb-1">
+                Escribe "<span className="text-red-400 font-medium">{classroom.name}</span>" para confirmar
+              </label>
+              <input
+                type="text"
+                value={resetConfirmText}
+                onChange={(e) => setResetConfirmText(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-xl text-white text-sm focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none"
+                placeholder={classroom.name}
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setShowResetConfirm(false);
+                  setResetConfirmText('');
+                }}
+                className="flex-1 px-4 py-2.5 bg-gray-800 text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-700"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  resetPointsMutation.mutate();
+                  setShowResetConfirm(false);
+                  setResetConfirmText('');
+                }}
+                disabled={resetConfirmText !== classroom.name || resetPointsMutation.isPending}
+                className="flex-1 px-4 py-2.5 bg-red-500 text-white rounded-xl text-sm font-medium hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {resetPointsMutation.isPending ? 'Reseteando...' : 'Resetear todo'}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {/* Modal de confirmación para eliminar estudiante demo */}
       <ConfirmModal

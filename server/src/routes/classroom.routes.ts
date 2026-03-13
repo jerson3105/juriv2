@@ -18,6 +18,7 @@ router.get('/my', authorize('TEACHER'), classroomController.getMyClassrooms.bind
 router.put('/:id', authorize('TEACHER'), classroomController.update.bind(classroomController));
 router.delete('/:id', authorize('TEACHER'), classroomController.delete.bind(classroomController));
 router.post('/:id/reset-points', authorize('TEACHER'), classroomController.resetAllPoints.bind(classroomController));
+router.post('/:id/reset-selective', authorize('TEACHER'), classroomController.resetClassroomSelective.bind(classroomController));
 router.post('/:id/sync-competencies', authorize('TEACHER'), classroomController.syncCompetencies.bind(classroomController));
 router.get('/:classroomId/cloneable-counts', authorize('TEACHER'), classroomController.getCloneableCounts.bind(classroomController));
 router.post('/:classroomId/clone', authorize('TEACHER'), classroomController.cloneClassroom.bind(classroomController));

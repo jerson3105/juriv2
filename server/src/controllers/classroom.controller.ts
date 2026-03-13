@@ -274,6 +274,32 @@ export class ClassroomController {
     }
   }
 
+  async resetClassroomSelective(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const options = req.body || {};
+      const result = await classroomService.resetClassroomSelective(id, req.user!.id, options);
+
+      res.json({
+        success: true,
+        message: 'Clase reseteada correctamente',
+        data: result,
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'No autorizado') {
+        return res.status(403).json({
+          success: false,
+          message: 'No tienes permiso para esta acción',
+        });
+      }
+      console.error('Error resetting classroom:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error al resetear la clase',
+      });
+    }
+  }
+
   async join(req: Request, res: Response) {
     try {
       const data = joinClassroomSchema.parse(req.body);

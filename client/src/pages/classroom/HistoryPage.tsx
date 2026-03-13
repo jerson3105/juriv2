@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ScrollText, 
   Zap, 
@@ -18,10 +18,20 @@ import {
   ChevronRight,
   Medal,
   CalendarCheck,
+  Trash2,
+  AlertTriangle,
+  RotateCcw,
+  Sword,
+  Scroll,
+  Flame,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
 import { historyApi } from '../../lib/historyApi';
 import type { ActivityLogEntry } from '../../lib/historyApi';
 import { CHARACTER_CLASSES } from '../../lib/studentApi';
+import { classroomApi, type ResetOptions } from '../../lib/classroomApi';
+import toast from 'react-hot-toast';
 
 type FilterType = 'ALL' | 'POINTS' | 'PURCHASE' | 'ITEM_USED' | 'BADGE' | 'ATTENDANCE';
 
@@ -86,6 +96,60 @@ export const HistoryPage = () => {
     queryKey: ['history-stats', classroom?.id],
     queryFn: () => historyApi.getClassroomStats(classroom.id),
     enabled: !!classroom?.id,
+  });
+
+  // === Reseteo selectivo ===
+  const queryClient = useQueryClient();
+  const [showResetPanel, setShowResetPanel] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetOptions, setResetOptions] = useState<ResetOptions>({
+    points: false,
+    history: false,
+    purchases: false,
+    badges: false,
+    attendance: false,
+    streaks: false,
+    clans: false,
+    scrolls: false,
+    powerUsages: false,
+  });
+
+  const resetOptionsDef = [
+    { key: 'points' as const, label: 'Puntos (XP, HP, GP, Nivel)', icon: <Zap size={16} className="text-emerald-500" />, desc: 'Devuelve XP, HP, GP a valores por defecto y nivel a 1' },
+    { key: 'history' as const, label: 'Historial de puntos', icon: <ScrollText size={16} className="text-violet-500" />, desc: 'Elimina todos los registros de puntos otorgados/quitados' },
+    { key: 'purchases' as const, label: 'Compras de tienda', icon: <ShoppingBag size={16} className="text-indigo-500" />, desc: 'Elimina compras realizadas y uso de items' },
+    { key: 'badges' as const, label: 'Insignias ganadas', icon: <Medal size={16} className="text-amber-500" />, desc: 'Elimina insignias desbloqueadas y progreso' },
+    { key: 'attendance' as const, label: 'Asistencia', icon: <CalendarCheck size={16} className="text-blue-500" />, desc: 'Elimina todos los registros de asistencia' },
+    { key: 'streaks' as const, label: 'Rachas de login', icon: <Flame size={16} className="text-orange-500" />, desc: 'Reinicia rachas de inicio de sesión' },
+    { key: 'clans' as const, label: 'Datos de clanes', icon: <Sword size={16} className="text-red-500" />, desc: 'Resetea XP, GP, victorias y derrotas de clanes' },
+    { key: 'scrolls' as const, label: 'Pergaminos', icon: <Scroll size={16} className="text-pink-500" />, desc: 'Elimina todos los pergaminos del mural' },
+    { key: 'powerUsages' as const, label: 'Uso de poderes', icon: <Sparkles size={16} className="text-cyan-500" />, desc: 'Elimina registros de poderes usados' },
+  ];
+
+  const selectedCount = Object.values(resetOptions).filter(Boolean).length;
+  const allSelected = selectedCount === resetOptionsDef.length;
+
+  const toggleAll = () => {
+    const newVal = !allSelected;
+    setResetOptions({
+      points: newVal, history: newVal, purchases: newVal, badges: newVal,
+      attendance: newVal, streaks: newVal, clans: newVal, scrolls: newVal, powerUsages: newVal,
+    });
+  };
+
+  const resetMutation = useMutation({
+    mutationFn: () => classroomApi.resetClassroomSelective(classroom.id, resetOptions),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['history', classroom.id] });
+      queryClient.invalidateQueries({ queryKey: ['history-stats', classroom.id] });
+      queryClient.invalidateQueries({ queryKey: ['classroom', classroom.id] });
+      queryClient.invalidateQueries({ queryKey: ['students', classroom.id] });
+      const count = data.cleaned.length;
+      toast.success(`${count} ${count === 1 ? 'categoría reseteada' : 'categorías reseteadas'} correctamente`);
+      setShowResetPanel(false);
+      setResetOptions({ points: false, history: false, purchases: false, badges: false, attendance: false, streaks: false, clans: false, scrolls: false, powerUsages: false });
+    },
+    onError: () => toast.error('Error al resetear'),
   });
 
   const filters: { id: FilterType; label: string; icon: React.ReactNode }[] = [
@@ -253,19 +317,109 @@ export const HistoryPage = () => {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="w-11 h-11 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-violet-500/30">
-          <ScrollText size={22} />
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-11 h-11 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-violet-500/30">
+            <ScrollText size={22} />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold text-gray-800 dark:text-white">
+              Registro de actividad
+            </h1>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Registro completo de puntos, compras y uso de items
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-lg font-bold text-gray-800 dark:text-white">
-            Registro de actividad
-          </h1>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            Registro completo de puntos, compras y uso de items
-          </p>
-        </div>
+        <button
+          onClick={() => setShowResetPanel(!showResetPanel)}
+          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-colors ${
+            showResetPanel
+              ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800'
+              : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-400'
+          }`}
+        >
+          <RotateCcw size={14} />
+          Resetear datos
+        </button>
       </div>
+
+      {/* Panel de reseteo selectivo */}
+      <AnimatePresence>
+        {showResetPanel && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="bg-red-50/80 dark:bg-red-900/10 rounded-xl border border-red-200 dark:border-red-800/50 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle size={16} className="text-red-500" />
+                  <h3 className="text-sm font-semibold text-red-800 dark:text-red-400">Resetear datos selectivamente</h3>
+                </div>
+                <button
+                  onClick={toggleAll}
+                  className="flex items-center gap-1.5 text-xs text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 transition-colors"
+                >
+                  {allSelected ? <CheckSquare size={14} /> : <Square size={14} />}
+                  {allSelected ? 'Deseleccionar todo' : 'Seleccionar todo'}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mb-4">
+                {resetOptionsDef.map((opt) => (
+                  <label
+                    key={opt.key}
+                    className={`flex items-start gap-2.5 p-2.5 rounded-lg cursor-pointer transition-colors ${
+                      resetOptions[opt.key]
+                        ? 'bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700'
+                        : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-red-200 dark:hover:border-red-800'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={resetOptions[opt.key] || false}
+                      onChange={() => setResetOptions(prev => ({ ...prev, [opt.key]: !prev[opt.key] }))}
+                      className="mt-0.5 rounded border-gray-300 text-red-500 focus:ring-red-500"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        {opt.icon}
+                        <span className="text-xs font-medium text-gray-800 dark:text-gray-200">{opt.label}</span>
+                      </div>
+                      <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5 leading-tight">{opt.desc}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {selectedCount === 0 ? 'Selecciona qué datos resetear' : `${selectedCount} categoría${selectedCount > 1 ? 's' : ''} seleccionada${selectedCount > 1 ? 's' : ''}`}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowResetPanel(false)}
+                    className="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => setShowResetConfirm(true)}
+                    disabled={selectedCount === 0}
+                    className="flex items-center gap-1.5 px-4 py-1.5 bg-red-500 text-white text-xs font-medium rounded-lg hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <Trash2 size={13} />
+                    Resetear seleccionados
+                  </button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Estadísticas */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -559,6 +713,58 @@ export const HistoryPage = () => {
           </div>
         </div>
       </div>
+
+      {/* Modal de confirmación de reseteo selectivo */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white dark:bg-gray-900 rounded-2xl p-6 max-w-md w-full border border-gray-200 dark:border-gray-800 shadow-2xl"
+          >
+            <div className="text-center mb-4">
+              <div className="w-14 h-14 mx-auto mb-3 bg-red-100 dark:bg-red-500/20 rounded-2xl flex items-center justify-center">
+                <AlertTriangle size={28} className="text-red-500" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-1">¿Confirmar reseteo?</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                Esta acción no se puede deshacer. Se eliminarán los datos seleccionados de <span className="font-medium text-gray-700 dark:text-gray-300">todos los estudiantes</span>.
+              </p>
+            </div>
+
+            <div className="bg-red-50 dark:bg-red-900/20 rounded-xl p-3 mb-4">
+              <p className="text-xs font-medium text-red-800 dark:text-red-400 mb-2">Se reseteará:</p>
+              <div className="flex flex-wrap gap-1.5">
+                {resetOptionsDef.filter(opt => resetOptions[opt.key]).map(opt => (
+                  <span key={opt.key} className="inline-flex items-center gap-1 px-2 py-0.5 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 text-[10px] font-medium rounded-full">
+                    {opt.icon}
+                    {opt.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                className="flex-1 px-4 py-2.5 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  resetMutation.mutate();
+                  setShowResetConfirm(false);
+                }}
+                disabled={resetMutation.isPending}
+                className="flex-1 px-4 py-2.5 bg-red-500 text-white rounded-xl text-sm font-medium hover:bg-red-600 disabled:opacity-50 transition-colors"
+              >
+                {resetMutation.isPending ? 'Reseteando...' : 'Confirmar reseteo'}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 };
