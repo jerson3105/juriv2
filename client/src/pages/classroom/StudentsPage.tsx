@@ -27,6 +27,7 @@ import {
   UserMinus,
   AlertTriangle,
   ChevronDown,
+  Wrench,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -44,6 +45,7 @@ import { MultiPointsAnimation, useMultiPointsEffect } from '../../components/eff
 import { TeacherBadgeAwardedModal } from '../../components/badges/TeacherBadgeAwardedModal';
 import { AddPlaceholderStudentsModal } from '../../components/students/AddPlaceholderStudentsModal';
 import { placeholderStudentApi } from '../../lib/placeholderStudentApi';
+import { ClassroomUtilities } from '../../components/classroom/ClassroomUtilities';
 import toast from 'react-hot-toast';
 
 export const StudentsPage = () => {
@@ -77,6 +79,7 @@ export const StudentsPage = () => {
   const [showClanDropdown, setShowClanDropdown] = useState(false);
 
   // Estado para "Aplicar a Restantes"
+  const [showUtilities, setShowUtilities] = useState(false);
   const [showApplyToRestModal, setShowApplyToRestModal] = useState(false);
   const [lastAppliedStudentIds, setLastAppliedStudentIds] = useState<Set<string>>(new Set());
   const [lastAppliedBehavior, setLastAppliedBehavior] = useState<Behavior | null>(null);
@@ -469,6 +472,16 @@ export const StudentsPage = () => {
               </Button>
             </div>
           )}
+
+          {/* Botón de Utilidades */}
+          <button
+            onClick={() => setShowUtilities(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 hover:bg-violet-200 dark:hover:bg-violet-900/50 border border-violet-200 dark:border-violet-800 transition-colors text-sm font-medium"
+            title="Utilidades"
+          >
+            <Wrench size={16} />
+            <span className="hidden sm:inline">Utilidades</span>
+          </button>
 
           {/* Toggle de vista - Siempre visible, al final */}
           <div className="flex items-center bg-indigo-100 dark:bg-indigo-900/30 rounded-lg p-0.5 border border-indigo-200 dark:border-indigo-800">
@@ -1358,6 +1371,14 @@ export const StudentsPage = () => {
           queryClient.invalidateQueries({ queryKey: ['classroom', classroom.id] });
           queryClient.invalidateQueries({ queryKey: ['placeholder-students', classroom.id] });
         }}
+      />
+
+      {/* Utilidades del aula */}
+      <ClassroomUtilities
+        isOpen={showUtilities}
+        onClose={() => setShowUtilities(false)}
+        students={allStudents}
+        showCharacterName={classroom.showCharacterName !== false}
       />
 
       {/* Modal para aplicar a estudiantes restantes */}
