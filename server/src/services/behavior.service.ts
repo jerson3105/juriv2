@@ -1,5 +1,5 @@
 import { db } from '../db/index.js';
-import { behaviors, studentProfiles, pointLogs, classrooms, notifications, curriculumCompetencies } from '../db/schema.js';
+import { behaviors, studentProfiles, pointLogs, classrooms, notifications, curriculumCompetencies, classroomCompetencies } from '../db/schema.js';
 import { eq, and, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { badgeService } from './badge.service.js';
@@ -520,6 +520,143 @@ export class BehaviorService {
       results,
       levelUps,
       awardedBadges,
+    };
+  }
+
+  // Exportar comportamientos a otras clases del mismo profesor
+  async exportBehaviors(
+    behaviorIds: string[],
+    targetClassroomIds: string[],
+    teacherId: string,
+  ) {
+    if (behaviorIds.length === 0 || targetClassroomIds.length === 0) {
+      throw new Error('Se requieren comportamientos y clases destino');
+    }
+
+    // 1. Obtener los comportamientos a exportar
+    const sourceBehaviors = await db.query.behaviors.findMany({
+      where: and(
+        inArray(behaviors.id, behaviorIds),
+        eq(behaviors.isActive, true),
+      ),
+    });
+
+    if (sourceBehaviors.length === 0) {
+      throw new Error('No se encontraron comportamientos válidos');
+    }
+
+    // 2. Verificar que todos los comportamientos pertenecen a una clase del profesor
+    const sourceClassroomId = sourceBehaviors[0].classroomId;
+    const sourceClassroom = await db.query.classrooms.findFirst({
+      where: eq(classrooms.id, sourceClassroomId),
+    });
+
+    if (!sourceClassroom || sourceClassroom.teacherId !== teacherId) {
+      throw new Error('No tienes permiso para exportar estos comportamientos');
+    }
+
+    // Verificar que todos son de la misma clase
+    const allSameClass = sourceBehaviors.every(b => b.classroomId === sourceClassroomId);
+    if (!allSameClass) {
+      throw new Error('Todos los comportamientos deben pertenecer a la misma clase');
+    }
+
+    // 3. Obtener clases destino y verificar propiedad
+    const targetClassrooms = await db.query.classrooms.findMany({
+      where: and(
+        inArray(classrooms.id, targetClassroomIds),
+        eq(classrooms.teacherId, teacherId),
+      ),
+    });
+
+    if (targetClassrooms.length === 0) {
+      throw new Error('No se encontraron clases destino válidas');
+    }
+
+    // Excluir la clase origen si la enviaron por error
+    const validTargets = targetClassrooms.filter(c => c.id !== sourceClassroomId);
+    if (validTargets.length === 0) {
+      throw new Error('No puedes exportar a la misma clase origen');
+    }
+
+    // 4. Para cada clase destino, determinar si comparte área curricular
+    //    Si comparte área → mantener competencyId (siempre que la competencia esté habilitada)
+    //    Si NO comparte → competencyId = null
+
+    // Obtener competencias habilitadas en cada clase destino
+    const targetIds = validTargets.map(c => c.id);
+    const targetCompetencies = await db.query.classroomCompetencies.findMany({
+      where: and(
+        inArray(classroomCompetencies.classroomId, targetIds),
+        eq(classroomCompetencies.isActive, true),
+      ),
+    });
+
+    // Agrupar competencyIds por classroomId
+    const competenciesByClassroom = new Map<string, Set<string>>();
+    for (const tc of targetCompetencies) {
+      if (!competenciesByClassroom.has(tc.classroomId)) {
+        competenciesByClassroom.set(tc.classroomId, new Set());
+      }
+      competenciesByClassroom.get(tc.classroomId)!.add(tc.competencyId);
+    }
+
+    // 5. Clonar comportamientos
+    const now = new Date();
+    const insertBatch: (typeof behaviors.$inferInsert)[] = [];
+    let totalCreated = 0;
+
+    for (const target of validTargets) {
+      const sameArea = sourceClassroom.curriculumAreaId &&
+        target.curriculumAreaId &&
+        sourceClassroom.curriculumAreaId === target.curriculumAreaId;
+
+      const enabledCompetencies = competenciesByClassroom.get(target.id) || new Set<string>();
+
+      for (const src of sourceBehaviors) {
+        // Determinar si mantener la competencia
+        // - Misma área curricular → siempre mantener (la competencia pertenece al área)
+        // - Diferente área → solo mantener si la competencia está explícitamente habilitada
+        let competencyId: string | null = null;
+        if (src.competencyId) {
+          if (sameArea) {
+            competencyId = src.competencyId;
+          } else if (enabledCompetencies.has(src.competencyId)) {
+            competencyId = src.competencyId;
+          }
+        }
+
+        insertBatch.push({
+          id: uuidv4(),
+          classroomId: target.id,
+          name: src.name,
+          description: src.description,
+          pointType: src.pointType,
+          pointValue: src.pointValue,
+          xpValue: src.xpValue,
+          hpValue: src.hpValue,
+          gpValue: src.gpValue,
+          isPositive: src.isPositive,
+          icon: src.icon,
+          isActive: true,
+          competencyId,
+          createdAt: now,
+        });
+        totalCreated++;
+      }
+    }
+
+    // Insert en batch (chunks de 50 para evitar problemas con queries muy grandes)
+    const CHUNK_SIZE = 50;
+    for (let i = 0; i < insertBatch.length; i += CHUNK_SIZE) {
+      const chunk = insertBatch.slice(i, i + CHUNK_SIZE);
+      await db.insert(behaviors).values(chunk);
+    }
+
+    return {
+      exported: totalCreated,
+      targetClassrooms: validTargets.length,
+      behaviors: sourceBehaviors.length,
     };
   }
 

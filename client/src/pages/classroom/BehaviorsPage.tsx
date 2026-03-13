@@ -13,6 +13,10 @@ import {
   Award,
   Check,
   Pencil,
+  Share2,
+  AlertTriangle,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -28,6 +32,66 @@ export const BehaviorsPage = () => {
   const [showModal, setShowModal] = useState(false);
   const [editingBehavior, setEditingBehavior] = useState<Behavior | null>(null);
   const [showAIModal, setShowAIModal] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [selectedTargets, setSelectedTargets] = useState<Set<string>>(new Set());
+
+  // Obtener clases del profesor para exportar
+  const { data: myClassrooms = [] } = useQuery({
+    queryKey: ['my-classrooms'],
+    queryFn: () => classroomApi.getMyClassrooms(),
+    enabled: showExportModal,
+  });
+
+  const otherClassrooms = myClassrooms.filter(c => c.id !== classroom.id);
+
+  const exportMutation = useMutation({
+    mutationFn: (data: { behaviorIds: string[]; targetClassroomIds: string[] }) =>
+      behaviorApi.exportBehaviors(data),
+    onSuccess: (result) => {
+      toast.success(`${result.exported} comportamiento(s) exportado(s) a ${result.targetClassrooms} clase(s)`);
+      setShowExportModal(false);
+      setSelectionMode(false);
+      setSelectedIds(new Set());
+      setSelectedTargets(new Set());
+    },
+    onError: (error: any) => toast.error(error?.response?.data?.message || 'Error al exportar'),
+  });
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllPositive = () => {
+    const allPos = positiveBehaviors.map(b => b.id);
+    const allSelected = allPos.every(id => selectedIds.has(id));
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      allPos.forEach(id => allSelected ? next.delete(id) : next.add(id));
+      return next;
+    });
+  };
+
+  const toggleAllNegative = () => {
+    const allNeg = negativeBehaviors.map(b => b.id);
+    const allSelected = allNeg.every(id => selectedIds.has(id));
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      allNeg.forEach(id => allSelected ? next.delete(id) : next.add(id));
+      return next;
+    });
+  };
+
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  };
 
   const { data: behaviors, isLoading } = useQuery({
     queryKey: ['behaviors', classroom.id],
@@ -106,26 +170,70 @@ export const BehaviorsPage = () => {
           </div>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
-          <button 
-            onClick={() => setShowAIModal(true)} 
-            className="flex-1 sm:flex-none flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-medium hover:from-emerald-600 hover:to-teal-700 transition-colors shadow-lg"
-          >
-            <Sparkles size={16} />
-            Generar con IA
-          </button>
-          <Button leftIcon={<Plus size={16} />} onClick={openCreateModal} className="flex-1 sm:flex-none">
-            Nuevo
-          </Button>
+          {selectionMode ? (
+            <>
+              <button
+                onClick={exitSelectionMode}
+                className="flex-1 sm:flex-none flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm"
+              >
+                <X size={16} />
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  if (selectedIds.size === 0) {
+                    toast.error('Selecciona al menos un comportamiento');
+                    return;
+                  }
+                  setShowExportModal(true);
+                }}
+                disabled={selectedIds.size === 0}
+                className="flex-1 sm:flex-none flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl font-medium hover:from-blue-600 hover:to-indigo-700 transition-colors shadow-lg disabled:opacity-40 disabled:cursor-not-allowed text-sm"
+              >
+                <Share2 size={16} />
+                Exportar ({selectedIds.size})
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => setSelectionMode(true)}
+                disabled={!behaviors || behaviors.length === 0}
+                className="flex-1 sm:flex-none flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl font-medium hover:from-blue-600 hover:to-indigo-700 transition-colors shadow-lg text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Share2 size={16} />
+                Exportar
+              </button>
+              <button 
+                onClick={() => setShowAIModal(true)} 
+                className="flex-1 sm:flex-none flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-medium hover:from-emerald-600 hover:to-teal-700 transition-colors shadow-lg text-sm"
+              >
+                <Sparkles size={16} />
+                Generar con IA
+              </button>
+              <Button leftIcon={<Plus size={16} />} onClick={openCreateModal} className="flex-1 sm:flex-none">
+                Nuevo
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
       {/* Comportamientos positivos */}
       <Card className="p-0 overflow-hidden">
-        <div className={`flex items-center gap-2 p-4 border-b ${isThemeDark ? 'border-[rgba(var(--story-primary-rgb),0.3)] bg-[rgba(var(--story-primary-rgb),0.2)]' : 'border-gray-100 dark:border-gray-700 bg-emerald-50/50 dark:bg-emerald-900/20'}`}>
-          <div className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-lg flex items-center justify-center">
-            <Sparkles size={16} className="text-white" />
+        <div className={`flex items-center justify-between p-4 border-b ${isThemeDark ? 'border-[rgba(var(--story-primary-rgb),0.3)] bg-[rgba(var(--story-primary-rgb),0.2)]' : 'border-gray-100 dark:border-gray-700 bg-emerald-50/50 dark:bg-emerald-900/20'}`}>
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-lg flex items-center justify-center">
+              <Sparkles size={16} className="text-white" />
+            </div>
+            <span className={`font-semibold ${isThemeDark ? 'text-white' : 'text-emerald-700 dark:text-emerald-400'}`}>Para dar puntos ({positiveBehaviors.length})</span>
           </div>
-          <span className={`font-semibold ${isThemeDark ? 'text-white' : 'text-emerald-700 dark:text-emerald-400'}`}>Para dar puntos ({positiveBehaviors.length})</span>
+          {selectionMode && positiveBehaviors.length > 0 && (
+            <button onClick={toggleAllPositive} className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+              {positiveBehaviors.every(b => selectedIds.has(b.id)) ? <CheckSquare size={14} /> : <Square size={14} />}
+              Todos
+            </button>
+          )}
         </div>
         <div className="p-4">
           {positiveBehaviors.length === 0 ? (
@@ -149,6 +257,9 @@ export const BehaviorsPage = () => {
                   behavior={behavior}
                   onEdit={() => openEditModal(behavior)}
                   onDelete={() => deleteMutation.mutate(behavior.id)}
+                  selectionMode={selectionMode}
+                  isSelected={selectedIds.has(behavior.id)}
+                  onToggleSelect={() => toggleSelection(behavior.id)}
                 />
               ))}
             </div>
@@ -158,11 +269,19 @@ export const BehaviorsPage = () => {
 
       {/* Comportamientos negativos */}
       <Card className="p-0 overflow-hidden">
-        <div className={`flex items-center gap-2 p-4 border-b ${isThemeDark ? 'border-[rgba(var(--story-primary-rgb),0.3)] bg-[rgba(var(--story-primary-rgb),0.15)]' : 'border-gray-100 dark:border-gray-700 bg-red-50/50 dark:bg-red-900/20'}`}>
-          <div className="w-8 h-8 bg-gradient-to-br from-red-500 to-orange-500 rounded-lg flex items-center justify-center">
-            <Heart size={16} className="text-white" />
+        <div className={`flex items-center justify-between p-4 border-b ${isThemeDark ? 'border-[rgba(var(--story-primary-rgb),0.3)] bg-[rgba(var(--story-primary-rgb),0.15)]' : 'border-gray-100 dark:border-gray-700 bg-red-50/50 dark:bg-red-900/20'}`}>
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-gradient-to-br from-red-500 to-orange-500 rounded-lg flex items-center justify-center">
+              <Heart size={16} className="text-white" />
+            </div>
+            <span className={`font-semibold ${isThemeDark ? 'text-white' : 'text-red-700 dark:text-red-400'}`}>Para quitar puntos ({negativeBehaviors.length})</span>
           </div>
-          <span className={`font-semibold ${isThemeDark ? 'text-white' : 'text-red-700 dark:text-red-400'}`}>Para quitar puntos ({negativeBehaviors.length})</span>
+          {selectionMode && negativeBehaviors.length > 0 && (
+            <button onClick={toggleAllNegative} className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+              {negativeBehaviors.every(b => selectedIds.has(b.id)) ? <CheckSquare size={14} /> : <Square size={14} />}
+              Todos
+            </button>
+          )}
         </div>
         <div className="p-4">
           {negativeBehaviors.length === 0 ? (
@@ -186,6 +305,9 @@ export const BehaviorsPage = () => {
                   behavior={behavior}
                   onEdit={() => openEditModal(behavior)}
                   onDelete={() => deleteMutation.mutate(behavior.id)}
+                  selectionMode={selectionMode}
+                  isSelected={selectedIds.has(behavior.id)}
+                  onToggleSelect={() => toggleSelection(behavior.id)}
                 />
               ))}
             </div>
@@ -238,6 +360,134 @@ export const BehaviorsPage = () => {
         }}
       />
 
+      {/* Modal de exportar comportamientos */}
+      <AnimatePresence>
+        {showExportModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            onClick={() => { setShowExportModal(false); setSelectedTargets(new Set()); }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <Share2 className="text-blue-500" size={20} />
+                    Exportar comportamientos
+                  </h2>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {selectedIds.size} comportamiento{selectedIds.size > 1 ? 's' : ''} seleccionado{selectedIds.size > 1 ? 's' : ''}
+                  </p>
+                </div>
+                <button onClick={() => { setShowExportModal(false); setSelectedTargets(new Set()); }} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500">
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Lista de clases */}
+              <div className="flex-1 overflow-y-auto p-5">
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Selecciona las clases destino:</p>
+
+                {otherClassrooms.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-sm text-gray-500 dark:text-gray-400">No tienes otras clases disponibles.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {otherClassrooms.map((target) => {
+                      const sameArea = classroom.curriculumAreaId && target.curriculumAreaId && classroom.curriculumAreaId === target.curriculumAreaId;
+                      const hasCompetencyBehaviors = behaviors?.some(b => selectedIds.has(b.id) && b.competencyId);
+                      const showWarning = hasCompetencyBehaviors && !sameArea;
+
+                      return (
+                        <label
+                          key={target.id}
+                          className={`flex items-start gap-3 p-3 rounded-xl cursor-pointer transition-colors border ${
+                            selectedTargets.has(target.id)
+                              ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700'
+                              : 'bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 hover:border-blue-200 dark:hover:border-blue-800'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedTargets.has(target.id)}
+                            onChange={() => {
+                              setSelectedTargets(prev => {
+                                const next = new Set(prev);
+                                if (next.has(target.id)) next.delete(target.id);
+                                else next.add(target.id);
+                                return next;
+                              });
+                            }}
+                            className="mt-0.5 rounded border-gray-300 text-blue-500 focus:ring-blue-500"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{target.name}</p>
+                            {target.curriculumAreaId && (
+                              <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+                                {sameArea ? '✅ Misma área curricular' : '📚 Área diferente'}
+                              </p>
+                            )}
+                            {!target.curriculumAreaId && (
+                              <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">Sin área curricular</p>
+                            )}
+                            {showWarning && (
+                              <div className="flex items-center gap-1 mt-1">
+                                <AlertTriangle size={11} className="text-amber-500 flex-shrink-0" />
+                                <span className="text-[10px] text-amber-600 dark:text-amber-400">
+                                  Las competencias se omitirán en esta clase
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-between p-5 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {selectedTargets.size === 0 ? 'Selecciona al menos una clase' : `${selectedTargets.size} clase${selectedTargets.size > 1 ? 's' : ''} seleccionada${selectedTargets.size > 1 ? 's' : ''}`}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setShowExportModal(false); setSelectedTargets(new Set()); }}
+                    className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => {
+                      exportMutation.mutate({
+                        behaviorIds: Array.from(selectedIds),
+                        targetClassroomIds: Array.from(selectedTargets),
+                      });
+                    }}
+                    disabled={selectedTargets.size === 0 || exportMutation.isPending}
+                    className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-sm font-medium rounded-xl hover:from-blue-600 hover:to-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <Share2 size={14} />
+                    {exportMutation.isPending ? 'Exportando...' : 'Exportar'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       </div>
   );
 };
@@ -247,10 +497,16 @@ const BehaviorCard = ({
   behavior,
   onEdit,
   onDelete,
+  selectionMode = false,
+  isSelected = false,
+  onToggleSelect,
 }: {
   behavior: Behavior;
   onEdit: () => void;
   onDelete: () => void;
+  selectionMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
 }) => {
   const cardRef = useRef<HTMLDivElement>(null);
   const [isStoryDark, setIsStoryDark] = useState(false);
@@ -276,18 +532,30 @@ const BehaviorCard = ({
       ref={cardRef}
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
+      onClick={selectionMode ? onToggleSelect : undefined}
       className={`
         flex items-center justify-between p-3 rounded-xl border-2 transition-colors
-        ${isStoryDark
+        ${selectionMode ? 'cursor-pointer' : ''}
+        ${isSelected ? 'ring-2 ring-blue-500 border-blue-400 dark:border-blue-500 bg-blue-50/50 dark:bg-blue-900/20' : ''}
+        ${isStoryDark && !isSelected
           ? 'bg-[rgba(30,30,50,0.6)] border-[rgba(var(--story-primary-rgb),0.3)] hover:border-[rgba(var(--story-primary-rgb),0.5)]'
-          : `bg-white dark:bg-gray-800 ${behavior.isPositive
+          : !isSelected ? `bg-white dark:bg-gray-800 ${behavior.isPositive
               ? 'border-emerald-200 dark:border-emerald-800 hover:border-emerald-300 dark:hover:border-emerald-700'
               : 'border-red-200 dark:border-red-800 hover:border-red-300 dark:hover:border-red-700'
-            }`
+            }` : ''
         }
       `}
     >
       <div className="flex items-center gap-3">
+        {selectionMode && (
+          <div className="flex-shrink-0">
+            {isSelected ? (
+              <CheckSquare size={18} className="text-blue-500" />
+            ) : (
+              <Square size={18} className="text-gray-400" />
+            )}
+          </div>
+        )}
         <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl ${
           behavior.isPositive ? 'bg-emerald-100 dark:bg-emerald-900/50' : 'bg-red-100 dark:bg-red-900/50'
         }`}>

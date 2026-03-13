@@ -196,6 +196,46 @@ export class BehaviorController {
     }
   }
 
+  // Exportar comportamientos a otras clases
+  async exportBehaviors(req: Request, res: Response) {
+    try {
+      const schema = z.object({
+        behaviorIds: z.array(z.string()).min(1, 'Selecciona al menos un comportamiento'),
+        targetClassroomIds: z.array(z.string()).min(1, 'Selecciona al menos una clase destino'),
+      });
+      const data = schema.parse(req.body);
+      const result = await behaviorService.exportBehaviors(
+        data.behaviorIds,
+        data.targetClassroomIds,
+        req.user!.id,
+      );
+
+      res.json({
+        success: true,
+        message: `${result.exported} comportamiento(s) exportado(s) a ${result.targetClassrooms} clase(s)`,
+        data: result,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          message: 'Datos inválidos',
+          errors: error.errors,
+        });
+      }
+      if (error instanceof Error) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+      res.status(500).json({
+        success: false,
+        message: 'Error al exportar comportamientos',
+      });
+    }
+  }
+
   // Generar comportamientos con IA
   async generateWithAI(req: Request, res: Response) {
     try {

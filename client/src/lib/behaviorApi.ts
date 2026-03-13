@@ -56,6 +56,12 @@ export interface AwardedBadgeInfo {
   badges: string[];
 }
 
+export interface ExportResult {
+  exported: number;
+  targetClassrooms: number;
+  behaviors: number;
+}
+
 export interface ApplyResult {
   behavior: Behavior;
   studentsAffected: number;
@@ -103,6 +109,12 @@ export const behaviorApi = {
   // Aplicar comportamiento a estudiantes
   apply: async (data: ApplyBehaviorData): Promise<ApplyResult> => {
     const response = await api.post('/behaviors/apply', data);
+    return response.data.data;
+  },
+
+  // Exportar comportamientos a otras clases
+  exportBehaviors: async (data: { behaviorIds: string[]; targetClassroomIds: string[] }): Promise<ExportResult> => {
+    const response = await api.post('/behaviors/export', data);
     return response.data.data;
   },
 

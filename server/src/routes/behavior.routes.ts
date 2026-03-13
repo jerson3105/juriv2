@@ -19,6 +19,9 @@ router.delete('/:id', behaviorController.delete.bind(behaviorController));
 // Aplicar comportamiento a estudiantes
 router.post('/apply', behaviorController.apply.bind(behaviorController));
 
+// Exportar comportamientos a otras clases
+router.post('/export', behaviorController.exportBehaviors.bind(behaviorController));
+
 // Generar comportamientos con IA
 router.post('/generate-ai', behaviorController.generateWithAI.bind(behaviorController));
 
