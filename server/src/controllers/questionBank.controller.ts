@@ -82,6 +82,19 @@ const generateWithAISchema = z.object({
   difficulty: questionDifficultySchema.optional(),
 });
 
+const generateFromPDFSchema = z.object({
+  quantity: z.coerce.number().int().min(1).max(50),
+  level: z.string().trim().min(1).max(100),
+  questionTypes: z.preprocess(
+    (val) => typeof val === 'string' ? JSON.parse(val) : val,
+    z.array(questionTypeSchema).min(1).max(4).optional()
+  ),
+  difficulty: z.preprocess(
+    (val) => val === '' ? undefined : val,
+    questionDifficultySchema.optional()
+  ),
+});
+
 const DEFAULT_AI_TYPES: Array<z.infer<typeof questionTypeSchema>> = [
   'TRUE_FALSE',
   'SINGLE_CHOICE',
@@ -550,6 +563,126 @@ Genera ${quantity} preguntas variadas y educativas:`;
 
     } catch (error) {
       handleControllerError(res, error, 'Error al generar preguntas con IA');
+    }
+  }
+
+  // ==================== GENERACIÓN DESDE PDF ====================
+
+  async generateFromPDF(req: Request, res: Response) {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: 'No se proporcionó un archivo PDF'
+        });
+      }
+
+      const validation = generateFromPDFSchema.safeParse(req.body);
+      if (!validation.success) {
+        return handleValidationError(res, validation.error);
+      }
+
+      const { quantity, level, questionTypes, difficulty } = validation.data;
+
+      // Configurar tipos de preguntas a generar
+      const types = questionTypes && questionTypes.length > 0
+        ? questionTypes
+        : DEFAULT_AI_TYPES;
+
+      const typesDescription = types.map((t) => {
+        switch(t) {
+          case 'TRUE_FALSE': return 'Verdadero/Falso (TRUE_FALSE)';
+          case 'SINGLE_CHOICE': return 'Selección única (SINGLE_CHOICE)';
+          case 'MULTIPLE_CHOICE': return 'Selección múltiple (MULTIPLE_CHOICE)';
+          case 'MATCHING': return 'Relacionar pares (MATCHING)';
+          default: return t;
+        }
+      }).join(', ');
+
+      const difficultyText = difficulty || 'variada (EASY, MEDIUM, HARD)';
+
+      // Construir el prompt
+      const prompt = `Analiza el contenido del documento PDF adjunto y genera exactamente ${quantity} preguntas basadas en su contenido para estudiantes de ${level}.
+
+REGLAS ESTRICTAS:
+1. Las preguntas DEBEN estar basadas en el contenido del documento
+2. Genera ÚNICAMENTE los siguientes tipos de preguntas: ${typesDescription}
+3. Dificultad: ${difficultyText}
+4. Responde SOLO con el CSV, sin explicaciones adicionales
+5. Usa EXACTAMENTE este formato CSV:
+
+type,difficulty,points,questionText,options,correctAnswer,pairs,explanation,timeLimitSeconds
+
+EJEMPLOS POR TIPO:
+- TRUE_FALSE: TRUE_FALSE,EASY,10,"La Tierra es el tercer planeta del sistema solar",,true,,"La Tierra orbita al Sol en la tercera posición",20
+- SINGLE_CHOICE: SINGLE_CHOICE,MEDIUM,15,"¿Cuál es la capital de Francia?","[{""text"":""Londres"",""isCorrect"":false},{""text"":""París"",""isCorrect"":true},{""text"":""Madrid"",""isCorrect"":false},{""text"":""Roma"",""isCorrect"":false}]",,,"París es la capital y ciudad más poblada de Francia",30
+- MULTIPLE_CHOICE: MULTIPLE_CHOICE,HARD,20,"¿Cuáles son números primos?","[{""text"":""2"",""isCorrect"":true},{""text"":""4"",""isCorrect"":false},{""text"":""7"",""isCorrect"":true},{""text"":""9"",""isCorrect"":false}]",,,"2 y 7 son primos porque solo son divisibles por 1 y ellos mismos",45
+- MATCHING: MATCHING,MEDIUM,25,"Relaciona cada país con su capital",,,"[{""left"":""España"",""right"":""Madrid""},{""left"":""Italia"",""right"":""Roma""},{""left"":""Alemania"",""right"":""Berlín""}]","Las capitales son las ciudades principales de cada país",40
+
+IMPORTANTE:
+- Las comillas dentro del JSON deben ser dobles ("")
+- Para SINGLE_CHOICE solo una opción debe tener isCorrect:true
+- Para MULTIPLE_CHOICE puede haber múltiples opciones correctas
+- Para MATCHING genera al menos 3 pares
+- Incluye explicaciones educativas en cada pregunta
+- Varía la dificultad si no se especifica una única
+- Los puntos deben ser: EASY=10, MEDIUM=15-20, HARD=25-30
+
+Genera ${quantity} preguntas variadas y educativas basadas en el documento:`;
+
+      // Inicializar cliente de Gemini
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({
+          success: false,
+          message: 'API Key de Gemini no configurada'
+        });
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
+
+      // Convertir el buffer del PDF a base64 para enviar como inlineData
+      const pdfBase64 = req.file.buffer.toString('base64');
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType: 'application/pdf',
+                  data: pdfBase64,
+                },
+              },
+              {
+                text: prompt,
+              },
+            ],
+          },
+        ],
+      });
+
+      const csvText = response.text || '';
+
+      if (!csvText.trim()) {
+        return res.status(500).json({
+          success: false,
+          message: 'La IA no generó contenido a partir del PDF'
+        });
+      }
+
+      res.json({
+        success: true,
+        data: {
+          csv: csvText,
+          prompt: prompt
+        }
+      });
+
+    } catch (error) {
+      handleControllerError(res, error, 'Error al generar preguntas desde PDF');
     }
   }
 }

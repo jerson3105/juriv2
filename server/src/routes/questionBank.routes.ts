@@ -1,8 +1,22 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { questionBankController } from '../controllers/questionBank.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 
 const router = Router();
+
+// Multer config for PDF upload (memory only, no disk storage)
+const pdfUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype === 'application/pdf') {
+      cb(null, true);
+    } else {
+      cb(new Error('Solo se permiten archivos PDF'));
+    }
+  },
+});
 
 // Todas las rutas requieren autenticación
 router.use(authenticate);
@@ -28,5 +42,6 @@ router.post('/question/:questionId/check', authorize('TEACHER'), questionBankCon
 
 // Generación con IA
 router.post('/generate-ai', authorize('TEACHER'), questionBankController.generateWithAI.bind(questionBankController));
+router.post('/generate-from-pdf', authorize('TEACHER'), pdfUpload.single('pdf'), questionBankController.generateFromPDF.bind(questionBankController));
 
 export default router;

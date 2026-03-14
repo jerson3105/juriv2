@@ -195,4 +195,10 @@ export const studentApi = {
     return response.data.data;
   },
 
+  // Retirar estudiante de la clase
+  removeFromClass: async (studentId: string): Promise<{ success: boolean; studentName: string }> => {
+    const response = await api.delete(`/students/${studentId}/remove-from-class`);
+    return response.data.data;
+  },
+
 };

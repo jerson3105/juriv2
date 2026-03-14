@@ -14,7 +14,7 @@ import {
   CheckCircle,
   ArrowLeftRight,
   Sparkles,
-  Copy,
+  FileUp,
   ListChecks,
   X,
 } from 'lucide-react';
@@ -58,8 +58,9 @@ export const QuestionBanksPage = () => {
   const [csvPreview, setCsvPreview] = useState<{ questions: CreateQuestionData[]; errors: string[] } | null>(null);
   const [showAIImportModal, setShowAIImportModal] = useState(false);
   const [csvTextInput, setCsvTextInput] = useState('');
-  const [aiMode, setAiMode] = useState<'direct' | 'manual'>('direct');
+  const [aiMode, setAiMode] = useState<'direct' | 'pdf'>('direct');
   const [aiGenerating, setAiGenerating] = useState(false);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [aiForm, setAiForm] = useState({
     topic: '',
     quantity: 10,
@@ -224,6 +225,36 @@ export const QuestionBanksPage = () => {
     }
   };
 
+  // Generate questions from PDF
+  const handleGenerateFromPDF = async () => {
+    if (!pdfFile || !aiForm.level || !selectedBank) return;
+    
+    setAiGenerating(true);
+    try {
+      const result = await questionBankApi.generateFromPDF({
+        file: pdfFile,
+        quantity: aiForm.quantity,
+        level: aiForm.level,
+        questionTypes: aiForm.questionTypes.length > 0 ? aiForm.questionTypes : undefined,
+        difficulty: aiForm.difficulty || undefined,
+      });
+      
+      // Set the CSV text and process it
+      setCsvTextInput(result.csv);
+      toast.success('Preguntas generadas desde el PDF');
+      
+      // Auto-process the generated CSV
+      setTimeout(() => {
+        processCSVText(result.csv);
+      }, 100);
+      
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Error al generar preguntas desde el PDF');
+    } finally {
+      setAiGenerating(false);
+    }
+  };
+
   // Helper para parsear opciones de diferentes formatos
   const parseOptionsField = (optionsStr: string, correctAnswerStr?: string): QuestionOption[] | null => {
     // Intentar JSON primero
@@ -380,107 +411,6 @@ export const QuestionBanksPage = () => {
       questionTypes: ['TRUE_FALSE', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'MATCHING'],
       difficulty: '',
     });
-  };
-
-  // Process pasted CSV text from AI
-  const handleProcessCSVText = () => {
-    if (!csvTextInput.trim() || !selectedBank) return;
-    
-    const text = csvTextInput;
-    const normalizedText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    const lines = normalizedText.split('\n').filter(line => line.trim());
-    
-    if (lines.length < 2) {
-      toast.error('El texto CSV está vacío o no tiene datos');
-      return;
-    }
-
-    // Detect delimiter
-    const firstLine = lines[0];
-    const commaCount = (firstLine.match(/,/g) || []).length;
-    const semicolonCount = (firstLine.match(/;/g) || []).length;
-    const delimiter = semicolonCount > commaCount ? ';' : ',';
-
-    // Parse header
-    const rawHeaders = parseCSVLine(lines[0], delimiter);
-    const headers = rawHeaders.map(h => h.toLowerCase().trim().replace(/[^a-z]/g, ''));
-    
-    const requiredHeaders = ['type', 'questiontext'];
-    const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
-    
-    if (missingHeaders.length > 0) {
-      toast.error(`Faltan columnas requeridas: ${missingHeaders.join(', ')}`);
-      return;
-    }
-
-    // Parse rows for preview
-    const parsedQuestions: CreateQuestionData[] = [];
-    const errors: string[] = [];
-
-    for (let i = 1; i < lines.length; i++) {
-      try {
-        const values = parseCSVLine(lines[i], delimiter);
-        const row: Record<string, string> = {};
-        headers.forEach((h, idx) => { row[h] = values[idx] || ''; });
-
-        // Detectar si explanation y timeLimitSeconds están intercambiados
-        let explanationVal2 = row.explanation || '';
-        let timeLimitVal2 = row.timelimitseconds || '';
-        if (/^\d+$/.test(explanationVal2.trim()) && timeLimitVal2.trim() && !/^\d+$/.test(timeLimitVal2.trim())) {
-          [explanationVal2, timeLimitVal2] = [timeLimitVal2, explanationVal2];
-        }
-
-        const questionData: CreateQuestionData = {
-          type: (row.type?.toUpperCase() || 'SINGLE_CHOICE') as BankQuestionType,
-          difficulty: (row.difficulty?.toUpperCase() || 'MEDIUM') as QuestionDifficulty,
-          points: parseInt(row.points) || 10,
-          questionText: row.questiontext || '',
-          timeLimitSeconds: parseInt(timeLimitVal2) || 30,
-          explanation: explanationVal2.trim() || undefined,
-        };
-
-        // Parse type-specific fields
-        if (questionData.type === 'TRUE_FALSE') {
-          questionData.correctAnswer = row.correctanswer?.toLowerCase() === 'true';
-        } else if (questionData.type === 'SINGLE_CHOICE' || questionData.type === 'MULTIPLE_CHOICE') {
-          if (row.options) {
-            const parsedOpts = parseOptionsField(row.options, row.correctanswer);
-            if (parsedOpts) {
-              questionData.options = parsedOpts;
-            } else {
-              errors.push(`Línea ${i + 1}: Error al parsear opciones`);
-              questionData.options = [];
-            }
-          }
-        } else if (questionData.type === 'MATCHING') {
-          if (row.pairs) {
-            const parsedPrs = parsePairsField(row.pairs);
-            if (parsedPrs) {
-              questionData.pairs = parsedPrs;
-            } else {
-              errors.push(`Línea ${i + 1}: Error al parsear pares`);
-              questionData.pairs = [];
-            }
-          }
-        }
-
-        // Validate question
-        if (!questionData.questionText) {
-          errors.push(`Línea ${i + 1}: Falta el texto de la pregunta`);
-        } else if (!['TRUE_FALSE', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'MATCHING'].includes(questionData.type)) {
-          errors.push(`Línea ${i + 1}: Tipo de pregunta inválido "${questionData.type}"`);
-        } else {
-          parsedQuestions.push(questionData);
-        }
-      } catch (err) {
-        errors.push(`Línea ${i + 1}: Error de formato`);
-      }
-    }
-
-    // Show preview modal
-    setCsvPreview({ questions: parsedQuestions, errors });
-    setShowAIImportModal(false);
-    setCsvTextInput('');
   };
 
   // Helper to parse CSV line - handles Excel format with quoted fields containing JSON
@@ -1102,15 +1032,15 @@ export const QuestionBanksPage = () => {
                     Generación Automática
                   </button>
                   <button
-                    onClick={() => setAiMode('manual')}
+                    onClick={() => setAiMode('pdf')}
                     className={`flex-1 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-                      aiMode === 'manual'
+                      aiMode === 'pdf'
                         ? 'bg-emerald-500 text-white'
                         : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                     }`}
                   >
-                    <Copy className="w-4 h-4 inline mr-2" />
-                    Importar CSV Manual
+                    <FileUp className="w-4 h-4 inline mr-2" />
+                    Desde PDF
                   </button>
                 </div>
               </div>
@@ -1242,64 +1172,179 @@ export const QuestionBanksPage = () => {
                   </>
                 ) : (
                   <>
-                    {/* Manual CSV Import */}
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 bg-emerald-500 text-white rounded-full flex items-center justify-center text-sm font-bold">1</div>
-                        <h3 className="font-semibold text-gray-800 dark:text-white">Copia este prompt y pégalo en tu IA favorita</h3>
+                    {/* PDF Upload */}
+                    <div className="space-y-4">
+                      {/* Drop zone */}
+                      <div
+                        onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-emerald-500', 'bg-emerald-50', 'dark:bg-emerald-900/20'); }}
+                        onDragLeave={(e) => { e.preventDefault(); e.currentTarget.classList.remove('border-emerald-500', 'bg-emerald-50', 'dark:bg-emerald-900/20'); }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.currentTarget.classList.remove('border-emerald-500', 'bg-emerald-50', 'dark:bg-emerald-900/20');
+                          const file = e.dataTransfer.files[0];
+                          if (file?.type === 'application/pdf') {
+                            if (file.size > 15 * 1024 * 1024) {
+                              toast.error('El archivo excede el límite de 15MB');
+                            } else {
+                              setPdfFile(file);
+                            }
+                          } else {
+                            toast.error('Solo se permiten archivos PDF');
+                          }
+                        }}
+                        onClick={() => {
+                          const input = document.createElement('input');
+                          input.type = 'file';
+                          input.accept = '.pdf';
+                          input.onchange = (e) => {
+                            const file = (e.target as HTMLInputElement).files?.[0];
+                            if (file) {
+                              if (file.size > 15 * 1024 * 1024) {
+                                toast.error('El archivo excede el límite de 15MB');
+                              } else {
+                                setPdfFile(file);
+                              }
+                            }
+                          };
+                          input.click();
+                        }}
+                        className={`relative border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
+                          pdfFile
+                            ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20'
+                            : 'border-gray-300 dark:border-gray-600 hover:border-emerald-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                        }`}
+                      >
+                        {pdfFile ? (
+                          <div className="flex items-center justify-center gap-3">
+                            <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-xl flex items-center justify-center">
+                              <span className="text-2xl">📄</span>
+                            </div>
+                            <div className="text-left">
+                              <p className="font-semibold text-gray-800 dark:text-white text-sm">{pdfFile.name}</p>
+                              <p className="text-xs text-gray-500">{(pdfFile.size / (1024 * 1024)).toFixed(2)} MB</p>
+                            </div>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setPdfFile(null); }}
+                              className="p-1.5 bg-red-100 hover:bg-red-200 dark:bg-red-900/30 dark:hover:bg-red-900/50 rounded-lg transition-colors"
+                            >
+                              <X className="w-4 h-4 text-red-600 dark:text-red-400" />
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <FileUp className="w-10 h-10 text-gray-400 dark:text-gray-500 mx-auto mb-3" />
+                            <p className="font-semibold text-gray-700 dark:text-gray-300 text-sm">Arrastra un archivo PDF aquí</p>
+                            <p className="text-xs text-gray-500 mt-1">o haz clic para seleccionar · Máximo 15MB</p>
+                          </>
+                        )}
                       </div>
-                      <div className="relative">
-                        <pre className="bg-gray-100 dark:bg-gray-900 p-4 rounded-xl text-sm text-gray-700 dark:text-gray-300 overflow-x-auto whitespace-pre-wrap border border-gray-200 dark:border-gray-700 max-h-48">
-{`Genera [CANTIDAD] preguntas sobre [TEMA] para estudiantes de [NIVEL]. 
 
-Usa EXACTAMENTE este formato CSV:
+                      {/* PDF form fields */}
+                      <div className="grid md:grid-cols-2 gap-4">
+                        {/* Quantity */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Cantidad de preguntas *
+                          </label>
+                          <input
+                            type="number"
+                            value={aiForm.quantity}
+                            onChange={(e) => setAiForm({ ...aiForm, quantity: parseInt(e.target.value) || 10 })}
+                            min={1}
+                            max={30}
+                            className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
 
-type,difficulty,points,questionText,options,correctAnswer,pairs,explanation,timeLimitSeconds
-TRUE_FALSE,EASY,10,"[Pregunta]",,true,,"[Explicación]",20
-SINGLE_CHOICE,MEDIUM,15,"[Pregunta]","[{""text"":""Opción"",""isCorrect"":true}]",,,"[Explicación]",30
-MULTIPLE_CHOICE,HARD,20,"[Pregunta]","[{""text"":""Opción"",""isCorrect"":true}]",,,"[Explicación]",45
-MATCHING,MEDIUM,25,"[Pregunta]",,,"[{""left"":""A"",""right"":""B""}]","[Explicación]",40`}
-                        </pre>
-                        <button
-                          onClick={() => {
-                            const prompt = `Genera [CANTIDAD] preguntas sobre [TEMA] para estudiantes de [NIVEL]. 
+                        {/* Level */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                            Nivel educativo *
+                          </label>
+                          <input
+                            type="text"
+                            value={aiForm.level}
+                            onChange={(e) => setAiForm({ ...aiForm, level: e.target.value })}
+                            placeholder="Ej: Primaria, Secundaria, Universidad..."
+                            className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white dark:bg-gray-700 focus:ring-2 focus:ring-emerald-500"
+                          />
+                        </div>
 
-Usa EXACTAMENTE este formato CSV (no agregues explicaciones, solo el CSV):
+                        {/* Difficulty */}
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Dificultad (opcional)
+                          </label>
+                          <div className="flex gap-3">
+                            <button
+                              type="button"
+                              onClick={() => setAiForm({ ...aiForm, difficulty: '' })}
+                              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                                !aiForm.difficulty
+                                  ? 'bg-gray-800 text-white dark:bg-white dark:text-gray-800'
+                                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                              }`}
+                            >
+                              Variada
+                            </button>
+                            {(['EASY', 'MEDIUM', 'HARD'] as const).map((diff) => (
+                              <button
+                                key={diff}
+                                type="button"
+                                onClick={() => setAiForm({ ...aiForm, difficulty: diff })}
+                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                                  aiForm.difficulty === diff
+                                    ? diff === 'EASY' ? 'bg-green-500 text-white' :
+                                      diff === 'MEDIUM' ? 'bg-yellow-500 text-white' :
+                                      'bg-red-500 text-white'
+                                    : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                                }`}
+                              >
+                                {DIFFICULTY_LABELS[diff]}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
 
-type,difficulty,points,questionText,options,correctAnswer,pairs,explanation,timeLimitSeconds
-TRUE_FALSE,EASY,10,"[Pregunta de verdadero/falso]",,true,,"[Explicación]",20
-SINGLE_CHOICE,MEDIUM,15,"[Pregunta de opción única]","[{""text"":""Opción 1"",""isCorrect"":false},{""text"":""Opción 2"",""isCorrect"":true},{""text"":""Opción 3"",""isCorrect"":false}]",,,"[Explicación]",30
-MULTIPLE_CHOICE,HARD,20,"[Pregunta de múltiples respuestas correctas]","[{""text"":""Opción 1"",""isCorrect"":true},{""text"":""Opción 2"",""isCorrect"":false},{""text"":""Opción 3"",""isCorrect"":true}]",,,"[Explicación]",45
-MATCHING,MEDIUM,25,"[Pregunta de relacionar]",,,"[{""left"":""Elemento 1"",""right"":""Pareja 1""},{""left"":""Elemento 2"",""right"":""Pareja 2""}]","[Explicación]",40
-
-IMPORTANTE:
-- Tipos válidos: TRUE_FALSE, SINGLE_CHOICE, MULTIPLE_CHOICE, MATCHING
-- Dificultades: EASY, MEDIUM, HARD
-- Las comillas dentro del JSON deben ser dobles ("")
-- Varía los tipos de preguntas
-- Incluye explicaciones educativas`;
-                            navigator.clipboard.writeText(prompt);
-                            toast.success('Prompt copiado al portapapeles');
-                          }}
-                          className="absolute top-2 right-2 p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                        >
-                          <Copy className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-                        </button>
+                        {/* Question Types */}
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                            Tipos de preguntas a generar
+                          </label>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            {([
+                              { type: 'TRUE_FALSE' as const, icon: '✓✗', label: 'Verdadero/Falso' },
+                              { type: 'SINGLE_CHOICE' as const, icon: '○', label: 'Selección única' },
+                              { type: 'MULTIPLE_CHOICE' as const, icon: '☑', label: 'Selección múltiple' },
+                              { type: 'MATCHING' as const, icon: '↔', label: 'Relacionar' },
+                            ]).map(({ type, icon, label }) => (
+                              <label
+                                key={type}
+                                className={`flex items-center gap-2 p-3 rounded-xl border-2 cursor-pointer transition-all ${
+                                  aiForm.questionTypes.includes(type)
+                                    ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
+                                    : 'border-gray-200 dark:border-gray-600 hover:border-gray-300'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={aiForm.questionTypes.includes(type)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setAiForm({ ...aiForm, questionTypes: [...aiForm.questionTypes, type] });
+                                    } else {
+                                      setAiForm({ ...aiForm, questionTypes: aiForm.questionTypes.filter(t => t !== type) });
+                                    }
+                                  }}
+                                  className="sr-only"
+                                />
+                                <span className="text-xl">{icon}</span>
+                                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 bg-emerald-500 text-white rounded-full flex items-center justify-center text-sm font-bold">2</div>
-                        <h3 className="font-semibold text-gray-800 dark:text-white">Pega aquí el resultado de la IA</h3>
-                      </div>
-                      <textarea
-                        value={csvTextInput}
-                        onChange={(e) => setCsvTextInput(e.target.value)}
-                        placeholder="Pega aquí el CSV generado por la IA..."
-                        rows={10}
-                        className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent resize-none font-mono text-sm"
-                      />
                     </div>
                   </>
                 )}
@@ -1316,6 +1361,7 @@ IMPORTANTE:
                       onClick={() => {
                         setShowAIImportModal(false);
                         setCsvTextInput('');
+                        setPdfFile(null);
                         setAiForm({
                           topic: '',
                           quantity: 10,
@@ -1348,12 +1394,21 @@ IMPORTANTE:
                       </button>
                     ) : (
                       <button
-                        onClick={handleProcessCSVText}
-                        disabled={!csvTextInput.trim()}
+                        onClick={handleGenerateFromPDF}
+                        disabled={!pdfFile || !aiForm.level || aiGenerating || aiForm.questionTypes.length === 0}
                         className="px-6 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50 flex items-center gap-2"
                       >
-                        <CheckCircle className="w-4 h-4" />
-                        Procesar CSV
+                        {aiGenerating ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            Analizando PDF...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-4 h-4" />
+                            Generar desde PDF
+                          </>
+                        )}
                       </button>
                     )}
                   </div>

@@ -3,11 +3,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { 
   ArrowLeft, Dices, RotateCcw, Volume2, VolumeX, UserMinus, History,
-  Crown, Zap, Heart, Coins, Check, X, Settings, Sparkles, Star, Trophy, Users, BookOpen, CheckCircle2
+  Crown, Zap, Heart, Coins, Check, X, Settings, Sparkles, Star, Trophy, Users, BookOpen, CheckCircle2,
+  Eye, ArrowRight, HelpCircle,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { studentApi, CHARACTER_CLASSES } from '../../lib/studentApi';
 import { behaviorApi, type Behavior } from '../../lib/behaviorApi';
+import { questionBankApi, type Question, DIFFICULTY_LABELS, DIFFICULTY_COLORS, BANK_ICONS } from '../../lib/questionBankApi';
 import toast from 'react-hot-toast';
 
 type AnimationType = 'slot' | 'wheel' | 'cards';
@@ -52,9 +54,27 @@ export const RandomPickerActivity = ({ classroom, onBack }: RandomPickerActivity
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [appliedBehaviors, setAppliedBehaviors] = useState<Map<string, number>>(new Map());
 
+  // Question bank state
+  const [questionsEnabled, setQuestionsEnabled] = useState(false);
+  const [selectedBankId, setSelectedBankId] = useState<string | null>(null);
+  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null);
+  const [showQuestionCard, setShowQuestionCard] = useState(false);
+  const [usedQuestionIds, setUsedQuestionIds] = useState<Set<string>>(new Set());
+
   const { data: behaviors = [] } = useQuery({
     queryKey: ['behaviors', classroom.id],
     queryFn: () => behaviorApi.getByClassroom(classroom.id),
+  });
+
+  const { data: questionBanks = [] } = useQuery({
+    queryKey: ['questionBanks', classroom.id],
+    queryFn: () => questionBankApi.getBanks(classroom.id),
+  });
+
+  const { data: bankQuestions = [] } = useQuery({
+    queryKey: ['questions', selectedBankId],
+    queryFn: () => questionBankApi.getQuestions(selectedBankId!),
+    enabled: !!selectedBankId && questionsEnabled,
   });
 
   useEffect(() => {
@@ -111,16 +131,38 @@ export const RandomPickerActivity = ({ classroom, onBack }: RandomPickerActivity
 
   const playSound = useCallback((_type: 'spin' | 'select') => { if (!soundEnabled) return; }, [soundEnabled]);
 
+  const pickRandomQuestion = useCallback(() => {
+    if (!questionsEnabled || !selectedBankId || bankQuestions.length === 0) return null;
+    const available = bankQuestions.filter(q => !usedQuestionIds.has(q.id));
+    // If all used, reset and pick from all
+    const pool = available.length > 0 ? available : bankQuestions;
+    if (available.length === 0) setUsedQuestionIds(new Set());
+    const picked = pool[Math.floor(Math.random() * pool.length)];
+    if (picked) setUsedQuestionIds(prev => new Set(prev).add(picked.id));
+    return picked;
+  }, [questionsEnabled, selectedBankId, bankQuestions, usedQuestionIds]);
+
   const finishSelection = useCallback((selected: Student) => {
     setCurrentStudent(selected);
     setSelectedStudents(prev => [...prev, selected]);
     setAvailableStudents(prev => prev.filter(s => s.id !== selected.id));
     setIsSpinning(false);
-    setShowPointsPanel(true);
     setAppliedBehaviors(new Map());
     playSound('select');
     launchConfetti();
-  }, [playSound, launchConfetti]);
+
+    // If questions enabled, show question card first; otherwise show points directly
+    const question = pickRandomQuestion();
+    if (question) {
+      setCurrentQuestion(question);
+      setShowQuestionCard(true);
+      setShowPointsPanel(false);
+    } else {
+      setCurrentQuestion(null);
+      setShowQuestionCard(false);
+      setShowPointsPanel(true);
+    }
+  }, [playSound, launchConfetti, pickRandomQuestion]);
 
   const pickRandomStudent = useCallback(() => {
     if (availableStudents.length === 0) { toast.error('No hay más estudiantes disponibles'); return; }
@@ -163,6 +205,9 @@ export const RandomPickerActivity = ({ classroom, onBack }: RandomPickerActivity
     setSelectedStudents([]);
     setCurrentStudent(null);
     setShowPointsPanel(false);
+    setShowQuestionCard(false);
+    setCurrentQuestion(null);
+    setUsedQuestionIds(new Set());
     setSlotPosition(0);
     setWheelRotation(0);
     setAvailableStudents(classroom.students.filter(s => !excludedStudents.has(s.id)));
@@ -228,6 +273,74 @@ export const RandomPickerActivity = ({ classroom, onBack }: RandomPickerActivity
                       </motion.button>
                     ))}
                   </div>
+
+                  {/* Questions section */}
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <h3 className="font-bold text-gray-800 text-sm mb-3 flex items-center gap-2"><HelpCircle size={16} className="text-blue-500" />Preguntas</h3>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm text-gray-600">Mostrar pregunta al elegir</span>
+                      <button
+                        onClick={() => {
+                          setQuestionsEnabled(prev => !prev);
+                          if (questionsEnabled) {
+                            setSelectedBankId(null);
+                            setCurrentQuestion(null);
+                            setShowQuestionCard(false);
+                          }
+                        }}
+                        className={`relative w-11 h-6 rounded-full transition-colors ${questionsEnabled ? 'bg-blue-500' : 'bg-gray-300'}`}
+                      >
+                        <motion.div
+                          className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow"
+                          animate={{ x: questionsEnabled ? 20 : 0 }}
+                          transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                        />
+                      </button>
+                    </div>
+                    <AnimatePresence>
+                      {questionsEnabled && (
+                        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
+                          {questionBanks.length === 0 ? (
+                            <p className="text-xs text-gray-400 py-2">No hay bancos de preguntas en esta clase.</p>
+                          ) : (
+                            <div className="space-y-1.5">
+                              <p className="text-xs text-gray-500 font-medium">Selecciona un banco:</p>
+                              {questionBanks.map((bank) => {
+                                const bankIcon = BANK_ICONS.find(b => b.id === bank.icon);
+                                return (
+                                  <motion.button
+                                    key={bank.id}
+                                    whileHover={{ scale: 1.01 }}
+                                    whileTap={{ scale: 0.99 }}
+                                    onClick={() => setSelectedBankId(bank.id === selectedBankId ? null : bank.id)}
+                                    className={`w-full flex items-center gap-2.5 p-2.5 rounded-xl text-left transition-all ${
+                                      selectedBankId === bank.id
+                                        ? 'bg-blue-100 border-2 border-blue-400 ring-1 ring-blue-300'
+                                        : 'bg-gray-50 hover:bg-gray-100 border border-gray-200'
+                                    }`}
+                                  >
+                                    <span className="text-lg">{bankIcon?.emoji || '📚'}</span>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-xs font-semibold text-gray-800 truncate">{bank.name}</p>
+                                      <p className="text-[10px] text-gray-400">{bank.questionCount || 0} preguntas</p>
+                                    </div>
+                                    {selectedBankId === bank.id && (
+                                      <CheckCircle2 size={16} className="text-blue-500 flex-shrink-0" />
+                                    )}
+                                  </motion.button>
+                                );
+                              })}
+                              {selectedBankId && bankQuestions.length > 0 && (
+                                <p className="text-[10px] text-blue-500 font-medium mt-1">
+                                  ✓ {bankQuestions.length} preguntas disponibles · {usedQuestionIds.size} usadas esta ronda
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </div>
               </motion.div>
             )}
@@ -275,6 +388,23 @@ export const RandomPickerActivity = ({ classroom, onBack }: RandomPickerActivity
               <RotateCcw size={18} />Nueva ronda
             </motion.button>
           </div>
+
+          {/* Question Card - intermediate step before points */}
+          <AnimatePresence>
+            {showQuestionCard && currentQuestion && currentStudent && (
+              <motion.div initial={{ opacity: 0, y: 20, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -20, scale: 0.95 }}>
+                <QuestionCardDisplay
+                  question={currentQuestion}
+                  studentName={currentStudent.characterName || 'Sin nombre'}
+                  onContinue={() => {
+                    setShowQuestionCard(false);
+                    setCurrentQuestion(null);
+                    setShowPointsPanel(true);
+                  }}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           <AnimatePresence>
             {showPointsPanel && currentStudent && (
@@ -588,6 +718,181 @@ const SelectedStudentDisplay = ({ student }: { student: Student }) => {
             {['⭐', '✨', '🎉', '🎊', '💫', '🌟', '🏆', '👑'][Math.floor(Math.random() * 8)]}
           </motion.div>
         ))}
+      </div>
+    </motion.div>
+  );
+};
+
+// Tarjeta de pregunta
+const QuestionCardDisplay = ({ question, studentName, onContinue }: {
+  question: Question;
+  studentName: string;
+  onContinue: () => void;
+}) => {
+  const [showAnswer, setShowAnswer] = useState(false);
+
+  const difficultyLabel = DIFFICULTY_LABELS[question.difficulty] || question.difficulty;
+  const difficultyClass = DIFFICULTY_COLORS[question.difficulty] || 'bg-gray-100 text-gray-700';
+
+  // Parse options safely
+  const options = Array.isArray(question.options)
+    ? question.options
+    : typeof question.options === 'string'
+      ? (() => { try { return JSON.parse(question.options as string); } catch { return []; } })()
+      : [];
+
+  // Parse pairs safely
+  const pairs = Array.isArray(question.pairs)
+    ? question.pairs
+    : typeof question.pairs === 'string'
+      ? (() => { try { return JSON.parse(question.pairs as string); } catch { return []; } })()
+      : [];
+
+  return (
+    <motion.div className="bg-white/95 backdrop-blur-sm rounded-2xl border border-white/50 p-5 shadow-2xl relative overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-bold text-gray-800 flex items-center gap-2">
+          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
+            <HelpCircle size={16} className="text-white" />
+          </div>
+          <span>Pregunta para <span className="text-blue-600">{studentName}</span></span>
+        </h3>
+        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${difficultyClass}`}>
+          {difficultyLabel}
+        </span>
+      </div>
+
+      {/* Question text */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 mb-4 border border-blue-100">
+        <p className="text-gray-800 font-medium text-base leading-relaxed">{question.questionText}</p>
+      </div>
+
+      {/* Question content by type */}
+      {question.type === 'TRUE_FALSE' && (
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className={`p-3 rounded-xl border-2 text-center font-bold text-sm transition-all ${
+            showAnswer && question.correctAnswer === true
+              ? 'bg-emerald-100 border-emerald-400 text-emerald-700'
+              : showAnswer && question.correctAnswer === false
+                ? 'bg-gray-50 border-gray-200 text-gray-400'
+                : 'bg-gray-50 border-gray-200 text-gray-700'
+          }`}>
+            {showAnswer && question.correctAnswer === true && <CheckCircle2 size={16} className="mx-auto mb-1 text-emerald-500" />}
+            Verdadero
+          </div>
+          <div className={`p-3 rounded-xl border-2 text-center font-bold text-sm transition-all ${
+            showAnswer && question.correctAnswer === false
+              ? 'bg-emerald-100 border-emerald-400 text-emerald-700'
+              : showAnswer && question.correctAnswer === true
+                ? 'bg-gray-50 border-gray-200 text-gray-400'
+                : 'bg-gray-50 border-gray-200 text-gray-700'
+          }`}>
+            {showAnswer && question.correctAnswer === false && <CheckCircle2 size={16} className="mx-auto mb-1 text-emerald-500" />}
+            Falso
+          </div>
+        </div>
+      )}
+
+      {(question.type === 'SINGLE_CHOICE' || question.type === 'MULTIPLE_CHOICE') && options.length > 0 && (
+        <div className="space-y-2 mb-4">
+          {options.map((opt: { text: string; isCorrect: boolean }, idx: number) => (
+            <div
+              key={idx}
+              className={`flex items-center gap-3 p-3 rounded-xl border-2 text-sm transition-all ${
+                showAnswer && opt.isCorrect
+                  ? 'bg-emerald-100 border-emerald-400 text-emerald-800 font-semibold'
+                  : showAnswer && !opt.isCorrect
+                    ? 'bg-gray-50 border-gray-200 text-gray-400'
+                    : 'bg-gray-50 border-gray-200 text-gray-700'
+              }`}
+            >
+              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
+                showAnswer && opt.isCorrect
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-gray-200 text-gray-500'
+              }`}>
+                {showAnswer && opt.isCorrect ? <Check size={12} /> : String.fromCharCode(65 + idx)}
+              </span>
+              <span className="flex-1">{opt.text}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {question.type === 'MATCHING' && pairs.length > 0 && (
+        <div className="mb-4">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 px-1">Concepto</div>
+            <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 px-1">Respuesta</div>
+            {pairs.map((pair: { left: string; right: string }, idx: number) => (
+              <div key={idx} className="contents">
+                <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-lg text-sm text-gray-800 font-medium">
+                  {pair.left}
+                </div>
+                <div className={`p-2.5 rounded-lg text-sm font-medium border transition-all ${
+                  showAnswer
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                    : 'bg-gray-100 border-gray-200 text-gray-400'
+                }`}>
+                  {showAnswer ? pair.right : '???'}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Explanation (shown after reveal) */}
+      <AnimatePresence>
+        {showAnswer && question.explanation && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mb-4"
+          >
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
+              <BookOpen size={14} className="text-amber-600 mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-amber-800 leading-relaxed">{question.explanation}</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Actions */}
+      <div className="flex items-center gap-3">
+        {!showAnswer ? (
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setShowAnswer(true)}
+            className="flex-1 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold rounded-xl shadow-lg hover:from-blue-600 hover:to-indigo-700 transition-all"
+          >
+            <Eye size={16} />
+            Mostrar respuesta
+          </motion.button>
+        ) : (
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={onContinue}
+            className="flex-1 flex items-center justify-center gap-2 py-3 bg-gradient-to-r from-violet-500 to-purple-600 text-white font-semibold rounded-xl shadow-lg hover:from-violet-600 hover:to-purple-700 transition-all"
+          >
+            <ArrowRight size={16} />
+            Continuar a puntos
+          </motion.button>
+        )}
+        {!showAnswer && (
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={onContinue}
+            className="px-5 py-3 bg-gray-100 hover:bg-gray-200 text-gray-600 font-semibold rounded-xl transition-all text-sm"
+          >
+            Omitir
+          </motion.button>
+        )}
       </div>
     </motion.div>
   );

@@ -1,5 +1,13 @@
 import { db } from '../db/index.js';
-import { studentProfiles, classrooms, users, pointLogs, notifications, behaviors } from '../db/schema.js';
+import { 
+  studentProfiles, classrooms, users, pointLogs, notifications, behaviors,
+  studentAvatarPurchases, studentEquippedItems, studentGrades, studentActivityScores,
+  badgeProgress, studentBadges, loginStreaks, studentStreaks, attendanceRecords,
+  purchases, itemUsages, powerUsages, expeditionSubmissions, expeditionStudentProgress,
+  jiroStudentExpeditions, jiroQuestionAnswers, jiroDeliveries,
+  tournamentParticipants, studentCollectibles, scrolls, scrollReactions,
+  collectibleCards, collectibleAlbums,
+} from '../db/schema.js';
 import { eq, and, desc, sql, gte, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { avatarService } from './avatar.service.js';
@@ -971,6 +979,120 @@ export class StudentService {
       .where(eq(studentProfiles.id, studentId));
 
     return { linkCode };
+  }
+
+  // Retirar estudiante de una clase (eliminar perfil y todos sus datos)
+  async removeStudentFromClass(studentId: string, teacherId: string) {
+    const profile = await db.query.studentProfiles.findFirst({
+      where: eq(studentProfiles.id, studentId),
+    });
+
+    if (!profile) {
+      throw new Error('Estudiante no encontrado');
+    }
+
+    // Verificar que el profesor sea dueño de la clase
+    const classroom = await db.query.classrooms.findFirst({
+      where: eq(classrooms.id, profile.classroomId),
+    });
+
+    if (!classroom || classroom.teacherId !== teacherId) {
+      throw new Error('No tienes permiso para retirar este estudiante');
+    }
+
+    // No permitir eliminar estudiantes demo desde aquí
+    if (profile.isDemo) {
+      throw new Error('No se puede retirar un estudiante demo desde esta opción');
+    }
+
+    const classroomId = profile.classroomId;
+
+    // 1. Point logs
+    await db.delete(pointLogs).where(eq(pointLogs.studentId, studentId));
+
+    // 2. Avatar purchases & equipped items
+    await db.delete(studentAvatarPurchases).where(eq(studentAvatarPurchases.studentProfileId, studentId));
+    await db.delete(studentEquippedItems).where(eq(studentEquippedItems.studentProfileId, studentId));
+
+    // 3. Grades & activity scores
+    await db.delete(studentGrades).where(eq(studentGrades.studentProfileId, studentId));
+    await db.delete(studentActivityScores).where(eq(studentActivityScores.studentProfileId, studentId));
+
+    // 4. Badges
+    await db.delete(badgeProgress).where(eq(badgeProgress.studentProfileId, studentId));
+    await db.delete(studentBadges).where(eq(studentBadges.studentProfileId, studentId));
+
+    // 5. Login streaks & student streaks
+    await db.delete(loginStreaks).where(eq(loginStreaks.studentProfileId, studentId));
+    await db.delete(studentStreaks).where(eq(studentStreaks.studentProfileId, studentId));
+
+    // 6. Attendance
+    await db.delete(attendanceRecords).where(eq(attendanceRecords.studentProfileId, studentId));
+
+    // 7. Purchases & item usages
+    const studentPurchases = await db.query.purchases.findMany({
+      where: eq(purchases.studentId, studentId),
+      columns: { id: true },
+    });
+    const purchaseIds = studentPurchases.map(p => p.id);
+    if (purchaseIds.length > 0) {
+      await db.delete(itemUsages).where(inArray(itemUsages.purchaseId, purchaseIds));
+    }
+    await db.delete(purchases).where(eq(purchases.studentId, studentId));
+
+    // 8. Power usages
+    await db.delete(powerUsages).where(eq(powerUsages.studentId, studentId));
+
+    // 9. Expeditions
+    await db.delete(expeditionSubmissions).where(eq(expeditionSubmissions.studentProfileId, studentId));
+    await db.delete(expeditionStudentProgress).where(eq(expeditionStudentProgress.studentProfileId, studentId));
+
+    // 10. Jiro expeditions
+    const jiroStudentExps = await db.query.jiroStudentExpeditions.findMany({
+      where: eq(jiroStudentExpeditions.studentProfileId, studentId),
+      columns: { id: true },
+    });
+    const jiroStudentExpIds = jiroStudentExps.map(e => e.id);
+    if (jiroStudentExpIds.length > 0) {
+      await db.delete(jiroQuestionAnswers).where(inArray(jiroQuestionAnswers.studentExpeditionId, jiroStudentExpIds));
+      await db.delete(jiroDeliveries).where(inArray(jiroDeliveries.studentExpeditionId, jiroStudentExpIds));
+    }
+    await db.delete(jiroStudentExpeditions).where(eq(jiroStudentExpeditions.studentProfileId, studentId));
+
+    // 11. Tournaments
+    await db.delete(tournamentParticipants).where(eq(tournamentParticipants.studentProfileId, studentId));
+
+    // 12. Collectibles
+    await db.delete(studentCollectibles).where(eq(studentCollectibles.studentProfileId, studentId));
+
+    // 13. Scrolls
+    const studentScrolls = await db.query.scrolls.findMany({
+      where: eq(scrolls.authorId, studentId),
+      columns: { id: true },
+    });
+    const scrollIds = studentScrolls.map(s => s.id);
+    if (scrollIds.length > 0) {
+      await db.delete(scrollReactions).where(inArray(scrollReactions.scrollId, scrollIds));
+      await db.delete(scrolls).where(inArray(scrolls.id, scrollIds));
+    }
+
+    // 14. Notifications (if user linked)
+    if (profile.userId) {
+      await db.delete(notifications).where(
+        and(
+          eq(notifications.userId, profile.userId),
+          eq(notifications.classroomId, classroomId),
+        )
+      );
+    }
+
+    // 15. Finally delete the student profile
+    await db.delete(studentProfiles).where(eq(studentProfiles.id, studentId));
+
+    return {
+      success: true,
+      studentName: profile.characterName || profile.displayName || 'Estudiante',
+    };
   }
 }
 

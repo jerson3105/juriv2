@@ -679,6 +679,32 @@ export class StudentController {
       });
     }
   }
+
+  // Retirar estudiante de la clase
+  async removeFromClass(req: Request, res: Response) {
+    try {
+      const { studentId } = req.params;
+
+      const result = await studentService.removeStudentFromClass(studentId, req.user!.id);
+
+      res.json({
+        success: true,
+        message: `${result.studentName} ha sido retirado de la clase`,
+        data: result,
+      });
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+      res.status(500).json({
+        success: false,
+        message: 'Error al retirar estudiante',
+      });
+    }
+  }
 }
 
 export const studentController = new StudentController();

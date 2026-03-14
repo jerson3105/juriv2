@@ -28,6 +28,7 @@ import {
   Printer,
   FileText,
   Loader2,
+  Search,
 } from 'lucide-react';
 import { classroomApi, type Classroom, type UpdateClassroomSettings } from '../../lib/classroomApi';
 import { studentApi } from '../../lib/studentApi';
@@ -48,6 +49,8 @@ export const ClassroomSettingsPage = () => {
   const [showDemoDeleteConfirm, setShowDemoDeleteConfirm] = useState(false);
   const [showAddPlaceholderModal, setShowAddPlaceholderModal] = useState(false);
   const [generatingFlyers, setGeneratingFlyers] = useState(false);
+  const [studentSearch, setStudentSearch] = useState('');
+  const [removeStudentConfirm, setRemoveStudentConfirm] = useState<{ id: string; name: string } | null>(null);
 
   // Query para estudiantes placeholder
   const { data: placeholderStudents = [] } = useQuery({
@@ -212,6 +215,22 @@ export const ClassroomSettingsPage = () => {
       toast.success('Estudiante demo eliminado');
     },
     onError: () => toast.error('Error al eliminar estudiante demo'),
+  });
+
+  // Mutation para retirar estudiante de la clase
+  const removeStudentMutation = useMutation({
+    mutationFn: (studentId: string) => studentApi.removeFromClass(studentId),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['classroom', classroom.id] });
+      queryClient.invalidateQueries({ queryKey: ['students', classroom.id] });
+      queryClient.invalidateQueries({ queryKey: ['placeholder-students', classroom.id] });
+      refetch();
+      toast.success(`${data.studentName} ha sido retirado de la clase`);
+      setRemoveStudentConfirm(null);
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Error al retirar estudiante');
+    },
   });
 
   const handleSave = () => {
@@ -989,9 +1008,9 @@ export const ClassroomSettingsPage = () => {
               Gestión de Estudiantes
             </h2>
             
-            <div className="space-y-3">
+            <div className="space-y-4">
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                Añade estudiantes sin cuenta que podrán vincular después, o descarga las tarjetas de vinculación.
+                Añade estudiantes sin cuenta o gestiona los existentes.
               </p>
               
               <div className="flex flex-wrap gap-3">
@@ -1021,6 +1040,78 @@ export const ClassroomSettingsPage = () => {
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   Tienes {placeholderStudents.length} estudiante{placeholderStudents.length !== 1 ? 's' : ''} sin vincular
                 </p>
+              )}
+
+              {/* Lista de estudiantes con opción de retirar */}
+              {(classroom as any).students && (classroom as any).students.length > 0 && (
+                <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Estudiantes en la clase ({(classroom as any).students.filter((s: any) => !s.isDemo).length})
+                    </p>
+                  </div>
+
+                  {/* Buscador */}
+                  <div className="relative mb-3">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      value={studentSearch}
+                      onChange={(e) => setStudentSearch(e.target.value)}
+                      placeholder="Buscar estudiante..."
+                      className="w-full pl-9 pr-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    />
+                  </div>
+
+                  {/* Lista */}
+                  <div className="space-y-1 max-h-64 overflow-y-auto">
+                    {(classroom as any).students
+                      .filter((s: any) => !s.isDemo)
+                      .filter((s: any) => {
+                        if (!studentSearch.trim()) return true;
+                        const search = studentSearch.toLowerCase();
+                        const name = (s.characterName || s.displayName || '').toLowerCase();
+                        const realName = `${s.realName || ''} ${s.realLastName || ''}`.toLowerCase();
+                        return name.includes(search) || realName.includes(search);
+                      })
+                      .map((student: any) => (
+                        <div
+                          key={student.id}
+                          className="flex items-center justify-between p-2.5 bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold text-white ${
+                              student.characterClass === 'GUARDIAN' ? 'bg-blue-500' :
+                              student.characterClass === 'ARCANE' ? 'bg-purple-500' :
+                              student.characterClass === 'EXPLORER' ? 'bg-green-500' :
+                              'bg-orange-500'
+                            }`}>
+                              {(student.characterName || student.displayName || '?')[0]?.toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-800 dark:text-white truncate">
+                                {student.characterName || student.displayName || 'Sin nombre'}
+                              </p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                {student.realName ? `${student.realName} ${student.realLastName || ''}` : 'Sin vincular'}
+                                {' · '}Nv.{student.level} · ⚡{student.xp} XP
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => setRemoveStudentConfirm({
+                              id: student.id,
+                              name: student.characterName || student.displayName || student.realName || 'Estudiante',
+                            })}
+                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                            title="Retirar de la clase"
+                          >
+                            <UserX size={16} />
+                          </button>
+                        </div>
+                      ))}
+                  </div>
+                </div>
               )}
             </div>
           </motion.div>
@@ -1360,6 +1451,60 @@ ${(() => {
           queryClient.invalidateQueries({ queryKey: ['placeholder-students', classroom.id] });
         }}
       />
+
+      {/* Modal de confirmación para retirar estudiante */}
+      {removeStudentConfirm && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-gray-900 rounded-2xl p-6 max-w-md w-full border border-gray-800"
+          >
+            <div className="text-center mb-4">
+              <div className="w-14 h-14 mx-auto mb-3 bg-red-500/20 rounded-2xl flex items-center justify-center">
+                <UserX size={28} className="text-red-500" />
+              </div>
+              <h3 className="text-lg font-bold text-white mb-1">
+                ¿Retirar a "{removeStudentConfirm.name}"?
+              </h3>
+              <p className="text-sm text-gray-400 mb-3">
+                Se eliminará permanentemente de esta clase:
+              </p>
+              <div className="text-left text-xs text-gray-500 space-y-1 bg-gray-800/50 rounded-xl p-3">
+                <p>• Su perfil y progreso en esta clase</p>
+                <p>• Puntos (XP, HP, GP) e historial</p>
+                <p>• Insignias y logros ganados</p>
+                <p>• Compras y uso de items</p>
+                <p>• Asistencia y rachas</p>
+                <p>• Progreso en actividades</p>
+              </div>
+              <p className="text-xs text-gray-500 mt-3">
+                Si tiene cuenta vinculada, podrá volver a unirse con el código de clase.
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setRemoveStudentConfirm(null)}
+                className="flex-1 px-4 py-2.5 bg-gray-800 text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-700"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => removeStudentMutation.mutate(removeStudentConfirm.id)}
+                disabled={removeStudentMutation.isPending}
+                className="flex-1 px-4 py-2.5 bg-red-500 text-white rounded-xl text-sm font-medium hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {removeStudentMutation.isPending ? (
+                  <><Loader2 size={14} className="animate-spin" /> Retirando...</>
+                ) : (
+                  <><UserX size={14} /> Retirar estudiante</>
+                )}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </div>
   );
 };

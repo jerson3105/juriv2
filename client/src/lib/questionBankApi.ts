@@ -243,6 +243,29 @@ export const questionBankApi = {
     const response = await api.post('/question-banks/generate-ai', data);
     return response.data.data;
   },
+
+  generateFromPDF: async (data: {
+    file: File;
+    quantity: number;
+    level: string;
+    questionTypes?: BankQuestionType[];
+    difficulty?: QuestionDifficulty;
+  }): Promise<{ csv: string; prompt: string }> => {
+    const formData = new FormData();
+    formData.append('pdf', data.file);
+    formData.append('quantity', String(data.quantity));
+    formData.append('level', data.level);
+    if (data.questionTypes) {
+      formData.append('questionTypes', JSON.stringify(data.questionTypes));
+    }
+    if (data.difficulty) {
+      formData.append('difficulty', data.difficulty);
+    }
+    const response = await api.post('/question-banks/generate-from-pdf', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data.data;
+  },
 };
 
 // Helper para parsear JSON que puede estar doblemente serializado
