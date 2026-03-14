@@ -57,7 +57,6 @@ export const QuestionBanksPage = () => {
   const [importingCSV, setImportingCSV] = useState(false);
   const [csvPreview, setCsvPreview] = useState<{ questions: CreateQuestionData[]; errors: string[] } | null>(null);
   const [showAIImportModal, setShowAIImportModal] = useState(false);
-  const [csvTextInput, setCsvTextInput] = useState('');
   const [aiMode, setAiMode] = useState<'direct' | 'pdf'>('direct');
   const [aiGenerating, setAiGenerating] = useState(false);
   const [pdfFile, setPdfFile] = useState<File | null>(null);
@@ -209,8 +208,6 @@ export const QuestionBanksPage = () => {
         difficulty: aiForm.difficulty || undefined,
       });
       
-      // Set the CSV text and process it
-      setCsvTextInput(result.csv);
       toast.success('Preguntas generadas por IA');
       
       // Auto-process the generated CSV
@@ -239,8 +236,6 @@ export const QuestionBanksPage = () => {
         difficulty: aiForm.difficulty || undefined,
       });
       
-      // Set the CSV text and process it
-      setCsvTextInput(result.csv);
       toast.success('Preguntas generadas desde el PDF');
       
       // Auto-process the generated CSV
@@ -402,7 +397,6 @@ export const QuestionBanksPage = () => {
     // Show preview modal
     setCsvPreview({ questions: parsedQuestions, errors });
     setShowAIImportModal(false);
-    setCsvTextInput('');
     // Reset AI form
     setAiForm({
       topic: '',
@@ -1360,7 +1354,6 @@ export const QuestionBanksPage = () => {
                     <button
                       onClick={() => {
                         setShowAIImportModal(false);
-                        setCsvTextInput('');
                         setPdfFile(null);
                         setAiForm({
                           topic: '',
