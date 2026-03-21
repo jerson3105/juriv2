@@ -669,34 +669,33 @@ const CreateClassroomModal = ({
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
           onClick={(e: React.MouseEvent) => e.stopPropagation()}
-          className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border border-gray-200 dark:border-gray-800 max-h-[90vh] flex flex-col md:flex-row"
+          className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-200 dark:border-gray-800 max-h-[90vh] flex flex-col"
         >
-          {/* Panel izquierdo - Jiro */}
-          <div className="hidden md:block md:w-2/5 relative overflow-hidden">
+          {/* Banner superior con imagen de Jiro */}
+          <div className="relative h-36 flex-shrink-0 overflow-hidden">
             <motion.img
               src="/assets/mascot/jiro-crearclase.jpg"
               alt="Jiro"
-              className="absolute inset-0 w-full h-full object-cover"
+              className="absolute inset-0 w-full h-full object-cover object-top"
               initial={{ scale: 1.1, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ duration: 0.4 }}
             />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+            <button
+              onClick={handleClose}
+              className="absolute top-3 right-3 p-1.5 bg-black/30 hover:bg-black/50 backdrop-blur-sm rounded-lg text-white/80 hover:text-white transition-colors"
+            >
+              <X size={16} />
+            </button>
+            <div className="absolute bottom-3 left-4">
+              <h2 className="text-xl font-bold text-white drop-shadow-lg">Nueva Clase</h2>
+              <p className="text-xs text-white/70">Configura tu nueva aula</p>
+            </div>
           </div>
 
-          {/* Panel derecho - Formulario */}
-          <div className="flex-1 p-6 overflow-y-auto">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-                Nueva Clase
-              </h2>
-              <button
-                onClick={handleClose}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-500 dark:text-gray-400"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
+          {/* Formulario con scroll */}
+          <div className="flex-1 overflow-y-auto p-5">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
@@ -707,219 +706,219 @@ const CreateClassroomModal = ({
                   placeholder="Ej: Matemáticas 3°A"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                required
-                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none placeholder-gray-400 dark:placeholder-gray-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                Grado (opcional)
-              </label>
-              <select
-                value={gradeLevel}
-                onChange={(e) => setGradeLevel(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
-              >
-                {GRADE_LEVELS.map((grade) => (
-                  <option key={grade.value} value={grade.value}>
-                    {grade.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                Descripción (opcional)
-              </label>
-              <textarea
-                placeholder="Describe tu clase..."
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none placeholder-gray-400 dark:placeholder-gray-500 resize-none"
-                rows={2}
-              />
-            </div>
-
-            {/* Toggle de Competencias */}
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <BookOpen size={18} className="text-violet-500" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">Usar Competencias</p>
-                    <p className="text-xs text-gray-500">Habilita calificaciones por competencias</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setUseCompetencies(!useCompetencies)}
-                  className={`relative w-11 h-6 rounded-full transition-colors ${
-                    useCompetencies ? 'bg-violet-500' : 'bg-gray-300 dark:bg-gray-700'
-                  }`}
-                >
-                  <span
-                    className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
-                      useCompetencies ? 'translate-x-5' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
+                  required
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none placeholder-gray-400 dark:placeholder-gray-500"
+                />
               </div>
 
-              {/* Opciones de Competencias */}
-              <AnimatePresence>
-                {useCompetencies && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="mt-4 space-y-3 p-3 bg-gray-100 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                          Nivel Educativo
-                        </label>
-                        <select
-                          value={educationLevel}
-                          onChange={(e) => { setEducationLevel(e.target.value as any); setSelectedAreaId(''); }}
-                          className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
-                        >
-                          <option value="">Selecciona un nivel...</option>
-                          <option value="PRIMARIA">Primaria</option>
-                          <option value="SECUNDARIA">Secundaria</option>
-                        </select>
-                      </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                  Grado (opcional)
+                </label>
+                <select
+                  value={gradeLevel}
+                  onChange={(e) => setGradeLevel(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
+                >
+                  {GRADE_LEVELS.map((grade) => (
+                    <option key={grade.value} value={grade.value}>
+                      {grade.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                          Área Curricular
-                        </label>
-                        <select
-                          value={selectedAreaId}
-                          onChange={(e) => setSelectedAreaId(e.target.value)}
-                          disabled={!educationLevel}
-                          className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none disabled:opacity-50"
-                        >
-                          <option value="">Selecciona un área...</option>
-                          {curriculumAreas.map((area) => (
-                            <option key={area.id} value={area.id}>
-                              {area.name} ({area.competencies.length} competencias)
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                  Descripción (opcional)
+                </label>
+                <textarea
+                  placeholder="Describe tu clase..."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none placeholder-gray-400 dark:placeholder-gray-500 resize-none"
+                  rows={2}
+                />
+              </div>
 
-                      <div>
-                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                          Sistema de Calificación
-                        </label>
-                        <select
-                          value={gradeScaleType}
-                          onChange={(e) => setGradeScaleType(e.target.value as any)}
-                          className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
-                        >
-                          <option value="PERU_LETTERS">Perú - Letras (AD, A, B, C)</option>
-                          <option value="PERU_VIGESIMAL">Perú - Vigesimal (0-20)</option>
-                        </select>
-                      </div>
-
-                      <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2 rounded-lg flex items-center gap-2">
-                        <span>🇵🇪</span>
-                        <span>Por el momento solo están disponibles las competencias del currículo de Perú.</span>
-                      </div>
-
-                      {selectedAreaId && (
-                        <div className="text-xs text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 p-2 rounded-lg">
-                          <p className="font-medium text-violet-400 mb-1">Competencias incluidas:</p>
-                          <ul className="space-y-0.5">
-                            {curriculumAreas
-                              .find(a => a.id === selectedAreaId)
-                              ?.competencies.map((c, i) => (
-                                <li key={c.id} className="truncate" title={c.name}>
-                                  {i + 1}. {c.name}
-                                </li>
-                              ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-            {/* Asignar a escuela */}
-            {verifiedSchools.length > 0 && (
+              {/* Toggle de Competencias */}
               <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <School size={18} className="text-blue-500" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">Asignar a escuela</p>
-                    <p className="text-xs text-gray-500">Elige si esta clase pertenece a una escuela</p>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <BookOpen size={18} className="text-violet-500" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">Usar Competencias</p>
+                      <p className="text-xs text-gray-500">Habilita calificaciones por competencias</p>
+                    </div>
                   </div>
-                </div>
-                <div className="space-y-2">
-                  <label
-                    className={`flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition-colors ${
-                      selectedSchoolId === null
-                        ? 'border-violet-300 dark:border-violet-600 bg-violet-50 dark:bg-violet-900/20'
-                        : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
+                  <button
+                    type="button"
+                    onClick={() => setUseCompetencies(!useCompetencies)}
+                    className={`relative w-11 h-6 rounded-full transition-colors ${
+                      useCompetencies ? 'bg-violet-500' : 'bg-gray-300 dark:bg-gray-700'
                     }`}
                   >
-                    <input
-                      type="radio"
-                      name="schoolAssignment"
-                      checked={selectedSchoolId === null}
-                      onChange={() => setSelectedSchoolId(null)}
-                      className="w-4 h-4 text-violet-600 focus:ring-violet-500"
+                    <span
+                      className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                        useCompetencies ? 'translate-x-5' : 'translate-x-0'
+                      }`}
                     />
-                    <span className="text-sm text-gray-700 dark:text-gray-300">Clase personal</span>
-                  </label>
-                  {verifiedSchools.map((school: MySchool) => (
+                  </button>
+                </div>
+
+                {/* Opciones de Competencias */}
+                <AnimatePresence>
+                  {useCompetencies && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="mt-4 space-y-3 p-3 bg-gray-100 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                            Nivel Educativo
+                          </label>
+                          <select
+                            value={educationLevel}
+                            onChange={(e) => { setEducationLevel(e.target.value as any); setSelectedAreaId(''); }}
+                            className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
+                          >
+                            <option value="">Selecciona un nivel...</option>
+                            <option value="PRIMARIA">Primaria</option>
+                            <option value="SECUNDARIA">Secundaria</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                            Área Curricular
+                          </label>
+                          <select
+                            value={selectedAreaId}
+                            onChange={(e) => setSelectedAreaId(e.target.value)}
+                            disabled={!educationLevel}
+                            className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none disabled:opacity-50"
+                          >
+                            <option value="">Selecciona un área...</option>
+                            {curriculumAreas.map((area) => (
+                              <option key={area.id} value={area.id}>
+                                {area.name} ({area.competencies.length} competencias)
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                            Sistema de Calificación
+                          </label>
+                          <select
+                            value={gradeScaleType}
+                            onChange={(e) => setGradeScaleType(e.target.value as any)}
+                            className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
+                          >
+                            <option value="PERU_LETTERS">Perú - Letras (AD, A, B, C)</option>
+                            <option value="PERU_VIGESIMAL">Perú - Vigesimal (0-20)</option>
+                          </select>
+                        </div>
+
+                        <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2 rounded-lg flex items-center gap-2">
+                          <span>🇵🇪</span>
+                          <span>Por el momento solo están disponibles las competencias del currículo de Perú.</span>
+                        </div>
+
+                        {selectedAreaId && (
+                          <div className="text-xs text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700/50 p-2 rounded-lg">
+                            <p className="font-medium text-violet-400 mb-1">Competencias incluidas:</p>
+                            <ul className="space-y-0.5">
+                              {curriculumAreas
+                                .find(a => a.id === selectedAreaId)
+                                ?.competencies.map((c, i) => (
+                                  <li key={c.id} className="truncate" title={c.name}>
+                                    {i + 1}. {c.name}
+                                  </li>
+                                ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Asignar a escuela */}
+              {verifiedSchools.length > 0 && (
+                <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <School size={18} className="text-blue-500" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">Asignar a escuela</p>
+                      <p className="text-xs text-gray-500">Elige si esta clase pertenece a una escuela</p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
                     <label
-                      key={school.id}
                       className={`flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition-colors ${
-                        selectedSchoolId === school.id
-                          ? 'border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/20'
+                        selectedSchoolId === null
+                          ? 'border-violet-300 dark:border-violet-600 bg-violet-50 dark:bg-violet-900/20'
                           : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
                       }`}
                     >
                       <input
                         type="radio"
                         name="schoolAssignment"
-                        checked={selectedSchoolId === school.id}
-                        onChange={() => setSelectedSchoolId(school.id)}
-                        className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                        checked={selectedSchoolId === null}
+                        onChange={() => setSelectedSchoolId(null)}
+                        className="w-4 h-4 text-violet-600 focus:ring-violet-500"
                       />
-                      <div className="flex items-center gap-2 min-w-0">
-                        <School size={14} className="text-blue-500 flex-shrink-0" />
-                        <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{school.name}</span>
-                      </div>
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Clase personal</span>
                     </label>
-                  ))}
+                    {verifiedSchools.map((school: MySchool) => (
+                      <label
+                        key={school.id}
+                        className={`flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition-colors ${
+                          selectedSchoolId === school.id
+                            ? 'border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-blue-900/20'
+                            : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="schoolAssignment"
+                          checked={selectedSchoolId === school.id}
+                          onChange={() => setSelectedSchoolId(school.id)}
+                          className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                        />
+                        <div className="flex items-center gap-2 min-w-0">
+                          <School size={14} className="text-blue-500 flex-shrink-0" />
+                          <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{school.name}</span>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            <div className="flex gap-2 pt-2">
-              <button
-                type="button"
-                onClick={handleClose}
-                className="flex-1 px-4 py-2.5 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-700"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                disabled={!name.trim() || isLoading || (useCompetencies && (!educationLevel || !selectedAreaId))}
-                className="flex-1 px-4 py-2.5 bg-gradient-to-r from-violet-500 to-purple-500 text-white rounded-xl text-sm font-medium shadow-lg shadow-violet-500/25 disabled:opacity-50"
-              >
-                {isLoading ? 'Creando...' : 'Crear Clase'}
-              </button>
-            </div>
-          </form>
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="flex-1 px-4 py-2.5 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-700"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={!name.trim() || isLoading || (useCompetencies && (!educationLevel || !selectedAreaId))}
+                  className="flex-1 px-4 py-2.5 bg-gradient-to-r from-violet-500 to-purple-500 text-white rounded-xl text-sm font-medium shadow-lg shadow-violet-500/25 disabled:opacity-50"
+                >
+                  {isLoading ? 'Creando...' : 'Crear Clase'}
+                </button>
+              </div>
+            </form>
           </div>
         </motion.div>
       </motion.div>
