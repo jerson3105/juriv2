@@ -607,15 +607,16 @@ const CreateClassroomModal = ({
   const [description, setDescription] = useState('');
   const [gradeLevel, setGradeLevel] = useState('');
   const [useCompetencies, setUseCompetencies] = useState(false);
+  const [educationLevel, setEducationLevel] = useState<'PRIMARIA' | 'SECUNDARIA' | ''>('');
   const [selectedAreaId, setSelectedAreaId] = useState('');
   const [gradeScaleType, setGradeScaleType] = useState<'PERU_LETTERS' | 'PERU_VIGESIMAL' | 'CENTESIMAL' | 'USA_LETTERS'>('PERU_LETTERS');
   const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(null);
 
-  // Cargar áreas curriculares
+  // Cargar áreas curriculares filtradas por nivel educativo
   const { data: curriculumAreas = [] } = useQuery({
-    queryKey: ['curriculum-areas'],
-    queryFn: () => classroomApi.getCurriculumAreas('PE'),
-    enabled: useCompetencies,
+    queryKey: ['curriculum-areas', educationLevel],
+    queryFn: () => classroomApi.getCurriculumAreas('PE', educationLevel || undefined),
+    enabled: useCompetencies && !!educationLevel,
   });
 
   // Cargar escuelas verificadas del profesor
@@ -645,6 +646,7 @@ const CreateClassroomModal = ({
     setDescription('');
     setGradeLevel('');
     setUseCompetencies(false);
+    setEducationLevel('');
     setSelectedAreaId('');
     setGradeScaleType('PERU_LETTERS');
     setSelectedSchoolId(null);
@@ -777,12 +779,28 @@ const CreateClassroomModal = ({
                     <div className="mt-4 space-y-3 p-3 bg-gray-100 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700">
                       <div>
                         <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                          Nivel Educativo
+                        </label>
+                        <select
+                          value={educationLevel}
+                          onChange={(e) => { setEducationLevel(e.target.value as any); setSelectedAreaId(''); }}
+                          className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
+                        >
+                          <option value="">Selecciona un nivel...</option>
+                          <option value="PRIMARIA">Primaria</option>
+                          <option value="SECUNDARIA">Secundaria</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                           Área Curricular
                         </label>
                         <select
                           value={selectedAreaId}
                           onChange={(e) => setSelectedAreaId(e.target.value)}
-                          className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none"
+                          disabled={!educationLevel}
+                          className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none disabled:opacity-50"
                         >
                           <option value="">Selecciona un área...</option>
                           {curriculumAreas.map((area) => (
@@ -895,7 +913,7 @@ const CreateClassroomModal = ({
               </button>
               <button
                 type="submit"
-                disabled={!name.trim() || isLoading || (useCompetencies && !selectedAreaId)}
+                disabled={!name.trim() || isLoading || (useCompetencies && (!educationLevel || !selectedAreaId))}
                 className="flex-1 px-4 py-2.5 bg-gradient-to-r from-violet-500 to-purple-500 text-white rounded-xl text-sm font-medium shadow-lg shadow-violet-500/25 disabled:opacity-50"
               >
                 {isLoading ? 'Creando...' : 'Crear Clase'}

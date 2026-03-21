@@ -60,14 +60,15 @@ export const AIClassroomWizard = ({ isOpen, onClose, onSuccess }: Props) => {
   // Datos de la clase
   const [classData, setClassData] = useState({
     name: '', description: '', subject: '', gradeLevel: '', useCompetencies: false,
+    educationLevel: '' as '' | 'PRIMARIA' | 'SECUNDARIA',
     curriculumAreaId: '', gradeScaleType: 'PERU_LETTERS' as 'PERU_LETTERS' | 'PERU_VIGESIMAL' | 'CENTESIMAL' | 'USA_LETTERS',
   });
 
-  // Query para áreas curriculares
+  // Query para áreas curriculares filtradas por nivel educativo
   const { data: curriculumAreas = [] } = useQuery({
-    queryKey: ['curriculum-areas'],
-    queryFn: () => classroomApi.getCurriculumAreas('PE'),
-    enabled: classData.useCompetencies,
+    queryKey: ['curriculum-areas', classData.educationLevel],
+    queryFn: () => classroomApi.getCurriculumAreas('PE', classData.educationLevel || undefined),
+    enabled: classData.useCompetencies && !!classData.educationLevel,
   });
 
   // Opciones de generación
@@ -274,7 +275,7 @@ export const AIClassroomWizard = ({ isOpen, onClose, onSuccess }: Props) => {
 
   const handleClose = () => {
     setCurrentStep(0);
-    setClassData({ name: '', description: '', subject: '', gradeLevel: '', useCompetencies: false, curriculumAreaId: '', gradeScaleType: 'PERU_LETTERS' });
+    setClassData({ name: '', description: '', subject: '', gradeLevel: '', useCompetencies: false, educationLevel: '', curriculumAreaId: '', gradeScaleType: 'PERU_LETTERS' });
     setGenerated({ behaviors: [], badges: [], shopItems: [], questionBank: null });
     setSelectedBehaviors(new Set()); setSelectedBadges(new Set()); setSelectedShopItems(new Set());
     setIncludeQuestionBank(false);
@@ -284,7 +285,7 @@ export const AIClassroomWizard = ({ isOpen, onClose, onSuccess }: Props) => {
   if (!isOpen) return null;
 
   const canNext = currentStep === 0 
-    ? classData.name && classData.subject && classData.gradeLevel && (!classData.useCompetencies || classData.curriculumAreaId)
+    ? classData.name && classData.subject && classData.gradeLevel && (!classData.useCompetencies || (classData.educationLevel && classData.curriculumAreaId))
     : true;
 
   return (
@@ -438,12 +439,28 @@ export const AIClassroomWizard = ({ isOpen, onClose, onSuccess }: Props) => {
                         <div className="mt-4 space-y-3 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-200 dark:border-emerald-800">
                           <div>
                             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                              🏫 Nivel Educativo
+                            </label>
+                            <select
+                              value={classData.educationLevel}
+                              onChange={(e) => setClassData(p => ({ ...p, educationLevel: e.target.value as any, curriculumAreaId: '' }))}
+                              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-emerald-500"
+                            >
+                              <option value="">Selecciona un nivel...</option>
+                              <option value="PRIMARIA">Primaria</option>
+                              <option value="SECUNDARIA">Secundaria</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                               📚 Área Curricular
                             </label>
                             <select
                               value={classData.curriculumAreaId}
                               onChange={(e) => setClassData(p => ({ ...p, curriculumAreaId: e.target.value }))}
-                              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-emerald-500"
+                              disabled={!classData.educationLevel}
+                              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
                             >
                               <option value="">Selecciona un área...</option>
                               {curriculumAreas.map((area: any) => (

@@ -2,7 +2,7 @@ import type { Request, Response } from 'express';
 import { classroomService } from '../services/classroom.service.js';
 import { db } from '../db/index.js';
 import { curriculumAreas, curriculumCompetencies } from '../db/schema.js';
-import { eq } from 'drizzle-orm';
+import { eq, and, or, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { GoogleGenAI } from '@google/genai';
 
@@ -339,12 +339,24 @@ export class ClassroomController {
   async getCurriculumAreas(req: Request, res: Response) {
     try {
       const countryCode = (req.query.country as string) || 'PE';
+      const level = req.query.level as string | undefined; // 'PRIMARIA' | 'SECUNDARIA'
       
+      // Construir condiciones de filtro
+      const conditions = [eq(curriculumAreas.countryCode, countryCode)];
+      if (level === 'PRIMARIA' || level === 'SECUNDARIA') {
+        conditions.push(
+          or(
+            isNull(curriculumAreas.educationLevel),
+            eq(curriculumAreas.educationLevel, level)
+          )!
+        );
+      }
+
       // Obtener áreas
       const areas = await db
         .select()
         .from(curriculumAreas)
-        .where(eq(curriculumAreas.countryCode, countryCode))
+        .where(and(...conditions))
         .orderBy(curriculumAreas.displayOrder);
 
       // Obtener competencias para cada área

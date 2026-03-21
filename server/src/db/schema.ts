@@ -1885,6 +1885,7 @@ export type TournamentMatchStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'B
 export const curriculumAreas = mysqlTable('curriculum_areas', {
   id: varchar('id', { length: 36 }).primaryKey(),
   countryCode: varchar('country_code', { length: 5 }).notNull().default('PE'),
+  educationLevel: varchar('education_level', { length: 20 }), // NULL = ambos, 'PRIMARIA', 'SECUNDARIA'
   name: varchar('name', { length: 100 }).notNull(),
   shortName: varchar('short_name', { length: 50 }),
   displayOrder: int('display_order').notNull().default(0),

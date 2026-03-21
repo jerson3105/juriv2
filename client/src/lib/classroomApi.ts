@@ -121,6 +121,7 @@ export interface CurriculumCompetency {
 export interface CurriculumArea {
   id: string;
   countryCode: string;
+  educationLevel: string | null;
   name: string;
   shortName: string | null;
   displayOrder: number;
@@ -201,8 +202,10 @@ export interface JoinClassroomData {
 
 export const classroomApi = {
   // Obtener áreas curriculares
-  getCurriculumAreas: async (countryCode: string = 'PE'): Promise<CurriculumArea[]> => {
-    const response = await api.get(`/classrooms/curriculum-areas?country=${countryCode}`);
+  getCurriculumAreas: async (countryCode: string = 'PE', level?: string): Promise<CurriculumArea[]> => {
+    const params = new URLSearchParams({ country: countryCode });
+    if (level) params.append('level', level);
+    const response = await api.get(`/classrooms/curriculum-areas?${params.toString()}`);
     return response.data.data;
   },
 

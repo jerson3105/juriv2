@@ -60,3 +60,4 @@ scripts/deploy-production.sh
 AUDITORIA_SEGUNDA_REVISION.md
 server/.env.example
 .checkpoints/
+.windsurf/skills/ux-ui/SKILL.md
