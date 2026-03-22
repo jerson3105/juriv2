@@ -10,6 +10,7 @@ export interface StudentProfile {
   classroomId: string;
   characterName: string | null;
   characterClass: CharacterClass;
+  characterClassId?: string | null;
   avatarGender: AvatarGender;
   avatarUrl: string | null;
   level: number;
@@ -38,6 +39,7 @@ export interface StudentProfile {
     useCompetencies?: boolean;
     curriculumAreaId?: string;
     gradeScaleType?: string;
+    classAssignmentMode?: string;
   };
 }
 

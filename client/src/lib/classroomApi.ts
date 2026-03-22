@@ -93,6 +93,7 @@ export interface Student {
   characterName: string | null;
   avatarUrl: string | null;
   characterClass: 'GUARDIAN' | 'ARCANE' | 'EXPLORER' | 'ALCHEMIST';
+  characterClassId?: string | null;
   avatarGender: 'MALE' | 'FEMALE';
   level: number;
   xp: number;

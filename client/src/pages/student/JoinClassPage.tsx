@@ -5,8 +5,8 @@ import { motion } from 'framer-motion';
 import { Gamepad2, ArrowRight, Check, ArrowLeft, Sparkles, Link2, Loader2 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { AvatarRenderer } from '../../components/avatar/AvatarRenderer';
-import { studentApi, CHARACTER_CLASSES, type CharacterClass, type AvatarGender } from '../../lib/studentApi';
-import { characterClassApi, type CharacterClassData } from '../../lib/characterClassApi';
+import { studentApi, CHARACTER_CLASSES, type AvatarGender } from '../../lib/studentApi';
+import { characterClassApi } from '../../lib/characterClassApi';
 import { placeholderStudentApi } from '../../lib/placeholderStudentApi';
 import toast from 'react-hot-toast';
 
@@ -18,7 +18,7 @@ export const JoinClassPage = () => {
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
   const [avatarGender, setAvatarGender] = useState<AvatarGender>('MALE');
-  const [assignmentMode, setAssignmentMode] = useState<string>('STUDENT_CHOICE');
+  const [, setAssignmentMode] = useState<string>('STUDENT_CHOICE');
   
   // Estado para modo de vinculación
   const [isLinkMode, setIsLinkMode] = useState(false);

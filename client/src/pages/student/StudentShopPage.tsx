@@ -38,7 +38,6 @@ interface StudentShopPageProps {
 
 export const StudentShopPage = ({ studentProfile, classmates: propClassmates }: StudentShopPageProps) => {
   const queryClient = useQueryClient();
-  const { classMap } = useCharacterClasses(studentProfile.classroomId);
   const [selectedItem, setSelectedItem] = useState<ShopItem | null>(null);
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
 
@@ -400,6 +399,7 @@ export const StudentShopPage = ({ studentProfile, classmates: propClassmates }: 
         item={selectedItem}
         currentGP={studentProfile.gp}
         classmates={classmates.filter(c => c.id !== studentProfile.id)}
+        classroomId={studentProfile.classroomId}
         onConfirm={(recipientId, message) => {
           if (selectedItem) {
             giftMutation.mutate({ recipientId, itemId: selectedItem.id, message });
@@ -608,6 +608,7 @@ const GiftModal = ({
   item,
   currentGP,
   classmates,
+  classroomId,
   onConfirm,
   isLoading,
 }: {
@@ -616,9 +617,11 @@ const GiftModal = ({
   item: ShopItem | null;
   currentGP: number;
   classmates: Array<{ id: string; characterName: string | null; characterClass: string }>;
+  classroomId: string;
   onConfirm: (recipientId: string, message?: string) => void;
   isLoading: boolean;
 }) => {
+  const { classMap } = useCharacterClasses(classroomId);
   const [selectedRecipient, setSelectedRecipient] = useState('');
   const [message, setMessage] = useState('');
 

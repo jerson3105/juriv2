@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { characterClassApi, type CharacterClassData } from '../lib/characterClassApi';
+import { characterClassApi } from '../lib/characterClassApi';
 import { CHARACTER_CLASSES } from '../lib/studentApi';
 
 /**

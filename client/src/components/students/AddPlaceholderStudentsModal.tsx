@@ -6,7 +6,6 @@ import {
   Users, 
   Plus, 
   Trash2,
-  Shield,
   Loader2,
   CheckCircle,
   Copy,
@@ -291,7 +290,7 @@ export const AddPlaceholderStudentsModal = ({ isOpen, onClose, classroomId, onSt
                             <p className="font-medium text-gray-900 dark:text-white">
                               {student.displayName}
                             </p>
-                            <p className="text-xs text-gray-500">{classInfo?.label}</p>
+                            <p className="text-xs text-gray-500">{dynClass?.name}</p>
                           </div>
                         </div>
                         

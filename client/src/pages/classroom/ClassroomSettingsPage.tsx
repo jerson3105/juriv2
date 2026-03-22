@@ -30,7 +30,6 @@ import {
   Loader2,
   Search,
   Swords,
-  Palette,
   GripVertical,
   Pencil,
 } from 'lucide-react';
