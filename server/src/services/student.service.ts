@@ -25,7 +25,7 @@ interface JoinClassData {
   userId: string;
   code: string;
   characterName: string;
-  characterClass: CharacterClass;
+  characterClass: string;
   characterClassId?: string;
   avatarGender?: AvatarGender;
 }
@@ -89,7 +89,7 @@ export class StudentService {
       userId: data.userId,
       classroomId: classroom.id,
       characterName: data.characterName,
-      characterClass: data.characterClass,
+      characterClass: data.characterClass as 'GUARDIAN' | 'ARCANE' | 'EXPLORER' | 'ALCHEMIST',
       characterClassId,
       avatarGender: gender,
       hp: classroom.defaultHp,
