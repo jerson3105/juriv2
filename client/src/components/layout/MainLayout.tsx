@@ -231,6 +231,12 @@ export const MainLayout = () => {
 
         {/* Navigation */}
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+          {/* Sección: Mi espacio (solo estudiantes) */}
+          {!isTeacher && !collapsed && (
+            <p className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+              Mi espacio
+            </p>
+          )}
           {navItems.map((item) => {
             const isActivePath = location.pathname === item.path || 
               (item.path === '/classrooms' && location.pathname.startsWith('/classroom'));
@@ -326,6 +332,49 @@ export const MainLayout = () => {
                 </span>
               )}
             </Link>
+          )}
+
+          {/* Mis Calificaciones - solo para estudiantes con competencias habilitadas */}
+          {!isTeacher && currentProfile?.classroom?.useCompetencies && (
+            <Link
+              to="/my-grades"
+              onClick={() => setSidebarOpen(false)}
+              className={`
+                flex items-center gap-3 px-3 py-2.5 rounded-xl
+                transition-all duration-200 group relative
+                ${location.pathname === '/my-grades'
+                  ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-md'
+                  : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }
+              `}
+            >
+              <div className={`
+                w-8 h-8 rounded-lg flex items-center justify-center transition-all
+                ${location.pathname === '/my-grades'
+                  ? 'bg-white/20' 
+                  : 'bg-gradient-to-br from-purple-500 to-indigo-500 text-white shadow-sm group-hover:scale-105'
+                }
+              `}>
+                <BookOpen size={16} />
+              </div>
+              {!collapsed && (
+                <span className={`text-sm font-medium ${location.pathname === '/my-grades' ? '' : hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
+                  Mis Calificaciones
+                </span>
+              )}
+            </Link>
+          )}
+
+          {/* Divider y Sección: Recompensas (solo estudiantes) */}
+          {!isTeacher && (
+            <>
+              <div className="my-2 mx-3 border-t border-gray-200 dark:border-gray-700" style={hasStoryTheme ? { borderColor: 'rgba(255,255,255,0.15)' } : undefined} />
+              {!collapsed && (
+                <p className="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                  Recompensas
+                </p>
+              )}
+            </>
           )}
 
           {/* Pergaminos del Aula - solo para estudiantes con scrolls habilitado */}
@@ -469,37 +518,6 @@ export const MainLayout = () => {
               {!collapsed && (
                 <span className={`text-sm font-medium ${location.pathname.startsWith('/jiro-expedition') ? '' : hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
                   Expedición de Jiro
-                </span>
-              )}
-            </Link>
-          )}
-
-          {/* Mis Calificaciones - solo para estudiantes con competencias habilitadas */}
-          {!isTeacher && currentProfile?.classroom?.useCompetencies && (
-            <Link
-              to="/my-grades"
-              onClick={() => setSidebarOpen(false)}
-              className={`
-                flex items-center gap-3 px-3 py-2.5 rounded-xl
-                transition-all duration-200 group relative
-                ${location.pathname === '/my-grades'
-                  ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-md'
-                  : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                }
-              `}
-            >
-              <div className={`
-                w-8 h-8 rounded-lg flex items-center justify-center transition-all
-                ${location.pathname === '/my-grades'
-                  ? 'bg-white/20' 
-                  : 'bg-gradient-to-br from-purple-500 to-indigo-500 text-white shadow-sm group-hover:scale-105'
-                }
-              `}>
-                <BookOpen size={16} />
-              </div>
-              {!collapsed && (
-                <span className={`text-sm font-medium ${location.pathname === '/my-grades' ? '' : hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
-                  Mis Calificaciones
                 </span>
               )}
             </Link>

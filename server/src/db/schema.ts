@@ -3004,3 +3004,33 @@ export const teacherOnboardingRelations = relations(teacherOnboarding, ({ one })
 
 export type TeacherOnboarding = typeof teacherOnboarding.$inferSelect;
 export type NewTeacherOnboarding = typeof teacherOnboarding.$inferInsert;
+
+// ─── Notas de Clase ──────────────────────────────────────────────────
+export const classNotes = mysqlTable('class_notes', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
+  teacherId: varchar('teacher_id', { length: 36 }).notNull(),
+  content: text('content').notNull(),
+  category: varchar('category', { length: 20 }).notNull().default('other'),
+  isCompleted: boolean('is_completed').notNull().default(false),
+  dueDate: datetime('due_date'),
+  createdAt: datetime('created_at').notNull(),
+  completedAt: datetime('completed_at'),
+}, (table) => ({
+  classroomIdx: index('idx_class_notes_classroom').on(table.classroomId),
+  classroomCompletedIdx: index('idx_class_notes_classroom_completed').on(table.classroomId, table.isCompleted),
+}));
+
+export const classNotesRelations = relations(classNotes, ({ one }) => ({
+  classroom: one(classrooms, {
+    fields: [classNotes.classroomId],
+    references: [classrooms.id],
+  }),
+  teacher: one(users, {
+    fields: [classNotes.teacherId],
+    references: [users.id],
+  }),
+}));
+
+export type ClassNote = typeof classNotes.$inferSelect;
+export type NewClassNote = typeof classNotes.$inferInsert;

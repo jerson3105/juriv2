@@ -10,6 +10,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { studentApi, CHARACTER_CLASSES } from '../../lib/studentApi';
 import { behaviorApi, type Behavior } from '../../lib/behaviorApi';
 import { questionBankApi, type Question, DIFFICULTY_LABELS, DIFFICULTY_COLORS, BANK_ICONS } from '../../lib/questionBankApi';
+import { CLAN_EMBLEMS } from '../../lib/clanApi';
 import toast from 'react-hot-toast';
 
 type AnimationType = 'slot' | 'wheel' | 'cards';
@@ -24,6 +25,11 @@ interface Student {
   hp: number;
   gp: number;
   avatarUrl: string | null;
+  teamId?: string | null;
+  clanName?: string | null;
+  clanColor?: string | null;
+  clanEmblem?: string | null;
+  clanMotto?: string | null;
 }
 
 interface RandomPickerActivityProps {
@@ -649,6 +655,8 @@ const SpinningAnimation = ({ type, students, slotPosition, wheelRotation }: { ty
 // Estudiante seleccionado
 const SelectedStudentDisplay = ({ student }: { student: Student }) => {
   const classInfo = CHARACTER_CLASSES[student.characterClass];
+  const hasClan = !!student.teamId && !!student.clanName;
+  
   return (
     <motion.div initial={{ scale: 0, rotate: -180 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: 'spring', damping: 12, stiffness: 150 }} className="text-center relative">
       {/* Corona animada */}
@@ -658,52 +666,96 @@ const SelectedStudentDisplay = ({ student }: { student: Student }) => {
         </motion.div>
       </motion.div>
       
-      {/* Avatar con anillo giratorio */}
-      <div className="relative w-40 h-40 mx-auto mb-4">
-        {/* Anillo giratorio exterior */}
-        <motion.div 
-          className="absolute -inset-2 rounded-full"
-          style={{
-            background: 'conic-gradient(from 0deg, #facc15, #ec4899, #8b5cf6, #3b82f6, #facc15)',
-            padding: '3px',
-          }}
-          animate={{ rotate: 360 }} 
-          transition={{ duration: 4, repeat: Infinity, ease: 'linear' }}
-        >
-          <div className="w-full h-full rounded-full bg-gradient-to-br from-violet-600 to-purple-700" />
-        </motion.div>
-        
-        {/* Contenedor del avatar */}
-        <motion.div 
-          className="absolute inset-0 rounded-full bg-white p-2 shadow-2xl"
-          animate={{ boxShadow: ['0 0 30px rgba(255,255,255,0.4)', '0 0 50px rgba(255,255,255,0.7)', '0 0 30px rgba(255,255,255,0.4)'] }} 
-          transition={{ duration: 1.5, repeat: Infinity }}
-        >
-          <div className="w-full h-full rounded-full bg-gradient-to-br from-violet-100 to-purple-100 flex items-center justify-center overflow-hidden">
-            {student.avatarUrl ? (
-              <img src={student.avatarUrl} alt={student.characterName || ''} className="w-full h-full object-cover rounded-full" />
-            ) : (
-              <span className="text-7xl">{classInfo?.icon}</span>
-            )}
+      {/* Layout principal: avatar + clan */}
+      <div className={`flex items-center justify-center ${hasClan ? 'gap-6' : ''}`}>
+        {/* Avatar con anillo giratorio */}
+        <div className="flex flex-col items-center">
+          <div className="relative w-40 h-40 mb-4">
+            <motion.div 
+              className="absolute -inset-2 rounded-full"
+              style={{ background: 'conic-gradient(from 0deg, #facc15, #ec4899, #8b5cf6, #3b82f6, #facc15)', padding: '3px' }}
+              animate={{ rotate: 360 }} 
+              transition={{ duration: 4, repeat: Infinity, ease: 'linear' }}
+            >
+              <div className="w-full h-full rounded-full bg-gradient-to-br from-violet-600 to-purple-700" />
+            </motion.div>
+            <motion.div 
+              className="absolute inset-0 rounded-full bg-white p-2 shadow-2xl"
+              animate={{ boxShadow: ['0 0 30px rgba(255,255,255,0.4)', '0 0 50px rgba(255,255,255,0.7)', '0 0 30px rgba(255,255,255,0.4)'] }} 
+              transition={{ duration: 1.5, repeat: Infinity }}
+            >
+              <div className="w-full h-full rounded-full bg-gradient-to-br from-violet-100 to-purple-100 flex items-center justify-center overflow-hidden">
+                {student.avatarUrl ? (
+                  <img src={student.avatarUrl} alt={student.characterName || ''} className="w-full h-full object-cover rounded-full" />
+                ) : (
+                  <span className="text-7xl">{classInfo?.icon}</span>
+                )}
+              </div>
+            </motion.div>
           </div>
-        </motion.div>
+          
+          {/* Nombre */}
+          <motion.h2 initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 }} className="text-4xl font-black text-white mb-2 drop-shadow-lg">
+            {student.characterName || 'Sin nombre'}
+          </motion.h2>
+          
+          {/* Badges de clase y nivel */}
+          <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.3 }} className="flex items-center justify-center gap-3">
+            <span className="px-4 py-1.5 bg-white/20 backdrop-blur-sm rounded-full text-white text-sm font-semibold">
+              {classInfo?.name}
+            </span>
+            <span className="px-4 py-1.5 bg-yellow-400/30 backdrop-blur-sm rounded-full text-yellow-200 text-sm font-semibold flex items-center gap-1">
+              <Star size={14} fill="currentColor" />
+              Nivel {student.level}
+            </span>
+          </motion.div>
+        </div>
+
+        {/* Info del Clan */}
+        {hasClan && (
+          <motion.div
+            initial={{ x: 80, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            transition={{ delay: 0.5, type: 'spring', damping: 15 }}
+            className="flex flex-col items-center"
+          >
+            <div
+              className="relative w-48 rounded-2xl border-2 p-4 backdrop-blur-sm text-center"
+              style={{ borderColor: student.clanColor || '#6366f1', backgroundColor: `${student.clanColor || '#6366f1'}20` }}
+            >
+              {/* Emblema grande */}
+              <motion.div
+                animate={{ scale: [1, 1.1, 1] }}
+                transition={{ duration: 2, repeat: Infinity }}
+                className="text-5xl mb-2"
+              >
+                {CLAN_EMBLEMS[student.clanEmblem || 'shield'] || '🛡️'}
+              </motion.div>
+              
+              {/* Nombre del clan */}
+              <h3 className="text-lg font-bold text-white drop-shadow-md mb-1">
+                {student.clanName}
+              </h3>
+              
+              {/* Lema */}
+              {student.clanMotto && (
+                <p className="text-xs text-white/70 italic leading-snug">
+                  "{student.clanMotto}"
+                </p>
+              )}
+              
+              {/* Etiqueta */}
+              <div
+                className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold text-white"
+                style={{ backgroundColor: `${student.clanColor || '#6366f1'}90` }}
+              >
+                <Users size={12} />
+                Clan
+              </div>
+            </div>
+          </motion.div>
+        )}
       </div>
-      
-      {/* Nombre */}
-      <motion.h2 initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.2 }} className="text-4xl font-black text-white mb-2 drop-shadow-lg">
-        {student.characterName || 'Sin nombre'}
-      </motion.h2>
-      
-      {/* Badges de clase y nivel */}
-      <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.3 }} className="flex items-center justify-center gap-3">
-        <span className="px-4 py-1.5 bg-white/20 backdrop-blur-sm rounded-full text-white text-sm font-semibold">
-          {classInfo?.name}
-        </span>
-        <span className="px-4 py-1.5 bg-yellow-400/30 backdrop-blur-sm rounded-full text-yellow-200 text-sm font-semibold flex items-center gap-1">
-          <Star size={14} fill="currentColor" />
-          Nivel {student.level}
-        </span>
-      </motion.div>
       
       {/* Confetti de emojis */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">

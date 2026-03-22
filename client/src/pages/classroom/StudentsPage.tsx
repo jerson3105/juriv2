@@ -46,6 +46,7 @@ import { TeacherBadgeAwardedModal } from '../../components/badges/TeacherBadgeAw
 import { AddPlaceholderStudentsModal } from '../../components/students/AddPlaceholderStudentsModal';
 import { placeholderStudentApi } from '../../lib/placeholderStudentApi';
 import { ClassroomUtilities } from '../../components/classroom/ClassroomUtilities';
+import { classNoteApi } from '../../lib/classNoteApi';
 import toast from 'react-hot-toast';
 
 export const StudentsPage = () => {
@@ -96,6 +97,11 @@ export const StudentsPage = () => {
   const { data: behaviors } = useQuery({
     queryKey: ['behaviors', classroom.id],
     queryFn: () => behaviorApi.getByClassroom(classroom.id),
+  });
+
+  const { data: pendingNotesCount = 0 } = useQuery({
+    queryKey: ['class-notes-count', classroom.id],
+    queryFn: () => classNoteApi.pendingCount(classroom.id),
   });
 
   // Estudiantes placeholder (sin cuenta vinculada)
@@ -476,11 +482,16 @@ export const StudentsPage = () => {
           {/* Botón de Utilidades */}
           <button
             onClick={() => setShowUtilities(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 hover:bg-violet-200 dark:hover:bg-violet-900/50 border border-violet-200 dark:border-violet-800 transition-colors text-sm font-medium"
+            className="relative flex items-center gap-1.5 px-3 py-2 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 hover:bg-violet-200 dark:hover:bg-violet-900/50 border border-violet-200 dark:border-violet-800 transition-colors text-sm font-medium"
             title="Utilidades"
           >
             <Wrench size={16} />
             <span className="hidden sm:inline">Utilidades</span>
+            {pendingNotesCount > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full flex items-center justify-center animate-pulse">
+                {pendingNotesCount}
+              </span>
+            )}
           </button>
 
           {/* Toggle de vista - Siempre visible, al final */}
@@ -1379,6 +1390,7 @@ export const StudentsPage = () => {
         onClose={() => setShowUtilities(false)}
         students={allStudents}
         showCharacterName={classroom.showCharacterName !== false}
+        classroomId={classroom.id}
       />
 
       {/* Modal para aplicar a estudiantes restantes */}

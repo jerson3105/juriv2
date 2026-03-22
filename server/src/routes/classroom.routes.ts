@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { classroomController } from '../controllers/classroom.controller.js';
 import { announcementController } from '../controllers/announcement.controller.js';
 import { chatController } from '../controllers/chat.controller.js';
+import { classNoteController } from '../controllers/classNote.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { aiAssistantService } from '../services/aiAssistant.service.js';
 
@@ -77,6 +78,13 @@ router.post('/:id/chat', authorize('TEACHER', 'PARENT'), chatController.sendMess
 router.delete('/:id/chat/:messageId', authorize('TEACHER'), chatController.deleteMessage.bind(chatController));
 router.get('/:id/chat/settings', authorize('TEACHER', 'PARENT'), chatController.getSettings.bind(chatController));
 router.patch('/:id/chat/settings', authorize('TEACHER'), chatController.updateSettings.bind(chatController));
+
+// Notas de clase (profesor)
+router.post('/:id/notes', authorize('TEACHER'), classNoteController.create.bind(classNoteController));
+router.get('/:id/notes', authorize('TEACHER'), classNoteController.list.bind(classNoteController));
+router.get('/:id/notes/pending-count', authorize('TEACHER'), classNoteController.pendingCount.bind(classNoteController));
+router.patch('/:id/notes/:noteId/toggle', authorize('TEACHER'), classNoteController.toggleComplete.bind(classNoteController));
+router.delete('/:id/notes/:noteId', authorize('TEACHER'), classNoteController.remove.bind(classNoteController));
 
 // Rutas para estudiantes
 router.post('/join', authorize('STUDENT'), classroomController.join.bind(classroomController));

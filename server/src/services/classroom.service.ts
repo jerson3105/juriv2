@@ -215,6 +215,7 @@ export class ClassroomService {
       clanName: teams.name,
       clanColor: teams.color,
       clanEmblem: teams.emblem,
+      clanMotto: teams.motto,
     }).from(studentProfiles)
       .leftJoin(users, eq(studentProfiles.userId, users.id))
       .leftJoin(teams, eq(studentProfiles.teamId, teams.id))

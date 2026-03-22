@@ -97,6 +97,11 @@ export interface Student {
   gp: number;
   realName: string | null;
   realLastName: string | null;
+  teamId?: string | null;
+  clanName?: string | null;
+  clanColor?: string | null;
+  clanEmblem?: string | null;
+  clanMotto?: string | null;
 }
 
 export interface CreateClassroomData {

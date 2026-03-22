@@ -12,9 +12,19 @@ import {
   Minus,
   Plus,
   Calendar,
+  ClipboardList,
+  Check,
+  Trash2,
+  BookOpen,
+  FileCheck,
+  Package,
+  MoreHorizontal,
 } from 'lucide-react';
 import { StudentAvatarMini } from '../avatar/StudentAvatarMini';
 import type { AvatarGender } from '../../lib/avatarApi';
+import { CLAN_EMBLEMS } from '../../lib/clanApi';
+import { classNoteApi, type ClassNote } from '../../lib/classNoteApi';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 interface StudentData {
   id: string;
@@ -23,6 +33,11 @@ interface StudentData {
   realLastName: string | null;
   avatarGender: 'MALE' | 'FEMALE';
   characterClass: string;
+  teamId?: string | null;
+  clanName?: string | null;
+  clanColor?: string | null;
+  clanEmblem?: string | null;
+  clanMotto?: string | null;
 }
 
 interface ClassroomUtilitiesProps {
@@ -30,9 +45,10 @@ interface ClassroomUtilitiesProps {
   onClose: () => void;
   students: StudentData[];
   showCharacterName?: boolean;
+  classroomId: string;
 }
 
-type ActiveTool = null | 'random' | 'groups' | 'announcement';
+type ActiveTool = null | 'random' | 'groups' | 'announcement' | 'notes';
 
 const getDisplayName = (student: StudentData, showCharacterName: boolean) => {
   if (!showCharacterName) {
@@ -48,9 +64,11 @@ const getDisplayName = (student: StudentData, showCharacterName: boolean) => {
 const ToolSelector = ({
   onSelect,
   onClose,
+  pendingNotesCount,
 }: {
   onSelect: (tool: ActiveTool) => void;
   onClose: () => void;
+  pendingNotesCount: number;
 }) => {
   const tools = [
     {
@@ -82,6 +100,17 @@ const ToolSelector = ({
       bg: 'bg-amber-50 dark:bg-amber-900/20',
       border: 'border-amber-200 dark:border-amber-800',
       hover: 'hover:border-amber-400 dark:hover:border-amber-600',
+    },
+    {
+      id: 'notes' as const,
+      icon: ClipboardList,
+      title: 'Notas de clase',
+      description: 'Anota tareas, páginas y pendientes para la siguiente clase',
+      gradient: 'from-emerald-500 to-teal-600',
+      bg: 'bg-emerald-50 dark:bg-emerald-900/20',
+      border: 'border-emerald-200 dark:border-emerald-800',
+      hover: 'hover:border-emerald-400 dark:hover:border-emerald-600',
+      badge: pendingNotesCount,
     },
   ];
 
@@ -137,6 +166,11 @@ const ToolSelector = ({
                   {tool.description}
                 </p>
               </div>
+              {'badge' in tool && typeof tool.badge === 'number' && tool.badge > 0 && (
+                <span className="ml-auto bg-red-500 text-white text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 animate-pulse">
+                  {tool.badge}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -236,49 +270,89 @@ const RandomPicker = ({
       </h2>
 
       {/* Student display */}
-      <motion.div
-        key={isSpinning ? currentIndex : 'final'}
-        initial={!isSpinning ? { scale: 0.8, opacity: 0 } : {}}
-        animate={!isSpinning ? { scale: 1, opacity: 1 } : {}}
-        transition={!isSpinning ? { type: 'spring', damping: 12, stiffness: 200 } : {}}
-        className="flex flex-col items-center"
-      >
-        <div
-          className={`w-36 h-56 sm:w-44 sm:h-72 rounded-3xl overflow-hidden bg-white/10 backdrop-blur-sm border-4 ${
-            isSpinning
-              ? 'border-white/30'
-              : 'border-yellow-400 shadow-[0_0_40px_rgba(250,204,21,0.4)]'
-          } transition-all duration-300 flex items-end justify-center`}
+      <div className="flex items-center justify-center gap-8">
+        <motion.div
+          key={isSpinning ? currentIndex : 'final'}
+          initial={!isSpinning ? { scale: 0.8, opacity: 0 } : {}}
+          animate={!isSpinning ? { scale: 1, opacity: 1 } : {}}
+          transition={!isSpinning ? { type: 'spring', damping: 12, stiffness: 200 } : {}}
+          className="flex flex-col items-center"
         >
-          {displayStudent && (
-            <StudentAvatarMini
-              studentProfileId={displayStudent.id}
-              gender={displayStudent.avatarGender as AvatarGender}
-              size="md"
-            />
-          )}
-        </div>
-
-        <motion.p
-          key={isSpinning ? currentIndex : 'final-name'}
-          className={`mt-6 text-2xl sm:text-3xl font-bold text-center px-4 ${
-            isSpinning ? 'text-white/70' : 'text-white'
-          }`}
-        >
-          {displayStudent ? getDisplayName(displayStudent, showCharacterName) : ''}
-        </motion.p>
-
-        {!isSpinning && selectedStudent && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="mt-2 text-purple-300 text-sm"
+          <div
+            className={`w-36 h-56 sm:w-44 sm:h-72 rounded-3xl overflow-hidden bg-white/10 backdrop-blur-sm border-4 ${
+              isSpinning
+                ? 'border-white/30'
+                : 'border-yellow-400 shadow-[0_0_40px_rgba(250,204,21,0.4)]'
+            } transition-all duration-300 flex items-end justify-center`}
           >
-            ¡Elegido!
+            {displayStudent && (
+              <StudentAvatarMini
+                studentProfileId={displayStudent.id}
+                gender={displayStudent.avatarGender as AvatarGender}
+                size="md"
+              />
+            )}
+          </div>
+
+          <motion.p
+            key={isSpinning ? currentIndex : 'final-name'}
+            className={`mt-6 text-2xl sm:text-3xl font-bold text-center px-4 ${
+              isSpinning ? 'text-white/70' : 'text-white'
+            }`}
+          >
+            {displayStudent ? getDisplayName(displayStudent, showCharacterName) : ''}
+          </motion.p>
+
+          {!isSpinning && selectedStudent && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              className="mt-2 text-purple-300 text-sm"
+            >
+              ¡Elegido!
+            </motion.div>
+          )}
+        </motion.div>
+
+        {/* Clan info */}
+        {!isSpinning && selectedStudent?.teamId && selectedStudent?.clanName && (
+          <motion.div
+            initial={{ x: 60, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            transition={{ delay: 0.4, type: 'spring', damping: 15 }}
+            className="flex flex-col items-center"
+          >
+            <div
+              className="w-48 rounded-2xl border-2 p-5 backdrop-blur-sm text-center"
+              style={{ borderColor: selectedStudent.clanColor || '#6366f1', backgroundColor: `${selectedStudent.clanColor || '#6366f1'}20` }}
+            >
+              <motion.div
+                animate={{ scale: [1, 1.15, 1] }}
+                transition={{ duration: 2, repeat: Infinity }}
+                className="text-5xl mb-3"
+              >
+                {CLAN_EMBLEMS[selectedStudent.clanEmblem || 'shield'] || '🛡️'}
+              </motion.div>
+              <h3 className="text-lg font-bold text-white drop-shadow-md mb-1">
+                {selectedStudent.clanName}
+              </h3>
+              {selectedStudent.clanMotto && (
+                <p className="text-xs text-white/70 italic leading-snug">
+                  "{selectedStudent.clanMotto}"
+                </p>
+              )}
+              <div
+                className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold text-white"
+                style={{ backgroundColor: `${selectedStudent.clanColor || '#6366f1'}90` }}
+              >
+                <Users size={12} />
+                Clan
+              </div>
+            </div>
           </motion.div>
         )}
-      </motion.div>
+      </div>
 
       {/* Action buttons */}
       <div className="mt-12 flex gap-4">
@@ -560,14 +634,279 @@ const AnnouncementProjector = ({ onClose }: { onClose: () => void }) => {
   );
 };
 
+// ─── Class Notes ─────────────────────────────────────────────────────
+const NOTE_CATEGORIES = [
+  { id: 'task', label: 'Tarea', icon: FileCheck, color: 'text-blue-400', bg: 'bg-blue-500/20', border: 'border-blue-500/30' },
+  { id: 'review', label: 'Revisar', icon: BookOpen, color: 'text-amber-400', bg: 'bg-amber-500/20', border: 'border-amber-500/30' },
+  { id: 'material', label: 'Material', icon: Package, color: 'text-purple-400', bg: 'bg-purple-500/20', border: 'border-purple-500/30' },
+  { id: 'other', label: 'Otro', icon: MoreHorizontal, color: 'text-gray-400', bg: 'bg-gray-500/20', border: 'border-gray-500/30' },
+] as const;
+
+const ClassNotes = ({
+  classroomId,
+  onClose,
+}: {
+  classroomId: string;
+  onClose: () => void;
+}) => {
+  const [newContent, setNewContent] = useState('');
+  const [newCategory, setNewCategory] = useState<string>('task');
+  const [newDueDate, setNewDueDate] = useState('');
+  const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('pending');
+  const queryClient = useQueryClient();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const { data: notes = [], isLoading } = useQuery({
+    queryKey: ['class-notes', classroomId],
+    queryFn: () => classNoteApi.list(classroomId),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: () => classNoteApi.create(classroomId, newContent, newCategory, newDueDate || null),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['class-notes', classroomId] });
+      queryClient.invalidateQueries({ queryKey: ['class-notes-count', classroomId] });
+      setNewContent('');
+      setNewDueDate('');
+      inputRef.current?.focus();
+    },
+  });
+
+  const toggleMutation = useMutation({
+    mutationFn: (noteId: string) => classNoteApi.toggleComplete(classroomId, noteId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['class-notes', classroomId] });
+      queryClient.invalidateQueries({ queryKey: ['class-notes-count', classroomId] });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (noteId: string) => classNoteApi.remove(classroomId, noteId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['class-notes', classroomId] });
+      queryClient.invalidateQueries({ queryKey: ['class-notes-count', classroomId] });
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newContent.trim()) return;
+    createMutation.mutate();
+  };
+
+  const filteredNotes = notes.filter(note => {
+    if (filter === 'pending') return !note.isCompleted;
+    if (filter === 'completed') return note.isCompleted;
+    return true;
+  });
+
+  const pendingCount = notes.filter(n => !n.isCompleted).length;
+  const completedCount = notes.filter(n => n.isCompleted).length;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-gradient-to-br from-gray-900 via-emerald-900 to-teal-900 flex flex-col items-center z-[9999]"
+    >
+      {/* Header */}
+      <div className="w-full max-w-2xl px-4 pt-4">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-white/60 text-sm font-medium tracking-widest uppercase">
+              Notas de clase
+            </h2>
+            <p className="text-white/40 text-xs mt-0.5">
+              {pendingCount} pendiente{pendingCount !== 1 ? 's' : ''} · {completedCount} completada{completedCount !== 1 ? 's' : ''}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-3 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* New note form */}
+        <form onSubmit={handleSubmit} className="mb-4">
+          <div className="flex gap-2 mb-2">
+            <input
+              ref={inputRef}
+              type="text"
+              value={newContent}
+              onChange={(e) => setNewContent(e.target.value)}
+              placeholder="Ej: Revisar pág. 45-50, Recoger cuadernos..."
+              className="flex-1 bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder:text-white/30 focus:outline-none focus:border-emerald-400/60 text-sm transition-colors"
+              autoFocus
+            />
+            <button
+              type="submit"
+              disabled={!newContent.trim() || createMutation.isPending}
+              className="px-4 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-medium hover:from-emerald-600 hover:to-teal-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-lg text-sm"
+            >
+              <Plus size={18} />
+            </button>
+          </div>
+          <div className="flex gap-2 items-center">
+            {/* Category pills */}
+            <div className="flex gap-1.5 flex-1 flex-wrap">
+              {NOTE_CATEGORIES.map(cat => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setNewCategory(cat.id)}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                    newCategory === cat.id
+                      ? `${cat.bg} ${cat.color} border ${cat.border}`
+                      : 'bg-white/5 text-white/40 hover:bg-white/10 border border-transparent'
+                  }`}
+                >
+                  <cat.icon size={12} />
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+            {/* Due date */}
+            <input
+              type="date"
+              value={newDueDate}
+              onChange={(e) => setNewDueDate(e.target.value)}
+              className="bg-white/10 border border-white/20 rounded-lg px-2.5 py-1 text-white/70 text-xs focus:outline-none focus:border-emerald-400/60 transition-colors [color-scheme:dark]"
+            />
+          </div>
+        </form>
+
+        {/* Filter tabs */}
+        <div className="flex gap-1 mb-3 bg-white/5 rounded-lg p-1">
+          {([
+            { key: 'pending', label: `Pendientes (${pendingCount})` },
+            { key: 'completed', label: `Completadas (${completedCount})` },
+            { key: 'all', label: 'Todas' },
+          ] as const).map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setFilter(tab.key)}
+              className={`flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                filter === tab.key
+                  ? 'bg-white/15 text-white'
+                  : 'text-white/40 hover:text-white/60'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Notes list */}
+      <div className="flex-1 w-full max-w-2xl overflow-y-auto px-4 pb-4 space-y-2">
+        {isLoading ? (
+          <div className="text-center text-white/40 py-8">
+            <div className="animate-spin w-6 h-6 border-2 border-white/20 border-t-emerald-400 rounded-full mx-auto mb-2" />
+            Cargando notas...
+          </div>
+        ) : filteredNotes.length === 0 ? (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-center py-12"
+          >
+            <ClipboardList size={40} className="mx-auto text-white/20 mb-3" />
+            <p className="text-white/40 text-sm">
+              {filter === 'pending' ? 'No hay notas pendientes. ¡Todo al día!' : filter === 'completed' ? 'No hay notas completadas aún.' : 'No hay notas. Añade una arriba.'}
+            </p>
+          </motion.div>
+        ) : (
+          <AnimatePresence mode="popLayout">
+            {filteredNotes.map(note => {
+              const catInfo = NOTE_CATEGORIES.find(c => c.id === note.category) || NOTE_CATEGORIES[3];
+              const dueDate = note.dueDate ? new Date(note.dueDate) : null;
+              const isOverdue = dueDate && !note.isCompleted && dueDate < new Date();
+
+              return (
+                <motion.div
+                  key={note.id}
+                  layout
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20, scale: 0.95 }}
+                  className={`group flex items-start gap-3 p-3 rounded-xl border transition-all ${
+                    note.isCompleted
+                      ? 'bg-white/5 border-white/10 opacity-60'
+                      : 'bg-white/10 border-white/15 hover:bg-white/15'
+                  }`}
+                >
+                  {/* Toggle button */}
+                  <button
+                    onClick={() => toggleMutation.mutate(note.id)}
+                    disabled={toggleMutation.isPending}
+                    className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
+                      note.isCompleted
+                        ? 'bg-emerald-500 border-emerald-500 text-white'
+                        : 'border-white/30 hover:border-emerald-400'
+                    }`}
+                  >
+                    {note.isCompleted && <Check size={12} />}
+                  </button>
+
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm leading-snug ${note.isCompleted ? 'text-white/40 line-through' : 'text-white'}`}>
+                      {note.content}
+                    </p>
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium ${catInfo.bg} ${catInfo.color}`}>
+                        <catInfo.icon size={10} />
+                        {catInfo.label}
+                      </span>
+                      {dueDate && (
+                        <span className={`inline-flex items-center gap-1 text-[10px] ${isOverdue ? 'text-red-400' : 'text-white/40'}`}>
+                          <Calendar size={10} />
+                          {dueDate.toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })}
+                          {isOverdue && ' · Vencida'}
+                        </span>
+                      )}
+                      <span className="text-[10px] text-white/25">
+                        {new Date(note.createdAt).toLocaleDateString('es-PE', { day: '2-digit', month: 'short' })}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Delete */}
+                  <button
+                    onClick={() => deleteMutation.mutate(note.id)}
+                    disabled={deleteMutation.isPending}
+                    className="flex-shrink-0 opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-500/20 rounded-lg text-white/30 hover:text-red-400 transition-all"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </motion.div>
+              );
+            })}
+          </AnimatePresence>
+        )}
+      </div>
+    </motion.div>
+  );
+};
+
 // ─── Main Component ──────────────────────────────────────────────────
 export const ClassroomUtilities = ({
   isOpen,
   onClose,
   students,
   showCharacterName = true,
+  classroomId,
 }: ClassroomUtilitiesProps) => {
   const [activeTool, setActiveTool] = useState<ActiveTool>(null);
+
+  const { data: pendingNotesCount = 0 } = useQuery({
+    queryKey: ['class-notes-count', classroomId],
+    queryFn: () => classNoteApi.pendingCount(classroomId),
+    enabled: !!classroomId,
+  });
 
   // Reset tool when modal closes
   useEffect(() => {
@@ -593,6 +932,7 @@ export const ClassroomUtilities = ({
             key="tool-selector"
             onSelect={setActiveTool}
             onClose={handleClose}
+            pendingNotesCount={pendingNotesCount}
           />
         )}
       </AnimatePresence>
@@ -619,6 +959,11 @@ export const ClassroomUtilities = ({
       <AnimatePresence>
         {activeTool === 'announcement' && (
           <AnnouncementProjector key="announcement" onClose={handleToolClose} />
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {activeTool === 'notes' && (
+          <ClassNotes key="notes" classroomId={classroomId} onClose={handleToolClose} />
         )}
       </AnimatePresence>
     </>,
