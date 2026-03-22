@@ -294,8 +294,18 @@ export const StudentGradesPage = () => {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-purple-200 text-sm mb-1">Promedio General</p>
-            <div className="flex items-baseline gap-2">
-              <span className="text-4xl font-bold">{average}%</span>
+            <div className="flex items-baseline gap-3">
+              <span className="text-4xl font-bold">
+                {(() => {
+                  const avg = parseFloat(String(average));
+                  if (grades.length === 0) return '—';
+                  if (avg >= 90) return 'AD';
+                  if (avg >= 70) return 'A';
+                  if (avg >= 50) return 'B';
+                  return 'C';
+                })()}
+              </span>
+              <span className="text-lg text-purple-200 font-medium">{average}%</span>
               <TrendingUp size={20} className="text-purple-200" />
             </div>
             <p className="text-purple-200 text-xs mt-1">

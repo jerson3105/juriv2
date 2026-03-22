@@ -79,10 +79,10 @@ router.delete('/:id/chat/:messageId', authorize('TEACHER'), chatController.delet
 router.get('/:id/chat/settings', authorize('TEACHER', 'PARENT'), chatController.getSettings.bind(chatController));
 router.patch('/:id/chat/settings', authorize('TEACHER'), chatController.updateSettings.bind(chatController));
 
-// Notas de clase (profesor)
+// Notas de clase (profesor crea/edita, estudiante lee)
 router.post('/:id/notes', authorize('TEACHER'), classNoteController.create.bind(classNoteController));
-router.get('/:id/notes', authorize('TEACHER'), classNoteController.list.bind(classNoteController));
-router.get('/:id/notes/pending-count', authorize('TEACHER'), classNoteController.pendingCount.bind(classNoteController));
+router.get('/:id/notes', authorize('TEACHER', 'STUDENT'), classNoteController.list.bind(classNoteController));
+router.get('/:id/notes/pending-count', authorize('TEACHER', 'STUDENT'), classNoteController.pendingCount.bind(classNoteController));
 router.patch('/:id/notes/:noteId/toggle', authorize('TEACHER'), classNoteController.toggleComplete.bind(classNoteController));
 router.delete('/:id/notes/:noteId', authorize('TEACHER'), classNoteController.remove.bind(classNoteController));
 

@@ -16,16 +16,19 @@ import {
   Check,
   Camera,
   Loader2,
+  Plus,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
 import { userApi } from '../../lib/userApi';
 import { Button } from '../../components/ui/Button';
+import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
 export const SettingsPage = () => {
   const { user, updateUser } = useAuthStore();
   const { theme, setTheme } = useThemeStore();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('profile');
   const [notifications, setNotifications] = useState({
     badges: (user as any)?.notifyBadges ?? true,
@@ -520,6 +523,24 @@ export const SettingsPage = () => {
               </div>
             )}
           </motion.div>
+
+          {/* Unirse a otra clase - Solo para estudiantes */}
+          {user?.role === 'STUDENT' && (
+            <div className="mt-4 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-gray-800 dark:text-white">Unirse a otra clase</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">¿Tienes otro código de clase? Únete desde aquí.</p>
+                </div>
+                <Button
+                  leftIcon={<Plus size={18} />}
+                  onClick={() => navigate('/join-class')}
+                >
+                  Unirme
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

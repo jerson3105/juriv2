@@ -24,6 +24,7 @@ import {
   Album,
   School,
   BookMarked,
+  BarChart3,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useStudentStore } from '../../store/studentStore';
@@ -360,6 +361,37 @@ export const MainLayout = () => {
               {!collapsed && (
                 <span className={`text-sm font-medium ${location.pathname === '/my-grades' ? '' : hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
                   Mis Calificaciones
+                </span>
+              )}
+            </Link>
+          )}
+
+          {/* Mi Progreso - solo para estudiantes */}
+          {!isTeacher && currentProfile && (
+            <Link
+              to="/my-progress"
+              onClick={() => setSidebarOpen(false)}
+              className={`
+                flex items-center gap-3 px-3 py-2.5 rounded-xl
+                transition-all duration-200 group relative
+                ${location.pathname === '/my-progress'
+                  ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-md'
+                  : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }
+              `}
+            >
+              <div className={`
+                w-8 h-8 rounded-lg flex items-center justify-center transition-all
+                ${location.pathname === '/my-progress'
+                  ? 'bg-white/20' 
+                  : 'bg-gradient-to-br from-emerald-500 to-teal-500 text-white shadow-sm group-hover:scale-105'
+                }
+              `}>
+                <BarChart3 size={16} />
+              </div>
+              {!collapsed && (
+                <span className={`text-sm font-medium ${location.pathname === '/my-progress' ? '' : hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
+                  Mi Progreso
                 </span>
               )}
             </Link>

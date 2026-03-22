@@ -23,7 +23,7 @@ import {
 import { StudentAvatarMini } from '../avatar/StudentAvatarMini';
 import type { AvatarGender } from '../../lib/avatarApi';
 import { CLAN_EMBLEMS } from '../../lib/clanApi';
-import { classNoteApi, type ClassNote } from '../../lib/classNoteApi';
+import { classNoteApi } from '../../lib/classNoteApi';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 interface StudentData {

@@ -6,7 +6,6 @@ import {
   Sparkles, 
   Heart, 
   Coins, 
-  TrendingUp, 
   ShoppingBag,
   Plus,
   Users,
@@ -16,7 +15,9 @@ import {
   Medal,
   ChevronRight,
   Target,
-  BarChart3
+  ClipboardList,
+  Calendar,
+  MapPin,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { AvatarRenderer } from '../../components/avatar/AvatarRenderer';
@@ -35,6 +36,9 @@ import { LevelUpAnimation } from '../../components/effects/LevelUpAnimation';
 import { LoginStreakWidget } from '../../components/student/LoginStreakWidget';
 import { storyApi, type StoryScene } from '../../lib/storyApi';
 import { SceneCinematic } from '../../components/story/SceneCinematic';
+import { classNoteApi, type ClassNote } from '../../lib/classNoteApi';
+import { jiroExpeditionApi } from '../../lib/jiroExpeditionApi';
+import { clanApi, CLAN_EMBLEMS } from '../../lib/clanApi';
 
 export const StudentDashboard = () => {
   const { user } = useAuthStore();
@@ -47,6 +51,7 @@ export const StudentDashboard = () => {
   // Estado para animación de subida de nivel
   const [showLevelUp, setShowLevelUp] = useState(false);
   const [newLevel, setNewLevel] = useState(1);
+  const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
   const queryClient = useQueryClient();
   
 
@@ -99,6 +104,27 @@ export const StudentDashboard = () => {
     queryKey: ['student-story', currentProfile?.classroomId, currentProfile?.id],
     queryFn: () => storyApi.getStudentStoryData(currentProfile!.classroomId),
     enabled: !!currentProfile?.classroomId && !!currentProfile?.id,
+  });
+
+  // Notas de clase pendientes (para sección "Actividades pendientes")
+  const { data: classNotes = [] } = useQuery({
+    queryKey: ['class-notes', currentProfile?.classroomId],
+    queryFn: () => classNoteApi.list(currentProfile!.classroomId),
+    enabled: !!currentProfile?.classroomId,
+  });
+
+  // Expediciones Jiro disponibles
+  const { data: jiroExpeditions = [] } = useQuery({
+    queryKey: ['jiro-available', currentProfile?.id],
+    queryFn: () => jiroExpeditionApi.getAvailable(currentProfile!.id),
+    enabled: !!currentProfile?.id,
+  });
+
+  // Info del clan del estudiante
+  const { data: myClanInfo } = useQuery({
+    queryKey: ['my-clan-info', currentProfile?.id],
+    queryFn: () => clanApi.getStudentClanInfo(currentProfile!.id),
+    enabled: !!currentProfile?.id,
   });
 
   // Auto-trigger cinematic for unseen scenes (only once per session)
@@ -466,17 +492,17 @@ export const StudentDashboard = () => {
       )}
 
       <div className="relative z-10">
-        {/* Layout de 2 columnas */}
+        {/* Layout de 2 columnas: Avatar + Contenido */}
         <div className="flex flex-col lg:flex-row gap-6">
           
           {/* Columna izquierda - Avatar */}
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="lg:w-[300px] flex-shrink-0"
+            className="lg:w-[280px] flex-shrink-0"
           >
             <div className={`backdrop-blur-lg rounded-2xl p-6 shadow-lg sticky top-4 ${hasTheme && isThemeDark ? 'bg-white/10 border border-white/10 shadow-black/20' : hasTheme ? 'bg-white/70 border border-white/40 shadow-black/5' : 'bg-white/80 shadow-blue-500/10 border border-white/50'}`}>
-              {/* Avatar grande 255x444 */}
+              {/* Avatar grande */}
               <motion.div 
                 animate={{ y: [0, -5, 0] }}
                 transition={{ duration: 3, repeat: Infinity }}
@@ -523,306 +549,379 @@ export const StudentDashboard = () => {
                     className="h-full bg-gradient-to-r from-amber-400 to-orange-500 rounded-full"
                   />
                 </div>
+                <p className={`text-xs mt-1 ${hasTheme && isThemeDark ? 'text-white/40' : 'text-gray-400'}`}>
+                  Faltan <span className="font-semibold">{(xpNeeded - xpInLevel).toLocaleString()}</span> XP
+                </p>
               </div>
             </div>
           </motion.div>
 
-          {/* Columna derecha - Stats y acciones */}
+          {/* Columna derecha - Contenido */}
           <div className="flex-1 space-y-5">
-            {/* Header con nombre de clase */}
+        {/* ===== BANNER COMPACTO ===== */}
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={`rounded-2xl p-4 shadow-lg ${hasTheme ? 'shadow-black/20' : 'bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 shadow-purple-500/20'}`}
+          style={hasTheme ? { background: `linear-gradient(135deg, ${storyTheme.colors?.primary || '#6366f1'}, ${storyTheme.colors?.secondary || '#9333ea'})` } : undefined}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center">
+                <span className="text-xl">📚</span>
+              </div>
+              <div>
+                <h2 className="text-white font-bold text-lg leading-tight">
+                  {currentProfile.classroom?.name || 'Mi Clase'}
+                </h2>
+                <p className="text-white/70 text-sm">
+                  ¡Bienvenido, {currentProfile.characterName || user?.firstName}!
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              {/* Contador de notas pendientes */}
+              {classNotes.filter(n => !n.isCompleted).length > 0 && (
+                <div className="flex items-center gap-1.5 bg-white/20 backdrop-blur rounded-lg px-3 py-1.5">
+                  <ClipboardList className="w-4 h-4 text-white" />
+                  <span className="text-white font-bold text-sm">{classNotes.filter(n => !n.isCompleted).length}</span>
+                  <span className="text-white/70 text-xs hidden sm:inline">pendientes</span>
+                </div>
+              )}
+              <div className="text-right">
+                <p className="text-white/60 text-xs">Código</p>
+                <p className="text-white font-mono font-bold text-lg tracking-wider">
+                  {currentProfile.classroom?.code}
+                </p>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* ===== RACHA DE LOGIN ===== */}
+        {currentProfile?.classroomId && (
+          <LoginStreakWidget classroomId={currentProfile.classroomId} />
+        )}
+
+        {/* ===== TU PROGRESO ===== */}
+        <div>
+          <h3 className={`text-sm font-semibold uppercase tracking-wider mb-3 ${hasTheme && isThemeDark ? 'text-white/50' : 'text-gray-400'}`}>
+            Tu progreso
+          </h3>
+
+          {/* Stats Grid - 3 cards (XP ya está en la barra inferior) */}
+          <div className="grid grid-cols-3 gap-4 mb-4">
+            {/* HP Card */}
             <motion.div
-              initial={{ opacity: 0, y: -10 }}
+              initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className={`rounded-2xl p-4 shadow-lg ${hasTheme ? 'shadow-black/20' : 'bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 shadow-purple-500/20'}`}
-              style={hasTheme ? { background: `linear-gradient(135deg, ${storyTheme.colors?.primary || '#6366f1'}, ${storyTheme.colors?.secondary || '#9333ea'})` } : undefined}
+              transition={{ delay: 0.1 }}
+              whileHover={{ scale: 1.05, y: -4 }}
+              className="relative bg-gradient-to-br from-rose-500 to-pink-600 rounded-2xl p-4 shadow-lg shadow-rose-500/30 overflow-hidden group cursor-pointer"
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center">
-                    <span className="text-2xl">📚</span>
+              <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 group-hover:scale-150 transition-transform duration-500" />
+              <div className="absolute bottom-0 left-0 w-16 h-16 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/2" />
+              <div className="relative z-10">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-10 h-10 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center">
+                    <Heart className="w-5 h-5 text-white" />
                   </div>
-                  <div>
-                    <h2 className="text-white font-bold text-lg">
-                      {currentProfile.classroom?.name || 'Mi Clase'}
-                    </h2>
-                    <p className="text-white/70 text-sm">
-                      ¡Bienvenido, {currentProfile.characterName || user?.firstName}!
-                    </p>
-                  </div>
+                  <motion.div
+                    animate={{ scale: [1, 1.2, 1] }}
+                    transition={{ duration: 1, repeat: Infinity }}
+                    className="text-4xl"
+                  >
+                    ❤️
+                  </motion.div>
                 </div>
-                <div className="text-right">
-                  <p className="text-white/60 text-xs">Código</p>
-                  <p className="text-white font-mono font-bold text-lg tracking-wider">
-                    {currentProfile.classroom?.code}
-                  </p>
-                </div>
+                <p className="text-3xl font-bold text-white">{currentProfile.hp}</p>
+                <p className="text-sm font-medium text-white/80">Vida</p>
               </div>
             </motion.div>
 
-            {/* Stats Grid - Diseño mejorado */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* XP Card */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.05 }}
-                whileHover={{ scale: 1.05, y: -4 }}
-                className="relative bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl p-4 shadow-lg shadow-emerald-500/30 overflow-hidden group cursor-pointer"
-              >
-                <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 group-hover:scale-150 transition-transform duration-500" />
-                <div className="absolute bottom-0 left-0 w-16 h-16 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/2" />
-                <div className="relative z-10">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="w-10 h-10 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center">
-                      <Sparkles className="w-5 h-5 text-white" />
-                    </div>
-                    <motion.div
-                      animate={{ rotate: [0, 10, -10, 0] }}
-                      transition={{ duration: 2, repeat: Infinity }}
-                      className="text-4xl"
-                    >
-                      ⚡
-                    </motion.div>
+            {/* GP Card */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15 }}
+              whileHover={{ scale: 1.05, y: -4 }}
+              className="relative bg-gradient-to-br from-amber-500 to-orange-500 rounded-2xl p-4 shadow-lg shadow-amber-500/30 overflow-hidden group cursor-pointer"
+            >
+              <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 group-hover:scale-150 transition-transform duration-500" />
+              <div className="absolute bottom-0 left-0 w-16 h-16 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/2" />
+              <div className="relative z-10">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-10 h-10 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center">
+                    <Coins className="w-5 h-5 text-white" />
                   </div>
-                  <p className="text-3xl font-bold text-white">{currentProfile.xp.toLocaleString()}</p>
-                  <p className="text-sm font-medium text-white/80">Experiencia</p>
+                  <motion.div
+                    animate={{ y: [0, -5, 0] }}
+                    transition={{ duration: 1.5, repeat: Infinity }}
+                    className="text-4xl"
+                  >
+                    🪙
+                  </motion.div>
                 </div>
-              </motion.div>
+                <p className="text-3xl font-bold text-white">{currentProfile.gp.toLocaleString()}</p>
+                <p className="text-sm font-medium text-white/80">Oro</p>
+              </div>
+            </motion.div>
 
-              {/* HP Card */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
-                whileHover={{ scale: 1.05, y: -4 }}
-                className="relative bg-gradient-to-br from-rose-500 to-pink-600 rounded-2xl p-4 shadow-lg shadow-rose-500/30 overflow-hidden group cursor-pointer"
-              >
-                <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 group-hover:scale-150 transition-transform duration-500" />
-                <div className="absolute bottom-0 left-0 w-16 h-16 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/2" />
-                <div className="relative z-10">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="w-10 h-10 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center">
-                      <Heart className="w-5 h-5 text-white" />
-                    </div>
-                    <motion.div
-                      animate={{ scale: [1, 1.2, 1] }}
-                      transition={{ duration: 1, repeat: Infinity }}
-                      className="text-4xl"
-                    >
-                      ❤️
-                    </motion.div>
+            {/* Class Card */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              whileHover={{ scale: 1.05, y: -4 }}
+              className={`relative rounded-2xl p-4 shadow-lg overflow-hidden group cursor-pointer ${
+                characterInfo?.color === 'blue' ? 'bg-gradient-to-br from-blue-500 to-indigo-600 shadow-blue-500/30'
+                : characterInfo?.color === 'violet' ? 'bg-gradient-to-br from-violet-500 to-purple-600 shadow-violet-500/30'
+                : characterInfo?.color === 'green' ? 'bg-gradient-to-br from-emerald-500 to-teal-600 shadow-emerald-500/30'
+                : 'bg-gradient-to-br from-orange-500 to-amber-600 shadow-orange-500/30'
+              }`}
+            >
+              <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 group-hover:scale-150 transition-transform duration-500" />
+              <div className="absolute bottom-0 left-0 w-16 h-16 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/2" />
+              <div className="relative z-10">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-10 h-10 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center text-lg">
+                    {characterInfo?.icon}
                   </div>
-                  <p className="text-3xl font-bold text-white">{currentProfile.hp}</p>
-                  <p className="text-sm font-medium text-white/80">Vida</p>
+                  <span className="text-4xl">{characterInfo?.icon}</span>
                 </div>
-              </motion.div>
+                <p className="text-xl font-bold text-white">{characterInfo?.name}</p>
+                <p className="text-sm font-medium text-white/80">Nv. {currentProfile.level}</p>
+              </div>
+            </motion.div>
+          </div>
+        </div>
 
-              {/* GP Card */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.15 }}
-                whileHover={{ scale: 1.05, y: -4 }}
-                className="relative bg-gradient-to-br from-amber-500 to-orange-500 rounded-2xl p-4 shadow-lg shadow-amber-500/30 overflow-hidden group cursor-pointer"
-              >
-                <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 group-hover:scale-150 transition-transform duration-500" />
-                <div className="absolute bottom-0 left-0 w-16 h-16 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/2" />
-                <div className="relative z-10">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="w-10 h-10 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center">
-                      <Coins className="w-5 h-5 text-white" />
-                    </div>
-                    <motion.div
-                      animate={{ y: [0, -5, 0] }}
-                      transition={{ duration: 1.5, repeat: Infinity }}
-                      className="text-4xl"
-                    >
-                      🪙
-                    </motion.div>
-                  </div>
-                  <p className="text-3xl font-bold text-white">{currentProfile.gp.toLocaleString()}</p>
-                  <p className="text-sm font-medium text-white/80">Oro</p>
-                </div>
-              </motion.div>
-
-              {/* Level Card */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                whileHover={{ scale: 1.05, y: -4 }}
-                className="relative bg-gradient-to-br from-violet-500 to-purple-600 rounded-2xl p-4 shadow-lg shadow-violet-500/30 overflow-hidden group cursor-pointer"
-              >
-                <div className="absolute top-0 right-0 w-20 h-20 bg-white/10 rounded-full -translate-y-1/2 translate-x-1/2 group-hover:scale-150 transition-transform duration-500" />
-                <div className="absolute bottom-0 left-0 w-16 h-16 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/2" />
-                <div className="relative z-10">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="w-10 h-10 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center">
-                      <TrendingUp className="w-5 h-5 text-white" />
-                    </div>
-                    <motion.div
-                      animate={{ rotate: [0, 360] }}
-                      transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-                      className="text-4xl"
-                    >
-                      ⭐
-                    </motion.div>
-                  </div>
-                  <p className="text-3xl font-bold text-white">{currentProfile.level}</p>
-                  <p className="text-sm font-medium text-white/80">Nivel</p>
-                  {/* Mini barra de progreso */}
-                  <div className="mt-2 h-1.5 bg-white/20 rounded-full overflow-hidden">
-                    <motion.div
-                      initial={{ width: 0 }}
-                      animate={{ width: `${Math.min(xpProgress, 100)}%` }}
-                      transition={{ duration: 1, ease: 'easeOut' }}
-                      className="h-full bg-white rounded-full"
-                    />
-                  </div>
-                </div>
-              </motion.div>
-            </div>
-
-            {/* Racha de Login - Full width */}
-            {currentProfile?.classroomId && (
-              <LoginStreakWidget classroomId={currentProfile.classroomId} />
-            )}
-
-            {/* Acciones rápidas */}
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {/* Tienda de Items */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
-                className="bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl p-4 text-white shadow-lg"
-              >
-                <div className="flex items-center gap-2 mb-3">
-                  <ShoppingBag className="w-5 h-5" />
-                  <h3 className="font-bold text-sm">Tienda de Items</h3>
-                </div>
-                <p className="text-amber-100 mb-3 text-xs">Compra items especiales</p>
-                <button 
-                  onClick={() => setActiveView('shop')}
-                  className="w-full py-2 bg-white text-amber-600 rounded-lg text-xs font-bold hover:bg-amber-50 transition-colors"
+        {/* ===== MI CLAN ===== */}
+        {myClanInfo && myClanInfo.clan && (
+          <div>
+            <h3 className={`text-sm font-semibold uppercase tracking-wider mb-3 ${hasTheme && isThemeDark ? 'text-white/50' : 'text-gray-400'}`}>
+              Mi Clan
+            </h3>
+            <div
+              onClick={() => navigate('/my-clan')}
+              className={`rounded-xl p-4 cursor-pointer transition-all hover:shadow-md ${hasTheme && isThemeDark ? 'bg-white/10 border border-white/10 hover:bg-white/15' : 'bg-white/80 backdrop-blur border border-white/50 shadow-sm hover:shadow-lg'}`}
+            >
+              <div className="flex items-center gap-4">
+                {/* Emblema grande */}
+                <div
+                  className="w-14 h-14 rounded-xl flex items-center justify-center text-3xl shadow-inner flex-shrink-0"
+                  style={{ backgroundColor: myClanInfo.clan.color + '25', borderColor: myClanInfo.clan.color + '50', borderWidth: 2 }}
                 >
-                  Ver items
-                </button>
-              </motion.div>
-
-              {/* Tienda de Avatares */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.35 }}
-                className="bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl p-4 text-white shadow-lg"
-              >
-                <div className="flex items-center gap-2 mb-3">
-                  <Shirt className="w-5 h-5" />
-                  <h3 className="font-bold text-sm">Personalizar Avatar</h3>
+                  {CLAN_EMBLEMS[myClanInfo.clan.emblem] || '🛡️'}
                 </div>
-                <p className="text-purple-100 mb-3 text-xs">Viste a tu personaje</p>
-                <button 
-                  onClick={() => setActiveView('avatar-shop')}
-                  className="w-full py-2 bg-white text-purple-600 rounded-lg text-xs font-bold hover:bg-purple-50 transition-colors"
-                >
-                  Ver atuendos
-                </button>
-              </motion.div>
-
-              {/* Mis Insignias */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4 }}
-                className="bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl p-4 text-white shadow-lg"
-              >
-                <div className="flex items-center gap-2 mb-3">
-                  <Medal className="w-5 h-5" />
-                  <h3 className="font-bold text-sm">Mis Insignias</h3>
-                  {studentBadges.length > 0 && (
-                    <span className="ml-auto bg-white/20 text-xs font-bold px-2 py-0.5 rounded-full">
-                      {studentBadges.length}
-                    </span>
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h4 className={`font-bold text-base ${hasTheme && isThemeDark ? 'text-white' : 'text-gray-800'}`}>
+                      {myClanInfo.clan.name}
+                    </h4>
+                    {myClanInfo.clan.rank && (
+                      <span className="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-0.5 rounded-full">
+                        #{myClanInfo.clan.rank}
+                      </span>
+                    )}
+                  </div>
+                  {myClanInfo.clan.motto && (
+                    <p className={`text-xs italic mt-0.5 ${hasTheme && isThemeDark ? 'text-white/50' : 'text-gray-400'}`}>
+                      "{myClanInfo.clan.motto}"
+                    </p>
                   )}
+                  <div className={`flex items-center gap-4 mt-1.5 text-xs ${hasTheme && isThemeDark ? 'text-white/60' : 'text-gray-500'}`}>
+                    <span className="flex items-center gap-1">⚡ {myClanInfo.clan.totalXp.toLocaleString()} XP</span>
+                    <span className="flex items-center gap-1">🏆 {myClanInfo.clan.wins}V - {myClanInfo.clan.losses}D</span>
+                    <span className="flex items-center gap-1">👥 {myClanInfo.members.length} miembros</span>
+                  </div>
                 </div>
-                <p className="text-amber-100 mb-3 text-xs">
-                  {studentBadges.length > 0 
-                    ? `${studentBadges.length} logro${studentBadges.length !== 1 ? 's' : ''} desbloqueado${studentBadges.length !== 1 ? 's' : ''}`
-                    : 'Desbloquea logros en clase'}
-                </p>
-                <button 
-                  onClick={() => setActiveView('badges')}
-                  className="w-full py-2 bg-white text-amber-600 rounded-lg text-xs font-bold hover:bg-amber-50 transition-colors flex items-center justify-center gap-1"
-                >
-                  Ver insignias
-                  <ChevronRight size={14} />
-                </button>
-              </motion.div>
-
-              {/* Mi Progreso */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.45 }}
-                className="bg-gradient-to-br from-emerald-500 to-teal-500 rounded-xl p-4 text-white shadow-lg"
-              >
-                <div className="flex items-center gap-2 mb-3">
-                  <BarChart3 className="w-5 h-5" />
-                  <h3 className="font-bold text-sm">Mi Progreso</h3>
-                </div>
-                <p className="text-emerald-100 mb-3 text-xs">Estadísticas y retroalimentación</p>
-                <button 
-                  onClick={() => setActiveView('progress')}
-                  className="w-full py-2 bg-white text-emerald-600 rounded-lg text-xs font-bold hover:bg-emerald-50 transition-colors flex items-center justify-center gap-1"
-                >
-                  Ver progreso
-                  <ChevronRight size={14} />
-                </button>
-              </motion.div>
-
-              {/* Misiones - Temporalmente oculto para reestructuración */}
-              {/* <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.5 }}
-                className="bg-gradient-to-br from-indigo-500 to-purple-500 rounded-xl p-4 text-white shadow-lg"
-              >
-                <div className="flex items-center gap-2 mb-3">
-                  <Target className="w-5 h-5" />
-                  <h3 className="font-bold text-sm">Misiones</h3>
-                </div>
-                <p className="text-indigo-100 mb-3 text-xs">Completa objetivos y gana recompensas</p>
-                <button 
-                  onClick={() => navigate(`/missions/${currentProfile?.classroomId}`)}
-                  className="w-full py-2 bg-white text-indigo-600 rounded-lg text-xs font-bold hover:bg-indigo-50 transition-colors flex items-center justify-center gap-1"
-                >
-                  Ver misiones
-                  <ChevronRight size={14} />
-                </button>
-              </motion.div> */}
-
-              {/* Unirse a otra clase */}
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.35 }}
-                className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl p-4 text-white shadow-lg"
-              >
-                <div className="flex items-center gap-2 mb-3">
-                  <Plus className="w-5 h-5" />
-                  <h3 className="font-bold text-sm">Unirse a otra clase</h3>
-                </div>
-                <p className="text-indigo-100 mb-3 text-xs">¿Tienes otro código de clase?</p>
-                <button 
-                  onClick={() => navigate('/join-class')}
-                  className="w-full py-2 bg-white text-indigo-600 rounded-lg text-xs font-bold hover:bg-indigo-50 transition-colors"
-                >
-                  Unirme
-                </button>
-              </motion.div>
-
+                <ChevronRight className={`w-5 h-5 flex-shrink-0 ${hasTheme && isThemeDark ? 'text-white/30' : 'text-gray-300'}`} />
+              </div>
             </div>
+          </div>
+        )}
+
+        {/* ===== ACTIVIDADES PENDIENTES ===== */}
+        {(() => {
+          const pendingNotes = classNotes.filter(n => !n.isCompleted);
+          const activeExpeditions = jiroExpeditions.filter(
+            (e: any) => e.studentProgress?.status === 'IN_PROGRESS' || (e.status === 'OPEN' && !e.studentProgress)
+          );
+          const hasPendingActivities = pendingNotes.length > 0 || activeExpeditions.length > 0;
+
+          if (!hasPendingActivities) return null;
+
+          const CATEGORY_CONFIG: Record<string, { icon: string; color: string }> = {
+            task: { icon: '📝', color: 'text-blue-500' },
+            review: { icon: '🔍', color: 'text-amber-500' },
+            material: { icon: '📚', color: 'text-emerald-500' },
+            other: { icon: '📌', color: 'text-gray-500' },
+          };
+
+          return (
+            <div>
+              <h3 className={`text-sm font-semibold uppercase tracking-wider mb-3 ${hasTheme && isThemeDark ? 'text-white/50' : 'text-gray-400'}`}>
+                Actividades pendientes
+              </h3>
+              <div className="grid md:grid-cols-2 gap-4">
+                {/* Notas de clase pendientes */}
+                {pendingNotes.length > 0 && (
+                  <div className={`rounded-xl p-4 ${hasTheme && isThemeDark ? 'bg-white/10 border border-white/10' : 'bg-white/80 backdrop-blur border border-white/50 shadow-sm'}`}>
+                    <div className="flex items-center gap-2 mb-3">
+                      <ClipboardList className={`w-4 h-4 ${hasTheme && isThemeDark ? 'text-blue-400' : 'text-blue-500'}`} />
+                      <span className={`text-sm font-semibold ${hasTheme && isThemeDark ? 'text-white' : 'text-gray-700'}`}>Notas de clase</span>
+                      <span className="ml-auto bg-blue-100 text-blue-600 text-xs font-bold px-2 py-0.5 rounded-full">
+                        {pendingNotes.length}
+                      </span>
+                    </div>
+                    <div className="space-y-1 max-h-52 overflow-y-auto">
+                      {pendingNotes.slice(0, 5).map((note: ClassNote) => {
+                        const catConfig = CATEGORY_CONFIG[note.category] || CATEGORY_CONFIG.other;
+                        const isExpanded = expandedNoteId === note.id;
+                        return (
+                          <div
+                            key={note.id}
+                            onClick={() => setExpandedNoteId(isExpanded ? null : note.id)}
+                            className={`flex items-start gap-2 text-sm cursor-pointer rounded-lg p-2 -mx-2 transition-colors ${hasTheme && isThemeDark ? 'text-white/80 hover:bg-white/5' : 'text-gray-600 hover:bg-gray-50'}`}
+                          >
+                            <span className="mt-0.5 flex-shrink-0">{catConfig.icon}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className={isExpanded ? 'whitespace-pre-wrap' : 'truncate'}>{note.content}</p>
+                              {note.dueDate && (
+                                <p className={`text-xs flex items-center gap-1 mt-0.5 ${hasTheme && isThemeDark ? 'text-white/40' : 'text-gray-400'}`}>
+                                  <Calendar className="w-3 h-3" />
+                                  {new Date(note.dueDate).toLocaleDateString('es-PE', { day: 'numeric', month: 'short' })}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {pendingNotes.length > 5 && (
+                        <p className={`text-xs ${hasTheme && isThemeDark ? 'text-white/40' : 'text-gray-400'}`}>
+                          +{pendingNotes.length - 5} más
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Expediciones Jiro activas */}
+                {activeExpeditions.length > 0 && (
+                  <div className={`rounded-xl p-4 ${hasTheme && isThemeDark ? 'bg-white/10 border border-white/10' : 'bg-white/80 backdrop-blur border border-white/50 shadow-sm'}`}>
+                    <div className="flex items-center gap-2 mb-3">
+                      <MapPin className={`w-4 h-4 ${hasTheme && isThemeDark ? 'text-orange-400' : 'text-orange-500'}`} />
+                      <span className={`text-sm font-semibold ${hasTheme && isThemeDark ? 'text-white' : 'text-gray-700'}`}>Expediciones de Jiro</span>
+                      <span className="ml-auto bg-orange-100 text-orange-600 text-xs font-bold px-2 py-0.5 rounded-full">
+                        {activeExpeditions.length}
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {activeExpeditions.slice(0, 4).map((exp: any) => (
+                        <div
+                          key={exp.id}
+                          onClick={() => navigate(`/jiro-expedition/${exp.id}`)}
+                          className={`flex items-center gap-2 text-sm cursor-pointer rounded-lg p-2 -mx-2 transition-colors ${hasTheme && isThemeDark ? 'text-white/80 hover:bg-white/5' : 'text-gray-600 hover:bg-gray-50'}`}
+                        >
+                          <span className="text-lg">{(() => { const icon = exp.questionBank?.icon; if (!icon) return '🗺️'; const emojiRegex = /\p{Emoji_Presentation}|\p{Extended_Pictographic}/u; return emojiRegex.test(icon) ? icon : '📘'; })()}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="truncate font-medium">{exp.name}</p>
+                            <p className={`text-xs ${hasTheme && isThemeDark ? 'text-white/40' : 'text-gray-400'}`}>
+                              {exp.studentProgress?.status === 'IN_PROGRESS'
+                                ? `${exp.studentProgress.completedStations}/${exp.totalStations || '?'} estaciones`
+                                : 'Sin empezar'}
+                            </p>
+                          </div>
+                          <ChevronRight className="w-4 h-4 opacity-40" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ===== EXPLORAR ===== */}
+        <div>
+          <h3 className={`text-sm font-semibold uppercase tracking-wider mb-3 ${hasTheme && isThemeDark ? 'text-white/50' : 'text-gray-400'}`}>
+            Explorar
+          </h3>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Tienda de Items */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              className="bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl p-4 text-white shadow-lg"
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <ShoppingBag className="w-5 h-5" />
+                <h3 className="font-bold text-sm">Tienda de Items</h3>
+              </div>
+              <p className="text-amber-100 mb-3 text-xs">Compra items especiales</p>
+              <button 
+                onClick={() => setActiveView('shop')}
+                className="w-full py-2 bg-white text-amber-600 rounded-lg text-xs font-bold hover:bg-amber-50 transition-colors"
+              >
+                Ver items
+              </button>
+            </motion.div>
+
+            {/* Mis Insignias */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.35 }}
+              className="bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl p-4 text-white shadow-lg"
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <Medal className="w-5 h-5" />
+                <h3 className="font-bold text-sm">Mis Insignias</h3>
+                {studentBadges.length > 0 && (
+                  <span className="ml-auto bg-white/20 text-xs font-bold px-2 py-0.5 rounded-full">
+                    {studentBadges.length}
+                  </span>
+                )}
+              </div>
+              <p className="text-amber-100 mb-3 text-xs">
+                {studentBadges.length > 0 
+                  ? `${studentBadges.length} logro${studentBadges.length !== 1 ? 's' : ''} desbloqueado${studentBadges.length !== 1 ? 's' : ''}`
+                  : 'Desbloquea logros en clase'}
+              </p>
+              <button 
+                onClick={() => setActiveView('badges')}
+                className="w-full py-2 bg-white text-amber-600 rounded-lg text-xs font-bold hover:bg-amber-50 transition-colors flex items-center justify-center gap-1"
+              >
+                Ver insignias
+                <ChevronRight size={14} />
+              </button>
+            </motion.div>
+
+            {/* Personalizar Avatar */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+              className="bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl p-4 text-white shadow-lg"
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <Shirt className="w-5 h-5" />
+                <h3 className="font-bold text-sm">Personalizar Avatar</h3>
+              </div>
+              <p className="text-purple-100 mb-3 text-xs">Viste a tu personaje</p>
+              <button 
+                onClick={() => setActiveView('avatar-shop')}
+                className="w-full py-2 bg-white text-purple-600 rounded-lg text-xs font-bold hover:bg-purple-50 transition-colors"
+              >
+                Ver atuendos
+              </button>
+            </motion.div>
+          </div>
+        </div>
           </div>
         </div>
       </div>

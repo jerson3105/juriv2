@@ -48,6 +48,7 @@ import { StudentCollectiblesPage } from './pages/student/StudentCollectiblesPage
 import { StudentJiroExpeditionPage } from './pages/student/StudentJiroExpeditionPage';
 import { StudentJiroExpeditionsPage } from './pages/student/StudentJiroExpeditionsPage';
 import { StudentStoryPage } from './pages/student/StudentStoryPage';
+import { StudentProgressPage } from './pages/student/StudentProgressPage';
 
 // Settings
 import { SettingsPage } from './pages/settings/SettingsPage';
@@ -237,6 +238,7 @@ function App() {
             <Route path="my-attendance" element={<StudentAttendancePage />} />
             <Route path="scrolls" element={<StudentScrollsPage />} />
             <Route path="my-grades" element={<StudentGradesPage />} />
+            <Route path="my-progress" element={<StudentProgressPage />} />
             <Route path="expeditions" element={<StudentExpeditionsPage />} />
             <Route path="jiro-expeditions" element={<StudentJiroExpeditionsPage />} />
             <Route path="jiro-expedition/:expeditionId" element={<StudentJiroExpeditionPage />} />
