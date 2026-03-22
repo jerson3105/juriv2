@@ -29,12 +29,18 @@ import {
   FileText,
   Loader2,
   Search,
+  Swords,
+  Palette,
+  GripVertical,
+  Pencil,
 } from 'lucide-react';
 import { classroomApi, type Classroom, type UpdateClassroomSettings } from '../../lib/classroomApi';
+import { characterClassApi, type CharacterClassData } from '../../lib/characterClassApi';
 import { studentApi } from '../../lib/studentApi';
 import { parentApi } from '../../lib/parentApi';
 import toast from 'react-hot-toast';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
+import { EmojiPicker } from '../../components/ui/EmojiPicker';
 import { placeholderStudentApi } from '../../lib/placeholderStudentApi';
 import { AddPlaceholderStudentsModal } from '../../components/students/AddPlaceholderStudentsModal';
 
@@ -51,6 +57,46 @@ export const ClassroomSettingsPage = () => {
   const [generatingFlyers, setGeneratingFlyers] = useState(false);
   const [studentSearch, setStudentSearch] = useState('');
   const [removeStudentConfirm, setRemoveStudentConfirm] = useState<{ id: string; name: string } | null>(null);
+
+  // Estado para clases de personaje
+  const [editingClass, setEditingClass] = useState<CharacterClassData | null>(null);
+  const [showAddClass, setShowAddClass] = useState(false);
+  const [newClassName, setNewClassName] = useState('');
+  const [newClassKey, setNewClassKey] = useState('');
+  const [newClassDesc, setNewClassDesc] = useState('');
+  const [newClassIcon, setNewClassIcon] = useState('⚔️');
+  const [newClassColor, setNewClassColor] = useState('blue');
+
+  // Query para clases de personaje
+  const { data: characterClasses = [], refetch: refetchClasses } = useQuery({
+    queryKey: ['character-classes', classroom.id],
+    queryFn: () => characterClassApi.list(classroom.id),
+  });
+
+  // Mutations para clases de personaje
+  const createClassMutation = useMutation({
+    mutationFn: (data: { name: string; key: string; description?: string; icon: string; color: string }) =>
+      characterClassApi.create(classroom.id, data),
+    onSuccess: () => { refetchClasses(); setShowAddClass(false); resetNewClassForm(); toast.success('Clase creada'); },
+    onError: () => toast.error('Error al crear clase'),
+  });
+
+  const updateClassMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { name?: string; description?: string; icon?: string; color?: string; isActive?: boolean } }) =>
+      characterClassApi.update(classroom.id, id, data),
+    onSuccess: () => { refetchClasses(); setEditingClass(null); toast.success('Clase actualizada'); },
+    onError: () => toast.error('Error al actualizar'),
+  });
+
+  const deleteClassMutation = useMutation({
+    mutationFn: (id: string) => characterClassApi.remove(classroom.id, id),
+    onSuccess: () => { refetchClasses(); toast.success('Clase eliminada'); },
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Error al eliminar'),
+  });
+
+  const resetNewClassForm = () => {
+    setNewClassName(''); setNewClassKey(''); setNewClassDesc(''); setNewClassIcon('⚔️'); setNewClassColor('blue');
+  };
 
   // Query para estudiantes placeholder
   const { data: placeholderStudents = [] } = useQuery({
@@ -89,6 +135,7 @@ export const ClassroomSettingsPage = () => {
     shopEnabled: true,
     requirePurchaseApproval: false,
     dailyPurchaseLimit: null,
+    classAssignmentMode: 'STUDENT_CHOICE' as const,
     showCharacterName: true,
     // Clanes
     clansEnabled: false,
@@ -129,6 +176,7 @@ export const ClassroomSettingsPage = () => {
         shopEnabled: classroom.shopEnabled ?? true,
         requirePurchaseApproval: classroom.requirePurchaseApproval ?? false,
         dailyPurchaseLimit: classroom.dailyPurchaseLimit ?? null,
+        classAssignmentMode: (classroom as any).classAssignmentMode ?? 'STUDENT_CHOICE',
         showCharacterName: classroom.showCharacterName ?? true,
         // Clanes
         clansEnabled: classroom.clansEnabled ?? false,
@@ -548,6 +596,209 @@ export const ClassroomSettingsPage = () => {
                   placeholder="Sin límite"
                   className="w-32 px-3 py-2 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-white rounded-xl text-sm focus:ring-2 focus:ring-violet-500 focus:border-transparent outline-none disabled:opacity-50"
                 />
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Sección 5: Clases de Personaje */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.35 }}
+            className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg p-5"
+          >
+            <h2 className="font-semibold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
+              <div className="w-8 h-8 bg-indigo-100 dark:bg-indigo-900/50 rounded-lg flex items-center justify-center">
+                <Swords size={16} className="text-indigo-600" />
+              </div>
+              Clases de Personaje
+            </h2>
+
+            <div className="space-y-3">
+              {/* Modo de asignación */}
+              <div className="py-2">
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">Modo de asignación</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { value: 'STUDENT_CHOICE' as const, label: 'El estudiante elige', icon: '🎯' },
+                    { value: 'TEACHER_ASSIGNS' as const, label: 'El profesor asigna', icon: '👨‍🏫' },
+                  ].map((mode) => (
+                    <button
+                      key={mode.value}
+                      onClick={() => setFormData({ ...formData, classAssignmentMode: mode.value })}
+                      className={`p-3 rounded-xl text-left transition-all text-sm ${
+                        formData.classAssignmentMode === mode.value
+                          ? 'bg-indigo-100 dark:bg-indigo-900/50 border-2 border-indigo-400 text-indigo-700 dark:text-indigo-300'
+                          : 'bg-gray-50 dark:bg-gray-700 border-2 border-transparent hover:border-gray-200 dark:hover:border-gray-600 text-gray-600 dark:text-gray-400'
+                      }`}
+                    >
+                      <span className="text-lg block mb-1">{mode.icon}</span>
+                      <span className="font-medium">{mode.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Lista de clases */}
+              <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-3">Clases disponibles</p>
+                <div className="space-y-2">
+                  {characterClasses.map((cc) => (
+                    <div key={cc.id} className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
+                      cc.isActive 
+                        ? 'bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600' 
+                        : 'bg-gray-100/50 dark:bg-gray-800/50 border-gray-200/50 dark:border-gray-700/50 opacity-60'
+                    }`}>
+                      <GripVertical size={14} className="text-gray-400 flex-shrink-0 cursor-grab" />
+                      <span className="text-xl flex-shrink-0">{cc.icon}</span>
+                      {editingClass?.id === cc.id ? (
+                        <div className="flex-1 space-y-2">
+                          <input
+                            value={editingClass.name}
+                            onChange={(e) => setEditingClass({ ...editingClass, name: e.target.value })}
+                            className="w-full px-2 py-1 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-white rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                          />
+                          <input
+                            value={editingClass.description || ''}
+                            onChange={(e) => setEditingClass({ ...editingClass, description: e.target.value })}
+                            placeholder="Descripción"
+                            className="w-full px-2 py-1 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-white rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
+                          />
+                          <div className="flex items-center gap-2">
+                            <EmojiPicker
+                              value={editingClass.icon}
+                              onChange={(emoji) => setEditingClass({ ...editingClass, icon: emoji })}
+                            />
+                            <select
+                              value={editingClass.color}
+                              onChange={(e) => setEditingClass({ ...editingClass, color: e.target.value })}
+                              className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-white rounded-lg text-xs outline-none"
+                            >
+                              {['blue', 'violet', 'green', 'orange', 'red', 'cyan', 'pink', 'amber', 'emerald', 'indigo', 'rose', 'teal'].map((c) => (
+                                <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => updateClassMutation.mutate({ id: cc.id, data: { name: editingClass.name, description: editingClass.description || undefined, icon: editingClass.icon, color: editingClass.color } })}
+                              className="px-3 py-1 bg-indigo-500 text-white rounded-lg text-xs font-medium hover:bg-indigo-600 transition-colors"
+                            >
+                              Guardar
+                            </button>
+                            <button
+                              onClick={() => setEditingClass(null)}
+                              className="px-3 py-1 bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 rounded-lg text-xs font-medium hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">{cc.name}</p>
+                            {cc.description && <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{cc.description}</p>}
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <button
+                              onClick={() => updateClassMutation.mutate({ id: cc.id, data: { isActive: !cc.isActive } })}
+                              className={`p-1.5 rounded-lg transition-all ${cc.isActive ? 'bg-green-100 text-green-600 hover:bg-red-100 hover:text-red-500' : 'bg-gray-100 text-gray-400 hover:bg-green-100 hover:text-green-600'}`}
+                              title={cc.isActive ? 'Activa — clic para desactivar' : 'Inactiva — clic para activar'}
+                            >
+                              {cc.isActive ? <Check size={14} /> : <X size={14} />}
+                            </button>
+                            <button
+                              onClick={() => setEditingClass(cc)}
+                              className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-500 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-all"
+                              title="Editar"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              onClick={() => deleteClassMutation.mutate(cc.id)}
+                              className="p-1.5 rounded-lg bg-red-50 dark:bg-red-900/30 text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-all"
+                              title="Eliminar"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Formulario para agregar clase */}
+                {showAddClass ? (
+                  <div className="mt-3 p-3 bg-indigo-50/50 dark:bg-indigo-900/20 rounded-xl border border-indigo-200 dark:border-indigo-800 space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        value={newClassName}
+                        onChange={(e) => {
+                          setNewClassName(e.target.value);
+                          if (!newClassKey || newClassKey === newClassName.toUpperCase().replace(/\s+/g, '_')) {
+                            setNewClassKey(e.target.value.toUpperCase().replace(/\s+/g, '_'));
+                          }
+                        }}
+                        placeholder="Nombre"
+                        className="px-2 py-1.5 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-white rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                      <input
+                        value={newClassKey}
+                        onChange={(e) => setNewClassKey(e.target.value.toUpperCase().replace(/\s+/g, '_'))}
+                        placeholder="Clave (ej. WARRIOR)"
+                        className="px-2 py-1.5 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-white rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                      />
+                    </div>
+                    <input
+                      value={newClassDesc}
+                      onChange={(e) => setNewClassDesc(e.target.value)}
+                      placeholder="Descripción (opcional)"
+                      className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-white rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                    <div className="flex items-center gap-2">
+                      <EmojiPicker
+                        value={newClassIcon}
+                        onChange={(emoji) => setNewClassIcon(emoji)}
+                      />
+                      <select
+                        value={newClassColor}
+                        onChange={(e) => setNewClassColor(e.target.value)}
+                        className="flex-1 px-2 py-1.5 border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-white rounded-lg text-xs outline-none"
+                      >
+                        {['blue', 'violet', 'green', 'orange', 'red', 'cyan', 'pink', 'amber', 'emerald', 'indigo', 'rose', 'teal'].map((c) => (
+                          <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          if (!newClassName.trim() || !newClassKey.trim()) { toast.error('Nombre y clave requeridos'); return; }
+                          createClassMutation.mutate({ name: newClassName, key: newClassKey, description: newClassDesc || undefined, icon: newClassIcon, color: newClassColor });
+                        }}
+                        disabled={createClassMutation.isPending}
+                        className="flex-1 px-3 py-1.5 bg-indigo-500 text-white rounded-lg text-xs font-medium hover:bg-indigo-600 transition-colors disabled:opacity-50"
+                      >
+                        {createClassMutation.isPending ? 'Creando...' : 'Crear clase'}
+                      </button>
+                      <button
+                        onClick={() => { setShowAddClass(false); resetNewClassForm(); }}
+                        className="px-3 py-1.5 bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 rounded-lg text-xs font-medium hover:bg-gray-300 dark:hover:bg-gray-500 transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowAddClass(true)}
+                    className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl text-sm font-medium hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors border border-dashed border-indigo-300 dark:border-indigo-700"
+                  >
+                    <Plus size={16} /> Añadir clase
+                  </button>
+                )}
               </div>
             </div>
           </motion.div>

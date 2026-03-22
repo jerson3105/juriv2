@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { Gamepad2, ArrowRight, Check, ArrowLeft, Sparkles, Link2, Loader2 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { AvatarRenderer } from '../../components/avatar/AvatarRenderer';
 import { studentApi, CHARACTER_CLASSES, type CharacterClass, type AvatarGender } from '../../lib/studentApi';
+import { characterClassApi, type CharacterClassData } from '../../lib/characterClassApi';
 import { placeholderStudentApi } from '../../lib/placeholderStudentApi';
 import toast from 'react-hot-toast';
 
@@ -14,8 +15,10 @@ export const JoinClassPage = () => {
   const [step, setStep] = useState(1);
   const [code, setCode] = useState('');
   const [characterName, setCharacterName] = useState('');
-  const [selectedClass, setSelectedClass] = useState<CharacterClass | null>(null);
+  const [selectedClass, setSelectedClass] = useState<string | null>(null);
+  const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
   const [avatarGender, setAvatarGender] = useState<AvatarGender>('MALE');
+  const [assignmentMode, setAssignmentMode] = useState<string>('STUDENT_CHOICE');
   
   // Estado para modo de vinculación
   const [isLinkMode, setIsLinkMode] = useState(false);
@@ -24,6 +27,15 @@ export const JoinClassPage = () => {
   const [linkCharacterName, setLinkCharacterName] = useState('');
   const [linkAvatarGender, setLinkAvatarGender] = useState<AvatarGender>('MALE');
   const [isLinking, setIsLinking] = useState(false);
+
+  // Query para cargar clases de personaje del aula
+  const { data: classroomClasses, refetch: fetchClasses } = useQuery({
+    queryKey: ['classroom-classes-by-code', code],
+    queryFn: () => characterClassApi.listByCode(code.toUpperCase()),
+    enabled: false,
+  });
+
+  const dynamicClasses = classroomClasses?.classes ?? [];
 
   const joinMutation = useMutation({
     mutationFn: studentApi.joinClass,
@@ -48,6 +60,7 @@ export const JoinClassPage = () => {
       code: code.toUpperCase(),
       characterName,
       characterClass: selectedClass,
+      characterClassId: selectedClassId || undefined,
       avatarGender,
     });
   };
@@ -446,7 +459,28 @@ export const JoinClassPage = () => {
                 </Button>
                 <Button
                   className="flex-1 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white"
-                  onClick={() => setStep(3)}
+                  onClick={async () => {
+                    try {
+                      const result = await fetchClasses();
+                      const data = result.data;
+                      if (data) {
+                        setAssignmentMode(data.assignmentMode);
+                        if (data.assignmentMode === 'TEACHER_ASSIGNS') {
+                          // Skip class selection, use first available or empty
+                          const first = data.classes[0];
+                          if (first) {
+                            setSelectedClass(first.key);
+                            setSelectedClassId(first.id);
+                          }
+                          handleSubmit();
+                          return;
+                        }
+                      }
+                    } catch {
+                      // Continue with default classes if fetch fails
+                    }
+                    setStep(3);
+                  }}
                   disabled={characterName.length < 2}
                   rightIcon={<ArrowRight size={20} />}
                 >
@@ -465,25 +499,27 @@ export const JoinClassPage = () => {
               className="space-y-6"
             >
               <div className="grid grid-cols-2 gap-4">
-                {(Object.entries(CHARACTER_CLASSES) as [CharacterClass, typeof CHARACTER_CLASSES.GUARDIAN][]).map(
-                  ([key, value], index) => (
+                {(dynamicClasses.length > 0
+                  ? dynamicClasses.map((cc) => ({ key: cc.key, id: cc.id, name: cc.name, icon: cc.icon, description: cc.description || '' }))
+                  : Object.entries(CHARACTER_CLASSES).map(([key, val]) => ({ key, id: null as string | null, name: val.name, icon: val.icon, description: val.description }))
+                ).map((cls, index) => (
                     <motion.button
-                      key={key}
+                      key={cls.key}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.1 }}
                       whileHover={{ scale: 1.03, y: -2 }}
                       whileTap={{ scale: 0.98 }}
-                      onClick={() => setSelectedClass(key)}
+                      onClick={() => { setSelectedClass(cls.key); setSelectedClassId(cls.id); }}
                       className={`
                         relative p-5 rounded-2xl text-left transition-all duration-300
-                        ${selectedClass === key
+                        ${selectedClass === cls.key
                           ? 'bg-gradient-to-br from-purple-500/30 to-indigo-500/30 border-2 border-purple-400 shadow-lg shadow-purple-500/20'
                           : 'bg-slate-900/50 border-2 border-white/10 hover:border-white/20'
                         }
                       `}
                     >
-                      {selectedClass === key && (
+                      {selectedClass === cls.key && (
                         <motion.div 
                           initial={{ scale: 0 }}
                           animate={{ scale: 1 }}
@@ -492,16 +528,15 @@ export const JoinClassPage = () => {
                           <Check className="w-4 h-4 text-white" />
                         </motion.div>
                       )}
-                      <span className="text-4xl block mb-2">{value.icon}</span>
+                      <span className="text-4xl block mb-2">{cls.icon}</span>
                       <h3 className="font-bold text-white text-lg">
-                        {value.name}
+                        {cls.name}
                       </h3>
                       <p className="text-sm text-purple-200/60 mt-1 line-clamp-2">
-                        {value.description}
+                        {cls.description}
                       </p>
                     </motion.button>
-                  )
-                )}
+                ))}
               </div>
 
               <div className="flex gap-3 pt-2">

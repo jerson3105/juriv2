@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft,
@@ -37,9 +37,11 @@ import { Button } from '../../components/ui/Button';
 import { StudentAvatarMini } from '../../components/avatar/StudentAvatarMini';
 import { classroomApi, type Classroom } from '../../lib/classroomApi';
 import { historyApi } from '../../lib/historyApi';
-import { CHARACTER_CLASSES } from '../../lib/studentApi';
+import { useCharacterClasses } from '../../hooks/useCharacterClasses';
+import { characterClassApi } from '../../lib/characterClassApi';
 import { clanApi, CLAN_EMBLEMS } from '../../lib/clanApi';
 import { badgeApi, RARITY_COLORS, type StudentBadge } from '../../lib/badgeApi';
+import toast from 'react-hot-toast';
 
 type HistoryFilter = 'ALL' | 'XP' | 'GP' | 'HP' | 'PURCHASE' | 'LEVEL_UP';
 const ITEMS_PER_PAGE = 10;
@@ -47,7 +49,9 @@ const ITEMS_PER_PAGE = 10;
 export const StudentDetailPage = () => {
   const { id: classroomId, studentId } = useParams<{ id: string; studentId: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { classroom } = useOutletContext<{ classroom: Classroom & { showCharacterName?: boolean } }>();
+  const { classMap, classes: characterClasses } = useCharacterClasses(classroomId);
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('ALL');
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -88,7 +92,19 @@ export const StudentDetailPage = () => {
       clan.members?.some((member: any) => member.id === student.id)
     );
   }, [clansData, student]);
-  const classInfo = student ? CHARACTER_CLASSES[student.characterClass] : null;
+  const classInfo = student?.characterClassId
+    ? characterClasses.find(c => c.id === student.characterClassId) || classMap[student.characterClass]
+    : student ? classMap[student.characterClass] : null;
+
+  const assignClassMutation = useMutation({
+    mutationFn: ({ characterClassId }: { characterClassId: string | null }) =>
+      characterClassApi.assign(classroomId!, studentId!, characterClassId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['classroom', classroomId] });
+      toast.success('Clase asignada correctamente');
+    },
+  });
+
   const maxHp = classroom?.maxHp || 100;
   const xpPerLevel = classroom?.xpPerLevel || 100;
 
@@ -270,8 +286,24 @@ export const StudentDetailPage = () => {
             </div>
             
             <div className="flex items-center gap-2 text-white/80 mb-4">
-              <span className="text-2xl">{classInfo?.icon}</span>
-              <span className="text-lg">{classInfo?.name}</span>
+              <span className="text-2xl">{classInfo?.icon || '👤'}</span>
+              <select
+                value={student.characterClassId || ''}
+                onChange={(e) => {
+                  const selectedId = e.target.value;
+                  if (!selectedId) {
+                    assignClassMutation.mutate({ characterClassId: null });
+                    return;
+                  }
+                  assignClassMutation.mutate({ characterClassId: selectedId });
+                }}
+                className="text-lg font-medium bg-white/10 border border-white/20 rounded-lg px-2 py-0.5 text-white focus:outline-none focus:ring-1 focus:ring-white/50 cursor-pointer"
+              >
+                <option value="" className="text-gray-800">Sin clase</option>
+                {characterClasses.filter(c => c.isActive).map(c => (
+                  <option key={c.id} value={c.id} className="text-gray-800">{c.icon} {c.name}</option>
+                ))}
+              </select>
             </div>
 
             {/* Stats rápidos */}

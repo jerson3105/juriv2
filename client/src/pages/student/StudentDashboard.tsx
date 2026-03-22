@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { 
@@ -18,13 +18,16 @@ import {
   ClipboardList,
   Calendar,
   MapPin,
+  Swords,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { AvatarRenderer } from '../../components/avatar/AvatarRenderer';
 import { AvatarShop } from '../../components/avatar/AvatarShop';
 import { useAuthStore } from '../../store/authStore';
 import { useStudentStore } from '../../store/studentStore';
-import { studentApi, CHARACTER_CLASSES } from '../../lib/studentApi';
+import { studentApi } from '../../lib/studentApi';
+import { useCharacterClasses } from '../../hooks/useCharacterClasses';
+import { characterClassApi } from '../../lib/characterClassApi';
 import { avatarApi } from '../../lib/avatarApi';
 import { shopApi } from '../../lib/shopApi';
 import { StudentShopPage } from './StudentShopPage';
@@ -52,6 +55,7 @@ export const StudentDashboard = () => {
   const [showLevelUp, setShowLevelUp] = useState(false);
   const [newLevel, setNewLevel] = useState(1);
   const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
+  const [showClassPicker, setShowClassPicker] = useState(false);
   const queryClient = useQueryClient();
   
 
@@ -68,6 +72,7 @@ export const StudentDashboard = () => {
 
   // Clase actualmente seleccionada (sincronizada con el sidebar)
   const currentProfile = myClasses?.[selectedClassIndex];
+  const { classMap, classes: characterClasses } = useCharacterClasses(currentProfile?.classroomId);
   
 
   // Items equipados del avatar
@@ -147,8 +152,19 @@ export const StudentDashboard = () => {
   }));
 
   const characterInfo = currentProfile 
-    ? CHARACTER_CLASSES[currentProfile.characterClass]
+    ? (classMap[currentProfile.characterClassId] || classMap[currentProfile.characterClass])
     : null;
+
+  const canChooseClass = currentProfile?.classroom?.classAssignmentMode === 'STUDENT_CHOICE';
+
+  const chooseClassMutation = useMutation({
+    mutationFn: (characterClassId: string) =>
+      characterClassApi.studentChoose(currentProfile!.classroomId, characterClassId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-classes'] });
+      setShowClassPicker(false);
+    },
+  });
 
   // Detectar notificaciones de LEVEL_UP no leídas y mostrar animación
   useEffect(() => {
@@ -525,9 +541,9 @@ export const StudentDashboard = () => {
                   {currentProfile.characterName || user?.firstName}
                 </h1>
                 <div className="flex items-center justify-center gap-2 mt-1">
-                  <span className="text-lg">{characterInfo?.icon}</span>
+                  <span className="text-lg">{characterInfo?.icon || '👤'}</span>
                   <p className={`text-sm ${hasTheme && isThemeDark ? 'text-white/60' : 'text-gray-500'}`}>
-                    {characterInfo?.name} • Nivel {currentProfile.level}
+                    {characterInfo?.name || 'Sin clase'} • Nivel {currentProfile.level}
                   </p>
                 </div>
               </div>
@@ -673,10 +689,12 @@ export const StudentDashboard = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
               whileHover={{ scale: 1.05, y: -4 }}
+              onClick={canChooseClass ? () => setShowClassPicker(true) : undefined}
               className={`relative rounded-2xl p-4 shadow-lg overflow-hidden group cursor-pointer ${
-                characterInfo?.color === 'blue' ? 'bg-gradient-to-br from-blue-500 to-indigo-600 shadow-blue-500/30'
-                : characterInfo?.color === 'violet' ? 'bg-gradient-to-br from-violet-500 to-purple-600 shadow-violet-500/30'
-                : characterInfo?.color === 'green' ? 'bg-gradient-to-br from-emerald-500 to-teal-600 shadow-emerald-500/30'
+                !characterInfo ? 'bg-gradient-to-br from-gray-400 to-gray-500 shadow-gray-400/30'
+                : characterInfo.color === 'blue' ? 'bg-gradient-to-br from-blue-500 to-indigo-600 shadow-blue-500/30'
+                : characterInfo.color === 'violet' ? 'bg-gradient-to-br from-violet-500 to-purple-600 shadow-violet-500/30'
+                : characterInfo.color === 'green' ? 'bg-gradient-to-br from-emerald-500 to-teal-600 shadow-emerald-500/30'
                 : 'bg-gradient-to-br from-orange-500 to-amber-600 shadow-orange-500/30'
               }`}
             >
@@ -685,15 +703,74 @@ export const StudentDashboard = () => {
               <div className="relative z-10">
                 <div className="flex items-center justify-between mb-2">
                   <div className="w-10 h-10 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center text-lg">
-                    {characterInfo?.icon}
+                    {characterInfo?.icon || '👤'}
                   </div>
-                  <span className="text-4xl">{characterInfo?.icon}</span>
+                  <span className="text-4xl">{characterInfo?.icon || '❓'}</span>
                 </div>
-                <p className="text-xl font-bold text-white">{characterInfo?.name}</p>
-                <p className="text-sm font-medium text-white/80">Nv. {currentProfile.level}</p>
+                <p className="text-xl font-bold text-white">{characterInfo?.name || 'Sin clase'}</p>
+                <p className="text-sm font-medium text-white/80">
+                  {!characterInfo && canChooseClass ? 'Toca para elegir' : `Nv. ${currentProfile.level}`}
+                </p>
               </div>
             </motion.div>
           </div>
+
+          {/* Modal de selección de clase */}
+          <AnimatePresence>
+            {showClassPicker && canChooseClass && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                onClick={() => setShowClassPicker(false)}
+              >
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-lg w-full shadow-2xl"
+                >
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/40 rounded-xl flex items-center justify-center">
+                      <Swords className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-800 dark:text-white">Elige tu clase</h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Selecciona la clase de tu personaje</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {characterClasses.filter(c => c.isActive).map(cc => (
+                      <button
+                        key={cc.id}
+                        onClick={() => chooseClassMutation.mutate(cc.id)}
+                        disabled={chooseClassMutation.isPending}
+                        className={`p-4 rounded-xl border-2 text-left transition-all hover:scale-[1.02] ${
+                          currentProfile.characterClassId === cc.id
+                            ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30'
+                            : 'border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-600'
+                        }`}
+                      >
+                        <span className="text-3xl block mb-2">{cc.icon}</span>
+                        <p className="font-semibold text-gray-800 dark:text-white">{cc.name}</p>
+                        {cc.description && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{cc.description}</p>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setShowClassPicker(false)}
+                    className="mt-4 w-full py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* ===== MI CLAN ===== */}

@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 import { historyApi } from '../../lib/historyApi';
 import type { ActivityLogEntry } from '../../lib/historyApi';
-import { CHARACTER_CLASSES } from '../../lib/studentApi';
+import { useCharacterClasses } from '../../hooks/useCharacterClasses';
 import { classroomApi, type ResetOptions } from '../../lib/classroomApi';
 import toast from 'react-hot-toast';
 
@@ -39,6 +39,7 @@ const ITEMS_PER_PAGE = 15;
 
 export const HistoryPage = () => {
   const { classroom } = useOutletContext<{ classroom: any }>();
+  const { classMap } = useCharacterClasses(classroom?.id);
   const [filterType, setFilterType] = useState<FilterType>('ALL');
   const [selectedStudent, setSelectedStudent] = useState<string | undefined>();
   const [currentPage, setCurrentPage] = useState(1);
@@ -564,7 +565,7 @@ export const HistoryPage = () => {
                       >
                         {/* Icono de clase del estudiante */}
                         <div className="w-9 h-9 bg-gradient-to-br from-violet-100 to-purple-100 rounded-full flex items-center justify-center text-lg flex-shrink-0">
-                          {CHARACTER_CLASSES[entry.studentClass as keyof typeof CHARACTER_CLASSES]?.icon || '👤'}
+                          {classMap[entry.studentClass as string]?.icon || '👤'}
                         </div>
                         
                         {/* Icono de tipo de actividad */}

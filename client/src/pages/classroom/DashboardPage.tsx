@@ -46,12 +46,13 @@ import { classroomApi, type Classroom, type Student } from '../../lib/classroomA
 import { historyApi } from '../../lib/historyApi';
 import { badgeApi } from '../../lib/badgeApi';
 import { gradeApi } from '../../lib/gradeApi';
-import { CHARACTER_CLASSES } from '../../lib/studentApi';
+import { useCharacterClasses } from '../../hooks/useCharacterClasses';
 
 type StatsTab = 'gamification' | 'grades';
 
 export const DashboardPage = () => {
   const { classroom } = useOutletContext<{ classroom: Classroom & { showCharacterName?: boolean } }>();
+  const { classMap } = useCharacterClasses(classroom?.id);
   const [chartPeriod, setChartPeriod] = useState<'7d' | '30d' | 'all'>('7d');
   const [activeTab, setActiveTab] = useState<StatsTab>('gamification');
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
@@ -206,7 +207,7 @@ export const DashboardPage = () => {
     const COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b'];
     
     return Object.entries(studentAnalysis.classDistribution).map(([key, value], index) => ({
-      name: CHARACTER_CLASSES[key as keyof typeof CHARACTER_CLASSES]?.name || key,
+      name: classMap[key]?.name || key,
       value,
       color: COLORS[index % COLORS.length],
     }));
@@ -685,6 +686,7 @@ export const DashboardPage = () => {
                 maxHp={maxHp}
                 showMedal
                 displayName={getDisplayName(student)}
+                classMap={classMap}
               />
             ))}
           </div>
@@ -715,6 +717,7 @@ export const DashboardPage = () => {
                   maxHp={maxHp}
                   showHealth
                   displayName={getDisplayName(student)}
+                  classMap={classMap}
                 />
               ))}
             </div>
@@ -734,7 +737,7 @@ export const DashboardPage = () => {
           </div>
           <div className="space-y-3">
             {Object.entries(studentAnalysis.classDistribution).map(([classKey, count]) => {
-              const classInfo = CHARACTER_CLASSES[classKey as keyof typeof CHARACTER_CLASSES];
+              const classInfo = classMap[classKey];
               const percentage = Math.round((count / studentAnalysis.totalStudents) * 100);
               return (
                 <div key={classKey} className="flex items-center gap-3">
@@ -1314,7 +1317,8 @@ const StudentRow = ({
   maxHp,
   showMedal,
   showHealth,
-  displayName
+  displayName,
+  classMap
 }: { 
   student: Student; 
   rank?: number;
@@ -1322,8 +1326,9 @@ const StudentRow = ({
   showMedal?: boolean;
   showHealth?: boolean;
   displayName: string;
+  classMap: Record<string, { name: string; description: string; icon: string; color: string; id?: string }>;
 }) => {
-  const classInfo = CHARACTER_CLASSES[student.characterClass];
+  const classInfo = classMap[student.characterClassId] || classMap[student.characterClass];
   const hpPercent = (student.hp / maxHp) * 100;
   
   const medalColors = ['text-amber-500', 'text-gray-400', 'text-amber-700'];

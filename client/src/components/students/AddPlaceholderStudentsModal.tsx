@@ -7,9 +7,6 @@ import {
   Plus, 
   Trash2,
   Shield,
-  Wand2,
-  Compass,
-  FlaskConical,
   Loader2,
   CheckCircle,
   Copy,
@@ -18,6 +15,7 @@ import {
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { placeholderStudentApi, type PlaceholderStudent } from '../../lib/placeholderStudentApi';
+import { useCharacterClasses } from '../../hooks/useCharacterClasses';
 import toast from 'react-hot-toast';
 
 interface Props {
@@ -27,25 +25,18 @@ interface Props {
   onStudentsCreated: () => void;
 }
 
-const CHARACTER_CLASSES = [
-  { value: 'GUARDIAN', label: 'Guardián', icon: Shield, color: 'text-blue-500' },
-  { value: 'ARCANE', label: 'Arcano', icon: Wand2, color: 'text-purple-500' },
-  { value: 'EXPLORER', label: 'Explorador', icon: Compass, color: 'text-green-500' },
-  { value: 'ALCHEMIST', label: 'Alquimista', icon: FlaskConical, color: 'text-orange-500' },
-];
-
-type CharacterClass = 'GUARDIAN' | 'ARCANE' | 'EXPLORER' | 'ALCHEMIST';
-
 interface StudentInput {
   id: string;
   displayName: string;
-  characterClass: CharacterClass;
+  characterClass: string;
 }
 
 export const AddPlaceholderStudentsModal = ({ isOpen, onClose, classroomId, onStudentsCreated }: Props) => {
+  const { classMap } = useCharacterClasses(classroomId);
+  const classKeys = Object.keys(classMap);
   const [step, setStep] = useState<'input' | 'result'>('input');
   const [students, setStudents] = useState<StudentInput[]>([
-    { id: '1', displayName: '', characterClass: 'GUARDIAN' }
+    { id: '1', displayName: '', characterClass: classKeys[0] || 'GUARDIAN' }
   ]);
   const [isLoading, setIsLoading] = useState(false);
   const [createdStudents, setCreatedStudents] = useState<PlaceholderStudent[]>([]);
@@ -53,11 +44,11 @@ export const AddPlaceholderStudentsModal = ({ isOpen, onClose, classroomId, onSt
   const [inputMode, setInputMode] = useState<'individual' | 'bulk'>('individual');
 
   const addStudent = () => {
-    const classIndex = students.length % 4;
+    const classIndex = students.length % classKeys.length;
     setStudents([...students, { 
       id: Date.now().toString(), 
       displayName: '', 
-      characterClass: CHARACTER_CLASSES[classIndex].value as CharacterClass
+      characterClass: classKeys[classIndex] || 'GUARDIAN'
     }]);
   };
 
@@ -89,7 +80,7 @@ export const AddPlaceholderStudentsModal = ({ isOpen, onClose, classroomId, onSt
 
       studentsToCreate = names.map((name, i) => ({
         displayName: name,
-        characterClass: CHARACTER_CLASSES[i % 4].value,
+        characterClass: classKeys[i % classKeys.length] || 'GUARDIAN',
       }));
     } else {
       // Modo individual
@@ -239,8 +230,8 @@ export const AddPlaceholderStudentsModal = ({ isOpen, onClose, classroomId, onSt
                           onChange={(e) => updateStudent(student.id, 'characterClass', e.target.value)}
                           className="px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm"
                         >
-                          {CHARACTER_CLASSES.map(c => (
-                            <option key={c.value} value={c.value}>{c.label}</option>
+                          {classKeys.map(key => (
+                            <option key={key} value={key}>{classMap[key]?.icon} {classMap[key]?.name}</option>
                           ))}
                         </select>
 
@@ -285,8 +276,7 @@ export const AddPlaceholderStudentsModal = ({ isOpen, onClose, classroomId, onSt
                 {/* Lista de estudiantes creados */}
                 <div className="space-y-2">
                   {createdStudents.map((student) => {
-                    const classInfo = CHARACTER_CLASSES.find(c => c.value === student.characterClass);
-                    const Icon = classInfo?.icon || Shield;
+                    const dynClass = classMap[student.characterClass];
                     
                     return (
                       <div
@@ -294,8 +284,8 @@ export const AddPlaceholderStudentsModal = ({ isOpen, onClose, classroomId, onSt
                         className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl"
                       >
                         <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-lg bg-white dark:bg-gray-700 flex items-center justify-center ${classInfo?.color}`}>
-                            <Icon className="w-5 h-5" />
+                          <div className="w-10 h-10 rounded-lg bg-white dark:bg-gray-700 flex items-center justify-center text-xl">
+                            {dynClass?.icon || '🛡️'}
                           </div>
                           <div>
                             <p className="font-medium text-gray-900 dark:text-white">

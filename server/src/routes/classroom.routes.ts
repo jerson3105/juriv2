@@ -3,6 +3,7 @@ import { classroomController } from '../controllers/classroom.controller.js';
 import { announcementController } from '../controllers/announcement.controller.js';
 import { chatController } from '../controllers/chat.controller.js';
 import { classNoteController } from '../controllers/classNote.controller.js';
+import { characterClassController } from '../controllers/characterClass.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { aiAssistantService } from '../services/aiAssistant.service.js';
 
@@ -85,6 +86,21 @@ router.get('/:id/notes', authorize('TEACHER', 'STUDENT'), classNoteController.li
 router.get('/:id/notes/pending-count', authorize('TEACHER', 'STUDENT'), classNoteController.pendingCount.bind(classNoteController));
 router.patch('/:id/notes/:noteId/toggle', authorize('TEACHER'), classNoteController.toggleComplete.bind(classNoteController));
 router.delete('/:id/notes/:noteId', authorize('TEACHER'), classNoteController.remove.bind(classNoteController));
+
+// Clases de personaje (profesor CRUD, estudiante lee activas)
+router.get('/:classroomId/character-classes', authorize('TEACHER', 'STUDENT'), characterClassController.list.bind(characterClassController));
+router.get('/:classroomId/character-classes/active', authorize('TEACHER', 'STUDENT'), characterClassController.listActive.bind(characterClassController));
+router.post('/:classroomId/character-classes', authorize('TEACHER'), characterClassController.create.bind(characterClassController));
+router.post('/:classroomId/character-classes/seed', authorize('TEACHER'), characterClassController.seedDefaults.bind(characterClassController));
+router.post('/:classroomId/character-classes/reorder', authorize('TEACHER'), characterClassController.reorder.bind(characterClassController));
+router.post('/:classroomId/character-classes/assign', authorize('TEACHER'), characterClassController.assign.bind(characterClassController));
+router.post('/:classroomId/character-classes/bulk-assign', authorize('TEACHER'), characterClassController.bulkAssign.bind(characterClassController));
+router.post('/:classroomId/character-classes/choose', authorize('STUDENT'), characterClassController.studentChoose.bind(characterClassController));
+router.put('/:classroomId/character-classes/:id', authorize('TEACHER'), characterClassController.update.bind(characterClassController));
+router.delete('/:classroomId/character-classes/:id', authorize('TEACHER'), characterClassController.remove.bind(characterClassController));
+
+// Buscar clases de personaje por código de aula (para estudiantes al unirse)
+router.get('/code/:code/character-classes', authorize('STUDENT'), characterClassController.listByCode.bind(characterClassController));
 
 // Rutas para estudiantes
 router.post('/join', authorize('STUDENT'), classroomController.join.bind(classroomController));

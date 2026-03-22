@@ -44,7 +44,8 @@ export interface StudentProfile {
 export interface JoinClassData {
   code: string;
   characterName: string;
-  characterClass: CharacterClass;
+  characterClass: string;
+  characterClassId?: string;
   avatarGender?: AvatarGender;
 }
 

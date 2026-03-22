@@ -182,6 +182,9 @@ export const classrooms = mysqlTable('classrooms', {
   requirePurchaseApproval: boolean('require_purchase_approval').notNull().default(false),
   dailyPurchaseLimit: int('daily_purchase_limit'),
   
+  // Configuración de clases de personaje
+  classAssignmentMode: varchar('class_assignment_mode', { length: 20 }).notNull().default('STUDENT_CHOICE'),
+  
   // Configuración de visualización
   showCharacterName: boolean('show_character_name').notNull().default(true),
   
@@ -292,6 +295,33 @@ export const classroomsRelations = relations(classrooms, ({ one, many }) => ({
   randomEvents: many(randomEvents),
   shopItems: many(shopItems),
   classroomCompetencies: many(classroomCompetencies),
+  characterClasses: many(classroomCharacterClasses),
+}));
+
+// ==================== CLASES DE PERSONAJE POR AULA ====================
+
+export const classroomCharacterClasses = mysqlTable('classroom_character_classes', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
+  name: varchar('name', { length: 50 }).notNull(),
+  key: varchar('key', { length: 50 }).notNull(),
+  description: varchar('description', { length: 200 }),
+  icon: varchar('icon', { length: 20 }).notNull().default('⚔️'),
+  color: varchar('color', { length: 20 }).notNull().default('blue'),
+  sortOrder: int('sort_order').notNull().default(0),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  classroomIdx: index('idx_ccc_classroom').on(table.classroomId),
+  uniqueKey: unique('uq_ccc_classroom_key').on(table.classroomId, table.key),
+}));
+
+export const classroomCharacterClassesRelations = relations(classroomCharacterClasses, ({ one }) => ({
+  classroom: one(classrooms, {
+    fields: [classroomCharacterClasses.classroomId],
+    references: [classrooms.id],
+  }),
 }));
 
 // ==================== ESTUDIANTES ====================
@@ -301,6 +331,7 @@ export const studentProfiles = mysqlTable('student_profiles', {
   userId: varchar('user_id', { length: 36 }), // Nullable para estudiantes placeholder
   classroomId: varchar('classroom_id', { length: 36 }).notNull(),
   characterClass: characterClassEnum.notNull(),
+  characterClassId: varchar('character_class_id', { length: 36 }),
   avatarGender: avatarGenderEnum.notNull().default('MALE'), // género del avatar
   displayName: varchar('display_name', { length: 100 }), // Nombre para estudiantes sin cuenta
   linkCode: varchar('link_code', { length: 8 }).unique(), // Código para vincular cuenta
@@ -335,6 +366,10 @@ export const studentProfilesRelations = relations(studentProfiles, ({ one, many 
   team: one(teams, {
     fields: [studentProfiles.teamId],
     references: [teams.id],
+  }),
+  characterClassInfo: one(classroomCharacterClasses, {
+    fields: [studentProfiles.characterClassId],
+    references: [classroomCharacterClasses.id],
   }),
   pointLogs: many(pointLogs),
   powerUsages: many(powerUsages),

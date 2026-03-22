@@ -55,6 +55,7 @@ import { eq, and, desc, inArray, sql, count } from 'drizzle-orm';
 import { generateClassCode } from '../utils/helpers.js';
 import { v4 as uuidv4 } from 'uuid';
 import { avatarService } from './avatar.service.js';
+import { characterClassService } from './characterClass.service.js';
 
 type AvatarGender = 'MALE' | 'FEMALE';
 
@@ -87,6 +88,7 @@ interface UpdateClassroomData {
   shopEnabled?: boolean;
   requirePurchaseApproval?: boolean;
   dailyPurchaseLimit?: number | null;
+  classAssignmentMode?: 'STUDENT_CHOICE' | 'TEACHER_ASSIGNS';
   showCharacterName?: boolean;
   // Clanes
   clansEnabled?: boolean;
@@ -134,6 +136,11 @@ export class ClassroomService {
 
     return db.query.classrooms.findFirst({
       where: eq(classrooms.id, id),
+    }).then(async (classroom) => {
+      if (classroom) {
+        await characterClassService.seedDefaults(id);
+      }
+      return classroom;
     });
   }
 
@@ -200,6 +207,7 @@ export class ClassroomService {
       characterName: studentProfiles.characterName,
       avatarUrl: studentProfiles.avatarUrl,
       characterClass: studentProfiles.characterClass,
+      characterClassId: studentProfiles.characterClassId,
       avatarGender: studentProfiles.avatarGender,
       level: studentProfiles.level,
       xp: studentProfiles.xp,

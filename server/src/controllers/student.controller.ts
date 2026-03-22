@@ -10,7 +10,8 @@ import { config_app } from '../config/env.js';
 const joinClassSchema = z.object({
   code: z.string().min(6, 'El código debe tener al menos 6 caracteres').max(8, 'El código no puede tener más de 8 caracteres'),
   characterName: z.string().min(2, 'Nombre muy corto').max(50, 'Nombre muy largo'),
-  characterClass: z.enum(['GUARDIAN', 'ARCANE', 'EXPLORER', 'ALCHEMIST']),
+  characterClass: z.string().min(1),
+  characterClassId: z.string().optional(),
   avatarGender: z.enum(['MALE', 'FEMALE']).optional(),
 });
 

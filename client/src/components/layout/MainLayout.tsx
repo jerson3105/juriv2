@@ -25,10 +25,12 @@ import {
   School,
   BookMarked,
   BarChart3,
+  Plus,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useStudentStore } from '../../store/studentStore';
-import { studentApi, CHARACTER_CLASSES } from '../../lib/studentApi';
+import { studentApi } from '../../lib/studentApi';
+import { useCharacterClasses } from '../../hooks/useCharacterClasses';
 import { expeditionApi } from '../../lib/expeditionApi';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { NotificationsBell, NotificationsPanel } from '../NotificationsPanel';
@@ -68,6 +70,7 @@ export const MainLayout = () => {
   });
 
   const currentProfile = myClasses?.[selectedClassIndex];
+  const { classMap } = useCharacterClasses(currentProfile?.classroomId);
 
   // Cargar expediciones del estudiante para mostrar indicador
   const { data: studentExpeditions = [] } = useQuery({
@@ -78,7 +81,7 @@ export const MainLayout = () => {
 
   // Verificar si hay expediciones no completadas
   const hasActiveExpeditions = studentExpeditions.some(exp => !exp.studentProgress?.isCompleted);
-  const characterInfo = currentProfile ? CHARACTER_CLASSES[currentProfile.characterClass] : null;
+  const characterInfo = currentProfile ? (classMap[currentProfile.characterClassId] || classMap[currentProfile.characterClass]) : null;
 
   // Parse storytelling theme from student's classroom
   const tc = (() => {
@@ -200,7 +203,7 @@ export const MainLayout = () => {
                 {showClassSelector && (
                   <div className={`absolute top-full left-0 right-0 mt-1 rounded-lg shadow-xl z-20 overflow-hidden ${hasStoryTheme ? 'bg-gray-900/95 border border-white/20' : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700'}`}>
                     {myClasses.map((profile, index) => {
-                      const classInfo = CHARACTER_CLASSES[profile.characterClass];
+                      const classInfo = classMap[profile.characterClassId] || classMap[profile.characterClass];
                       return (
                         <button
                           key={profile.id}
@@ -584,6 +587,31 @@ export const MainLayout = () => {
                 </span>
               )}
             </Link>
+          )}
+
+          {/* Unirse a otra clase - solo para estudiantes */}
+          {!isTeacher && (
+            <>
+              <div className="my-2 mx-3 border-t border-gray-200 dark:border-gray-700" style={hasStoryTheme ? { borderColor: 'rgba(255,255,255,0.15)' } : undefined} />
+              <Link
+                to="/join-class"
+                onClick={() => setSidebarOpen(false)}
+                className={`
+                  flex items-center gap-3 px-3 py-2.5 rounded-xl
+                  transition-all duration-200 group
+                  ${hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}
+                `}
+              >
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-gradient-to-br from-pink-500 to-rose-500 text-white shadow-sm group-hover:scale-105 transition-all">
+                  <Plus size={16} />
+                </div>
+                {!collapsed && (
+                  <span className={`text-sm font-medium ${hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
+                    Unirse a clase
+                  </span>
+                )}
+              </Link>
+            </>
           )}
 
         </nav>

@@ -19,7 +19,7 @@ import {
   CATEGORY_CONFIG,
 } from '../../lib/shopApi';
 import { classroomApi } from '../../lib/classroomApi';
-import { CHARACTER_CLASSES } from '../../lib/studentApi';
+import { useCharacterClasses } from '../../hooks/useCharacterClasses';
 import toast from 'react-hot-toast';
 
 interface StudentShopPageProps {
@@ -38,6 +38,7 @@ interface StudentShopPageProps {
 
 export const StudentShopPage = ({ studentProfile, classmates: propClassmates }: StudentShopPageProps) => {
   const queryClient = useQueryClient();
+  const { classMap } = useCharacterClasses(studentProfile.classroomId);
   const [selectedItem, setSelectedItem] = useState<ShopItem | null>(null);
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
 
@@ -675,7 +676,7 @@ const GiftModal = ({
               ) : (
                 <div className="space-y-2 max-h-40 overflow-y-auto">
                   {classmates.map((classmate) => {
-                    const classInfo = CHARACTER_CLASSES[classmate.characterClass as keyof typeof CHARACTER_CLASSES];
+                    const classInfo = classMap[classmate.characterClass];
                     return (
                       <button
                         key={classmate.id}

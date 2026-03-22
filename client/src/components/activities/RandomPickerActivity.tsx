@@ -7,13 +7,15 @@ import {
   Eye, ArrowRight, HelpCircle,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { studentApi, CHARACTER_CLASSES } from '../../lib/studentApi';
+import { studentApi } from '../../lib/studentApi';
+import { useCharacterClasses } from '../../hooks/useCharacterClasses';
 import { behaviorApi, type Behavior } from '../../lib/behaviorApi';
 import { questionBankApi, type Question, DIFFICULTY_LABELS, DIFFICULTY_COLORS, BANK_ICONS } from '../../lib/questionBankApi';
 import { CLAN_EMBLEMS } from '../../lib/clanApi';
 import toast from 'react-hot-toast';
 
 type AnimationType = 'slot' | 'wheel' | 'cards';
+type ClassMap = Record<string, { name: string; description: string; icon: string; color: string; id?: string }>;
 
 interface Student {
   id: string;
@@ -41,6 +43,7 @@ const NEON_COLORS = ['rgba(139,92,246,0.8)', 'rgba(236,72,153,0.8)', 'rgba(59,13
 
 export const RandomPickerActivity = ({ classroom, onBack }: RandomPickerActivityProps) => {
   const queryClient = useQueryClient();
+  const { classMap } = useCharacterClasses(classroom.id);
   const slotRef = useRef<HTMLDivElement>(null);
   
   const [availableStudents, setAvailableStudents] = useState<Student[]>([]);
@@ -362,24 +365,24 @@ export const RandomPickerActivity = ({ classroom, onBack }: RandomPickerActivity
             </div>
             <div ref={slotRef} className="relative z-10 flex items-center justify-center min-h-[380px] p-6">
               <AnimatePresence mode="wait">
-                {isSpinning ? <SpinningAnimation type={animationType} students={animationType === 'slot' ? slotItems : availableStudents} slotPosition={slotPosition} wheelRotation={wheelRotation} /> : currentStudent ? <SelectedStudentDisplay student={currentStudent} /> : <IdleState availableCount={availableStudents.length} />}
+                {isSpinning ? <SpinningAnimation type={animationType} students={animationType === 'slot' ? slotItems : availableStudents} slotPosition={slotPosition} wheelRotation={wheelRotation} classMap={classMap} /> : currentStudent ? <SelectedStudentDisplay student={currentStudent} classMap={classMap} /> : <IdleState availableCount={availableStudents.length} />}
               </AnimatePresence>
             </div>
             <AnimatePresence mode="wait">
-              <motion.img
-                key={isSpinning ? 'spinning' : currentStudent ? 'selected' : 'idle'}
-                src={isSpinning
-                  ? '/assets/mascot/jiro-randomPickerWhile.png'
-                  : currentStudent
-                    ? '/assets/mascot/jiro-randomPickerSelect.png'
+              {!currentStudent && (
+                <motion.img
+                  key={isSpinning ? 'spinning' : 'idle'}
+                  src={isSpinning
+                    ? '/assets/mascot/jiro-randomPickerWhile.png'
                     : '/assets/mascot/jiro-randomPicker.png'}
-                alt="Jiro"
-                className="absolute bottom-0 left-0 w-52 max-w-[45%] h-auto z-20 pointer-events-none"
-                initial={{ x: -40, opacity: 0, scale: 0.9 }}
-                animate={{ x: 0, opacity: 1, scale: 1 }}
-                exit={{ x: -40, opacity: 0, scale: 0.9 }}
-                transition={{ type: 'spring', stiffness: 180, damping: 18 }}
-              />
+                  alt="Jiro"
+                  className="absolute bottom-0 left-0 w-36 max-w-[30%] h-auto z-20 pointer-events-none"
+                  initial={{ x: -40, opacity: 0, scale: 0.9 }}
+                  animate={{ x: 0, opacity: 1, scale: 1 }}
+                  exit={{ x: -40, opacity: 0, scale: 0.9 }}
+                  transition={{ type: 'spring', stiffness: 180, damping: 18 }}
+                />
+              )}
             </AnimatePresence>
             <div className="absolute inset-0 rounded-3xl border-2 border-white/20 pointer-events-none" />
           </motion.div>
@@ -433,7 +436,7 @@ export const RandomPickerActivity = ({ classroom, onBack }: RandomPickerActivity
                     {selectedStudents.map((student, index) => (
                       <motion.div key={student.id} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * 0.1 }} className="flex items-center gap-2 p-2.5 bg-gradient-to-r from-violet-50 to-purple-50 rounded-xl border border-violet-100">
                         <span className="w-6 h-6 bg-gradient-to-br from-violet-500 to-purple-600 text-white rounded-full flex items-center justify-center text-[10px] font-bold shadow-md">{index + 1}</span>
-                        <span className="text-lg">{CHARACTER_CLASSES[student.characterClass]?.icon}</span>
+                        <span className="text-lg">{classMap[student.characterClass]?.icon}</span>
                         <span className="text-xs font-semibold text-gray-800 flex-1">{student.characterName || 'Sin nombre'}</span>
                         <Crown size={12} className="text-amber-500" />
                       </motion.div>
@@ -453,7 +456,7 @@ export const RandomPickerActivity = ({ classroom, onBack }: RandomPickerActivity
                 return (
                   <motion.div key={student.id} whileHover={{ scale: 1.01 }} className={`flex items-center justify-between p-2.5 rounded-xl transition-all ${isExcluded ? 'bg-red-50 border border-red-200' : isSelected ? 'bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200' : 'bg-gray-50 hover:bg-gray-100 border border-transparent'}`}>
                     <div className="flex items-center gap-2">
-                      <span className="text-lg">{CHARACTER_CLASSES[student.characterClass]?.icon}</span>
+                      <span className="text-lg">{classMap[student.characterClass]?.icon}</span>
                       <div>
                         <span className={`text-xs font-semibold block ${isExcluded ? 'text-red-400 line-through' : 'text-gray-800'}`}>{student.characterName || 'Sin nombre'}</span>
                         <span className="text-[10px] text-gray-400">Nivel {student.level}</span>
@@ -539,7 +542,7 @@ const IdleState = ({ availableCount }: { availableCount: number }) => (
 );
 
 // Animación de selección
-const SpinningAnimation = ({ type, students, slotPosition, wheelRotation }: { type: AnimationType; students: Student[]; slotPosition: number; wheelRotation: number }) => {
+const SpinningAnimation = ({ type, students, slotPosition, wheelRotation, classMap }: { type: AnimationType; students: Student[]; slotPosition: number; wheelRotation: number; classMap: ClassMap }) => {
   if (type === 'slot') {
     return (
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-center w-full max-w-md">
@@ -551,7 +554,7 @@ const SpinningAnimation = ({ type, students, slotPosition, wheelRotation }: { ty
             <div className="relative h-24 overflow-hidden rounded-lg bg-white/10">
               <div className="absolute inset-y-0 left-0 right-0 flex items-center justify-center pointer-events-none z-10"><div className="w-full h-1 bg-gradient-to-r from-transparent via-yellow-400 to-transparent" /></div>
               <motion.div className="flex flex-col items-center" style={{ transform: `translateY(${-slotPosition * 96 + 48}px)`, transition: 'transform 0.1s ease-out' }}>
-                {students.map((student, idx) => (<div key={idx} className="h-24 flex items-center justify-center gap-3 px-4"><span className="text-4xl">{CHARACTER_CLASSES[student.characterClass]?.icon}</span><span className="text-white font-bold text-lg truncate max-w-[150px]">{student.characterName || 'Sin nombre'}</span></div>))}
+                {students.map((student, idx) => (<div key={idx} className="h-24 flex items-center justify-center gap-3 px-4"><span className="text-4xl">{classMap[student.characterClass]?.icon}</span><span className="text-white font-bold text-lg truncate max-w-[150px]">{student.characterName || 'Sin nombre'}</span></div>))}
               </motion.div>
             </div>
           </div>
@@ -618,7 +621,7 @@ const SpinningAnimation = ({ type, students, slotPosition, wheelRotation }: { ty
                     fontSize="24"
                     transform={`rotate(${midAngle}, ${textX}, ${textY})`}
                   >
-                    {CHARACTER_CLASSES[student.characterClass]?.icon}
+                    {classMap[student.characterClass]?.icon}
                   </text>
                 </g>
               );
@@ -653,8 +656,8 @@ const SpinningAnimation = ({ type, students, slotPosition, wheelRotation }: { ty
 };
 
 // Estudiante seleccionado
-const SelectedStudentDisplay = ({ student }: { student: Student }) => {
-  const classInfo = CHARACTER_CLASSES[student.characterClass];
+const SelectedStudentDisplay = ({ student, classMap }: { student: Student; classMap: ClassMap }) => {
+  const classInfo = classMap[student.characterClass];
   const hasClan = !!student.teamId && !!student.clanName;
   
   return (

@@ -42,6 +42,9 @@ const updateClassroomSchema = z.object({
   requirePurchaseApproval: z.boolean().optional(),
   dailyPurchaseLimit: z.number().int().min(0).optional().nullable(),
   
+  // Clases de personaje
+  classAssignmentMode: z.enum(['STUDENT_CHOICE', 'TEACHER_ASSIGNS']).optional(),
+  
   // Visualización
   showCharacterName: z.boolean().optional(),
   

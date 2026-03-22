@@ -28,6 +28,7 @@ import {
   AlertTriangle,
   ChevronDown,
   Wrench,
+  Swords,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -35,7 +36,9 @@ import { Card } from '../../components/ui/Card';
 import { StudentAvatarMini } from '../../components/avatar/StudentAvatarMini';
 import { classroomApi, type Classroom } from '../../lib/classroomApi';
 import { behaviorApi, type Behavior } from '../../lib/behaviorApi';
-import { studentApi, CHARACTER_CLASSES, type PointType } from '../../lib/studentApi';
+import { studentApi, type PointType } from '../../lib/studentApi';
+import { useCharacterClasses } from '../../hooks/useCharacterClasses';
+import { characterClassApi } from '../../lib/characterClassApi';
 import { badgeApi, type Badge, RARITY_COLORS, RARITY_LABELS } from '../../lib/badgeApi';
 import { CLAN_EMBLEMS } from '../../lib/clanApi';
 import { attendanceApi, type AttendanceRecord } from '../../lib/attendanceApi';
@@ -51,6 +54,7 @@ import toast from 'react-hot-toast';
 
 export const StudentsPage = () => {
   const { classroom, storyTheme, isThemeDark } = useOutletContext<{ classroom: Classroom & { showCharacterName?: boolean }, storyTheme?: any, isThemeDark?: boolean }>();
+  const { classMap, classes: characterClasses } = useCharacterClasses(classroom?.id);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
@@ -81,6 +85,7 @@ export const StudentsPage = () => {
 
   // Estado para "Aplicar a Restantes"
   const [showUtilities, setShowUtilities] = useState(false);
+  const [showBulkClassMenu, setShowBulkClassMenu] = useState(false);
   const [showApplyToRestModal, setShowApplyToRestModal] = useState(false);
   const [lastAppliedStudentIds, setLastAppliedStudentIds] = useState<Set<string>>(new Set());
   const [lastAppliedBehavior, setLastAppliedBehavior] = useState<Behavior | null>(null);
@@ -212,6 +217,32 @@ export const StudentsPage = () => {
     },
   });
 
+  const assignClassMutation = useMutation({
+    mutationFn: ({ studentId, characterClassId }: { studentId: string; characterClassId: string | null }) =>
+      characterClassApi.assign(classroom.id, studentId, characterClassId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['classroom', classroom.id] });
+      toast.success('Clase asignada correctamente');
+    },
+    onError: () => {
+      toast.error('Error al asignar clase');
+    },
+  });
+
+  const bulkAssignClassMutation = useMutation({
+    mutationFn: ({ characterClassId }: { characterClassId: string | null }) =>
+      characterClassApi.bulkAssign(classroom.id, Array.from(selectedStudents), characterClassId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['classroom', classroom.id] });
+      setSelectedStudents(new Set());
+      setShowBulkClassMenu(false);
+      toast.success('Clase asignada correctamente');
+    },
+    onError: () => {
+      toast.error('Error al asignar clase');
+    },
+  });
+
   // Manejar cola de animaciones de nivel
   const handleLevelUpComplete = () => {
     setLevelUpQueue(prev => {
@@ -284,7 +315,7 @@ export const StudentsPage = () => {
       const query = searchQuery.toLowerCase();
       const displayName = getDisplayName(student).toLowerCase();
       const realName = `${student.realName || ''} ${student.realLastName || ''}`.toLowerCase();
-      const className = CHARACTER_CLASSES[student.characterClass]?.name.toLowerCase() || '';
+      const className = (classMap[student.characterClassId] || classMap[student.characterClass])?.name.toLowerCase() || '';
       if (!displayName.includes(query) && !realName.includes(query) && !className.includes(query)) return false;
     }
     // Filtros de lista
@@ -476,6 +507,46 @@ export const StudentsPage = () => {
                 <Medal size={14} />
                 <span className="hidden lg:inline ml-1">Insignia</span>
               </Button>
+
+              {/* Botón de Clase masiva */}
+              <div className="relative">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowBulkClassMenu(!showBulkClassMenu)}
+                  disabled={selectedStudents.size === 0}
+                  className="!bg-purple-500 hover:!bg-purple-600 !text-white text-xs px-2 py-1.5"
+                >
+                  <Swords size={14} />
+                  <span className="hidden lg:inline ml-1">Clase</span>
+                  <ChevronDown size={12} className="ml-0.5" />
+                </Button>
+                {showBulkClassMenu && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowBulkClassMenu(false)} />
+                    <div className="absolute top-full left-0 mt-1 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50 py-1">
+                      <button
+                        onClick={() => bulkAssignClassMutation.mutate({ characterClassId: null })}
+                        className="w-full text-left px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                      >
+                        <X size={14} />
+                        Sin clase
+                      </button>
+                      <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
+                      {characterClasses.filter(c => c.isActive !== false).map(cc => (
+                        <button
+                          key={cc.id}
+                          onClick={() => bulkAssignClassMutation.mutate({ characterClassId: cc.id! })}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                        >
+                          <span>{cc.icon}</span>
+                          <span className="dark:text-gray-200">{cc.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           )}
 
@@ -565,7 +636,9 @@ export const StudentsPage = () => {
             const detailStudent = selectedStudentId 
               ? students.find(s => s.id === selectedStudentId) || students[0]
               : students[0];
-            const detailClassInfo = detailStudent ? CHARACTER_CLASSES[detailStudent.characterClass] : null;
+            const detailClassInfo = detailStudent?.characterClassId
+              ? characterClasses.find(c => c.id === detailStudent.characterClassId) || classMap[detailStudent.characterClass]
+              : detailStudent ? classMap[detailStudent.characterClass] : null;
             const xpPerLevel = (classroom as any).xpPerLevel || 100;
             const lvl = detailStudent?.level || 1;
             const xpForCurrentLevel = (xpPerLevel * lvl * (lvl - 1)) / 2;
@@ -600,7 +673,7 @@ export const StudentsPage = () => {
                         <p className="text-xs text-gray-500 dark:text-gray-400">Sin resultados para "{searchQuery}"</p>
                       </div>
                     ) : students.map((student) => {
-                      const classInfo = CHARACTER_CLASSES[student.characterClass];
+                      const classInfo = (student.characterClassId && characterClasses.find(c => c.id === student.characterClassId)) || classMap[student.characterClass];
                       const isActive = detailStudent?.id === student.id;
                       
                       return (
@@ -726,8 +799,24 @@ export const StudentsPage = () => {
                             {getDisplayName(detailStudent)}
                           </h2>
                           <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300 mb-2">
-                            <span className="text-xl">{detailClassInfo?.icon}</span>
-                            <span className="font-medium">{detailClassInfo?.name}</span>
+                            <span className="text-xl">{detailClassInfo?.icon || '👤'}</span>
+                            <select
+                              value={detailStudent.characterClassId || ''}
+                              onChange={(e) => {
+                                const selectedId = e.target.value;
+                                if (!selectedId) {
+                                  assignClassMutation.mutate({ studentId: detailStudent.id, characterClassId: null });
+                                  return;
+                                }
+                                assignClassMutation.mutate({ studentId: detailStudent.id, characterClassId: selectedId });
+                              }}
+                              className="font-medium bg-transparent border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                            >
+                              <option value="">Sin clase</option>
+                              {characterClasses.filter(c => c.isActive).map(c => (
+                                <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
+                              ))}
+                            </select>
                             <span className="text-gray-300 dark:text-gray-600">•</span>
                             <span className="text-sm">Nv. {detailStudent.level}</span>
                           </div>
@@ -984,7 +1073,7 @@ export const StudentsPage = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                   {students.map((student) => {
-                    const classInfo = CHARACTER_CLASSES[student.characterClass];
+                    const classInfo = (student.characterClassId && characterClasses.find(c => c.id === student.characterClassId)) || classMap[student.characterClass];
                     const isSelected = selectedStudents.has(student.id);
                     const hpPercent = Math.min((student.hp / (classroom.maxHp || 100)) * 100, 100);
                     const isTopStudent = topStudent?.id === student.id;
@@ -1213,7 +1302,7 @@ export const StudentsPage = () => {
                       <div className="divide-y divide-gray-100 dark:divide-gray-700">
                         {clan.students.map((student) => {
                           const isSelected = selectedStudents.has(student.id);
-                          const classInfo = CHARACTER_CLASSES[student.characterClass];
+                          const classInfo = (student.characterClassId && characterClasses.find(c => c.id === student.characterClassId)) || classMap[student.characterClass];
                           const hpPercent = (student.hp / (classroom.maxHp || 100)) * 100;
 
                           return (

@@ -18,13 +18,15 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
 import { classroomApi } from '../../lib/classroomApi';
-import { studentApi, CHARACTER_CLASSES, type PointType } from '../../lib/studentApi';
+import { studentApi, type PointType } from '../../lib/studentApi';
+import { useCharacterClasses } from '../../hooks/useCharacterClasses';
 import toast from 'react-hot-toast';
 
 export const ClassroomDetailPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { classMap } = useCharacterClasses(id);
   const [copiedCode, setCopiedCode] = useState(false);
   const [pointsModal, setPointsModal] = useState<{ studentId: string; type: PointType } | null>(null);
 
@@ -147,7 +149,7 @@ export const ClassroomDetailPage = () => {
           ) : (
             <div className="space-y-3">
               {classroom.students.map((student) => {
-                const classInfo = CHARACTER_CLASSES[student.characterClass];
+                const classInfo = classMap[student.characterClassId] || classMap[student.characterClass];
                 return (
                   <motion.div
                     key={student.id}

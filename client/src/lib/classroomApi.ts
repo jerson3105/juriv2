@@ -28,6 +28,9 @@ export interface Classroom {
   requirePurchaseApproval: boolean;
   dailyPurchaseLimit: number | null;
   
+  // Configuración de clases de personaje
+  classAssignmentMode: 'STUDENT_CHOICE' | 'TEACHER_ASSIGNS';
+  
   // Configuración de visualización
   showCharacterName: boolean;
   
@@ -158,6 +161,9 @@ export interface UpdateClassroomSettings {
   shopEnabled?: boolean;
   requirePurchaseApproval?: boolean;
   dailyPurchaseLimit?: number | null;
+  
+  // Clases de personaje
+  classAssignmentMode?: 'STUDENT_CHOICE' | 'TEACHER_ASSIGNS';
   
   // Visualización
   showCharacterName?: boolean;

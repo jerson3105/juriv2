@@ -6,7 +6,7 @@ import {
   purchases, itemUsages, powerUsages, expeditionSubmissions, expeditionStudentProgress,
   jiroStudentExpeditions, jiroQuestionAnswers, jiroDeliveries,
   tournamentParticipants, studentCollectibles, scrolls, scrollReactions,
-  collectibleCards, collectibleAlbums,
+  collectibleCards, collectibleAlbums, classroomCharacterClasses,
 } from '../db/schema.js';
 import { eq, and, desc, sql, gte, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
@@ -26,6 +26,7 @@ interface JoinClassData {
   code: string;
   characterName: string;
   characterClass: CharacterClass;
+  characterClassId?: string;
   avatarGender?: AvatarGender;
 }
 
@@ -68,6 +69,20 @@ export class StudentService {
     const now = new Date();
 
     const gender = data.avatarGender || 'MALE';
+
+    // Buscar el characterClassId correspondiente
+    let characterClassId: string | null = null;
+    if (data.characterClassId) {
+      characterClassId = data.characterClassId;
+    } else if (data.characterClass) {
+      const charClass = await db.query.classroomCharacterClasses.findFirst({
+        where: and(
+          eq(classroomCharacterClasses.classroomId, classroom.id),
+          eq(classroomCharacterClasses.key, data.characterClass),
+        ),
+      });
+      characterClassId = charClass?.id ?? null;
+    }
     
     await db.insert(studentProfiles).values({
       id,
@@ -75,6 +90,7 @@ export class StudentService {
       classroomId: classroom.id,
       characterName: data.characterName,
       characterClass: data.characterClass,
+      characterClassId,
       avatarGender: gender,
       hp: classroom.defaultHp,
       xp: classroom.defaultXp,
