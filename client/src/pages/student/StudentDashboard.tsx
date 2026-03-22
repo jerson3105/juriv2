@@ -152,7 +152,7 @@ export const StudentDashboard = () => {
   }));
 
   const characterInfo = currentProfile 
-    ? (classMap[currentProfile.characterClassId] || classMap[currentProfile.characterClass])
+    ? (classMap[currentProfile.characterClassId!] || classMap[currentProfile.characterClass])
     : null;
 
   const canChooseClass = currentProfile?.classroom?.classAssignmentMode === 'STUDENT_CHOICE';

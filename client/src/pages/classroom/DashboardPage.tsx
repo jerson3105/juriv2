@@ -1328,7 +1328,7 @@ const StudentRow = ({
   displayName: string;
   classMap: Record<string, { name: string; description: string; icon: string; color: string; id?: string }>;
 }) => {
-  const classInfo = classMap[student.characterClassId] || classMap[student.characterClass];
+  const classInfo = classMap[student.characterClassId!] || classMap[student.characterClass];
   const hpPercent = (student.hp / maxHp) * 100;
   
   const medalColors = ['text-amber-500', 'text-gray-400', 'text-amber-700'];

@@ -149,7 +149,7 @@ export const ClassroomDetailPage = () => {
           ) : (
             <div className="space-y-3">
               {classroom.students.map((student) => {
-                const classInfo = classMap[student.characterClassId] || classMap[student.characterClass];
+                const classInfo = classMap[student.characterClassId!] || classMap[student.characterClass];
                 return (
                   <motion.div
                     key={student.id}

@@ -25,6 +25,7 @@ interface Student {
   id: string;
   characterName: string | null;
   characterClass: 'GUARDIAN' | 'ARCANE' | 'EXPLORER' | 'ALCHEMIST';
+  characterClassId?: string | null;
   level: number;
   xp: number;
   hp: number;
@@ -406,7 +407,7 @@ export const RankingsPage = () => {
                       className="flex flex-col items-center"
                     >
                       <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${currentTab.color} flex items-center justify-center text-2xl mb-2 shadow-xl`}>
-                        {classMap[top3Students[1].characterClassId] ?.icon || classMap[top3Students[1].characterClass]?.icon || '🧙'}
+                        {classMap[top3Students[1].characterClassId!]?.icon || classMap[top3Students[1].characterClass]?.icon || '🧙'}
                       </div>
                       <p className={`font-bold text-center ${isFullscreen ? 'text-white' : 'text-gray-800 dark:text-white'}`}>
                         {top3Students[1].characterName || top3Students[1].user?.firstName}
@@ -435,7 +436,7 @@ export const RankingsPage = () => {
                         <Crown className="w-8 h-8 text-amber-400 mb-2" />
                       </motion.div>
                       <div className={`w-20 h-20 rounded-full bg-gradient-to-br ${currentTab.color} flex items-center justify-center text-3xl mb-2 shadow-2xl ring-4 ring-amber-400/50`}>
-                        {classMap[top3Students[0].characterClassId]?.icon || classMap[top3Students[0].characterClass]?.icon || '🧙'}
+                        {classMap[top3Students[0].characterClassId!]?.icon || classMap[top3Students[0].characterClass]?.icon || '🧙'}
                       </div>
                       <p className={`font-bold text-lg text-center ${isFullscreen ? 'text-white' : 'text-gray-800 dark:text-white'}`}>
                         {top3Students[0].characterName || top3Students[0].user?.firstName}
@@ -458,7 +459,7 @@ export const RankingsPage = () => {
                       className="flex flex-col items-center"
                     >
                       <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${currentTab.color} flex items-center justify-center text-2xl mb-2 shadow-xl`}>
-                        {classMap[top3Students[2].characterClassId]?.icon || classMap[top3Students[2].characterClass]?.icon || '🧙'}
+                        {classMap[top3Students[2].characterClassId!]?.icon || classMap[top3Students[2].characterClass]?.icon || '🧙'}
                       </div>
                       <p className={`font-bold text-center ${isFullscreen ? 'text-white' : 'text-gray-800 dark:text-white'}`}>
                         {top3Students[2].characterName || top3Students[2].user?.firstName}
@@ -478,7 +479,7 @@ export const RankingsPage = () => {
               {restStudents.length > 0 && (
                 <div className={`rounded-xl overflow-hidden ${isFullscreen ? 'bg-white/10' : 'bg-white dark:bg-gray-800'} shadow-lg`}>
                   {restStudents.map((student, index) => {
-                    const classInfo = classMap[student.characterClassId] || classMap[student.characterClass];
+                    const classInfo = classMap[student.characterClassId!] || classMap[student.characterClass];
                     return (
                       <motion.div
                         key={student.id}

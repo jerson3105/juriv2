@@ -81,7 +81,7 @@ export const MainLayout = () => {
 
   // Verificar si hay expediciones no completadas
   const hasActiveExpeditions = studentExpeditions.some(exp => !exp.studentProgress?.isCompleted);
-  const characterInfo = currentProfile ? (classMap[currentProfile.characterClassId] || classMap[currentProfile.characterClass]) : null;
+  const characterInfo = currentProfile ? (classMap[currentProfile.characterClassId!] || classMap[currentProfile.characterClass]) : null;
 
   // Parse storytelling theme from student's classroom
   const tc = (() => {
@@ -203,7 +203,7 @@ export const MainLayout = () => {
                 {showClassSelector && (
                   <div className={`absolute top-full left-0 right-0 mt-1 rounded-lg shadow-xl z-20 overflow-hidden ${hasStoryTheme ? 'bg-gray-900/95 border border-white/20' : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700'}`}>
                     {myClasses.map((profile, index) => {
-                      const classInfo = classMap[profile.characterClassId] || classMap[profile.characterClass];
+                      const classInfo = classMap[profile.characterClassId!] || classMap[profile.characterClass];
                       return (
                         <button
                           key={profile.id}

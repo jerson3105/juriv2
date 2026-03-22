@@ -315,7 +315,7 @@ export const StudentsPage = () => {
       const query = searchQuery.toLowerCase();
       const displayName = getDisplayName(student).toLowerCase();
       const realName = `${student.realName || ''} ${student.realLastName || ''}`.toLowerCase();
-      const className = (classMap[student.characterClassId] || classMap[student.characterClass])?.name.toLowerCase() || '';
+      const className = (classMap[student.characterClassId!] || classMap[student.characterClass])?.name.toLowerCase() || '';
       if (!displayName.includes(query) && !realName.includes(query) && !className.includes(query)) return false;
     }
     // Filtros de lista
