@@ -49,12 +49,14 @@ import { TeacherBadgeAwardedModal } from '../../components/badges/TeacherBadgeAw
 import { AddPlaceholderStudentsModal } from '../../components/students/AddPlaceholderStudentsModal';
 import { placeholderStudentApi } from '../../lib/placeholderStudentApi';
 import { ClassroomUtilities } from '../../components/classroom/ClassroomUtilities';
+import { useSound } from '../../hooks/useSound';
 import { classNoteApi } from '../../lib/classNoteApi';
 import toast from 'react-hot-toast';
 
 export const StudentsPage = () => {
   const { classroom, storyTheme, isThemeDark } = useOutletContext<{ classroom: Classroom & { showCharacterName?: boolean }, storyTheme?: any, isThemeDark?: boolean }>();
   const { classMap, classes: characterClasses } = useCharacterClasses(classroom?.id);
+  const { play: playSound } = useSound();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
@@ -152,6 +154,9 @@ export const StudentsPage = () => {
         showMultiPointsEffect(xp, hp, gp, behavior.isPositive);
       }
       
+      // Sound effect
+      playSound(behavior.isPositive ? 'pointsGain' : 'pointsLoss');
+      
       // Detailed feedback toast
       const beh = result.behavior;
       const txp = beh.xpValue || (beh.pointType === 'XP' ? beh.pointValue : 0);
@@ -171,6 +176,7 @@ export const StudentsPage = () => {
       if (result.levelUps && result.levelUps.length > 0) {
         setLevelUpQueue(result.levelUps);
         setCurrentLevelUp(result.levelUps[0]);
+        setTimeout(() => playSound('levelUp'), 400);
       }
       
       // Si hay insignias otorgadas, mostrar modal consolidado
@@ -193,6 +199,7 @@ export const StudentsPage = () => {
           const badge = badges.find((b: Badge) => b.name === uniqueBadgeName);
           if (badge) {
             setAwardedBadgeInfo({ badge, studentNames });
+            playSound('badge');
           }
         } catch {
           // Error al obtener info de insignia - ignorar silenciosamente
@@ -1451,6 +1458,7 @@ export const StudentsPage = () => {
           setShowBadgeModal(false);
           // Mostrar animación de insignia otorgada
           setAwardedBadgeInfo({ badge, studentNames: names });
+          playSound('badge');
         }}
       />
 

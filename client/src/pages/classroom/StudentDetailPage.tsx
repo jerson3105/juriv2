@@ -22,6 +22,7 @@ import {
   ChevronRight,
   Zap,
   Shield,
+  CalendarCheck,
 } from 'lucide-react';
 import {
   AreaChart,
@@ -43,8 +44,19 @@ import { clanApi, CLAN_EMBLEMS } from '../../lib/clanApi';
 import { badgeApi, RARITY_COLORS, type StudentBadge } from '../../lib/badgeApi';
 import toast from 'react-hot-toast';
 
-type HistoryFilter = 'ALL' | 'XP' | 'GP' | 'HP' | 'PURCHASE' | 'LEVEL_UP';
+type HistoryFilter = 'ALL' | 'XP' | 'GP' | 'HP' | 'PURCHASE' | 'LEVEL_UP' | 'BADGE' | 'ATTENDANCE';
 const ITEMS_PER_PAGE = 10;
+
+const getLogMetric = (log: any, metric: 'XP' | 'HP' | 'GP'): number => {
+  if (log.type !== 'POINTS') return 0;
+  if (log.details.pointType === metric) return log.details.amount || 0;
+  if (log.details.pointType === 'MIXED') {
+    if (metric === 'XP') return log.details.xpAmount || 0;
+    if (metric === 'HP') return log.details.hpAmount || 0;
+    if (metric === 'GP') return log.details.gpAmount || 0;
+  }
+  return 0;
+};
 
 export const StudentDetailPage = () => {
   const { id: classroomId, studentId } = useParams<{ id: string; studentId: string }>();
@@ -54,6 +66,8 @@ export const StudentDetailPage = () => {
   const { classMap, classes: characterClasses } = useCharacterClasses(classroomId);
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('ALL');
   const [currentPage, setCurrentPage] = useState(1);
+  const [chartMetric, setChartMetric] = useState<'XP' | 'HP' | 'GP'>('XP');
+  const [chartDays, setChartDays] = useState(14);
 
   // Obtener datos de la clase
   const { data: classroomData, isLoading } = useQuery({
@@ -65,7 +79,7 @@ export const StudentDetailPage = () => {
   // Obtener historial del estudiante
   const { data: historyData } = useQuery({
     queryKey: ['student-history', classroomId, studentId],
-    queryFn: () => historyApi.getClassroomHistory(classroomId!, { studentId, limit: 100 }),
+    queryFn: () => historyApi.getClassroomHistory(classroomId!, { studentId, limit: 200 }),
     enabled: !!classroomId && !!studentId,
   });
 
@@ -135,69 +149,99 @@ export const StudentDetailPage = () => {
   // Estadísticas del historial
   const stats = useMemo(() => {
     if (!historyData?.logs) return null;
-
     const logs = historyData.logs;
-    const xpGained = logs
-      .filter(l => l.type === 'POINTS' && l.details.action === 'ADD' && l.details.pointType === 'XP')
-      .reduce((sum, l) => sum + (l.details.amount || 0), 0);
-    
-    const xpLost = logs
-      .filter(l => l.type === 'POINTS' && l.details.action === 'REMOVE' && l.details.pointType === 'XP')
-      .reduce((sum, l) => sum + (l.details.amount || 0), 0);
-    
-    const purchases = logs.filter(l => l.type === 'PURCHASE').length;
-    const behaviors = logs.filter(l => l.type === 'POINTS').length;
 
-    return { xpGained, xpLost, purchases, behaviors };
+    const addLogs = logs.filter(l => l.type === 'POINTS' && l.details.action === 'ADD');
+    const removeLogs = logs.filter(l => l.type === 'POINTS' && l.details.action === 'REMOVE');
+
+    const xpGained = addLogs.reduce((sum, l) => sum + getLogMetric(l, 'XP'), 0);
+    const xpLost = removeLogs.reduce((sum, l) => sum + getLogMetric(l, 'XP'), 0);
+    const hpGained = addLogs.reduce((sum, l) => sum + getLogMetric(l, 'HP'), 0);
+    const hpLost = removeLogs.reduce((sum, l) => sum + getLogMetric(l, 'HP'), 0);
+    const gpGained = addLogs.reduce((sum, l) => sum + getLogMetric(l, 'GP'), 0);
+    const gpSpent = logs.filter(l => l.type === 'PURCHASE').reduce((sum, l) => sum + (l.details.totalPrice || 0), 0);
+
+    const positiveBehaviors = addLogs.length;
+    const negativeBehaviors = removeLogs.length;
+    const badges = logs.filter(l => l.type === 'BADGE').length;
+    const attendance = logs.filter(l => l.type === 'ATTENDANCE');
+    const presentDays = attendance.filter(l => l.details.attendanceStatus === 'PRESENT' || l.details.attendanceStatus === 'LATE').length;
+    const totalAttendance = attendance.length;
+
+    return { xpGained, xpLost, hpGained, hpLost, gpGained, gpSpent, positiveBehaviors, negativeBehaviors, badges, presentDays, totalAttendance };
   }, [historyData]);
+
+  // Top 5 comportamientos más frecuentes
+  const topBehaviors = useMemo(() => {
+    if (!historyData?.logs) return [];
+    const behaviorCounts = new Map<string, { name: string; count: number; isPositive: boolean }>();
+
+    for (const log of historyData.logs) {
+      if (log.type !== 'POINTS' || !log.details.reason) continue;
+      const key = `${log.details.reason}-${log.details.action}`;
+      const existing = behaviorCounts.get(key);
+      if (existing) {
+        existing.count++;
+      } else {
+        behaviorCounts.set(key, { name: log.details.reason, count: 1, isPositive: log.details.action === 'ADD' });
+      }
+    }
+
+    return Array.from(behaviorCounts.values()).sort((a, b) => b.count - a.count).slice(0, 5);
+  }, [historyData]);
+
+  const chartColor = chartMetric === 'XP' ? '#8b5cf6' : chartMetric === 'HP' ? '#ef4444' : '#f59e0b';
 
   // Datos para gráfico de actividad
   const activityChartData = useMemo(() => {
     if (!historyData?.logs) return [];
-    
-    const days = 14;
+
     const now = new Date();
-    const data: { date: string; xp: number }[] = [];
-    
-    for (let i = days - 1; i >= 0; i--) {
+    const data: { date: string; value: number }[] = [];
+
+    for (let i = chartDays - 1; i >= 0; i--) {
       const date = new Date(now);
       date.setDate(date.getDate() - i);
       const dateStr = date.toISOString().split('T')[0];
-      
+
       const dayLogs = historyData.logs.filter(log => {
         const logDate = new Date(log.timestamp).toISOString().split('T')[0];
         return logDate === dateStr;
       });
-      
-      const xp = dayLogs
-        .filter(l => l.type === 'POINTS' && l.details.pointType === 'XP')
-        .reduce((sum, l) => {
-          const amount = l.details.amount || 0;
-          return sum + (l.details.action === 'ADD' ? amount : -amount);
-        }, 0);
-      
+
+      const value = dayLogs.reduce((sum, l) => {
+        const amount = getLogMetric(l, chartMetric);
+        if (amount === 0) return sum;
+        return sum + (l.details.action === 'ADD' ? amount : -amount);
+      }, 0);
+
       data.push({
         date: date.toLocaleDateString('es', { day: 'numeric', month: 'short' }),
-        xp,
+        value,
       });
     }
-    
+
     return data;
-  }, [historyData]);
+  }, [historyData, chartMetric, chartDays]);
 
   // Filtrar y paginar historial
   const filteredHistory = useMemo(() => {
     if (!historyData?.logs) return [];
     if (historyFilter === 'ALL') return historyData.logs;
     if (historyFilter === 'XP') {
-      return historyData.logs.filter(l => l.type === 'POINTS' && l.details.pointType === 'XP');
+      return historyData.logs.filter(l => l.type === 'POINTS' &&
+        (l.details.pointType === 'XP' || (l.details.pointType === 'MIXED' && l.details.xpAmount)));
     }
     if (historyFilter === 'GP') {
-      return historyData.logs.filter(l => l.type === 'POINTS' && l.details.pointType === 'GP');
+      return historyData.logs.filter(l => l.type === 'POINTS' &&
+        (l.details.pointType === 'GP' || (l.details.pointType === 'MIXED' && l.details.gpAmount)));
     }
     if (historyFilter === 'HP') {
-      return historyData.logs.filter(l => l.type === 'POINTS' && l.details.pointType === 'HP');
+      return historyData.logs.filter(l => l.type === 'POINTS' &&
+        (l.details.pointType === 'HP' || (l.details.pointType === 'MIXED' && l.details.hpAmount)));
     }
+    if (historyFilter === 'BADGE') return historyData.logs.filter(l => l.type === 'BADGE');
+    if (historyFilter === 'ATTENDANCE') return historyData.logs.filter(l => l.type === 'ATTENDANCE');
     return historyData.logs.filter(l => l.type === historyFilter);
   }, [historyData, historyFilter]);
 
@@ -218,6 +262,8 @@ export const StudentDetailPage = () => {
     { id: 'HP', label: 'Salud', icon: <Heart size={14} />, color: 'red' },
     { id: 'PURCHASE', label: 'Compras', icon: <ShoppingBag size={14} />, color: 'blue' },
     { id: 'LEVEL_UP', label: 'Niveles', icon: <Star size={14} />, color: 'purple' },
+    { id: 'BADGE', label: 'Insignias', icon: <Award size={14} />, color: 'amber' },
+    { id: 'ATTENDANCE', label: 'Asistencia', icon: <CalendarCheck size={14} />, color: 'cyan' },
   ];
 
   if (isLoading) {
@@ -476,8 +522,8 @@ export const StudentDetailPage = () => {
         </Card>
       </div>
 
-      {/* Estadísticas y Gráficos */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Estadísticas y Análisis */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Resumen de actividad */}
         <Card className="p-5">
           <div className="flex items-center gap-2 mb-4">
@@ -486,76 +532,199 @@ export const StudentDetailPage = () => {
             </div>
             <h3 className="font-bold text-gray-800 dark:text-white">Resumen</h3>
           </div>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-3 bg-emerald-50 dark:bg-emerald-900/30 rounded-lg">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-emerald-600" />
-                <span className="text-sm text-gray-600 dark:text-gray-300">XP Ganado</span>
+
+          {/* Barra positivos vs negativos */}
+          {((stats?.positiveBehaviors || 0) + (stats?.negativeBehaviors || 0)) > 0 && (
+            <div className="mb-4">
+              <div className="flex items-center justify-between text-sm mb-2">
+                <span className="text-emerald-600 font-medium flex items-center gap-1">
+                  <TrendingUp className="w-3.5 h-3.5" /> Positivos: {stats?.positiveBehaviors || 0}
+                </span>
+                <span className="text-red-500 font-medium flex items-center gap-1">
+                  Negativos: {stats?.negativeBehaviors || 0} <TrendingDown className="w-3.5 h-3.5" />
+                </span>
               </div>
-              <span className="font-bold text-emerald-600">+{stats?.xpGained || 0}</span>
+              <div className="flex h-3 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-700">
+                <div
+                  className="bg-emerald-400 transition-all"
+                  style={{ width: `${((stats?.positiveBehaviors || 0) / ((stats?.positiveBehaviors || 0) + (stats?.negativeBehaviors || 0))) * 100}%` }}
+                />
+                <div
+                  className="bg-red-400 transition-all"
+                  style={{ width: `${((stats?.negativeBehaviors || 0) / ((stats?.positiveBehaviors || 0) + (stats?.negativeBehaviors || 0))) * 100}%` }}
+                />
+              </div>
             </div>
-            <div className="flex items-center justify-between p-3 bg-red-50 dark:bg-red-900/30 rounded-lg">
+          )}
+
+          <div className="space-y-2">
+            {/* XP */}
+            <div className="flex items-center justify-between p-2.5 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
               <div className="flex items-center gap-2">
-                <TrendingDown className="w-5 h-5 text-red-600" />
-                <span className="text-sm text-gray-600 dark:text-gray-300">XP Perdido</span>
+                <Zap className="w-4 h-4 text-emerald-500" />
+                <span className="text-sm text-gray-600 dark:text-gray-300">XP</span>
               </div>
-              <span className="font-bold text-red-600">-{stats?.xpLost || 0}</span>
+              <div className="text-sm">
+                <span className="font-bold text-emerald-600">+{stats?.xpGained || 0}</span>
+                <span className="text-gray-400 mx-1">/</span>
+                <span className="font-bold text-red-500">-{stats?.xpLost || 0}</span>
+              </div>
             </div>
-            <div className="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-900/30 rounded-lg">
+            {/* HP */}
+            <div className="flex items-center justify-between p-2.5 bg-rose-50 dark:bg-rose-900/20 rounded-lg">
               <div className="flex items-center gap-2">
-                <ShoppingBag className="w-5 h-5 text-amber-600" />
-                <span className="text-sm text-gray-600 dark:text-gray-300">Compras</span>
+                <Heart className="w-4 h-4 text-rose-500" />
+                <span className="text-sm text-gray-600 dark:text-gray-300">Salud</span>
               </div>
-              <span className="font-bold text-amber-600">{stats?.purchases || 0}</span>
+              <div className="text-sm">
+                <span className="font-bold text-emerald-600">+{stats?.hpGained || 0}</span>
+                <span className="text-gray-400 mx-1">/</span>
+                <span className="font-bold text-red-500">-{stats?.hpLost || 0}</span>
+              </div>
             </div>
-            <div className="flex items-center justify-between p-3 bg-purple-50 dark:bg-purple-900/30 rounded-lg">
+            {/* GP */}
+            <div className="flex items-center justify-between p-2.5 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
               <div className="flex items-center gap-2">
-                <Award className="w-5 h-5 text-purple-600" />
-                <span className="text-sm text-gray-600 dark:text-gray-300">Comportamientos</span>
+                <Coins className="w-4 h-4 text-amber-500" />
+                <span className="text-sm text-gray-600 dark:text-gray-300">Oro</span>
               </div>
-              <span className="font-bold text-purple-600">{stats?.behaviors || 0}</span>
+              <div className="text-sm">
+                <span className="font-bold text-amber-600">+{stats?.gpGained || 0}</span>
+                <span className="text-gray-400 mx-1">/</span>
+                <span className="font-bold text-red-500">-{stats?.gpSpent || 0}</span>
+              </div>
+            </div>
+            {/* Insignias y Asistencia */}
+            <div className="flex gap-2 pt-1">
+              <div className="flex-1 flex items-center gap-2 p-2.5 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+                <Trophy className="w-4 h-4 text-purple-500" />
+                <span className="text-sm text-gray-600 dark:text-gray-300">Insignias</span>
+                <span className="ml-auto font-bold text-purple-600">{stats?.badges || 0}</span>
+              </div>
+              {(stats?.totalAttendance || 0) > 0 && (
+                <div className="flex-1 flex items-center gap-2 p-2.5 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                  <CalendarCheck className="w-4 h-4 text-blue-500" />
+                  <span className="text-sm text-gray-600 dark:text-gray-300">Asistencia</span>
+                  <span className="ml-auto font-bold text-blue-600">{stats?.presentDays}/{stats?.totalAttendance}</span>
+                </div>
+              )}
             </div>
           </div>
         </Card>
 
-        {/* Gráfico de actividad */}
-        <Card className="p-5 lg:col-span-2">
+        {/* Top comportamientos */}
+        <Card className="p-5">
           <div className="flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 bg-gradient-to-br from-orange-400 to-rose-500 rounded-lg flex items-center justify-center">
+              <Award className="w-4 h-4 text-white" />
+            </div>
+            <h3 className="font-bold text-gray-800 dark:text-white">Comportamientos frecuentes</h3>
+          </div>
+          {topBehaviors.length === 0 ? (
+            <div className="text-center py-8 text-gray-400">
+              <Award className="w-12 h-12 mx-auto mb-2 opacity-50" />
+              <p className="text-sm">Sin comportamientos registrados</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {topBehaviors.map((b, i) => {
+                const maxCount = topBehaviors[0]?.count || 1;
+                const barWidth = (b.count / maxCount) * 100;
+                return (
+                  <div key={i}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm text-gray-700 dark:text-gray-200 truncate mr-2">{b.name}</span>
+                      <span className={`text-sm font-bold shrink-0 ${b.isPositive ? 'text-emerald-600' : 'text-red-500'}`}>
+                        {b.count}×
+                      </span>
+                    </div>
+                    <div className="h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${b.isPositive ? 'bg-emerald-400' : 'bg-red-400'}`}
+                        style={{ width: `${barWidth}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* Gráfico de actividad */}
+      <Card className="p-5">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+          <div className="flex items-center gap-2">
             <div className="w-8 h-8 bg-gradient-to-br from-purple-400 to-pink-500 rounded-lg flex items-center justify-center">
               <Activity className="w-4 h-4 text-white" />
             </div>
-            <h3 className="font-bold text-gray-800 dark:text-white">Actividad de XP (últimos 14 días)</h3>
+            <h3 className="font-bold text-gray-800 dark:text-white">Actividad</h3>
           </div>
-          <div className="h-64">
-            {activityChartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={activityChartData}>
-                  <defs>
-                    <linearGradient id="colorXp" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="#9ca3af" />
-                  <YAxis tick={{ fontSize: 11 }} stroke="#9ca3af" />
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                  />
-                  <Area type="monotone" dataKey="xp" stroke="#8b5cf6" fillOpacity={1} fill="url(#colorXp)" name="XP" />
-                </AreaChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full flex items-center justify-center text-gray-400">
-                <div className="text-center">
-                  <Calendar className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">Sin datos de actividad</p>
-                </div>
+          <div className="flex items-center gap-3">
+            <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5">
+              {(['XP', 'HP', 'GP'] as const).map(m => (
+                <button
+                  key={m}
+                  onClick={() => setChartMetric(m)}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                    chartMetric === m
+                      ? m === 'XP' ? 'bg-purple-500 text-white'
+                        : m === 'HP' ? 'bg-rose-500 text-white'
+                        : 'bg-amber-500 text-white'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'
+                  }`}
+                >
+                  {m}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5">
+              {([7, 14, 30] as const).map(d => (
+                <button
+                  key={d}
+                  onClick={() => setChartDays(d)}
+                  className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${
+                    chartDays === d
+                      ? 'bg-white dark:bg-gray-600 text-gray-800 dark:text-white shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'
+                  }`}
+                >
+                  {d}d
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="h-64">
+          {activityChartData.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={activityChartData}>
+                <defs>
+                  <linearGradient id="colorChart" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={chartColor} stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor={chartColor} stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="#9ca3af" />
+                <YAxis tick={{ fontSize: 11 }} stroke="#9ca3af" />
+                <Tooltip
+                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                />
+                <Area type="monotone" dataKey="value" stroke={chartColor} fillOpacity={1} fill="url(#colorChart)" name={chartMetric} />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-full flex items-center justify-center text-gray-400">
+              <div className="text-center">
+                <Calendar className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">Sin datos de actividad</p>
               </div>
-            )}
-          </div>
-        </Card>
-      </div>
+            </div>
+          )}
+        </div>
+      </Card>
 
       {/* Historial de actividad con filtros y paginación */}
       <Card className="p-5">
@@ -604,25 +773,75 @@ export const StudentDetailPage = () => {
                     activity.type === 'POINTS' && activity.details.action === 'ADD' ? 'bg-emerald-100 dark:bg-emerald-900/30' :
                     activity.type === 'POINTS' && activity.details.action === 'REMOVE' ? 'bg-red-100 dark:bg-red-900/30' :
                     activity.type === 'PURCHASE' ? 'bg-amber-100 dark:bg-amber-900/30' :
+                    activity.type === 'BADGE' ? 'bg-yellow-100 dark:bg-yellow-900/30' :
+                    activity.type === 'ATTENDANCE' ? 'bg-blue-100 dark:bg-blue-900/30' :
+                    activity.type === 'ITEM_USED' ? 'bg-indigo-100 dark:bg-indigo-900/30' :
                     'bg-purple-100 dark:bg-purple-900/30'
                   }`}>
                     {activity.type === 'POINTS' && activity.details.action === 'ADD' && <TrendingUp className="w-5 h-5 text-emerald-600" />}
                     {activity.type === 'POINTS' && activity.details.action === 'REMOVE' && <TrendingDown className="w-5 h-5 text-red-600" />}
                     {activity.type === 'PURCHASE' && <ShoppingBag className="w-5 h-5 text-amber-600" />}
                     {activity.type === 'LEVEL_UP' && <Star className="w-5 h-5 text-purple-600" />}
+                    {activity.type === 'BADGE' && <Award className="w-5 h-5 text-yellow-600" />}
+                    {activity.type === 'ATTENDANCE' && <CalendarCheck className="w-5 h-5 text-blue-600" />}
+                    {activity.type === 'ITEM_USED' && <Sparkles className="w-5 h-5 text-indigo-600" />}
                   </div>
                   <div className="flex-1">
                     <p className="text-sm text-gray-700 dark:text-gray-200">
-                      {activity.type === 'POINTS' && (
+                      {activity.type === 'POINTS' && activity.details.pointType !== 'MIXED' && (
                         <>
-                          <span className={activity.details.action === 'ADD' ? 'text-emerald-600' : 'text-red-600'}>
+                          <span className={activity.details.action === 'ADD' ? 'text-emerald-600 font-medium' : 'text-red-500 font-medium'}>
                             {activity.details.action === 'ADD' ? '+' : '-'}{activity.details.amount} {activity.details.pointType}
                           </span>
                           {activity.details.reason && <span className="text-gray-500"> - {activity.details.reason}</span>}
                         </>
                       )}
-                      {activity.type === 'PURCHASE' && `Compró ${activity.details.itemName}`}
-                      {activity.type === 'LEVEL_UP' && `Subió al nivel ${activity.details.newLevel}`}
+                      {activity.type === 'POINTS' && activity.details.pointType === 'MIXED' && (
+                        <>
+                          {[
+                            activity.details.xpAmount && { amount: activity.details.xpAmount, type: 'XP', color: activity.details.action === 'ADD' ? 'text-emerald-600' : 'text-red-500' },
+                            activity.details.hpAmount && { amount: activity.details.hpAmount, type: 'HP', color: activity.details.action === 'ADD' ? 'text-rose-500' : 'text-red-500' },
+                            activity.details.gpAmount && { amount: activity.details.gpAmount, type: 'GP', color: activity.details.action === 'ADD' ? 'text-amber-600' : 'text-red-500' },
+                          ].filter(Boolean).map((p: any, i: number) => (
+                            <span key={i}>
+                              {i > 0 && <span className="text-gray-400">, </span>}
+                              <span className={`${p.color} font-medium`}>{activity.details.action === 'ADD' ? '+' : '-'}{p.amount} {p.type}</span>
+                            </span>
+                          ))}
+                          {activity.details.reason && <span className="text-gray-500"> - {activity.details.reason}</span>}
+                        </>
+                      )}
+                      {activity.type === 'PURCHASE' && (
+                        <>
+                          Compró {activity.details.itemName}
+                          {activity.details.totalPrice ? <span className="text-amber-600 ml-1">(-{activity.details.totalPrice} GP)</span> : null}
+                        </>
+                      )}
+                      {activity.type === 'LEVEL_UP' && <span className="text-purple-600 font-medium">⭐ Subió al nivel {activity.details.newLevel}</span>}
+                      {activity.type === 'BADGE' && (
+                        <span className="text-yellow-700 dark:text-yellow-400 font-medium">
+                          {activity.details.badgeIcon || '🏆'} Insignia: {activity.details.badgeName}
+                        </span>
+                      )}
+                      {activity.type === 'ATTENDANCE' && (
+                        <span className={
+                          activity.details.attendanceStatus === 'PRESENT' ? 'text-emerald-600' :
+                          activity.details.attendanceStatus === 'LATE' ? 'text-amber-600' :
+                          activity.details.attendanceStatus === 'ABSENT' ? 'text-red-600' :
+                          'text-blue-600'
+                        }>
+                          Asistencia: {
+                            activity.details.attendanceStatus === 'PRESENT' ? 'Presente' :
+                            activity.details.attendanceStatus === 'ABSENT' ? 'Ausente' :
+                            activity.details.attendanceStatus === 'LATE' ? 'Tardanza' :
+                            activity.details.attendanceStatus === 'EXCUSED' ? 'Justificado' :
+                            activity.details.attendanceStatus
+                          }
+                        </span>
+                      )}
+                      {activity.type === 'ITEM_USED' && (
+                        <span className="text-indigo-600">Usó {activity.details.itemName}</span>
+                      )}
                     </p>
                     <p className="text-xs text-gray-400">
                       {new Date(activity.timestamp).toLocaleDateString('es', { 

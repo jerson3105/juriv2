@@ -19,9 +19,15 @@ import {
   FileCheck,
   Package,
   MoreHorizontal,
+  Monitor,
+  Pause,
+  Play,
+  SkipForward,
+  Timer,
 } from 'lucide-react';
 import { StudentAvatarMini } from '../avatar/StudentAvatarMini';
 import type { AvatarGender } from '../../lib/avatarApi';
+import { useCharacterClasses } from '../../hooks/useCharacterClasses';
 import { CLAN_EMBLEMS } from '../../lib/clanApi';
 import { classNoteApi } from '../../lib/classNoteApi';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -33,6 +39,11 @@ interface StudentData {
   realLastName: string | null;
   avatarGender: 'MALE' | 'FEMALE';
   characterClass: string;
+  characterClassId?: string | null;
+  level: number;
+  xp: number;
+  hp: number;
+  gp: number;
   teamId?: string | null;
   clanName?: string | null;
   clanColor?: string | null;
@@ -48,7 +59,7 @@ interface ClassroomUtilitiesProps {
   classroomId: string;
 }
 
-type ActiveTool = null | 'random' | 'groups' | 'announcement' | 'notes';
+type ActiveTool = null | 'random' | 'groups' | 'announcement' | 'notes' | 'showcase';
 
 const getDisplayName = (student: StudentData, showCharacterName: boolean) => {
   if (!showCharacterName) {
@@ -111,6 +122,16 @@ const ToolSelector = ({
       border: 'border-emerald-200 dark:border-emerald-800',
       hover: 'hover:border-emerald-400 dark:hover:border-emerald-600',
       badge: pendingNotesCount,
+    },
+    {
+      id: 'showcase' as const,
+      icon: Monitor,
+      title: 'Desfile de Héroes',
+      description: 'Muestra los personajes de tus estudiantes en pantalla completa',
+      gradient: 'from-pink-500 to-rose-600',
+      bg: 'bg-pink-50 dark:bg-pink-900/20',
+      border: 'border-pink-200 dark:border-pink-800',
+      hover: 'hover:border-pink-400 dark:hover:border-pink-600',
     },
   ];
 
@@ -892,6 +913,343 @@ const ClassNotes = ({
   );
 };
 
+// ─── Hero Showcase (Desfile de Héroes) ───────────────────────────────
+const SPEED_OPTIONS = [
+  { label: '4s', value: 4000 },
+  { label: '6s', value: 6000 },
+  { label: '8s', value: 8000 },
+];
+
+const HeroShowcase = ({
+  students,
+  showCharacterName,
+  classroomId,
+  onClose,
+}: {
+  students: StudentData[];
+  showCharacterName: boolean;
+  classroomId: string;
+  onClose: () => void;
+}) => {
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const [isRandom, setIsRandom] = useState(false);
+  const [speedIdx, setSpeedIdx] = useState(1); // default 6s
+  const [order, setOrder] = useState<number[]>([]);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { classMap } = useCharacterClasses(classroomId);
+
+  // Build display order
+  useEffect(() => {
+    if (students.length === 0) return;
+    if (isRandom) {
+      const indices = students.map((_, i) => i);
+      for (let i = indices.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [indices[i], indices[j]] = [indices[j], indices[i]];
+      }
+      setOrder(indices);
+    } else {
+      setOrder(students.map((_, i) => i));
+    }
+    setCurrentIndex(0);
+  }, [students, isRandom]);
+
+  // Auto-advance timer
+  useEffect(() => {
+    if (isPaused || students.length === 0 || order.length === 0) return;
+    timerRef.current = setTimeout(() => {
+      setCurrentIndex((prev) => (prev + 1) % order.length);
+    }, SPEED_OPTIONS[speedIdx].value);
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [currentIndex, isPaused, speedIdx, order, students.length]);
+
+  const goNext = () => {
+    if (order.length === 0) return;
+    setCurrentIndex((prev) => (prev + 1) % order.length);
+  };
+
+  if (students.length === 0) {
+    return (
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 bg-gradient-to-br from-gray-900 via-pink-900 to-rose-900 flex flex-col items-center justify-center z-[9999]"
+      >
+        <p className="text-white text-xl">No hay estudiantes en la clase</p>
+        <button onClick={onClose} className="mt-4 px-6 py-3 bg-white/20 text-white rounded-xl hover:bg-white/30 transition-colors">
+          Cerrar
+        </button>
+      </motion.div>
+    );
+  }
+
+  const student = students[order[currentIndex] ?? 0];
+  if (!student) return null;
+
+  const classInfo = classMap[student.characterClassId!] || classMap[student.characterClass];
+  const xpForNextLevel = student.level * 100;
+  const xpProgress = Math.min((student.xp / xpForNextLevel) * 100, 100);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-gradient-to-br from-gray-900 via-slate-800 to-gray-900 flex flex-col items-center justify-center z-[9999] overflow-hidden"
+    >
+      {/* Floating particles background */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {Array.from({ length: 20 }).map((_, i) => (
+          <motion.div
+            key={i}
+            className="absolute w-1 h-1 bg-white/20 rounded-full"
+            style={{
+              left: `${Math.random() * 100}%`,
+              top: `${Math.random() * 100}%`,
+            }}
+            animate={{
+              y: [0, -30, 0],
+              opacity: [0.1, 0.4, 0.1],
+              scale: [1, 1.5, 1],
+            }}
+            transition={{
+              duration: 3 + Math.random() * 4,
+              repeat: Infinity,
+              delay: Math.random() * 3,
+              ease: 'easeInOut',
+            }}
+          />
+        ))}
+      </div>
+
+      {/* Decorative corners */}
+      <div className="absolute top-6 left-6 w-14 h-14 border-t-4 border-l-4 border-pink-400/40 rounded-tl-xl" />
+      <div className="absolute top-6 right-6 w-14 h-14 border-t-4 border-r-4 border-pink-400/40 rounded-tr-xl" />
+      <div className="absolute bottom-20 left-6 w-14 h-14 border-b-4 border-l-4 border-pink-400/40 rounded-bl-xl" />
+      <div className="absolute bottom-20 right-6 w-14 h-14 border-b-4 border-r-4 border-pink-400/40 rounded-br-xl" />
+
+      {/* Counter */}
+      <div className="absolute top-5 left-1/2 -translate-x-1/2">
+        <span className="text-white/30 text-xs font-medium tracking-widest uppercase">
+          {currentIndex + 1} / {order.length}
+        </span>
+      </div>
+
+      {/* Close button */}
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 p-3 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors z-10"
+      >
+        <X size={24} />
+      </button>
+
+      {/* Hero Card */}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={student.id}
+          initial={{ opacity: 0, x: 80, scale: 0.9 }}
+          animate={{ opacity: 1, x: 0, scale: 1 }}
+          exit={{ opacity: 0, x: -80, scale: 0.9 }}
+          transition={{ type: 'spring', damping: 20, stiffness: 200 }}
+          className="flex flex-col md:flex-row items-center gap-6 md:gap-10 px-4"
+        >
+          {/* Avatar */}
+          <motion.div
+            initial={{ y: 30, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.1, type: 'spring', damping: 15 }}
+            className="relative"
+          >
+            <div
+              className="w-44 h-72 sm:w-52 sm:h-[364px] rounded-3xl overflow-hidden backdrop-blur-sm border-4 flex items-end justify-center"
+              style={{
+                borderColor: classInfo?.color || '#ec4899',
+                boxShadow: `0 0 50px ${classInfo?.color || '#ec4899'}30`,
+                background: `linear-gradient(135deg, ${classInfo?.color || '#ec4899'}15, transparent)`,
+              }}
+            >
+              <StudentAvatarMini
+                studentProfileId={student.id}
+                gender={student.avatarGender as AvatarGender}
+                size="lg"
+              />
+            </div>
+            {/* Level badge */}
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.3, type: 'spring', damping: 10, stiffness: 250 }}
+              className="absolute -top-3 -right-3 w-14 h-14 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg ring-4 ring-gray-900"
+            >
+              <div className="text-center">
+                <p className="text-[10px] font-medium text-amber-900 leading-none">Nv</p>
+                <p className="text-lg font-black text-white leading-none">{student.level}</p>
+              </div>
+            </motion.div>
+          </motion.div>
+
+          {/* Info Card */}
+          <motion.div
+            initial={{ y: 30, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.2, type: 'spring', damping: 15 }}
+            className="flex flex-col items-center md:items-start gap-4 min-w-[260px]"
+          >
+            {/* Name */}
+            <div className="text-center md:text-left">
+              <motion.h2
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.25 }}
+                className="text-3xl sm:text-4xl font-black text-white drop-shadow-lg"
+              >
+                {getDisplayName(student, showCharacterName)}
+              </motion.h2>
+              {/* Class info */}
+              {classInfo && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.35 }}
+                  className="flex items-center gap-2 mt-2 justify-center md:justify-start"
+                >
+                  <span className="text-2xl">{classInfo.icon}</span>
+                  <span className="text-lg font-semibold" style={{ color: classInfo.color }}>
+                    {classInfo.name}
+                  </span>
+                </motion.div>
+              )}
+            </div>
+
+            {/* Stats */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+              className="w-full space-y-3 bg-white/5 backdrop-blur-sm rounded-2xl p-5 border border-white/10"
+            >
+              {/* XP Bar */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-semibold text-indigo-300 uppercase tracking-wider">Experiencia</span>
+                  <span className="text-xs text-white/50">{student.xp} / {xpForNextLevel} XP</span>
+                </div>
+                <div className="h-3 bg-white/10 rounded-full overflow-hidden">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${xpProgress}%` }}
+                    transition={{ delay: 0.6, duration: 0.8, ease: 'easeOut' }}
+                    className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full"
+                  />
+                </div>
+              </div>
+
+              {/* HP & GP */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-white/5 rounded-xl p-3 text-center">
+                  <p className="text-xs text-red-300 font-semibold uppercase tracking-wider mb-1">❤️ Vida</p>
+                  <p className="text-2xl font-black text-white">{student.hp}</p>
+                </div>
+                <div className="bg-white/5 rounded-xl p-3 text-center">
+                  <p className="text-xs text-amber-300 font-semibold uppercase tracking-wider mb-1">🪙 Oro</p>
+                  <p className="text-2xl font-black text-white">{student.gp}</p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Clan */}
+            {student.clanName && (
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.55, type: 'spring', damping: 15 }}
+                className="flex items-center gap-3 bg-white/5 backdrop-blur-sm rounded-xl px-4 py-3 border border-white/10 w-full"
+              >
+                <motion.span
+                  animate={{ scale: [1, 1.1, 1] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                  className="text-2xl"
+                >
+                  {CLAN_EMBLEMS[student.clanEmblem || 'shield'] || '🛡️'}
+                </motion.span>
+                <div>
+                  <p className="text-sm font-bold text-white">{student.clanName}</p>
+                  {student.clanMotto && (
+                    <p className="text-[11px] text-white/50 italic">"{student.clanMotto}"</p>
+                  )}
+                </div>
+                {student.clanColor && (
+                  <div
+                    className="ml-auto w-4 h-4 rounded-full ring-2 ring-white/20"
+                    style={{ backgroundColor: student.clanColor }}
+                  />
+                )}
+              </motion.div>
+            )}
+          </motion.div>
+        </motion.div>
+      </AnimatePresence>
+
+      {/* Bottom Controls */}
+      <motion.div
+        initial={{ y: 40, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.3 }}
+        className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white/10 backdrop-blur-md rounded-2xl px-4 py-2 border border-white/10"
+      >
+        {/* Pause / Play */}
+        <button
+          onClick={() => setIsPaused(!isPaused)}
+          className="p-2.5 hover:bg-white/10 rounded-xl text-white transition-colors"
+          title={isPaused ? 'Reanudar' : 'Pausar'}
+        >
+          {isPaused ? <Play size={18} /> : <Pause size={18} />}
+        </button>
+
+        <div className="w-px h-6 bg-white/20" />
+
+        {/* Next */}
+        <button
+          onClick={goNext}
+          className="p-2.5 hover:bg-white/10 rounded-xl text-white transition-colors"
+          title="Siguiente"
+        >
+          <SkipForward size={18} />
+        </button>
+
+        <div className="w-px h-6 bg-white/20" />
+
+        {/* Random toggle */}
+        <button
+          onClick={() => setIsRandom(!isRandom)}
+          className={`p-2.5 rounded-xl transition-colors ${
+            isRandom ? 'bg-pink-500/30 text-pink-300' : 'hover:bg-white/10 text-white/60'
+          }`}
+          title={isRandom ? 'Orden secuencial' : 'Orden aleatorio'}
+        >
+          <Shuffle size={18} />
+        </button>
+
+        <div className="w-px h-6 bg-white/20" />
+
+        {/* Speed */}
+        <button
+          onClick={() => setSpeedIdx((prev) => (prev + 1) % SPEED_OPTIONS.length)}
+          className="flex items-center gap-1.5 px-3 py-2 hover:bg-white/10 rounded-xl text-white/70 text-xs font-medium transition-colors"
+          title="Velocidad"
+        >
+          <Timer size={14} />
+          {SPEED_OPTIONS[speedIdx].label}
+        </button>
+      </motion.div>
+    </motion.div>
+  );
+};
+
 // ─── Main Component ──────────────────────────────────────────────────
 export const ClassroomUtilities = ({
   isOpen,
@@ -964,6 +1322,17 @@ export const ClassroomUtilities = ({
       <AnimatePresence>
         {activeTool === 'notes' && (
           <ClassNotes key="notes" classroomId={classroomId} onClose={handleToolClose} />
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {activeTool === 'showcase' && (
+          <HeroShowcase
+            key="showcase"
+            students={students}
+            showCharacterName={showCharacterName}
+            classroomId={classroomId}
+            onClose={handleToolClose}
+          />
         )}
       </AnimatePresence>
     </>,
