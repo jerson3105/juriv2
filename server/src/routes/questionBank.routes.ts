@@ -44,4 +44,7 @@ router.post('/question/:questionId/check', authorize('TEACHER'), questionBankCon
 router.post('/generate-ai', authorize('TEACHER'), questionBankController.generateWithAI.bind(questionBankController));
 router.post('/generate-from-pdf', authorize('TEACHER'), pdfUpload.single('pdf'), questionBankController.generateFromPDF.bind(questionBankController));
 
+// Exportar bancos a otras clases
+router.post('/export', authorize('TEACHER'), questionBankController.exportBanks.bind(questionBankController));
+
 export default router;

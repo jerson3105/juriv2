@@ -518,11 +518,12 @@ EJEMPLOS POR TIPO:
 - MATCHING: MATCHING,MEDIUM,25,"Relaciona cada país con su capital",,,"[{""left"":""España"",""right"":""Madrid""},{""left"":""Italia"",""right"":""Roma""},{""left"":""Alemania"",""right"":""Berlín""}]","Las capitales son las ciudades principales de cada país",40
 
 IMPORTANTE:
+- Cada fila DEBE tener EXACTAMENTE 9 columnas separadas por comas (type,difficulty,points,questionText,options,correctAnswer,pairs,explanation,timeLimitSeconds)
+- La columna "explanation" es OBLIGATORIA en TODAS las preguntas. NUNCA la dejes vacía. Siempre incluye una explicación educativa de al menos 10 palabras que ayude al estudiante a entender la respuesta
 - Las comillas dentro del JSON deben ser dobles ("")
 - Para SINGLE_CHOICE solo una opción debe tener isCorrect:true
 - Para MULTIPLE_CHOICE puede haber múltiples opciones correctas
 - Para MATCHING genera al menos 3 pares
-- Incluye explicaciones educativas en cada pregunta
 - Varía la dificultad si no se especifica una única
 - Los puntos deben ser: EASY=10, MEDIUM=15-20, HARD=25-30
 
@@ -544,14 +545,17 @@ Genera ${quantity} preguntas variadas y educativas:`;
         contents: prompt,
       });
 
-      const csvText = response.text || '';
+      let csvText = (response.text || '').trim();
 
-      if (!csvText.trim()) {
+      if (!csvText) {
         return res.status(500).json({
           success: false,
           message: 'La IA no genero contenido'
         });
       }
+
+      // Limpiar bloques markdown que Gemini a veces agrega
+      csvText = csvText.replace(/^```(?:csv|CSV)?\s*\n?/gm, '').replace(/```\s*$/gm, '').trim();
 
       res.json({
         success: true,
@@ -620,11 +624,12 @@ EJEMPLOS POR TIPO:
 - MATCHING: MATCHING,MEDIUM,25,"Relaciona cada país con su capital",,,"[{""left"":""España"",""right"":""Madrid""},{""left"":""Italia"",""right"":""Roma""},{""left"":""Alemania"",""right"":""Berlín""}]","Las capitales son las ciudades principales de cada país",40
 
 IMPORTANTE:
+- Cada fila DEBE tener EXACTAMENTE 9 columnas separadas por comas (type,difficulty,points,questionText,options,correctAnswer,pairs,explanation,timeLimitSeconds)
+- La columna "explanation" es OBLIGATORIA en TODAS las preguntas. NUNCA la dejes vacía. Siempre incluye una explicación educativa de al menos 10 palabras que ayude al estudiante a entender la respuesta
 - Las comillas dentro del JSON deben ser dobles ("")
 - Para SINGLE_CHOICE solo una opción debe tener isCorrect:true
 - Para MULTIPLE_CHOICE puede haber múltiples opciones correctas
 - Para MATCHING genera al menos 3 pares
-- Incluye explicaciones educativas en cada pregunta
 - Varía la dificultad si no se especifica una única
 - Los puntos deben ser: EASY=10, MEDIUM=15-20, HARD=25-30
 
@@ -664,14 +669,17 @@ Genera ${quantity} preguntas variadas y educativas basadas en el documento:`;
         ],
       });
 
-      const csvText = response.text || '';
+      let csvText = (response.text || '').trim();
 
-      if (!csvText.trim()) {
+      if (!csvText) {
         return res.status(500).json({
           success: false,
           message: 'La IA no generó contenido a partir del PDF'
         });
       }
+
+      // Limpiar bloques markdown que Gemini a veces agrega
+      csvText = csvText.replace(/^```(?:csv|CSV)?\s*\n?/gm, '').replace(/```\s*$/gm, '').trim();
 
       res.json({
         success: true,
@@ -683,6 +691,46 @@ Genera ${quantity} preguntas variadas y educativas basadas en el documento:`;
 
     } catch (error) {
       handleControllerError(res, error, 'Error al generar preguntas desde PDF');
+    }
+  }
+
+  // Exportar bancos a otras clases
+  async exportBanks(req: Request, res: Response) {
+    try {
+      const schema = z.object({
+        bankIds: z.array(z.string()).min(1, 'Selecciona al menos un banco'),
+        targetClassroomIds: z.array(z.string()).min(1, 'Selecciona al menos una clase destino'),
+      });
+      const data = schema.parse(req.body);
+      const result = await questionBankService.exportBanks(
+        data.bankIds,
+        data.targetClassroomIds,
+        req.user!.id,
+      );
+
+      res.json({
+        success: true,
+        message: `${result.exportedBanks} banco(s) exportado(s) a ${result.targetClassrooms} clase(s)`,
+        data: result,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          message: 'Datos inválidos',
+          errors: error.errors,
+        });
+      }
+      if (error instanceof Error) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+      res.status(500).json({
+        success: false,
+        message: 'Error al exportar bancos de preguntas',
+      });
     }
   }
 }

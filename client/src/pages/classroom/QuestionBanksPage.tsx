@@ -17,8 +17,10 @@ import {
   FileUp,
   ListChecks,
   X,
+  Share2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { classroomApi } from '../../lib/classroomApi';
 import {
   questionBankApi,
   type QuestionBank,
@@ -67,6 +69,12 @@ export const QuestionBanksPage = () => {
     questionTypes: ['TRUE_FALSE', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'MATCHING'] as BankQuestionType[],
     difficulty: '' as QuestionDifficulty | '',
   });
+
+  // Export states
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedBankIds, setSelectedBankIds] = useState<Set<string>>(new Set());
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [selectedTargets, setSelectedTargets] = useState<Set<string>>(new Set());
 
   // Fetch banks
   const { data: banks = [], isLoading: loadingBanks } = useQuery({
@@ -160,6 +168,52 @@ export const QuestionBanksPage = () => {
   const handleBackToBanks = () => {
     setViewMode('banks');
     setSelectedBank(null);
+  };
+
+  // Fetch teacher's classrooms for export modal
+  const { data: myClassrooms = [] } = useQuery({
+    queryKey: ['my-classrooms'],
+    queryFn: () => classroomApi.getMyClassrooms(),
+    enabled: showExportModal,
+  });
+
+  const otherClassrooms = myClassrooms.filter((c: any) => c.id !== classroom.id);
+
+  const exportMutation = useMutation({
+    mutationFn: (data: { bankIds: string[]; targetClassroomIds: string[] }) =>
+      questionBankApi.exportBanks(data),
+    onSuccess: (result) => {
+      toast.success(`${result.exportedBanks} banco(s) exportado(s) a ${result.targetClassrooms} clase(s)`);
+      setShowExportModal(false);
+      setSelectionMode(false);
+      setSelectedBankIds(new Set());
+      setSelectedTargets(new Set());
+    },
+    onError: (error: any) => toast.error(error?.response?.data?.message || 'Error al exportar'),
+  });
+
+  const toggleBankSelection = (id: string) => {
+    setSelectedBankIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllBanks = () => {
+    const allIds = filteredBanks.map(b => b.id);
+    const allSelected = allIds.every(id => selectedBankIds.has(id));
+    setSelectedBankIds(prev => {
+      const next = new Set(prev);
+      allIds.forEach(id => allSelected ? next.delete(id) : next.add(id));
+      return next;
+    });
+  };
+
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedBankIds(new Set());
   };
 
   // Confirm and import questions
@@ -280,23 +334,41 @@ export const QuestionBanksPage = () => {
 
   // Helper para parsear pares de diferentes formatos
   const parsePairsField = (pairsStr: string): MatchingPair[] | null => {
-    // Intentar JSON primero
+    let str = pairsStr.trim();
+    if (!str) return null;
+
+    // Fix comillas simples → dobles para JSON
+    if (str.startsWith('[')) {
+      const fixed = str.replace(/'/g, '"');
+      try {
+        const parsed = JSON.parse(fixed);
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].left) return parsed;
+      } catch { /* continuar */ }
+    }
+
+    // Intentar JSON directo
     try {
-      const parsed = JSON.parse(pairsStr);
-      if (Array.isArray(parsed)) return parsed;
+      const parsed = JSON.parse(str);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
     } catch { /* continuar con otros formatos */ }
-    
-    // Formato alternativo: "izq1:der1|izq2:der2"
-    const str = pairsStr.trim();
-    if (str.includes('|') && str.includes(':')) {
-      const parts = str.split('|').map(p => p.trim()).filter(p => p);
+
+    // Normalizar separadores de pares: flechas, guiones, =
+    // "España → Madrid | Italia → Roma" o "España - Madrid | Italia - Roma"
+    const pairSep = /\s*[|;\n]\s*/;
+    const kvSep = /\s*(?:→|↔|--|->|=>|:)\s*/;
+
+    if (kvSep.test(str)) {
+      const parts = str.split(pairSep).map(p => p.trim()).filter(p => p);
       const pairs = parts.map(part => {
-        const [left, right] = part.split(':').map(s => s.trim());
-        return { left: left || '', right: right || '' };
+        const segments = part.split(kvSep).map(s => s.trim());
+        if (segments.length >= 2) {
+          return { left: segments[0], right: segments[1] };
+        }
+        return { left: '', right: '' };
       }).filter(p => p.left && p.right);
       return pairs.length > 0 ? pairs : null;
     }
-    
+
     return null;
   };
 
@@ -304,7 +376,10 @@ export const QuestionBanksPage = () => {
   const processCSVText = (text: string) => {
     if (!text.trim() || !selectedBank) return;
     
-    const normalizedText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    // Limpiar bloques markdown que la IA puede agregar
+    const cleanedText = text.replace(/^```(?:csv|CSV)?\s*\n?/gm, '').replace(/```\s*$/gm, '').trim();
+    
+    const normalizedText = cleanedText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     const lines = normalizedText.split('\n').filter(line => line.trim());
     
     if (lines.length < 2) {
@@ -340,11 +415,18 @@ export const QuestionBanksPage = () => {
         const row: Record<string, string> = {};
         headers.forEach((h, idx) => { row[h] = values[idx] || ''; });
 
-        // Detectar si explanation y timeLimitSeconds están intercambiados
+        // Detectar si explanation y timeLimitSeconds están intercambiados o desplazados
         let explanationVal = row.explanation || '';
         let timeLimitVal = row.timelimitseconds || '';
+        
+        // Caso 1: explanation contiene un número puro y timeLimitSeconds tiene texto → intercambiar
         if (/^\d+$/.test(explanationVal.trim()) && timeLimitVal.trim() && !/^\d+$/.test(timeLimitVal.trim())) {
           [explanationVal, timeLimitVal] = [timeLimitVal, explanationVal];
+        }
+        // Caso 2: explanation contiene un número puro y timeLimitSeconds está vacío → es el tiempo, no explicación
+        if (/^\d+$/.test(explanationVal.trim()) && !timeLimitVal.trim()) {
+          timeLimitVal = explanationVal;
+          explanationVal = '';
         }
 
         const questionData: CreateQuestionData = {
@@ -370,13 +452,30 @@ export const QuestionBanksPage = () => {
             }
           }
         } else if (questionData.type === 'MATCHING') {
-          if (row.pairs) {
-            const parsedPairs = parsePairsField(row.pairs);
+          // Intentar campo pairs primero, luego buscar en options/correctanswer como fallback
+          const pairsSource = row.pairs || row.options || row.correctanswer || '';
+          if (pairsSource) {
+            const parsedPairs = parsePairsField(pairsSource);
             if (parsedPairs) {
               questionData.pairs = parsedPairs;
             } else {
-              errors.push(`Línea ${i + 1}: Error al parsear pares`);
-              questionData.pairs = [];
+              // Último intento: concatenar campos desde pairs en adelante y buscar JSON de pares
+              const pairsIdx = headers.indexOf('pairs');
+              const startIdx = pairsIdx >= 0 ? pairsIdx : 4;
+              const allValues = values.slice(startIdx).join(',');
+              const jsonMatch = allValues.match(/\[\s*\{[\s\S]*?\}\s*\]/);
+              if (jsonMatch) {
+                const recovered = parsePairsField(jsonMatch[0].replace(/""/g, '"'));
+                if (recovered) {
+                  questionData.pairs = recovered;
+                } else {
+                  errors.push(`Línea ${i + 1}: Error al parsear pares`);
+                  questionData.pairs = [];
+                }
+              } else {
+                errors.push(`Línea ${i + 1}: Error al parsear pares`);
+                questionData.pairs = [];
+              }
             }
           }
         }
@@ -511,6 +610,41 @@ export const QuestionBanksPage = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          {viewMode === 'banks' && !selectionMode && (
+            <button
+              onClick={() => setSelectionMode(true)}
+              disabled={banks.length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl font-medium hover:from-blue-600 hover:to-indigo-700 transition-colors shadow-lg text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Share2 size={18} />
+              Exportar
+            </button>
+          )}
+          {viewMode === 'banks' && selectionMode && (
+            <>
+              <button
+                onClick={exitSelectionMode}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded-xl font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors text-sm"
+              >
+                <X size={18} />
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  if (selectedBankIds.size === 0) {
+                    toast.error('Selecciona al menos un banco');
+                    return;
+                  }
+                  setShowExportModal(true);
+                }}
+                disabled={selectedBankIds.size === 0}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl font-medium hover:from-blue-600 hover:to-indigo-700 transition-colors shadow-lg disabled:opacity-40 disabled:cursor-not-allowed text-sm"
+              >
+                <Share2 size={18} />
+                Exportar ({selectedBankIds.size})
+              </button>
+            </>
+          )}
           {viewMode === 'questions' && (
             <button
               onClick={() => setShowAIImportModal(true)}
@@ -520,13 +654,15 @@ export const QuestionBanksPage = () => {
               Generar con IA
             </button>
           )}
-          <button
-            onClick={() => viewMode === 'banks' ? setShowBankModal(true) : setShowQuestionModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl font-medium hover:from-indigo-600 hover:to-purple-700 transition-colors shadow-lg"
-          >
-            <Plus size={18} />
-            {viewMode === 'banks' ? 'Nuevo Banco' : 'Nueva Pregunta'}
-          </button>
+          {!selectionMode && (
+            <button
+              onClick={() => viewMode === 'banks' ? setShowBankModal(true) : setShowQuestionModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl font-medium hover:from-indigo-600 hover:to-purple-700 transition-colors shadow-lg"
+            >
+              <Plus size={18} />
+              {viewMode === 'banks' ? 'Nuevo Banco' : 'Nueva Pregunta'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -550,8 +686,22 @@ export const QuestionBanksPage = () => {
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 20 }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
           >
+            {/* Select all when in selection mode */}
+            {selectionMode && filteredBanks.length > 0 && (
+              <div className="flex items-center gap-3 mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
+                <input
+                  type="checkbox"
+                  checked={filteredBanks.length > 0 && filteredBanks.every(b => selectedBankIds.has(b.id))}
+                  onChange={toggleAllBanks}
+                  className="rounded border-gray-300 text-blue-500 focus:ring-blue-500"
+                />
+                <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                  Seleccionar todos ({filteredBanks.length})
+                </span>
+              </div>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {loadingBanks ? (
               Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="bg-white dark:bg-gray-800 rounded-xl p-6 animate-pulse">
@@ -577,30 +727,51 @@ export const QuestionBanksPage = () => {
               filteredBanks.map((bank) => (
                 <motion.div
                   key={bank.id}
-                  whileHover={{ scale: 1.02 }}
-                  className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm hover:shadow-md transition-all cursor-pointer group border-l-4"
+                  whileHover={{ scale: selectionMode ? 1 : 1.02 }}
+                  className={`bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm hover:shadow-md transition-all cursor-pointer group border-l-4 ${
+                    selectionMode && selectedBankIds.has(bank.id) ? 'ring-2 ring-blue-500 bg-blue-50/50 dark:bg-blue-900/20' : ''
+                  }`}
                   style={{ borderLeftColor: bank.color }}
-                  onClick={() => handleSelectBank(bank)}
+                  onClick={() => {
+                    if (selectionMode) {
+                      toggleBankSelection(bank.id);
+                    } else {
+                      handleSelectBank(bank);
+                    }
+                  }}
                 >
                   <div className="flex items-start justify-between mb-4">
-                    <div 
-                      className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
-                      style={{ backgroundColor: bank.color + '30' }}
-                    >
-                      {getBankEmoji(bank.icon)}
-                    </div>
-                    <div className="relative">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingBank(bank);
-                          setShowBankModal(true);
-                        }}
-                        className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                    <div className="flex items-center gap-3">
+                      {selectionMode && (
+                        <input
+                          type="checkbox"
+                          checked={selectedBankIds.has(bank.id)}
+                          onChange={() => toggleBankSelection(bank.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="rounded border-gray-300 text-blue-500 focus:ring-blue-500"
+                        />
+                      )}
+                      <div 
+                        className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
+                        style={{ backgroundColor: bank.color + '30' }}
                       >
-                        <MoreVertical size={16} className="text-gray-500" />
-                      </button>
+                        {getBankEmoji(bank.icon)}
+                      </div>
                     </div>
+                    {!selectionMode && (
+                      <div className="relative">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingBank(bank);
+                            setShowBankModal(true);
+                          }}
+                          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <MoreVertical size={16} className="text-gray-500" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <h3 className="font-semibold text-gray-800 dark:text-white mb-1">{bank.name}</h3>
                   {bank.description && (
@@ -612,11 +783,14 @@ export const QuestionBanksPage = () => {
                     <span className="text-sm text-gray-500">
                       {bank.questionCount || 0} preguntas
                     </span>
-                    <ChevronRight size={16} className="text-gray-400 group-hover:text-indigo-500 transition-colors" />
+                    {!selectionMode && (
+                      <ChevronRight size={16} className="text-gray-400 group-hover:text-indigo-500 transition-colors" />
+                    )}
                   </div>
                 </motion.div>
               ))
             )}
+            </div>
           </motion.div>
         ) : (
           <motion.div
@@ -1405,6 +1579,112 @@ export const QuestionBanksPage = () => {
                       </button>
                     )}
                   </div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Export Modal */}
+      <AnimatePresence>
+        {showExportModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            onClick={() => { setShowExportModal(false); setSelectedTargets(new Set()); }}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col overflow-hidden"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <Share2 className="text-blue-500" size={20} />
+                    Exportar bancos de preguntas
+                  </h2>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {selectedBankIds.size} banco{selectedBankIds.size > 1 ? 's' : ''} seleccionado{selectedBankIds.size > 1 ? 's' : ''}
+                  </p>
+                </div>
+                <button onClick={() => { setShowExportModal(false); setSelectedTargets(new Set()); }} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500">
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Lista de clases */}
+              <div className="flex-1 overflow-y-auto p-5">
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Selecciona las clases destino:</p>
+
+                {otherClassrooms.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-sm text-gray-500 dark:text-gray-400">No tienes otras clases disponibles.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {otherClassrooms.map((target: any) => (
+                      <label
+                        key={target.id}
+                        className={`flex items-start gap-3 p-3 rounded-xl cursor-pointer transition-colors border ${
+                          selectedTargets.has(target.id)
+                            ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700'
+                            : 'bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 hover:border-blue-200 dark:hover:border-blue-800'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedTargets.has(target.id)}
+                          onChange={() => {
+                            setSelectedTargets(prev => {
+                              const next = new Set(prev);
+                              if (next.has(target.id)) next.delete(target.id);
+                              else next.add(target.id);
+                              return next;
+                            });
+                          }}
+                          className="mt-0.5 rounded border-gray-300 text-blue-500 focus:ring-blue-500"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{target.name}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-between p-5 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {selectedTargets.size === 0 ? 'Selecciona al menos una clase' : `${selectedTargets.size} clase${selectedTargets.size > 1 ? 's' : ''} seleccionada${selectedTargets.size > 1 ? 's' : ''}`}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setShowExportModal(false); setSelectedTargets(new Set()); }}
+                    className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => {
+                      exportMutation.mutate({
+                        bankIds: Array.from(selectedBankIds),
+                        targetClassroomIds: Array.from(selectedTargets),
+                      });
+                    }}
+                    disabled={selectedTargets.size === 0 || exportMutation.isPending}
+                    className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white text-sm font-medium rounded-xl hover:from-blue-600 hover:to-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <Share2 size={14} />
+                    {exportMutation.isPending ? 'Exportando...' : 'Exportar'}
+                  </button>
                 </div>
               </div>
             </motion.div>

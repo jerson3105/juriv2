@@ -10,7 +10,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { studentApi } from '../../lib/studentApi';
 import { useCharacterClasses } from '../../hooks/useCharacterClasses';
 import { behaviorApi, type Behavior } from '../../lib/behaviorApi';
-import { questionBankApi, type Question, DIFFICULTY_LABELS, DIFFICULTY_COLORS, BANK_ICONS } from '../../lib/questionBankApi';
+import { questionBankApi, type Question, DIFFICULTY_LABELS, DIFFICULTY_COLORS, QUESTION_TYPE_LABELS, BANK_ICONS } from '../../lib/questionBankApi';
 import { CLAN_EMBLEMS } from '../../lib/clanApi';
 import toast from 'react-hot-toast';
 
@@ -788,6 +788,7 @@ const QuestionCardDisplay = ({ question, studentName, onContinue }: {
 
   const difficultyLabel = DIFFICULTY_LABELS[question.difficulty] || question.difficulty;
   const difficultyClass = DIFFICULTY_COLORS[question.difficulty] || 'bg-gray-100 text-gray-700';
+  const typeLabel = QUESTION_TYPE_LABELS[question.type] || question.type;
 
   // Parse options safely
   const options = Array.isArray(question.options)
@@ -803,6 +804,16 @@ const QuestionCardDisplay = ({ question, studentName, onContinue }: {
       ? (() => { try { return JSON.parse(question.pairs as string); } catch { return []; } })()
       : [];
 
+  // Shuffle right-side options for matching (stable across re-renders via useState)
+  const [shuffledRights] = useState(() => {
+    const rights = pairs.map((p: { right: string }, i: number) => ({ text: p.right, originalIdx: i }));
+    for (let i = rights.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [rights[i], rights[j]] = [rights[j], rights[i]];
+    }
+    return rights;
+  });
+
   return (
     <motion.div className="bg-white/95 backdrop-blur-sm rounded-2xl border border-white/50 p-5 shadow-2xl relative overflow-hidden">
       {/* Header */}
@@ -813,9 +824,14 @@ const QuestionCardDisplay = ({ question, studentName, onContinue }: {
           </div>
           <span>Pregunta para <span className="text-blue-600">{studentName}</span></span>
         </h3>
-        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${difficultyClass}`}>
-          {difficultyLabel}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700">
+            {typeLabel}
+          </span>
+          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${difficultyClass}`}>
+            {difficultyLabel}
+          </span>
+        </div>
       </div>
 
       {/* Question text */}
@@ -877,24 +893,55 @@ const QuestionCardDisplay = ({ question, studentName, onContinue }: {
 
       {question.type === 'MATCHING' && pairs.length > 0 && (
         <div className="mb-4">
-          <div className="grid grid-cols-2 gap-2">
-            <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 px-1">Concepto</div>
-            <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 px-1">Respuesta</div>
-            {pairs.map((pair: { left: string; right: string }, idx: number) => (
-              <div key={idx} className="contents">
-                <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-lg text-sm text-gray-800 font-medium">
-                  {pair.left}
-                </div>
-                <div className={`p-2.5 rounded-lg text-sm font-medium border transition-all ${
-                  showAnswer
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                    : 'bg-gray-100 border-gray-200 text-gray-400'
-                }`}>
-                  {showAnswer ? pair.right : '???'}
+          {!showAnswer ? (
+            /* Before reveal: show concepts on left, shuffled options on right */
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 px-1">Conceptos</div>
+                <div className="space-y-2">
+                  {pairs.map((pair: { left: string; right: string }, idx: number) => (
+                    <div key={idx} className="p-2.5 bg-blue-50 border border-blue-200 rounded-lg text-sm text-gray-800 font-medium flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-blue-200 text-blue-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+                        {idx + 1}
+                      </span>
+                      {pair.left}
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
-          </div>
+              <div>
+                <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 px-1">Respuestas</div>
+                <div className="space-y-2">
+                  {shuffledRights.map((item: { text: string; originalIdx: number }, idx: number) => (
+                    <div key={idx} className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-sm text-gray-800 font-medium flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-amber-200 text-amber-700 flex items-center justify-center text-[10px] font-bold flex-shrink-0">
+                        {String.fromCharCode(65 + idx)}
+                      </span>
+                      {item.text}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* After reveal: show correct pairs connected */
+            <div>
+              <div className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-2 px-1">Respuesta correcta</div>
+              <div className="space-y-2">
+                {pairs.map((pair: { left: string; right: string }, idx: number) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <div className="flex-1 p-2.5 bg-blue-50 border border-blue-200 rounded-lg text-sm text-gray-800 font-medium">
+                      {pair.left}
+                    </div>
+                    <ArrowRight size={14} className="text-emerald-500 flex-shrink-0" />
+                    <div className="flex-1 p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-800 font-medium">
+                      {pair.right}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

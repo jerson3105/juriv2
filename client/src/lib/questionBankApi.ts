@@ -266,6 +266,11 @@ export const questionBankApi = {
     });
     return response.data.data;
   },
+
+  exportBanks: async (data: { bankIds: string[]; targetClassroomIds: string[] }): Promise<{ exportedBanks: number; exportedQuestions: number; targetClassrooms: number }> => {
+    const response = await api.post('/question-banks/export', data);
+    return response.data.data;
+  },
 };
 
 // Helper para parsear JSON que puede estar doblemente serializado

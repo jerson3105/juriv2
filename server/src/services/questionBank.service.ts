@@ -908,6 +908,162 @@ class QuestionBankService {
         return { correct: false, correctAnswer: null };
     }
   }
+
+  // ==================== EXPORTAR BANCOS ====================
+
+  async exportBanks(bankIds: string[], targetClassroomIds: string[], teacherId: string) {
+    if (bankIds.length === 0 || targetClassroomIds.length === 0) {
+      throw new Error('Se requieren bancos y clases destino');
+    }
+
+    // 1. Obtener bancos fuente con sus preguntas
+    const sourceBanks = await db
+      .select()
+      .from(questionBanks)
+      .where(
+        and(
+          inArray(questionBanks.id, bankIds),
+          eq(questionBanks.isActive, true)
+        )
+      );
+
+    if (sourceBanks.length === 0) {
+      throw new Error('No se encontraron bancos válidos');
+    }
+
+    // 2. Verificar que todos los bancos pertenecen a clases del profesor
+    const sourceClassroomIds = [...new Set(sourceBanks.map(b => b.classroomId))];
+    const sourceClassrooms = await db
+      .select({ id: classrooms.id, teacherId: classrooms.teacherId })
+      .from(classrooms)
+      .where(inArray(classrooms.id, sourceClassroomIds));
+
+    for (const sc of sourceClassrooms) {
+      if (sc.teacherId !== teacherId) {
+        throw new Error('No tienes permiso para exportar estos bancos');
+      }
+    }
+
+    // 3. Obtener clases destino y verificar propiedad
+    const targetResults = await db
+      .select({ id: classrooms.id, teacherId: classrooms.teacherId })
+      .from(classrooms)
+      .where(
+        and(
+          inArray(classrooms.id, targetClassroomIds),
+          eq(classrooms.teacherId, teacherId)
+        )
+      );
+
+    if (targetResults.length === 0) {
+      throw new Error('No se encontraron clases destino válidas');
+    }
+
+    // Excluir clases origen
+    const validTargets = targetResults.filter(c => !sourceClassroomIds.includes(c.id));
+    if (validTargets.length === 0) {
+      throw new Error('No puedes exportar a la misma clase origen');
+    }
+
+    // 4. Obtener todas las preguntas de los bancos fuente
+    const sourceQuestions = await db
+      .select()
+      .from(questions)
+      .where(
+        and(
+          inArray(questions.bankId, bankIds),
+          eq(questions.isActive, true)
+        )
+      );
+
+    const questionsByBank = new Map<string, typeof sourceQuestions>();
+    for (const q of sourceQuestions) {
+      if (!questionsByBank.has(q.bankId)) {
+        questionsByBank.set(q.bankId, []);
+      }
+      questionsByBank.get(q.bankId)!.push(q);
+    }
+
+    // 5. Clonar bancos y preguntas para cada clase destino
+    const now = new Date();
+    let totalBanksCreated = 0;
+    let totalQuestionsCreated = 0;
+
+    for (const target of validTargets) {
+      // Obtener nombres existentes en el destino para evitar duplicados
+      const existingBanks = await db
+        .select({ name: questionBanks.name })
+        .from(questionBanks)
+        .where(
+          and(
+            eq(questionBanks.classroomId, target.id),
+            eq(questionBanks.isActive, true)
+          )
+        );
+      const existingNames = new Set(existingBanks.map(b => b.name.toLowerCase()));
+
+      for (const bank of sourceBanks) {
+        // Generar nombre único
+        let bankName = bank.name;
+        if (existingNames.has(bankName.toLowerCase())) {
+          let suffix = 2;
+          while (existingNames.has(`${bank.name} (${suffix})`.toLowerCase())) {
+            suffix++;
+          }
+          bankName = `${bank.name} (${suffix})`;
+        }
+        existingNames.add(bankName.toLowerCase());
+
+        const newBankId = uuidv4();
+
+        await db.insert(questionBanks).values({
+          id: newBankId,
+          classroomId: target.id,
+          name: bankName,
+          description: bank.description,
+          color: bank.color,
+          icon: bank.icon,
+          isActive: true,
+          createdAt: now,
+          updatedAt: now,
+        });
+        totalBanksCreated++;
+
+        // Clonar preguntas del banco
+        const bankQuestions = questionsByBank.get(bank.id) || [];
+        const CHUNK_SIZE = 50;
+        for (let i = 0; i < bankQuestions.length; i += CHUNK_SIZE) {
+          const chunk = bankQuestions.slice(i, i + CHUNK_SIZE);
+          await db.insert(questions).values(
+            chunk.map(q => ({
+              id: uuidv4(),
+              bankId: newBankId,
+              type: q.type,
+              difficulty: q.difficulty,
+              points: q.points,
+              questionText: q.questionText,
+              imageUrl: q.imageUrl,
+              options: q.options,
+              correctAnswer: q.correctAnswer,
+              pairs: q.pairs,
+              explanation: q.explanation,
+              timeLimitSeconds: q.timeLimitSeconds,
+              isActive: true,
+              createdAt: now,
+              updatedAt: now,
+            }))
+          );
+          totalQuestionsCreated += chunk.length;
+        }
+      }
+    }
+
+    return {
+      exportedBanks: totalBanksCreated,
+      exportedQuestions: totalQuestionsCreated,
+      targetClassrooms: validTargets.length,
+    };
+  }
 }
 
 export const questionBankService = new QuestionBankService();
