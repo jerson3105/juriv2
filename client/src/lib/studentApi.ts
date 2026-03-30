@@ -55,6 +55,7 @@ export interface UpdatePointsData {
   pointType: PointType;
   amount: number;
   reason: string;
+  competencyId?: string;
 }
 
 export interface UpdatePointsResult {

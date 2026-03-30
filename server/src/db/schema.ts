@@ -511,6 +511,7 @@ export const pointLogs = mysqlTable('point_logs', {
   id: varchar('id', { length: 36 }).primaryKey(),
   studentId: varchar('student_id', { length: 36 }).notNull(),
   behaviorId: varchar('behavior_id', { length: 36 }),
+  competencyId: varchar('competency_id', { length: 36 }),
   pointType: pointTypeEnum.notNull(),
   action: pointActionEnum.notNull(),
   amount: int('amount').notNull(),
@@ -523,6 +524,7 @@ export const pointLogs = mysqlTable('point_logs', {
   studentIdx: index('idx_point_logs_student').on(table.studentId),
   studentDateIdx: index('idx_point_logs_student_date').on(table.studentId, table.createdAt),
   behaviorIdx: index('idx_point_logs_behavior').on(table.behaviorId),
+  competencyIdx: index('idx_point_logs_competency').on(table.competencyId),
 }));
 
 export const pointLogsRelations = relations(pointLogs, ({ one }) => ({
@@ -533,6 +535,10 @@ export const pointLogsRelations = relations(pointLogs, ({ one }) => ({
   behavior: one(behaviors, {
     fields: [pointLogs.behaviorId],
     references: [behaviors.id],
+  }),
+  competency: one(curriculumCompetencies, {
+    fields: [pointLogs.competencyId],
+    references: [curriculumCompetencies.id],
   }),
 }));
 

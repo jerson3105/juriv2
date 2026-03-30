@@ -554,9 +554,13 @@ class GradeService {
     const behaviorScores = await this.getBehaviorScores(studentProfileId, competencyId, classroomId, dateRange);
     scores.push(...behaviorScores);
 
-    // 6. Insignias
+    // 7. Insignias
     const badgeScores = await this.getBadgeScores(studentProfileId, competencyId, classroomId, dateRange);
     scores.push(...badgeScores);
+
+    // 8. Puntos manuales vinculados a competencia
+    const manualScores = await this.getManualPointScores(studentProfileId, competencyId, dateRange);
+    scores.push(...manualScores);
 
     return scores;
   }
@@ -919,6 +923,69 @@ class GradeService {
         competencyId,
       });
     }
+
+    return scores;
+  }
+
+  /**
+   * Puntos manuales vinculados directamente a una competencia (sin behaviorId).
+   * Agrega positivos y negativos para calcular un score neto similar a comportamientos.
+   */
+  private async getManualPointScores(studentProfileId: string, competencyId: string, dateRange: BimesterDateRange): Promise<ActivityScoreData[]> {
+    const scores: ActivityScoreData[] = [];
+
+    const manualLogs = await db.select({
+      action: pointLogs.action,
+      amount: pointLogs.amount,
+      pointType: pointLogs.pointType,
+      reason: pointLogs.reason,
+    })
+      .from(pointLogs)
+      .where(and(
+        eq(pointLogs.studentId, studentProfileId),
+        eq(pointLogs.competencyId, competencyId),
+        sql`${pointLogs.behaviorId} IS NULL`,
+        gte(pointLogs.createdAt, dateRange.startDate),
+        lte(pointLogs.createdAt, dateRange.endDate)
+      ));
+
+    if (manualLogs.length === 0) return scores;
+
+    let totalPositive = 0;
+    let totalNegative = 0;
+
+    for (const log of manualLogs) {
+      // Solo XP y HP cuentan para calificaciones (GP es moneda de tienda)
+      if (log.pointType === 'GP') continue;
+      if (log.action === 'ADD') {
+        totalPositive += log.amount;
+      } else {
+        totalNegative += log.amount;
+      }
+    }
+
+    const totalPoints = totalPositive + totalNegative;
+    if (totalPoints === 0) return scores;
+
+    let scorePercent: number;
+    if (totalNegative === 0) {
+      scorePercent = 100;
+    } else if (totalPositive === 0) {
+      scorePercent = 0;
+    } else {
+      scorePercent = (totalPositive / totalPoints) * 100;
+    }
+
+    const dynamicWeight = Math.min(100, Math.max(30, Math.round(totalPoints / 10)));
+
+    scores.push({
+      type: 'MANUAL_POINTS',
+      id: 'manual-points-aggregate',
+      name: `Puntos manuales (+${totalPositive} / -${totalNegative})`,
+      score: Math.round(scorePercent),
+      weight: dynamicWeight,
+      competencyId,
+    });
 
     return scores;
   }

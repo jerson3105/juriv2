@@ -36,6 +36,7 @@ interface UpdatePointsData {
   amount: number;
   reason: string;
   teacherId: string;
+  competencyId?: string;
 }
 
 export class StudentService {
@@ -247,6 +248,7 @@ export class StudentService {
     const pointLogEntry: typeof pointLogs.$inferInsert = {
       id: uuidv4(),
       studentId: data.studentId,
+      competencyId: data.competencyId || undefined,
       pointType: data.pointType,
       action: data.amount >= 0 ? 'ADD' : 'REMOVE',
       amount: Math.abs(data.amount),

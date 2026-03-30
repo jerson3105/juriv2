@@ -19,6 +19,7 @@ const updatePointsSchema = z.object({
   pointType: z.enum(['XP', 'HP', 'GP']),
   amount: z.number().int(),
   reason: z.string().min(1).max(255),
+  competencyId: z.string().max(36).optional(),
 });
 
 const updateProfileSchema = z.object({

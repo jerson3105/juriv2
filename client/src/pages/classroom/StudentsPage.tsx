@@ -1408,7 +1408,8 @@ export const StudentsPage = () => {
         })}
         behaviors={behaviorType === 'positive' ? positiveBehaviors : negativeBehaviors}
         onApplyBehavior={applyBehavior}
-        onApplyManual={async (pointType, amount, reason) => {
+        classroom={classroom}
+        onApplyManual={async (pointType, amount, reason, competencyId) => {
           // Aplicar manualmente a todos los estudiantes seleccionados
           const levelUps: Array<{ studentName: string; newLevel: number }> = [];
           
@@ -1417,6 +1418,7 @@ export const StudentsPage = () => {
               pointType,
               amount: behaviorType === 'positive' ? amount : -amount,
               reason,
+              competencyId,
             });
             
             // Verificar si hubo subida de nivel
@@ -1747,6 +1749,7 @@ const PointsModal = ({
   onApplyManual,
   isLoading,
   classroomId,
+  classroom,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -1755,24 +1758,35 @@ const PointsModal = ({
   selectedStudentNames: string[];
   behaviors: Behavior[];
   onApplyBehavior: (behavior: Behavior) => void;
-  onApplyManual: (pointType: PointType, amount: number, reason: string) => Promise<void>;
+  onApplyManual: (pointType: PointType, amount: number, reason: string, competencyId?: string) => Promise<void>;
   isLoading: boolean;
   classroomId: string;
+  classroom: Classroom;
 }) => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'behaviors' | 'manual'>('behaviors');
   const [manualPointType, setManualPointType] = useState<PointType>('XP');
   const [manualAmount, setManualAmount] = useState(10);
   const [manualReason, setManualReason] = useState('');
+  const [manualCompetencyId, setManualCompetencyId] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Obtener competencias del área curricular del aula
+  const { data: curriculumAreas = [] } = useQuery({
+    queryKey: ['curriculum-areas'],
+    queryFn: () => classroomApi.getCurriculumAreas('PE'),
+    enabled: !!classroom.useCompetencies && !!classroom.curriculumAreaId,
+  });
+  const classroomCompetencies = curriculumAreas.find((a: any) => a.id === classroom.curriculumAreaId)?.competencies || [];
 
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualReason.trim()) return;
     setIsSubmitting(true);
     try {
-      await onApplyManual(manualPointType, manualAmount, manualReason);
+      await onApplyManual(manualPointType, manualAmount, manualReason, manualCompetencyId || undefined);
       setManualReason('');
+      setManualCompetencyId('');
     } finally {
       setIsSubmitting(false);
     }
@@ -2059,6 +2073,32 @@ const PointsModal = ({
                     />
                   </div>
                 </div>
+
+                {/* Competencia (solo si el aula usa competencias) */}
+                {classroom.useCompetencies && classroom.curriculumAreaId && classroomCompetencies.length > 0 && (
+                  <div>
+                    <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
+                      Competencia <span className="text-gray-400 font-normal">(opcional)</span>
+                    </label>
+                    <select
+                      value={manualCompetencyId}
+                      onChange={(e) => setManualCompetencyId(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-gray-700 dark:text-gray-200"
+                    >
+                      <option value="">Sin competencia</option>
+                      {classroomCompetencies.map((comp: any) => (
+                        <option key={comp.id} value={comp.id}>
+                          {comp.shortName ? `${comp.shortName} — ` : ''}{comp.name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
+                      {manualCompetencyId 
+                        ? '📊 Estos puntos contarán en el libro de calificaciones'
+                        : 'Vincular a una competencia hace que cuenten en calificaciones'}
+                    </p>
+                  </div>
+                )}
 
                 {/* Razón */}
                 <Input
