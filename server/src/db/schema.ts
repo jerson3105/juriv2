@@ -519,6 +519,7 @@ export const pointLogs = mysqlTable('point_logs', {
   gpAmount: int('gp_amount'),
   reason: text('reason'),
   givenBy: varchar('given_by', { length: 36 }),
+  isReverted: boolean('is_reverted').notNull().default(false),
   createdAt: datetime('created_at').notNull(),
 }, (table) => ({
   studentIdx: index('idx_point_logs_student').on(table.studentId),
@@ -884,6 +885,7 @@ export const attendanceRecords = mysqlTable('attendance_records', {
   status: attendanceStatusEnum.notNull().default('PRESENT'),
   notes: text('notes'),
   xpAwarded: int('xp_awarded').default(0),
+  isReverted: boolean('is_reverted').notNull().default(false),
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
 }, (table) => ({

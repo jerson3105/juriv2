@@ -21,6 +21,7 @@ import {
   Trash2,
   AlertTriangle,
   RotateCcw,
+  Undo2,
   Sword,
   Scroll,
   Flame,
@@ -97,6 +98,24 @@ export const HistoryPage = () => {
     queryKey: ['history-stats', classroom?.id],
     queryFn: () => historyApi.getClassroomStats(classroom.id),
     enabled: !!classroom?.id,
+  });
+
+  // Revert
+  const [revertConfirm, setRevertConfirm] = useState<{ id: string; type: string } | null>(null);
+  const revertMutation = useMutation({
+    mutationFn: ({ entryType, entryId }: { entryType: 'POINTS' | 'BADGE' | 'ATTENDANCE'; entryId: string }) =>
+      historyApi.revertEntry(entryType, entryId),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['history', classroom.id] });
+      queryClient.invalidateQueries({ queryKey: ['history-stats', classroom.id] });
+      queryClient.invalidateQueries({ queryKey: ['classroom', classroom.id] });
+      toast.success(data.message || 'Acción revertida');
+      setRevertConfirm(null);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Error al revertir');
+      setRevertConfirm(null);
+    },
   });
 
   // === Reseteo selectivo ===
@@ -555,13 +574,17 @@ export const HistoryPage = () => {
               ) : (
                 <>
                   <div className="space-y-1">
-                    {paginatedLogs.map((entry, index) => (
+                    {paginatedLogs.map((entry, index) => {
+                      const canRevert = !entry.isReverted && ['POINTS', 'BADGE', 'ATTENDANCE'].includes(entry.type);
+                      return (
                       <motion.div
                         key={entry.id}
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: index * 0.02 }}
-                        className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                        className={`flex items-center gap-3 p-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors group ${
+                          entry.isReverted ? 'opacity-45' : ''
+                        }`}
                       >
                         {/* Icono de clase del estudiante */}
                         <div className="w-9 h-9 bg-gradient-to-br from-violet-100 to-purple-100 rounded-full flex items-center justify-center text-lg flex-shrink-0">
@@ -575,17 +598,39 @@ export const HistoryPage = () => {
                         
                         {/* Descripción */}
                         <div className="flex-1 min-w-0">
-                          <p className="text-xs text-gray-800 dark:text-gray-200">
+                          <p className={`text-xs text-gray-800 dark:text-gray-200 ${entry.isReverted ? 'line-through' : ''}`}>
                             {getActivityDescription(entry)}
                           </p>
                         </div>
                         
+                        {/* Revertido badge */}
+                        {entry.isReverted && (
+                          <span className="text-[9px] px-1.5 py-0.5 bg-gray-200 dark:bg-gray-600 text-gray-500 dark:text-gray-400 rounded-full font-medium whitespace-nowrap">
+                            Revertido
+                          </span>
+                        )}
+
+                        {/* Botón Revertir */}
+                        {canRevert && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRevertConfirm({ id: entry.id, type: entry.type });
+                            }}
+                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
+                            title="Revertir esta acción"
+                          >
+                            <Undo2 size={14} />
+                          </button>
+                        )}
+
                         {/* Tiempo */}
                         <span className="text-[10px] text-gray-400 whitespace-nowrap">
                           {formatTime(entry.timestamp)}
                         </span>
                       </motion.div>
-                    ))}
+                      );
+                    })}
                   </div>
 
                   {/* Paginación */}
@@ -761,6 +806,43 @@ export const HistoryPage = () => {
                 className="flex-1 px-4 py-2.5 bg-red-500 text-white rounded-xl text-sm font-medium hover:bg-red-600 disabled:opacity-50 transition-colors"
               >
                 {resetMutation.isPending ? 'Reseteando...' : 'Confirmar reseteo'}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Modal de confirmación de revertir */}
+      {revertConfirm && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setRevertConfirm(null)}>
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-gray-900 rounded-2xl p-5 max-w-sm w-full border border-gray-200 dark:border-gray-800 shadow-2xl"
+          >
+            <div className="text-center mb-4">
+              <div className="w-12 h-12 mx-auto mb-3 bg-amber-100 dark:bg-amber-500/20 rounded-xl flex items-center justify-center">
+                <Undo2 size={24} className="text-amber-600" />
+              </div>
+              <h3 className="text-base font-bold text-gray-900 dark:text-white mb-1">¿Revertir esta acción?</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Se deshará el efecto de esta acción sobre el estudiante. Los puntos, nivel e insignias se ajustarán.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setRevertConfirm(null)}
+                className="flex-1 px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-xl text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => revertMutation.mutate({ entryType: revertConfirm.type as 'POINTS' | 'BADGE' | 'ATTENDANCE', entryId: revertConfirm.id })}
+                disabled={revertMutation.isPending}
+                className="flex-1 px-4 py-2 bg-amber-500 text-white rounded-xl text-sm font-medium hover:bg-amber-600 disabled:opacity-50 transition-colors"
+              >
+                {revertMutation.isPending ? 'Revirtiendo...' : 'Revertir'}
               </button>
             </div>
           </motion.div>

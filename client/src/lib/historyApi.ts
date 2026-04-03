@@ -7,6 +7,7 @@ export interface ActivityLogEntry {
   studentId: string;
   studentName: string | null;
   studentClass: string;
+  isReverted?: boolean;
   details: {
     pointType?: string;
     action?: string;
@@ -66,5 +67,10 @@ export const historyApi = {
   getClassroomStats: async (classroomId: string): Promise<ClassroomStats> => {
     const response = await api.get(`/history/classroom/${classroomId}/stats`);
     return response.data.data;
+  },
+
+  revertEntry: async (entryType: 'POINTS' | 'BADGE' | 'ATTENDANCE', entryId: string): Promise<{ message: string }> => {
+    const response = await api.post(`/history/revert/${entryType}/${entryId}`);
+    return response.data;
   },
 };

@@ -13,4 +13,7 @@ router.get('/classroom/:classroomId', authorize('TEACHER', 'ADMIN'), historyCont
 // Obtener estadísticas de una clase
 router.get('/classroom/:classroomId/stats', authorize('TEACHER', 'ADMIN'), historyController.getClassroomStats);
 
+// Revertir una entrada del historial
+router.post('/revert/:entryType/:entryId', authorize('TEACHER', 'ADMIN'), historyController.revertEntry);
+
 export default router;

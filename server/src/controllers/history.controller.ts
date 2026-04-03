@@ -149,6 +149,44 @@ class HistoryController {
       handleControllerError(res, error, 'Error al obtener estadísticas');
     }
   }
+
+  async revertEntry(req: Request, res: Response) {
+    try {
+      const { entryType, entryId } = req.params;
+      const teacherId = req.user?.id;
+
+      if (!teacherId) {
+        return res.status(401).json({ success: false, message: 'No autenticado' });
+      }
+
+      if (!entryId || typeof entryId !== 'string') {
+        return res.status(400).json({ success: false, message: 'ID de entrada inválido' });
+      }
+
+      let result: { message: string };
+
+      switch (entryType) {
+        case 'POINTS':
+          result = await historyService.revertPointLog(entryId, teacherId);
+          break;
+        case 'BADGE':
+          result = await historyService.revertBadge(entryId, teacherId);
+          break;
+        case 'ATTENDANCE':
+          result = await historyService.revertAttendance(entryId, teacherId);
+          break;
+        default:
+          return res.status(400).json({
+            success: false,
+            message: 'Tipo de entrada no soportado para revertir. Tipos válidos: POINTS, BADGE, ATTENDANCE',
+          });
+      }
+
+      res.json({ success: true, ...result });
+    } catch (error) {
+      handleControllerError(res, error, 'Error al revertir acción');
+    }
+  }
 }
 
 export const historyController = new HistoryController();

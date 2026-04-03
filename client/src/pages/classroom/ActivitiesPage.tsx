@@ -70,10 +70,10 @@ const activities: Activity[] = [
   },
   {
     id: 'noise-meter',
-    name: 'Aula Zen',
-    description: 'Mide el ruido del aula. ¡Mantén la calma y gana recompensas!',
+    name: 'Descanso de Jiro',
+    description: '¡No despiertes a Jiro! Mantén el silencio y gana recompensas.',
     icon: <Target size={28} />,
-    emoji: '🧘',
+    emoji: '🌙',
     gradient: 'from-emerald-500 via-teal-500 to-cyan-500',
     bgGradient: 'from-emerald-500/10 via-teal-500/5 to-cyan-500/10',
     shadowColor: 'shadow-emerald-500/30',
@@ -125,7 +125,7 @@ const activities: Activity[] = [
 // Consejos rotativos
 const tips = [
   { icon: '🎲', title: 'Selección Aleatoria', text: 'Usa la Selección Aleatoria para elegir quién participa en clase. ¡Los estudiantes estarán más atentos!' },
-  { icon: '🧘', title: 'Aula Zen', text: 'El medidor de ruido ayuda a mantener un ambiente tranquilo. ¡Recompensa el silencio!' },
+  { icon: '🌙', title: 'Descanso de Jiro', text: '¡No despiertes a Jiro! Mantén el silencio en el aula y gana recompensas.' },
   { icon: '💣', title: 'Modo Bomba', text: 'El modo bomba añade emoción a las actividades. ¡Perfecto para respuestas rápidas!' },
   { icon: '🛡️', title: 'Clanes', text: 'Seleccionar clanes promueve la colaboración entre equipos. ¡Todos ganan juntos!' },
 ];

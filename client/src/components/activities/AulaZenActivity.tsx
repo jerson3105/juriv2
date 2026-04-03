@@ -1,8 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Mic, 
-  MicOff, 
   AlertTriangle,
   ArrowLeft,
   Settings,
@@ -110,6 +108,18 @@ export const AulaZenActivity = ({ classroom, onBack }: AulaZenActivityProps) => 
   }, [config.maxThreshold]);
 
   const zenState = getZenState(noiseLevel);
+
+  // Mapear nivel de ruido a imagen de Jiro (5 niveles)
+  const getJiroImage = useCallback((level: number): string => {
+    const threshold = config.maxThreshold;
+    if (level < threshold * 0.25) return '/assets/mascot/jiro-zen-1.png'; // dormido profundo
+    if (level < threshold * 0.4) return '/assets/mascot/jiro-zen-2.png';  // dormido ligero
+    if (level < threshold * 0.7) return '/assets/mascot/jiro-zen-3.png';  // inquieto
+    if (level < threshold) return '/assets/mascot/jiro-zen-4.png';        // despertando
+    return '/assets/mascot/jiro-zen-5.png';                               // despierto/caos
+  }, [config.maxThreshold]);
+
+  const jiroImage = getJiroImage(noiseLevel);
 
   // Colores y estilos según el estado
   const zenStyles = {
@@ -284,7 +294,7 @@ export const AulaZenActivity = ({ classroom, onBack }: AulaZenActivityProps) => 
     setIsGivingRewards(true);
     try {
       const students = classroom.students;
-      const reason = `Recompensa Aula Zen - ${stats.totalPoints} puntos conseguidos`;
+      const reason = `Recompensa Descanso de Jiro - ${stats.totalPoints} puntos conseguidos`;
       
       // Dar XP y GP a cada estudiante
       const promises = students.map(async (student: any) => {
@@ -409,7 +419,7 @@ export const AulaZenActivity = ({ classroom, onBack }: AulaZenActivityProps) => 
             </div>
             <div>
               <h1 className="text-xl font-bold text-gray-800 dark:text-white">
-                🧘 Aula Zen
+                🌙 Descanso de Jiro
               </h1>
               <p className="text-gray-500 dark:text-gray-400 text-sm">
                 Configura la actividad antes de comenzar
@@ -545,7 +555,7 @@ export const AulaZenActivity = ({ classroom, onBack }: AulaZenActivityProps) => 
           className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-semibold shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 transition-all flex items-center justify-center gap-3"
         >
           <Play size={24} />
-          Comenzar Aula Zen
+          Comenzar sesión
         </motion.button>
 
         {/* Info */}
@@ -664,7 +674,7 @@ export const AulaZenActivity = ({ classroom, onBack }: AulaZenActivityProps) => 
                 {gradeMessage[grade]}
               </h1>
               <p className="text-gray-500 dark:text-gray-400 text-lg">
-                Sesión de Aula Zen completada
+                Sesión de Descanso de Jiro completada
               </p>
             </motion.div>
           </div>
@@ -861,375 +871,333 @@ export const AulaZenActivity = ({ classroom, onBack }: AulaZenActivityProps) => 
   // Pantalla de juego
   return (
     <div className="min-h-[calc(100vh-200px)] relative">
-      {/* Fondo animado según estado */}
+      {/* Fondo animado según estado — gradiente + partículas */}
       <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
-        <motion.div 
-          animate={{ 
-            opacity: zenState === 'zen' ? 0.3 : zenState === 'calm' ? 0.2 : zenState === 'alert' ? 0.15 : 0.1
+        <motion.div
+          animate={{
+            opacity: zenState === 'zen' ? 0.3 : zenState === 'calm' ? 0.25 : zenState === 'alert' ? 0.15 : 0.1
           }}
+          transition={{ duration: 1 }}
           className={`absolute inset-0 bg-gradient-to-br ${currentStyle.gradient}`}
         />
-        {/* Partículas flotantes */}
         {gameState === 'playing' && zenState !== 'chaos' && (
           <>
-            {[...Array(8)].map((_, i) => (
+            {[...Array(6)].map((_, i) => (
               <motion.div
                 key={i}
-                className="absolute text-4xl opacity-20"
-                initial={{ 
-                  x: Math.random() * window.innerWidth, 
-                  y: window.innerHeight + 50 
-                }}
-                animate={{ 
-                  y: -100,
-                  x: Math.random() * window.innerWidth
-                }}
-                transition={{ 
-                  duration: 8 + Math.random() * 4,
-                  repeat: Infinity,
-                  delay: i * 1.5,
-                  ease: 'linear'
-                }}
+                className="absolute text-3xl opacity-15"
+                initial={{ x: `${15 + i * 14}%`, y: '110%' }}
+                animate={{ y: '-10%' }}
+                transition={{ duration: 10 + i * 2, repeat: Infinity, delay: i * 1.8, ease: 'linear' }}
               >
-                {zenState === 'zen' ? '🧘' : '🍃'}
+                {['🍃', '✨', '🌙', '⭐', '🧘', '💤'][i]}
               </motion.div>
             ))}
           </>
         )}
-        {/* Efectos de caos */}
         {zenState === 'chaos' && (
           <motion.div
-            animate={{ opacity: [0.1, 0.3, 0.1] }}
-            transition={{ duration: 0.3, repeat: Infinity }}
+            animate={{ opacity: [0.05, 0.2, 0.05] }}
+            transition={{ duration: 0.4, repeat: Infinity }}
             className="absolute inset-0 bg-red-500"
           />
         )}
       </div>
 
       <div className="space-y-4 relative z-10">
-        {/* Header con controles - Mejorado */}
-        <div className="flex items-center justify-between bg-white/80 dark:bg-gray-800/80 backdrop-blur-md rounded-2xl p-4 shadow-lg border border-white/20">
-          <div className="flex items-center gap-4">
-            <motion.div
-              animate={{ 
-                scale: gameState === 'playing' ? [1, 1.15, 1] : 1,
-                rotate: zenState === 'chaos' ? [0, -10, 10, -10, 0] : 0,
-                boxShadow: zenState === 'zen' 
-                  ? ['0 0 20px rgba(16, 185, 129, 0.5)', '0 0 40px rgba(16, 185, 129, 0.8)', '0 0 20px rgba(16, 185, 129, 0.5)']
-                  : zenState === 'chaos'
-                    ? ['0 0 20px rgba(239, 68, 68, 0.5)', '0 0 40px rgba(239, 68, 68, 0.8)', '0 0 20px rgba(239, 68, 68, 0.5)']
-                    : '0 0 20px rgba(0,0,0,0.1)'
-              }}
-              transition={{ duration: zenState === 'chaos' ? 0.2 : 1, repeat: gameState === 'playing' ? Infinity : 0 }}
-              className={`w-14 h-14 bg-gradient-to-br ${currentStyle.gradient} rounded-2xl flex items-center justify-center text-white shadow-xl`}
-            >
-              <ZenIcon size={28} />
-            </motion.div>
-            <div>
-              <motion.h1 
-                key={zenState}
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-2xl font-black text-gray-800 dark:text-white"
-              >
-                {currentStyle.label}
-              </motion.h1>
-              <motion.p 
-                key={`msg-${zenState}`}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="text-gray-500 dark:text-gray-400 text-sm"
-              >
-                {currentStyle.message}
-              </motion.p>
-            </div>
-          </div>
+        {/* === JIRO HERO AREA — todo integrado === */}
+        <motion.div
+          className={`relative rounded-3xl overflow-hidden shadow-2xl transition-colors duration-700 ${
+            zenState === 'chaos' ? 'border-2 border-red-400/60' : 'border-2 border-white/30'
+          }`}
+          animate={zenState === 'chaos' ? { x: [-3, 3, -3, 3, 0] } : {}}
+          transition={{ duration: 0.3, repeat: zenState === 'chaos' ? Infinity : 0 }}
+        >
+          {/* Background gradient */}
+          <motion.div
+            className={`absolute inset-0 bg-gradient-to-b ${
+              zenState === 'zen' ? 'from-indigo-900 via-blue-900 to-slate-900'
+              : zenState === 'calm' ? 'from-indigo-800 via-sky-900 to-slate-800'
+              : zenState === 'alert' ? 'from-amber-900 via-orange-900 to-slate-900'
+              : 'from-red-900 via-rose-900 to-slate-900'
+            }`}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 1 }}
+          />
 
-          <div className="flex items-center gap-2">
-            <motion.button
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={togglePause}
-              className="p-3 bg-gray-100 dark:bg-gray-700 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors shadow-md"
-              title={gameState === 'playing' ? 'Pausar' : 'Reanudar'}
-            >
-              {gameState === 'playing' ? <Pause size={22} /> : <Play size={22} />}
-            </motion.button>
-            <motion.button
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={() => setShowFinishConfirm(true)}
-              className="p-3 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors shadow-md"
-              title="Finalizar"
-            >
-              <StopCircle size={22} />
-            </motion.button>
-          </div>
-        </div>
-
-        {/* Timer y puntos - Mejorado */}
-        <div className="grid grid-cols-3 gap-3">
-          <motion.div 
-            className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-md rounded-2xl p-4 text-center border border-white/20 shadow-lg"
-            animate={timeRemaining <= 30 ? { scale: [1, 1.02, 1] } : {}}
-            transition={{ duration: 0.5, repeat: timeRemaining <= 30 ? Infinity : 0 }}
-          >
-            <motion.div
-              animate={timeRemaining <= 30 ? { color: ['#ef4444', '#f59e0b', '#ef4444'] } : {}}
-              transition={{ duration: 1, repeat: Infinity }}
-            >
-              <Clock size={24} className={`mx-auto mb-1 ${timeRemaining <= 30 ? 'text-red-500' : 'text-blue-500'}`} />
-            </motion.div>
-            <div className={`text-3xl font-black ${timeRemaining <= 30 ? 'text-red-500' : 'text-gray-800 dark:text-white'}`}>
-              {formatTime(timeRemaining)}
-            </div>
-            <div className="text-xs text-gray-500 font-medium">Tiempo</div>
-          </motion.div>
-          
-          <motion.div 
-            className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-md rounded-2xl p-4 text-center border border-white/20 shadow-lg relative overflow-hidden"
-            whileHover={{ scale: 1.02 }}
-          >
-            <motion.div
-              className="absolute inset-0 bg-gradient-to-t from-yellow-500/20 to-transparent"
-              animate={{ opacity: [0.3, 0.6, 0.3] }}
-              transition={{ duration: 2, repeat: Infinity }}
-            />
-            <Trophy size={24} className="mx-auto text-yellow-500 mb-1 relative z-10" />
-            <motion.div 
-              key={stats.totalPoints}
-              initial={{ scale: 1.3 }}
-              animate={{ scale: 1 }}
-              className="text-3xl font-black text-gray-800 dark:text-white relative z-10"
-            >
-              {stats.totalPoints}
-            </motion.div>
-            <div className="text-xs text-gray-500 font-medium relative z-10">Puntos</div>
-          </motion.div>
-          
-          <motion.div 
-            className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-md rounded-2xl p-4 text-center border border-white/20 shadow-lg relative overflow-hidden"
-            animate={stats.currentStreak >= 10 ? { 
-              boxShadow: ['0 0 0 rgba(168, 85, 247, 0)', '0 0 20px rgba(168, 85, 247, 0.5)', '0 0 0 rgba(168, 85, 247, 0)']
-            } : {}}
-            transition={{ duration: 1.5, repeat: Infinity }}
-          >
-            <Sparkles size={24} className="mx-auto text-purple-500 mb-1" />
-            <div className="text-3xl font-black text-gray-800 dark:text-white">
-              x{(1 + Math.floor(stats.currentStreak / 10) * config.streakMultiplier).toFixed(1)}
-            </div>
-            <div className="text-xs text-gray-500 font-medium">Multiplicador</div>
-          </motion.div>
-        </div>
-
-      {/* Medidor principal - Mejorado */}
-      <motion.div 
-        className={`bg-white/90 dark:bg-gray-800/90 backdrop-blur-md rounded-3xl p-8 border-2 shadow-2xl transition-colors duration-500 ${
-          zenState === 'zen' ? 'border-emerald-400/50' :
-          zenState === 'calm' ? 'border-green-400/50' :
-          zenState === 'alert' ? 'border-yellow-400/50' :
-          'border-red-400/50'
-        }`}
-        animate={zenState === 'chaos' ? { x: [-2, 2, -2, 2, 0] } : {}}
-        transition={{ duration: 0.3, repeat: zenState === 'chaos' ? Infinity : 0 }}
-      >
-        <div className="flex flex-col items-center">
-          {/* Círculo del medidor - Más grande y dramático */}
-          <div className="relative w-72 h-72 mb-6">
-            {/* Glow de fondo */}
-            <motion.div
-              className={`absolute inset-4 rounded-full blur-2xl ${currentStyle.bg}`}
-              animate={{ opacity: [0.2, 0.4, 0.2], scale: [0.9, 1, 0.9] }}
-              transition={{ duration: 2, repeat: Infinity }}
-            />
-            
-            <svg className="w-full h-full transform -rotate-90 relative z-10">
-              {/* Fondo del círculo */}
-              <circle
-                cx="144"
-                cy="144"
-                r="120"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="16"
-                className="text-gray-200 dark:text-gray-700"
-              />
-              {/* Progreso del ruido */}
-              <motion.circle
-                cx="144"
-                cy="144"
-                r="120"
-                fill="none"
-                stroke="url(#noiseGradient)"
-                strokeWidth="16"
-                strokeLinecap="round"
-                strokeDasharray={`${noiseLevel * 7.54} 754`}
-                style={{ filter: 'drop-shadow(0 0 8px currentColor)' }}
-              />
-              {/* Marcador del umbral */}
-              <circle
-                cx="144"
-                cy="144"
-                r="120"
-                fill="none"
-                stroke="#ef4444"
-                strokeWidth="3"
-                strokeDasharray={`${config.maxThreshold * 7.54} 754`}
-                opacity="0.5"
-              />
-              {/* Gradiente dinámico */}
-              <defs>
-                <linearGradient id="noiseGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor={zenState === 'chaos' ? '#ef4444' : zenState === 'alert' ? '#f59e0b' : '#10b981'} />
-                  <stop offset="100%" stopColor={zenState === 'chaos' ? '#dc2626' : zenState === 'alert' ? '#d97706' : '#059669'} />
-                </linearGradient>
-              </defs>
-            </svg>
-            
-            {/* Centro del medidor */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
+          {/* Stars / particles for night scene */}
+          {(zenState === 'zen' || zenState === 'calm') && (
+            <div className="absolute inset-0 overflow-hidden">
+              {[...Array(20)].map((_, i) => (
+                <motion.div
+                  key={i}
+                  className="absolute w-1 h-1 bg-white rounded-full"
+                  style={{ left: `${5 + (i * 4.7) % 90}%`, top: `${8 + (i * 7.3) % 50}%` }}
+                  animate={{ opacity: [0.2, 0.8, 0.2], scale: [0.8, 1.2, 0.8] }}
+                  transition={{ duration: 2 + (i % 3), repeat: Infinity, delay: i * 0.3 }}
+                />
+              ))}
+              {/* Moon */}
               <motion.div
-                animate={{ 
-                  scale: gameState === 'playing' ? [1, 1.1, 1] : 1,
-                  rotate: zenState === 'chaos' ? [0, -5, 5, 0] : 0
-                }}
-                transition={{ duration: zenState === 'chaos' ? 0.2 : 1.5, repeat: Infinity }}
-                className={`p-4 rounded-full ${zenState === 'chaos' ? 'bg-red-100 dark:bg-red-900/30' : 'bg-emerald-100 dark:bg-emerald-900/30'}`}
+                className="absolute top-6 right-10 w-14 h-14 rounded-full bg-gradient-to-br from-yellow-200 to-amber-300 shadow-lg shadow-yellow-300/30"
+                animate={{ scale: [1, 1.05, 1], boxShadow: ['0 0 20px rgba(253,224,71,0.2)', '0 0 40px rgba(253,224,71,0.4)', '0 0 20px rgba(253,224,71,0.2)'] }}
+                transition={{ duration: 4, repeat: Infinity }}
+              />
+            </div>
+          )}
+          {/* Alert / chaos particles */}
+          {zenState === 'alert' && (
+            <div className="absolute inset-0 overflow-hidden">
+              {[...Array(6)].map((_, i) => (
+                <motion.div
+                  key={i}
+                  className="absolute text-2xl"
+                  style={{ left: `${10 + i * 15}%`, top: '15%' }}
+                  animate={{ y: [0, -10, 0], opacity: [0.3, 0.7, 0.3] }}
+                  transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.25 }}
+                >
+                  ⚡
+                </motion.div>
+              ))}
+            </div>
+          )}
+          {zenState === 'chaos' && (
+            <div className="absolute inset-0 overflow-hidden">
+              {[...Array(8)].map((_, i) => (
+                <motion.div
+                  key={i}
+                  className="absolute text-2xl"
+                  style={{ left: `${5 + i * 12}%`, top: `${10 + (i % 3) * 15}%` }}
+                  animate={{ rotate: [0, 360], scale: [0.8, 1.3, 0.8], opacity: [0.4, 0.9, 0.4] }}
+                  transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.1 }}
+                >
+                  {['💥', '⚡', '🔥', '💢'][i % 4]}
+                </motion.div>
+              ))}
+            </div>
+          )}
+
+          {/* Main content — Jiro hero */}
+          <div className="relative z-10 flex flex-col items-center pt-5 pb-10 px-6">
+            {/* Header integrado — estado + controles */}
+            <div className="w-full flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <motion.div
+                  animate={{
+                    scale: gameState === 'playing' ? [1, 1.1, 1] : 1,
+                    rotate: zenState === 'chaos' ? [0, -8, 8, 0] : 0,
+                  }}
+                  transition={{ duration: zenState === 'chaos' ? 0.25 : 1.5, repeat: Infinity }}
+                  className="w-10 h-10 bg-white/15 backdrop-blur-sm rounded-xl flex items-center justify-center text-white"
+                >
+                  <ZenIcon size={20} />
+                </motion.div>
+                <div>
+                  <motion.h1 key={zenState} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="text-base font-black text-white">
+                    {currentStyle.label}
+                  </motion.h1>
+                  <motion.p key={`m-${zenState}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-white/50 text-xs">
+                    {currentStyle.message}
+                  </motion.p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={togglePause} className="p-2.5 bg-white/15 backdrop-blur-sm text-white rounded-xl hover:bg-white/25 transition-colors" title={gameState === 'playing' ? 'Pausar' : 'Reanudar'}>
+                  {gameState === 'playing' ? <Pause size={18} /> : <Play size={18} />}
+                </motion.button>
+                <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => setShowFinishConfirm(true)} className="p-2.5 bg-red-500/20 backdrop-blur-sm text-red-300 rounded-xl hover:bg-red-500/30 transition-colors" title="Finalizar">
+                  <StopCircle size={18} />
+                </motion.button>
+              </div>
+            </div>
+
+            {/* Stats integrados — glassmorphism */}
+            <div className="w-full grid grid-cols-3 gap-2 mb-6">
+              <motion.div
+                className="bg-white/10 backdrop-blur-sm rounded-xl py-2 px-2 text-center border border-white/10"
+                animate={timeRemaining <= 30 ? { scale: [1, 1.02, 1] } : {}}
+                transition={{ duration: 0.5, repeat: timeRemaining <= 30 ? Infinity : 0 }}
               >
-                {gameState === 'playing' ? (
-                  <Mic size={48} className={currentStyle.text} />
-                ) : (
-                  <MicOff size={48} className="text-gray-400" />
-                )}
+                <Clock size={16} className={`mx-auto mb-0.5 ${timeRemaining <= 30 ? 'text-red-400' : 'text-blue-300'}`} />
+                <div className={`text-xl font-black tabular-nums ${timeRemaining <= 30 ? 'text-red-400' : 'text-white'}`}>{formatTime(timeRemaining)}</div>
+                <div className="text-[10px] text-white/40 font-medium">Tiempo</div>
               </motion.div>
-              <motion.span 
+              <motion.div className="bg-white/10 backdrop-blur-sm rounded-xl py-2 px-2 text-center border border-white/10 relative overflow-hidden">
+                <motion.div className="absolute inset-0 bg-gradient-to-t from-yellow-500/10 to-transparent" animate={{ opacity: [0.3, 0.6, 0.3] }} transition={{ duration: 2, repeat: Infinity }} />
+                <Trophy size={16} className="mx-auto text-yellow-400 mb-0.5 relative z-10" />
+                <motion.div key={stats.totalPoints} initial={{ scale: 1.3 }} animate={{ scale: 1 }} className="text-xl font-black text-white relative z-10 tabular-nums">{stats.totalPoints}</motion.div>
+                <div className="text-[10px] text-white/40 font-medium relative z-10">Puntos</div>
+              </motion.div>
+              <motion.div
+                className="bg-white/10 backdrop-blur-sm rounded-xl py-2 px-2 text-center border border-white/10"
+                animate={stats.currentStreak >= 10 ? { boxShadow: ['0 0 0 rgba(168,85,247,0)', '0 0 15px rgba(168,85,247,0.3)', '0 0 0 rgba(168,85,247,0)'] } : {}}
+                transition={{ duration: 1.5, repeat: Infinity }}
+              >
+                <Sparkles size={16} className="mx-auto text-purple-400 mb-0.5" />
+                <div className="text-xl font-black text-white tabular-nums">x{(1 + Math.floor(stats.currentStreak / 10) * config.streakMultiplier).toFixed(1)}</div>
+                <div className="text-[10px] text-white/40 font-medium">Multiplicador</div>
+              </motion.div>
+            </div>
+            {/* Zzz particles */}
+            {gameState === 'playing' && (zenState === 'zen' || zenState === 'calm') && (
+              <div className="absolute top-12 right-[28%] pointer-events-none z-30">
+                {['Z', 'z', 'Z'].map((letter, i) => (
+                  <motion.span
+                    key={i}
+                    className="absolute text-white/70 font-black select-none"
+                    style={{ fontSize: `${22 - i * 4}px` }}
+                    animate={{
+                      y: [-5, -45 - i * 15],
+                      x: [0, 12 + i * 8],
+                      opacity: [0, 0.9, 0],
+                      scale: [0.6, 1.2, 0.4],
+                    }}
+                    transition={{ duration: 2.8 + i * 0.5, repeat: Infinity, delay: i * 0.8, ease: 'easeOut' }}
+                  >
+                    {letter}
+                  </motion.span>
+                ))}
+              </div>
+            )}
+
+            {/* Jiro image — the hero */}
+            <div className="relative mb-4">
+              {/* Glow ring behind Jiro */}
+              <motion.div
+                className={`absolute -inset-6 rounded-full blur-2xl ${
+                  zenState === 'zen' ? 'bg-emerald-400' : zenState === 'calm' ? 'bg-green-400' : zenState === 'alert' ? 'bg-yellow-400' : 'bg-red-500'
+                }`}
+                animate={{ opacity: [0.15, 0.35, 0.15], scale: [0.9, 1.05, 0.9] }}
+                transition={{ duration: zenState === 'chaos' ? 0.5 : 3, repeat: Infinity }}
+              />
+
+              <AnimatePresence mode="wait">
+                <motion.img
+                  key={jiroImage}
+                  src={gameState === 'playing' ? jiroImage : '/assets/mascot/jiro-zen-1.png'}
+                  alt="Jiro"
+                  className="relative z-10 w-56 h-56 object-contain drop-shadow-2xl"
+                  initial={{ scale: 0.92, opacity: 0 }}
+                  animate={{
+                    scale: 1,
+                    opacity: 1,
+                    y: zenState === 'zen' ? [0, -6, 0] : zenState === 'calm' ? [0, -4, 0] : 0,
+                    rotate: zenState === 'chaos' ? [0, -4, 4, -4, 0] : zenState === 'alert' ? [0, -1.5, 1.5, 0] : 0,
+                  }}
+                  exit={{ scale: 1.04, opacity: 0 }}
+                  transition={{
+                    scale: { duration: 0.12 },
+                    opacity: { duration: 0.1 },
+                    y: { duration: 4, repeat: Infinity, ease: 'easeInOut' },
+                    rotate: zenState === 'chaos' ? { duration: 0.25, repeat: Infinity } : zenState === 'alert' ? { duration: 1.5, repeat: Infinity } : { duration: 0 },
+                  }}
+                />
+              </AnimatePresence>
+            </div>
+
+            {/* Noise level label */}
+            <motion.div
+              className={`px-6 py-2 rounded-2xl backdrop-blur-md border ${
+                zenState === 'zen' ? 'bg-emerald-500/20 border-emerald-400/30'
+                : zenState === 'calm' ? 'bg-green-500/20 border-green-400/30'
+                : zenState === 'alert' ? 'bg-yellow-500/20 border-yellow-400/30'
+                : 'bg-red-500/30 border-red-400/40'
+              }`}
+              animate={zenState === 'chaos' ? { scale: [1, 1.05, 1] } : {}}
+              transition={{ duration: 0.4, repeat: zenState === 'chaos' ? Infinity : 0 }}
+            >
+              <motion.span
                 key={noiseLevel}
-                initial={{ scale: 1.2 }}
+                initial={{ scale: 1.3 }}
                 animate={{ scale: 1 }}
-                className={`text-6xl font-black mt-3 ${currentStyle.text}`}
+                className="text-5xl font-black text-white tabular-nums"
               >
                 {noiseLevel}%
               </motion.span>
-              <span className="text-sm text-gray-500 dark:text-gray-400 mt-1">Nivel de ruido</span>
-            </div>
-          </div>
-
-          {/* Barra de progreso mejorada */}
-          <div className="w-full max-w-lg">
-            <div className="flex justify-between text-sm text-gray-500 dark:text-gray-400 mb-2 font-medium">
-              <span className="flex items-center gap-1">
-                <Leaf size={14} className="text-emerald-500" />
-                Silencio
-              </span>
-              <span className="flex items-center gap-1 text-red-500">
-                <Flame size={14} />
-                Umbral ({config.maxThreshold}%)
-              </span>
-            </div>
-            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden relative shadow-inner">
-              {/* Marcador del umbral */}
-              <motion.div 
-                className="absolute top-0 bottom-0 w-1 bg-red-500 z-20 rounded-full"
-                style={{ left: `${config.maxThreshold}%` }}
-                animate={{ opacity: [0.5, 1, 0.5] }}
-                transition={{ duration: 1, repeat: Infinity }}
-              />
-              {/* Barra de progreso */}
-              <motion.div
-                className={`h-full rounded-full bg-gradient-to-r ${currentStyle.gradient} shadow-lg`}
-                animate={{ width: `${noiseLevel}%` }}
-                transition={{ duration: 0.1 }}
-                style={{ boxShadow: `0 0 20px ${zenState === 'chaos' ? 'rgba(239,68,68,0.5)' : 'rgba(16,185,129,0.5)'}` }}
-              />
-            </div>
-          </div>
-
-          {/* Mini gráfico de historial mejorado */}
-          <div className="w-full max-w-lg mt-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">Historial de ruido</span>
-              <span className="text-xs text-gray-400">Últimos 60 segundos</span>
-            </div>
-            <div className="h-20 flex items-end gap-0.5 bg-gray-100 dark:bg-gray-700/50 rounded-xl p-2">
-              {noiseHistory.map((level, i) => (
-                <motion.div
-                  key={i}
-                  className={`flex-1 rounded-t-sm ${
-                    getZenState(level) === 'chaos' ? 'bg-gradient-to-t from-red-500 to-red-400' : 
-                    getZenState(level) === 'alert' ? 'bg-gradient-to-t from-yellow-500 to-yellow-400' : 
-                    'bg-gradient-to-t from-emerald-500 to-emerald-400'
-                  }`}
-                  initial={{ height: 0 }}
-                  animate={{ height: `${Math.max(8, level)}%` }}
-                  transition={{ duration: 0.1 }}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-      </motion.div>
-
-      {/* Racha actual - Mejorada */}
-      {stats.currentStreak > 5 && (
-        <motion.div
-          initial={{ opacity: 0, y: 20, scale: 0.9 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          className="bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 rounded-2xl p-5 text-white text-center shadow-xl shadow-emerald-500/30 relative overflow-hidden"
-        >
-          {/* Efecto de brillo */}
-          <motion.div
-            className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
-            animate={{ x: ['-100%', '100%'] }}
-            transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-          />
-          <div className="flex items-center justify-center gap-3 relative z-10">
-            <motion.div
-              animate={{ scale: [1, 1.2, 1], rotate: [0, 10, -10, 0] }}
-              transition={{ duration: 1, repeat: Infinity }}
-            >
-              <Flame size={28} />
+              <span className="block text-center text-white/60 text-xs font-medium mt-0.5">Nivel de ruido</span>
             </motion.div>
-            <div>
-              <span className="font-black text-xl">
-                ¡Racha de {formatTime(stats.currentStreak)}!
-              </span>
-              {stats.currentStreak >= 10 && (
-                <motion.span 
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  className="ml-3 bg-white/30 px-3 py-1 rounded-full text-sm font-bold"
-                >
-                  🔥 +{Math.floor(stats.currentStreak / 10) * 10}% bonus
-                </motion.span>
-              )}
+
+            {/* Noise progress bar — inline */}
+            <div className="w-full max-w-md mt-6">
+              <div className="flex justify-between text-xs mb-1.5 font-medium">
+                <span className="flex items-center gap-1 text-emerald-300"><Leaf size={12} />Silencio</span>
+                <span className="flex items-center gap-1 text-red-400"><Flame size={12} />Umbral ({config.maxThreshold}%)</span>
+              </div>
+              <div className="h-3 bg-white/10 rounded-full overflow-hidden relative backdrop-blur-sm">
+                <motion.div
+                  className="absolute top-0 bottom-0 w-0.5 bg-red-400 z-20 rounded-full"
+                  style={{ left: `${config.maxThreshold}%` }}
+                  animate={{ opacity: [0.4, 1, 0.4] }}
+                  transition={{ duration: 1.2, repeat: Infinity }}
+                />
+                <motion.div
+                  className={`h-full rounded-full bg-gradient-to-r ${currentStyle.gradient}`}
+                  animate={{ width: `${noiseLevel}%` }}
+                  transition={{ duration: 0.1 }}
+                  style={{ boxShadow: `0 0 12px ${zenState === 'chaos' ? 'rgba(239,68,68,0.6)' : 'rgba(16,185,129,0.4)'}` }}
+                />
+              </div>
+            </div>
+
+            {/* Noise history — mini chart */}
+            <div className="w-full max-w-md mt-4">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[10px] text-white/40 font-medium">Historial de ruido</span>
+                <span className="text-[10px] text-white/30">Últimos 60s</span>
+              </div>
+              <div className="h-12 flex items-end gap-px bg-white/5 rounded-lg p-1.5 backdrop-blur-sm">
+                {noiseHistory.map((level, i) => (
+                  <motion.div
+                    key={i}
+                    className={`flex-1 rounded-t-sm ${
+                      getZenState(level) === 'chaos' ? 'bg-red-400/80' :
+                      getZenState(level) === 'alert' ? 'bg-yellow-400/70' :
+                      'bg-emerald-400/60'
+                    }`}
+                    initial={{ height: 0 }}
+                    animate={{ height: `${Math.max(6, level)}%` }}
+                    transition={{ duration: 0.1 }}
+                  />
+                ))}
+              </div>
             </div>
           </div>
         </motion.div>
-      )}
+
+        {/* Streak bar */}
+        {stats.currentStreak > 5 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            className="bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 rounded-2xl py-3.5 px-5 text-white text-center shadow-xl shadow-emerald-500/30 relative overflow-hidden"
+          >
+            <motion.div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent" animate={{ x: ['-100%', '100%'] }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }} />
+            <div className="flex items-center justify-center gap-3 relative z-10">
+              <motion.div animate={{ scale: [1, 1.2, 1], rotate: [0, 10, -10, 0] }} transition={{ duration: 1, repeat: Infinity }}>
+                <Flame size={24} />
+              </motion.div>
+              <span className="font-black text-lg">¡Racha de {formatTime(stats.currentStreak)}!</span>
+              {stats.currentStreak >= 10 && (
+                <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} className="bg-white/25 px-2.5 py-0.5 rounded-full text-xs font-bold">
+                  🔥 +{Math.floor(stats.currentStreak / 10) * 10}%
+                </motion.span>
+              )}
+            </div>
+          </motion.div>
+        )}
       </div>
 
-      {/* Estado pausado */}
+      {/* Paused overlay */}
       {gameState === 'paused' && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center"
-        >
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 text-center shadow-2xl">
-            <Pause size={48} className="mx-auto text-gray-400 mb-4" />
-            <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-2">
-              Pausado
-            </h2>
-            <p className="text-gray-500 dark:text-gray-400 mb-4">
-              El tiempo está detenido
-            </p>
-            <button
-              onClick={togglePause}
-              className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-medium"
-            >
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center">
+          <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="bg-white rounded-2xl p-8 text-center shadow-2xl max-w-xs">
+            <img src="/assets/mascot/jiro-zen-1.png" alt="Jiro dormido" className="w-24 h-24 mx-auto mb-4 object-contain" />
+            <h2 className="text-xl font-bold text-gray-800 mb-1">Pausado</h2>
+            <p className="text-gray-500 text-sm mb-4">Jiro espera en silencio...</p>
+            <button onClick={togglePause} className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-medium w-full">
               Continuar
             </button>
-          </div>
+          </motion.div>
         </motion.div>
       )}
 

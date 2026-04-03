@@ -74,7 +74,7 @@ const FEATURE_INFO: Record<string, { emoji: string; description: string }> = {
   storytelling: { emoji: '\u{1F4D6}', description: 'Crea una historia narrativa de fondo para tu clase que ambienta la experiencia.' },
   expedition: { emoji: '\u{1F5FA}\uFE0F', description: 'Aventuras de aprendizaje con mapas interactivos donde los estudiantes exploran y completan misiones. Incluye la Expedición de Jiro con bancos de preguntas y sistema de energía.' },
   question_bank: { emoji: '\u2753', description: 'Crea y organiza preguntas para usar en Expediciones y Torneos.' },
-  activities: { emoji: '\u26A1', description: 'Herramientas interactivas para dinamizar tu clase: Ruleta del Destino, Torneos, Aula Zen, Actividades de Tiempo, Pergaminos del Aula y más.' },
+  activities: { emoji: '\u26A1', description: 'Herramientas interactivas para dinamizar tu clase: Ruleta del Destino, Torneos, Descanso de Jiro, Actividades de Tiempo, Pergaminos del Aula y más.' },
 };
 
 export const ClassroomLayout = () => {
