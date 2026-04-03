@@ -1,31 +1,50 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { motion } from 'framer-motion';
-import { Gamepad2, ArrowRight, Check, ArrowLeft, Sparkles, Link2, Loader2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ArrowRight, Check, ArrowLeft, Sparkles, Loader2, Search, PartyPopper, School, UserCheck } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
-import { AvatarRenderer } from '../../components/avatar/AvatarRenderer';
 import { studentApi, CHARACTER_CLASSES, type AvatarGender } from '../../lib/studentApi';
 import { characterClassApi } from '../../lib/characterClassApi';
 import { placeholderStudentApi } from '../../lib/placeholderStudentApi';
 import toast from 'react-hot-toast';
 
+type CodeType = 'classroom' | 'student' | null;
+
+interface VerifyResult {
+  type: 'classroom' | 'student';
+  classroomName?: string;
+  classroomCode?: string;
+  isActive?: boolean;
+  studentName?: string | null;
+  alreadyLinked?: boolean;
+}
+
+const STEP_LABELS = [
+  'Ingresa tu código',
+  'Crea tu personaje',
+  'Elige tu clase',
+];
+
 export const JoinClassPage = () => {
   const navigate = useNavigate();
+
+  // Step flow: 1=code, 2=character name+avatar, 3=class selection (only for classroom mode)
   const [step, setStep] = useState(1);
   const [code, setCode] = useState('');
+  const [codeType, setCodeType] = useState<CodeType>(null);
+  const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verifyError, setVerifyError] = useState('');
+
+  // Character creation
   const [characterName, setCharacterName] = useState('');
+  const [avatarGender, setAvatarGender] = useState<AvatarGender>('MALE');
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
-  const [avatarGender, setAvatarGender] = useState<AvatarGender>('MALE');
   const [, setAssignmentMode] = useState<string>('STUDENT_CHOICE');
-  
-  // Estado para modo de vinculación
-  const [isLinkMode, setIsLinkMode] = useState(false);
-  const [linkStep, setLinkStep] = useState(1); // 1: código, 2: avatar
-  const [linkCode, setLinkCode] = useState('');
-  const [linkCharacterName, setLinkCharacterName] = useState('');
-  const [linkAvatarGender, setLinkAvatarGender] = useState<AvatarGender>('MALE');
+
+  // Link mode state
   const [isLinking, setIsLinking] = useState(false);
 
   // Query para cargar clases de personaje del aula
@@ -45,37 +64,93 @@ export const JoinClassPage = () => {
     },
     onError: (error: any) => {
       const message = error?.response?.data?.message || error.message || 'Error al unirse a la clase';
-      if (message.includes('permiso') || message.includes('No tienes')) {
-        toast.error('Solo los estudiantes pueden unirse a clases. Registra una cuenta de estudiante.');
-      } else {
-        toast.error(message);
-      }
+      toast.error(message);
     },
   });
 
-  const handleSubmit = () => {
-    if (!selectedClass) return;
-    
+  // Step 1: Verify code
+  const handleVerifyCode = async () => {
+    if (code.length < 6) return;
+    setIsVerifying(true);
+    setVerifyError('');
+    try {
+      const result = await studentApi.verifyCode(code);
+      setVerifyResult(result);
+      setCodeType(result.type);
+
+      if (result.type === 'student' && result.alreadyLinked) {
+        setVerifyError('Este código ya fue usado. Contacta a tu profesor.');
+        setVerifyResult(null);
+        setCodeType(null);
+      } else if (result.type === 'classroom' && result.isActive === false) {
+        setVerifyError('Esta clase no está activa actualmente.');
+        setVerifyResult(null);
+        setCodeType(null);
+      }
+    } catch {
+      setVerifyError('Código no encontrado. Revisa que esté bien escrito.');
+      setVerifyResult(null);
+      setCodeType(null);
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  // Go to step 2
+  const handleContinueToCharacter = () => {
+    if (!verifyResult) return;
+    setStep(2);
+  };
+
+  // Step 2 → 3 or submit (for classroom mode)
+  const handleContinueToClass = async () => {
+    if (codeType === 'classroom') {
+      try {
+        const result = await fetchClasses();
+        const data = result.data;
+        if (data) {
+          setAssignmentMode(data.assignmentMode);
+          if (data.assignmentMode === 'TEACHER_ASSIGNS') {
+            const first = data.classes[0];
+            if (first) {
+              setSelectedClass(first.key);
+              setSelectedClassId(first.id);
+            }
+            handleJoinClass(first?.key || 'GUARDIAN', first?.id || null);
+            return;
+          }
+        }
+      } catch {
+        // Continue with default classes
+      }
+      setStep(3);
+    }
+  };
+
+  // Final join for classroom mode
+  const handleJoinClass = (classKey?: string, classId?: string | null) => {
+    const finalClass = classKey || selectedClass;
+    if (!finalClass) return;
+
     joinMutation.mutate({
       code: code.toUpperCase(),
       characterName,
-      characterClass: selectedClass,
-      characterClassId: selectedClassId || undefined,
+      characterClass: finalClass,
+      characterClassId: classId !== undefined ? classId || undefined : selectedClassId || undefined,
       avatarGender,
     });
   };
 
+  // Final link for student mode
   const handleLinkAccount = async () => {
-    if (linkCode.length < 6) return;
-    
     setIsLinking(true);
     try {
       const result = await placeholderStudentApi.linkAccount({
-        linkCode: linkCode.toUpperCase(),
-        characterName: linkCharacterName.trim() || undefined,
-        avatarGender: linkAvatarGender,
+        linkCode: code.toUpperCase(),
+        characterName: characterName.trim() || undefined,
+        avatarGender,
       });
-      toast.success(`¡Cuenta vinculada a ${result.data.classroom.name}!`);
+      toast.success(`¡Te has unido a ${result.data.classroom.name}!`);
       navigate('/dashboard');
     } catch (error: any) {
       const message = error?.response?.data?.message || 'Error al vincular cuenta';
@@ -85,12 +160,15 @@ export const JoinClassPage = () => {
     }
   };
 
+  const totalSteps = codeType === 'classroom' ? 3 : 2;
+  const isNameOptional = codeType === 'student';
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
-      {/* Efectos de fondo */}
+    <div className="-m-4 md:-m-6 lg:-m-8 h-[calc(100vh-3.5rem)] bg-gradient-to-br from-slate-50 via-purple-50 to-indigo-50 flex items-start justify-center overflow-auto pt-8 px-4">
+      {/* Background effects */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl" />
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-300/20 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-300/20 rounded-full blur-3xl" />
       </div>
 
       <motion.div
@@ -98,411 +176,324 @@ export const JoinClassPage = () => {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-2xl relative z-10"
       >
-        {/* Header */}
-        <div className="text-center mb-8">
-          <motion.div 
+        {/* Header with Jiro */}
+        <div className="text-center mb-4">
+          <motion.img
             initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ type: "spring", delay: 0.2 }}
-            className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl mb-4 shadow-lg shadow-purple-500/30"
-          >
-            <Gamepad2 className="w-10 h-10 text-white" />
-          </motion.div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-white via-purple-200 to-indigo-200 bg-clip-text text-transparent">
-            Unirse a una Clase
+            animate={{ scale: 1, y: [0, -4, 0] }}
+            transition={{ scale: { type: 'spring', delay: 0.2 }, y: { duration: 3, repeat: Infinity, ease: 'easeInOut' } }}
+            src="/assets/mascot/jiro-ranking-xp.png"
+            alt="Jiro"
+            className="w-28 h-28 mx-auto mb-2 object-contain drop-shadow-lg"
+          />
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-700 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
+            ¡Únete a la aventura!
           </h1>
-          <p className="text-purple-200/70 mt-2 text-lg">
-            {step === 1 && 'Ingresa el código que te dio tu profesor'}
-            {step === 2 && 'Crea tu personaje para la aventura'}
-            {step === 3 && 'Elige tu clase de personaje'}
+          <p className="text-gray-500 mt-1 text-base">
+            {STEP_LABELS[step - 1]}
           </p>
         </div>
 
-        {/* Progress Steps */}
-        <div className="flex justify-center gap-3 mb-8">
-          {[1, 2, 3].map((s) => (
-            <motion.div
-              key={s}
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ delay: s * 0.1 }}
-              className={`w-3 h-3 rounded-full transition-all duration-300 ${
-                s <= step 
-                  ? 'bg-gradient-to-r from-purple-400 to-indigo-400 shadow-lg shadow-purple-500/50' 
-                  : 'bg-white/20'
-              }`}
-            />
+        {/* Progress Steps with labels */}
+        <div className="flex justify-center gap-2 mb-4">
+          {Array.from({ length: totalSteps }, (_, i) => i + 1).map((s) => (
+            <div key={s} className="flex items-center gap-2">
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ delay: s * 0.1 }}
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300 ${
+                  s < step
+                    ? 'bg-green-500 text-white shadow-lg shadow-green-500/30'
+                    : s === step
+                      ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-lg shadow-purple-500/30'
+                      : 'bg-gray-200 text-gray-400'
+                }`}
+              >
+                {s < step ? <Check size={16} /> : s}
+              </motion.div>
+              {s < totalSteps && (
+                <div className={`w-8 h-0.5 rounded-full transition-all duration-300 ${
+                  s < step ? 'bg-green-500' : 'bg-gray-200'
+                }`} />
+              )}
+            </div>
           ))}
         </div>
 
         {/* Card principal */}
-        <motion.div 
+        <motion.div
           layout
-          className="bg-slate-800/50 backdrop-blur-xl rounded-3xl p-8 border border-white/10 shadow-2xl"
+          className="bg-white/80 backdrop-blur-xl rounded-3xl p-6 border border-gray-200/80 shadow-xl"
         >
-          {/* Step 1: Código */}
-          {step === 1 && !isLinkMode && (
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="space-y-6"
-            >
-              <div>
-                <label className="block text-sm font-medium text-purple-200 mb-2">
-                  Código de clase
-                </label>
-                <input
-                  type="text"
-                  placeholder="ABC12345"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value.toUpperCase())}
-                  className="w-full px-6 py-4 bg-slate-900/50 border border-white/10 rounded-xl text-center text-2xl font-mono tracking-widest text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
-                  maxLength={8}
-                />
-              </div>
-              <Button
-                className="w-full bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white py-4 text-lg"
-                size="lg"
-                onClick={() => setStep(2)}
-                disabled={code.length < 6}
-                rightIcon={<ArrowRight size={20} />}
+          <AnimatePresence mode="wait">
+            {/* ===== STEP 1: Código unificado ===== */}
+            {step === 1 && (
+              <motion.div
+                key="step1"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-6"
               >
-                Continuar
-              </Button>
-
-              {/* Separador */}
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-white/10"></div>
+                {/* Jiro speech bubble */}
+                <div className="relative bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200/60 rounded-2xl p-4">
+                  <p className="text-gray-600 text-sm text-center">
+                    Escribe el código que te dio tu profe. Puede ser <span className="text-purple-600 font-semibold">el código de tu clase</span> o <span className="text-blue-600 font-semibold">tu código personal</span>. ¡Yo lo detecto automáticamente!
+                  </p>
                 </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-4 bg-slate-800/50 text-purple-200/60">o</span>
-                </div>
-              </div>
 
-              {/* Opción de vincular */}
-              <button
-                onClick={() => setIsLinkMode(true)}
-                className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-400/30 rounded-xl text-blue-300 transition-all"
-              >
-                <Link2 size={18} />
-                <span>Tengo un código de estudiante</span>
-              </button>
-              <p className="text-center text-purple-200/50 text-xs">
-                Si tu profesor te dio una tarjeta con un código personal
-              </p>
-            </motion.div>
-          )}
-
-          {/* Modo vincular cuenta - Paso 1: Código */}
-          {step === 1 && isLinkMode && linkStep === 1 && (
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="space-y-6"
-            >
-              <div className="text-center mb-4">
-                <div className="inline-flex items-center justify-center w-12 h-12 bg-blue-500/20 rounded-xl mb-3">
-                  <Link2 className="w-6 h-6 text-blue-400" />
-                </div>
-                <h3 className="text-lg font-bold text-white">Vincular mi cuenta</h3>
-                <p className="text-purple-200/60 text-sm">Ingresa el código de la tarjeta que te dio tu profesor</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-purple-200 mb-2">
-                  Código de estudiante
-                </label>
-                <input
-                  type="text"
-                  placeholder="ABC123"
-                  value={linkCode}
-                  onChange={(e) => setLinkCode(e.target.value.toUpperCase())}
-                  className="w-full px-6 py-4 bg-slate-900/50 border border-white/10 rounded-xl text-center text-2xl font-mono tracking-widest text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                  maxLength={8}
-                />
-              </div>
-
-              <Button
-                className="w-full bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white py-4 text-lg"
-                size="lg"
-                onClick={() => setLinkStep(2)}
-                disabled={linkCode.length < 6}
-                rightIcon={<ArrowRight size={20} />}
-              >
-                Continuar
-              </Button>
-
-              <button
-                onClick={() => {
-                  setIsLinkMode(false);
-                  setLinkCode('');
-                  setLinkStep(1);
-                }}
-                className="w-full text-center text-purple-200/60 hover:text-purple-200 text-sm transition-colors"
-              >
-                ← Volver a unirse con código de clase
-              </button>
-            </motion.div>
-          )}
-
-          {/* Modo vincular cuenta - Paso 2: Avatar y nombre */}
-          {step === 1 && isLinkMode && linkStep === 2 && (
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="space-y-6"
-            >
-              <div className="text-center mb-4">
-                <h3 className="text-lg font-bold text-white">Personaliza tu personaje</h3>
-                <p className="text-purple-200/60 text-sm">Elige cómo quieres que se vea tu avatar</p>
-              </div>
-
-              {/* Nombre de personaje */}
-              <div>
-                <label className="block text-sm font-medium text-purple-200 mb-2">
-                  Nombre de tu personaje (opcional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ej: Sir Lancelot, Luna Mágica..."
-                  value={linkCharacterName}
-                  onChange={(e) => setLinkCharacterName(e.target.value)}
-                  className="w-full px-6 py-4 bg-slate-900/50 border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                />
-                <p className="text-xs text-purple-200/40 mt-1">Si lo dejas vacío, se usará el nombre que asignó tu profesor</p>
-              </div>
-
-              {/* Selección de género/avatar */}
-              <div>
-                <label className="block text-sm font-medium text-purple-200 mb-3">
-                  Elige tu avatar
-                </label>
-                <div className="grid grid-cols-2 gap-4">
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => setLinkAvatarGender('MALE')}
-                    className={`relative p-4 rounded-2xl transition-all ${
-                      linkAvatarGender === 'MALE'
-                        ? 'bg-gradient-to-br from-blue-500/30 to-indigo-500/30 border-2 border-blue-400'
-                        : 'bg-slate-900/50 border-2 border-white/10 hover:border-white/20'
-                    }`}
-                  >
-                    {linkAvatarGender === 'MALE' && (
-                      <motion.div 
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        className="absolute top-2 right-2 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center"
-                      >
-                        <Check className="w-3 h-3 text-white" />
-                      </motion.div>
-                    )}
-                    <div className="flex justify-center mb-2">
-                      <AvatarRenderer gender="MALE" size="lg" equippedItems={[]} />
-                    </div>
-                    <p className="text-white font-medium text-center">Masculino</p>
-                  </motion.button>
-
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => setLinkAvatarGender('FEMALE')}
-                    className={`relative p-4 rounded-2xl transition-all ${
-                      linkAvatarGender === 'FEMALE'
-                        ? 'bg-gradient-to-br from-pink-500/30 to-purple-500/30 border-2 border-pink-400'
-                        : 'bg-slate-900/50 border-2 border-white/10 hover:border-white/20'
-                    }`}
-                  >
-                    {linkAvatarGender === 'FEMALE' && (
-                      <motion.div 
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        className="absolute top-2 right-2 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center"
-                      >
-                        <Check className="w-3 h-3 text-white" />
-                      </motion.div>
-                    )}
-                    <div className="flex justify-center mb-2">
-                      <AvatarRenderer gender="FEMALE" size="lg" equippedItems={[]} />
-                    </div>
-                    <p className="text-white font-medium text-center">Femenino</p>
-                  </motion.button>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <Button
-                  variant="secondary"
-                  className="flex-1"
-                  onClick={() => setLinkStep(1)}
-                  leftIcon={<ArrowLeft size={18} />}
-                >
-                  Atrás
-                </Button>
-                <Button
-                  className="flex-1 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white"
-                  size="lg"
-                  onClick={handleLinkAccount}
-                  disabled={isLinking}
-                >
-                  {isLinking ? (
-                    <>
-                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      Vinculando...
-                    </>
-                  ) : (
-                    <>
-                      <Link2 className="w-5 h-5 mr-2" />
-                      Vincular cuenta
-                    </>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-2">
+                    Tu código
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder="Escribe tu código aquí"
+                      value={code}
+                      onChange={(e) => {
+                        setCode(e.target.value.toUpperCase());
+                        setVerifyError('');
+                        setVerifyResult(null);
+                        setCodeType(null);
+                      }}
+                      onKeyDown={(e) => e.key === 'Enter' && code.length >= 6 && !isVerifying && handleVerifyCode()}
+                      className={`w-full px-6 py-4 bg-gray-50 border rounded-xl text-center text-2xl font-mono tracking-widest text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:border-transparent transition-all ${
+                        verifyError ? 'border-red-400 focus:ring-red-500' :
+                        verifyResult ? 'border-green-400 focus:ring-green-500' :
+                        'border-gray-200 focus:ring-purple-500'
+                      }`}
+                      maxLength={8}
+                      autoFocus
+                    />
+                  </div>
+                  {verifyError && (
+                    <motion.p
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="text-red-500 text-sm mt-2 text-center"
+                    >
+                      {verifyError}
+                    </motion.p>
                   )}
-                </Button>
-              </div>
-            </motion.div>
-          )}
-
-          {/* Step 2: Nombre y género de personaje */}
-          {step === 2 && (
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="space-y-6"
-            >
-              <div>
-                <label className="block text-sm font-medium text-purple-200 mb-2">
-                  Nombre de tu personaje
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ej: Sir Lancelot, Luna Mágica..."
-                  value={characterName}
-                  onChange={(e) => setCharacterName(e.target.value)}
-                  className="w-full px-6 py-4 bg-slate-900/50 border border-white/10 rounded-xl text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
-                />
-              </div>
-
-              {/* Selección de género/avatar */}
-              <div>
-                <label className="block text-sm font-medium text-purple-200 mb-3">
-                  Elige tu avatar
-                </label>
-                <div className="grid grid-cols-2 gap-4">
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => setAvatarGender('MALE')}
-                    className={`relative p-4 rounded-2xl transition-all ${
-                      avatarGender === 'MALE'
-                        ? 'bg-gradient-to-br from-blue-500/30 to-indigo-500/30 border-2 border-blue-400'
-                        : 'bg-slate-900/50 border-2 border-white/10 hover:border-white/20'
-                    }`}
-                  >
-                    {avatarGender === 'MALE' && (
-                      <motion.div 
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        className="absolute top-2 right-2 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center"
-                      >
-                        <Check className="w-3 h-3 text-white" />
-                      </motion.div>
-                    )}
-                    <div className="flex justify-center mb-2">
-                      <AvatarRenderer gender="MALE" size="lg" equippedItems={[]} />
-                    </div>
-                    <p className="text-white font-medium text-center">Masculino</p>
-                  </motion.button>
-
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={() => setAvatarGender('FEMALE')}
-                    className={`relative p-4 rounded-2xl transition-all ${
-                      avatarGender === 'FEMALE'
-                        ? 'bg-gradient-to-br from-pink-500/30 to-purple-500/30 border-2 border-pink-400'
-                        : 'bg-slate-900/50 border-2 border-white/10 hover:border-white/20'
-                    }`}
-                  >
-                    {avatarGender === 'FEMALE' && (
-                      <motion.div 
-                        initial={{ scale: 0 }}
-                        animate={{ scale: 1 }}
-                        className="absolute top-2 right-2 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center"
-                      >
-                        <Check className="w-3 h-3 text-white" />
-                      </motion.div>
-                    )}
-                    <div className="flex justify-center mb-2">
-                      <AvatarRenderer gender="FEMALE" size="lg" equippedItems={[]} />
-                    </div>
-                    <p className="text-white font-medium text-center">Femenino</p>
-                  </motion.button>
                 </div>
-              </div>
 
-              <p className="text-sm text-purple-200/60 flex items-center gap-2">
-                <Sparkles size={14} />
-                Podrás personalizar tu avatar con atuendos en la tienda.
-              </p>
-              <div className="flex gap-3">
-                <Button
-                  variant="secondary"
-                  className="flex-1 bg-white/10 hover:bg-white/20 text-white border-0"
-                  onClick={() => setStep(1)}
-                  leftIcon={<ArrowLeft size={18} />}
-                >
-                  Atrás
-                </Button>
-                <Button
-                  className="flex-1 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white"
-                  onClick={async () => {
-                    try {
-                      const result = await fetchClasses();
-                      const data = result.data;
-                      if (data) {
-                        setAssignmentMode(data.assignmentMode);
-                        if (data.assignmentMode === 'TEACHER_ASSIGNS') {
-                          // Skip class selection, use first available or empty
-                          const first = data.classes[0];
-                          if (first) {
-                            setSelectedClass(first.key);
-                            setSelectedClassId(first.id);
+                {/* Result card after verification */}
+                <AnimatePresence>
+                  {verifyResult && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      className={`rounded-2xl p-5 border ${
+                        verifyResult.type === 'classroom'
+                          ? 'bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200'
+                          : 'bg-gradient-to-r from-blue-50 to-cyan-50 border-blue-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                          verifyResult.type === 'classroom'
+                            ? 'bg-purple-100'
+                            : 'bg-blue-100'
+                        }`}>
+                          {verifyResult.type === 'classroom'
+                            ? <School className="w-6 h-6 text-purple-600" />
+                            : <UserCheck className="w-6 h-6 text-blue-600" />
                           }
-                          handleSubmit();
-                          return;
-                        }
-                      }
-                    } catch {
-                      // Continue with default classes if fetch fails
-                    }
-                    setStep(3);
-                  }}
-                  disabled={characterName.length < 2}
-                  rightIcon={<ArrowRight size={20} />}
-                >
-                  Continuar
-                </Button>
-              </div>
-            </motion.div>
-          )}
+                        </div>
+                        <div className="flex-1">
+                          {verifyResult.type === 'classroom' ? (
+                            <>
+                              <p className="text-gray-800 font-bold text-lg flex items-center gap-2">
+                                <PartyPopper size={18} className="text-yellow-500" />
+                                ¡Clase encontrada!
+                              </p>
+                              <p className="text-gray-500 text-sm">{verifyResult.classroomName}</p>
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-gray-800 font-bold text-lg flex items-center gap-2">
+                                <PartyPopper size={18} className="text-yellow-500" />
+                                ¡Te estábamos esperando!
+                              </p>
+                              <p className="text-gray-500 text-sm">
+                                {verifyResult.studentName && <span className="font-medium text-blue-600">{verifyResult.studentName}</span>}
+                                {verifyResult.studentName && ' · '}
+                                {verifyResult.classroomName}
+                              </p>
+                            </>
+                          )}
+                        </div>
+                        <motion.div
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center"
+                        >
+                          <Check className="w-5 h-5 text-white" />
+                        </motion.div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
-          {/* Step 3: Clase de personaje */}
-          {step === 3 && (
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="space-y-6"
-            >
-              <div className="grid grid-cols-2 gap-4">
-                {(dynamicClasses.length > 0
-                  ? dynamicClasses.map((cc) => ({ key: cc.key, id: cc.id, name: cc.name, icon: cc.icon, description: cc.description || '' }))
-                  : Object.entries(CHARACTER_CLASSES).map(([key, val]) => ({ key, id: null as string | null, name: val.name, icon: val.icon, description: val.description }))
-                ).map((cls, index) => (
+                {/* Action button */}
+                {!verifyResult ? (
+                  <Button
+                    className="w-full bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white py-4 text-lg"
+                    size="lg"
+                    onClick={handleVerifyCode}
+                    disabled={code.length < 6 || isVerifying}
+                  >
+                    {isVerifying ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Buscando...
+                      </span>
+                    ) : (
+                      <span className="flex items-center justify-center gap-2">
+                        <Search size={20} />
+                        Verificar código
+                      </span>
+                    )}
+                  </Button>
+                ) : (
+                  <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}>
+                    <Button
+                      className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white py-4 text-lg"
+                      size="lg"
+                      onClick={handleContinueToCharacter}
+                      rightIcon={<ArrowRight size={20} />}
+                    >
+                      ¡Continuar!
+                    </Button>
+                  </motion.div>
+                )}
+              </motion.div>
+            )}
+
+            {/* ===== STEP 2: Character name + avatar ===== */}
+            {step === 2 && (
+              <motion.div
+                key="step2"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-6"
+              >
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-2">
+                    Nombre de tu personaje{isNameOptional ? ' (opcional)' : ''}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: Sir Lancelot, Luna Mágica..."
+                    value={characterName}
+                    onChange={(e) => setCharacterName(e.target.value)}
+                    className="w-full px-6 py-4 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                  />
+                  {isNameOptional && (
+                    <p className="text-xs text-gray-400 mt-1">Si lo dejas vacío, se usará el nombre que asignó tu profesor</p>
+                  )}
+                </div>
+
+                {/* Avatar gender */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-3">
+                    Elige tu avatar
+                  </label>
+                  <div className="grid grid-cols-2 gap-4">
+                    {(['MALE', 'FEMALE'] as const).map((gender) => (
+                      <motion.button
+                        key={gender}
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={() => setAvatarGender(gender)}
+                        className={`relative p-4 rounded-2xl transition-all ${
+                          avatarGender === gender
+                            ? gender === 'MALE'
+                              ? 'bg-gradient-to-br from-blue-500/30 to-indigo-500/30 border-2 border-blue-400'
+                              : 'bg-gradient-to-br from-pink-500/30 to-purple-500/30 border-2 border-pink-400'
+                            : 'bg-gray-50 border-2 border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        {avatarGender === gender && (
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            className="absolute top-2 right-2 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center"
+                          >
+                            <Check className="w-3 h-3 text-white" />
+                          </motion.div>
+                        )}
+                        <div className="flex justify-center mb-2">
+                          <img
+                            src={gender === 'MALE' ? '/avatars/base/skin-initial-m.png' : '/avatars/base/skin-initial-f.png'}
+                            alt={gender === 'MALE' ? 'Masculino' : 'Femenino'}
+                            className="h-40 object-contain"
+                          />
+                        </div>
+                        <p className="text-gray-800 font-medium text-center">
+                          {gender === 'MALE' ? 'Masculino' : 'Femenino'}
+                        </p>
+                      </motion.button>
+                    ))}
+                  </div>
+                </div>
+
+                <p className="text-sm text-gray-500 flex items-center gap-2">
+                  <Sparkles size={14} />
+                  Podrás personalizar tu avatar con atuendos en la tienda.
+                </p>
+
+                <div className="flex gap-3">
+                  <Button
+                    variant="secondary"
+                    className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 border-0"
+                    onClick={() => setStep(1)}
+                    leftIcon={<ArrowLeft size={18} />}
+                  >
+                    Atrás
+                  </Button>
+
+                  {codeType === 'classroom' ? (
+                    <Button
+                      className="flex-1 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white"
+                      onClick={handleContinueToClass}
+                      disabled={characterName.length < 2}
+                      rightIcon={<ArrowRight size={20} />}
+                    >
+                      Continuar
+                    </Button>
+                  ) : (
+                    <Button
+                      className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white"
+                      onClick={handleLinkAccount}
+                      disabled={isLinking}
+                      isLoading={isLinking}
+                    >
+                      ¡Comenzar aventura!
+                    </Button>
+                  )}
+                </div>
+              </motion.div>
+            )}
+
+            {/* ===== STEP 3: Character class (classroom mode only) ===== */}
+            {step === 3 && (
+              <motion.div
+                key="step3"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-6"
+              >
+                <div className="grid grid-cols-2 gap-4">
+                  {(dynamicClasses.length > 0
+                    ? dynamicClasses.map((cc) => ({ key: cc.key, id: cc.id, name: cc.name, icon: cc.icon, description: cc.description || '' }))
+                    : Object.entries(CHARACTER_CLASSES).map(([key, val]) => ({ key, id: null as string | null, name: val.name, icon: val.icon, description: val.description }))
+                  ).map((cls, index) => (
                     <motion.button
                       key={cls.key}
                       initial={{ opacity: 0, y: 20 }}
@@ -514,13 +505,13 @@ export const JoinClassPage = () => {
                       className={`
                         relative p-5 rounded-2xl text-left transition-all duration-300
                         ${selectedClass === cls.key
-                          ? 'bg-gradient-to-br from-purple-500/30 to-indigo-500/30 border-2 border-purple-400 shadow-lg shadow-purple-500/20'
-                          : 'bg-slate-900/50 border-2 border-white/10 hover:border-white/20'
+                          ? 'bg-gradient-to-br from-purple-100 to-indigo-100 border-2 border-purple-400 shadow-lg shadow-purple-500/20'
+                          : 'bg-gray-50 border-2 border-gray-200 hover:border-gray-300'
                         }
                       `}
                     >
                       {selectedClass === cls.key && (
-                        <motion.div 
+                        <motion.div
                           initial={{ scale: 0 }}
                           animate={{ scale: 1 }}
                           className="absolute top-3 right-3 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center"
@@ -529,43 +520,40 @@ export const JoinClassPage = () => {
                         </motion.div>
                       )}
                       <span className="text-4xl block mb-2">{cls.icon}</span>
-                      <h3 className="font-bold text-white text-lg">
-                        {cls.name}
-                      </h3>
-                      <p className="text-sm text-purple-200/60 mt-1 line-clamp-2">
-                        {cls.description}
-                      </p>
+                      <h3 className="font-bold text-gray-800 text-lg">{cls.name}</h3>
+                      <p className="text-sm text-gray-500 mt-1 line-clamp-2">{cls.description}</p>
                     </motion.button>
-                ))}
-              </div>
+                  ))}
+                </div>
 
-              <div className="flex gap-3 pt-2">
-                <Button
-                  variant="secondary"
-                  className="flex-1 bg-white/10 hover:bg-white/20 text-white border-0"
-                  onClick={() => setStep(2)}
-                  leftIcon={<ArrowLeft size={18} />}
-                >
-                  Atrás
-                </Button>
-                <Button
-                  className="flex-1 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white"
-                  onClick={handleSubmit}
-                  disabled={!selectedClass}
-                  isLoading={joinMutation.isPending}
-                >
-                  ¡Unirme a la clase!
-                </Button>
-              </div>
-            </motion.div>
-          )}
+                <div className="flex gap-3 pt-2">
+                  <Button
+                    variant="secondary"
+                    className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 border-0"
+                    onClick={() => setStep(2)}
+                    leftIcon={<ArrowLeft size={18} />}
+                  >
+                    Atrás
+                  </Button>
+                  <Button
+                    className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white"
+                    onClick={() => handleJoinClass()}
+                    disabled={!selectedClass}
+                    isLoading={joinMutation.isPending}
+                  >
+                    ¡Comenzar aventura!
+                  </Button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
 
         {/* Link para volver */}
-        <div className="text-center mt-6">
+        <div className="text-center mt-4">
           <button
             onClick={() => navigate('/dashboard')}
-            className="text-purple-300/60 hover:text-purple-200 transition-colors text-sm"
+            className="text-gray-400 hover:text-gray-600 transition-colors text-sm"
           >
             ← Volver al dashboard
           </button>

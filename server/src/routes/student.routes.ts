@@ -8,6 +8,7 @@ const router = Router();
 router.use(authenticate);
 
 // Rutas para estudiantes (solo rol STUDENT puede unirse)
+router.post('/verify-code', authorize('STUDENT'), studentController.verifyCode.bind(studentController));
 router.post('/join', authorize('STUDENT'), studentController.joinClass.bind(studentController));
 router.get('/my-classes', studentController.getMyClasses.bind(studentController));
 router.get('/profile/:classroomId', studentController.getMyProfile.bind(studentController));

@@ -40,6 +40,45 @@ interface UpdatePointsData {
 }
 
 export class StudentService {
+  // Verificar código (detecta si es código de clase o de estudiante)
+  async verifyCode(code: string) {
+    const upperCode = code.toUpperCase();
+
+    // Primero buscar como código de clase
+    const classroom = await db.query.classrooms.findFirst({
+      where: eq(classrooms.code, upperCode),
+    });
+
+    if (classroom) {
+      return {
+        type: 'classroom' as const,
+        classroomName: classroom.name,
+        classroomCode: classroom.code,
+        isActive: classroom.isActive,
+      };
+    }
+
+    // Luego buscar como código de estudiante (linkCode)
+    const profile = await db.query.studentProfiles.findFirst({
+      where: eq(studentProfiles.linkCode, upperCode),
+    });
+
+    if (profile) {
+      const profileClassroom = await db.query.classrooms.findFirst({
+        where: eq(classrooms.id, profile.classroomId),
+      });
+
+      return {
+        type: 'student' as const,
+        studentName: profile.displayName || profile.characterName || null,
+        classroomName: profileClassroom?.name || null,
+        alreadyLinked: !!profile.userId,
+      };
+    }
+
+    return null;
+  }
+
   // Unirse a una clase con código
   async joinClass(data: JoinClassData) {
     const classroom = await db.query.classrooms.findFirst({

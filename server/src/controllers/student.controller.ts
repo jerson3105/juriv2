@@ -42,6 +42,39 @@ const ensureTeacherCanAccessStudent = async (teacherId: string, studentId: strin
 };
 
 export class StudentController {
+  // Verificar código (clase o estudiante)
+  async verifyCode(req: Request, res: Response) {
+    try {
+      const { code } = req.body;
+
+      if (!code || typeof code !== 'string' || code.length < 6 || code.length > 8) {
+        return res.status(400).json({
+          success: false,
+          message: 'El código debe tener entre 6 y 8 caracteres',
+        });
+      }
+
+      const result = await studentService.verifyCode(code);
+
+      if (!result) {
+        return res.status(404).json({
+          success: false,
+          message: 'Código no encontrado. Revisa que esté bien escrito.',
+        });
+      }
+
+      res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: 'Error al verificar el código',
+      });
+    }
+  }
+
   // Unirse a una clase
   async joinClass(req: Request, res: Response) {
     try {

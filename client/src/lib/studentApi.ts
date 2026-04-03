@@ -134,6 +134,19 @@ export const CHARACTER_CLASSES = {
 };
 
 export const studentApi = {
+  // Verificar código (detecta si es clase o estudiante)
+  verifyCode: async (code: string): Promise<{
+    type: 'classroom' | 'student';
+    classroomName?: string;
+    classroomCode?: string;
+    isActive?: boolean;
+    studentName?: string | null;
+    alreadyLinked?: boolean;
+  }> => {
+    const response = await api.post('/students/verify-code', { code });
+    return response.data.data;
+  },
+
   // Unirse a una clase
   joinClass: async (data: JoinClassData): Promise<{ profileId: string; classroom: { id: string; name: string; code: string } }> => {
     const response = await api.post('/students/join', data);
