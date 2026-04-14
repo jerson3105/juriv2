@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users,
@@ -15,8 +15,17 @@ import {
   Check,
   Shield,
   Search,
+  Star,
+  Zap,
+  Crown,
+  ChevronDown,
+  ChevronUp,
+  Swords,
+  Activity,
+  Clock,
+  Medal,
 } from 'lucide-react';
-import { clanApi, CLAN_EMBLEMS, type ClanWithMembers, type CreateClanData } from '../../lib/clanApi';
+import { clanApi, CLAN_EMBLEMS, type ClanWithMembers, type ClanMember, type CreateClanData, type ClanTopContributor, type ClanFeedEntry } from '../../lib/clanApi';
 import toast from 'react-hot-toast';
 
 const CLAN_COLORS = [
@@ -43,6 +52,29 @@ export const ClansPage = () => {
   const studentsWithoutClan = classroom?.students?.filter(
     (s: any) => !s.teamId && s.isActive !== false
   ) || [];
+
+  // Top contributors
+  const { data: topContributors } = useQuery({
+    queryKey: ['clans', 'top-contributors', classroom?.id],
+    queryFn: () => clanApi.getTopContributors(classroom.id, 10),
+    enabled: !!classroom?.id,
+  });
+
+  // Feed de aportes (paginado)
+  const {
+    data: feedData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: ['clans', 'feed', classroom?.id],
+    queryFn: ({ pageParam }) => clanApi.getClanFeed(classroom.id, 15, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    enabled: !!classroom?.id,
+  });
+
+  const clanFeed = feedData?.pages.flatMap((p) => p.items) ?? [];
 
   // Crear clan
   const createMutation = useMutation({
@@ -166,37 +198,32 @@ export const ClansPage = () => {
         </div>
       </div>
 
-      {/* Ranking rápido */}
-      {clans && clans.length > 0 && (
-        <div className={`rounded-xl p-4 border ${isThemeDark ? 'bg-[rgba(var(--story-primary-rgb),0.15)] border-[rgba(var(--story-primary-rgb),0.3)]' : 'bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border-amber-200 dark:border-amber-800'}`}>
-          <div className="flex items-center gap-2 mb-3">
-            <Trophy className={`w-5 h-5 ${isThemeDark ? 'text-white' : 'text-amber-500'}`} />
-            <span className={`font-semibold ${isThemeDark ? 'text-white' : 'text-amber-800 dark:text-amber-200'}`}>Ranking de Clanes</span>
-          </div>
-          <div className="flex gap-4 overflow-x-auto pb-2">
-            {[...clans].sort((a, b) => b.totalXp - a.totalXp).map((clan, index) => (
-              <div
-                key={clan.id}
-                className={`flex items-center gap-2 rounded-lg px-3 py-2 shadow-sm min-w-fit ${isThemeDark ? 'bg-[rgba(30,30,50,0.6)] border border-[rgba(255,255,255,0.1)]' : 'bg-white dark:bg-gray-800'}`}
-              >
-                <span className={`text-lg font-bold ${
-                  index === 0 ? 'text-amber-500' : index === 1 ? 'text-gray-400' : index === 2 ? 'text-amber-700' : 'text-gray-500'
-                }`}>
-                  #{index + 1}
-                </span>
-                <div
-                  className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs"
-                  style={{ backgroundColor: clan.color }}
-                >
-                  {CLAN_EMBLEMS[clan.emblem] || '🛡️'}
+      {/* Stats globales */}
+      {clans && clans.length > 0 && (() => {
+        const totalMembers = clans.reduce((sum, c) => sum + c.memberCount, 0);
+        const totalXp = clans.reduce((sum, c) => sum + c.totalXp, 0);
+        const maxClanXp = Math.max(...clans.map(c => c.totalXp), 1);
+        return (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { label: 'Total Clanes', value: clans.length, icon: Shield, color: 'text-violet-600', bg: 'bg-violet-100 dark:bg-violet-900/30' },
+              { label: 'Miembros Asignados', value: `${totalMembers}/${totalMembers + studentsWithoutClan.length}`, icon: Users, color: 'text-blue-600', bg: 'bg-blue-100 dark:bg-blue-900/30' },
+              { label: 'XP Total Clanes', value: totalXp.toLocaleString(), icon: Zap, color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900/30' },
+              { label: 'Sin Asignar', value: studentsWithoutClan.length, icon: UserPlus, color: studentsWithoutClan.length > 0 ? 'text-red-600' : 'text-green-600', bg: studentsWithoutClan.length > 0 ? 'bg-red-100 dark:bg-red-900/30' : 'bg-green-100 dark:bg-green-900/30' },
+            ].map((stat) => (
+              <div key={stat.label} className="bg-white dark:bg-gray-800 rounded-xl p-3 border border-gray-100 dark:border-gray-700 shadow-sm">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className={`w-7 h-7 rounded-lg ${stat.bg} flex items-center justify-center`}>
+                    <stat.icon size={14} className={stat.color} />
+                  </div>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">{stat.label}</span>
                 </div>
-                <span className="font-medium text-gray-800 dark:text-white text-sm">{clan.name}</span>
-                <span className="text-xs text-gray-500">{clan.totalXp} XP</span>
+                <p className="text-lg font-bold text-gray-800 dark:text-white pl-9">{stat.value}</p>
               </div>
             ))}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Lista de clanes */}
       {isLoading ? (
@@ -206,104 +233,25 @@ export const ClansPage = () => {
           ))}
         </div>
       ) : clans && clans.length > 0 ? (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {clans.map((clan) => (
-            <motion.div
-              key={clan.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden"
-            >
-              {/* Header del clan */}
-              <div
-                className="p-4 text-white"
-                style={{ backgroundColor: clan.color }}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl">{CLAN_EMBLEMS[clan.emblem] || '🛡️'}</span>
-                    <div>
-                      <h3 className="font-bold">{clan.name}</h3>
-                      {clan.motto && (
-                        <p className="text-xs opacity-80 italic">"{clan.motto}"</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex gap-1">
-                    <button
-                      onClick={() => setEditingClan(clan)}
-                      className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"
-                    >
-                      <Edit2 size={14} />
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (confirm('¿Eliminar este clan?')) {
-                          deleteMutation.mutate(clan.id);
-                        }
-                      }}
-                      className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Stats */}
-              <div className="px-4 py-2 bg-gray-50 dark:bg-gray-700/50 flex justify-between text-xs">
-                <span className="text-gray-600 dark:text-gray-300">
-                  <strong>{clan.totalXp}</strong> XP
-                </span>
-                <span className="text-gray-600 dark:text-gray-300">
-                  <strong>{clan.wins}</strong> victorias
-                </span>
-                <span className="text-gray-600 dark:text-gray-300">
-                  <strong>{clan.memberCount}</strong>/{clan.maxMembers} miembros
-                </span>
-              </div>
-
-              {/* Miembros */}
-              <div className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Miembros</span>
-                  <button
-                    onClick={() => setShowAssignModal(clan.id)}
-                    className="text-xs text-violet-600 hover:text-violet-700 flex items-center gap-1"
-                  >
-                    <UserPlus size={12} />
-                    Agregar
-                  </button>
-                </div>
-                
-                {clan.members.length === 0 ? (
-                  <p className="text-xs text-gray-400 text-center py-2">Sin miembros</p>
-                ) : (
-                  <div className="space-y-1 max-h-32 overflow-y-auto">
-                    {clan.members.map((member) => (
-                      <div
-                        key={member.id}
-                        className="flex items-center justify-between text-sm bg-gray-50 dark:bg-gray-700 rounded-lg px-2 py-1"
-                      >
-                        <span className="text-gray-700 dark:text-gray-200">
-                          {member.characterName || `${member.firstName} ${member.lastName}`}
-                        </span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-gray-500">Nv.{member.level}</span>
-                          <button
-                            onClick={() => removeMutation.mutate(member.id)}
-                            className="text-red-400 hover:text-red-600 p-1"
-                          >
-                            <UserMinus size={12} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          ))}
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {clans.map((clan) => {
+            const maxClanXp = Math.max(...clans.map(c => c.totalXp), 1);
+            return (
+              <ClanCard
+                key={clan.id}
+                clan={clan}
+                maxClanXp={maxClanXp}
+                onEdit={() => setEditingClan(clan)}
+                onDelete={() => {
+                  if (confirm('¿Eliminar este clan?')) {
+                    deleteMutation.mutate(clan.id);
+                  }
+                }}
+                onAssign={() => setShowAssignModal(clan.id)}
+                onRemoveMember={(id) => removeMutation.mutate(id)}
+              />
+            );
+          })}
         </div>
       ) : (
         <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-xl">
@@ -315,6 +263,157 @@ export const ClansPage = () => {
           >
             Crear primer clan
           </button>
+        </div>
+      )}
+
+      {/* Top Contributors + Feed */}
+      {clans && clans.length > 0 && (
+        <div className="grid lg:grid-cols-2 gap-5">
+          {/* Top Contributors */}
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700 overflow-hidden">
+            <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+              <div className="w-8 h-8 bg-amber-100 dark:bg-amber-900/30 rounded-lg flex items-center justify-center">
+                <Medal size={16} className="text-amber-600" />
+              </div>
+              <h3 className="font-bold text-gray-800 dark:text-white text-sm">Top Contribuyentes</h3>
+            </div>
+            <div className="p-3 max-h-[340px] overflow-y-auto">
+              {!topContributors || topContributors.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-6">Aún no hay aportes registrados</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {topContributors.map((c, idx) => (
+                    <div
+                      key={c.studentId}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-xl transition-colors ${
+                        idx === 0
+                          ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-200/50 dark:border-amber-800/50'
+                          : idx === 1
+                          ? 'bg-gray-50 dark:bg-gray-700/40 border border-gray-200/50 dark:border-gray-700/50'
+                          : idx === 2
+                          ? 'bg-orange-50/50 dark:bg-orange-900/10 border border-orange-200/30 dark:border-orange-800/30'
+                          : 'hover:bg-gray-50 dark:hover:bg-gray-700/30'
+                      }`}
+                    >
+                      {/* Rank */}
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 ${
+                        idx === 0
+                          ? 'bg-amber-400 text-white'
+                          : idx === 1
+                          ? 'bg-gray-400 text-white'
+                          : idx === 2
+                          ? 'bg-orange-400 text-white'
+                          : 'bg-gray-200 dark:bg-gray-600 text-gray-500 dark:text-gray-300'
+                      }`}>
+                        {idx + 1}
+                      </div>
+                      {/* Clan emblem */}
+                      <div
+                        className="w-7 h-7 rounded-lg flex items-center justify-center text-sm flex-shrink-0"
+                        style={{ backgroundColor: c.clanColor + '20' }}
+                      >
+                        {CLAN_EMBLEMS[c.clanEmblem] || '🛡️'}
+                      </div>
+                      {/* Info */}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold text-gray-800 dark:text-white truncate">
+                          {c.studentName || `${c.firstName} ${c.lastName}`}
+                        </p>
+                        <p className="text-[10px] text-gray-400 truncate">
+                          {c.clanName} • {c.contributions} aporte{c.contributions !== 1 ? 's' : ''}
+                        </p>
+                      </div>
+                      {/* XP */}
+                      <div className="text-right flex-shrink-0">
+                        <span className="text-xs font-bold text-amber-600 dark:text-amber-400 flex items-center gap-0.5">
+                          <Zap size={10} /> {c.totalContributed.toLocaleString()}
+                        </span>
+                        <p className="text-[10px] text-gray-400">Nv.{c.level}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Historial de Aportes */}
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700 overflow-hidden">
+            <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
+              <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center">
+                <Activity size={16} className="text-blue-600" />
+              </div>
+              <h3 className="font-bold text-gray-800 dark:text-white text-sm">Historial de Aportes</h3>
+            </div>
+            <div className="p-3 max-h-[340px] overflow-y-auto">
+              {clanFeed.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-6">Sin actividad reciente</p>
+              ) : (
+                <div className="space-y-1">
+                  {clanFeed.map((entry) => {
+                    const isXp = entry.action === 'XP_CONTRIBUTED' || entry.action === 'GP_CONTRIBUTED';
+                    const isJoin = entry.action === 'MEMBER_JOINED';
+                    const isLeave = entry.action === 'MEMBER_LEFT';
+                    const timeAgo = getRelativeTime(entry.createdAt);
+
+                    return (
+                      <div
+                        key={entry.id}
+                        className="flex items-start gap-2.5 px-3 py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors"
+                      >
+                        {/* Icon */}
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                          isXp
+                            ? 'bg-amber-100 dark:bg-amber-900/30'
+                            : isJoin
+                            ? 'bg-green-100 dark:bg-green-900/30'
+                            : 'bg-red-100 dark:bg-red-900/30'
+                        }`}>
+                          {isXp ? <Zap size={13} className="text-amber-500" /> : isJoin ? <UserPlus size={13} className="text-green-500" /> : <UserMinus size={13} className="text-red-500" />}
+                        </div>
+                        {/* Content */}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs text-gray-700 dark:text-gray-200">
+                            <span className="font-semibold">{entry.studentName || `${entry.firstName} ${entry.lastName}`}</span>
+                            {isXp && (
+                              <>
+                                {' '}aportó{' '}
+                                <span className="font-bold text-amber-600 dark:text-amber-400">{entry.xpAmount} XP</span>
+                                {' '}a{' '}
+                              </>
+                            )}
+                            {isJoin && ' se unió a '}
+                            {isLeave && ' dejó '}
+                            <span className="font-medium" style={{ color: entry.clanColor }}>
+                              {CLAN_EMBLEMS[entry.clanEmblem] || '🛡️'} {entry.clanName}
+                            </span>
+                          </p>
+                          {entry.reason && (
+                            <p className="text-[10px] text-gray-400 truncate mt-0.5">
+                              {entry.reason}
+                            </p>
+                          )}
+                        </div>
+                        {/* Time */}
+                        <span className="text-[10px] text-gray-400 flex-shrink-0 flex items-center gap-0.5 mt-0.5">
+                          <Clock size={9} /> {timeAgo}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {hasNextPage && (
+                    <button
+                      onClick={() => fetchNextPage()}
+                      disabled={isFetchingNextPage}
+                      className="w-full py-2 text-xs font-medium text-violet-600 hover:text-violet-700 hover:bg-violet-50 dark:hover:bg-violet-900/20 rounded-lg transition-colors"
+                    >
+                      {isFetchingNextPage ? 'Cargando...' : 'Ver más'}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -354,6 +453,235 @@ export const ClansPage = () => {
       </AnimatePresence>
 
       </div>
+  );
+};
+
+// ==================== HELPERS ====================
+const getRelativeTime = (dateStr: string) => {
+  const now = new Date();
+  const date = new Date(dateStr);
+  const diffMs = now.getTime() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return 'ahora';
+  if (diffMin < 60) return `${diffMin}m`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `${diffH}h`;
+  const diffD = Math.floor(diffH / 24);
+  if (diffD < 7) return `${diffD}d`;
+  const diffW = Math.floor(diffD / 7);
+  return `${diffW}sem`;
+};
+
+// ==================== CLAN CARD ====================
+interface ClanCardProps {
+  clan: ClanWithMembers;
+  maxClanXp: number;
+  onEdit: () => void;
+  onDelete: () => void;
+  onAssign: () => void;
+  onRemoveMember: (id: string) => void;
+}
+
+const ClanCard = ({ clan, maxClanXp, onEdit, onDelete, onAssign, onRemoveMember }: ClanCardProps) => {
+  const [expanded, setExpanded] = useState(false);
+
+  const avgLevel = clan.members.length > 0
+    ? (clan.members.reduce((s, m) => s + m.level, 0) / clan.members.length).toFixed(1)
+    : '0';
+  const avgXp = clan.members.length > 0
+    ? Math.round(clan.members.reduce((s, m) => s + m.xp, 0) / clan.members.length)
+    : 0;
+  const topMember = clan.members.length > 0
+    ? [...clan.members].sort((a, b) => b.xp - a.xp)[0]
+    : null;
+  const highestLevel = clan.members.length > 0
+    ? Math.max(...clan.members.map(m => m.level))
+    : 0;
+  const occupancy = clan.maxMembers > 0 ? (clan.memberCount / clan.maxMembers) * 100 : 0;
+  const xpProgress = maxClanXp > 0 ? (clan.totalXp / maxClanXp) * 100 : 0;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg overflow-hidden border border-gray-100 dark:border-gray-700 hover:shadow-xl transition-shadow duration-300"
+    >
+      {/* Header con gradiente del clan */}
+      <div className="relative p-4 text-white overflow-hidden" style={{ backgroundColor: clan.color }}>
+        <div className="absolute -top-3 -right-3 w-20 h-20 bg-white/10 rounded-full" />
+        <div className="absolute -bottom-4 -left-4 w-16 h-16 bg-white/5 rounded-full" />
+        <div className="relative flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center text-2xl shadow-inner">
+              {CLAN_EMBLEMS[clan.emblem] || '🛡️'}
+            </div>
+            <div>
+              <h3 className="font-bold text-lg leading-tight">{clan.name}</h3>
+              {clan.motto && (
+                <p className="text-xs opacity-80 italic truncate max-w-[180px]">"{clan.motto}"</p>
+              )}
+            </div>
+          </div>
+          <div className="flex gap-1">
+            <button onClick={onEdit} className="p-1.5 hover:bg-white/20 rounded-lg transition-colors" title="Editar">
+              <Edit2 size={14} />
+            </button>
+            <button onClick={onDelete} className="p-1.5 hover:bg-white/20 rounded-lg transition-colors" title="Eliminar">
+              <Trash2 size={14} />
+            </button>
+          </div>
+        </div>
+
+        {/* XP progress bar */}
+        <div className="relative mt-3">
+          <div className="flex items-center justify-between text-xs mb-1">
+            <span className="font-semibold flex items-center gap-1">
+              <Zap size={12} /> {clan.totalXp.toLocaleString()} XP
+            </span>
+            {xpProgress === 100 && <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px]">🏆 Líder</span>}
+          </div>
+          <div className="h-1.5 bg-white/20 rounded-full overflow-hidden">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${xpProgress}%` }}
+              transition={{ duration: 0.8, ease: 'easeOut' }}
+              className="h-full bg-white/80 rounded-full"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Stats grid */}
+      <div className="grid grid-cols-4 divide-x divide-gray-100 dark:divide-gray-700 bg-gray-50 dark:bg-gray-700/30">
+        {[
+          { label: 'Prom. Nv', value: avgLevel, icon: Star, color: 'text-amber-500' },
+          { label: 'Prom. XP', value: avgXp.toLocaleString(), icon: Zap, color: 'text-blue-500' },
+          { label: 'Top Nv', value: highestLevel || '-', icon: Crown, color: 'text-purple-500' },
+          { label: 'Miembros', value: `${clan.memberCount}/${clan.maxMembers}`, icon: Users, color: 'text-green-500' },
+        ].map((stat) => (
+          <div key={stat.label} className="py-2.5 px-1 text-center">
+            <stat.icon size={13} className={`mx-auto mb-0.5 ${stat.color}`} />
+            <p className="text-xs font-bold text-gray-800 dark:text-white leading-tight">{stat.value}</p>
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 leading-tight">{stat.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Occupancy bar */}
+      <div className="px-4 pt-3 pb-1">
+        <div className="flex items-center justify-between text-[10px] text-gray-400 dark:text-gray-500 mb-1">
+          <span>Capacidad</span>
+          <span>{Math.round(occupancy)}%</span>
+        </div>
+        <div className="h-1 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-500 ${
+              occupancy >= 100 ? 'bg-red-400' : occupancy >= 75 ? 'bg-amber-400' : 'bg-green-400'
+            }`}
+            style={{ width: `${Math.min(occupancy, 100)}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Members section */}
+      <div className="px-4 pt-2 pb-3">
+        <div className="flex items-center justify-between mb-2">
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+          >
+            Miembros
+            {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+          <button
+            onClick={onAssign}
+            className="text-xs text-violet-600 hover:text-violet-700 flex items-center gap-1 font-medium"
+          >
+            <UserPlus size={12} />
+            Agregar
+          </button>
+        </div>
+
+        {clan.members.length === 0 ? (
+          <p className="text-xs text-gray-400 text-center py-3">Sin miembros aún</p>
+        ) : (
+          <>
+            {/* Compact avatar row when collapsed */}
+            {!expanded && (
+              <div className="flex items-center gap-1">
+                {clan.members.slice(0, 6).map((member) => (
+                  <div
+                    key={member.id}
+                    className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold shadow-sm"
+                    style={{ backgroundColor: clan.color }}
+                    title={member.characterName || `${member.firstName} ${member.lastName}`}
+                  >
+                    {(member.characterName || member.firstName || '?')[0].toUpperCase()}
+                  </div>
+                ))}
+                {clan.members.length > 6 && (
+                  <div className="w-7 h-7 rounded-full bg-gray-200 dark:bg-gray-600 flex items-center justify-center text-[10px] font-medium text-gray-500 dark:text-gray-300">
+                    +{clan.members.length - 6}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Expanded member list */}
+            <AnimatePresence>
+              {expanded && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                    {[...clan.members].sort((a, b) => b.xp - a.xp).map((member, idx) => {
+                      const isTop = topMember && member.id === topMember.id && clan.members.length > 1;
+                      return (
+                        <div
+                          key={member.id}
+                          className={`flex items-center justify-between text-sm rounded-lg px-2.5 py-1.5 transition-colors ${
+                            isTop
+                              ? 'bg-amber-50 dark:bg-amber-900/20 border border-amber-200/50 dark:border-amber-800/50'
+                              : 'bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div
+                              className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0"
+                              style={{ backgroundColor: clan.color }}
+                            >
+                              {(member.characterName || member.firstName || '?')[0].toUpperCase()}
+                            </div>
+                            <span className="text-gray-700 dark:text-gray-200 truncate text-xs">
+                              {member.characterName || `${member.firstName} ${member.lastName}`}
+                            </span>
+                            {isTop && <Crown size={12} className="text-amber-500 flex-shrink-0" title="Top Contributor" />}
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className="text-[10px] text-gray-400">{member.xp} XP</span>
+                            <span className="text-[10px] font-medium text-gray-500 bg-gray-200 dark:bg-gray-600 px-1.5 py-0.5 rounded">Nv.{member.level}</span>
+                            <button
+                              onClick={() => onRemoveMember(member.id)}
+                              className="text-gray-300 hover:text-red-500 p-0.5 transition-colors"
+                            >
+                              <UserMinus size={11} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </>
+        )}
+      </div>
+    </motion.div>
   );
 };
 

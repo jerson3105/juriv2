@@ -688,6 +688,95 @@ export class ClanService {
     return logs;
   }
 
+  // Top contributors across all clans in a classroom
+  async getClassroomTopContributors(classroomId: string, limit = 20) {
+    const safeLimit = Math.min(50, Math.max(1, Math.floor(limit)));
+
+    // Get all clan IDs for this classroom
+    const classroomClans = await db.select({ id: teams.id }).from(teams)
+      .where(and(eq(teams.classroomId, classroomId), eq(teams.isActive, true)));
+
+    if (classroomClans.length === 0) return [];
+
+    const clanIds = classroomClans.map(c => c.id);
+
+    const contributors = await db
+      .select({
+        studentId: clanLogs.studentId,
+        studentName: studentProfiles.characterName,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        level: studentProfiles.level,
+        totalContributed: sql<number>`COALESCE(SUM(${clanLogs.xpAmount}), 0)`,
+        contributions: sql<number>`COUNT(*)`,
+        clanId: sql<string>`MAX(${clanLogs.clanId})`,
+        clanName: sql<string>`MAX(${teams.name})`,
+        clanColor: sql<string>`MAX(${teams.color})`,
+        clanEmblem: sql<string>`MAX(${teams.emblem})`,
+      })
+      .from(clanLogs)
+      .innerJoin(studentProfiles, eq(clanLogs.studentId, studentProfiles.id))
+      .leftJoin(users, eq(studentProfiles.userId, users.id))
+      .innerJoin(teams, eq(clanLogs.clanId, teams.id))
+      .where(and(
+        inArray(clanLogs.clanId, clanIds),
+        inArray(clanLogs.action, ['XP_CONTRIBUTED', 'GP_CONTRIBUTED']),
+      ))
+      .groupBy(clanLogs.studentId, studentProfiles.characterName, studentProfiles.level, users.firstName, users.lastName)
+      .orderBy(desc(sql`COALESCE(SUM(${clanLogs.xpAmount}), 0)`))
+      .limit(safeLimit);
+
+    return contributors;
+  }
+
+  // Contribution feed across all clans in a classroom
+  async getClassroomClanFeed(classroomId: string, limit = 15, cursor?: string) {
+    const safeLimit = Math.min(50, Math.max(1, Math.floor(limit)));
+
+    const classroomClans = await db.select({ id: teams.id }).from(teams)
+      .where(and(eq(teams.classroomId, classroomId), eq(teams.isActive, true)));
+
+    if (classroomClans.length === 0) return { items: [], nextCursor: null };
+
+    const clanIds = classroomClans.map(c => c.id);
+
+    const conditions = [inArray(clanLogs.clanId, clanIds)];
+    if (cursor) {
+      conditions.push(sql`${clanLogs.createdAt} < ${cursor}`);
+    }
+
+    const items = await db
+      .select({
+        id: clanLogs.id,
+        action: clanLogs.action,
+        xpAmount: clanLogs.xpAmount,
+        reason: clanLogs.reason,
+        createdAt: clanLogs.createdAt,
+        studentId: clanLogs.studentId,
+        studentName: studentProfiles.characterName,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        clanName: teams.name,
+        clanColor: teams.color,
+        clanEmblem: teams.emblem,
+      })
+      .from(clanLogs)
+      .innerJoin(teams, eq(clanLogs.clanId, teams.id))
+      .leftJoin(studentProfiles, eq(clanLogs.studentId, studentProfiles.id))
+      .leftJoin(users, eq(studentProfiles.userId, users.id))
+      .where(and(...conditions))
+      .orderBy(desc(clanLogs.createdAt))
+      .limit(safeLimit + 1);
+
+    const hasMore = items.length > safeLimit;
+    const page = hasMore ? items.slice(0, safeLimit) : items;
+    const nextCursor = hasMore && page.length > 0
+      ? (page[page.length - 1].createdAt as Date).toISOString()
+      : null;
+
+    return { items: page, nextCursor };
+  }
+
   // Obtener ranking de clanes de una clase
   async getClanRanking(classroomId: string) {
     const clans = await db

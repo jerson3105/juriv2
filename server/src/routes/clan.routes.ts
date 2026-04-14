@@ -15,6 +15,8 @@ router.get('/classroom/:classroomId', authorize('TEACHER'), clanController.getCl
 router.post('/classroom/:classroomId', authorize('TEACHER'), clanController.createClan.bind(clanController));
 router.post('/classroom/:classroomId/assign-random', authorize('TEACHER'), clanController.assignRandomly.bind(clanController));
 router.get('/classroom/:classroomId/ranking', authorize('TEACHER', 'STUDENT'), clanController.getRanking.bind(clanController));
+router.get('/classroom/:classroomId/top-contributors', authorize('TEACHER'), clanController.getClassroomTopContributors.bind(clanController));
+router.get('/classroom/:classroomId/feed', authorize('TEACHER'), clanController.getClassroomClanFeed.bind(clanController));
 
 // Rutas para un clan específico
 router.get('/:clanId', authorize('TEACHER', 'STUDENT'), clanController.getClan.bind(clanController));

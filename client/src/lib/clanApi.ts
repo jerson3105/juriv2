@@ -75,6 +75,35 @@ export interface StudentClanInfo {
   myContribution: number;
 }
 
+export interface ClanTopContributor {
+  studentId: string;
+  studentName: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  level: number;
+  totalContributed: number;
+  contributions: number;
+  clanId: string;
+  clanName: string;
+  clanColor: string;
+  clanEmblem: string;
+}
+
+export interface ClanFeedEntry {
+  id: string;
+  action: string;
+  xpAmount: number;
+  reason: string | null;
+  createdAt: string;
+  studentId: string | null;
+  studentName: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  clanName: string;
+  clanColor: string;
+  clanEmblem: string;
+}
+
 export interface CreateClanData {
   name: string;
   color?: string;
@@ -174,6 +203,20 @@ export const clanApi = {
   // Obtener historial de un clan
   getClanHistory: async (clanId: string, limit = 50): Promise<ClanLog[]> => {
     const response = await api.get(`/clans/${clanId}/history`, { params: { limit } });
+    return response.data.data;
+  },
+
+  // Top contributors across all clans in a classroom
+  getTopContributors: async (classroomId: string, limit = 20): Promise<ClanTopContributor[]> => {
+    const response = await api.get(`/clans/classroom/${classroomId}/top-contributors`, { params: { limit } });
+    return response.data.data;
+  },
+
+  // Contribution feed across all clans in a classroom (paginated)
+  getClanFeed: async (classroomId: string, limit = 15, cursor?: string): Promise<{ items: ClanFeedEntry[]; nextCursor: string | null }> => {
+    const params: Record<string, any> = { limit };
+    if (cursor) params.cursor = cursor;
+    const response = await api.get(`/clans/classroom/${classroomId}/feed`, { params });
     return response.data.data;
   },
 

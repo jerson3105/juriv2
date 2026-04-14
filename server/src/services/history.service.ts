@@ -577,49 +577,75 @@ class HistoryService {
     const xpPerLevel = classroom?.xpPerLevel || 100;
 
     const now = new Date();
-    const inverseAction = log.action === 'ADD' ? 'REMOVE' : 'ADD';
-    const pointDelta = log.action === 'ADD' ? -log.amount : log.amount;
 
-    // Calcular nuevo valor del punto
-    const fieldKey = log.pointType.toLowerCase() as 'xp' | 'hp' | 'gp';
-    const currentValue = student[fieldKey];
-    const newValue = Math.max(0, currentValue + pointDelta);
-
-    // Recalcular nivel si es XP
-    const newLevel = log.pointType === 'XP'
-      ? Math.max(1, Math.floor((1 + Math.sqrt(1 + (8 * newValue) / xpPerLevel)) / 2))
-      : student.level;
+    // Find all sibling logs from the same combined entry (same behavior, student, and timestamp)
+    let logsToRevert = [log];
+    if (log.behaviorId) {
+      const timestampKey = new Date(log.createdAt).toISOString().slice(0, 19);
+      const siblingLogs = await db.select().from(pointLogs).where(
+        and(
+          eq(pointLogs.behaviorId, log.behaviorId),
+          eq(pointLogs.studentId, log.studentId),
+          eq(pointLogs.isReverted, false),
+          sql`DATE_FORMAT(${pointLogs.createdAt}, '%Y-%m-%dT%H:%i:%s') = ${timestampKey}`
+        )
+      );
+      if (siblingLogs.length > 0) {
+        logsToRevert = siblingLogs;
+      }
+    }
 
     await db.transaction(async (tx) => {
-      // 1. Marcar log original como revertido
-      await tx.update(pointLogs).set({ isReverted: true }).where(eq(pointLogs.id, pointLogId));
-
-      // 2. Crear log inverso (marcado como revertido para que no se pueda re-revertir)
-      await tx.insert(pointLogs).values({
-        id: uuidv4(),
-        studentId: log.studentId,
-        behaviorId: log.behaviorId,
-        competencyId: log.competencyId,
-        pointType: log.pointType,
-        action: inverseAction,
-        amount: log.amount,
-        reason: `⟲ Revertido: ${log.reason || 'Sin razón'}`,
-        givenBy: teacherId,
-        isReverted: true,
-        createdAt: now,
-      });
-
-      // 3. Actualizar perfil del estudiante
       const updateData: Record<string, unknown> = { updatedAt: now };
-      updateData[fieldKey] = newValue;
-      if (log.pointType === 'XP') {
-        updateData.level = newLevel;
+      let currentXp = student.xp;
+      let currentHp = student.hp;
+      let currentGp = student.gp;
+
+      for (const entry of logsToRevert) {
+        const inverseAction = entry.action === 'ADD' ? 'REMOVE' : 'ADD';
+        const pointDelta = entry.action === 'ADD' ? -entry.amount : entry.amount;
+        const fieldKey = entry.pointType.toLowerCase() as 'xp' | 'hp' | 'gp';
+
+        // Accumulate deltas
+        if (fieldKey === 'xp') currentXp = Math.max(0, currentXp + pointDelta);
+        else if (fieldKey === 'hp') currentHp = Math.max(0, currentHp + pointDelta);
+        else if (fieldKey === 'gp') currentGp = Math.max(0, currentGp + pointDelta);
+
+        // 1. Mark original log as reverted
+        await tx.update(pointLogs).set({ isReverted: true }).where(eq(pointLogs.id, entry.id));
+
+        // 2. Create inverse log
+        await tx.insert(pointLogs).values({
+          id: uuidv4(),
+          studentId: entry.studentId,
+          behaviorId: entry.behaviorId,
+          competencyId: entry.competencyId,
+          pointType: entry.pointType,
+          action: inverseAction,
+          amount: entry.amount,
+          reason: `⟲ Revertido: ${entry.reason || 'Sin razón'}`,
+          givenBy: teacherId,
+          isReverted: true,
+          createdAt: now,
+        });
       }
+
+      // 3. Update student profile with all reverted values
+      updateData.xp = currentXp;
+      updateData.hp = currentHp;
+      updateData.gp = currentGp;
+      updateData.level = Math.max(1, Math.floor((1 + Math.sqrt(1 + (8 * currentXp) / xpPerLevel)) / 2));
+
       await tx.update(studentProfiles).set(updateData).where(eq(studentProfiles.id, log.studentId));
     });
 
-    const sign = log.action === 'ADD' ? '-' : '+';
-    return { message: `Revertido: ${sign}${log.amount} ${log.pointType}` };
+    // Build result message
+    const parts: string[] = [];
+    for (const entry of logsToRevert) {
+      const sign = entry.action === 'ADD' ? '-' : '+';
+      parts.push(`${sign}${entry.amount} ${entry.pointType}`);
+    }
+    return { message: `Revertido: ${parts.join(', ')}` };
   }
 
   /**

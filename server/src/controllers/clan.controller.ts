@@ -409,6 +409,31 @@ class ClanController {
     }
   }
 
+  // Top contributors across all clans in a classroom
+  async getClassroomTopContributors(req: Request, res: Response) {
+    try {
+      const { classroomId } = req.params;
+      const limit = historyLimitSchema.parse(req.query.limit ?? 20);
+      const contributors = await clanService.getClassroomTopContributors(classroomId, limit);
+      res.json({ success: true, data: contributors });
+    } catch (error) {
+      return handleControllerError(res, error, 'Error al obtener top contribuidores');
+    }
+  }
+
+  // Contribution feed across all clans in a classroom
+  async getClassroomClanFeed(req: Request, res: Response) {
+    try {
+      const { classroomId } = req.params;
+      const limit = historyLimitSchema.parse(req.query.limit ?? 15);
+      const cursor = req.query.cursor ? String(req.query.cursor) : undefined;
+      const result = await clanService.getClassroomClanFeed(classroomId, limit, cursor);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      return handleControllerError(res, error, 'Error al obtener feed de clanes');
+    }
+  }
+
   // Obtener información del clan de un estudiante
   async getStudentClanInfo(req: Request, res: Response) {
     try {
