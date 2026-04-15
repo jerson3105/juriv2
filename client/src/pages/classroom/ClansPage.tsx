@@ -6,7 +6,6 @@ import {
   Users,
   Plus,
   Shuffle,
-  Trophy,
   Edit2,
   Trash2,
   UserPlus,
@@ -20,12 +19,11 @@ import {
   Crown,
   ChevronDown,
   ChevronUp,
-  Swords,
   Activity,
   Clock,
   Medal,
 } from 'lucide-react';
-import { clanApi, CLAN_EMBLEMS, type ClanWithMembers, type ClanMember, type CreateClanData, type ClanTopContributor, type ClanFeedEntry } from '../../lib/clanApi';
+import { clanApi, CLAN_EMBLEMS, type ClanWithMembers, type CreateClanData } from '../../lib/clanApi';
 import toast from 'react-hot-toast';
 
 const CLAN_COLORS = [
@@ -34,7 +32,7 @@ const CLAN_COLORS = [
 ];
 
 export const ClansPage = () => {
-  const { classroom, isThemeDark } = useOutletContext<{ classroom: any; isThemeDark?: boolean }>();
+  const { classroom } = useOutletContext<{ classroom: any }>();
   const queryClient = useQueryClient();
   
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -202,7 +200,6 @@ export const ClansPage = () => {
       {clans && clans.length > 0 && (() => {
         const totalMembers = clans.reduce((sum, c) => sum + c.memberCount, 0);
         const totalXp = clans.reduce((sum, c) => sum + c.totalXp, 0);
-        const maxClanXp = Math.max(...clans.map(c => c.totalXp), 1);
         return (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
@@ -638,7 +635,7 @@ const ClanCard = ({ clan, maxClanXp, onEdit, onDelete, onAssign, onRemoveMember 
                   className="overflow-hidden"
                 >
                   <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
-                    {[...clan.members].sort((a, b) => b.xp - a.xp).map((member, idx) => {
+                    {[...clan.members].sort((a, b) => b.xp - a.xp).map((member) => {
                       const isTop = topMember && member.id === topMember.id && clan.members.length > 1;
                       return (
                         <div
@@ -659,7 +656,7 @@ const ClanCard = ({ clan, maxClanXp, onEdit, onDelete, onAssign, onRemoveMember 
                             <span className="text-gray-700 dark:text-gray-200 truncate text-xs">
                               {member.characterName || `${member.firstName} ${member.lastName}`}
                             </span>
-                            {isTop && <Crown size={12} className="text-amber-500 flex-shrink-0" title="Top Contributor" />}
+                            {isTop && <Crown size={12} className="text-amber-500 flex-shrink-0" />}
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
                             <span className="text-[10px] text-gray-400">{member.xp} XP</span>
