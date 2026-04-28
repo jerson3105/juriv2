@@ -261,13 +261,10 @@ export const QuestionBanksPage = () => {
         questionTypes: aiForm.questionTypes.length > 0 ? aiForm.questionTypes : undefined,
         difficulty: aiForm.difficulty || undefined,
       });
-      
-      toast.success('Preguntas generadas por IA');
-      
-      // Auto-process the generated CSV
-      setTimeout(() => {
-        processCSVText(result.csv);
-      }, 100);
+
+      if (processCSVText(result.csv)) {
+        toast.success('Preguntas generadas por IA');
+      }
       
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Error al generar preguntas con IA');
@@ -289,13 +286,10 @@ export const QuestionBanksPage = () => {
         questionTypes: aiForm.questionTypes.length > 0 ? aiForm.questionTypes : undefined,
         difficulty: aiForm.difficulty || undefined,
       });
-      
-      toast.success('Preguntas generadas desde el PDF');
-      
-      // Auto-process the generated CSV
-      setTimeout(() => {
-        processCSVText(result.csv);
-      }, 100);
+
+      if (processCSVText(result.csv)) {
+        toast.success('Preguntas generadas desde el PDF');
+      }
       
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Error al generar preguntas desde el PDF');
@@ -374,7 +368,7 @@ export const QuestionBanksPage = () => {
 
   // Process CSV text (shared function)
   const processCSVText = (text: string) => {
-    if (!text.trim() || !selectedBank) return;
+    if (!text.trim() || !selectedBank) return false;
     
     // Limpiar bloques markdown que la IA puede agregar
     const cleanedText = text.replace(/^```(?:csv|CSV)?\s*\n?/gm, '').replace(/```\s*$/gm, '').trim();
@@ -384,32 +378,64 @@ export const QuestionBanksPage = () => {
     
     if (lines.length < 2) {
       toast.error('El texto CSV está vacío o no tiene datos');
-      return;
+      return false;
     }
 
-    // Detect delimiter
-    const firstLine = lines[0];
-    const commaCount = (firstLine.match(/,/g) || []).length;
-    const semicolonCount = (firstLine.match(/;/g) || []).length;
-    const delimiter = semicolonCount > commaCount ? ';' : ',';
-
-    // Parse header
-    const rawHeaders = parseCSVLine(lines[0], delimiter);
-    const headers = rawHeaders.map(h => h.toLowerCase().trim().replace(/[^a-z]/g, ''));
-    
     const requiredHeaders = ['type', 'questiontext'];
-    const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
-    
-    if (missingHeaders.length > 0) {
-      toast.error(`Faltan columnas requeridas: ${missingHeaders.join(', ')}`);
-      return;
+    const defaultAIHeaders = ['type', 'difficulty', 'points', 'questiontext', 'options', 'correctanswer', 'pairs', 'explanation', 'timelimitseconds'];
+    const validTypes = ['TRUE_FALSE', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'MATCHING'];
+    const normalizeHeader = (value: string) => value.toLowerCase().trim().replace(/[^a-z]/g, '');
+
+    let delimiter = ',';
+    let headerIndex = -1;
+    let dataStartIndex = 1;
+    let headers: string[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const candidateLine = lines[i];
+      const commaCount = (candidateLine.match(/,/g) || []).length;
+      const semicolonCount = (candidateLine.match(/;/g) || []).length;
+      const candidateDelimiter = semicolonCount > commaCount ? ';' : ',';
+      const candidateHeaders = parseCSVLine(candidateLine, candidateDelimiter).map(normalizeHeader);
+
+      if (requiredHeaders.every(header => candidateHeaders.includes(header))) {
+        delimiter = candidateDelimiter;
+        headerIndex = i;
+        headers = candidateHeaders;
+        break;
+      }
+    }
+
+    if (headerIndex === -1) {
+      for (let i = 0; i < lines.length; i++) {
+        const candidateLine = lines[i];
+        const commaCount = (candidateLine.match(/,/g) || []).length;
+        const semicolonCount = (candidateLine.match(/;/g) || []).length;
+        const candidateDelimiter = semicolonCount > commaCount ? ';' : ',';
+        const candidateValues = parseCSVLine(candidateLine, candidateDelimiter);
+        const firstValue = (candidateValues[0] || '').trim().toUpperCase();
+
+        if (validTypes.includes(firstValue) && candidateValues.length >= 4) {
+          delimiter = candidateDelimiter;
+          headers = defaultAIHeaders;
+          dataStartIndex = i;
+          break;
+        }
+      }
+
+      if (headers.length === 0) {
+        toast.error('No se encontró un encabezado CSV válido ni filas de preguntas reconocibles');
+        return false;
+      }
+    } else {
+      dataStartIndex = headerIndex + 1;
     }
 
     // Parse rows for preview
     const parsedQuestions: CreateQuestionData[] = [];
     const errors: string[] = [];
 
-    for (let i = 1; i < lines.length; i++) {
+    for (let i = dataStartIndex; i < lines.length; i++) {
       try {
         const values = parseCSVLine(lines[i], delimiter);
         const row: Record<string, string> = {};
@@ -483,7 +509,7 @@ export const QuestionBanksPage = () => {
         // Validate question
         if (!questionData.questionText) {
           errors.push(`Línea ${i + 1}: Falta el texto de la pregunta`);
-        } else if (!['TRUE_FALSE', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'MATCHING'].includes(questionData.type)) {
+        } else if (!validTypes.includes(questionData.type)) {
           errors.push(`Línea ${i + 1}: Tipo de pregunta inválido "${questionData.type}"`);
         } else {
           parsedQuestions.push(questionData);
@@ -504,6 +530,8 @@ export const QuestionBanksPage = () => {
       questionTypes: ['TRUE_FALSE', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'MATCHING'],
       difficulty: '',
     });
+
+    return true;
   };
 
   // Helper to parse CSV line - handles Excel format with quoted fields containing JSON

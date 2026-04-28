@@ -103,7 +103,7 @@ const DEFAULT_AI_TYPES: Array<z.infer<typeof questionTypeSchema>> = [
   'MATCHING',
 ];
 
-const QUESTION_BANK_AI_MODEL = 'gemini-2.5-flash';
+const QUESTION_BANK_AI_MODEL = 'gemini-2.5-flash-lite';
 
 const AI_RETRY_DELAYS_MS = [1500, 4000];
 

@@ -344,7 +344,7 @@ Genera comportamientos variados y útiles:`;
       const ai = new GoogleGenAI({ apiKey });
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-2.5-flash-lite',
         contents: prompt,
       });
 

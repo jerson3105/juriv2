@@ -735,7 +735,7 @@ Las descripciones deben ser educativas y apropiadas para estudiantes.`;
 
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-2.5-flash-lite',
         contents: prompt,
       });
 
@@ -770,7 +770,7 @@ Responde ÚNICAMENTE con un JSON válido:
 
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-2.5-flash-lite',
         contents: aiPrompt,
       });
 

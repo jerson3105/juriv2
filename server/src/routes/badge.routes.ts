@@ -197,7 +197,7 @@ REGLAS IMPORTANTES:
 ${competencies && competencies.length > 0 ? '8. Asigna competencyId usando los IDs exactos proporcionados (o null si no aplica)' : ''}`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-2.5-flash-lite',
       contents: prompt,
     });
 

@@ -666,7 +666,7 @@ Genera UN prompt en inglés optimizado para generadores de imágenes. El prompt 
 Responde ÚNICAMENTE con el prompt en inglés, sin explicaciones ni comillas.`;
 
         const response = await ai.models.generateContent({
-          model: 'gemini-2.0-flash',
+          model: 'gemini-2.5-flash-lite',
           contents: prompt,
         });
 
@@ -700,7 +700,7 @@ Responde ÚNICAMENTE con un JSON válido, sin texto adicional:
 ]`;
 
         const response = await ai.models.generateContent({
-          model: 'gemini-2.0-flash',
+          model: 'gemini-2.5-flash-lite',
           contents: prompt,
         });
 
@@ -754,7 +754,7 @@ Responde ÚNICAMENTE con un JSON válido:
 }`;
 
         const response = await ai.models.generateContent({
-          model: 'gemini-2.0-flash',
+          model: 'gemini-2.5-flash-lite',
           contents: prompt,
         });
 
@@ -874,7 +874,7 @@ REGLAS:
 
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-2.5-flash-lite',
         contents: prompt,
       });
 
