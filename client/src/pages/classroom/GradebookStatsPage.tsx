@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { type Classroom } from '../../lib/classroomApi';
+import { type AvatarGender } from '../../lib/avatarApi';
 import { gradeApi } from '../../lib/gradeApi';
 import { StudentAvatarMini } from '../../components/avatar/StudentAvatarMini';
 
@@ -50,7 +51,7 @@ export const GradebookStatsPage = () => {
       firstName: student.studentName,
       lastName: '',
       nickname: student.studentName,
-      avatarGender: 'MALE',
+      avatarGender: 'MALE' as AvatarGender,
       grades: student.grades,
       gradeInfo: {
         avg: student.average.score,

@@ -29,7 +29,7 @@ import {
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { classroomApi, type Classroom } from '../../lib/classroomApi';
-import { gradeApi, type ClassroomGradeStudent, type PerformanceBucket } from '../../lib/gradeApi';
+import { gradeApi, type PerformanceBucket } from '../../lib/gradeApi';
 import toast from 'react-hot-toast';
 
 export const GradebookPage = () => {
