@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { questionBankService } from '../services/questionBank.service.js';
 import { z } from 'zod';
 import { GoogleGenAI } from '@google/genai';
+import { AppError, RateLimitError } from '../utils/errors.js';
 
 const questionTypeSchema = z.enum(['TRUE_FALSE', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'MATCHING']);
 const questionDifficultySchema = z.enum(['EASY', 'MEDIUM', 'HARD']);
@@ -102,6 +103,57 @@ const DEFAULT_AI_TYPES: Array<z.infer<typeof questionTypeSchema>> = [
   'MATCHING',
 ];
 
+const QUESTION_BANK_AI_MODEL = 'gemini-2.5-flash';
+
+const AI_RETRY_DELAYS_MS = [1500, 4000];
+
+const isAIRateLimitError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') return false;
+
+  const candidate = error as {
+    status?: unknown;
+    message?: unknown;
+  };
+
+  const message = typeof candidate.message === 'string'
+    ? candidate.message.toLowerCase()
+    : '';
+
+  return candidate.status === 429
+    || message.includes('resource exhausted')
+    || message.includes('resource_exhausted')
+    || message.includes('too many requests')
+    || message.includes('"code":429');
+};
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const generateContentWithRetry = async <T>(operation: () => Promise<T>): Promise<T> => {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= AI_RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+
+      if (!isAIRateLimitError(error) || attempt === AI_RETRY_DELAYS_MS.length) {
+        break;
+      }
+
+      await wait(AI_RETRY_DELAYS_MS[attempt]);
+    }
+  }
+
+  if (isAIRateLimitError(lastError)) {
+    throw new RateLimitError(
+      'La IA está temporalmente saturada. Intenta nuevamente en unos minutos o reduce la cantidad de preguntas.'
+    );
+  }
+
+  throw lastError;
+};
+
 const handleValidationError = (res: Response, error: z.ZodError) => {
   return res.status(400).json({
     success: false,
@@ -113,14 +165,23 @@ const handleValidationError = (res: Response, error: z.ZodError) => {
 const handleControllerError = (res: Response, error: unknown, fallbackMessage: string) => {
   console.error(fallbackMessage, error);
 
-  const message = error instanceof Error ? error.message : fallbackMessage;
+  const inheritedStatusCode = error instanceof AppError
+    ? error.statusCode
+    : (typeof error === 'object' && error !== null && 'status' in error && typeof (error as { status?: unknown }).status === 'number'
+      ? (error as { status: number }).status
+      : undefined);
+
+  let message = error instanceof Error ? error.message : fallbackMessage;
   const normalizedMessage = message
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 
-  let statusCode = 500;
-  if (normalizedMessage.includes('no encontrado')) {
+  let statusCode = inheritedStatusCode || 500;
+  if (statusCode === 429 || isAIRateLimitError(error)) {
+    statusCode = 429;
+    message = 'La IA está temporalmente saturada. Intenta nuevamente en unos minutos o reduce la cantidad de preguntas.';
+  } else if (normalizedMessage.includes('no encontrado')) {
     statusCode = 404;
   } else if (normalizedMessage.includes('sin acceso') || normalizedMessage.includes('no autorizado')) {
     statusCode = 403;
@@ -540,10 +601,10 @@ Genera ${quantity} preguntas variadas y educativas:`;
 
       const ai = new GoogleGenAI({ apiKey });
       
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+      const response = await generateContentWithRetry(() => ai.models.generateContent({
+        model: QUESTION_BANK_AI_MODEL,
         contents: prompt,
-      });
+      }));
 
       let csvText = (response.text || '').trim();
 
@@ -649,8 +710,8 @@ Genera ${quantity} preguntas variadas y educativas basadas en el documento:`;
       // Convertir el buffer del PDF a base64 para enviar como inlineData
       const pdfBase64 = req.file.buffer.toString('base64');
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash',
+      const response = await generateContentWithRetry(() => ai.models.generateContent({
+        model: QUESTION_BANK_AI_MODEL,
         contents: [
           {
             role: 'user',
@@ -667,7 +728,7 @@ Genera ${quantity} preguntas variadas y educativas basadas en el documento:`;
             ],
           },
         ],
-      });
+      }));
 
       let csvText = (response.text || '').trim();
 
