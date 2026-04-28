@@ -29,7 +29,7 @@ import {
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { classroomApi, type Classroom } from '../../lib/classroomApi';
-import { gradeApi, type ClassroomGrade } from '../../lib/gradeApi';
+import { gradeApi, type ClassroomGradeStudent, type PerformanceBucket } from '../../lib/gradeApi';
 import toast from 'react-hot-toast';
 
 export const GradebookPage = () => {
@@ -73,7 +73,7 @@ export const GradebookPage = () => {
   const classroomCompetencies = curriculumAreas.find((a: any) => a.id === classroom.curriculumAreaId)?.competencies || [];
 
   // Obtener calificaciones
-  const { data: grades = [], isLoading } = useQuery({
+  const { data: gradebookData, isLoading } = useQuery({
     queryKey: ['classroom-grades', classroom.id, period],
     queryFn: () => gradeApi.getClassroomGrades(classroom.id, period),
     enabled: !!classroom.useCompetencies && !!classroom.curriculumAreaId,
@@ -164,43 +164,16 @@ export const GradebookPage = () => {
 
   // Agrupar calificaciones por estudiante
   const studentGrades = useMemo(() => {
-    const grouped: Record<string, { name: string; grades: ClassroomGrade[] }> = {};
-    
-    grades.forEach((g) => {
-      if (!grouped[g.studentProfileId]) {
-        grouped[g.studentProfileId] = {
-          name: g.studentName || 'Estudiante',
-          grades: [],
-        };
-      }
-      grouped[g.studentProfileId].grades.push(g);
-    });
+    return (gradebookData?.students || [])
+      .filter((student) => student.studentName.toLowerCase().includes(searchTerm.toLowerCase()))
+      .sort((a, b) => a.studentName.localeCompare(b.studentName, 'es'));
+  }, [gradebookData?.students, searchTerm]);
 
-    return Object.entries(grouped)
-      .filter(([_, data]) => 
-        data.name.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-      .sort((a, b) => a[1].name.localeCompare(b[1].name));
-  }, [grades, searchTerm]);
-
-  // Calcular promedio de un estudiante (solo competencias con actividades)
-  const calculateAverage = (studentGrades: ClassroomGrade[]): { score: number; label: string } => {
-    if (studentGrades.length === 0) return { score: 0, label: 'C' };
-    // Solo incluir competencias que tienen actividades registradas
-    const validGrades = studentGrades.filter(g => 
-      g.score != null && !isNaN(Number(g.score)) && g.activitiesCount > 0
-    );
-    if (validGrades.length === 0) return { score: 0, label: '-' };
-    const total = validGrades.reduce((sum, g) => sum + Number(g.score), 0);
-    const avg = total / validGrades.length;
-    
-    // Determinar letra según escala Perú
-    let label = 'C';
-    if (avg >= 90) label = 'AD';
-    else if (avg >= 70) label = 'A';
-    else if (avg >= 50) label = 'B';
-    
-    return { score: Number(avg.toFixed(1)), label };
+  const getBucketColor = (bucket: PerformanceBucket) => {
+    if (bucket === 'AD') return 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30';
+    if (bucket === 'A') return 'text-blue-600 bg-blue-100 dark:bg-blue-900/30';
+    if (bucket === 'B') return 'text-amber-600 bg-amber-100 dark:bg-amber-900/30';
+    return 'text-red-600 bg-red-100 dark:bg-red-900/30';
   };
 
   // Obtener color según escala
@@ -377,7 +350,7 @@ export const GradebookPage = () => {
           </button>
           <button
             onClick={() => exportExcelMutation.mutate()}
-            disabled={exportExcelMutation.isPending || grades.length === 0}
+            disabled={exportExcelMutation.isPending || (gradebookData?.students?.length || 0) === 0}
             className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-medium hover:from-green-600 hover:to-emerald-700 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed text-sm"
             title="Exportar en formato SIAGIE"
           >
@@ -491,9 +464,10 @@ export const GradebookPage = () => {
                 </tr>
               </thead>
               <tbody>
-                {studentGrades.map(([studentId, data]) => {
+                {studentGrades.map((student) => {
+                  const studentId = student.studentProfileId;
                   const isExpanded = expandedStudent === studentId;
-                  const avg = calculateAverage(data.grades);
+                  const avg = student.average;
                   
                   return (
                     <React.Fragment key={studentId}>
@@ -509,17 +483,17 @@ export const GradebookPage = () => {
                         >
                           {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                           <span className="font-medium text-gray-800 dark:text-white">
-                            {data.name}
+                            {student.studentName}
                           </span>
                         </button>
                       </td>
                       {classroomCompetencies.map((comp: any) => {
-                        const grade = data.grades.find(g => g.competencyId === comp.id);
+                        const grade = student.grades.find(g => g.competencyId === comp.id);
                         return (
                           <td key={comp.id} className="px-3 py-3 text-center">
                             {grade ? (
                               <span
-                                className={`inline-flex items-center justify-center px-2 py-1 rounded-lg text-sm font-bold ${getGradeColor(grade.gradeLabel)}`}
+                                className={`inline-flex items-center justify-center px-2 py-1 rounded-lg text-sm font-bold ${getBucketColor(grade.bucket)}`}
                               >
                                 {grade.gradeLabel || '-'}
                                 {grade.isManualOverride && (
@@ -533,7 +507,7 @@ export const GradebookPage = () => {
                         );
                       })}
                       <td className="px-4 py-3 text-center">
-                        <span className={`inline-flex items-center justify-center px-2 py-1 rounded-lg text-sm font-bold ${getGradeColor(avg.label)}`}>
+                        <span className={`inline-flex items-center justify-center px-2 py-1 rounded-lg text-sm font-bold ${getBucketColor(avg.bucket)}`}>
                           {avg.label} ({avg.score}%)
                         </span>
                       </td>
@@ -544,17 +518,12 @@ export const GradebookPage = () => {
                         <td colSpan={classroomCompetencies.length + 2} className="px-4 py-4">
                           <div className="space-y-4">
                             <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                              📊 Desglose de calificaciones de {data.name}
+                              📊 Desglose de calificaciones de {student.studentName}
                             </h4>
                             
-                            {data.grades.map((grade) => {
+                            {student.grades.map((grade) => {
                               const comp = classroomCompetencies.find((c: any) => c.id === grade.competencyId);
-                              // Parse calculationDetails if it's a string (MySQL JSON column)
-                              let details: any = grade.calculationDetails;
-                              if (typeof details === 'string') {
-                                try { details = JSON.parse(details); } catch { details = undefined; }
-                              }
-                              const activities = details?.activities || [];
+                              const activities = grade.calculationDetails?.activities || [];
                               
                               return (
                                 <div
@@ -564,7 +533,7 @@ export const GradebookPage = () => {
                                   {/* Header de competencia */}
                                   <div className="flex items-center justify-between mb-3 pb-2 border-b border-gray-100 dark:border-gray-700">
                                     <div className="flex items-center gap-2">
-                                      <span className={`px-2 py-1 rounded text-sm font-bold ${getGradeColor(grade.gradeLabel)}`}>
+                                      <span className={`px-2 py-1 rounded text-sm font-bold ${getBucketColor(grade.bucket)}`}>
                                         {grade.gradeLabel}
                                       </span>
                                       <span className="font-medium text-gray-800 dark:text-white">
@@ -579,7 +548,7 @@ export const GradebookPage = () => {
                                         onClick={() => setEditingGrade({
                                           id: grade.id,
                                           score: Number(grade.manualScore || grade.score || 0),
-                                          note: grade.notes || ''
+                                          note: grade.manualNote || ''
                                         })}
                                         className="text-xs text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 flex items-center gap-1"
                                       >
@@ -607,6 +576,7 @@ export const GradebookPage = () => {
                                                 activity.type === 'BADGE' ? 'bg-amber-500' :
                                                 activity.type === 'EXPEDITION' ? 'bg-purple-500' :
                                                 activity.type === 'TIMED' ? 'bg-cyan-500' :
+                                                activity.type === 'MANUAL_POINTS' ? 'bg-sky-500' :
                                                 'bg-gray-500'
                                               }`} />
                                               <span className="text-sm text-gray-700 dark:text-gray-300">
@@ -617,6 +587,7 @@ export const GradebookPage = () => {
                                                  activity.type === 'BADGE' ? 'Insignia' :
                                                  activity.type === 'EXPEDITION' ? 'Expedición' :
                                                  activity.type === 'TIMED' ? 'Actividad' :
+                                                 activity.type === 'MANUAL_POINTS' ? 'Punto manual' :
                                                  activity.type}
                                               </span>
                                             </div>
@@ -625,7 +596,7 @@ export const GradebookPage = () => {
                                                 {activity.score.toFixed(0)}%
                                               </span>
                                               <span className="text-xs text-gray-500">
-                                                (peso: {activity.weight})
+                                                ({activity.type === 'BEHAVIOR' || activity.type === 'MANUAL_POINTS' ? 'peso evidencia' : 'peso'}: {activity.weight})
                                               </span>
                                             </div>
                                           </div>
@@ -639,16 +610,23 @@ export const GradebookPage = () => {
                                   )}
                                   
                                   {grade.isManualOverride && (
-                                    <div className="mt-2 flex items-center gap-1 text-xs text-amber-600">
-                                      <Edit3 size={10} />
-                                      Nota editada manualmente
+                                    <div className="mt-3 space-y-1">
+                                      <div className="flex items-center gap-1 text-xs text-amber-600">
+                                        <Edit3 size={10} />
+                                        Nota editada manualmente
+                                      </div>
+                                      {grade.manualNote && (
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                                          {grade.manualNote}
+                                        </p>
+                                      )}
                                     </div>
                                   )}
                                 </div>
                               );
                             })}
                             
-                            {data.grades.length === 0 && (
+                            {student.grades.length === 0 && (
                               <p className="text-sm text-gray-500 dark:text-gray-400">
                                 No hay calificaciones registradas. Haz clic en "Calcular Calificaciones".
                               </p>
@@ -716,6 +694,16 @@ export const GradebookPage = () => {
           <div className="flex items-center gap-2 ml-auto">
             <Edit3 size={14} className="text-gray-400" />
             <span className="text-sm text-gray-600 dark:text-gray-400">Nota editada manualmente</span>
+          </div>
+        </div>
+        <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 dark:border-sky-800 dark:bg-sky-900/20">
+          <div className="flex items-start gap-2">
+            <Info size={15} className="mt-0.5 text-sky-600 dark:text-sky-400" />
+            <div className="space-y-1 text-sm text-sky-800 dark:text-sky-200">
+              <p className="font-medium">Comportamientos y puntos manuales ahora pesan según evidencia del bimestre.</p>
+              <p>1 observación = peso 5, 2 = 10, 3 = 15, 4 = 20, 5 = 25, 6 o más = 30.</p>
+              <p>Con poca evidencia, la nota se acerca a 50 para evitar inflar casos aislados.</p>
+            </div>
           </div>
         </div>
       </Card>
@@ -969,25 +957,29 @@ export const GradebookPage = () => {
                   </p>
                 </div>
 
-                {/* Ejemplo visual */}
+                {/* Evidencia */}
                 <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4">
-                  <h3 className="font-semibold text-gray-800 dark:text-white mb-3">Ejemplo de cálculo</h3>
-                  <div className="space-y-2 text-sm">
+                  <h3 className="font-semibold text-gray-800 dark:text-white mb-3">Cómo se mide la evidencia</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
+                    {[1, 2, 3, 4, 5, 6].map((count) => (
+                      <div key={count} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-center dark:border-gray-600 dark:bg-gray-800">
+                        <p className="font-semibold text-gray-800 dark:text-white">{count === 6 ? '6+' : count} obs.</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">peso {Math.min(30, count * 5)}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 space-y-2 text-sm">
                     <div className="flex justify-between items-center py-1 border-b border-gray-200 dark:border-gray-600">
-                      <span className="text-gray-600 dark:text-gray-300">Expedición (80% × peso 100)</span>
-                      <span className="font-mono text-gray-800 dark:text-white">= 8000</span>
+                      <span className="text-gray-600 dark:text-gray-300">1 positivo aislado</span>
+                      <span className="font-mono text-gray-800 dark:text-white">58.3%</span>
                     </div>
                     <div className="flex justify-between items-center py-1 border-b border-gray-200 dark:border-gray-600">
-                      <span className="text-gray-600 dark:text-gray-300">Comportamientos (94% × peso 30)</span>
-                      <span className="font-mono text-gray-800 dark:text-white">= 2820</span>
+                      <span className="text-gray-600 dark:text-gray-300">3 observaciones positivas</span>
+                      <span className="font-mono text-gray-800 dark:text-white">75.0%</span>
                     </div>
-                    <div className="flex justify-between items-center py-1 border-b border-gray-200 dark:border-gray-600">
-                      <span className="text-gray-600 dark:text-gray-300">Insignias (100% × peso 20)</span>
-                      <span className="font-mono text-gray-800 dark:text-white">= 2000</span>
-                    </div>
-                    <div className="flex justify-between items-center py-1 pt-2 font-semibold">
-                      <span className="text-gray-800 dark:text-white">Nota final: (8000 + 2820 + 2000) ÷ 150</span>
-                      <span className="text-emerald-600 dark:text-emerald-400 font-mono">= 85.5%</span>
+                    <div className="flex justify-between items-center py-1">
+                      <span className="text-gray-600 dark:text-gray-300">6 o más positivas consistentes</span>
+                      <span className="font-mono text-gray-800 dark:text-white">100%</span>
                     </div>
                   </div>
                 </div>
@@ -1002,11 +994,25 @@ export const GradebookPage = () => {
                       </div>
                       <div className="flex-1">
                         <p className="font-medium text-gray-800 dark:text-white">Comportamientos</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">Acciones positivas y negativas</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Acciones positivas y negativas ajustadas por evidencia</p>
                       </div>
                       <div className="text-right">
-                        <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">30</span>
-                        <p className="text-xs text-gray-500">peso fijo</p>
+                        <span className="text-lg font-bold text-emerald-600 dark:text-emerald-400">5-30</span>
+                        <p className="text-xs text-gray-500">según observaciones</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 p-3 bg-sky-50 dark:bg-sky-900/20 rounded-xl">
+                      <div className="w-10 h-10 bg-gradient-to-br from-sky-500 to-blue-500 rounded-lg flex items-center justify-center">
+                        <Info size={18} className="text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-800 dark:text-white">Puntos manuales</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Misma regla de evidencia; el peso total se reparte entre registros</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-lg font-bold text-sky-600 dark:text-sky-400">5-30</span>
+                        <p className="text-xs text-gray-500">según observaciones</p>
                       </div>
                     </div>
 
@@ -1016,11 +1022,11 @@ export const GradebookPage = () => {
                       </div>
                       <div className="flex-1">
                         <p className="font-medium text-gray-800 dark:text-white">Insignias</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">Logros y reconocimientos</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Solo cuenta la insignia de mayor impacto del período</p>
                       </div>
                       <div className="text-right">
-                        <span className="text-lg font-bold text-amber-600 dark:text-amber-400">20</span>
-                        <p className="text-xs text-gray-500">peso fijo</p>
+                        <span className="text-lg font-bold text-amber-600 dark:text-amber-400">40-100</span>
+                        <p className="text-xs text-gray-500">según rareza</p>
                       </div>
                     </div>
 
@@ -1057,7 +1063,7 @@ export const GradebookPage = () => {
                 {/* Nota */}
                 <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3">
                   <p className="text-sm text-amber-800 dark:text-amber-300">
-                    <strong>💡 Tip:</strong> Un peso de 100 vs 30 significa que la primera actividad tiene ~3.3 veces más influencia en la nota final.
+                    <strong>Nota:</strong> Comportamientos y puntos manuales ya no se sostienen con una sola observación. Si hay poca evidencia, su peso baja y su score se acerca a 50.
                   </p>
                 </div>
               </div>

@@ -23,7 +23,7 @@ import {
 import { Card } from '../../components/ui/Card';
 import { useStudentStore } from '../../store/studentStore';
 import { studentApi } from '../../lib/studentApi';
-import { gradeApi } from '../../lib/gradeApi';
+import { gradeApi, type PerformanceBucket } from '../../lib/gradeApi';
 import { classroomApi } from '../../lib/classroomApi';
 
 // Componente para mostrar el desglose de actividades
@@ -60,6 +60,7 @@ const ActivityBreakdown = ({ grade }: { grade: any }) => {
                 activity.type === 'BADGE' ? 'bg-amber-500' :
                 activity.type === 'EXPEDITION' ? 'bg-purple-500' :
                 activity.type === 'TIMED' ? 'bg-cyan-500' :
+                activity.type === 'MANUAL_POINTS' ? 'bg-sky-500' :
                 'bg-gray-500'
               }`} />
               <span className="text-sm text-gray-700 dark:text-gray-300">
@@ -70,6 +71,7 @@ const ActivityBreakdown = ({ grade }: { grade: any }) => {
                  activity.type === 'BADGE' ? 'Insignia' :
                  activity.type === 'EXPEDITION' ? 'Expedición' :
                  activity.type === 'TIMED' ? 'Actividad' :
+                  activity.type === 'MANUAL_POINTS' ? 'Punto manual' :
                  activity.type}
               </span>
             </div>
@@ -120,11 +122,15 @@ export const StudentGradesPage = () => {
     : selectedPeriod;
 
   // Obtener calificaciones del estudiante
-  const { data: grades = [], isLoading } = useQuery({
+  const { data: gradebookResponse, isLoading } = useQuery({
     queryKey: ['my-grades', currentProfile?.id, periodToQuery],
     queryFn: () => gradeApi.getStudentGrades(currentProfile!.id, periodToQuery),
     enabled: !!currentProfile?.id && !!classroom?.useCompetencies && !!periodToQuery,
   });
+
+  const grades = gradebookResponse?.grades || [];
+  const average = gradebookResponse?.average;
+  const gradeScaleType = gradebookResponse?.gradeScaleType || classroom?.gradeScaleType;
 
   // Información del bimestre actual
   const currentBimester = bimesterStatus?.currentBimester || '';
@@ -137,11 +143,11 @@ export const StudentGradesPage = () => {
   // Calcular si el período seleccionado es el actual
   const isCurrentPeriod = selectedPeriod === 'CURRENT' || selectedPeriod === currentBimester;
 
-  // Calcular promedio general
-  const calculateAverage = () => {
-    if (grades.length === 0) return 0;
-    const total = grades.reduce((sum, g) => sum + parseFloat(g.score), 0);
-    return (total / grades.length).toFixed(1);
+  const getBucketColor = (bucket: PerformanceBucket) => {
+    if (bucket === 'AD') return 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30';
+    if (bucket === 'A') return 'text-blue-600 bg-blue-100 dark:bg-blue-900/30';
+    if (bucket === 'B') return 'text-amber-600 bg-amber-100 dark:bg-amber-900/30';
+    return 'text-red-600 bg-red-100 dark:bg-red-900/30';
   };
 
   // Obtener color según calificación
@@ -167,11 +173,11 @@ export const StudentGradesPage = () => {
   };
 
   // Obtener descripción del nivel
-  const getLevelDescription = (gradeLabel: string) => {
-    if (gradeLabel === 'AD') return 'Logro destacado - Supera las expectativas';
-    if (gradeLabel === 'A') return 'Logro esperado - Cumple con las expectativas';
-    if (gradeLabel === 'B') return 'En proceso - Está cerca del logro esperado';
-    if (gradeLabel === 'C') return 'En inicio - Necesita más apoyo';
+  const getLevelDescription = (bucket: PerformanceBucket) => {
+    if (bucket === 'AD') return 'Logro destacado - Supera las expectativas';
+    if (bucket === 'A') return 'Logro esperado - Cumple con las expectativas';
+    if (bucket === 'B') return 'En proceso - Está cerca del logro esperado';
+    if (bucket === 'C') return 'En inicio - Necesita más apoyo';
     return '';
   };
 
@@ -199,16 +205,14 @@ export const StudentGradesPage = () => {
     );
   }
 
-  const average = calculateAverage();
-
   // Estadísticas adicionales
   const stats = {
     totalCompetencies: classroomCompetencies.length,
-    evaluatedCompetencies: grades.length,
-    adCount: grades.filter(g => g.gradeLabel === 'AD').length,
-    aCount: grades.filter(g => g.gradeLabel === 'A').length,
-    bCount: grades.filter(g => g.gradeLabel === 'B').length,
-    cCount: grades.filter(g => g.gradeLabel === 'C').length,
+    evaluatedCompetencies: average?.evaluatedCompetencies || 0,
+    adCount: grades.filter(g => g.bucket === 'AD').length,
+    aCount: grades.filter(g => g.bucket === 'A').length,
+    bCount: grades.filter(g => g.bucket === 'B').length,
+    cCount: grades.filter(g => g.bucket === 'C').length,
   };
 
   // Navegar entre bimestres
@@ -295,21 +299,12 @@ export const StudentGradesPage = () => {
           <div>
             <p className="text-purple-200 text-sm mb-1">Promedio General</p>
             <div className="flex items-baseline gap-3">
-              <span className="text-4xl font-bold">
-                {(() => {
-                  const avg = parseFloat(String(average));
-                  if (grades.length === 0) return '—';
-                  if (avg >= 90) return 'AD';
-                  if (avg >= 70) return 'A';
-                  if (avg >= 50) return 'B';
-                  return 'C';
-                })()}
-              </span>
-              <span className="text-lg text-purple-200 font-medium">{average}%</span>
+              <span className="text-4xl font-bold">{grades.length === 0 ? '—' : average?.label || '—'}</span>
+              <span className="text-lg text-purple-200 font-medium">{average ? `${average.score.toFixed(1)}%` : '0.0%'}</span>
               <TrendingUp size={20} className="text-purple-200" />
             </div>
             <p className="text-purple-200 text-xs mt-1">
-              {grades.length} de {stats.totalCompetencies} competencias evaluadas
+              {stats.evaluatedCompetencies} de {stats.totalCompetencies} competencias evaluadas
             </p>
           </div>
           <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center">
@@ -417,7 +412,7 @@ export const StudentGradesPage = () => {
                             {comp?.name || grade.competencyName}
                           </h3>
                           <p className="text-xs text-gray-500 dark:text-gray-400">
-                            {getLevelDescription(grade.gradeLabel)}
+                            {getLevelDescription(grade.bucket)}
                           </p>
                         </div>
                       </div>
@@ -450,9 +445,9 @@ export const StudentGradesPage = () => {
                                 animate={{ width: `${Math.min(100, Number(grade.score))}%` }}
                                 transition={{ duration: 0.5 }}
                                 className={`h-full rounded-full ${
-                                  Number(grade.score) >= 85 ? 'bg-emerald-500' :
-                                  Number(grade.score) >= 65 ? 'bg-blue-500' :
-                                  Number(grade.score) >= 50 ? 'bg-amber-500' : 'bg-red-500'
+                                  grade.bucket === 'AD' ? 'bg-emerald-500' :
+                                  grade.bucket === 'A' ? 'bg-blue-500' :
+                                  grade.bucket === 'B' ? 'bg-amber-500' : 'bg-red-500'
                                 }`}
                               />
                             </div>
@@ -562,36 +557,69 @@ export const StudentGradesPage = () => {
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
               Escala de Calificación
             </h3>
-            <div className="space-y-2">
-              <div className="flex items-center gap-3 p-2 rounded-lg bg-emerald-50 dark:bg-emerald-900/20">
-                <span className={`px-2 py-1 rounded text-xs font-bold ${getGradeColor('AD')}`}>AD</span>
-                <div>
-                  <p className="text-xs font-medium text-gray-800 dark:text-white">Destacado</p>
-                  <p className="text-xs text-gray-500">90% - 100%</p>
+            {gradeScaleType === 'PERU_VIGESIMAL' ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-3 p-2 rounded-lg bg-emerald-50 dark:bg-emerald-900/20">
+                  <span className={`px-2 py-1 rounded text-xs font-bold ${getGradeColor('18')}`}>18-20</span>
+                  <div>
+                    <p className="text-xs font-medium text-gray-800 dark:text-white">Logro destacado</p>
+                    <p className="text-xs text-gray-500">Nivel superior</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-2 rounded-lg bg-blue-50 dark:bg-blue-900/20">
+                  <span className={`px-2 py-1 rounded text-xs font-bold ${getGradeColor('14')}`}>14-17</span>
+                  <div>
+                    <p className="text-xs font-medium text-gray-800 dark:text-white">Logro esperado</p>
+                    <p className="text-xs text-gray-500">Nivel satisfactorio</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20">
+                  <span className={`px-2 py-1 rounded text-xs font-bold ${getGradeColor('11')}`}>11-13</span>
+                  <div>
+                    <p className="text-xs font-medium text-gray-800 dark:text-white">En proceso</p>
+                    <p className="text-xs text-gray-500">Nivel intermedio</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-2 rounded-lg bg-red-50 dark:bg-red-900/20">
+                  <span className={`px-2 py-1 rounded text-xs font-bold ${getGradeColor('05')}`}>0-10</span>
+                  <div>
+                    <p className="text-xs font-medium text-gray-800 dark:text-white">En inicio</p>
+                    <p className="text-xs text-gray-500">Requiere refuerzo</p>
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center gap-3 p-2 rounded-lg bg-blue-50 dark:bg-blue-900/20">
-                <span className={`px-2 py-1 rounded text-xs font-bold ${getGradeColor('A')}`}>A</span>
-                <div>
-                  <p className="text-xs font-medium text-gray-800 dark:text-white">Esperado</p>
-                  <p className="text-xs text-gray-500">70% - 89%</p>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center gap-3 p-2 rounded-lg bg-emerald-50 dark:bg-emerald-900/20">
+                  <span className={`px-2 py-1 rounded text-xs font-bold ${getBucketColor('AD')}`}>AD</span>
+                  <div>
+                    <p className="text-xs font-medium text-gray-800 dark:text-white">Destacado</p>
+                    <p className="text-xs text-gray-500">90% - 100%</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-2 rounded-lg bg-blue-50 dark:bg-blue-900/20">
+                  <span className={`px-2 py-1 rounded text-xs font-bold ${getBucketColor('A')}`}>A</span>
+                  <div>
+                    <p className="text-xs font-medium text-gray-800 dark:text-white">Esperado</p>
+                    <p className="text-xs text-gray-500">70% - 89%</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20">
+                  <span className={`px-2 py-1 rounded text-xs font-bold ${getBucketColor('B')}`}>B</span>
+                  <div>
+                    <p className="text-xs font-medium text-gray-800 dark:text-white">En proceso</p>
+                    <p className="text-xs text-gray-500">50% - 69%</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 p-2 rounded-lg bg-red-50 dark:bg-red-900/20">
+                  <span className={`px-2 py-1 rounded text-xs font-bold ${getBucketColor('C')}`}>C</span>
+                  <div>
+                    <p className="text-xs font-medium text-gray-800 dark:text-white">En inicio</p>
+                    <p className="text-xs text-gray-500">0% - 49%</p>
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center gap-3 p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20">
-                <span className={`px-2 py-1 rounded text-xs font-bold ${getGradeColor('B')}`}>B</span>
-                <div>
-                  <p className="text-xs font-medium text-gray-800 dark:text-white">En proceso</p>
-                  <p className="text-xs text-gray-500">50% - 69%</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 p-2 rounded-lg bg-red-50 dark:bg-red-900/20">
-                <span className={`px-2 py-1 rounded text-xs font-bold ${getGradeColor('C')}`}>C</span>
-                <div>
-                  <p className="text-xs font-medium text-gray-800 dark:text-white">En inicio</p>
-                  <p className="text-xs text-gray-500">0% - 49%</p>
-                </div>
-              </div>
-            </div>
+            )}
           </Card>
         </div>
       </div>

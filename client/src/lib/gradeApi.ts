@@ -1,5 +1,7 @@
 import api from './api';
 
+export type PerformanceBucket = 'AD' | 'A' | 'B' | 'C';
+
 export interface ActivityScore {
   type: string;
   id: string;
@@ -8,12 +10,20 @@ export interface ActivityScore {
   weight: number;
 }
 
+export interface GradeAverageSummary {
+  score: number;
+  label: string;
+  bucket: PerformanceBucket;
+  evaluatedCompetencies: number;
+}
+
 export interface StudentGrade {
   id: string;
   competencyId: string;
   competencyName: string;
-  score: string;
+  score: number;
   gradeLabel: string;
+  bucket: PerformanceBucket;
   activitiesCount: number;
   calculationDetails?: {
     activities: ActivityScore[];
@@ -21,28 +31,43 @@ export interface StudentGrade {
     rawScore: number;
   };
   isManualOverride: boolean;
-  manualScore?: string;
-  manualNote?: string;
+  manualScore?: number | null;
+  manualNote?: string | null;
   calculatedAt: string;
 }
 
-export interface ClassroomGrade {
-  id: string;
+export interface StudentGradebookResponse {
   studentProfileId: string;
   studentName: string;
-  competencyId: string;
-  competencyName: string;
-  score: number;
-  gradeLabel: string;
-  activitiesCount: number;
-  calculationDetails?: {
-    activities: ActivityScore[];
-    totalWeight: number;
-    rawScore: number;
+  period: string;
+  gradeScaleType: 'PERU_LETTERS' | 'PERU_VIGESIMAL' | 'CENTESIMAL' | 'USA_LETTERS' | 'CUSTOM' | null;
+  average: GradeAverageSummary;
+  grades: StudentGrade[];
+}
+
+export interface ClassroomGrade extends StudentGrade {
+  studentProfileId: string;
+  studentName: string;
+}
+
+export interface ClassroomGradeStudent {
+  studentProfileId: string;
+  studentName: string;
+  average: GradeAverageSummary;
+  grades: ClassroomGrade[];
+}
+
+export interface ClassroomGradebookResponse {
+  classroomId: string;
+  period: string;
+  gradeScaleType: 'PERU_LETTERS' | 'PERU_VIGESIMAL' | 'CENTESIMAL' | 'USA_LETTERS' | 'CUSTOM' | null;
+  students: ClassroomGradeStudent[];
+  summary: {
+    studentCount: number;
+    evaluatedStudentCount: number;
+    averageScore: number;
+    distribution: Record<PerformanceBucket, number>;
   };
-  isManualOverride: boolean;
-  manualScore?: number;
-  notes?: string;
 }
 
 export interface CalculateResult {
@@ -82,7 +107,7 @@ export interface BimesterStatus {
 
 export const gradeApi = {
   // Obtener calificaciones de un estudiante
-  getStudentGrades: async (studentProfileId: string, period: string = 'CURRENT'): Promise<StudentGrade[]> => {
+  getStudentGrades: async (studentProfileId: string, period: string = 'CURRENT'): Promise<StudentGradebookResponse> => {
     const response = await api.get(`/grades/student/${studentProfileId}`, {
       params: { period },
     });
@@ -90,7 +115,7 @@ export const gradeApi = {
   },
 
   // Obtener calificaciones de toda una clase
-  getClassroomGrades: async (classroomId: string, period: string = 'CURRENT'): Promise<ClassroomGrade[]> => {
+  getClassroomGrades: async (classroomId: string, period: string = 'CURRENT'): Promise<ClassroomGradebookResponse> => {
     const response = await api.get(`/grades/classroom/${classroomId}`, {
       params: { period },
     });

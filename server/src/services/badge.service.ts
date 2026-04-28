@@ -62,6 +62,16 @@ export interface CreateBadgeDto {
 }
 
 class BadgeService {
+  private getBadgeAwardLimit(badge: Pick<Badge, 'maxAwards'>): number | null {
+    if (badge.maxAwards == null) return null;
+    return badge.maxAwards > 0 ? badge.maxAwards : null;
+  }
+
+  private canAwardBadge(badge: Pick<Badge, 'maxAwards'>, currentCount: number): boolean {
+    const limit = this.getBadgeAwardLimit(badge);
+    if (limit == null) return true;
+    return currentCount < limit;
+  }
   
   // ═══════════════════════════════════════════════════════════
   // CRUD de Insignias
@@ -375,6 +385,9 @@ class BadgeService {
     
     // Las insignias manuales son acumulables - contar cuántas tiene
     const existingCount = await this.countStudentBadge(studentProfileId, badgeId);
+    if (!this.canAwardBadge(badge, existingCount)) {
+      throw new Error('Se alcanzó el límite de otorgamientos de esta insignia');
+    }
     
     // Otorgar
     const newStudentBadge = {
@@ -466,10 +479,9 @@ class BadgeService {
       throw new Error('Insignia no encontrada');
     }
     
-    // Verificar si ya la tiene
-    const existing = await this.getStudentBadge(studentProfileId, badgeId);
-    if (existing) {
-      throw new Error('El estudiante ya tiene esta insignia');
+    const existingCount = await this.countStudentBadge(studentProfileId, badgeId);
+    if (!this.canAwardBadge(badge, existingCount)) {
+      throw new Error('El estudiante ya alcanzó el límite de esta insignia');
     }
     
     const newStudentBadge = {
@@ -504,12 +516,14 @@ class BadgeService {
       }
 
       if (student.userId) {
+        const newCount = existingCount + 1;
+        const countText = newCount > 1 ? ` (x${newCount})` : '';
         await tx.insert(notifications).values({
           id: uuid(),
           userId: student.userId,
           type: 'BADGE',
           title: '🏅 ¡Nueva insignia desbloqueada!',
-          message: `Has obtenido la insignia "${badge.name}"`,
+          message: `Has obtenido la insignia "${badge.name}"${countText}`,
           isRead: false,
           createdAt: new Date(),
         });
@@ -597,12 +611,12 @@ class BadgeService {
     const allBadges = await this.getClassroomBadges(classroomId);
     
     const studentBadgesList = await this.getStudentBadges(studentProfileId);
-    const unlockedIds = new Set(studentBadgesList.map(sb => sb.badgeId));
+    const badgeCountMap = new Map(studentBadgesList.map((studentBadge) => [studentBadge.badgeId, studentBadge.count]));
     
     const pendingBadges = allBadges.filter(b => 
-      !unlockedIds.has(b.id) && 
       (b.assignmentMode === 'AUTOMATIC' || b.assignmentMode === 'BOTH') &&
-      b.unlockCondition !== null
+      b.unlockCondition !== null &&
+      this.canAwardBadge(b, badgeCountMap.get(b.id) || 0)
     );
     
     
@@ -708,7 +722,8 @@ class BadgeService {
   ): Promise<number> {
     const conditions = [
       eq(pointLogs.studentId, studentProfileId),
-      eq(pointLogs.behaviorId, behaviorId)
+      eq(pointLogs.behaviorId, behaviorId),
+      eq(pointLogs.isReverted, false)
     ];
     
     // Solo contar desde la fecha de creación de la insignia
@@ -746,7 +761,8 @@ class BadgeService {
     
     const conditions = [
       eq(pointLogs.studentId, studentProfileId),
-      inArray(pointLogs.behaviorId, behaviorIds)
+      inArray(pointLogs.behaviorId, behaviorIds),
+      eq(pointLogs.isReverted, false)
     ];
     
     if (sinceDate) {
@@ -767,7 +783,10 @@ class BadgeService {
   }
   
   private async countAllBehaviors(studentProfileId: string, sinceDate?: Date): Promise<number> {
-    const conditions = [eq(pointLogs.studentId, studentProfileId)];
+    const conditions = [
+      eq(pointLogs.studentId, studentProfileId),
+      eq(pointLogs.isReverted, false),
+    ];
     
     if (sinceDate) {
       conditions.push(gte(pointLogs.createdAt, sinceDate));

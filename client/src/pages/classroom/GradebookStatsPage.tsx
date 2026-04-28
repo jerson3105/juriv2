@@ -22,7 +22,7 @@ export const GradebookStatsPage = () => {
   const { classroom } = useOutletContext<{ classroom: Classroom }>();
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
 
-  const { data: gradesData = [] } = useQuery({
+  const { data: gradebookData } = useQuery({
     queryKey: ['classroom-grades', classroom.id, 'CURRENT'],
     queryFn: () => gradeApi.getClassroomGrades(classroom.id, 'CURRENT'),
     enabled: !!classroom.useCompetencies && !!classroom.id,
@@ -35,67 +35,43 @@ export const GradebookStatsPage = () => {
     return student.user?.email?.split('@')[0] || 'Sin nombre';
   };
 
+  const getBucketBadgeClass = (bucket: string) => {
+    if (bucket === 'AD') return 'bg-emerald-100 text-emerald-600';
+    if (bucket === 'A') return 'bg-blue-100 text-blue-600';
+    if (bucket === 'B') return 'bg-amber-100 text-amber-600';
+    return 'bg-red-100 text-red-600';
+  };
+
   const gradeStats = useMemo(() => {
-    if (!gradesData.length) return null;
+    if (!gradebookData?.students?.length) return null;
 
-    const uniqueStudents = new Map();
-    gradesData.forEach((grade: any) => {
-      if (!uniqueStudents.has(grade.studentProfileId)) {
-        uniqueStudents.set(grade.studentProfileId, {
-          id: grade.studentProfileId,
-          firstName: grade.firstName,
-          lastName: grade.lastName,
-          nickname: grade.nickname,
-          avatarGender: grade.avatarGender,
-          user: grade.user,
-          grades: [],
-        });
-      }
-      uniqueStudents.get(grade.studentProfileId).grades.push(grade);
-    });
+    const studentsWithGrades = gradebookData.students.map((student) => ({
+      id: student.studentProfileId,
+      firstName: student.studentName,
+      lastName: '',
+      nickname: student.studentName,
+      avatarGender: 'MALE',
+      grades: student.grades,
+      gradeInfo: {
+        avg: student.average.score,
+        label: student.average.label,
+        bucket: student.average.bucket,
+        grades: student.grades,
+      },
+    })).sort((a, b) => b.gradeInfo.avg - a.gradeInfo.avg);
 
-    const studentsArray = Array.from(uniqueStudents.values());
-
-    const studentsWithGrades = studentsArray.map((student) => {
-      const grades = student.grades;
-      const avgScore = grades.length > 0
-        ? grades.reduce((sum: number, g: any) => sum + parseFloat(g.score), 0) / grades.length
-        : 0;
-
-      let label = 'C';
-      if (avgScore >= 90) label = 'AD';
-      else if (avgScore >= 75) label = 'A';
-      else if (avgScore >= 60) label = 'B';
-
-      return {
-        ...student,
-        gradeInfo: { avg: avgScore, label, grades },
-      };
-    }).sort((a, b) => b.gradeInfo.avg - a.gradeInfo.avg);
-
-    const distribution = {
-      AD: studentsWithGrades.filter(s => s.gradeInfo.label === 'AD').length,
-      A: studentsWithGrades.filter(s => s.gradeInfo.label === 'A').length,
-      B: studentsWithGrades.filter(s => s.gradeInfo.label === 'B').length,
-      C: studentsWithGrades.filter(s => s.gradeInfo.label === 'C').length,
-    };
-
-    const avgScore = studentsWithGrades.length > 0
-      ? studentsWithGrades.reduce((sum, s) => sum + s.gradeInfo.avg, 0) / studentsWithGrades.length
-      : 0;
-
-    const topPerformers = studentsWithGrades.filter(s => s.gradeInfo.label === 'AD').slice(0, 5);
-    const needsSupport = studentsWithGrades.filter(s => s.gradeInfo.label === 'C' || (s.gradeInfo.label === 'B' && s.gradeInfo.avg < 65));
+    const topPerformers = studentsWithGrades.filter(s => s.gradeInfo.bucket === 'AD').slice(0, 5);
+    const needsSupport = studentsWithGrades.filter(s => s.gradeInfo.bucket === 'C' || (s.gradeInfo.bucket === 'B' && s.gradeInfo.avg < 65));
 
     return {
       studentsWithGrades,
-      distribution,
-      avgScore,
+      distribution: gradebookData.summary.distribution,
+      avgScore: gradebookData.summary.averageScore,
       topPerformers,
       needsSupport,
-      totalEvaluated: studentsWithGrades.length,
+      totalEvaluated: gradebookData.summary.evaluatedStudentCount,
     };
-  }, [gradesData]);
+  }, [gradebookData]);
 
   if (!classroom.useCompetencies) {
     return (
@@ -250,7 +226,7 @@ export const GradebookStatsPage = () => {
                     {gradeStats.needsSupport.slice(0, 6).map((student) => (
                       <div key={student.id} className="flex items-center gap-2 bg-white dark:bg-gray-800 rounded-lg px-3 py-1.5 shadow-sm">
                         <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${
-                          student.gradeInfo.label === 'C' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'
+                              student.gradeInfo.bucket === 'C' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'
                         }`}>
                           {student.gradeInfo.label}
                         </span>
@@ -324,10 +300,7 @@ export const GradebookStatsPage = () => {
                     }`}
                   >
                     <span className={`px-2 py-1 rounded-lg text-xs font-bold ${
-                      student.gradeInfo.label === 'AD' ? 'bg-emerald-100 text-emerald-600' :
-                      student.gradeInfo.label === 'A' ? 'bg-blue-100 text-blue-600' :
-                      student.gradeInfo.label === 'B' ? 'bg-amber-100 text-amber-600' :
-                      'bg-red-100 text-red-600'
+                      getBucketBadgeClass(student.gradeInfo.bucket)
                     }`}>
                       {student.gradeInfo.label}
                     </span>
@@ -370,10 +343,7 @@ export const GradebookStatsPage = () => {
                           <p className="text-sm text-gray-500">Promedio: <span className="font-semibold">{student.gradeInfo.avg.toFixed(1)}%</span> ({student.gradeInfo.label})</p>
                         </div>
                         <span className={`px-3 py-1.5 rounded-xl text-lg font-bold ${
-                          student.gradeInfo.label === 'AD' ? 'bg-emerald-100 text-emerald-600' :
-                          student.gradeInfo.label === 'A' ? 'bg-blue-100 text-blue-600' :
-                          student.gradeInfo.label === 'B' ? 'bg-amber-100 text-amber-600' :
-                          'bg-red-100 text-red-600'
+                          getBucketBadgeClass(student.gradeInfo.bucket)
                         }`}>
                           {student.gradeInfo.label}
                         </span>
@@ -391,10 +361,7 @@ export const GradebookStatsPage = () => {
                               <div className="flex items-center gap-2">
                                 <span className="text-sm text-gray-600 dark:text-gray-300">{parseFloat(grade.score).toFixed(0)}%</span>
                                 <span className={`px-2 py-1 rounded-lg text-sm font-bold ${
-                                  grade.gradeLabel === 'AD' ? 'bg-emerald-100 text-emerald-600' :
-                                  grade.gradeLabel === 'A' ? 'bg-blue-100 text-blue-600' :
-                                  grade.gradeLabel === 'B' ? 'bg-amber-100 text-amber-600' :
-                                  'bg-red-100 text-red-600'
+                                  getBucketBadgeClass(grade.bucket)
                                 }`}>
                                   {grade.gradeLabel}
                                 </span>
@@ -413,6 +380,7 @@ export const GradebookStatsPage = () => {
                                       case 'TOURNAMENT': return '🏆';
                                       case 'EXPEDITION': return '🗺️';
                                       case 'TIMER': return '⏱️';
+                                      case 'MANUAL_POINTS': return '🧾';
                                       default: return '📝';
                                     }
                                   };
@@ -423,6 +391,7 @@ export const GradebookStatsPage = () => {
                                       case 'TOURNAMENT': return 'Torneo';
                                       case 'EXPEDITION': return 'Expedición';
                                       case 'TIMER': return 'Actividad';
+                                      case 'MANUAL_POINTS': return 'Punto manual';
                                       default: return 'Actividad';
                                     }
                                   };

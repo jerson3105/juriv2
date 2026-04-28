@@ -19,9 +19,10 @@ import {
   jiroStudentExpeditions,
   jiroExpeditions,
   jiroExpeditionCompetencies,
+  users,
   type GradeScaleType,
 } from '../db/schema.js';
-import { eq, and, inArray, sql, gte, lte } from 'drizzle-orm';
+import { eq, and, inArray, sql, gte, lte, asc } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 
 type ClosedBimesterEntry = {
@@ -77,6 +78,69 @@ interface GradeCalculationResult {
   gradeLabel: string;
   activitiesCount: number;
   activities: ActivityScoreData[];
+}
+
+type PerformanceBucket = 'AD' | 'A' | 'B' | 'C';
+
+export interface GradeAverageSummary {
+  score: number;
+  label: string;
+  bucket: PerformanceBucket;
+  evaluatedCompetencies: number;
+}
+
+export interface GradebookGradeEntry {
+  id: string;
+  competencyId: string;
+  competencyName: string;
+  score: number;
+  gradeLabel: string;
+  bucket: PerformanceBucket;
+  activitiesCount: number;
+  calculationDetails?: {
+    activities: Array<{
+      type: string;
+      id: string;
+      name: string;
+      score: number;
+      weight: number;
+    }>;
+    totalWeight: number;
+    rawScore: number;
+  } | null;
+  isManualOverride: boolean;
+  manualScore: number | null;
+  manualNote: string | null;
+  calculatedAt: Date;
+}
+
+export interface StudentGradebookResponse {
+  studentProfileId: string;
+  studentName: string;
+  period: string;
+  gradeScaleType: GradeScaleType | null;
+  average: GradeAverageSummary;
+  grades: GradebookGradeEntry[];
+}
+
+export interface ClassroomGradebookStudent {
+  studentProfileId: string;
+  studentName: string;
+  average: GradeAverageSummary;
+  grades: GradebookGradeEntry[];
+}
+
+export interface ClassroomGradebookResponse {
+  classroomId: string;
+  period: string;
+  gradeScaleType: GradeScaleType | null;
+  students: ClassroomGradebookStudent[];
+  summary: {
+    studentCount: number;
+    evaluatedStudentCount: number;
+    averageScore: number;
+    distribution: Record<PerformanceBucket, number>;
+  };
 }
 
 // Interfaz para el rango de fechas del bimestre
@@ -328,6 +392,172 @@ class GradeService {
     if (periodYear === currentYear && periodBim > currentBim) return true;
 
     return false;
+  }
+
+  private toNumericScore(value: unknown): number {
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue : 0;
+  }
+
+  private buildManualPointActivityName(log: {
+    action: string;
+    amount: number;
+    pointType: string;
+    reason: string | null;
+  }): string {
+    const signedAmount = `${log.action === 'ADD' ? '+' : '-'}${log.amount} ${log.pointType}`;
+    const normalizedReason = log.reason?.trim();
+
+    if (normalizedReason) {
+      return `${normalizedReason} (${signedAmount})`;
+    }
+
+    return `Punto manual ${signedAmount}`;
+  }
+
+  private getEvidenceConfidence(observationCount: number): number {
+    if (observationCount <= 0) return 0;
+    return Math.min(1, observationCount / 6);
+  }
+
+  private getEvidenceWeight(observationCount: number): number {
+    if (observationCount <= 0) return 0;
+    return Math.min(30, observationCount * 5);
+  }
+
+  private getEvidenceAdjustedScore(rawScore: number, observationCount: number): number {
+    const confidence = this.getEvidenceConfidence(observationCount);
+    return Number((50 + (rawScore - 50) * confidence).toFixed(2));
+  }
+
+  private resolveStudentDisplayName(student: {
+    characterName?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+  }): string {
+    const realName = `${student.firstName || ''} ${student.lastName || ''}`.trim();
+    return student.characterName || realName || 'Estudiante';
+  }
+
+  private getPerformanceBucket(score: number): PerformanceBucket {
+    if (score >= 90) return 'AD';
+    if (score >= 70) return 'A';
+    if (score >= 50) return 'B';
+    return 'C';
+  }
+
+  private buildAverageSummary(
+    grades: GradebookGradeEntry[],
+    gradeScaleType: GradeScaleType | null,
+    parsedScaleConfig: unknown,
+  ): GradeAverageSummary {
+    const countableGrades = grades.filter((grade) =>
+      Number.isFinite(grade.score) && (grade.activitiesCount > 0 || grade.isManualOverride)
+    );
+
+    if (countableGrades.length === 0) {
+      return {
+        score: 0,
+        label: '-',
+        bucket: 'C',
+        evaluatedCompetencies: 0,
+      };
+    }
+
+    const averageScore = countableGrades.reduce((sum, grade) => sum + grade.score, 0) / countableGrades.length;
+
+    return {
+      score: Number(averageScore.toFixed(2)),
+      label: this.convertToGradeLabel(averageScore, gradeScaleType, parsedScaleConfig),
+      bucket: this.getPerformanceBucket(averageScore),
+      evaluatedCompetencies: countableGrades.length,
+    };
+  }
+
+  private buildClassroomSummary(students: ClassroomGradebookStudent[]): ClassroomGradebookResponse['summary'] {
+    const distribution: Record<PerformanceBucket, number> = {
+      AD: 0,
+      A: 0,
+      B: 0,
+      C: 0,
+    };
+
+    const evaluatedStudents = students.filter((student) => student.average.evaluatedCompetencies > 0);
+    for (const student of evaluatedStudents) {
+      distribution[student.average.bucket]++;
+    }
+
+    const averageScore = evaluatedStudents.length > 0
+      ? evaluatedStudents.reduce((sum, student) => sum + student.average.score, 0) / evaluatedStudents.length
+      : 0;
+
+    return {
+      studentCount: students.length,
+      evaluatedStudentCount: evaluatedStudents.length,
+      averageScore: Number(averageScore.toFixed(2)),
+      distribution,
+    };
+  }
+
+  private async getClassroomScaleSettings(classroomId: string): Promise<{
+    gradeScaleType: GradeScaleType | null;
+    gradeScaleConfig: unknown;
+  }> {
+    const [classroom] = await db.select({
+      gradeScaleType: classrooms.gradeScaleType,
+      gradeScaleConfig: classrooms.gradeScaleConfig,
+    }).from(classrooms).where(eq(classrooms.id, classroomId));
+
+    return {
+      gradeScaleType: classroom?.gradeScaleType || null,
+      gradeScaleConfig: classroom?.gradeScaleConfig || null,
+    };
+  }
+
+  private normalizeGradebookEntry(
+    rawGrade: {
+      id: string;
+      competencyId: string;
+      competencyName: string | null;
+      score: unknown;
+      activitiesCount: number;
+      calculationDetails: GradebookGradeEntry['calculationDetails'] | string | null;
+      isManualOverride: boolean;
+      manualScore: unknown;
+      manualNote: string | null;
+      calculatedAt: Date;
+    },
+    gradeScaleType: GradeScaleType | null,
+    parsedScaleConfig: unknown,
+  ): GradebookGradeEntry {
+    const hasManualScore = rawGrade.manualScore !== null && rawGrade.manualScore !== undefined;
+    const effectiveScore = rawGrade.isManualOverride && hasManualScore
+      ? this.toNumericScore(rawGrade.manualScore)
+      : this.toNumericScore(rawGrade.score);
+    const normalizedCalculationDetails = typeof rawGrade.calculationDetails === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(rawGrade.calculationDetails) as GradebookGradeEntry['calculationDetails'];
+          } catch {
+            return null;
+          }
+        })()
+      : rawGrade.calculationDetails;
+
+    return {
+      id: rawGrade.id,
+      competencyId: rawGrade.competencyId,
+      competencyName: rawGrade.competencyName || 'Competencia',
+      score: Number(effectiveScore.toFixed(2)),
+      gradeLabel: this.convertToGradeLabel(effectiveScore, gradeScaleType, parsedScaleConfig),
+      bucket: this.getPerformanceBucket(effectiveScore),
+      activitiesCount: rawGrade.activitiesCount,
+      calculationDetails: normalizedCalculationDetails,
+      isManualOverride: rawGrade.isManualOverride,
+      manualScore: hasManualScore ? Number(this.toNumericScore(rawGrade.manualScore).toFixed(2)) : null,
+      manualNote: rawGrade.manualNote || null,
+      calculatedAt: rawGrade.calculatedAt,
+    };
   }
   
   /**
@@ -810,6 +1040,7 @@ class GradeService {
       .where(and(
         eq(pointLogs.studentId, studentProfileId),
         inArray(pointLogs.behaviorId, behaviorIds),
+        eq(pointLogs.isReverted, false),
         gte(pointLogs.createdAt, dateRange.startDate),
         lte(pointLogs.createdAt, dateRange.endDate)
       ))
@@ -824,14 +1055,18 @@ class GradeService {
     let totalPositivePoints = 0;
     let totalNegativePoints = 0;
     let hasAnyBehavior = false;
+    let totalObservations = 0;
     const behaviorDetails: Array<{ name: string; count: number; points: number; isPositive: boolean }> = [];
 
     for (const behavior of competencyBehaviors) {
       const count = behaviorCountMap.get(behavior.id) || 0;
       if (count > 0) {
-        hasAnyBehavior = true;
         // Impacto total del comportamiento: XP + HP (GP es moneda de tienda, no afecta calificaciones)
         const behaviorPoints = Math.abs(behavior.xpValue || 0) + Math.abs(behavior.hpValue || 0);
+        if (behaviorPoints <= 0) continue;
+
+        hasAnyBehavior = true;
+        totalObservations += count;
         const totalPointsFromBehavior = count * behaviorPoints;
 
         behaviorDetails.push({
@@ -861,7 +1096,9 @@ class GradeService {
         scorePercent = (totalPositivePoints / totalPoints) * 100;
       }
 
-      const dynamicWeight = Math.min(100, Math.max(30, Math.round(totalPoints / 10)));
+      const evidenceAdjustedScore = this.getEvidenceAdjustedScore(scorePercent, totalObservations);
+      const evidenceWeight = this.getEvidenceWeight(totalObservations);
+      if (evidenceWeight === 0) return scores;
 
       // Crear nombre descriptivo con los comportamientos individuales
       const detailsText = behaviorDetails
@@ -872,8 +1109,8 @@ class GradeService {
         type: 'BEHAVIOR',
         id: 'behavior-aggregate',
         name: `Comportamientos (+${totalPositivePoints} / -${totalNegativePoints}): ${detailsText}`,
-        score: Math.round(scorePercent),
-        weight: dynamicWeight,
+        score: evidenceAdjustedScore,
+        weight: evidenceWeight,
         competencyId,
       });
     }
@@ -899,6 +1136,7 @@ class GradeService {
       badgeId: studentBadges.badgeId,
       badgeName: badges.name,
       rarity: badges.rarity,
+      unlockedAt: studentBadges.unlockedAt,
     })
     .from(studentBadges)
     .leftJoin(badges, eq(studentBadges.badgeId, badges.id))
@@ -909,54 +1147,75 @@ class GradeService {
       lte(studentBadges.unlockedAt, dateRange.endDate)
     ));
 
-    for (const eb of earnedBadges) {
-      const weight = eb.rarity === 'LEGENDARY' ? 100 : 
-                     eb.rarity === 'EPIC' ? 80 :
-                     eb.rarity === 'RARE' ? 60 : 40;
+    if (earnedBadges.length === 0) return scores;
 
-      scores.push({
-        type: 'BADGE',
-        id: eb.badgeId,
-        name: eb.badgeName || 'Insignia',
-        score: 100,
-        weight,
-        competencyId,
-      });
-    }
+    const getBadgeWeight = (rarity: string | null) => (
+      rarity === 'LEGENDARY' ? 100 :
+      rarity === 'EPIC' ? 80 :
+      rarity === 'RARE' ? 60 : 40
+    );
+
+    const highestImpactBadge = earnedBadges.reduce((best, current) => {
+      const bestWeight = getBadgeWeight(best.rarity);
+      const currentWeight = getBadgeWeight(current.rarity);
+
+      if (currentWeight > bestWeight) return current;
+      if (currentWeight < bestWeight) return best;
+      return new Date(current.unlockedAt) > new Date(best.unlockedAt) ? current : best;
+    });
+
+    const highestImpactWeight = getBadgeWeight(highestImpactBadge.rarity);
+
+    scores.push({
+      type: 'BADGE',
+      id: highestImpactBadge.badgeId,
+      name: earnedBadges.length > 1
+        ? `Insignia destacada: ${highestImpactBadge.badgeName || 'Insignia'} (+${earnedBadges.length - 1} más en el período)`
+        : (highestImpactBadge.badgeName || 'Insignia'),
+      score: 100,
+      weight: highestImpactWeight,
+      competencyId,
+    });
 
     return scores;
   }
 
   /**
    * Puntos manuales vinculados directamente a una competencia (sin behaviorId).
-   * Agrega positivos y negativos para calcular un score neto similar a comportamientos.
+   * Mantiene la misma fórmula agregada, pero desglosa cada registro manual para que
+   * la razón del punto aparezca en calculationDetails y en la UI.
    */
   private async getManualPointScores(studentProfileId: string, competencyId: string, dateRange: BimesterDateRange): Promise<ActivityScoreData[]> {
     const scores: ActivityScoreData[] = [];
 
     const manualLogs = await db.select({
+      id: pointLogs.id,
       action: pointLogs.action,
       amount: pointLogs.amount,
       pointType: pointLogs.pointType,
       reason: pointLogs.reason,
+      createdAt: pointLogs.createdAt,
     })
       .from(pointLogs)
       .where(and(
         eq(pointLogs.studentId, studentProfileId),
         eq(pointLogs.competencyId, competencyId),
         sql`${pointLogs.behaviorId} IS NULL`,
+        eq(pointLogs.isReverted, false),
         gte(pointLogs.createdAt, dateRange.startDate),
         lte(pointLogs.createdAt, dateRange.endDate)
-      ));
+      ))
+      .orderBy(asc(pointLogs.createdAt));
 
     if (manualLogs.length === 0) return scores;
+
+    const relevantLogs = manualLogs.filter((log) => log.pointType !== 'GP' && log.amount > 0);
+    if (relevantLogs.length === 0) return scores;
 
     let totalPositive = 0;
     let totalNegative = 0;
 
-    for (const log of manualLogs) {
-      // Solo XP y HP cuentan para calificaciones (GP es moneda de tienda)
-      if (log.pointType === 'GP') continue;
+    for (const log of relevantLogs) {
       if (log.action === 'ADD') {
         totalPositive += log.amount;
       } else {
@@ -967,6 +1226,14 @@ class GradeService {
     const totalPoints = totalPositive + totalNegative;
     if (totalPoints === 0) return scores;
 
+  const observationCount = relevantLogs.length;
+  const evidenceWeight = this.getEvidenceWeight(observationCount);
+  if (evidenceWeight === 0) return scores;
+
+  const confidence = this.getEvidenceConfidence(observationCount);
+  const positiveScore = Number((50 + 50 * confidence).toFixed(2));
+  const negativeScore = Number((50 - 50 * confidence).toFixed(2));
+
     let scorePercent: number;
     if (totalNegative === 0) {
       scorePercent = 100;
@@ -976,16 +1243,37 @@ class GradeService {
       scorePercent = (totalPositive / totalPoints) * 100;
     }
 
-    const dynamicWeight = Math.min(100, Math.max(30, Math.round(totalPoints / 10)));
+    const evidenceAdjustedScore = this.getEvidenceAdjustedScore(scorePercent, observationCount);
 
-    scores.push({
-      type: 'MANUAL_POINTS',
-      id: 'manual-points-aggregate',
-      name: `Puntos manuales (+${totalPositive} / -${totalNegative})`,
-      score: Math.round(scorePercent),
-      weight: dynamicWeight,
-      competencyId,
+    let assignedWeight = 0;
+    relevantLogs.forEach((log, index) => {
+      const proportionalWeight = (log.amount / totalPoints) * evidenceWeight;
+      const weight = index === relevantLogs.length - 1
+        ? Number(Math.max(0, evidenceWeight - assignedWeight).toFixed(2))
+        : Number(proportionalWeight.toFixed(2));
+
+      assignedWeight += weight;
+
+      scores.push({
+        type: 'MANUAL_POINTS',
+        id: log.id,
+        name: this.buildManualPointActivityName(log),
+        score: log.action === 'ADD' ? positiveScore : negativeScore,
+        weight,
+        competencyId,
+      });
     });
+
+    if (scores.length > 0) {
+      const weightedScore = scores.reduce((sum, score) => sum + score.score * score.weight, 0) / evidenceWeight;
+      const roundedWeightedScore = Number(weightedScore.toFixed(2));
+      if (Math.abs(roundedWeightedScore - evidenceAdjustedScore) > 0.1) {
+        scores[scores.length - 1].score = Number((
+          (evidenceAdjustedScore * evidenceWeight - scores.slice(0, -1).reduce((sum, score) => sum + score.score * score.weight, 0)) /
+          Math.max(scores[scores.length - 1].weight, 0.01)
+        ).toFixed(2));
+      }
+    }
 
     return scores;
   }
@@ -1040,7 +1328,7 @@ class GradeService {
   // CONSULTAS
   // ═══════════════════════════════════════════════════════════
 
-  async getStudentGrades(studentProfileId: string, period: string = 'CURRENT') {
+  async getStudentGrades(studentProfileId: string, period: string = 'CURRENT'): Promise<StudentGradebookResponse> {
     const classroomId = await this.getClassroomIdByStudentProfile(studentProfileId);
     if (!classroomId) {
       throw new Error('Estudiante no encontrado');
@@ -1048,51 +1336,117 @@ class GradeService {
 
     const resolvedPeriod = await this.resolveClassroomPeriod(classroomId, period);
 
-    return db.select({
+    const { gradeScaleType, gradeScaleConfig } = await this.getClassroomScaleSettings(classroomId);
+    const parsedScaleConfig = this.parseGradeScaleConfig(gradeScaleConfig);
+
+    const rows = await db.select({
       id: studentGrades.id,
       competencyId: studentGrades.competencyId,
       competencyName: curriculumCompetencies.name,
       score: studentGrades.score,
-      gradeLabel: studentGrades.gradeLabel,
       activitiesCount: studentGrades.activitiesCount,
       calculationDetails: studentGrades.calculationDetails,
       isManualOverride: studentGrades.isManualOverride,
       manualScore: studentGrades.manualScore,
       manualNote: studentGrades.manualNote,
       calculatedAt: studentGrades.calculatedAt,
+      characterName: studentProfiles.characterName,
+      firstName: users.firstName,
+      lastName: users.lastName,
     })
     .from(studentGrades)
+    .leftJoin(studentProfiles, eq(studentGrades.studentProfileId, studentProfiles.id))
+    .leftJoin(users, eq(studentProfiles.userId, users.id))
     .leftJoin(curriculumCompetencies, eq(studentGrades.competencyId, curriculumCompetencies.id))
     .where(and(
       eq(studentGrades.studentProfileId, studentProfileId),
       eq(studentGrades.period, resolvedPeriod)
     ));
+
+    const grades = rows.map((row) => this.normalizeGradebookEntry(row, gradeScaleType, parsedScaleConfig));
+    const studentName = rows.length > 0
+      ? this.resolveStudentDisplayName(rows[0])
+      : 'Estudiante';
+
+    return {
+      studentProfileId,
+      studentName,
+      period: resolvedPeriod,
+      gradeScaleType,
+      average: this.buildAverageSummary(grades, gradeScaleType, parsedScaleConfig),
+      grades,
+    };
   }
 
-  async getClassroomGrades(classroomId: string, period: string = 'CURRENT') {
+  async getClassroomGrades(classroomId: string, period: string = 'CURRENT'): Promise<ClassroomGradebookResponse> {
     const resolvedPeriod = await this.resolveClassroomPeriod(classroomId, period);
 
-    return db.select({
+    const { gradeScaleType, gradeScaleConfig } = await this.getClassroomScaleSettings(classroomId);
+    const parsedScaleConfig = this.parseGradeScaleConfig(gradeScaleConfig);
+
+    const rows = await db.select({
       id: studentGrades.id,
       studentProfileId: studentGrades.studentProfileId,
-      studentName: studentProfiles.characterName,
       competencyId: studentGrades.competencyId,
       competencyName: curriculumCompetencies.name,
       score: studentGrades.score,
-      gradeLabel: studentGrades.gradeLabel,
       activitiesCount: studentGrades.activitiesCount,
       calculationDetails: studentGrades.calculationDetails,
       isManualOverride: studentGrades.isManualOverride,
       manualScore: studentGrades.manualScore,
-      notes: studentGrades.manualNote,
+      manualNote: studentGrades.manualNote,
+      calculatedAt: studentGrades.calculatedAt,
+      characterName: studentProfiles.characterName,
+      firstName: users.firstName,
+      lastName: users.lastName,
     })
     .from(studentGrades)
     .leftJoin(studentProfiles, eq(studentGrades.studentProfileId, studentProfiles.id))
+    .leftJoin(users, eq(studentProfiles.userId, users.id))
     .leftJoin(curriculumCompetencies, eq(studentGrades.competencyId, curriculumCompetencies.id))
     .where(and(
       eq(studentGrades.classroomId, classroomId),
       eq(studentGrades.period, resolvedPeriod)
     ));
+
+    const groupedStudents = new Map<string, ClassroomGradebookStudent>();
+
+    for (const row of rows) {
+      const gradeEntry = this.normalizeGradebookEntry(row, gradeScaleType, parsedScaleConfig);
+      const existingStudent = groupedStudents.get(row.studentProfileId);
+
+      if (existingStudent) {
+        existingStudent.grades.push(gradeEntry);
+        continue;
+      }
+
+      groupedStudents.set(row.studentProfileId, {
+        studentProfileId: row.studentProfileId,
+        studentName: this.resolveStudentDisplayName(row),
+        average: {
+          score: 0,
+          label: '-',
+          bucket: 'C',
+          evaluatedCompetencies: 0,
+        },
+        grades: [gradeEntry],
+      });
+    }
+
+    const students = Array.from(groupedStudents.values())
+      .map((student) => ({
+        ...student,
+        average: this.buildAverageSummary(student.grades, gradeScaleType, parsedScaleConfig),
+      }))
+      .sort((a, b) => a.studentName.localeCompare(b.studentName, 'es'));
+
+    return {
+      classroomId,
+      period: resolvedPeriod,
+      gradeScaleType,
+      students,
+      summary: this.buildClassroomSummary(students),
+    };
   }
 
   async recalculateClassroomGrades(classroomId: string, period: string = 'CURRENT') {
@@ -1141,6 +1495,7 @@ class GradeService {
     await db.update(studentGrades)
       .set({
         isManualOverride: true,
+        score: manualScore.toFixed(2),
         manualScore: manualScore.toFixed(2),
         manualNote: normalizedManualNote,
         gradeLabel,

@@ -4,7 +4,6 @@ import ExcelJS from 'exceljs';
 import { GoogleGenAI } from '@google/genai';
 import { db } from '../db/index.js';
 import { 
-  studentGrades, 
   studentProfiles, 
   classrooms,
   classroomCompetencies,
@@ -12,6 +11,7 @@ import {
   users
 } from '../db/schema.js';
 import { eq, and, asc } from 'drizzle-orm';
+import { gradeService, type ClassroomGradebookResponse } from './grade.service.js';
 
 const BIMESTER_PERIOD_REGEX = /^\d{4}-B[1-4]$/;
 
@@ -23,9 +23,11 @@ interface StudentGradeData {
     competencyName: string;
     score: number;
     gradeLabel: string;
+    bucket: keyof GradeStats;
   }[];
   average: number;
   averageLabel: string;
+  averageBucket: keyof GradeStats;
 }
 
 interface GradeStats {
@@ -67,15 +69,6 @@ class GradeExportService {
     return currentBimester && BIMESTER_PERIOD_REGEX.test(currentBimester)
       ? currentBimester
       : `${new Date().getFullYear()}-B1`;
-  }
-
-  private toGradeBucket(label: string, score: number): keyof GradeStats {
-    const normalizedLabel = label.trim().toUpperCase();
-    if (normalizedLabel === 'AD' || normalizedLabel === 'A' || normalizedLabel === 'B' || normalizedLabel === 'C') {
-      return normalizedLabel;
-    }
-
-    return this.scoreToLabel(score);
   }
 
   private getAI(): GoogleGenAI {
@@ -136,69 +129,29 @@ Responde SOLO con la oración, sin comillas ni explicaciones adicionales.`;
       throw new Error('Clase no encontrada');
     }
 
-    const resolvedPeriod = await this.resolvePeriodForClassroom(classroomId, period);
-
-    const studentsData = await this.getStudentsWithGrades(classroomId, resolvedPeriod);
+    const gradebook = await gradeService.getClassroomGrades(classroomId, period);
+    const studentsData = this.mapGradebookStudents(gradebook);
     const competencies = await this.getClassroomCompetencies(classroomId);
     const stats = this.calculateStats(studentsData);
 
-    return this.createPDF(classroom, studentsData, competencies, stats, resolvedPeriod);
+    return this.createPDF(classroom, studentsData, competencies, stats, gradebook.period, gradebook.gradeScaleType);
   }
 
-  private async getStudentsWithGrades(classroomId: string, period: string): Promise<StudentGradeData[]> {
-    const students = await db.select({
-      id: studentProfiles.id,
-      characterName: studentProfiles.characterName,
-      firstName: users.firstName,
-      lastName: users.lastName,
-    })
-    .from(studentProfiles)
-    .leftJoin(users, eq(studentProfiles.userId, users.id))
-    .where(eq(studentProfiles.classroomId, classroomId));
-
-    const grades = await db.select({
-      studentProfileId: studentGrades.studentProfileId,
-      competencyId: studentGrades.competencyId,
-      competencyName: curriculumCompetencies.name,
-      score: studentGrades.score,
-      gradeLabel: studentGrades.gradeLabel,
-    })
-    .from(studentGrades)
-    .leftJoin(curriculumCompetencies, eq(studentGrades.competencyId, curriculumCompetencies.id))
-    .where(and(
-      eq(studentGrades.classroomId, classroomId),
-      eq(studentGrades.period, period)
-    ));
-
-    const gradesByStudent = new Map<string, typeof grades>();
-    for (const grade of grades) {
-      const studentGradeList = gradesByStudent.get(grade.studentProfileId) || [];
-      studentGradeList.push(grade);
-      gradesByStudent.set(grade.studentProfileId, studentGradeList);
-    }
-
-    return students.map(student => {
-      const studentGradesList = gradesByStudent.get(student.id) || [];
-      const scores = studentGradesList.map(g => parseFloat(String(g.score)) || 0);
-      const average = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-
-      // Priorizar: nombre real > characterName > "Estudiante"
-      const realName = `${student.firstName || ''} ${student.lastName || ''}`.trim();
-      const displayName = realName || student.characterName || 'Estudiante';
-
-      return {
-        studentId: student.id,
-        displayName,
-        grades: studentGradesList.map(g => ({
-          competencyId: g.competencyId,
-          competencyName: g.competencyName || 'Competencia',
-          score: parseFloat(String(g.score)) || 0,
-          gradeLabel: g.gradeLabel || 'C',
-        })),
-        average,
-        averageLabel: this.scoreToLabel(average),
-      };
-    }).sort((a, b) => a.displayName.localeCompare(b.displayName, 'es'));
+  private mapGradebookStudents(gradebook: ClassroomGradebookResponse): StudentGradeData[] {
+    return gradebook.students.map((student) => ({
+      studentId: student.studentProfileId,
+      displayName: student.studentName,
+      grades: student.grades.map((grade) => ({
+        competencyId: grade.competencyId,
+        competencyName: grade.competencyName,
+        score: grade.score,
+        gradeLabel: grade.gradeLabel,
+        bucket: grade.bucket,
+      })),
+      average: student.average.score,
+      averageLabel: student.average.label,
+      averageBucket: student.average.bucket,
+    }));
   }
 
   private async getClassroomCompetencies(classroomId: string): Promise<{ id: string; name: string }[]> {
@@ -234,24 +187,33 @@ Responde SOLO con la oración, sin comillas ni explicaciones adicionales.`;
           byCompetency.set(grade.competencyId, { AD: 0, A: 0, B: 0, C: 0, total: 0 });
         }
         const compStats = byCompetency.get(grade.competencyId)!;
-        const gradeBucket = this.toGradeBucket(grade.gradeLabel, grade.score);
-        compStats[gradeBucket]++;
+        compStats[grade.bucket]++;
         compStats.total++;
       }
 
-      const averageBucket = this.toGradeBucket(student.averageLabel, student.average);
-      overall[averageBucket]++;
+      overall[student.averageBucket]++;
       overall.total++;
     }
 
     return { byCompetency, overall, studentCount: students.length };
   }
 
-  private scoreToLabel(score: number): keyof GradeStats {
-    if (score >= 85) return 'AD';
-    if (score >= 65) return 'A';
-    if (score >= 50) return 'B';
-    return 'C';
+  private getScaleLegendItems(gradeScaleType: ClassroomGradebookResponse['gradeScaleType']) {
+    if (gradeScaleType === 'PERU_VIGESIMAL') {
+      return [
+        { label: '18-20', bucket: 'AD' as const, color: '#166534', desc: 'Logro destacado' },
+        { label: '14-17', bucket: 'A' as const, color: '#1D4ED8', desc: 'Logro esperado' },
+        { label: '11-13', bucket: 'B' as const, color: '#B45309', desc: 'En proceso' },
+        { label: '0-10', bucket: 'C' as const, color: '#DC2626', desc: 'En inicio' },
+      ];
+    }
+
+    return [
+      { label: 'AD', bucket: 'AD' as const, color: '#166534', desc: 'Logro destacado' },
+      { label: 'A', bucket: 'A' as const, color: '#1D4ED8', desc: 'Logro esperado' },
+      { label: 'B', bucket: 'B' as const, color: '#B45309', desc: 'En proceso' },
+      { label: 'C', bucket: 'C' as const, color: '#DC2626', desc: 'En inicio' },
+    ];
   }
 
   private createPDF(
@@ -259,7 +221,8 @@ Responde SOLO con la oración, sin comillas ni explicaciones adicionales.`;
     students: StudentGradeData[],
     competencies: { id: string; name: string }[],
     stats: { byCompetency: Map<string, GradeStats>; overall: GradeStats; studentCount: number },
-    period: string
+    period: string,
+    gradeScaleType: ClassroomGradebookResponse['gradeScaleType']
   ): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       // PDF en orientación VERTICAL (portrait)
@@ -312,10 +275,12 @@ Responde SOLO con la oración, sin comillas ni explicaciones adicionales.`;
       // Mini estadísticas en boxes
       const boxY = 225;
       const boxWidth = (pageWidth - 30) / 4;
-      const labels = ['AD', 'A', 'B', 'C'];
+      const labels = ['AD', 'A', 'B', 'C'] as const;
+      const legendItems = this.getScaleLegendItems(gradeScaleType);
       const bgColors = ['#DCFCE7', '#DBEAFE', '#FEF3C7', '#FEE2E2'];
       const textColors = ['#166534', '#1D4ED8', '#B45309', '#DC2626'];
-      const descriptions = ['Destacado', 'Logrado', 'En proceso', 'En inicio'];
+      const descriptions = legendItems.map((item) => item.desc);
+      const displayLabels = legendItems.map((item) => item.label);
 
       labels.forEach((label, i) => {
         const x = 40 + (i * (boxWidth + 10));
@@ -324,7 +289,7 @@ Responde SOLO con la oración, sin comillas ni explicaciones adicionales.`;
 
         doc.rect(x, boxY, boxWidth, 55).fill(bgColors[i]);
         doc.fillColor(textColors[i]).font('Helvetica-Bold').fontSize(18)
-          .text(label, x, boxY + 8, { width: boxWidth, align: 'center' });
+          .text(displayLabels[i], x, boxY + 8, { width: boxWidth, align: 'center' });
         doc.fontSize(11).font('Helvetica')
           .text(`${count} (${pct}%)`, x, boxY + 30, { width: boxWidth, align: 'center' });
         doc.fontSize(7).fillColor('#6B7280')
@@ -410,14 +375,15 @@ Responde SOLO con la oración, sin comillas ni explicaciones adicionales.`;
         competencies.forEach(comp => {
           const grade = student.grades.find(g => g.competencyId === comp.id);
           const label = grade?.gradeLabel || '-';
+          const bucket = grade?.bucket || 'C';
           
-          doc.fillColor(this.getLabelColor(label)).font('Helvetica-Bold').fontSize(9)
+          doc.fillColor(this.getLabelColor(bucket)).font('Helvetica-Bold').fontSize(9)
             .text(label, x, tableY + 6, { width: gradeColWidth - 2, align: 'center' });
           x += gradeColWidth;
         });
 
         // Promedio
-        doc.fillColor(this.getLabelColor(student.averageLabel)).font('Helvetica-Bold').fontSize(10)
+        doc.fillColor(this.getLabelColor(student.averageBucket)).font('Helvetica-Bold').fontSize(10)
           .text(student.averageLabel, x, tableY + 6, { width: avgColWidth, align: 'center' });
 
         tableY += rowHeight;
@@ -514,19 +480,14 @@ Responde SOLO con la oración, sin comillas ni explicaciones adicionales.`;
       doc.rect(40, y, pageWidth, 100).fill('#F3F4F6');
       y += 15;
 
+      const footerLegendItems = this.getScaleLegendItems(gradeScaleType);
+
       doc.fillColor('#111827').fontSize(11).font('Helvetica-Bold')
-        .text('Escala de Calificación (Perú - CNEB)', 55, y);
+        .text('Escala de Calificación', 55, y);
       y += 20;
 
       doc.fontSize(9).font('Helvetica');
-      const legendItems = [
-        { label: 'AD', color: '#166534', desc: 'Logro Destacado (85-100%): El estudiante evidencia un nivel superior a lo esperado' },
-        { label: 'A', color: '#1D4ED8', desc: 'Logro Esperado (65-84%): El estudiante evidencia el nivel esperado' },
-        { label: 'B', color: '#B45309', desc: 'En Proceso (50-64%): El estudiante está en camino de lograr los aprendizajes' },
-        { label: 'C', color: '#DC2626', desc: 'En Inicio (0-49%): El estudiante muestra un progreso mínimo' },
-      ];
-
-      legendItems.forEach(item => {
+      footerLegendItems.forEach(item => {
         doc.rect(55, y, 20, 12).fill(item.color);
         doc.fillColor('white').fontSize(8).font('Helvetica-Bold')
           .text(item.label, 55, y + 2, { width: 20, align: 'center' });
@@ -568,9 +529,8 @@ Responde SOLO con la oración, sin comillas ni explicaciones adicionales.`;
       throw new Error('Clase no encontrada');
     }
 
-    const resolvedPeriod = await this.resolvePeriodForClassroom(classroomId, period);
-
-    const studentsData = await this.getStudentsWithGrades(classroomId, resolvedPeriod);
+    const gradebook = await gradeService.getClassroomGrades(classroomId, period);
+    const studentsData = this.mapGradebookStudents(gradebook);
     const competencies = await this.getClassroomCompetenciesOrdered(classroomId);
 
     // Identificar competencias que tienen al menos un estudiante con C

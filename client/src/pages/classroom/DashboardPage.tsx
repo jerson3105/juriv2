@@ -85,7 +85,7 @@ export const DashboardPage = () => {
   });
 
   // Obtener calificaciones (solo si usa competencias)
-  const { data: gradesData = [] } = useQuery({
+  const { data: gradebookData } = useQuery({
     queryKey: ['classroom-grades', classroom.id, 'CURRENT'],
     queryFn: () => gradeApi.getClassroomGrades(classroom.id, 'CURRENT'),
     enabled: !!classroom.id && !!classroom.useCompetencies,
@@ -249,62 +249,54 @@ export const DashboardPage = () => {
 
   // Calcular estadísticas de calificaciones
   const gradeStats = useMemo(() => {
-    if (!gradesData.length) return null;
-    
-    // Agrupar por estudiante
-    const byStudent: Record<string, { grades: any[]; avg: number; label: string }> = {};
-    
-    gradesData.forEach((grade: any) => {
-      if (!byStudent[grade.studentProfileId]) {
-        byStudent[grade.studentProfileId] = { grades: [], avg: 0, label: '' };
-      }
-      // Parse calculationDetails if it's a string (MySQL JSON column)
-      let details = grade.calculationDetails;
-      if (typeof details === 'string') {
-        try { details = JSON.parse(details); } catch { details = undefined; }
-      }
-      byStudent[grade.studentProfileId].grades.push({
-        ...grade,
-        calculationDetails: details,
-      });
-    });
-    
-    // Calcular promedios
-    Object.keys(byStudent).forEach(id => {
-      const grades = byStudent[id].grades;
-      const scores = grades.map((g: any) => parseFloat(g.score) || 0);
-      const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-      byStudent[id].avg = avg;
-      byStudent[id].label = avg >= 85 ? 'AD' : avg >= 65 ? 'A' : avg >= 50 ? 'B' : 'C';
-    });
-    
-    // Contar por nivel de logro
-    const distribution = { AD: 0, A: 0, B: 0, C: 0 };
-    Object.values(byStudent).forEach(s => {
-      distribution[s.label as keyof typeof distribution]++;
-    });
-    
-    // Estudiantes ordenados por promedio
-    const studentsWithGrades = students.map(s => ({
-      ...s,
-      gradeInfo: byStudent[s.id] || { grades: [], avg: 0, label: 'C' }
-    })).sort((a, b) => b.gradeInfo.avg - a.gradeInfo.avg);
-    
-    // Identificar estudiantes que necesitan apoyo (C o B bajo)
-    const needsSupport = studentsWithGrades.filter(s => s.gradeInfo.label === 'C' || (s.gradeInfo.label === 'B' && s.gradeInfo.avg < 55));
-    
-    // Top performers
-    const topPerformers = studentsWithGrades.filter(s => s.gradeInfo.label === 'AD').slice(0, 5);
-    
+    if (!gradebookData?.students?.length) return null;
+
+    const studentMap = new Map(gradebookData.students.map((student) => [student.studentProfileId, student]));
+
+    const studentsWithGrades = students
+      .map((student) => {
+        const gradeEntry = studentMap.get(student.id);
+        return {
+          ...student,
+          gradeInfo: gradeEntry
+            ? {
+                grades: gradeEntry.grades,
+                avg: gradeEntry.average.score,
+                label: gradeEntry.average.label,
+                bucket: gradeEntry.average.bucket,
+              }
+            : {
+                grades: [],
+                avg: 0,
+                label: '-',
+                bucket: 'C',
+              },
+        };
+      })
+      .sort((a, b) => b.gradeInfo.avg - a.gradeInfo.avg);
+
+    const needsSupport = studentsWithGrades.filter((student) =>
+      student.gradeInfo.label !== '-' && (student.gradeInfo.bucket === 'C' || (student.gradeInfo.bucket === 'B' && student.gradeInfo.avg < 55))
+    );
+
+    const topPerformers = studentsWithGrades.filter((student) => student.gradeInfo.bucket === 'AD').slice(0, 5);
+
     return {
-      distribution,
+      distribution: gradebookData.summary.distribution,
       studentsWithGrades,
       needsSupport,
       topPerformers,
-      totalEvaluated: Object.keys(byStudent).length,
-      avgScore: Object.values(byStudent).reduce((sum, s) => sum + s.avg, 0) / (Object.keys(byStudent).length || 1),
+      totalEvaluated: gradebookData.summary.evaluatedStudentCount,
+      avgScore: gradebookData.summary.averageScore,
     };
-  }, [gradesData, students]);
+  }, [gradebookData, students]);
+
+  const getBucketBadgeClass = (bucket: string) => {
+    if (bucket === 'AD') return 'bg-emerald-100 text-emerald-600';
+    if (bucket === 'A') return 'bg-blue-100 text-blue-600';
+    if (bucket === 'B') return 'bg-amber-100 text-amber-600';
+    return 'bg-red-100 text-red-600';
+  };
 
   return (
     <div className="space-y-6">
@@ -1010,7 +1002,7 @@ export const DashboardPage = () => {
                         {gradeStats.needsSupport.slice(0, 6).map((student) => (
                           <div key={student.id} className="flex items-center gap-2 bg-white dark:bg-gray-800 rounded-lg px-3 py-1.5 shadow-sm">
                             <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${
-                              student.gradeInfo.label === 'C' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'
+                              student.gradeInfo.bucket === 'C' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'
                             }`}>
                               {student.gradeInfo.label}
                             </span>
@@ -1084,10 +1076,7 @@ export const DashboardPage = () => {
                         }`}
                       >
                         <span className={`px-2 py-1 rounded-lg text-xs font-bold ${
-                          student.gradeInfo.label === 'AD' ? 'bg-emerald-100 text-emerald-600' :
-                          student.gradeInfo.label === 'A' ? 'bg-blue-100 text-blue-600' :
-                          student.gradeInfo.label === 'B' ? 'bg-amber-100 text-amber-600' :
-                          'bg-red-100 text-red-600'
+                            getBucketBadgeClass(student.gradeInfo.bucket)
                         }`}>
                           {student.gradeInfo.label}
                         </span>
@@ -1130,10 +1119,7 @@ export const DashboardPage = () => {
                               <p className="text-sm text-gray-500">Promedio: <span className="font-semibold">{student.gradeInfo.avg.toFixed(1)}%</span> ({student.gradeInfo.label})</p>
                             </div>
                             <span className={`px-3 py-1.5 rounded-xl text-lg font-bold ${
-                              student.gradeInfo.label === 'AD' ? 'bg-emerald-100 text-emerald-600' :
-                              student.gradeInfo.label === 'A' ? 'bg-blue-100 text-blue-600' :
-                              student.gradeInfo.label === 'B' ? 'bg-amber-100 text-amber-600' :
-                              'bg-red-100 text-red-600'
+                                  getBucketBadgeClass(student.gradeInfo.bucket)
                             }`}>
                               {student.gradeInfo.label}
                             </span>
@@ -1151,10 +1137,7 @@ export const DashboardPage = () => {
                                   <div className="flex items-center gap-2">
                                     <span className="text-sm text-gray-600 dark:text-gray-300">{parseFloat(grade.score).toFixed(0)}%</span>
                                     <span className={`px-2 py-1 rounded-lg text-sm font-bold ${
-                                      grade.gradeLabel === 'AD' ? 'bg-emerald-100 text-emerald-600' :
-                                      grade.gradeLabel === 'A' ? 'bg-blue-100 text-blue-600' :
-                                      grade.gradeLabel === 'B' ? 'bg-amber-100 text-amber-600' :
-                                      'bg-red-100 text-red-600'
+                                      getBucketBadgeClass(grade.bucket)
                                     }`}>
                                       {grade.gradeLabel}
                                     </span>
@@ -1173,6 +1156,7 @@ export const DashboardPage = () => {
                                           case 'TOURNAMENT': return '🏆';
                                           case 'EXPEDITION': return '🗺️';
                                           case 'TIMER': return '⏱️';
+                                          case 'MANUAL_POINTS': return '🧾';
                                           default: return '📝';
                                         }
                                       };
@@ -1183,6 +1167,7 @@ export const DashboardPage = () => {
                                           case 'TOURNAMENT': return 'Torneo';
                                           case 'EXPEDITION': return 'Expedición';
                                           case 'TIMER': return 'Actividad';
+                                          case 'MANUAL_POINTS': return 'Punto manual';
                                           default: return 'Actividad';
                                         }
                                       };
