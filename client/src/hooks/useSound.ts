@@ -83,6 +83,90 @@ function playBadge() {
   tone(ctx, 196.00, 'sine', t + 0.24, 0.25, 0.08);   // G3
 }
 
+/** Territory conquered: triumphant 4-note fanfare */
+function playConquer() {
+  const ctx = getCtx();
+  const t = ctx.currentTime;
+  // Rising major arpeggio: C5 → E5 → G5 → C6, all with a bold punch
+  tone(ctx, 523.25, 'square', t, 0.1, 0.22);           // C5
+  tone(ctx, 659.25, 'square', t + 0.09, 0.1, 0.20);   // E5
+  tone(ctx, 783.99, 'square', t + 0.18, 0.1, 0.18);   // G5
+  tone(ctx, 1046.50, 'square', t + 0.27, 0.55, 0.20); // C6 held
+  // Bright sine layer on top for shimmer
+  tone(ctx, 1046.50, 'sine', t + 0.27, 0.55, 0.10);
+  tone(ctx, 1567.98, 'sine', t + 0.30, 0.45, 0.05);   // G6 shimmer
+  // Bass thump for impact
+  tone(ctx, 130.81, 'sine', t + 0.27, 0.22, 0.15);    // C3
+}
+
+/** Defense reinforced: solid two-beat shield sound */
+function playDefend() {
+  const ctx = getCtx();
+  const t = ctx.currentTime;
+  // Two resolute mid-range tones — like a shield being raised
+  tone(ctx, 392.00, 'triangle', t, 0.12, 0.18);        // G4
+  tone(ctx, 523.25, 'triangle', t + 0.14, 0.32, 0.18); // C5 hold
+  // Subtle metallic overtone
+  tone(ctx, 1567.98, 'sine', t + 0.14, 0.22, 0.04);   // G6
+  // Short bass thump
+  tone(ctx, 196.00, 'sine', t, 0.12, 0.12);            // G3
+}
+
+/** Battle start: dramatic tension — low rumble + dissonant pulse */
+function playBattleStart() {
+  const ctx = getCtx();
+  const t = ctx.currentTime;
+  // Heavy low bass sweep down
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(220, t);
+  osc.frequency.exponentialRampToValueAtTime(60, t + 0.5);
+  gain.gain.setValueAtTime(0.18, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(t); osc.stop(t + 0.56);
+  // Two sharp metallic hits
+  tone(ctx, 440, 'sawtooth', t + 0.04, 0.07, 0.14);
+  tone(ctx, 370, 'sawtooth', t + 0.18, 0.07, 0.12);
+  // Tension chord
+  tone(ctx, 155.56, 'triangle', t + 0.28, 0.35, 0.10); // Eb3
+  tone(ctx, 207.65, 'triangle', t + 0.28, 0.35, 0.08); // Ab3
+}
+
+/** Correct answer: quick bright ascending ding */
+function playCorrect() {
+  const ctx = getCtx();
+  const t = ctx.currentTime;
+  tone(ctx, 880, 'sine', t, 0.08, 0.16);          // A5
+  tone(ctx, 1318.51, 'sine', t + 0.08, 0.18, 0.14); // E6
+  tone(ctx, 2637.02, 'sine', t + 0.1, 0.15, 0.04);  // E7 sparkle
+}
+
+/** Wrong answer: short dull buzzer */
+function playWrong() {
+  const ctx = getCtx();
+  const t = ctx.currentTime;
+  tone(ctx, 220, 'sawtooth', t, 0.1, 0.14);
+  tone(ctx, 165, 'sawtooth', t + 0.1, 0.22, 0.12);
+}
+
+/** Territory / action selected: subtle soft click */
+function playSelect() {
+  const ctx = getCtx();
+  const t = ctx.currentTime;
+  tone(ctx, 1046.50, 'sine', t, 0.04, 0.08); // C6 very short and quiet
+  tone(ctx, 1318.51, 'sine', t + 0.04, 0.05, 0.05);
+}
+
+/** Turn change: neutral neutral two-tone chime */
+function playTurnChange() {
+  const ctx = getCtx();
+  const t = ctx.currentTime;
+  tone(ctx, 698.46, 'sine', t, 0.1, 0.14);          // F5
+  tone(ctx, 880.00, 'sine', t + 0.12, 0.22, 0.12);  // A5
+}
+
 // ─── Public hook ─────────────────────────────────────────────────────
 
 const SOUNDS = {
@@ -90,6 +174,13 @@ const SOUNDS = {
   pointsLoss: playPointsLoss,
   levelUp: playLevelUp,
   badge: playBadge,
+  conquer: playConquer,
+  defend: playDefend,
+  battleStart: playBattleStart,
+  correct: playCorrect,
+  wrong: playWrong,
+  select: playSelect,
+  turnChange: playTurnChange,
 } as const;
 
 export type SoundName = keyof typeof SOUNDS;

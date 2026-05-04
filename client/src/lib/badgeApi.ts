@@ -86,6 +86,68 @@ export interface GeneratedBadge {
   competencyId?: string;
 }
 
+export interface ClassroomAwardsBreakdown {
+  summary: {
+    totalAwards: number;
+    totalStudentsInClassroom: number;
+    totalStudentsWithAwards: number;
+    totalBadgesAwarded: number;
+    mostAwardedBadge: { id: string; name: string; icon: string | null; count: number } | null;
+  };
+  recentAwards: Array<{
+    studentProfileId: string;
+    studentName: string;
+    badgeId: string;
+    badgeName: string;
+    badgeIcon: string | null;
+    awardedAt: string;
+    awardReason: string | null;
+  }>;
+  byBadge: Array<{
+    badgeId: string;
+    badgeName: string;
+    badgeIcon: string | null;
+    rarity: BadgeRarity;
+    assignmentMode: BadgeAssignment;
+    totalAwards: number;
+    uniqueStudents: number;
+    lastAwardedAt: string;
+    winners: Array<{
+      studentProfileId: string;
+      studentName: string;
+      characterName: string | null;
+      realName: string | null;
+      realLastName: string | null;
+      level: number;
+      avatarGender: string;
+      awardCount: number;
+      lastAwardedAt: string;
+      lastAwardReason: string | null;
+    }>;
+  }>;
+  byStudent: Array<{
+    studentProfileId: string;
+    studentName: string;
+    characterName: string | null;
+    realName: string | null;
+    realLastName: string | null;
+    level: number;
+    avatarGender: string;
+    totalAwards: number;
+    uniqueBadges: number;
+    lastAwardedAt: string;
+    badges: Array<{
+      badgeId: string;
+      badgeName: string;
+      badgeIcon: string | null;
+      rarity: BadgeRarity;
+      assignmentMode: BadgeAssignment;
+      awardCount: number;
+      lastAwardedAt: string;
+    }>;
+  }>;
+}
+
 // Colores por rareza
 export const RARITY_COLORS = {
   COMMON: {
@@ -212,6 +274,33 @@ export const badgeApi = {
     badgeDistribution: { name: string; icon: string; count: number }[];
   }> => {
     const response = await api.get(`/badges/classroom/${classroomId}/stats`);
+    return response.data;
+  },
+
+  // Obtener desglose de otorgamientos (ganadores)
+  getClassroomAwardsBreakdown: async (
+    classroomId: string,
+    params?: {
+      search?: string;
+      rarity?: BadgeRarity;
+      assignmentMode?: BadgeAssignment;
+      startDate?: string;
+      endDate?: string;
+    }
+  ): Promise<ClassroomAwardsBreakdown> => {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.rarity) searchParams.set('rarity', params.rarity);
+    if (params?.assignmentMode) searchParams.set('assignmentMode', params.assignmentMode);
+    if (params?.startDate) searchParams.set('startDate', params.startDate);
+    if (params?.endDate) searchParams.set('endDate', params.endDate);
+
+    const query = searchParams.toString();
+    const endpoint = query
+      ? `/badges/classroom/${classroomId}/awards-breakdown?${query}`
+      : `/badges/classroom/${classroomId}/awards-breakdown`;
+
+    const response = await api.get(endpoint);
     return response.data;
   },
 

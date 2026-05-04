@@ -65,7 +65,14 @@ export interface ExportResult {
 export interface ApplyResult {
   behavior: Behavior;
   studentsAffected: number;
-  results: { studentId: string; studentName: string; newValue: number; leveledUp?: boolean; newLevel?: number }[];
+  results: {
+    studentId: string;
+    studentName: string;
+    newValue: number;
+    leveledUp?: boolean;
+    newLevel?: number;
+    pointLogEntryId?: string | null;
+  }[];
   levelUps: LevelUpInfo[];
   awardedBadges?: AwardedBadgeInfo[];
 }

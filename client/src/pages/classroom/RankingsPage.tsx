@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -13,6 +13,9 @@ import {
   Maximize2,
   Minimize2,
   Sparkles,
+  ArrowUp,
+  ArrowDown,
+  Minus,
 } from 'lucide-react';
 import { clanApi, CLAN_EMBLEMS } from '../../lib/clanApi';
 import { classroomApi } from '../../lib/classroomApi';
@@ -55,12 +58,16 @@ const JIRO_RANKING_IMAGES: Record<RankingType, string> = {
   clans: '/assets/mascot/jiro-ranking-clanes.png',
 };
 
+const getRankingSnapshotStorageKey = (classroomId: string, rankingType: Exclude<RankingType, 'clans'>) =>
+  `rankings-snapshot:${classroomId}:${rankingType}`;
+
 export const RankingsPage = () => {
   const { classroom } = useOutletContext<{ classroom: any }>();
   const { classMap } = useCharacterClasses(classroom?.id);
   const [activeTab, setActiveTab] = useState<RankingType>('xp');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [, setShowConfetti] = useState(false);
+  const [movementByStudentId, setMovementByStudentId] = useState<Record<string, number>>({});
 
   // Obtener estudiantes con datos frescos (no del cache del classroom)
   const { data: freshClassroom } = useQuery({
@@ -144,6 +151,87 @@ export const RankingsPage = () => {
   };
 
   const currentTab = RANKING_TABS.find(t => t.id === activeTab)!;
+  const studentRankingSignature = sortedStudents.map((student, index) => `${student.id}:${index + 1}`).join('|');
+
+  useEffect(() => {
+    if (!classroom?.id || activeTab === 'clans') {
+      setMovementByStudentId({});
+      return;
+    }
+
+    const rankingType = activeTab as Exclude<RankingType, 'clans'>;
+    const storageKey = getRankingSnapshotStorageKey(classroom.id, rankingType);
+
+    const currentPositions: Record<string, number> = {};
+    sortedStudents.forEach((student, index) => {
+      currentPositions[student.id] = index + 1;
+    });
+
+    let previousPositions: Record<string, number> = {};
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, number>;
+        if (parsed && typeof parsed === 'object') previousPositions = parsed;
+      }
+    } catch {
+      previousPositions = {};
+    }
+
+    const nextMovement: Record<string, number> = {};
+    sortedStudents.forEach((student) => {
+      const currentRank = currentPositions[student.id];
+      const previousRank = previousPositions[student.id];
+      if (!previousRank) {
+        nextMovement[student.id] = 0;
+        return;
+      }
+      nextMovement[student.id] = previousRank - currentRank;
+    });
+
+    setMovementByStudentId(nextMovement);
+
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(currentPositions));
+    } catch {
+      // Ignore storage errors (private mode/quota)
+    }
+  }, [activeTab, classroom?.id, studentRankingSignature]);
+
+  const renderMovementIndicator = (studentId: string, compact = false) => {
+    const movement = movementByStudentId[studentId] || 0;
+
+    if (movement > 0) {
+      return (
+        <span
+          className={`inline-flex items-center gap-0.5 font-semibold ${compact ? 'text-xs' : 'text-[11px]'} text-emerald-600 dark:text-emerald-400`}
+          title="Subió de puesto"
+        >
+          <ArrowUp size={compact ? 12 : 13} />
+        </span>
+      );
+    }
+
+    if (movement < 0) {
+      return (
+        <span
+          className={`inline-flex items-center gap-0.5 font-semibold ${compact ? 'text-xs' : 'text-[11px]'} text-rose-600 dark:text-rose-400`}
+          title="Bajó de puesto"
+        >
+          <ArrowDown size={compact ? 12 : 13} />
+        </span>
+      );
+    }
+
+    return (
+      <span
+        className={`inline-flex items-center gap-0.5 font-semibold ${compact ? 'text-xs' : 'text-[11px]'} text-gray-400 dark:text-gray-500`}
+        title="Sin cambios"
+      >
+        <Minus size={compact ? 12 : 13} />
+      </span>
+    );
+  };
 
   return (
     <div className={`space-y-6 ${isFullscreen ? 'p-8 bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 min-h-screen' : ''}`}>
@@ -409,9 +497,12 @@ export const RankingsPage = () => {
                       <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${currentTab.color} flex items-center justify-center text-2xl mb-2 shadow-xl`}>
                         {classMap[top3Students[1].characterClassId!]?.icon || classMap[top3Students[1].characterClass]?.icon || '🧙'}
                       </div>
-                      <p className={`font-bold text-center ${isFullscreen ? 'text-white' : 'text-gray-800 dark:text-white'}`}>
-                        {top3Students[1].characterName || top3Students[1].user?.firstName}
-                      </p>
+                      <div className="flex items-center gap-1">
+                        <p className={`font-bold text-center ${isFullscreen ? 'text-white' : 'text-gray-800 dark:text-white'}`}>
+                          {top3Students[1].characterName || top3Students[1].user?.firstName}
+                        </p>
+                        {renderMovementIndicator(top3Students[1].id)}
+                      </div>
                       <p className={`text-sm ${isFullscreen ? 'text-gray-300' : 'text-gray-500'}`}>
                         {getValue(top3Students[1]).toLocaleString()} {getUnit()}
                       </p>
@@ -438,9 +529,12 @@ export const RankingsPage = () => {
                       <div className={`w-20 h-20 rounded-full bg-gradient-to-br ${currentTab.color} flex items-center justify-center text-3xl mb-2 shadow-2xl ring-4 ring-amber-400/50`}>
                         {classMap[top3Students[0].characterClassId!]?.icon || classMap[top3Students[0].characterClass]?.icon || '🧙'}
                       </div>
-                      <p className={`font-bold text-lg text-center ${isFullscreen ? 'text-white' : 'text-gray-800 dark:text-white'}`}>
-                        {top3Students[0].characterName || top3Students[0].user?.firstName}
-                      </p>
+                      <div className="flex items-center gap-1">
+                        <p className={`font-bold text-lg text-center ${isFullscreen ? 'text-white' : 'text-gray-800 dark:text-white'}`}>
+                          {top3Students[0].characterName || top3Students[0].user?.firstName}
+                        </p>
+                        {renderMovementIndicator(top3Students[0].id)}
+                      </div>
                       <p className={`text-sm ${isFullscreen ? 'text-amber-300' : 'text-amber-600'} font-semibold`}>
                         {getValue(top3Students[0]).toLocaleString()} {getUnit()}
                       </p>
@@ -461,9 +555,12 @@ export const RankingsPage = () => {
                       <div className={`w-16 h-16 rounded-full bg-gradient-to-br ${currentTab.color} flex items-center justify-center text-2xl mb-2 shadow-xl`}>
                         {classMap[top3Students[2].characterClassId!]?.icon || classMap[top3Students[2].characterClass]?.icon || '🧙'}
                       </div>
-                      <p className={`font-bold text-center ${isFullscreen ? 'text-white' : 'text-gray-800 dark:text-white'}`}>
-                        {top3Students[2].characterName || top3Students[2].user?.firstName}
-                      </p>
+                      <div className="flex items-center gap-1">
+                        <p className={`font-bold text-center ${isFullscreen ? 'text-white' : 'text-gray-800 dark:text-white'}`}>
+                          {top3Students[2].characterName || top3Students[2].user?.firstName}
+                        </p>
+                        {renderMovementIndicator(top3Students[2].id)}
+                      </div>
                       <p className={`text-sm ${isFullscreen ? 'text-gray-300' : 'text-gray-500'}`}>
                         {getValue(top3Students[2]).toLocaleString()} {getUnit()}
                       </p>
@@ -499,9 +596,12 @@ export const RankingsPage = () => {
                           {classInfo?.icon || '🧙'}
                         </div>
                         <div className="flex-1">
-                          <p className={`font-semibold ${isFullscreen ? 'text-white' : 'text-gray-800 dark:text-white'}`}>
-                            {student.characterName || student.user?.firstName}
-                          </p>
+                          <div className="flex items-center gap-1">
+                            <p className={`font-semibold ${isFullscreen ? 'text-white' : 'text-gray-800 dark:text-white'}`}>
+                              {student.characterName || student.user?.firstName}
+                            </p>
+                            {renderMovementIndicator(student.id, true)}
+                          </div>
                           <p className={`text-xs ${isFullscreen ? 'text-gray-400' : 'text-gray-500'}`}>
                             {classInfo?.name} • Nivel {student.level}
                           </p>

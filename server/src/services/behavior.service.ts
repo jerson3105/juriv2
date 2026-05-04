@@ -281,7 +281,7 @@ export class BehaviorService {
     }
 
     const now = new Date();
-    const results: { studentId: string; studentName: string; xpChange: number; hpChange: number; gpChange: number; newXp: number; newHp: number; newGp: number; leveledUp?: boolean; newLevel?: number }[] = [];
+    const results: { studentId: string; studentName: string; pointLogEntryId?: string | null; xpChange: number; hpChange: number; gpChange: number; newXp: number; newHp: number; newGp: number; leveledUp?: boolean; newLevel?: number }[] = [];
     const levelUps: { studentId: string; studentName: string; newLevel: number }[] = [];
     const xpPerLevel = classroom.xpPerLevel || 100;
 
@@ -303,6 +303,7 @@ export class BehaviorService {
       let newGp = student.gp;
       let leveledUp = false;
       let newLevel = student.level;
+      let pointLogEntryId: string | null = null;
 
       // Aplicar cambios según si es positivo o negativo
       if (behavior.isPositive) {
@@ -352,8 +353,10 @@ export class BehaviorService {
 
       // Preparar logs para cada tipo de punto que cambió
       if (xpChange > 0) {
+        const logId = uuidv4();
+        if (!pointLogEntryId) pointLogEntryId = logId;
         pointLogsBatch.push({
-          id: uuidv4(),
+          id: logId,
           studentId: student.id,
           behaviorId: behavior.id,
           pointType: 'XP',
@@ -365,8 +368,10 @@ export class BehaviorService {
         });
       }
       if (hpChange > 0) {
+        const logId = uuidv4();
+        if (!pointLogEntryId) pointLogEntryId = logId;
         pointLogsBatch.push({
-          id: uuidv4(),
+          id: logId,
           studentId: student.id,
           behaviorId: behavior.id,
           pointType: 'HP',
@@ -378,8 +383,10 @@ export class BehaviorService {
         });
       }
       if (gpChange > 0) {
+        const logId = uuidv4();
+        if (!pointLogEntryId) pointLogEntryId = logId;
         pointLogsBatch.push({
-          id: uuidv4(),
+          id: logId,
           studentId: student.id,
           behaviorId: behavior.id,
           pointType: 'GP',
@@ -444,6 +451,7 @@ export class BehaviorService {
       results.push({ 
         studentId: student.id, 
         studentName: student.characterName || 'Estudiante',
+        pointLogEntryId,
         xpChange: behavior.isPositive ? xpChange : -xpChange,
         hpChange: behavior.isPositive ? hpChange : -hpChange,
         gpChange: behavior.isPositive ? gpChange : -gpChange,

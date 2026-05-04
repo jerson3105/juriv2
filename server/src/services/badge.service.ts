@@ -13,6 +13,7 @@ import {
   pointLogs,
   notifications,
   classrooms,
+  users,
   type Badge,
   type StudentBadge,
   type BadgeCategory,
@@ -264,6 +265,439 @@ class BadgeService {
       mostAwardedBadge: mostAwarded,
       recentAwards,
       badgeDistribution: Array.from(badgeCounts.values()).sort((a, b) => b.count - a.count),
+    };
+  }
+
+  async getClassroomAwardsBreakdown(
+    classroomId: string,
+    filters?: {
+      search?: string;
+      rarity?: BadgeRarity;
+      assignmentMode?: BadgeAssignment;
+      startDate?: Date;
+      endDate?: Date;
+    }
+  ): Promise<{
+    summary: {
+      totalAwards: number;
+      totalStudentsInClassroom: number;
+      totalStudentsWithAwards: number;
+      totalBadgesAwarded: number;
+      mostAwardedBadge: { id: string; name: string; icon: string | null; count: number } | null;
+    };
+    recentAwards: Array<{
+      studentProfileId: string;
+      studentName: string;
+      badgeId: string;
+      badgeName: string;
+      badgeIcon: string | null;
+      awardedAt: Date;
+      awardReason: string | null;
+    }>;
+    byBadge: Array<{
+      badgeId: string;
+      badgeName: string;
+      badgeIcon: string | null;
+      rarity: BadgeRarity;
+      assignmentMode: BadgeAssignment;
+      totalAwards: number;
+      uniqueStudents: number;
+      lastAwardedAt: Date;
+      winners: Array<{
+        studentProfileId: string;
+        studentName: string;
+        characterName: string | null;
+        realName: string | null;
+        realLastName: string | null;
+        level: number;
+        avatarGender: string;
+        awardCount: number;
+        lastAwardedAt: Date;
+        lastAwardReason: string | null;
+      }>;
+    }>;
+    byStudent: Array<{
+      studentProfileId: string;
+      studentName: string;
+      characterName: string | null;
+      realName: string | null;
+      realLastName: string | null;
+      level: number;
+      avatarGender: string;
+      totalAwards: number;
+      uniqueBadges: number;
+      lastAwardedAt: Date;
+      badges: Array<{
+        badgeId: string;
+        badgeName: string;
+        badgeIcon: string | null;
+        rarity: BadgeRarity;
+        assignmentMode: BadgeAssignment;
+        awardCount: number;
+        lastAwardedAt: Date;
+      }>;
+    }>;
+  }> {
+    const students = await db
+      .select({
+        id: studentProfiles.id,
+        characterName: studentProfiles.characterName,
+        realName: users.firstName,
+        realLastName: users.lastName,
+        level: studentProfiles.level,
+        avatarGender: studentProfiles.avatarGender,
+      })
+      .from(studentProfiles)
+      .leftJoin(users, eq(studentProfiles.userId, users.id))
+      .where(eq(studentProfiles.classroomId, classroomId));
+
+    if (students.length === 0) {
+      return {
+        summary: {
+          totalAwards: 0,
+          totalStudentsInClassroom: 0,
+          totalStudentsWithAwards: 0,
+          totalBadgesAwarded: 0,
+          mostAwardedBadge: null,
+        },
+        recentAwards: [],
+        byBadge: [],
+        byStudent: [],
+      };
+    }
+
+    const studentIds = students.map((student) => student.id);
+
+    const studentNameById = new Map<string, {
+      characterName: string | null;
+      realName: string | null;
+      realLastName: string | null;
+      level: number;
+      avatarGender: string;
+    }>();
+
+    for (const student of students) {
+      studentNameById.set(student.id, {
+        characterName: student.characterName,
+        realName: student.realName,
+        realLastName: student.realLastName,
+        level: student.level,
+        avatarGender: student.avatarGender,
+      });
+    }
+
+    const awardsRaw = await db
+      .select({
+        studentProfileId: studentBadges.studentProfileId,
+        awardedAt: studentBadges.unlockedAt,
+        awardReason: studentBadges.awardReason,
+        badgeId: badges.id,
+        badgeName: badges.name,
+        badgeIcon: badges.customImage,
+        badgeEmoji: badges.icon,
+        rarity: badges.rarity,
+        assignmentMode: badges.assignmentMode,
+      })
+      .from(studentBadges)
+      .innerJoin(badges, eq(studentBadges.badgeId, badges.id))
+      .where(inArray(studentBadges.studentProfileId, studentIds));
+
+    const normalize = (value: string | null | undefined) => (value || '').trim().toLowerCase();
+    const search = normalize(filters?.search);
+
+    const awards = awardsRaw.filter((award) => {
+      if (filters?.rarity && award.rarity !== filters.rarity) return false;
+      if (filters?.assignmentMode && award.assignmentMode !== filters.assignmentMode) return false;
+      if (filters?.startDate && new Date(award.awardedAt) < filters.startDate) return false;
+      if (filters?.endDate && new Date(award.awardedAt) > filters.endDate) return false;
+
+      if (!search) return true;
+
+      const student = studentNameById.get(award.studentProfileId);
+      const characterName = normalize(student?.characterName);
+      const realName = normalize(student?.realName);
+      const realLastName = normalize(student?.realLastName);
+      const fullName = normalize(`${student?.realName || ''} ${student?.realLastName || ''}`);
+      const badgeName = normalize(award.badgeName);
+
+      return (
+        badgeName.includes(search) ||
+        characterName.includes(search) ||
+        realName.includes(search) ||
+        realLastName.includes(search) ||
+        fullName.includes(search)
+      );
+    });
+
+    if (awards.length === 0) {
+      return {
+        summary: {
+          totalAwards: 0,
+          totalStudentsInClassroom: students.length,
+          totalStudentsWithAwards: 0,
+          totalBadgesAwarded: 0,
+          mostAwardedBadge: null,
+        },
+        recentAwards: [],
+        byBadge: [],
+        byStudent: [],
+      };
+    }
+
+    const getStudentDisplayName = (student: {
+      characterName: string | null;
+      realName: string | null;
+      realLastName: string | null;
+    }) => {
+      if (student.characterName) return student.characterName;
+      const fullName = `${student.realName || ''} ${student.realLastName || ''}`.trim();
+      return fullName || 'Estudiante';
+    };
+
+    const byBadgeMap = new Map<string, {
+      badgeId: string;
+      badgeName: string;
+      badgeIcon: string | null;
+      rarity: BadgeRarity;
+      assignmentMode: BadgeAssignment;
+      totalAwards: number;
+      uniqueStudentsSet: Set<string>;
+      lastAwardedAt: Date;
+      winnersMap: Map<string, {
+        studentProfileId: string;
+        studentName: string;
+        characterName: string | null;
+        realName: string | null;
+        realLastName: string | null;
+        level: number;
+        avatarGender: string;
+        awardCount: number;
+        lastAwardedAt: Date;
+        lastAwardReason: string | null;
+      }>;
+    }>();
+
+    const byStudentMap = new Map<string, {
+      studentProfileId: string;
+      studentName: string;
+      characterName: string | null;
+      realName: string | null;
+      realLastName: string | null;
+      level: number;
+      avatarGender: string;
+      totalAwards: number;
+      uniqueBadgesSet: Set<string>;
+      lastAwardedAt: Date;
+      badgesMap: Map<string, {
+        badgeId: string;
+        badgeName: string;
+        badgeIcon: string | null;
+        rarity: BadgeRarity;
+        assignmentMode: BadgeAssignment;
+        awardCount: number;
+        lastAwardedAt: Date;
+      }>;
+    }>();
+
+    for (const award of awards) {
+      const studentInfo = studentNameById.get(award.studentProfileId);
+      if (!studentInfo) continue;
+
+      const awardedAt = new Date(award.awardedAt);
+      const badgeIcon = award.badgeIcon || award.badgeEmoji || null;
+      const studentName = getStudentDisplayName(studentInfo);
+
+      const badgeEntry = byBadgeMap.get(award.badgeId);
+      if (!badgeEntry) {
+        byBadgeMap.set(award.badgeId, {
+          badgeId: award.badgeId,
+          badgeName: award.badgeName,
+          badgeIcon,
+          rarity: award.rarity,
+          assignmentMode: award.assignmentMode,
+          totalAwards: 1,
+          uniqueStudentsSet: new Set([award.studentProfileId]),
+          lastAwardedAt: awardedAt,
+          winnersMap: new Map([
+            [
+              award.studentProfileId,
+              {
+                studentProfileId: award.studentProfileId,
+                studentName,
+                characterName: studentInfo.characterName,
+                realName: studentInfo.realName,
+                realLastName: studentInfo.realLastName,
+                level: studentInfo.level,
+                avatarGender: studentInfo.avatarGender,
+                awardCount: 1,
+                lastAwardedAt: awardedAt,
+                lastAwardReason: award.awardReason || null,
+              },
+            ],
+          ]),
+        });
+      } else {
+        badgeEntry.totalAwards += 1;
+        badgeEntry.uniqueStudentsSet.add(award.studentProfileId);
+        if (awardedAt > badgeEntry.lastAwardedAt) {
+          badgeEntry.lastAwardedAt = awardedAt;
+        }
+
+        const winner = badgeEntry.winnersMap.get(award.studentProfileId);
+        if (!winner) {
+          badgeEntry.winnersMap.set(award.studentProfileId, {
+            studentProfileId: award.studentProfileId,
+            studentName,
+            characterName: studentInfo.characterName,
+            realName: studentInfo.realName,
+            realLastName: studentInfo.realLastName,
+            level: studentInfo.level,
+            avatarGender: studentInfo.avatarGender,
+            awardCount: 1,
+            lastAwardedAt: awardedAt,
+            lastAwardReason: award.awardReason || null,
+          });
+        } else {
+          winner.awardCount += 1;
+          if (awardedAt > winner.lastAwardedAt) {
+            winner.lastAwardedAt = awardedAt;
+            winner.lastAwardReason = award.awardReason || null;
+          }
+        }
+      }
+
+      const studentEntry = byStudentMap.get(award.studentProfileId);
+      if (!studentEntry) {
+        byStudentMap.set(award.studentProfileId, {
+          studentProfileId: award.studentProfileId,
+          studentName,
+          characterName: studentInfo.characterName,
+          realName: studentInfo.realName,
+          realLastName: studentInfo.realLastName,
+          level: studentInfo.level,
+          avatarGender: studentInfo.avatarGender,
+          totalAwards: 1,
+          uniqueBadgesSet: new Set([award.badgeId]),
+          lastAwardedAt: awardedAt,
+          badgesMap: new Map([
+            [
+              award.badgeId,
+              {
+                badgeId: award.badgeId,
+                badgeName: award.badgeName,
+                badgeIcon,
+                rarity: award.rarity,
+                assignmentMode: award.assignmentMode,
+                awardCount: 1,
+                lastAwardedAt: awardedAt,
+              },
+            ],
+          ]),
+        });
+      } else {
+        studentEntry.totalAwards += 1;
+        studentEntry.uniqueBadgesSet.add(award.badgeId);
+        if (awardedAt > studentEntry.lastAwardedAt) {
+          studentEntry.lastAwardedAt = awardedAt;
+        }
+
+        const studentBadge = studentEntry.badgesMap.get(award.badgeId);
+        if (!studentBadge) {
+          studentEntry.badgesMap.set(award.badgeId, {
+            badgeId: award.badgeId,
+            badgeName: award.badgeName,
+            badgeIcon,
+            rarity: award.rarity,
+            assignmentMode: award.assignmentMode,
+            awardCount: 1,
+            lastAwardedAt: awardedAt,
+          });
+        } else {
+          studentBadge.awardCount += 1;
+          if (awardedAt > studentBadge.lastAwardedAt) {
+            studentBadge.lastAwardedAt = awardedAt;
+          }
+        }
+      }
+    }
+
+    const byBadge = Array.from(byBadgeMap.values())
+      .map((entry) => ({
+        badgeId: entry.badgeId,
+        badgeName: entry.badgeName,
+        badgeIcon: entry.badgeIcon,
+        rarity: entry.rarity,
+        assignmentMode: entry.assignmentMode,
+        totalAwards: entry.totalAwards,
+        uniqueStudents: entry.uniqueStudentsSet.size,
+        lastAwardedAt: entry.lastAwardedAt,
+        winners: Array.from(entry.winnersMap.values()).sort((a, b) => {
+          if (b.awardCount !== a.awardCount) return b.awardCount - a.awardCount;
+          return new Date(b.lastAwardedAt).getTime() - new Date(a.lastAwardedAt).getTime();
+        }),
+      }))
+      .sort((a, b) => {
+        if (b.totalAwards !== a.totalAwards) return b.totalAwards - a.totalAwards;
+        return new Date(b.lastAwardedAt).getTime() - new Date(a.lastAwardedAt).getTime();
+      });
+
+    const byStudent = Array.from(byStudentMap.values())
+      .map((entry) => ({
+        studentProfileId: entry.studentProfileId,
+        studentName: entry.studentName,
+        characterName: entry.characterName,
+        realName: entry.realName,
+        realLastName: entry.realLastName,
+        level: entry.level,
+        avatarGender: entry.avatarGender,
+        totalAwards: entry.totalAwards,
+        uniqueBadges: entry.uniqueBadgesSet.size,
+        lastAwardedAt: entry.lastAwardedAt,
+        badges: Array.from(entry.badgesMap.values()).sort((a, b) => {
+          if (b.awardCount !== a.awardCount) return b.awardCount - a.awardCount;
+          return new Date(b.lastAwardedAt).getTime() - new Date(a.lastAwardedAt).getTime();
+        }),
+      }))
+      .sort((a, b) => {
+        if (b.totalAwards !== a.totalAwards) return b.totalAwards - a.totalAwards;
+        return new Date(b.lastAwardedAt).getTime() - new Date(a.lastAwardedAt).getTime();
+      });
+
+    const recentAwards = awards
+      .slice()
+      .sort((a, b) => new Date(b.awardedAt).getTime() - new Date(a.awardedAt).getTime())
+      .slice(0, 10)
+      .map((award) => {
+        const student = studentNameById.get(award.studentProfileId)!;
+        return {
+          studentProfileId: award.studentProfileId,
+          studentName: getStudentDisplayName(student),
+          badgeId: award.badgeId,
+          badgeName: award.badgeName,
+          badgeIcon: award.badgeIcon || award.badgeEmoji || null,
+          awardedAt: new Date(award.awardedAt),
+          awardReason: award.awardReason || null,
+        };
+      });
+
+    return {
+      summary: {
+        totalAwards: awards.length,
+        totalStudentsInClassroom: students.length,
+        totalStudentsWithAwards: new Set(awards.map((award) => award.studentProfileId)).size,
+        totalBadgesAwarded: new Set(awards.map((award) => award.badgeId)).size,
+        mostAwardedBadge: byBadge.length > 0
+          ? {
+              id: byBadge[0].badgeId,
+              name: byBadge[0].badgeName,
+              icon: byBadge[0].badgeIcon,
+              count: byBadge[0].totalAwards,
+            }
+          : null,
+      },
+      recentAwards,
+      byBadge,
+      byStudent,
     };
   }
   

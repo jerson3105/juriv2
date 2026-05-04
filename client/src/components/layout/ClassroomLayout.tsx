@@ -36,6 +36,9 @@ import {
   Megaphone,
   MessageCircle,
   BookMarked,
+  Coins,
+  TrendingUp,
+  Crown,
 } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
@@ -124,6 +127,26 @@ export const ClassroomLayout = () => {
     return luminance < 0.5; // Dark if luminance < 50%
   })();
   const storyThemeClass = hasStoryTheme ? (isThemeDark ? 'story-theme-dark' : 'story-theme-light') : '';
+
+  const classroomStudents = classroom?.students || [];
+  const headerTotalXP = classroomStudents.reduce((sum, student) => sum + (student.xp || 0), 0);
+  const headerTotalGP = classroomStudents.reduce((sum, student) => sum + (student.gp || 0), 0);
+  const headerAvgLevel = classroomStudents.length > 0
+    ? Math.round((classroomStudents.reduce((sum, student) => sum + (student.level || 0), 0) / classroomStudents.length) * 10) / 10
+    : 0;
+  const headerTopStudent = classroomStudents.length > 0
+    ? [...classroomStudents].sort((a, b) => (b.xp || 0) - (a.xp || 0))[0]
+    : null;
+  const showStudentsSummaryHeader = location.pathname.includes('/students');
+
+  const getHeaderDisplayName = (student: typeof classroomStudents[number] | null) => {
+    if (!student) return 'Sin datos';
+    if (classroom?.showCharacterName === false) {
+      if (student.realName && student.realLastName) return `${student.realName} ${student.realLastName}`;
+      return student.realName || student.characterName || 'Sin nombre';
+    }
+    return student.characterName || 'Sin nombre';
+  };
 
   const copyCode = async () => {
     if (!classroom) return;
@@ -612,7 +635,7 @@ export const ClassroomLayout = () => {
           className={`h-14 backdrop-blur-lg shadow-sm flex items-center justify-between px-4 ${hasStoryTheme ? 'border-b border-white/10' : 'bg-white/80 dark:bg-gray-800/80 border-b border-white/50 dark:border-gray-700/50'}`}
           style={hasStoryTheme ? { backgroundColor: `${tc.colors.background}ee` } : undefined}
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             {/* Botón menú móvil */}
             <button
               onClick={() => setMobileMenuOpen(true)}
@@ -623,12 +646,34 @@ export const ClassroomLayout = () => {
             <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-md">
               <GraduationCap size={16} className="text-white" />
             </div>
-            <div className="hidden sm:block">
+            <div className="hidden sm:block min-w-0">
               <h1 className="text-sm font-bold text-gray-800 dark:text-white">{classroom.name}</h1>
               <p className="text-xs text-gray-500 dark:text-gray-400">{classroom.students?.length || 0} estudiantes</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+
+          {showStudentsSummaryHeader && (
+            <div className="hidden xl:flex items-center justify-center gap-2 flex-1 px-4 min-w-0">
+              <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300">
+                <Sparkles size={12} />
+                <span className="text-[11px] font-semibold">{headerTotalXP.toLocaleString()} XP</span>
+              </div>
+              <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300">
+                <Coins size={12} />
+                <span className="text-[11px] font-semibold">{headerTotalGP.toLocaleString()} GP</span>
+              </div>
+              <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300">
+                <TrendingUp size={12} />
+                <span className="text-[11px] font-semibold">{headerAvgLevel} Nv</span>
+              </div>
+              <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-gray-50 dark:bg-gray-900/30 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 max-w-[220px] min-w-0">
+                <Crown size={12} className="text-amber-500 flex-shrink-0" />
+                <span className="text-[11px] font-semibold truncate">{getHeaderDisplayName(headerTopStudent)}</span>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 shrink-0">
             {/* Botón de reportar bug */}
             <BugReportButton variant="icon" />
             

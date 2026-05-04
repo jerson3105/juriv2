@@ -2,6 +2,7 @@ import { createContext, useContext, useState } from 'react';
 import type { ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TimerWidget } from '../components/activities/TimerWidget';
+import { FloatingClockWidget, type FloatingClockMode } from '../components/activities/FloatingClockWidget';
 import { eventsApi } from '../lib/eventsApi';
 import type { EventEffect } from '../lib/eventsApi';
 import { useQueryClient } from '@tanstack/react-query';
@@ -25,6 +26,14 @@ interface TimerContextType {
   startTimer: () => void;
   stopTimer: () => void;
   cancelPending: () => void;
+  openFloatingTimer: (minutes?: number) => void;
+  openFloatingStopwatch: () => void;
+  closeFloatingClock: () => void;
+}
+
+interface FloatingClockData {
+  mode: FloatingClockMode;
+  initialDurationSeconds?: number;
 }
 
 const TimerContext = createContext<TimerContextType | null>(null);
@@ -54,6 +63,7 @@ const getEffectIcon = (type: string) => {
 export const TimerProvider = ({ children }: TimerProviderProps) => {
   const [pendingTimer, setPendingTimer] = useState<TimerData | null>(null);
   const [timerData, setTimerData] = useState<TimerData | null>(null);
+  const [floatingClock, setFloatingClock] = useState<FloatingClockData | null>(null);
   const queryClient = useQueryClient();
 
   // Preparar temporizador (mostrar modal de vista previa)
@@ -75,6 +85,22 @@ export const TimerProvider = ({ children }: TimerProviderProps) => {
 
   const cancelPending = () => {
     setPendingTimer(null);
+  };
+
+  const openFloatingTimer = (minutes = 5) => {
+    const safeMinutes = Number.isFinite(minutes) ? Math.max(1, Math.floor(minutes)) : 5;
+    setFloatingClock({
+      mode: 'timer',
+      initialDurationSeconds: safeMinutes * 60,
+    });
+  };
+
+  const openFloatingStopwatch = () => {
+    setFloatingClock({ mode: 'stopwatch' });
+  };
+
+  const closeFloatingClock = () => {
+    setFloatingClock(null);
   };
 
   // Resolver temporizador
@@ -101,7 +127,19 @@ export const TimerProvider = ({ children }: TimerProviderProps) => {
   };
 
   return (
-    <TimerContext.Provider value={{ timerData, pendingTimer, prepareTimer, startTimer, stopTimer, cancelPending }}>
+    <TimerContext.Provider
+      value={{
+        timerData,
+        pendingTimer,
+        prepareTimer,
+        startTimer,
+        stopTimer,
+        cancelPending,
+        openFloatingTimer,
+        openFloatingStopwatch,
+        closeFloatingClock,
+      }}
+    >
       {children}
       
       {/* Modal de Vista Previa del Temporizador */}
@@ -205,6 +243,16 @@ export const TimerProvider = ({ children }: TimerProviderProps) => {
           onCancel={() => setTimerData(null)}
         />
       )}
+
+      <AnimatePresence>
+        {floatingClock && (
+          <FloatingClockWidget
+            mode={floatingClock.mode}
+            initialDurationSeconds={floatingClock.initialDurationSeconds}
+            onClose={closeFloatingClock}
+          />
+        )}
+      </AnimatePresence>
     </TimerContext.Provider>
   );
 };

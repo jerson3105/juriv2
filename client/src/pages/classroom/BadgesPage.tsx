@@ -4,6 +4,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Award,
+  BarChart3,
+  ChevronDown,
+  Clock,
   Plus,
   Search,
   Trash2,
@@ -12,10 +15,11 @@ import {
   X,
   Sparkles,
   Target,
+  Users,
   Zap,
   Check,
 } from 'lucide-react';
-import { badgeApi, type Badge, type CreateBadgeDto, type BadgeRarity, type BadgeAssignment, RARITY_COLORS, RARITY_LABELS, type GeneratedBadge } from '../../lib/badgeApi';
+import { badgeApi, type Badge, type CreateBadgeDto, type BadgeRarity, type BadgeAssignment, type ClassroomAwardsBreakdown, RARITY_COLORS, RARITY_LABELS, type GeneratedBadge } from '../../lib/badgeApi';
 import { behaviorApi } from '../../lib/behaviorApi';
 import { classroomApi, type Classroom } from '../../lib/classroomApi';
 import { BadgeCard } from '../../components/badges/BadgeCard';
@@ -55,6 +59,7 @@ export const BadgesPage = () => {
   const [selectedBadgeForAward, setSelectedBadgeForAward] = useState<Badge | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; badge: Badge | null }>({ isOpen: false, badge: null });
   const [showAIModal, setShowAIModal] = useState(false);
+  const [showWinnersPanel, setShowWinnersPanel] = useState(false);
 
   // Obtener insignias
   const { data: badges = [], isLoading } = useQuery({
@@ -122,6 +127,13 @@ export const BadgesPage = () => {
           </div>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={() => setShowWinnersPanel(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 rounded-xl font-medium border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+          >
+            <BarChart3 size={18} />
+            Ganadores
+          </button>
           <button
             onClick={() => setShowAIModal(true)}
             className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-medium hover:from-emerald-600 hover:to-teal-700 transition-colors shadow-lg"
@@ -307,6 +319,16 @@ export const BadgesPage = () => {
         )}
       </AnimatePresence>
 
+      {/* Panel de ganadores */}
+      <AnimatePresence>
+        {showWinnersPanel && (
+          <BadgeAwardsBreakdownPanel
+            classroomId={classroom.id}
+            onClose={() => setShowWinnersPanel(false)}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Modal de confirmación para eliminar */}
       <ConfirmModal
         isOpen={deleteConfirm.isOpen}
@@ -357,6 +379,326 @@ export const BadgesPage = () => {
       />
 
       </div>
+  );
+};
+
+const BadgeAwardsBreakdownPanel = ({
+  classroomId,
+  onClose,
+}: {
+  classroomId: string;
+  onClose: () => void;
+}) => {
+  const [search, setSearch] = useState('');
+  const [rarityFilter, setRarityFilter] = useState<BadgeRarity | 'ALL'>('ALL');
+  const [assignmentFilter, setAssignmentFilter] = useState<BadgeAssignment | 'ALL'>('ALL');
+  const [activeTab, setActiveTab] = useState<'byBadge' | 'byStudent'>('byBadge');
+  const [expandedBadgeId, setExpandedBadgeId] = useState<string | null>(null);
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['badge-awards-breakdown', classroomId, search, rarityFilter, assignmentFilter],
+    queryFn: () =>
+      badgeApi.getClassroomAwardsBreakdown(classroomId, {
+        search: search.trim() || undefined,
+        rarity: rarityFilter === 'ALL' ? undefined : rarityFilter,
+        assignmentMode: assignmentFilter === 'ALL' ? undefined : assignmentFilter,
+      }),
+  });
+
+  const breakdown: ClassroomAwardsBreakdown | undefined = data;
+
+  const formatDate = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '-';
+    return new Intl.DateTimeFormat('es-PE', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    }).format(date);
+  };
+
+  const getBadgeVisual = (icon: string | null, name: string) => {
+    if (icon && icon.startsWith('/')) {
+      return (
+        <img
+          src={`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}${icon}`}
+          alt={name}
+          className="w-10 h-10 rounded-xl object-cover"
+        />
+      );
+    }
+
+    return (
+      <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-xl">
+        {icon || '🏆'}
+      </div>
+    );
+  };
+
+  const ASSIGNMENT_LABELS: Record<BadgeAssignment, string> = {
+    MANUAL: 'Manual',
+    AUTOMATIC: 'Automática',
+    BOTH: 'Mixta',
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[60] bg-black/55 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <motion.aside
+        initial={{ x: '100%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '100%' }}
+        transition={{ type: 'spring', stiffness: 240, damping: 26 }}
+        onClick={(e) => e.stopPropagation()}
+        className="absolute right-0 top-0 h-full w-full md:max-w-3xl bg-white dark:bg-gray-900 shadow-2xl border-l border-gray-200 dark:border-gray-700 flex flex-col"
+      >
+        <div className="p-5 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-amber-50 via-orange-50 to-rose-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-900">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 text-white flex items-center justify-center shadow-lg">
+                <Users size={18} />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">Ganadores de insignias</h2>
+                <p className="text-xs text-gray-600 dark:text-gray-400">Quién ganó qué insignias y cuántas veces</p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg text-gray-500 hover:bg-white/70 dark:hover:bg-gray-800"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="relative sm:col-span-2">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar por estudiante o insignia..."
+                className="w-full pl-9 pr-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm"
+              />
+            </div>
+            <select
+              value={rarityFilter}
+              onChange={(e) => setRarityFilter(e.target.value as BadgeRarity | 'ALL')}
+              className="px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm"
+            >
+              <option value="ALL">Todas las rarezas</option>
+              <option value="COMMON">Común</option>
+              <option value="RARE">Raro</option>
+              <option value="EPIC">Épico</option>
+              <option value="LEGENDARY">Legendario</option>
+            </select>
+          </div>
+
+          <div className="mt-2">
+            <select
+              value={assignmentFilter}
+              onChange={(e) => setAssignmentFilter(e.target.value as BadgeAssignment | 'ALL')}
+              className="w-full sm:w-56 px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm"
+            >
+              <option value="ALL">Todos los modos</option>
+              <option value="MANUAL">Solo manual</option>
+              <option value="AUTOMATIC">Solo automática</option>
+              <option value="BOTH">Mixta</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {isLoading && (
+            <div className="space-y-3">
+              <div className="h-24 rounded-xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+              <div className="h-24 rounded-xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+              <div className="h-24 rounded-xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+            </div>
+          )}
+
+          {isError && (
+            <div className="p-4 rounded-xl bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 text-sm">
+              No se pudo cargar el desglose de insignias.
+            </div>
+          )}
+
+          {!isLoading && !isError && breakdown && (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                  <p className="text-xs text-gray-500">Otorgamientos</p>
+                  <p className="text-xl font-bold text-gray-900 dark:text-white">{breakdown.summary.totalAwards}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                  <p className="text-xs text-gray-500">Estudiantes con insignias</p>
+                  <p className="text-xl font-bold text-gray-900 dark:text-white">{breakdown.summary.totalStudentsWithAwards}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                  <p className="text-xs text-gray-500">Insignias otorgadas</p>
+                  <p className="text-xl font-bold text-gray-900 dark:text-white">{breakdown.summary.totalBadgesAwarded}</p>
+                </div>
+                <div className="p-3 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                  <p className="text-xs text-gray-500">Más otorgada</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+                    {breakdown.summary.mostAwardedBadge ? breakdown.summary.mostAwardedBadge.name : 'Sin datos'}
+                  </p>
+                </div>
+              </div>
+
+              {breakdown.recentAwards.length > 0 && (
+                <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                  <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2 flex items-center gap-2">
+                    <Clock size={15} className="text-amber-500" />
+                    Otorgamientos recientes
+                  </h3>
+                  <div className="space-y-2">
+                    {breakdown.recentAwards.slice(0, 4).map((award) => (
+                      <div key={`${award.studentProfileId}-${award.badgeId}-${award.awardedAt}`} className="flex items-center justify-between text-sm">
+                        <p className="text-gray-700 dark:text-gray-300 truncate">
+                          <span className="font-medium">{award.studentName}</span>
+                          {' · '}
+                          {award.badgeName}
+                        </p>
+                        <span className="text-xs text-gray-500 ml-3 whitespace-nowrap">{formatDate(award.awardedAt)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 p-1 bg-gray-100 dark:bg-gray-800 rounded-xl w-fit">
+                <button
+                  onClick={() => setActiveTab('byBadge')}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                    activeTab === 'byBadge'
+                      ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white'
+                      : 'text-gray-600 dark:text-gray-300'
+                  }`}
+                >
+                  Por insignia
+                </button>
+                <button
+                  onClick={() => setActiveTab('byStudent')}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                    activeTab === 'byStudent'
+                      ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white'
+                      : 'text-gray-600 dark:text-gray-300'
+                  }`}
+                >
+                  Por estudiante
+                </button>
+              </div>
+
+              {activeTab === 'byBadge' && (
+                <div className="space-y-3">
+                  {breakdown.byBadge.length === 0 && (
+                    <div className="p-6 text-center rounded-xl border border-dashed border-gray-300 dark:border-gray-700 text-gray-500">
+                      No hay datos con los filtros actuales.
+                    </div>
+                  )}
+
+                  {breakdown.byBadge.map((badge) => {
+                    const expanded = expandedBadgeId === badge.badgeId;
+                    return (
+                      <div key={badge.badgeId} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
+                        <button
+                          onClick={() => setExpandedBadgeId(expanded ? null : badge.badgeId)}
+                          className="w-full p-4 text-left"
+                        >
+                          <div className="flex items-center gap-3">
+                            {getBadgeVisual(badge.badgeIcon, badge.badgeName)}
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-gray-900 dark:text-white truncate">{badge.badgeName}</p>
+                              <p className="text-xs text-gray-500">
+                                {RARITY_LABELS[badge.rarity]} · {ASSIGNMENT_LABELS[badge.assignmentMode]}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm font-semibold text-gray-900 dark:text-white">{badge.totalAwards} otorgamientos</p>
+                              <p className="text-xs text-gray-500">{badge.uniqueStudents} estudiantes</p>
+                            </div>
+                            <ChevronDown size={16} className={`text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                          </div>
+                        </button>
+
+                        {expanded && (
+                          <div className="border-t border-gray-200 dark:border-gray-700 p-3 space-y-2 bg-gray-50 dark:bg-gray-900/40">
+                            {badge.winners.map((winner) => (
+                              <div key={`${badge.badgeId}-${winner.studentProfileId}`} className="p-3 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="font-medium text-gray-900 dark:text-white truncate">{winner.studentName}</p>
+                                  <p className="text-xs text-gray-500 truncate">
+                                    Nivel {winner.level}
+                                    {winner.lastAwardReason ? ` · ${winner.lastAwardReason}` : ''}
+                                  </p>
+                                </div>
+                                <div className="text-right whitespace-nowrap">
+                                  <p className="text-sm font-semibold text-gray-900 dark:text-white">x{winner.awardCount}</p>
+                                  <p className="text-xs text-gray-500">{formatDate(winner.lastAwardedAt)}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {activeTab === 'byStudent' && (
+                <div className="space-y-3">
+                  {breakdown.byStudent.length === 0 && (
+                    <div className="p-6 text-center rounded-xl border border-dashed border-gray-300 dark:border-gray-700 text-gray-500">
+                      No hay datos con los filtros actuales.
+                    </div>
+                  )}
+
+                  {breakdown.byStudent.map((student) => (
+                    <div key={student.studentProfileId} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-gray-900 dark:text-white truncate">{student.studentName}</p>
+                          <p className="text-xs text-gray-500">
+                            {student.totalAwards} otorgamientos · {student.uniqueBadges} insignias distintas
+                          </p>
+                        </div>
+                        <p className="text-xs text-gray-500 whitespace-nowrap">{formatDate(student.lastAwardedAt)}</p>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {student.badges.map((badge) => (
+                          <div key={`${student.studentProfileId}-${badge.badgeId}`} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-700 text-xs text-gray-700 dark:text-gray-200">
+                            {badge.badgeIcon && badge.badgeIcon.startsWith('/') ? (
+                              <img
+                                src={`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}${badge.badgeIcon}`}
+                                alt={badge.badgeName}
+                                className="w-4 h-4 rounded object-cover"
+                              />
+                            ) : (
+                              <span>{badge.badgeIcon || '🏆'}</span>
+                            )}
+                            <span className="max-w-[130px] truncate">{badge.badgeName}</span>
+                            <span className="font-semibold">x{badge.awardCount}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </motion.aside>
+    </motion.div>
   );
 };
 

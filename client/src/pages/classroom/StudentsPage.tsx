@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -27,6 +27,8 @@ import {
   UserMinus,
   AlertTriangle,
   ChevronDown,
+  PlayCircle,
+  RotateCcw,
   Wrench,
   Swords,
 } from 'lucide-react';
@@ -49,9 +51,32 @@ import { TeacherBadgeAwardedModal } from '../../components/badges/TeacherBadgeAw
 import { AddPlaceholderStudentsModal } from '../../components/students/AddPlaceholderStudentsModal';
 import { placeholderStudentApi } from '../../lib/placeholderStudentApi';
 import { ClassroomUtilities } from '../../components/classroom/ClassroomUtilities';
+import { PointsModal } from '../../components/modals/PointsModal';
 import { useSound } from '../../hooks/useSound';
 import { classNoteApi } from '../../lib/classNoteApi';
 import toast from 'react-hot-toast';
+
+type ListFilter = 'all' | 'low_hp' | 'no_activity' | 'round_pending' | 'round_scored' | 'round_repeated';
+
+type RoundAction = {
+  studentId: string;
+  pointLogEntryId?: string | null;
+  timestamp: number;
+};
+
+type ActiveRoundState = {
+  behaviorId: string;
+  behaviorName: string;
+  behaviorIcon: string | null;
+  isPositive: boolean;
+  startedAt: number;
+  updatedAt: number;
+  awardsByStudent: Record<string, number>;
+  lastAwardedAtByStudent: Record<string, number>;
+  actions: RoundAction[];
+};
+
+const ROUND_STORAGE_TTL_MS = 1000 * 60 * 60 * 8;
 
 export const StudentsPage = () => {
   const { classroom, storyTheme, isThemeDark } = useOutletContext<{ classroom: Classroom & { showCharacterName?: boolean }, storyTheme?: any, isThemeDark?: boolean }>();
@@ -81,9 +106,12 @@ export const StudentsPage = () => {
   const [showAddPlaceholderModal, setShowAddPlaceholderModal] = useState(false);
 
   // Estado para filtros de vista lista
-  const [listFilter, setListFilter] = useState<'all' | 'low_hp' | 'no_activity'>('all');
+  const [listFilter, setListFilter] = useState<ListFilter>('all');
   const [clanFilter, setClanFilter] = useState<string | null>(null);
   const [showClanDropdown, setShowClanDropdown] = useState(false);
+  const [showRoundBehaviorPicker, setShowRoundBehaviorPicker] = useState(false);
+  const [activeRound, setActiveRound] = useState<ActiveRoundState | null>(null);
+  const [isUndoingRound, setIsUndoingRound] = useState(false);
 
   // Estado para "Aplicar a Restantes"
   const [showUtilities, setShowUtilities] = useState(false);
@@ -131,18 +159,29 @@ export const StudentsPage = () => {
     queryFn: () => historyApi.getClassroomHistory(classroom.id, { limit: 200 }),
   });
 
+  type ApplyBehaviorMode = 'default' | 'round_quick' | 'apply_to_rest';
+  type ApplyBehaviorPayload = {
+    behaviorId: string;
+    studentIds: string[];
+    mode?: ApplyBehaviorMode;
+  };
+
   const applyBehaviorMutation = useMutation({
-    mutationFn: (data: any) => behaviorApi.apply(data),
+    mutationFn: ({ mode, ...payload }: ApplyBehaviorPayload) => behaviorApi.apply(payload),
     onSuccess: async (result, variables) => {
+      const mode = variables.mode || 'default';
+      const isRoundQuick = mode === 'round_quick';
+
       queryClient.invalidateQueries({ queryKey: ['classroom', classroom.id] });
       
-      // Guardar los estudiantes a quienes se aplicó para poder ofrecer "aplicar a restantes"
-      const appliedIds = new Set<string>(variables.studentIds);
-      setLastAppliedStudentIds(appliedIds);
-      setLastAppliedBehavior(result.behavior);
-      
-      setSelectedStudents(new Set());
-      setShowBehaviorModal(false);
+      if (!isRoundQuick) {
+        // Guardar los estudiantes a quienes se aplicó para poder ofrecer "aplicar a restantes"
+        const appliedIds = new Set<string>(variables.studentIds);
+        setLastAppliedStudentIds(appliedIds);
+        setLastAppliedBehavior(result.behavior);
+        setSelectedStudents(new Set());
+        setShowBehaviorModal(false);
+      }
       
       // Mostrar animación de puntos
       const behavior = result.behavior;
@@ -150,7 +189,7 @@ export const StudentsPage = () => {
       const hp = behavior.hpValue || (behavior.pointType === 'HP' ? behavior.pointValue : 0);
       const gp = behavior.gpValue || (behavior.pointType === 'GP' ? behavior.pointValue : 0);
       
-      if (xp > 0 || hp > 0 || gp > 0) {
+      if (!isRoundQuick && (xp > 0 || hp > 0 || gp > 0)) {
         showMultiPointsEffect(xp, hp, gp, behavior.isPositive);
       }
       
@@ -168,19 +207,54 @@ export const StudentsPage = () => {
       if (thp > 0) parts.push(`${sign}${thp} HP`);
       if (tgp > 0) parts.push(`${sign}${tgp} GP`);
       const pointsSummary = parts.length > 0 ? parts.join(', ') : '';
-      toast.success(`${pointsSummary ? pointsSummary + ' aplicado' : 'Aplicado'} — ${beh.name}`, { duration: 2500 });
+
+      if (isRoundQuick) {
+        const studentName = result.results[0]?.studentName || 'Estudiante';
+        toast.success(`${studentName}: +1 ${beh.name}`, { duration: 1400 });
+
+        const awardedStudentId = variables.studentIds[0];
+        const pointLogEntryId = result.results[0]?.pointLogEntryId || null;
+        if (awardedStudentId) {
+          setActiveRound((prev) => {
+            if (!prev || prev.behaviorId !== beh.id) return prev;
+            const currentCount = prev.awardsByStudent[awardedStudentId] || 0;
+            return {
+              ...prev,
+              updatedAt: Date.now(),
+              awardsByStudent: {
+                ...prev.awardsByStudent,
+                [awardedStudentId]: currentCount + 1,
+              },
+              lastAwardedAtByStudent: {
+                ...prev.lastAwardedAtByStudent,
+                [awardedStudentId]: Date.now(),
+              },
+              actions: [
+                ...prev.actions,
+                {
+                  studentId: awardedStudentId,
+                  pointLogEntryId,
+                  timestamp: Date.now(),
+                },
+              ].slice(-300),
+            };
+          });
+        }
+      } else {
+        toast.success(`${pointsSummary ? pointsSummary + ' aplicado' : 'Aplicado'} — ${beh.name}`, { duration: 2500 });
+      }
       
       queryClient.invalidateQueries({ queryKey: ['history-today', classroom.id] });
       
       // Si hay subidas de nivel, mostrar animación
-      if (result.levelUps && result.levelUps.length > 0) {
+      if (!isRoundQuick && result.levelUps && result.levelUps.length > 0) {
         setLevelUpQueue(result.levelUps);
         setCurrentLevelUp(result.levelUps[0]);
         setTimeout(() => playSound('levelUp'), 400);
       }
       
       // Si hay insignias otorgadas, mostrar modal consolidado
-      if (result.awardedBadges && result.awardedBadges.length > 0) {
+      if (!isRoundQuick && result.awardedBadges && result.awardedBadges.length > 0) {
         // Agrupar por insignia (todas las insignias otorgadas deberían ser la misma)
         const badgeNames = result.awardedBadges.flatMap(ab => ab.badges);
         const uniqueBadgeName = badgeNames[0]; // Tomar la primera (deberían ser todas iguales)
@@ -209,7 +283,7 @@ export const StudentsPage = () => {
       // Mostrar modal de "aplicar a restantes" si hay estudiantes que no fueron seleccionados
       // Solo si NO estamos aplicando desde el modal de restantes (evitar loop)
       // Y solo en vista de lista (viewMode === 'list')
-      if (!isApplyingToRest && viewMode === 'list') {
+      if (!isRoundQuick && !isApplyingToRest && viewMode === 'list') {
         const totalStudents = classroomData?.students?.length || 0;
         const appliedCount = variables.studentIds.length;
         if (appliedCount < totalStudents && appliedCount > 0) {
@@ -315,6 +389,8 @@ export const StudentsPage = () => {
     return { bar: 'bg-emerald-500', text: 'text-emerald-600', warning: false };
   };
 
+  const roundAwardsByStudent = activeRound?.awardsByStudent || {};
+
   // Filtrar y ordenar estudiantes alfabéticamente
   const students = allStudents.filter((student) => {
     // Filtro de búsqueda
@@ -332,6 +408,18 @@ export const StudentsPage = () => {
     }
     if (listFilter === 'no_activity') {
       if (studentsWithActivityToday.has(student.id)) return false;
+    }
+    if (listFilter === 'round_pending') {
+      if (!activeRound) return false;
+      if ((roundAwardsByStudent[student.id] || 0) > 0) return false;
+    }
+    if (listFilter === 'round_scored') {
+      if (!activeRound) return false;
+      if ((roundAwardsByStudent[student.id] || 0) === 0) return false;
+    }
+    if (listFilter === 'round_repeated') {
+      if (!activeRound) return false;
+      if ((roundAwardsByStudent[student.id] || 0) < 2) return false;
     }
     if (clanFilter) {
       const sClan = (student as any).teamId || (student as any).clanId;
@@ -376,6 +464,141 @@ export const StudentsPage = () => {
 
   const positiveBehaviors = behaviors?.filter((b) => b.isPositive) || [];
   const negativeBehaviors = behaviors?.filter((b) => !b.isPositive) || [];
+  const roundStorageKey = `students-active-round:${classroom.id}`;
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(roundStorageKey);
+      if (!raw) {
+        setActiveRound(null);
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as ActiveRoundState;
+      if (!parsed?.behaviorId || !parsed.startedAt || !parsed.updatedAt) {
+        localStorage.removeItem(roundStorageKey);
+        setActiveRound(null);
+        return;
+      }
+
+      if (Date.now() - parsed.updatedAt > ROUND_STORAGE_TTL_MS) {
+        localStorage.removeItem(roundStorageKey);
+        setActiveRound(null);
+        return;
+      }
+
+      setActiveRound(parsed);
+    } catch {
+      localStorage.removeItem(roundStorageKey);
+      setActiveRound(null);
+    }
+  }, [roundStorageKey]);
+
+  useEffect(() => {
+    if (!activeRound) {
+      localStorage.removeItem(roundStorageKey);
+      return;
+    }
+
+    localStorage.setItem(
+      roundStorageKey,
+      JSON.stringify({
+        ...activeRound,
+        updatedAt: Date.now(),
+      })
+    );
+  }, [activeRound, roundStorageKey]);
+
+  useEffect(() => {
+    if (!activeRound && (listFilter === 'round_pending' || listFilter === 'round_scored' || listFilter === 'round_repeated')) {
+      setListFilter('all');
+    }
+  }, [activeRound, listFilter]);
+
+  const startRoundWithBehavior = (behavior: Behavior) => {
+    setActiveRound({
+      behaviorId: behavior.id,
+      behaviorName: behavior.name,
+      behaviorIcon: behavior.icon || null,
+      isPositive: behavior.isPositive,
+      startedAt: Date.now(),
+      updatedAt: Date.now(),
+      awardsByStudent: {},
+      lastAwardedAtByStudent: {},
+      actions: [],
+    });
+    setShowRoundBehaviorPicker(false);
+    setListFilter('round_pending');
+    toast.success(`Ronda iniciada: ${behavior.name}`);
+  };
+
+  const applyRoundAward = (studentId: string) => {
+    if (!activeRound) return;
+
+    applyBehaviorMutation.mutate({
+      behaviorId: activeRound.behaviorId,
+      studentIds: [studentId],
+      mode: 'round_quick',
+    });
+  };
+
+  const undoLastRoundAction = async () => {
+    if (!activeRound || activeRound.actions.length === 0) {
+      toast.error('No hay acciones para deshacer');
+      return;
+    }
+
+    const lastAction = activeRound.actions[activeRound.actions.length - 1];
+    if (!lastAction.pointLogEntryId) {
+      toast.error('No se pudo identificar el último registro para deshacer');
+      return;
+    }
+
+    setIsUndoingRound(true);
+    try {
+      await historyApi.revertEntry('POINTS', lastAction.pointLogEntryId);
+      queryClient.invalidateQueries({ queryKey: ['classroom', classroom.id] });
+      queryClient.invalidateQueries({ queryKey: ['history-today', classroom.id] });
+
+      setActiveRound((prev) => {
+        if (!prev) return prev;
+        const current = prev.awardsByStudent[lastAction.studentId] || 0;
+        const nextAwards = { ...prev.awardsByStudent };
+        if (current <= 1) delete nextAwards[lastAction.studentId];
+        else nextAwards[lastAction.studentId] = current - 1;
+
+        const nextActions = prev.actions.slice(0, -1);
+        return {
+          ...prev,
+          awardsByStudent: nextAwards,
+          actions: nextActions,
+          updatedAt: Date.now(),
+        };
+      });
+
+      toast.success('Última acción revertida');
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'No se pudo deshacer la última acción');
+    } finally {
+      setIsUndoingRound(false);
+    }
+  };
+
+  const finishRound = () => {
+    if (!activeRound) return;
+
+    const totalAwards = Object.values(activeRound.awardsByStudent).reduce((sum, value) => sum + value, 0);
+    const studentsTouched = Object.keys(activeRound.awardsByStudent).length;
+    setActiveRound(null);
+    setShowRoundBehaviorPicker(false);
+    setListFilter('all');
+    toast.success(`Ronda finalizada: ${totalAwards} intervenciones en ${studentsTouched} estudiante(s)`);
+  };
+
+  const roundPendingCount = allStudents.filter((s) => (roundAwardsByStudent[s.id] || 0) === 0).length;
+  const roundScoredCount = allStudents.filter((s) => (roundAwardsByStudent[s.id] || 0) > 0).length;
+  const roundRepeatedCount = allStudents.filter((s) => (roundAwardsByStudent[s.id] || 0) > 1).length;
+  const quickRoundSuggestion = positiveBehaviors.find((b) => b.name.toLowerCase().includes('particip'));
 
   // Funciones para estudiantes placeholder
   const copyLinkCode = (code: string) => {
@@ -389,15 +612,12 @@ export const StudentsPage = () => {
     return placeholder?.linkCode || null;
   };
 
-  // Calcular estadísticas del curso (siempre sobre TODOS los estudiantes, no los filtrados)
-  const totalXP = allStudents.reduce((sum, s) => sum + s.xp, 0);
-  const totalGP = allStudents.reduce((sum, s) => sum + s.gp, 0);
-  const avgLevel = allStudents.length > 0 
-    ? Math.round(allStudents.reduce((sum, s) => sum + s.level, 0) / allStudents.length * 10) / 10
-    : 0;
+  // Calcular top estudiante (sobre TODOS los estudiantes, no los filtrados)
   const topStudent = allStudents.length > 0 
     ? [...allStudents].sort((a, b) => b.xp - a.xp)[0]
     : null;
+  const lowHpCount = allStudents.filter((s) => ((s.hp / (classroom.maxHp || 100)) * 100) < 40).length;
+  const attendanceMarkedCount = todayAttendance.length;
 
   if (isLoading) {
     return (
@@ -430,44 +650,13 @@ export const StudentsPage = () => {
         />
       )}
 
-      {/* Header compacto: Stats + Toggle vista */}
-      <div className="flex items-center justify-between gap-2 bg-white dark:bg-gray-800 rounded-xl px-3 sm:px-4 py-2.5 border border-gray-200 dark:border-gray-700 shadow-sm">
-        {/* Izquierda: Label + Stats del curso */}
-        <div className="flex items-center gap-2 sm:gap-4 text-sm flex-1 min-w-0 overflow-x-auto">
-          <span className="hidden sm:inline text-xs font-medium text-gray-500 dark:text-gray-400 pr-2 border-r border-gray-200 dark:border-gray-600">
-            Resumen de la clase
-          </span>
-          <div className="flex items-center gap-1.5" title="XP Total">
-            <Sparkles size={14} className="text-emerald-500" />
-            <span className="font-bold text-gray-700 dark:text-gray-200">{totalXP.toLocaleString()}</span>
-            <span className="text-xs text-gray-400">XP</span>
-          </div>
-          <div className="flex items-center gap-1.5" title="Oro Total">
-            <Coins size={14} className="text-amber-500" />
-            <span className="font-bold text-gray-700 dark:text-gray-200">{totalGP.toLocaleString()}</span>
-            <span className="text-xs text-gray-400">GP</span>
-          </div>
-          <div className="flex items-center gap-1.5" title="Nivel Promedio">
-            <TrendingUp size={14} className="text-blue-500" />
-            <span className="font-bold text-gray-700 dark:text-gray-200">{avgLevel}</span>
-            <span className="text-xs text-gray-400">Nv</span>
-          </div>
-          {topStudent && (
-            <div className="flex items-center gap-1.5 pl-3 border-l border-gray-200 dark:border-gray-600" title="Líder en XP">
-              <Crown size={14} className="text-amber-500" />
-              <div className="flex flex-col leading-tight">
-                <span className="text-[10px] text-gray-400">Líder XP</span>
-                <span className="text-xs font-bold text-gray-700 dark:text-gray-200 truncate max-w-[120px]">{getDisplayName(topStudent)}</span>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Derecha: Acciones masivas + Toggle vista */}
-        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+      {/* Barra de acciones */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl px-3 sm:px-4 py-2.5 border border-gray-200 dark:border-gray-700 shadow-sm">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2 min-w-0 xl:flex-1">
           {/* Acciones masivas - En vista lista y clanes, ocultas en móvil */}
           {(viewMode === 'list' || viewMode === 'clans') && students.length > 0 && (
-            <div className="hidden sm:flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-2 flex-wrap">
               {/* Seleccionar todos */}
               <button
                 onClick={selectAll}
@@ -557,55 +746,225 @@ export const StudentsPage = () => {
             </div>
           )}
 
-          {/* Botón de Utilidades */}
-          <button
-            onClick={() => setShowUtilities(true)}
-            className="relative flex items-center gap-1.5 px-3 py-2 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 hover:bg-violet-200 dark:hover:bg-violet-900/50 border border-violet-200 dark:border-violet-800 transition-colors text-sm font-medium"
-            title="Utilidades"
-          >
-            <Wrench size={16} />
-            <span className="hidden sm:inline">Utilidades</span>
-            {pendingNotesCount > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full flex items-center justify-center animate-pulse">
-                {pendingNotesCount}
-              </span>
-            )}
-          </button>
+          {/* Controles de ronda rápida */}
+          {viewMode === 'list' && positiveBehaviors.length > 0 && (
+            <div className="hidden md:flex items-center min-w-0">
+              {!activeRound ? (
+                <div className="relative">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setShowRoundBehaviorPicker((prev) => !prev)}
+                    className="!bg-blue-500 hover:!bg-blue-600 !text-white text-xs px-2.5 py-1.5"
+                  >
+                    <PlayCircle size={14} />
+                    <span className="ml-1">Iniciar ronda</span>
+                  </Button>
+                  {showRoundBehaviorPicker && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setShowRoundBehaviorPicker(false)} />
+                      <div className="absolute top-full right-0 mt-1 w-72 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 z-50 p-2">
+                        <p className="px-2 py-1 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+                          Elegir comportamiento de ronda
+                        </p>
+                        {quickRoundSuggestion && (
+                          <button
+                            onClick={() => startRoundWithBehavior(quickRoundSuggestion)}
+                            className="w-full text-left p-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 mb-2"
+                          >
+                            <p className="text-xs text-indigo-600 dark:text-indigo-300 font-semibold">Sugerido</p>
+                            <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{quickRoundSuggestion.icon || '⭐'} {quickRoundSuggestion.name}</p>
+                          </button>
+                        )}
+                        <div className="max-h-56 overflow-y-auto space-y-1">
+                          {positiveBehaviors.map((behavior) => (
+                            <button
+                              key={behavior.id}
+                              onClick={() => startRoundWithBehavior(behavior)}
+                              className="w-full text-left px-2 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-sm text-gray-700 dark:text-gray-200"
+                            >
+                              <span className="mr-2">{behavior.icon || '⭐'}</span>
+                              {behavior.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 px-2 py-1.5 max-w-full">
+                  <span className="text-xs font-semibold text-blue-700 dark:text-blue-300 truncate max-w-[180px] lg:max-w-[260px]">
+                    {activeRound.behaviorIcon || '⭐'} {activeRound.behaviorName}
+                  </span>
+                  <span className="text-[10px] text-blue-600 dark:text-blue-300">
+                    {roundScoredCount}/{allStudents.length}
+                  </span>
+                  <button
+                    onClick={undoLastRoundAction}
+                    disabled={activeRound.actions.length === 0 || isUndoingRound}
+                    className="p-1 rounded-md text-blue-700 hover:bg-blue-100 dark:text-blue-300 dark:hover:bg-blue-900/40 disabled:opacity-40"
+                    title="Deshacer última acción"
+                  >
+                    <RotateCcw size={14} className={isUndoingRound ? 'animate-spin' : ''} />
+                  </button>
+                  <button
+                    onClick={finishRound}
+                    className="px-2 py-1 rounded-md text-xs font-medium bg-white dark:bg-gray-800 text-blue-700 dark:text-blue-200 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30"
+                  >
+                    Finalizar
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
-          {/* Toggle de vista - Siempre visible, al final */}
-          <div className="flex items-center bg-indigo-100 dark:bg-indigo-900/30 rounded-lg p-0.5 border border-indigo-200 dark:border-indigo-800">
-            <button
-              onClick={() => setViewMode('cards')}
-              className={`p-2 rounded-md transition-colors ${
-                viewMode === 'cards' ? 'bg-white dark:bg-gray-700 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-indigo-400 dark:text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-300'
-              }`}
-              title="Vista de tarjetas"
-            >
-              <LayoutGrid size={18} />
-            </button>
-            <button
-              onClick={() => setViewMode('list')}
-              className={`p-2 rounded-md transition-colors ${
-                viewMode === 'list' ? 'bg-white dark:bg-gray-700 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-indigo-400 dark:text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-300'
-              }`}
-              title="Vista de lista"
-            >
-              <List size={18} />
-            </button>
-            {classroom.clansEnabled && (
+          {/* Contexto de clase - Vista tarjetas */}
+          {viewMode === 'cards' && (
+            <div className="hidden md:flex items-center gap-2 flex-wrap min-w-0">
+              <div className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300">
+                <Heart size={12} />
+                <span className="text-[11px] font-semibold">HP bajo {lowHpCount}</span>
+              </div>
+
+              <div className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300">
+                <Award size={12} />
+                <span className="text-[11px] font-semibold">Asistencia {attendanceMarkedCount}/{allStudents.length}</span>
+              </div>
+
               <button
-                onClick={() => setViewMode('clans')}
-                className={`p-2 rounded-md transition-colors ${
-                  viewMode === 'clans' ? 'bg-white dark:bg-gray-700 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-indigo-400 dark:text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-300'
-                }`}
-                title="Vista por clanes"
+                onClick={() => navigate(`/classroom/${classroom.id}/attendance`)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-[11px] font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
               >
-                <Shield size={18} />
+                <Users size={12} />
+                Tomar asistencia
               </button>
-            )}
+
+              <button
+                onClick={() => {
+                  setViewMode('list');
+                  setShowRoundBehaviorPicker(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-[11px] font-semibold text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40"
+              >
+                <PlayCircle size={12} />
+                Iniciar ronda
+              </button>
+            </div>
+          )}
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-3 ml-auto">
+            {/* Botón de Utilidades */}
+            <button
+              onClick={() => setShowUtilities(true)}
+              className="relative flex items-center gap-1.5 px-3 py-2 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 hover:bg-violet-200 dark:hover:bg-violet-900/50 border border-violet-200 dark:border-violet-800 transition-colors text-sm font-medium flex-shrink-0"
+              title="Utilidades"
+            >
+              <Wrench size={16} />
+              <span className="hidden sm:inline">Utilidades</span>
+              {pendingNotesCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full flex items-center justify-center animate-pulse">
+                  {pendingNotesCount}
+                </span>
+              )}
+            </button>
+
+            {/* Toggle de vista - Siempre visible, al final */}
+            <div className="flex items-center bg-indigo-100 dark:bg-indigo-900/30 rounded-lg p-0.5 border border-indigo-200 dark:border-indigo-800 flex-shrink-0">
+              <button
+                onClick={() => setViewMode('cards')}
+                className={`p-2 rounded-md transition-colors ${
+                  viewMode === 'cards' ? 'bg-white dark:bg-gray-700 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-indigo-400 dark:text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-300'
+                }`}
+                title="Vista de tarjetas"
+              >
+                <LayoutGrid size={18} />
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                className={`p-2 rounded-md transition-colors ${
+                  viewMode === 'list' ? 'bg-white dark:bg-gray-700 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-indigo-400 dark:text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-300'
+                }`}
+                title="Vista de lista"
+              >
+                <List size={18} />
+              </button>
+              {classroom.clansEnabled && (
+                <button
+                  onClick={() => setViewMode('clans')}
+                  className={`p-2 rounded-md transition-colors ${
+                    viewMode === 'clans' ? 'bg-white dark:bg-gray-700 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-indigo-400 dark:text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-300'
+                  }`}
+                  title="Vista por clanes"
+                >
+                  <Shield size={18} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
+
+      {viewMode === 'list' && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl px-3 py-2 border border-gray-200 dark:border-gray-700 shadow-sm">
+          {!activeRound ? (
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm text-gray-600 dark:text-gray-300">
+                  Inicia una ronda para puntuar participación en un toque por estudiante.
+                </p>
+                <button
+                  onClick={() => setShowRoundBehaviorPicker((prev) => !prev)}
+                  className="md:hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600"
+                >
+                  <PlayCircle size={14} />
+                  Iniciar ronda
+                </button>
+              </div>
+              {showRoundBehaviorPicker && (
+                <div className="md:hidden mt-1 p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40">
+                  <div className="max-h-44 overflow-y-auto space-y-1">
+                    {positiveBehaviors.map((behavior) => (
+                      <button
+                        key={behavior.id}
+                        onClick={() => startRoundWithBehavior(behavior)}
+                        className="w-full text-left px-2 py-2 rounded-lg bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-sm text-gray-700 dark:text-gray-200"
+                      >
+                        <span className="mr-2">{behavior.icon || '⭐'}</span>
+                        {behavior.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-sm text-gray-700 dark:text-gray-200">
+                <span className="font-semibold">Ronda activa:</span> {activeRound.behaviorIcon || '⭐'} {activeRound.behaviorName}
+                <span className="text-gray-500 dark:text-gray-400 ml-2">· {roundScoredCount} de {allStudents.length} estudiantes</span>
+              </div>
+              <div className="md:hidden flex items-center gap-2">
+                <button
+                  onClick={undoLastRoundAction}
+                  disabled={activeRound.actions.length === 0 || isUndoingRound}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-300 text-sm font-medium disabled:opacity-50"
+                >
+                  <RotateCcw size={13} className={isUndoingRound ? 'animate-spin' : ''} />
+                  Deshacer
+                </button>
+                <button
+                  onClick={finishRound}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600"
+                >
+                  Finalizar
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Lista de estudiantes - Grid de Cards RPG */}
       {allStudents.length === 0 ? (
@@ -998,6 +1357,40 @@ export const StudentsPage = () => {
                     >
                       Sin actividad hoy
                     </button>
+                    {activeRound && (
+                      <>
+                        <button
+                          onClick={() => { setListFilter('round_pending'); setClanFilter(null); }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                            listFilter === 'round_pending'
+                              ? 'bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 border border-sky-300 dark:border-sky-700'
+                              : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+                          }`}
+                        >
+                          Pendientes ({roundPendingCount})
+                        </button>
+                        <button
+                          onClick={() => { setListFilter('round_scored'); setClanFilter(null); }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                            listFilter === 'round_scored'
+                              ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+                              : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+                          }`}
+                        >
+                          Ya puntuados ({roundScoredCount})
+                        </button>
+                        <button
+                          onClick={() => { setListFilter('round_repeated'); setClanFilter(null); }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                            listFilter === 'round_repeated'
+                              ? 'bg-fuchsia-100 dark:bg-fuchsia-900/30 text-fuchsia-700 dark:text-fuchsia-300 border border-fuchsia-300 dark:border-fuchsia-700'
+                              : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+                          }`}
+                        >
+                          Repetidos x2+ ({roundRepeatedCount})
+                        </button>
+                      </>
+                    )}
                     {classroom.clansEnabled && uniqueClans.length > 0 && (
                       <div className="relative">
                         <button
@@ -1067,7 +1460,7 @@ export const StudentsPage = () => {
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[700px]">
+                  <table className="w-full min-w-[820px]">
                 <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
                   <tr>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Estudiante</th>
@@ -1075,6 +1468,9 @@ export const StudentsPage = () => {
                     <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">XP</th>
                     <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">HP</th>
                     <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">GP</th>
+                    {activeRound && (
+                      <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Ronda</th>
+                    )}
                     <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Acciones</th>
                   </tr>
                 </thead>
@@ -1084,12 +1480,15 @@ export const StudentsPage = () => {
                     const isSelected = selectedStudents.has(student.id);
                     const hpPercent = Math.min((student.hp / (classroom.maxHp || 100)) * 100, 100);
                     const isTopStudent = topStudent?.id === student.id;
+                    const roundCount = roundAwardsByStudent[student.id] || 0;
+                    const lastAwardedAt = activeRound?.lastAwardedAtByStudent[student.id] || 0;
+                    const justAwarded = lastAwardedAt > 0 && Date.now() - lastAwardedAt < 4500;
 
                     return (
                       <tr 
                         key={student.id}
                         onClick={() => toggleStudent(student.id)}
-                        className={`cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/30' : ''}`}
+                        className={`cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/30' : ''} ${justAwarded ? 'ring-1 ring-emerald-300 dark:ring-emerald-700 bg-emerald-50/40 dark:bg-emerald-900/10' : ''}`}
                       >
                         {/* Estudiante */}
                         <td className="px-4 py-3">
@@ -1189,6 +1588,33 @@ export const StudentsPage = () => {
                             {student.gp}
                           </div>
                         </td>
+
+                        {activeRound && (
+                          <td className="px-4 py-3 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              {roundCount === 0 ? (
+                                <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300">
+                                  Pendiente
+                                </span>
+                              ) : (
+                                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${roundCount > 1 ? 'bg-fuchsia-100 dark:bg-fuchsia-900/30 text-fuchsia-700 dark:text-fuchsia-300' : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'}`}>
+                                  x{roundCount}
+                                </span>
+                              )}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  applyRoundAward(student.id);
+                                }}
+                                disabled={applyBehaviorMutation.isPending}
+                                className="px-2 py-1 rounded-lg text-xs font-semibold bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50"
+                                title={`Sumar ${activeRound.behaviorName}`}
+                              >
+                                +1
+                              </button>
+                            </div>
+                          </td>
+                        )}
 
                         {/* Acciones */}
                         <td className="px-4 py-3 text-center">
@@ -1508,6 +1934,7 @@ export const StudentsPage = () => {
           applyBehaviorMutation.mutate({
             behaviorId: behavior.id,
             studentIds,
+            mode: 'apply_to_rest',
           });
           setShowApplyToRestModal(false);
           setLastAppliedStudentIds(new Set());
@@ -1730,397 +2157,6 @@ const BadgeAwardModal = ({
                 </Button>
               </div>
           )}
-          </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
-  );
-};
-
-// Modal de puntos con tabs
-const PointsModal = ({
-  isOpen,
-  onClose,
-  isPositive,
-  selectedCount,
-  selectedStudentNames,
-  behaviors,
-  onApplyBehavior,
-  onApplyManual,
-  isLoading,
-  classroomId,
-  classroom,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  isPositive: boolean;
-  selectedCount: number;
-  selectedStudentNames: string[];
-  behaviors: Behavior[];
-  onApplyBehavior: (behavior: Behavior) => void;
-  onApplyManual: (pointType: PointType, amount: number, reason: string, competencyId?: string) => Promise<void>;
-  isLoading: boolean;
-  classroomId: string;
-  classroom: Classroom;
-}) => {
-  const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'behaviors' | 'manual'>('behaviors');
-  const [manualPointType, setManualPointType] = useState<PointType>('XP');
-  const [manualAmount, setManualAmount] = useState(10);
-  const [manualReason, setManualReason] = useState('');
-  const [manualCompetencyId, setManualCompetencyId] = useState<string>('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Obtener competencias del área curricular del aula
-  const { data: curriculumAreas = [] } = useQuery({
-    queryKey: ['curriculum-areas'],
-    queryFn: () => classroomApi.getCurriculumAreas('PE'),
-    enabled: !!classroom.useCompetencies && !!classroom.curriculumAreaId,
-  });
-  const classroomCompetencies = curriculumAreas.find((a: any) => a.id === classroom.curriculumAreaId)?.competencies || [];
-
-  const handleManualSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!manualReason.trim()) return;
-    setIsSubmitting(true);
-    try {
-      await onApplyManual(manualPointType, manualAmount, manualReason, manualCompetencyId || undefined);
-      setManualReason('');
-      setManualCompetencyId('');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-        onClick={onClose}
-      >
-        <motion.div
-          initial={{ scale: 0.95, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.95, opacity: 0 }}
-          onClick={(e) => e.stopPropagation()}
-          className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col md:flex-row"
-        >
-          {/* Panel izquierdo - Jiro */}
-          <div className="hidden md:block md:w-72 flex-shrink-0 relative overflow-hidden">
-            {/* Imagen de fondo que cubre todo el panel */}
-            <motion.img
-              src={isPositive ? "/assets/mascot/jiro-puntosfavor.jpg" : "/assets/mascot/jiro-puntoscontra.jpg"}
-              alt="Jiro"
-              className="absolute inset-0 w-full h-full object-cover"
-              initial={{ scale: 1.1, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ duration: 0.4 }}
-            />
-          </div>
-
-          {/* Panel derecho - Contenido */}
-          <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                {isPositive ? <Sparkles className="text-emerald-500" size={24} /> : <Zap className="text-red-500" size={24} />}
-                {isPositive ? 'Dar puntos' : 'Quitar puntos'}
-              </h2>
-              <button
-                onClick={onClose}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* Tabs */}
-            <div className="flex border-b border-gray-200 dark:border-gray-700">
-              <button
-                onClick={() => setActiveTab('behaviors')}
-                className={`flex-1 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
-                  activeTab === 'behaviors'
-                    ? isPositive 
-                      ? 'text-emerald-600 border-b-2 border-emerald-600 bg-emerald-50 dark:bg-emerald-900/20'
-                      : 'text-red-600 border-b-2 border-red-600 bg-red-50 dark:bg-red-900/20'
-                    : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'
-                }`}
-              >
-                <Award size={16} />
-                Comportamientos
-              </button>
-              <button
-                onClick={() => setActiveTab('manual')}
-                className={`flex-1 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
-                  activeTab === 'manual'
-                    ? isPositive 
-                      ? 'text-emerald-600 border-b-2 border-emerald-600 bg-emerald-50 dark:bg-emerald-900/20'
-                      : 'text-red-600 border-b-2 border-red-600 bg-red-50 dark:bg-red-900/20'
-                    : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'
-                }`}
-              >
-                <Settings size={16} />
-                Manual
-              </button>
-            </div>
-
-            <div className="flex-1 p-5 overflow-y-auto">
-              {/* Destinatario prominente */}
-              <div className="mb-4 p-3 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 rounded-xl">
-                <p className="text-sm font-medium text-violet-700 dark:text-violet-300 flex items-center gap-2">
-                  <Users size={14} />
-                  Aplicar a <span className="font-bold">{selectedCount}</span> estudiante{selectedCount !== 1 ? 's' : ''}
-                  {selectedCount <= 3 && selectedStudentNames.length > 0 && (
-                    <span className="text-violet-500 dark:text-violet-400">— {selectedStudentNames.join(', ')}</span>
-                  )}
-                  {selectedCount > 3 && (
-                    <span className="text-violet-500 dark:text-violet-400">— {selectedCount} seleccionados</span>
-                  )}
-                </p>
-              </div>
-
-            {/* Tab: Comportamientos */}
-            {activeTab === 'behaviors' && (
-              <>
-                {behaviors.length === 0 ? (
-                  <div className="text-center py-8">
-                    <p className="text-gray-500 dark:text-gray-400 mb-4">
-                      No hay comportamientos configurados
-                    </p>
-                    <Button
-                      variant="secondary"
-                      onClick={() => {
-                        onClose();
-                        navigate(`/classroom/${classroomId}/behaviors`);
-                      }}
-                    >
-                      Configurar comportamientos
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {behaviors.map((behavior) => (
-                      <button
-                        key={behavior.id}
-                        onClick={() => onApplyBehavior(behavior)}
-                        disabled={isLoading}
-                        className={`
-                          w-full flex items-center justify-between p-4 rounded-xl border-2 transition-all
-                          hover:scale-[1.02] active:scale-[0.98]
-                          ${isPositive
-                            ? 'border-green-200 dark:border-green-800 hover:border-green-400 hover:bg-green-50 dark:hover:bg-green-900/20'
-                            : 'border-red-200 dark:border-red-800 hover:border-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
-                          }
-                        `}
-                      >
-                        <div className="flex items-center gap-3 flex-1 min-w-0">
-                          <span className="text-2xl flex-shrink-0">{behavior.icon || (isPositive ? '⭐' : '💔')}</span>
-                          <div className="text-left min-w-0 flex-1">
-                            <p className="font-medium text-gray-900 dark:text-white">
-                              {behavior.name}
-                            </p>
-                            {behavior.description && (
-                              <p 
-                                className="text-sm text-gray-500 dark:text-gray-400"
-                                title={behavior.description.length > 120 ? behavior.description : undefined}
-                              >
-                                {behavior.description.length > 120 
-                                  ? behavior.description.slice(0, 120) + '...' 
-                                  : behavior.description}
-                              </p>
-                            )}
-                            {behavior.competency && (
-                              <div className="mt-1 flex items-center gap-1">
-                                <Award size={11} className="text-violet-500 flex-shrink-0" />
-                                <span className="text-[10px] text-violet-600 dark:text-violet-400 font-medium truncate">
-                                  {behavior.competency.name}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          {(() => {
-                            const xp = behavior.xpValue ?? (behavior.pointType === 'XP' ? behavior.pointValue : 0);
-                            const hp = behavior.hpValue ?? (behavior.pointType === 'HP' ? behavior.pointValue : 0);
-                            const gp = behavior.gpValue ?? (behavior.pointType === 'GP' ? behavior.pointValue : 0);
-                            const sign = isPositive ? '+' : '-';
-                            const rewards = [];
-                            if (xp > 0) rewards.push(<span key="xp" className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300">{sign}{xp} XP</span>);
-                            if (hp > 0) rewards.push(<span key="hp" className="px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">{sign}{hp} HP</span>);
-                            if (gp > 0) rewards.push(<span key="gp" className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">{sign}{gp} GP</span>);
-                            return rewards.length > 0 ? rewards : <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-500">0</span>;
-                          })()}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* Tab: Manual */}
-            {activeTab === 'manual' && (
-              <div className="space-y-4">
-                {/* Tips para docentes */}
-                <div className={`p-4 rounded-xl border ${
-                  isPositive 
-                    ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800' 
-                    : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
-                }`}>
-                  <h4 className={`font-semibold text-sm mb-2 flex items-center gap-2 ${
-                    isPositive ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'
-                  }`}>
-                    💡 Consejos para asignar puntos
-                  </h4>
-                  <ul className="space-y-1.5 text-xs text-gray-600 dark:text-gray-400">
-                    {isPositive ? (
-                      <>
-                        <li className="flex items-start gap-2">
-                          <span className="text-emerald-500">✓</span>
-                          <span><strong>XP (Experiencia):</strong> Para logros académicos, tareas completadas, participación activa.</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span className="text-emerald-500">✓</span>
-                          <span><strong>HP (Vida):</strong> Para premiar buena conducta, puntualidad, respeto.</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span className="text-emerald-500">✓</span>
-                          <span><strong>GP (Oro):</strong> Moneda para la tienda. Úsalo como incentivo especial.</span>
-                        </li>
-                      </>
-                    ) : (
-                      <>
-                        <li className="flex items-start gap-2">
-                          <span className="text-red-500">!</span>
-                          <span><strong>Sé justo:</strong> La penalización debe ser proporcional a la falta.</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span className="text-red-500">!</span>
-                          <span><strong>HP para conducta:</strong> Quitar HP por faltas de comportamiento.</span>
-                        </li>
-                        <li className="flex items-start gap-2">
-                          <span className="text-red-500">!</span>
-                          <span><strong>XP con cuidado:</strong> Evita quitar XP por conducta, úsalo solo para trabajo académico.</span>
-                        </li>
-                      </>
-                    )}
-                  </ul>
-                </div>
-
-                <form onSubmit={handleManualSubmit} className="space-y-4">
-                  {/* Tipo de punto */}
-                  <div>
-                    <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                      Tipo de punto
-                    </label>
-                  <div className="flex gap-2">
-                    {(['XP', 'HP', 'GP'] as PointType[]).map((type) => (
-                      <button
-                        key={type}
-                        type="button"
-                        onClick={() => setManualPointType(type)}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg font-medium transition-colors ${
-                          manualPointType === type
-                            ? isPositive
-                              ? 'bg-green-500 text-white'
-                              : 'bg-red-500 text-white'
-                            : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
-                        }`}
-                      >
-                        {type === 'XP' && <Sparkles size={16} />}
-                        {type === 'HP' && <Heart size={16} />}
-                        {type === 'GP' && <Coins size={16} />}
-                        {type}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Cantidad */}
-                <div>
-                  <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                    Cantidad
-                  </label>
-                  <div className="flex items-center gap-3">
-                    {[5, 10, 25, 50].map((val) => (
-                      <button
-                        key={val}
-                        type="button"
-                        onClick={() => setManualAmount(val)}
-                        className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                          manualAmount === val
-                            ? isPositive
-                              ? 'bg-green-500 text-white'
-                              : 'bg-red-500 text-white'
-                            : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-                        }`}
-                      >
-                        {val}
-                      </button>
-                    ))}
-                    <Input
-                      type="number"
-                      value={manualAmount}
-                      onChange={(e) => setManualAmount(parseInt(e.target.value) || 0)}
-                      className="w-20 text-center"
-                      min={1}
-                    />
-                  </div>
-                </div>
-
-                {/* Competencia (solo si el aula usa competencias) */}
-                {classroom.useCompetencies && classroom.curriculumAreaId && classroomCompetencies.length > 0 && (
-                  <div>
-                    <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                      Competencia <span className="text-gray-400 font-normal">(opcional)</span>
-                    </label>
-                    <select
-                      value={manualCompetencyId}
-                      onChange={(e) => setManualCompetencyId(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-gray-700 dark:text-gray-200"
-                    >
-                      <option value="">Sin competencia</option>
-                      {classroomCompetencies.map((comp: any) => (
-                        <option key={comp.id} value={comp.id}>
-                          {comp.shortName ? `${comp.shortName} — ` : ''}{comp.name}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
-                      {manualCompetencyId 
-                        ? '📊 Estos puntos contarán en el libro de calificaciones'
-                        : 'Vincular a una competencia hace que cuenten en calificaciones'}
-                    </p>
-                  </div>
-                )}
-
-                {/* Razón */}
-                <Input
-                  label="Razón"
-                  placeholder="Ej: Participación en clase, tarea completada..."
-                  value={manualReason}
-                  onChange={(e) => setManualReason(e.target.value)}
-                  required
-                />
-
-                <Button
-                    type="submit"
-                    className={`w-full ${isPositive ? '!bg-green-500 hover:!bg-green-600' : '!bg-red-500 hover:!bg-red-600'}`}
-                    isLoading={isSubmitting}
-                    disabled={!manualReason.trim() || manualAmount <= 0}
-                  >
-                    {isPositive ? 'Agregar' : 'Quitar'} {manualAmount} {manualPointType}
-                  </Button>
-                </form>
-              </div>
-            )}
-            </div>
           </div>
         </motion.div>
       </motion.div>

@@ -4,6 +4,7 @@ import {
   ChevronRight,
   Users,
   Zap,
+  Flag,
   Lightbulb,
   Timer,
   ScrollText,
@@ -20,6 +21,7 @@ import { ScrollsActivity } from '../../components/activities/ScrollsActivity';
 import { TournamentsActivity } from '../../components/activities/TournamentsActivity';
 import { ExpeditionsActivity } from '../../components/activities/ExpeditionsActivity';
 import { JiroExpeditionsActivity } from '../../components/activities/JiroExpeditionsActivity';
+import { TerritoryConquestActivity } from '../../components/activities/TerritoryConquestActivity';
 import { useOutletContext, useParams } from 'react-router-dom';
 import RouletteOfDestinyModal from '../../components/modals/RouletteOfDestinyModal';
 import ExpeditionTypeModal from '../../components/modals/ExpeditionTypeModal';
@@ -105,6 +107,20 @@ const activities: Activity[] = [
     available: true,
     tag: '🆕 Nuevo',
     tagColor: 'from-green-400 to-emerald-500',
+  },
+  {
+    id: 'territory-conquest',
+    name: 'Conquista del Territorio',
+    description: 'Equipos compiten por controlar territorios resolviendo preguntas por turnos.',
+    icon: <Flag size={28} />,
+    emoji: '🚩',
+    gradient: 'from-sky-500 via-indigo-500 to-violet-500',
+    bgGradient: 'from-sky-500/10 via-indigo-500/5 to-violet-500/10',
+    shadowColor: 'shadow-indigo-500/30',
+    glowColor: 'indigo',
+    available: true,
+    tag: '🆕 Estrategia',
+    tagColor: 'from-sky-400 to-indigo-500',
   },
   {
     id: 'expeditions-selector',
@@ -228,6 +244,15 @@ export const ActivitiesPage = () => {
   if (selectedActivity === 'tournaments') {
     return (
       <TournamentsActivity 
+        classroom={classroom}
+        onBack={() => setSelectedActivity(null)}
+      />
+    );
+  }
+
+  if (selectedActivity === 'territory-conquest') {
+    return (
+      <TerritoryConquestActivity
         classroom={classroom}
         onBack={() => setSelectedActivity(null)}
       />

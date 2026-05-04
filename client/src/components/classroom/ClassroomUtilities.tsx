@@ -5,6 +5,7 @@ import {
   X,
   Shuffle,
   Users,
+  Clock,
   Megaphone,
   Dices,
   RefreshCw,
@@ -31,6 +32,7 @@ import { useCharacterClasses } from '../../hooks/useCharacterClasses';
 import { CLAN_EMBLEMS } from '../../lib/clanApi';
 import { classNoteApi } from '../../lib/classNoteApi';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTimer } from '../../contexts/TimerContext';
 
 interface StudentData {
   id: string;
@@ -76,10 +78,14 @@ const ToolSelector = ({
   onSelect,
   onClose,
   pendingNotesCount,
+  onOpenFloatingTimer,
+  onOpenFloatingStopwatch,
 }: {
   onSelect: (tool: ActiveTool) => void;
   onClose: () => void;
   pendingNotesCount: number;
+  onOpenFloatingTimer: () => void;
+  onOpenFloatingStopwatch: () => void;
 }) => {
   const tools = [
     {
@@ -88,7 +94,6 @@ const ToolSelector = ({
       title: 'Elección aleatoria',
       description: 'Elige un estudiante al azar con una animación divertida',
       gradient: 'from-purple-500 to-indigo-600',
-      bg: 'bg-purple-50 dark:bg-purple-900/20',
       border: 'border-purple-200 dark:border-purple-800',
       hover: 'hover:border-purple-400 dark:hover:border-purple-600',
     },
@@ -98,7 +103,6 @@ const ToolSelector = ({
       title: 'Creador de grupos',
       description: 'Organiza a tus estudiantes en grupos rápidamente',
       gradient: 'from-blue-500 to-cyan-600',
-      bg: 'bg-blue-50 dark:bg-blue-900/20',
       border: 'border-blue-200 dark:border-blue-800',
       hover: 'hover:border-blue-400 dark:hover:border-blue-600',
     },
@@ -108,7 +112,6 @@ const ToolSelector = ({
       title: 'Anuncios',
       description: 'Proyecta un mensaje en pantalla completa',
       gradient: 'from-amber-500 to-orange-600',
-      bg: 'bg-amber-50 dark:bg-amber-900/20',
       border: 'border-amber-200 dark:border-amber-800',
       hover: 'hover:border-amber-400 dark:hover:border-amber-600',
     },
@@ -118,7 +121,6 @@ const ToolSelector = ({
       title: 'Notas de clase',
       description: 'Anota tareas, páginas y pendientes para la siguiente clase',
       gradient: 'from-emerald-500 to-teal-600',
-      bg: 'bg-emerald-50 dark:bg-emerald-900/20',
       border: 'border-emerald-200 dark:border-emerald-800',
       hover: 'hover:border-emerald-400 dark:hover:border-emerald-600',
       badge: pendingNotesCount,
@@ -129,7 +131,6 @@ const ToolSelector = ({
       title: 'Desfile de Héroes',
       description: 'Muestra los personajes de tus estudiantes en pantalla completa',
       gradient: 'from-pink-500 to-rose-600',
-      bg: 'bg-pink-50 dark:bg-pink-900/20',
       border: 'border-pink-200 dark:border-pink-800',
       hover: 'hover:border-pink-400 dark:hover:border-pink-600',
     },
@@ -148,7 +149,7 @@ const ToolSelector = ({
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden"
       >
         <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
           <div>
@@ -167,33 +168,74 @@ const ToolSelector = ({
             <X size={20} />
           </button>
         </div>
-        <div className="p-5 space-y-3">
-          {tools.map((tool) => (
-            <button
-              key={tool.id}
-              onClick={() => onSelect(tool.id)}
-              className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 ${tool.border} ${tool.bg} ${tool.hover} transition-all text-left group`}
-            >
-              <div
-                className={`w-12 h-12 rounded-xl bg-gradient-to-br ${tool.gradient} flex items-center justify-center flex-shrink-0 shadow-lg group-hover:scale-110 transition-transform`}
+        <div className="p-5 grid grid-cols-1 lg:grid-cols-[1.25fr_0.9fr] gap-4">
+          <div className="space-y-3">
+            {tools.map((tool) => (
+              <button
+                key={tool.id}
+                onClick={() => onSelect(tool.id)}
+                className={`w-full rounded-xl border-2 ${tool.border} bg-white/80 dark:bg-gray-900/40 p-4 text-left ${tool.hover} transition-all group`}
               >
-                <tool.icon size={22} className="text-white" />
-              </div>
-              <div>
-                <p className="font-semibold text-gray-800 dark:text-white text-sm">
-                  {tool.title}
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                  {tool.description}
-                </p>
-              </div>
-              {'badge' in tool && typeof tool.badge === 'number' && tool.badge > 0 && (
-                <span className="ml-auto bg-red-500 text-white text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 animate-pulse">
-                  {tool.badge}
-                </span>
-              )}
-            </button>
-          ))}
+                <div className="flex items-center gap-3 min-w-0">
+                  <div
+                    className={`w-11 h-11 rounded-xl bg-gradient-to-br ${tool.gradient} flex items-center justify-center flex-shrink-0 shadow-md group-hover:scale-110 transition-transform`}
+                  >
+                    <tool.icon size={20} className="text-white" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-800 dark:text-white text-sm">
+                      {tool.title}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {tool.description}
+                    </p>
+                  </div>
+                  {'badge' in tool && typeof tool.badge === 'number' && tool.badge > 0 && (
+                    <span className="ml-auto bg-red-500 text-white text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 animate-pulse">
+                      {tool.badge}
+                    </span>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+
+          <div className="rounded-xl border border-indigo-100 dark:border-indigo-900/50 bg-indigo-50/60 dark:bg-indigo-950/30 p-4">
+            <p className="text-[11px] uppercase tracking-wider text-indigo-500 dark:text-indigo-300 font-semibold mb-3">
+              Herramientas de tiempo
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={onOpenFloatingTimer}
+                className="w-full rounded-xl border-2 border-indigo-200 dark:border-indigo-800 bg-white/80 dark:bg-gray-900/40 p-4 text-left hover:border-indigo-400 dark:hover:border-indigo-600 transition-all group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
+                    <Timer size={20} />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-800 dark:text-white text-sm">Temporizador</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Abre una cuenta regresiva flotante global</p>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={onOpenFloatingStopwatch}
+                className="w-full rounded-xl border-2 border-teal-200 dark:border-teal-800 bg-white/80 dark:bg-gray-900/40 p-4 text-left hover:border-teal-400 dark:hover:border-teal-600 transition-all group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-teal-500 to-cyan-600 text-white flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
+                    <Clock size={20} />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-800 dark:text-white text-sm">Cronometro</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Inicia un conteo flotante visible en toda la app</p>
+                  </div>
+                </div>
+              </button>
+            </div>
+          </div>
         </div>
       </motion.div>
     </motion.div>
@@ -1259,6 +1301,7 @@ export const ClassroomUtilities = ({
   classroomId,
 }: ClassroomUtilitiesProps) => {
   const [activeTool, setActiveTool] = useState<ActiveTool>(null);
+  const { openFloatingTimer, openFloatingStopwatch } = useTimer();
 
   const { data: pendingNotesCount = 0 } = useQuery({
     queryKey: ['class-notes-count', classroomId],
@@ -1280,6 +1323,16 @@ export const ClassroomUtilities = ({
     setActiveTool(null);
   };
 
+  const handleOpenFloatingTimer = () => {
+    openFloatingTimer(5);
+    handleClose();
+  };
+
+  const handleOpenFloatingStopwatch = () => {
+    openFloatingStopwatch();
+    handleClose();
+  };
+
   if (!isOpen && !activeTool) return null;
 
   return createPortal(
@@ -1291,6 +1344,8 @@ export const ClassroomUtilities = ({
             onSelect={setActiveTool}
             onClose={handleClose}
             pendingNotesCount={pendingNotesCount}
+            onOpenFloatingTimer={handleOpenFloatingTimer}
+            onOpenFloatingStopwatch={handleOpenFloatingStopwatch}
           />
         )}
       </AnimatePresence>

@@ -59,6 +59,38 @@ router.get('/classroom/:classroomId/stats', authenticate, async (req, res) => {
   }
 });
 
+// Desglose de ganadores y otorgamientos de insignias
+router.get('/classroom/:classroomId/awards-breakdown', authenticate, async (req, res) => {
+  try {
+    const { classroomId } = req.params;
+    const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+    const rarity = typeof req.query.rarity === 'string' ? req.query.rarity : undefined;
+    const assignmentMode = typeof req.query.assignmentMode === 'string' ? req.query.assignmentMode : undefined;
+    const startDate = typeof req.query.startDate === 'string' ? new Date(req.query.startDate) : undefined;
+    const endDate = typeof req.query.endDate === 'string' ? new Date(req.query.endDate) : undefined;
+
+    const parsedRarity = rarity && ['COMMON', 'RARE', 'EPIC', 'LEGENDARY'].includes(rarity)
+      ? rarity as 'COMMON' | 'RARE' | 'EPIC' | 'LEGENDARY'
+      : undefined;
+    const parsedAssignmentMode = assignmentMode && ['MANUAL', 'AUTOMATIC', 'BOTH'].includes(assignmentMode)
+      ? assignmentMode as 'MANUAL' | 'AUTOMATIC' | 'BOTH'
+      : undefined;
+
+    const breakdown = await badgeService.getClassroomAwardsBreakdown(classroomId, {
+      search,
+      rarity: parsedRarity,
+      assignmentMode: parsedAssignmentMode,
+      startDate: startDate && !Number.isNaN(startDate.getTime()) ? startDate : undefined,
+      endDate: endDate && !Number.isNaN(endDate.getTime()) ? endDate : undefined,
+    });
+
+    res.json(breakdown);
+  } catch (error: any) {
+    console.error('Error getting awards breakdown:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // Obtener insignias de una clase (sistema + personalizadas)
 router.get('/classroom/:classroomId', authenticate, async (req, res) => {
   try {
