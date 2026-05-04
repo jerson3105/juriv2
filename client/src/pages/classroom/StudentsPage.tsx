@@ -10,7 +10,6 @@ import {
   Check,
   X,
   Zap,
-  TrendingUp,
   Crown,
   Star,
   Search,
@@ -23,7 +22,6 @@ import {
   ChevronLeft,
   Shield,
   Award,
-  Settings,
   UserMinus,
   AlertTriangle,
   ChevronDown,
@@ -33,12 +31,11 @@ import {
   Swords,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
-import { Input } from '../../components/ui/Input';
 import { Card } from '../../components/ui/Card';
 import { StudentAvatarMini } from '../../components/avatar/StudentAvatarMini';
 import { classroomApi, type Classroom } from '../../lib/classroomApi';
 import { behaviorApi, type Behavior } from '../../lib/behaviorApi';
-import { studentApi, type PointType } from '../../lib/studentApi';
+import { studentApi } from '../../lib/studentApi';
 import { useCharacterClasses } from '../../hooks/useCharacterClasses';
 import { characterClassApi } from '../../lib/characterClassApi';
 import { badgeApi, type Badge, RARITY_COLORS, RARITY_LABELS } from '../../lib/badgeApi';

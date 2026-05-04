@@ -62,3 +62,4 @@ server/.env.example
 .checkpoints/
 .windsurf/skills/ux-ui/SKILL.md
 .agents/skills/ui-ux-pro-max/SKILL.md
+.github/agents/juried-troubleshooter.agent.md
