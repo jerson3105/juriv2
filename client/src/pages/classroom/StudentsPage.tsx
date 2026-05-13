@@ -165,7 +165,20 @@ export const StudentsPage = () => {
 
   const applyBehaviorMutation = useMutation({
     mutationFn: ({ mode, ...payload }: ApplyBehaviorPayload) => behaviorApi.apply(payload),
-    onSuccess: async (result, variables) => {
+    onMutate: (variables) => {
+      const mode = variables.mode || 'default';
+      if (mode === 'round_quick') return {};
+
+      const behaviorName = behaviors?.find((behavior) => behavior.id === variables.behaviorId)?.name || 'comportamiento';
+      const studentCount = variables.studentIds.length;
+      const studentSuffix = studentCount === 1 ? '' : 's';
+      const message = mode === 'apply_to_rest'
+        ? `Aplicando "${behaviorName}" a ${studentCount} estudiante${studentSuffix} restantes...`
+        : `Aplicando "${behaviorName}" a ${studentCount} estudiante${studentSuffix}...`;
+
+      return { toastId: toast.loading(message) };
+    },
+    onSuccess: async (result, variables, context) => {
       const mode = variables.mode || 'default';
       const isRoundQuick = mode === 'round_quick';
 
@@ -176,8 +189,6 @@ export const StudentsPage = () => {
         const appliedIds = new Set<string>(variables.studentIds);
         setLastAppliedStudentIds(appliedIds);
         setLastAppliedBehavior(result.behavior);
-        setSelectedStudents(new Set());
-        setShowBehaviorModal(false);
       }
       
       // Mostrar animación de puntos
@@ -238,7 +249,12 @@ export const StudentsPage = () => {
           });
         }
       } else {
-        toast.success(`${pointsSummary ? pointsSummary + ' aplicado' : 'Aplicado'} — ${beh.name}`, { duration: 2500 });
+        const successMessage = `${pointsSummary ? pointsSummary + ' aplicado' : 'Aplicado'} — ${beh.name}`;
+        if (context?.toastId) {
+          toast.success(successMessage, { id: context.toastId, duration: 2500 });
+        } else {
+          toast.success(successMessage, { duration: 2500 });
+        }
       }
       
       queryClient.invalidateQueries({ queryKey: ['history-today', classroom.id] });
@@ -290,8 +306,22 @@ export const StudentsPage = () => {
       }
       setIsApplyingToRest(false);
     },
-    onError: () => {
-      toast.error('Error al aplicar comportamiento');
+    onError: (error: any, variables, context) => {
+      const mode = variables.mode || 'default';
+      const isRoundQuick = mode === 'round_quick';
+      const message = error?.response?.data?.message || 'Error al aplicar comportamiento';
+
+      if (mode === 'default') {
+        setSelectedStudents((current) => current.size === 0 ? new Set(variables.studentIds) : current);
+      }
+
+      if (isRoundQuick || !context?.toastId) {
+        toast.error(message);
+      } else {
+        toast.error(message, { id: context.toastId });
+      }
+
+      setIsApplyingToRest(false);
     },
   });
 
@@ -453,9 +483,17 @@ export const StudentsPage = () => {
   };
 
   const applyBehavior = (behavior: Behavior) => {
+    const studentIds = Array.from(selectedStudents);
+    if (studentIds.length === 0) {
+      toast.error('Selecciona al menos un estudiante');
+      return;
+    }
+
+    setShowBehaviorModal(false);
+    setSelectedStudents(new Set());
     applyBehaviorMutation.mutate({
       behaviorId: behavior.id,
-      studentIds: Array.from(selectedStudents),
+      studentIds,
     });
   };
 

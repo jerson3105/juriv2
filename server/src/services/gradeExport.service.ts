@@ -141,7 +141,9 @@ Responde SOLO con la oración, sin comillas ni explicaciones adicionales.`;
     return gradebook.students.map((student) => ({
       studentId: student.studentProfileId,
       displayName: student.studentName,
-      grades: student.grades.map((grade) => ({
+      grades: student.grades
+        .filter((grade) => grade.activitiesCount > 0 || grade.isManualOverride)
+        .map((grade) => ({
         competencyId: grade.competencyId,
         competencyName: grade.competencyName,
         score: grade.score,

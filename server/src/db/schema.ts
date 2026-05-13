@@ -1944,9 +1944,14 @@ export const curriculumAreasRelations = relations(curriculumAreas, ({ many }) =>
 }));
 
 // Competencias por área curricular
+export const curriculumCompetencySourceEnum = mysqlEnum('source_type', ['OFFICIAL', 'CUSTOM_CLASSROOM']);
+
 export const curriculumCompetencies = mysqlTable('curriculum_competencies', {
   id: varchar('id', { length: 36 }).primaryKey(),
   areaId: varchar('area_id', { length: 36 }).notNull(),
+  sourceType: curriculumCompetencySourceEnum.notNull().default('OFFICIAL'),
+  ownerClassroomId: varchar('owner_classroom_id', { length: 36 }),
+  createdByTeacherId: varchar('created_by_teacher_id', { length: 36 }),
   name: varchar('name', { length: 255 }).notNull(),
   shortName: varchar('short_name', { length: 100 }),
   description: text('description'),
@@ -1955,6 +1960,9 @@ export const curriculumCompetencies = mysqlTable('curriculum_competencies', {
   createdAt: datetime('created_at').notNull(),
 }, (table) => ({
   areaIdx: index('idx_curriculum_competencies_area').on(table.areaId),
+  sourceTypeIdx: index('idx_curriculum_competencies_source_type').on(table.sourceType),
+  ownerClassroomIdx: index('idx_curriculum_competencies_owner_classroom').on(table.ownerClassroomId),
+  createdByTeacherIdx: index('idx_curriculum_competencies_created_by_teacher').on(table.createdByTeacherId),
 }));
 
 export const curriculumCompetenciesRelations = relations(curriculumCompetencies, ({ one, many }) => ({

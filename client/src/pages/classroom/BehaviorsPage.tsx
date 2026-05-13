@@ -23,6 +23,7 @@ import { Card } from '../../components/ui/Card';
 import { classroomApi, type Classroom } from '../../lib/classroomApi';
 import { behaviorApi, type Behavior, type PointType, type GeneratedBehavior } from '../../lib/behaviorApi';
 import toast from 'react-hot-toast';
+import { useClassroomCompetencies } from '../../hooks/useClassroomCompetencies';
 
 const EMOJI_OPTIONS = ['⭐', '🎯', '📚', '✅', '🏆', '💪', '🧠', '❤️', '💔', '⚡', '🔥', '❌', '😴', '📵'];
 
@@ -642,14 +643,10 @@ const BehaviorModal = ({
   const [icon, setIcon] = useState(behavior?.icon || '⭐');
   const [competencyId, setCompetencyId] = useState<string | null>(behavior?.competencyId || null);
 
-  // Cargar competencias si la clase las usa
-  const { data: curriculumAreas = [] } = useQuery({
-    queryKey: ['curriculum-areas'],
-    queryFn: () => classroomApi.getCurriculumAreas('PE'),
-    enabled: classroom?.useCompetencies,
-  });
-  
-  const classroomCompetencies = curriculumAreas.find((a: any) => a.id === classroom?.curriculumAreaId)?.competencies || [];
+  const { competencies: classroomCompetencies = [] } = useClassroomCompetencies(
+    classroom?.id,
+    !!classroom?.useCompetencies && !!classroom?.curriculumAreaId,
+  );
 
   // Reset form when behavior changes
   useEffect(() => {
@@ -1003,14 +1000,10 @@ const AIBehaviorModal = ({
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [selectedCompetencies, setSelectedCompetencies] = useState<string[]>([]);
 
-  // Cargar competencias si la clase las usa
-  const { data: curriculumAreas = [] } = useQuery({
-    queryKey: ['curriculum-areas-ai'],
-    queryFn: () => classroomApi.getCurriculumAreas('PE'),
-    enabled: classroom?.useCompetencies,
-  });
-  
-  const classroomCompetencies = curriculumAreas.find((a: any) => a.id === classroom?.curriculumAreaId)?.competencies || [];
+  const { competencies: classroomCompetencies = [] } = useClassroomCompetencies(
+    classroom?.id,
+    !!classroom?.useCompetencies && !!classroom?.curriculumAreaId,
+  );
 
   const handleGenerate = async () => {
     if (!description.trim() || !level.trim()) {

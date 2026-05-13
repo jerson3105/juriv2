@@ -439,7 +439,21 @@ class GradeService {
     return student.characterName || realName || 'Estudiante';
   }
 
-  private getPerformanceBucket(score: number): PerformanceBucket {
+  private getPerformanceBucket(
+    score: number,
+    gradeScaleType: GradeScaleType | null,
+    gradeLabel?: string,
+  ): PerformanceBucket {
+    if (gradeScaleType === 'PERU_VIGESIMAL') {
+      const numericGrade = Number.parseInt(gradeLabel ?? '', 10);
+      if (Number.isFinite(numericGrade)) {
+        if (numericGrade >= 18) return 'AD';
+        if (numericGrade >= 14) return 'A';
+        if (numericGrade >= 11) return 'B';
+        return 'C';
+      }
+    }
+
     if (score >= 90) return 'AD';
     if (score >= 70) return 'A';
     if (score >= 50) return 'B';
@@ -466,10 +480,12 @@ class GradeService {
 
     const averageScore = countableGrades.reduce((sum, grade) => sum + grade.score, 0) / countableGrades.length;
 
+    const averageLabel = this.convertToGradeLabel(averageScore, gradeScaleType, parsedScaleConfig);
+
     return {
       score: Number(averageScore.toFixed(2)),
-      label: this.convertToGradeLabel(averageScore, gradeScaleType, parsedScaleConfig),
-      bucket: this.getPerformanceBucket(averageScore),
+      label: averageLabel,
+      bucket: this.getPerformanceBucket(averageScore, gradeScaleType, averageLabel),
       evaluatedCompetencies: countableGrades.length,
     };
   }
@@ -544,13 +560,15 @@ class GradeService {
         })()
       : rawGrade.calculationDetails;
 
+    const gradeLabel = this.convertToGradeLabel(effectiveScore, gradeScaleType, parsedScaleConfig);
+
     return {
       id: rawGrade.id,
       competencyId: rawGrade.competencyId,
       competencyName: rawGrade.competencyName || 'Competencia',
       score: Number(effectiveScore.toFixed(2)),
-      gradeLabel: this.convertToGradeLabel(effectiveScore, gradeScaleType, parsedScaleConfig),
-      bucket: this.getPerformanceBucket(effectiveScore),
+      gradeLabel,
+      bucket: this.getPerformanceBucket(effectiveScore, gradeScaleType, gradeLabel),
       activitiesCount: rawGrade.activitiesCount,
       calculationDetails: normalizedCalculationDetails,
       isManualOverride: rawGrade.isManualOverride,

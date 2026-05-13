@@ -24,6 +24,7 @@ import {
   clanLogs,
   classroomCompetencies,
   curriculumCompetencies,
+  activityCompetencies,
   loginStreaks,
   notifications,
   classroomAvatarItems,
@@ -44,6 +45,7 @@ import {
   collectibleAlbums,
   collectibleCards,
   studentCollectibles,
+  curriculumAreas,
   jiroExpeditions,
   jiroStudentExpeditions,
   jiroDeliveryStations,
@@ -51,7 +53,7 @@ import {
   jiroDeliveries,
   jiroExpeditionCompetencies,
 } from '../db/schema.js';
-import { eq, and, desc, inArray, sql, count } from 'drizzle-orm';
+import { eq, and, desc, inArray, sql, count, asc, or, gt } from 'drizzle-orm';
 import { generateClassCode } from '../utils/helpers.js';
 import { v4 as uuidv4 } from 'uuid';
 import { avatarService } from './avatar.service.js';
@@ -68,6 +70,18 @@ interface CreateClassroomData {
   curriculumAreaId?: string | null;
   gradeScaleType?: 'PERU_LETTERS' | 'PERU_VIGESIMAL' | 'CENTESIMAL' | 'USA_LETTERS' | 'CUSTOM' | null;
   schoolId?: string | null;
+}
+
+interface CreateCustomClassroomCompetencyData {
+  name: string;
+  shortName?: string | null;
+  description?: string | null;
+}
+
+interface UpdateCustomClassroomCompetencyData {
+  name?: string;
+  shortName?: string | null;
+  description?: string | null;
 }
 
 interface UpdateClassroomData {
@@ -114,6 +128,138 @@ interface UpdateClassroomData {
 }
 
 export class ClassroomService {
+  private normalizeCompetencyName(value: string): string {
+    return value.trim().replace(/\s+/g, ' ');
+  }
+
+  private normalizeOptionalCompetencyText(value?: string | null): string | null {
+    if (value === undefined || value === null) {
+      return null;
+    }
+
+    const normalized = value.trim().replace(/\s+/g, ' ');
+    return normalized || null;
+  }
+
+  private async ensureClassroomCompetencyNameAvailable(
+    classroomId: string,
+    name: string,
+    excludedCompetencyId?: string,
+  ): Promise<void> {
+    const normalizedTarget = this.normalizeCompetencyName(name).toLowerCase();
+
+    const rows = await db
+      .select({
+        competencyId: curriculumCompetencies.id,
+        name: curriculumCompetencies.name,
+      })
+      .from(classroomCompetencies)
+      .innerJoin(curriculumCompetencies, eq(classroomCompetencies.competencyId, curriculumCompetencies.id))
+      .where(and(
+        eq(classroomCompetencies.classroomId, classroomId),
+        eq(classroomCompetencies.isActive, true),
+        eq(curriculumCompetencies.isActive, true),
+      ));
+
+    const duplicate = rows.find((row) => (
+      row.competencyId !== excludedCompetencyId &&
+      this.normalizeCompetencyName(row.name).toLowerCase() === normalizedTarget
+    ));
+
+    if (duplicate) {
+      throw new Error('Ya existe una competencia con ese nombre en el aula');
+    }
+  }
+
+  private async getCompetencyUsageIds(classroomId: string, competencyIds: string[]): Promise<Set<string>> {
+    if (competencyIds.length === 0) {
+      return new Set<string>();
+    }
+
+    const [behaviorRows, badgeRows, timedActivityRows, expeditionActivityRows, tournamentActivityRows, gradeRows, pointRows, jiroRows] = await Promise.all([
+      db.select({ competencyId: behaviors.competencyId })
+        .from(behaviors)
+        .where(and(
+          eq(behaviors.classroomId, classroomId),
+          inArray(behaviors.competencyId, competencyIds),
+          eq(behaviors.isActive, true),
+        )),
+      db.select({ competencyId: badges.competencyId })
+        .from(badges)
+        .where(and(
+          eq(badges.classroomId, classroomId),
+          inArray(badges.competencyId, competencyIds),
+          eq(badges.isActive, true),
+        )),
+      db.select({ competencyId: activityCompetencies.competencyId })
+        .from(activityCompetencies)
+        .innerJoin(timedActivities, and(
+          eq(activityCompetencies.activityId, timedActivities.id),
+          eq(activityCompetencies.activityType, 'TIMED'),
+        ))
+        .where(and(
+          inArray(activityCompetencies.competencyId, competencyIds),
+          eq(timedActivities.classroomId, classroomId),
+        )),
+      db.select({ competencyId: activityCompetencies.competencyId })
+        .from(activityCompetencies)
+        .innerJoin(expeditions, and(
+          eq(activityCompetencies.activityId, expeditions.id),
+          eq(activityCompetencies.activityType, 'EXPEDITION'),
+        ))
+        .where(and(
+          inArray(activityCompetencies.competencyId, competencyIds),
+          eq(expeditions.classroomId, classroomId),
+        )),
+      db.select({ competencyId: activityCompetencies.competencyId })
+        .from(activityCompetencies)
+        .innerJoin(tournaments, and(
+          eq(activityCompetencies.activityId, tournaments.id),
+          eq(activityCompetencies.activityType, 'TOURNAMENT'),
+        ))
+        .where(and(
+          inArray(activityCompetencies.competencyId, competencyIds),
+          eq(tournaments.classroomId, classroomId),
+        )),
+      db.select({ competencyId: studentGrades.competencyId })
+        .from(studentGrades)
+        .where(and(
+          eq(studentGrades.classroomId, classroomId),
+          inArray(studentGrades.competencyId, competencyIds),
+          or(
+            gt(studentGrades.activitiesCount, 0),
+            eq(studentGrades.isManualOverride, true),
+          ),
+        )),
+      db.select({ competencyId: pointLogs.competencyId })
+        .from(pointLogs)
+        .innerJoin(studentProfiles, eq(pointLogs.studentId, studentProfiles.id))
+        .where(and(
+          eq(studentProfiles.classroomId, classroomId),
+          inArray(pointLogs.competencyId, competencyIds),
+          eq(pointLogs.isReverted, false),
+        )),
+      db.select({ competencyId: jiroExpeditionCompetencies.competencyId })
+        .from(jiroExpeditionCompetencies)
+        .innerJoin(jiroExpeditions, eq(jiroExpeditionCompetencies.expeditionId, jiroExpeditions.id))
+        .where(and(
+          eq(jiroExpeditions.classroomId, classroomId),
+          inArray(jiroExpeditionCompetencies.competencyId, competencyIds),
+        )),
+    ]);
+
+    return new Set<string>([
+      ...behaviorRows,
+      ...badgeRows,
+      ...timedActivityRows,
+      ...expeditionActivityRows,
+      ...tournamentActivityRows,
+      ...gradeRows,
+      ...pointRows,
+      ...jiroRows,
+    ].map((row) => row.competencyId).filter((value): value is string => !!value));
+  }
+
   async create(data: CreateClassroomData) {
     const id = uuidv4();
     const code = generateClassCode();
@@ -243,6 +389,426 @@ export class ClassroomService {
     return this.getById(classroomId);
   }
 
+  async getEnabledCompetencies(classroomId: string) {
+    const [classroom] = await db
+      .select({
+        curriculumAreaId: classrooms.curriculumAreaId,
+      })
+      .from(classrooms)
+      .where(eq(classrooms.id, classroomId));
+
+    if (!classroom) {
+      throw new Error('Clase no encontrada');
+    }
+
+    const rows = await db
+      .select({
+        classroomCompetencyId: classroomCompetencies.id,
+        id: curriculumCompetencies.id,
+        sourceType: curriculumCompetencies.sourceType,
+        ownerClassroomId: curriculumCompetencies.ownerClassroomId,
+        name: curriculumCompetencies.name,
+        shortName: curriculumCompetencies.shortName,
+        description: curriculumCompetencies.description,
+        areaId: curriculumCompetencies.areaId,
+        areaName: curriculumAreas.name,
+        areaShortName: curriculumAreas.shortName,
+        weight: classroomCompetencies.weight,
+        isActive: classroomCompetencies.isActive,
+        createdAt: classroomCompetencies.createdAt,
+      })
+      .from(classroomCompetencies)
+      .innerJoin(curriculumCompetencies, eq(classroomCompetencies.competencyId, curriculumCompetencies.id))
+      .innerJoin(curriculumAreas, eq(curriculumCompetencies.areaId, curriculumAreas.id))
+      .where(and(
+        eq(classroomCompetencies.classroomId, classroomId),
+        eq(classroomCompetencies.isActive, true),
+        eq(curriculumCompetencies.isActive, true),
+        eq(curriculumAreas.isActive, true),
+      ))
+      .orderBy(
+        asc(classroomCompetencies.createdAt),
+        asc(curriculumAreas.displayOrder),
+        asc(curriculumCompetencies.displayOrder),
+      );
+
+    const removableCompetencyIds = rows
+      .filter((row) => row.sourceType === 'CUSTOM_CLASSROOM' || (row.sourceType === 'OFFICIAL' && row.areaId !== classroom.curriculumAreaId))
+      .map((row) => row.id);
+    const usedCompetencyIds = await this.getCompetencyUsageIds(classroomId, removableCompetencyIds);
+
+    return rows.map((row) => ({
+      ...row,
+      isBase: row.sourceType === 'OFFICIAL' && row.areaId === classroom.curriculumAreaId,
+      isCustom: row.sourceType === 'CUSTOM_CLASSROOM',
+      canEdit: row.sourceType === 'CUSTOM_CLASSROOM' && row.ownerClassroomId === classroomId,
+      canDelete: (
+        (row.sourceType === 'CUSTOM_CLASSROOM' && row.ownerClassroomId === classroomId) ||
+        (row.sourceType === 'OFFICIAL' && row.areaId !== classroom.curriculumAreaId)
+      ) && !usedCompetencyIds.has(row.id),
+    }));
+  }
+
+  async addCompetencies(classroomId: string, competencyIds: string[]) {
+    const uniqueIds = [...new Set(competencyIds.filter(Boolean))];
+
+    if (uniqueIds.length === 0) {
+      return { created: 0, totalEnabled: 0 };
+    }
+
+    const [classroom] = await db
+      .select({
+        id: classrooms.id,
+        curriculumAreaId: classrooms.curriculumAreaId,
+        useCompetencies: classrooms.useCompetencies,
+      })
+      .from(classrooms)
+      .where(eq(classrooms.id, classroomId));
+
+    if (!classroom) {
+      throw new Error('Clase no encontrada');
+    }
+
+    if (!classroom.useCompetencies) {
+      throw new Error('La clase no tiene competencias habilitadas');
+    }
+
+    const [baseArea] = classroom.curriculumAreaId
+      ? await db
+          .select({
+            countryCode: curriculumAreas.countryCode,
+            educationLevel: curriculumAreas.educationLevel,
+          })
+          .from(curriculumAreas)
+          .where(eq(curriculumAreas.id, classroom.curriculumAreaId))
+      : [null];
+
+    const availableCompetencies = await db
+      .select({
+        id: curriculumCompetencies.id,
+        areaId: curriculumCompetencies.areaId,
+        areaCountryCode: curriculumAreas.countryCode,
+        areaEducationLevel: curriculumAreas.educationLevel,
+      })
+      .from(curriculumCompetencies)
+      .innerJoin(curriculumAreas, eq(curriculumCompetencies.areaId, curriculumAreas.id))
+      .where(and(
+        inArray(curriculumCompetencies.id, uniqueIds),
+        eq(curriculumCompetencies.isActive, true),
+        eq(curriculumCompetencies.sourceType, 'OFFICIAL'),
+        eq(curriculumAreas.isActive, true),
+      ));
+
+    const allowedCompetencies = availableCompetencies.filter((competency) => {
+      if (!baseArea) {
+        return true;
+      }
+
+      if (competency.areaCountryCode !== baseArea.countryCode) {
+        return false;
+      }
+
+      if (!baseArea.educationLevel || !competency.areaEducationLevel) {
+        return true;
+      }
+
+      return competency.areaEducationLevel === baseArea.educationLevel;
+    });
+
+    if (allowedCompetencies.length === 0) {
+      const [enabledCount] = await db
+        .select({ count: count() })
+        .from(classroomCompetencies)
+        .where(and(
+          eq(classroomCompetencies.classroomId, classroomId),
+          eq(classroomCompetencies.isActive, true),
+        ));
+
+      return {
+        created: 0,
+        totalEnabled: Number(enabledCount?.count || 0),
+      };
+    }
+
+    const existingRows = await db
+      .select({ competencyId: classroomCompetencies.competencyId })
+      .from(classroomCompetencies)
+      .where(and(
+        eq(classroomCompetencies.classroomId, classroomId),
+        inArray(classroomCompetencies.competencyId, allowedCompetencies.map((competency) => competency.id)),
+      ));
+
+    const existingIds = new Set(existingRows.map((row) => row.competencyId));
+    const now = new Date();
+    const toCreate = allowedCompetencies.filter((competency) => !existingIds.has(competency.id));
+
+    if (toCreate.length > 0) {
+      await db.insert(classroomCompetencies).values(
+        toCreate.map((competency) => ({
+          id: uuidv4(),
+          classroomId,
+          competencyId: competency.id,
+          weight: 100,
+          isActive: true,
+          createdAt: now,
+        }))
+      );
+    }
+
+    const [enabledCount] = await db
+      .select({ count: count() })
+      .from(classroomCompetencies)
+      .where(and(
+        eq(classroomCompetencies.classroomId, classroomId),
+        eq(classroomCompetencies.isActive, true),
+      ));
+
+    return {
+      created: toCreate.length,
+      totalEnabled: Number(enabledCount?.count || 0),
+    };
+  }
+
+  async removeCompetency(classroomId: string, competencyId: string, teacherId: string) {
+    const [classroom] = await db
+      .select({
+        id: classrooms.id,
+        teacherId: classrooms.teacherId,
+        curriculumAreaId: classrooms.curriculumAreaId,
+      })
+      .from(classrooms)
+      .where(eq(classrooms.id, classroomId));
+
+    if (!classroom) {
+      throw new Error('Clase no encontrada');
+    }
+
+    if (classroom.teacherId !== teacherId) {
+      throw new Error('No tienes permiso para esta clase');
+    }
+
+    const [existing] = await db
+      .select({
+        id: curriculumCompetencies.id,
+        areaId: curriculumCompetencies.areaId,
+        sourceType: curriculumCompetencies.sourceType,
+      })
+      .from(curriculumCompetencies)
+      .innerJoin(classroomCompetencies, eq(classroomCompetencies.competencyId, curriculumCompetencies.id))
+      .where(and(
+        eq(curriculumCompetencies.id, competencyId),
+        eq(classroomCompetencies.classroomId, classroomId),
+        eq(classroomCompetencies.isActive, true),
+        eq(curriculumCompetencies.isActive, true),
+      ));
+
+    if (!existing) {
+      throw new Error('La competencia no esta habilitada en esta clase');
+    }
+
+    if (existing.sourceType !== 'OFFICIAL') {
+      throw new Error('Solo puedes quitar competencias oficiales adicionales desde esta accion');
+    }
+
+    if (existing.areaId === classroom.curriculumAreaId) {
+      throw new Error('No puedes quitar una competencia base del aula');
+    }
+
+    const usedCompetencyIds = await this.getCompetencyUsageIds(classroomId, [competencyId]);
+    if (usedCompetencyIds.has(competencyId)) {
+      throw new Error('No se puede quitar una competencia adicional que ya tiene evidencias o configuraciones asociadas');
+    }
+
+    await db.delete(classroomCompetencies)
+      .where(and(
+        eq(classroomCompetencies.classroomId, classroomId),
+        eq(classroomCompetencies.competencyId, competencyId),
+      ));
+
+    return { removed: true };
+  }
+
+  async createCustomCompetency(
+    classroomId: string,
+    teacherId: string,
+    data: CreateCustomClassroomCompetencyData,
+  ) {
+    const [classroom] = await db
+      .select({
+        id: classrooms.id,
+        teacherId: classrooms.teacherId,
+        curriculumAreaId: classrooms.curriculumAreaId,
+        useCompetencies: classrooms.useCompetencies,
+      })
+      .from(classrooms)
+      .where(eq(classrooms.id, classroomId));
+
+    if (!classroom) {
+      throw new Error('Clase no encontrada');
+    }
+
+    if (classroom.teacherId !== teacherId) {
+      throw new Error('No tienes permiso para esta clase');
+    }
+
+    if (!classroom.useCompetencies || !classroom.curriculumAreaId) {
+      throw new Error('La clase debe tener competencias y area curricular configuradas');
+    }
+
+    const name = this.normalizeCompetencyName(data.name);
+    const shortName = data.shortName === undefined ? null : this.normalizeOptionalCompetencyText(data.shortName);
+    const description = data.description === undefined ? null : this.normalizeOptionalCompetencyText(data.description);
+
+    if (name.length < 2) {
+      throw new Error('El nombre debe tener al menos 2 caracteres');
+    }
+
+    await this.ensureClassroomCompetencyNameAvailable(classroomId, name);
+
+    const [displayOrderRow] = await db
+      .select({
+        maxDisplayOrder: sql<number>`COALESCE(MAX(${curriculumCompetencies.displayOrder}), 0)`,
+      })
+      .from(curriculumCompetencies)
+      .where(eq(curriculumCompetencies.areaId, classroom.curriculumAreaId));
+
+    const competencyId = uuidv4();
+    const now = new Date();
+
+    await db.transaction(async (tx) => {
+      await tx.insert(curriculumCompetencies).values({
+        id: competencyId,
+        areaId: classroom.curriculumAreaId!,
+        sourceType: 'CUSTOM_CLASSROOM',
+        ownerClassroomId: classroomId,
+        createdByTeacherId: teacherId,
+        name,
+        shortName,
+        description,
+        displayOrder: Number(displayOrderRow?.maxDisplayOrder || 0) + 1,
+        isActive: true,
+        createdAt: now,
+      });
+
+      await tx.insert(classroomCompetencies).values({
+        id: uuidv4(),
+        classroomId,
+        competencyId,
+        weight: 100,
+        isActive: true,
+        createdAt: now,
+      });
+    });
+
+    const createdCompetency = (await this.getEnabledCompetencies(classroomId)).find((competency) => competency.id === competencyId);
+    if (!createdCompetency) {
+      throw new Error('No se pudo recuperar la competencia creada');
+    }
+
+    return createdCompetency;
+  }
+
+  async updateCustomCompetency(
+    classroomId: string,
+    competencyId: string,
+    teacherId: string,
+    data: UpdateCustomClassroomCompetencyData,
+  ) {
+    const [existing] = await db
+      .select({
+        id: curriculumCompetencies.id,
+        ownerClassroomId: curriculumCompetencies.ownerClassroomId,
+        createdByTeacherId: curriculumCompetencies.createdByTeacherId,
+      })
+      .from(curriculumCompetencies)
+      .innerJoin(classroomCompetencies, eq(classroomCompetencies.competencyId, curriculumCompetencies.id))
+      .where(and(
+        eq(curriculumCompetencies.id, competencyId),
+        eq(curriculumCompetencies.sourceType, 'CUSTOM_CLASSROOM'),
+        eq(curriculumCompetencies.isActive, true),
+        eq(classroomCompetencies.classroomId, classroomId),
+        eq(classroomCompetencies.isActive, true),
+      ));
+
+    if (!existing || existing.ownerClassroomId !== classroomId || existing.createdByTeacherId !== teacherId) {
+      throw new Error('La competencia personalizada no existe o no pertenece a esta clase');
+    }
+
+    const payload: Partial<typeof curriculumCompetencies.$inferInsert> = {};
+
+    if (data.name !== undefined) {
+      const normalizedName = this.normalizeCompetencyName(data.name);
+      if (normalizedName.length < 2) {
+        throw new Error('El nombre debe tener al menos 2 caracteres');
+      }
+      await this.ensureClassroomCompetencyNameAvailable(classroomId, normalizedName, competencyId);
+      payload.name = normalizedName;
+    }
+
+    if (data.shortName !== undefined) {
+      payload.shortName = this.normalizeOptionalCompetencyText(data.shortName);
+    }
+
+    if (data.description !== undefined) {
+      payload.description = this.normalizeOptionalCompetencyText(data.description);
+    }
+
+    if (Object.keys(payload).length === 0) {
+      throw new Error('No hay cambios para guardar');
+    }
+
+    await db.update(curriculumCompetencies)
+      .set(payload)
+      .where(eq(curriculumCompetencies.id, competencyId));
+
+    const updatedCompetency = (await this.getEnabledCompetencies(classroomId)).find((competency) => competency.id === competencyId);
+    if (!updatedCompetency) {
+      throw new Error('No se pudo recuperar la competencia actualizada');
+    }
+
+    return updatedCompetency;
+  }
+
+  async deleteCustomCompetency(classroomId: string, competencyId: string, teacherId: string) {
+    const [existing] = await db
+      .select({
+        id: curriculumCompetencies.id,
+        ownerClassroomId: curriculumCompetencies.ownerClassroomId,
+        createdByTeacherId: curriculumCompetencies.createdByTeacherId,
+      })
+      .from(curriculumCompetencies)
+      .innerJoin(classroomCompetencies, eq(classroomCompetencies.competencyId, curriculumCompetencies.id))
+      .where(and(
+        eq(curriculumCompetencies.id, competencyId),
+        eq(curriculumCompetencies.sourceType, 'CUSTOM_CLASSROOM'),
+        eq(curriculumCompetencies.isActive, true),
+        eq(classroomCompetencies.classroomId, classroomId),
+        eq(classroomCompetencies.isActive, true),
+      ));
+
+    if (!existing || existing.ownerClassroomId !== classroomId || existing.createdByTeacherId !== teacherId) {
+      throw new Error('La competencia personalizada no existe o no pertenece a esta clase');
+    }
+
+    const usedCompetencyIds = await this.getCompetencyUsageIds(classroomId, [competencyId]);
+    if (usedCompetencyIds.has(competencyId)) {
+      throw new Error('No se puede eliminar una competencia personalizada que ya tiene evidencias o configuraciones asociadas');
+    }
+
+    await db.transaction(async (tx) => {
+      await tx.delete(classroomCompetencies)
+        .where(and(
+          eq(classroomCompetencies.classroomId, classroomId),
+          eq(classroomCompetencies.competencyId, competencyId),
+        ));
+
+      await tx.delete(curriculumCompetencies)
+        .where(eq(curriculumCompetencies.id, competencyId));
+    });
+
+    return { deleted: true };
+  }
+
   /**
    * Sincroniza las competencias del classroom con el área curricular seleccionada
    */
@@ -251,7 +817,11 @@ export class ClassroomService {
     // Obtener competencias del área curricular
     const areaCompetencies = await db.select()
       .from(curriculumCompetencies)
-      .where(eq(curriculumCompetencies.areaId, curriculumAreaId));
+      .where(and(
+        eq(curriculumCompetencies.areaId, curriculumAreaId),
+        eq(curriculumCompetencies.sourceType, 'OFFICIAL'),
+        eq(curriculumCompetencies.isActive, true),
+      ));
 
 
     if (areaCompetencies.length === 0) return;

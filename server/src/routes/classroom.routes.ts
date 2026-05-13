@@ -21,6 +21,12 @@ router.put('/:id', authorize('TEACHER'), classroomController.update.bind(classro
 router.delete('/:id', authorize('TEACHER'), classroomController.delete.bind(classroomController));
 router.post('/:id/reset-points', authorize('TEACHER'), classroomController.resetAllPoints.bind(classroomController));
 router.post('/:id/reset-selective', authorize('TEACHER'), classroomController.resetClassroomSelective.bind(classroomController));
+router.get('/:id/competencies', authorize('TEACHER'), classroomController.getCompetencies.bind(classroomController));
+router.post('/:id/competencies', authorize('TEACHER'), classroomController.addCompetencies.bind(classroomController));
+router.delete('/:id/competencies/:competencyId', authorize('TEACHER'), classroomController.removeCompetency.bind(classroomController));
+router.post('/:id/competencies/custom', authorize('TEACHER'), classroomController.createCustomCompetency.bind(classroomController));
+router.patch('/:id/competencies/custom/:competencyId', authorize('TEACHER'), classroomController.updateCustomCompetency.bind(classroomController));
+router.delete('/:id/competencies/custom/:competencyId', authorize('TEACHER'), classroomController.deleteCustomCompetency.bind(classroomController));
 router.post('/:id/sync-competencies', authorize('TEACHER'), classroomController.syncCompetencies.bind(classroomController));
 router.get('/:classroomId/cloneable-counts', authorize('TEACHER'), classroomController.getCloneableCounts.bind(classroomController));
 router.post('/:classroomId/clone', authorize('TEACHER'), classroomController.cloneClassroom.bind(classroomController));

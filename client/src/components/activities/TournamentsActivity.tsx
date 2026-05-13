@@ -22,6 +22,7 @@ import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { StudentAvatarMini } from '../avatar/StudentAvatarMini';
 import type { AvatarGender } from '../../lib/avatarApi';
+import { useClassroomCompetencies } from '../../hooks/useClassroomCompetencies';
 
 // Avatar component for tournaments - uses dynamic avatar system when studentId and gender are available
 const ParticipantAvatar = ({ 
@@ -1496,15 +1497,10 @@ export const TournamentsActivity = ({ classroom, onBack }: TournamentsActivityPr
 const CreateTournamentModal = ({ isOpen, onClose, onSubmit, questionBanks, isLoading, classroom }: any) => {
   const [form, setForm] = useState<CreateTournamentData & { competencyIds?: string[] }>({ name: '', type: 'BRACKET', participantType: 'INDIVIDUAL', questionBankIds: [], maxParticipants: 8, timePerQuestion: 30, questionsPerMatch: 3, pointsPerCorrect: 100, bonusTimePoints: 10, rewardXpFirst: 100, rewardXpSecond: 50, rewardXpThird: 25, rewardGpFirst: 50, rewardGpSecond: 25, rewardGpThird: 10, rewardXpParticipation: 10, icon: '🏆', competencyIds: [] });
   
-  // Cargar competencias si la clase las usa
-  const { data: curriculumAreas = [] } = useQuery({
-    queryKey: ['curriculum-areas'],
-    queryFn: () => classroomApi.getCurriculumAreas('PE'),
-    enabled: isOpen && classroom?.useCompetencies,
-  });
-  
-  // Obtener competencias del área de la clase
-  const classroomCompetencies = curriculumAreas.find((a: any) => a.id === classroom?.curriculumAreaId)?.competencies || [];
+  const { competencies: classroomCompetencies = [] } = useClassroomCompetencies(
+    classroom?.id,
+    isOpen && !!classroom?.useCompetencies && !!classroom?.curriculumAreaId,
+  );
   
   useEffect(() => { if (isOpen) setForm({ name: '', type: 'BRACKET', participantType: 'INDIVIDUAL', questionBankIds: [], maxParticipants: 8, timePerQuestion: 30, questionsPerMatch: 3, pointsPerCorrect: 100, bonusTimePoints: 10, rewardXpFirst: 100, rewardXpSecond: 50, rewardXpThird: 25, rewardGpFirst: 50, rewardGpSecond: 25, rewardGpThird: 10, rewardXpParticipation: 10, icon: '🏆', competencyIds: [] }); }, [isOpen]);
   const toggle = (id: string) => setForm(p => ({ ...p, questionBankIds: p.questionBankIds.includes(id) ? p.questionBankIds.filter(x => x !== id) : [...p.questionBankIds, id] }));

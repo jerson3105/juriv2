@@ -24,7 +24,6 @@ import {
   X,
   Gift,
   BookOpen,
-  Award,
   Printer,
   FileText,
   Loader2,
@@ -33,7 +32,13 @@ import {
   GripVertical,
   Pencil,
 } from 'lucide-react';
-import { classroomApi, type Classroom, type UpdateClassroomSettings } from '../../lib/classroomApi';
+import {
+  classroomApi,
+  type Classroom,
+  type ClassroomCompetency,
+  type CreateCustomClassroomCompetencyData,
+  type UpdateClassroomSettings,
+} from '../../lib/classroomApi';
 import { characterClassApi, type CharacterClassData } from '../../lib/characterClassApi';
 import { studentApi } from '../../lib/studentApi';
 import { parentApi } from '../../lib/parentApi';
@@ -42,6 +47,7 @@ import { ConfirmModal } from '../../components/ui/ConfirmModal';
 import { EmojiPicker } from '../../components/ui/EmojiPicker';
 import { placeholderStudentApi } from '../../lib/placeholderStudentApi';
 import { AddPlaceholderStudentsModal } from '../../components/students/AddPlaceholderStudentsModal';
+import { useClassroomCompetencies } from '../../hooks/useClassroomCompetencies';
 
 export const ClassroomSettingsPage = () => {
   const { classroom, refetch } = useOutletContext<{ classroom: Classroom; refetch: () => void }>();
@@ -65,12 +71,38 @@ export const ClassroomSettingsPage = () => {
   const [newClassDesc, setNewClassDesc] = useState('');
   const [newClassIcon, setNewClassIcon] = useState('⚔️');
   const [newClassColor, setNewClassColor] = useState('blue');
+  const [showAddCompetenciesModal, setShowAddCompetenciesModal] = useState(false);
+  const [competencySearch, setCompetencySearch] = useState('');
+  const [selectedCompetencyIds, setSelectedCompetencyIds] = useState<string[]>([]);
+  const [showCustomCompetencyModal, setShowCustomCompetencyModal] = useState(false);
+  const [editingCustomCompetency, setEditingCustomCompetency] = useState<ClassroomCompetency | null>(null);
+  const [customCompetencyForm, setCustomCompetencyForm] = useState({
+    name: '',
+    shortName: '',
+    description: '',
+  });
+  const [extraCompetencyToRemove, setExtraCompetencyToRemove] = useState<ClassroomCompetency | null>(null);
+  const [customCompetencyToDelete, setCustomCompetencyToDelete] = useState<ClassroomCompetency | null>(null);
 
   // Query para clases de personaje
   const { data: characterClasses = [], refetch: refetchClasses } = useQuery({
     queryKey: ['character-classes', classroom.id],
     queryFn: () => characterClassApi.list(classroom.id),
   });
+
+  const { data: curriculumAreas = [] } = useQuery({
+    queryKey: ['curriculum-areas', 'settings'],
+    queryFn: () => classroomApi.getCurriculumAreas('PE'),
+    enabled: classroom.useCompetencies,
+  });
+
+  const {
+    competencies: classroomCompetencies,
+    baseCompetencies,
+    extraCompetencies,
+    customCompetencies,
+    refetch: refetchCompetencies,
+  } = useClassroomCompetencies(classroom.id, classroom.useCompetencies);
 
   // Mutations para clases de personaje
   const createClassMutation = useMutation({
@@ -93,8 +125,100 @@ export const ClassroomSettingsPage = () => {
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Error al eliminar'),
   });
 
+  const addCompetenciesMutation = useMutation({
+    mutationFn: (competencyIds: string[]) => classroomApi.addCompetencies(classroom.id, competencyIds),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['classroom-competencies', classroom.id] });
+      queryClient.invalidateQueries({ queryKey: ['classroom-grades', classroom.id] });
+      refetchCompetencies();
+      setShowAddCompetenciesModal(false);
+      setSelectedCompetencyIds([]);
+      setCompetencySearch('');
+      toast.success(
+        result.created > 0
+          ? `${result.created} competencia(s) agregada(s)`
+          : 'No habia competencias nuevas para agregar'
+      );
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Error al agregar competencias');
+    },
+  });
+
+  const removeCompetencyMutation = useMutation({
+    mutationFn: (competencyId: string) => classroomApi.removeCompetency(classroom.id, competencyId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['classroom-competencies', classroom.id] });
+      queryClient.invalidateQueries({ queryKey: ['classroom-grades', classroom.id] });
+      refetchCompetencies();
+      setExtraCompetencyToRemove(null);
+      toast.success('Competencia adicional retirada');
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Error al retirar competencia');
+    },
+  });
+
+  const createCustomCompetencyMutation = useMutation({
+    mutationFn: (data: CreateCustomClassroomCompetencyData) => classroomApi.createCustomCompetency(classroom.id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['classroom-competencies', classroom.id] });
+      queryClient.invalidateQueries({ queryKey: ['classroom-grades', classroom.id] });
+      refetchCompetencies();
+      closeCustomCompetencyModal();
+      toast.success('Competencia personalizada creada');
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Error al crear competencia personalizada');
+    },
+  });
+
+  const updateCustomCompetencyMutation = useMutation({
+    mutationFn: ({ competencyId, data }: { competencyId: string; data: CreateCustomClassroomCompetencyData }) => (
+      classroomApi.updateCustomCompetency(classroom.id, competencyId, data)
+    ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['classroom-competencies', classroom.id] });
+      queryClient.invalidateQueries({ queryKey: ['classroom-grades', classroom.id] });
+      refetchCompetencies();
+      closeCustomCompetencyModal();
+      toast.success('Competencia personalizada actualizada');
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Error al actualizar competencia personalizada');
+    },
+  });
+
+  const deleteCustomCompetencyMutation = useMutation({
+    mutationFn: (competencyId: string) => classroomApi.deleteCustomCompetency(classroom.id, competencyId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['classroom-competencies', classroom.id] });
+      queryClient.invalidateQueries({ queryKey: ['classroom-grades', classroom.id] });
+      refetchCompetencies();
+      setCustomCompetencyToDelete(null);
+      toast.success('Competencia personalizada eliminada');
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Error al eliminar competencia personalizada');
+    },
+  });
+
   const resetNewClassForm = () => {
     setNewClassName(''); setNewClassKey(''); setNewClassDesc(''); setNewClassIcon('⚔️'); setNewClassColor('blue');
+  };
+
+  const resetCustomCompetencyForm = () => {
+    setEditingCustomCompetency(null);
+    setCustomCompetencyForm({
+      name: '',
+      shortName: '',
+      description: '',
+    });
+  };
+
+  const closeCustomCompetencyModal = () => {
+    setShowCustomCompetencyModal(false);
+    resetCustomCompetencyForm();
   };
 
   // Query para estudiantes placeholder
@@ -154,6 +278,9 @@ export const ClassroomSettingsPage = () => {
       resetOnMiss: true,
       graceDays: 0,
     },
+    useCompetencies: false,
+    curriculumAreaId: null,
+    gradeScaleType: 'PERU_LETTERS',
   });
 
   // Cargar datos del classroom
@@ -195,6 +322,9 @@ export const ClassroomSettingsPage = () => {
           resetOnMiss: true,
           graceDays: 0,
         },
+        useCompetencies: classroom.useCompetencies ?? false,
+        curriculumAreaId: classroom.curriculumAreaId ?? null,
+        gradeScaleType: classroom.gradeScaleType ?? 'PERU_LETTERS',
       });
     }
   }, [classroom]);
@@ -204,6 +334,8 @@ export const ClassroomSettingsPage = () => {
     mutationFn: (data: UpdateClassroomSettings) => classroomApi.update(classroom.id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['classroom', classroom.id] });
+      queryClient.invalidateQueries({ queryKey: ['classroom-grades', classroom.id] });
+      queryClient.invalidateQueries({ queryKey: ['student-grades'] });
       refetch();
       toast.success('Configuración guardada');
     },
@@ -294,6 +426,106 @@ export const ClassroomSettingsPage = () => {
     if (deleteConfirmText === classroom.name) {
       deleteMutation.mutate();
     }
+  };
+
+  const activeAreaId = formData.curriculumAreaId ?? classroom.curriculumAreaId;
+  const activeGradeScale = formData.gradeScaleType ?? classroom.gradeScaleType ?? 'PERU_LETTERS';
+  const activeArea = curriculumAreas.find((area) => area.id === activeAreaId) || null;
+  const enabledCompetencyIds = new Set(classroomCompetencies.map((competency) => competency.id));
+  const filteredAreas = curriculumAreas.filter((area) => {
+    if (!activeArea?.educationLevel || !area.educationLevel) {
+      return true;
+    }
+
+    return area.educationLevel === activeArea.educationLevel;
+  });
+  const searchableAreas = activeArea
+    ? filteredAreas.filter((area) => area.id !== activeArea.id)
+    : filteredAreas;
+  const competencySearchTerm = competencySearch.trim().toLowerCase();
+  const availableCompetenciesByArea = searchableAreas
+    .map((area) => ({
+      ...area,
+      competencies: area.competencies.filter((competency) => {
+        if (enabledCompetencyIds.has(competency.id)) {
+          return false;
+        }
+
+        if (!competencySearchTerm) {
+          return true;
+        }
+
+        return [competency.name, competency.shortName || '', area.name]
+          .join(' ')
+          .toLowerCase()
+          .includes(competencySearchTerm);
+      }),
+    }))
+    .filter((area) => area.competencies.length > 0);
+
+  const scalePreview = activeGradeScale === 'PERU_VIGESIMAL'
+    ? [
+        { label: '18-20', desc: 'Logro destacado' },
+        { label: '14-17', desc: 'Logro esperado' },
+        { label: '11-13', desc: 'En proceso' },
+        { label: '0-10', desc: 'En inicio' },
+      ]
+    : [
+        { label: 'AD', desc: 'Logro destacado' },
+        { label: 'A', desc: 'Logro esperado' },
+        { label: 'B', desc: 'En proceso' },
+        { label: 'C', desc: 'En inicio' },
+      ];
+
+  const toggleCompetencySelection = (competencyId: string) => {
+    setSelectedCompetencyIds((current) => (
+      current.includes(competencyId)
+        ? current.filter((id) => id !== competencyId)
+        : [...current, competencyId]
+    ));
+  };
+
+  const openCreateCustomCompetencyModal = () => {
+    if (!activeAreaId) {
+      toast.error('Configura primero el area curricular del aula');
+      return;
+    }
+
+    resetCustomCompetencyForm();
+    setShowCustomCompetencyModal(true);
+  };
+
+  const openEditCustomCompetencyModal = (competency: ClassroomCompetency) => {
+    setEditingCustomCompetency(competency);
+    setCustomCompetencyForm({
+      name: competency.name,
+      shortName: competency.shortName || '',
+      description: competency.description || '',
+    });
+    setShowCustomCompetencyModal(true);
+  };
+
+  const handleCustomCompetencySubmit = () => {
+    const payload: CreateCustomClassroomCompetencyData = {
+      name: customCompetencyForm.name.trim(),
+      shortName: customCompetencyForm.shortName.trim() || null,
+      description: customCompetencyForm.description.trim() || null,
+    };
+
+    if (!payload.name) {
+      toast.error('Ingresa el nombre de la competencia');
+      return;
+    }
+
+    if (editingCustomCompetency) {
+      updateCustomCompetencyMutation.mutate({
+        competencyId: editingCustomCompetency.id,
+        data: payload,
+      });
+      return;
+    }
+
+    createCustomCompetencyMutation.mutate(payload);
   };
 
   const Toggle = ({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) => (
@@ -801,6 +1033,252 @@ export const ClassroomSettingsPage = () => {
               </div>
             </div>
           </motion.div>
+
+          {classroom.useCompetencies && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.38 }}
+              className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg p-5"
+            >
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <h2 className="font-semibold text-gray-800 dark:text-white flex items-center gap-2">
+                      <div className="w-8 h-8 bg-emerald-100 dark:bg-emerald-900/50 rounded-lg flex items-center justify-center">
+                        <BookOpen size={16} className="text-emerald-600" />
+                      </div>
+                      Competencias del aula
+                    </h2>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                      Gestiona las competencias base, agrega competencias oficiales extra y crea competencias personalizadas solo para esta clase.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={openCreateCustomCompetencyModal}
+                      disabled={!activeAreaId}
+                      className="flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 rounded-xl text-sm font-medium hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors border border-amber-200 dark:border-amber-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Plus size={16} />
+                      Crear personalizada
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowAddCompetenciesModal(true)}
+                      className="flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 rounded-xl text-sm font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors border border-emerald-200 dark:border-emerald-800"
+                    >
+                      <Plus size={16} />
+                      Agregar oficiales
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-200 dark:border-emerald-800">
+                    <p className="text-xs uppercase tracking-wide text-emerald-700 dark:text-emerald-300 font-semibold mb-1">
+                      Area curricular base
+                    </p>
+                    <p className="text-sm font-semibold text-gray-800 dark:text-white">
+                      {activeArea?.name || 'Sin area configurada'}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      {baseCompetencies.length} base, {extraCompetencies.length} oficial(es) extra y {customCompetencies.length} personalizada(s) activas.
+                    </p>
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/70">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-800 dark:text-white">Competencias base</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Provienen del area curricular principal.</p>
+                        </div>
+                        <span className="text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                          {baseCompetencies.length}
+                        </span>
+                      </div>
+
+                      <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                        {baseCompetencies.length > 0 ? baseCompetencies.map((competency) => (
+                          <div key={competency.id} className="rounded-lg border border-emerald-200 dark:border-emerald-900/40 bg-white dark:bg-gray-900/60 px-3 py-2">
+                            <p className="text-sm font-medium text-gray-800 dark:text-white">{competency.name}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{competency.areaName}</p>
+                          </div>
+                        )) : (
+                          <p className="text-sm text-gray-500 dark:text-gray-400">No hay competencias base activas.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/70">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-800 dark:text-white">Competencias adicionales</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Se agregan desde otras areas del mismo nivel.</p>
+                        </div>
+                        <span className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                          {extraCompetencies.length}
+                        </span>
+                      </div>
+
+                      <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                        {extraCompetencies.length > 0 ? extraCompetencies.map((competency) => (
+                          <div key={competency.id} className="rounded-lg border border-blue-200 dark:border-blue-900/40 bg-white dark:bg-gray-900/60 px-3 py-2">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-gray-800 dark:text-white">{competency.name}</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{competency.areaName}</p>
+                                {!competency.canDelete && (
+                                  <p className="text-xs text-blue-700 dark:text-blue-300 mt-2">
+                                    Ya tiene uso asociado. No se puede retirar del aula.
+                                  </p>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                                  Extra
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setExtraCompetencyToRemove(competency)}
+                                  disabled={!competency.canDelete}
+                                  className="p-2 rounded-lg text-red-500 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-900/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                                  aria-label={`Retirar ${competency.name} del aula`}
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )) : (
+                          <p className="text-sm text-gray-500 dark:text-gray-400">Aun no agregaste competencias adicionales.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/70 lg:col-span-2">
+                      <div className="flex items-center justify-between mb-3 gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-800 dark:text-white">Competencias personalizadas</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">Se heredan automaticamente del area del aula y solo se usan en esta clase.</p>
+                        </div>
+                        <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                          {customCompetencies.length}
+                        </span>
+                      </div>
+
+                      <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                        {customCompetencies.length > 0 ? customCompetencies.map((competency) => (
+                          <div key={competency.id} className="rounded-lg border border-amber-200 dark:border-amber-900/40 bg-white dark:bg-gray-900/60 px-3 py-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="text-sm font-medium text-gray-800 dark:text-white">{competency.name}</p>
+                                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                                    Personalizada
+                                  </span>
+                                  {!competency.canDelete && (
+                                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                                      En uso
+                                    </span>
+                                  )}
+                                </div>
+                                {competency.shortName && (
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                    Nombre corto: {competency.shortName}
+                                  </p>
+                                )}
+                                {competency.description && (
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{competency.description}</p>
+                                )}
+                                {!competency.canDelete && (
+                                  <p className="text-xs text-amber-700 dark:text-amber-300 mt-2">
+                                    Ya tiene uso asociado. Puedes editarla, pero no eliminarla.
+                                  </p>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => openEditCustomCompetencyModal(competency)}
+                                  className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                                  aria-label={`Editar ${competency.name}`}
+                                >
+                                  <Pencil size={15} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setCustomCompetencyToDelete(competency)}
+                                  disabled={!competency.canDelete}
+                                  className="p-2 rounded-lg text-red-500 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-900/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                                  aria-label={`Eliminar ${competency.name}`}
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )) : (
+                          <div className="rounded-lg border border-dashed border-amber-200 dark:border-amber-900/40 bg-white/70 dark:bg-gray-900/30 px-4 py-6 text-center">
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Todavia no creaste competencias personalizadas.</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/70 space-y-4">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800 dark:text-white">Sistema de calificacion</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Cambia la forma en que se muestran las notas. Se aplicara al guardar cambios.
+                      </p>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        {[
+                          { value: 'PERU_LETTERS' as const, label: 'Letras', helper: 'AD, A, B, C' },
+                          { value: 'PERU_VIGESIMAL' as const, label: 'Vigesimal', helper: '0 a 20' },
+                        ].map((scale) => (
+                          <button
+                            key={scale.value}
+                            type="button"
+                            onClick={() => setFormData({ ...formData, gradeScaleType: scale.value })}
+                            className={`rounded-xl border px-3 py-3 text-left transition-all ${
+                              activeGradeScale === scale.value
+                                ? 'border-emerald-400 bg-emerald-100/80 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/60 text-gray-600 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+                            }`}
+                          >
+                            <p className="text-sm font-semibold">{scale.label}</p>
+                            <p className="text-xs opacity-80 mt-1">{scale.helper}</p>
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="space-y-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/60 p-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                          Vista previa
+                        </p>
+                        {scalePreview.map((item) => (
+                          <div key={item.label} className="flex items-center justify-between rounded-lg bg-gray-50 dark:bg-gray-800 px-3 py-2">
+                            <span className="text-sm font-medium text-gray-800 dark:text-white">{item.label}</span>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">{item.desc}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
         </div>
 
         {/* Columna lateral */}
@@ -1169,80 +1647,6 @@ export const ClassroomSettingsPage = () => {
               )}
             </div>
           </motion.div>
-
-          {/* Sección de Competencias - Solo si está habilitado */}
-          {classroom.useCompetencies && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.45 }}
-              className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5"
-            >
-              <h2 className="font-semibold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
-                <div className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg flex items-center justify-center">
-                  <BookOpen size={16} className="text-white" />
-                </div>
-                Sistema de Calificaciones por Competencias
-              </h2>
-              
-              <div className="space-y-4">
-                {/* Info del área curricular */}
-                <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-200 dark:border-emerald-800">
-                  <div className="flex items-center gap-3">
-                    <Award size={20} className="text-emerald-600 dark:text-emerald-400" />
-                    <div>
-                      <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
-                        Área Curricular Configurada
-                      </p>
-                      <p className="text-xs text-emerald-600 dark:text-emerald-400">
-                        Sistema: {classroom.gradeScaleType === 'PERU_LETTERS' ? 'Perú - Letras (AD, A, B, C)' : 
-                                  classroom.gradeScaleType === 'PERU_VIGESIMAL' ? 'Perú - Vigesimal (0-20)' :
-                                  classroom.gradeScaleType === 'CENTESIMAL' ? 'Centesimal (0-100)' :
-                                  classroom.gradeScaleType === 'USA_LETTERS' ? 'USA - Letras (A-F)' : 'Personalizado'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Configuración de rangos de calificación */}
-                <div>
-                  <h3 className="text-sm font-medium text-gray-700 dark:text-gray-200 mb-3">
-                    Rangos de Calificación y Recompensas
-                  </h3>
-                  <div className="space-y-2">
-                    {(classroom.gradeScaleType === 'PERU_LETTERS' ? [
-                      { label: 'AD - Logro Destacado', minPercent: 90, maxPercent: 100, xpReward: 50, gpReward: 20 },
-                      { label: 'A - Logrado', minPercent: 70, maxPercent: 89, xpReward: 30, gpReward: 10 },
-                      { label: 'B - En Proceso', minPercent: 50, maxPercent: 69, xpReward: 15, gpReward: 5 },
-                      { label: 'C - En Inicio', minPercent: 0, maxPercent: 49, xpReward: 5, gpReward: 0 },
-                    ] : classroom.gradeScaleConfig?.ranges || []).map((range, index) => (
-                      <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-gray-800 dark:text-white">{range.label}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">
-                            {range.minPercent}% - {range.maxPercent}%
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <div className="text-center">
-                            <p className="text-xs text-gray-500 dark:text-gray-400">XP</p>
-                            <p className="text-sm font-bold text-violet-600 dark:text-violet-400">+{range.xpReward}</p>
-                          </div>
-                          <div className="text-center">
-                            <p className="text-xs text-gray-500 dark:text-gray-400">GP</p>
-                            <p className="text-sm font-bold text-amber-600 dark:text-amber-400">+{range.gpReward}</p>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                    Las recompensas se otorgan automáticamente al publicar las calificaciones.
-                  </p>
-                </div>
-              </div>
-            </motion.div>
-          )}
 
           {/* Gestión de Estudiantes */}
           <motion.div
@@ -1690,6 +2094,257 @@ ${(() => {
         variant="warning"
         isLoading={deleteDemoMutation.isPending}
       />
+
+      <ConfirmModal
+        isOpen={!!extraCompetencyToRemove}
+        onClose={() => setExtraCompetencyToRemove(null)}
+        onConfirm={() => {
+          if (!extraCompetencyToRemove) {
+            return;
+          }
+
+          removeCompetencyMutation.mutate(extraCompetencyToRemove.id);
+        }}
+        title="¿Retirar competencia adicional?"
+        message={extraCompetencyToRemove
+          ? `Se retirara "${extraCompetencyToRemove.name}" solo de esta clase. El catalogo oficial no se modificara.`
+          : 'Esta accion no se puede deshacer.'}
+        confirmText="Retirar"
+        variant="warning"
+        isLoading={removeCompetencyMutation.isPending}
+      />
+
+      <ConfirmModal
+        isOpen={!!customCompetencyToDelete}
+        onClose={() => setCustomCompetencyToDelete(null)}
+        onConfirm={() => {
+          if (!customCompetencyToDelete) {
+            return;
+          }
+
+          deleteCustomCompetencyMutation.mutate(customCompetencyToDelete.id);
+        }}
+        title="¿Eliminar competencia personalizada?"
+        message={customCompetencyToDelete
+          ? `Se eliminara "${customCompetencyToDelete.name}" del aula. Esta accion no se puede deshacer.`
+          : 'Esta accion no se puede deshacer.'}
+        confirmText="Eliminar"
+        variant="danger"
+        isLoading={deleteCustomCompetencyMutation.isPending}
+      />
+
+      {showCustomCompetencyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={closeCustomCompetencyModal}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-2xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden"
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  {editingCustomCompetency ? 'Editar competencia personalizada' : 'Crear competencia personalizada'}
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Se asociara automaticamente al area curricular actual del aula.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeCustomCompetencyModal}
+                className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+                Area heredada: {activeArea?.name || 'Sin area configurada'}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
+                  Nombre
+                </label>
+                <input
+                  value={customCompetencyForm.name}
+                  onChange={(e) => setCustomCompetencyForm((current) => ({ ...current, name: e.target.value }))}
+                  placeholder="Ej: Explica procesos de su contexto"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-white text-sm outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
+                  Nombre corto
+                </label>
+                <input
+                  value={customCompetencyForm.shortName}
+                  onChange={(e) => setCustomCompetencyForm((current) => ({ ...current, shortName: e.target.value }))}
+                  placeholder="Opcional"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-white text-sm outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
+                  Descripcion
+                </label>
+                <textarea
+                  value={customCompetencyForm.description}
+                  onChange={(e) => setCustomCompetencyForm((current) => ({ ...current, description: e.target.value }))}
+                  rows={4}
+                  placeholder="Opcional"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-white text-sm outline-none focus:ring-2 focus:ring-amber-500 resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="px-5 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3 bg-gray-50 dark:bg-gray-900/40">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Esta competencia quedara disponible en actividades, evidencias y libro de calificaciones.
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={closeCustomCompetencyModal}
+                  className="px-4 py-2 text-sm font-medium rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCustomCompetencySubmit}
+                  disabled={createCustomCompetencyMutation.isPending || updateCustomCompetencyMutation.isPending}
+                  className="px-4 py-2 text-sm font-medium rounded-xl bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {(createCustomCompetencyMutation.isPending || updateCustomCompetencyMutation.isPending) && (
+                    <Loader2 size={14} className="animate-spin" />
+                  )}
+                  {editingCustomCompetency ? 'Guardar cambios' : 'Crear competencia'}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {showAddCompetenciesModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setShowAddCompetenciesModal(false)}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-3xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden"
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Agregar competencias al aula</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Selecciona competencias adicionales de otras areas del mismo nivel educativo.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddCompetenciesModal(false)}
+                className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+              <div className="relative">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  value={competencySearch}
+                  onChange={(e) => setCompetencySearch(e.target.value)}
+                  placeholder="Buscar competencia o area..."
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-white text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
+                <span className="px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-700">Area base: {activeArea?.name || 'Sin area'}</span>
+                <span className="px-2 py-1 rounded-full bg-gray-100 dark:bg-gray-700">Seleccionadas: {selectedCompetencyIds.length}</span>
+              </div>
+
+              <div className="space-y-4">
+                {availableCompetenciesByArea.length > 0 ? availableCompetenciesByArea.map((area) => (
+                  <div key={area.id} className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                    <div className="px-4 py-3 bg-gray-50 dark:bg-gray-900/60 border-b border-gray-200 dark:border-gray-700">
+                      <p className="text-sm font-semibold text-gray-800 dark:text-white">{area.name}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{area.competencies.length} competencia(s) disponibles</p>
+                    </div>
+
+                    <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                      {area.competencies.map((competency) => {
+                        const isSelected = selectedCompetencyIds.includes(competency.id);
+                        return (
+                          <button
+                            key={competency.id}
+                            type="button"
+                            onClick={() => toggleCompetencySelection(competency.id)}
+                            className={`w-full flex items-start justify-between gap-4 px-4 py-3 text-left transition-colors ${
+                              isSelected
+                                ? 'bg-emerald-50 dark:bg-emerald-900/20'
+                                : 'bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/40'
+                            }`}
+                          >
+                            <div>
+                              <p className="text-sm font-medium text-gray-800 dark:text-white">{competency.name}</p>
+                              {competency.description && (
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{competency.description}</p>
+                              )}
+                            </div>
+                            <span className={`mt-0.5 flex-shrink-0 w-5 h-5 rounded-full border flex items-center justify-center ${
+                              isSelected
+                                ? 'border-emerald-500 bg-emerald-500 text-white'
+                                : 'border-gray-300 dark:border-gray-600'
+                            }`}>
+                              {isSelected && <Check size={12} />}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )) : (
+                  <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                    No hay competencias adicionales disponibles con los filtros actuales.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="px-5 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3 bg-gray-50 dark:bg-gray-900/40">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Las competencias agregadas quedaran disponibles en libro de calificaciones, actividades y asignacion de evidencias.
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddCompetenciesModal(false)}
+                  className="px-4 py-2 text-sm font-medium rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => addCompetenciesMutation.mutate(selectedCompetencyIds)}
+                  disabled={selectedCompetencyIds.length === 0 || addCompetenciesMutation.isPending}
+                  className="px-4 py-2 text-sm font-medium rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {addCompetenciesMutation.isPending && <Loader2 size={14} className="animate-spin" />}
+                  Agregar seleccionadas
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {/* Modal para añadir estudiantes placeholder */}
       <AddPlaceholderStudentsModal

@@ -74,6 +74,24 @@ const updateClassroomSchema = z.object({
   gradeScaleType: z.string().max(20).optional().nullable(),
 });
 
+const addClassroomCompetenciesSchema = z.object({
+  competencyIds: z.array(z.string().max(36)).min(1).max(50),
+});
+
+const createCustomClassroomCompetencySchema = z.object({
+  name: z.string().min(2).max(255),
+  shortName: z.string().max(100).optional().nullable(),
+  description: z.string().max(1000).optional().nullable(),
+});
+
+const updateCustomClassroomCompetencySchema = z.object({
+  name: z.string().min(2).max(255).optional(),
+  shortName: z.string().max(100).optional().nullable(),
+  description: z.string().max(1000).optional().nullable(),
+}).refine((data) => Object.keys(data).length > 0, {
+  message: 'Debes enviar al menos un campo para actualizar',
+});
+
 const joinClassroomSchema = z.object({
   code: z.string().length(6),
   characterName: z.string().min(2).max(100),
@@ -228,6 +246,277 @@ export class ClassroomController {
     }
   }
 
+  async getCompetencies(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const classroom = await classroomService.getById(id);
+
+      if (!classroom) {
+        return res.status(404).json({
+          success: false,
+          message: 'Clase no encontrada',
+        });
+      }
+
+      if (classroom.teacherId !== req.user!.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'No tienes permiso para esta clase',
+        });
+      }
+
+      const competencies = await classroomService.getEnabledCompetencies(id);
+
+      res.json({
+        success: true,
+        data: competencies,
+      });
+    } catch (error) {
+      console.error('Error getting classroom competencies:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error al obtener competencias del aula',
+      });
+    }
+  }
+
+  async addCompetencies(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const data = addClassroomCompetenciesSchema.parse(req.body);
+      const classroom = await classroomService.getById(id);
+
+      if (!classroom) {
+        return res.status(404).json({
+          success: false,
+          message: 'Clase no encontrada',
+        });
+      }
+
+      if (classroom.teacherId !== req.user!.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'No tienes permiso para esta clase',
+        });
+      }
+
+      const result = await classroomService.addCompetencies(id, data.competencyIds);
+
+      res.json({
+        success: true,
+        message: result.created > 0
+          ? `${result.created} competencia(s) agregada(s) al aula`
+          : 'No se agregaron competencias nuevas',
+        data: result,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          message: 'Datos inválidos',
+          errors: error.errors,
+        });
+      }
+
+      if (error instanceof Error) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      console.error('Error adding classroom competencies:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error al agregar competencias al aula',
+      });
+    }
+  }
+
+  async removeCompetency(req: Request, res: Response) {
+    try {
+      const { id, competencyId } = req.params;
+      const classroom = await classroomService.getById(id);
+
+      if (!classroom) {
+        return res.status(404).json({
+          success: false,
+          message: 'Clase no encontrada',
+        });
+      }
+
+      if (classroom.teacherId !== req.user!.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'No tienes permiso para esta clase',
+        });
+      }
+
+      await classroomService.removeCompetency(id, competencyId, req.user!.id);
+
+      res.json({
+        success: true,
+        message: 'Competencia adicional retirada del aula',
+      });
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      console.error('Error removing classroom competency:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error al retirar competencia del aula',
+      });
+    }
+  }
+
+  async createCustomCompetency(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const data = createCustomClassroomCompetencySchema.parse(req.body);
+      const classroom = await classroomService.getById(id);
+
+      if (!classroom) {
+        return res.status(404).json({
+          success: false,
+          message: 'Clase no encontrada',
+        });
+      }
+
+      if (classroom.teacherId !== req.user!.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'No tienes permiso para esta clase',
+        });
+      }
+
+      const competency = await classroomService.createCustomCompetency(id, req.user!.id, data);
+
+      res.status(201).json({
+        success: true,
+        message: 'Competencia personalizada creada',
+        data: competency,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          message: 'Datos inválidos',
+          errors: error.errors,
+        });
+      }
+
+      if (error instanceof Error) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      console.error('Error creating custom classroom competency:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error al crear competencia personalizada',
+      });
+    }
+  }
+
+  async updateCustomCompetency(req: Request, res: Response) {
+    try {
+      const { id, competencyId } = req.params;
+      const data = updateCustomClassroomCompetencySchema.parse(req.body);
+      const classroom = await classroomService.getById(id);
+
+      if (!classroom) {
+        return res.status(404).json({
+          success: false,
+          message: 'Clase no encontrada',
+        });
+      }
+
+      if (classroom.teacherId !== req.user!.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'No tienes permiso para esta clase',
+        });
+      }
+
+      const competency = await classroomService.updateCustomCompetency(id, competencyId, req.user!.id, data);
+
+      res.json({
+        success: true,
+        message: 'Competencia personalizada actualizada',
+        data: competency,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          message: 'Datos inválidos',
+          errors: error.errors,
+        });
+      }
+
+      if (error instanceof Error) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      console.error('Error updating custom classroom competency:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error al actualizar competencia personalizada',
+      });
+    }
+  }
+
+  async deleteCustomCompetency(req: Request, res: Response) {
+    try {
+      const { id, competencyId } = req.params;
+      const classroom = await classroomService.getById(id);
+
+      if (!classroom) {
+        return res.status(404).json({
+          success: false,
+          message: 'Clase no encontrada',
+        });
+      }
+
+      if (classroom.teacherId !== req.user!.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'No tienes permiso para esta clase',
+        });
+      }
+
+      await classroomService.deleteCustomCompetency(id, competencyId, req.user!.id);
+
+      res.json({
+        success: true,
+        message: 'Competencia personalizada eliminada',
+      });
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      console.error('Error deleting custom classroom competency:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error al eliminar competencia personalizada',
+      });
+    }
+  }
+
   async delete(req: Request, res: Response) {
     try {
       const { id } = req.params;
@@ -368,7 +657,11 @@ export class ClassroomController {
           const competencies = await db
             .select()
             .from(curriculumCompetencies)
-            .where(eq(curriculumCompetencies.areaId, area.id))
+            .where(and(
+              eq(curriculumCompetencies.areaId, area.id),
+              eq(curriculumCompetencies.isActive, true),
+              eq(curriculumCompetencies.sourceType, 'OFFICIAL'),
+            ))
             .orderBy(curriculumCompetencies.displayOrder);
           return {
             ...area,

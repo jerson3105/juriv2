@@ -31,6 +31,7 @@ import { Card } from '../../components/ui/Card';
 import { classroomApi, type Classroom } from '../../lib/classroomApi';
 import { gradeApi, type PerformanceBucket } from '../../lib/gradeApi';
 import toast from 'react-hot-toast';
+import { useClassroomCompetencies } from '../../hooks/useClassroomCompetencies';
 
 export const GradebookPage = () => {
   const { classroom, refetch } = useOutletContext<{ classroom: Classroom; refetch: () => void }>();
@@ -70,7 +71,10 @@ export const GradebookPage = () => {
     queryFn: () => classroomApi.getCurriculumAreas('PE'),
   });
 
-  const classroomCompetencies = curriculumAreas.find((a: any) => a.id === classroom.curriculumAreaId)?.competencies || [];
+  const { competencies: classroomCompetencies = [] } = useClassroomCompetencies(
+    classroom.id,
+    !!classroom.useCompetencies && !!classroom.curriculumAreaId,
+  );
 
   // Obtener calificaciones
   const { data: gradebookData, isLoading } = useQuery({
@@ -168,6 +172,9 @@ export const GradebookPage = () => {
       .filter((student) => student.studentName.toLowerCase().includes(searchTerm.toLowerCase()))
       .sort((a, b) => a.studentName.localeCompare(b.studentName, 'es'));
   }, [gradebookData?.students, searchTerm]);
+
+  const hasEvaluatedEvidence = (grade: { activitiesCount: number; isManualOverride: boolean }) =>
+    grade.activitiesCount > 0 || grade.isManualOverride;
 
   const getBucketColor = (bucket: PerformanceBucket) => {
     if (bucket === 'AD') return 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30';
@@ -489,9 +496,10 @@ export const GradebookPage = () => {
                       </td>
                       {classroomCompetencies.map((comp: any) => {
                         const grade = student.grades.find(g => g.competencyId === comp.id);
+                        const isEvaluated = grade ? hasEvaluatedEvidence(grade) : false;
                         return (
                           <td key={comp.id} className="px-3 py-3 text-center">
-                            {grade ? (
+                            {grade && isEvaluated ? (
                               <span
                                 className={`inline-flex items-center justify-center px-2 py-1 rounded-lg text-sm font-bold ${getBucketColor(grade.bucket)}`}
                               >
@@ -520,8 +528,16 @@ export const GradebookPage = () => {
                             <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
                               📊 Desglose de calificaciones de {student.studentName}
                             </h4>
-                            
-                            {student.grades.map((grade) => {
+
+                            {student.grades.filter(hasEvaluatedEvidence).length === 0 && (
+                              <div className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+                                <p className="text-sm text-gray-500 dark:text-gray-400 italic">
+                                  Este estudiante aún no tiene evidencias registradas en las competencias habilitadas para el período seleccionado.
+                                </p>
+                              </div>
+                            )}
+
+                            {student.grades.filter(hasEvaluatedEvidence).map((grade) => {
                               const comp = classroomCompetencies.find((c: any) => c.id === grade.competencyId);
                               const activities = grade.calculationDetails?.activities || [];
                               

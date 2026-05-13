@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Sparkles,
@@ -15,8 +14,9 @@ import {
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { behaviorApi, type Behavior } from '../../lib/behaviorApi';
-import { classroomApi, type Classroom } from '../../lib/classroomApi';
+import { type Classroom } from '../../lib/classroomApi';
 import { type PointType } from '../../lib/studentApi';
+import { useClassroomCompetencies } from '../../hooks/useClassroomCompetencies';
 
 export { behaviorApi, type Behavior };
 export { type PointType };
@@ -56,12 +56,10 @@ export const PointsModal = ({
   const [manualCompetencyId, setManualCompetencyId] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { data: curriculumAreas = [] } = useQuery({
-    queryKey: ['curriculum-areas'],
-    queryFn: () => classroomApi.getCurriculumAreas('PE'),
-    enabled: !!classroom.useCompetencies && !!classroom.curriculumAreaId,
-  });
-  const classroomCompetencies = curriculumAreas.find((a: any) => a.id === classroom.curriculumAreaId)?.competencies || [];
+  const { competencies: classroomCompetencies = [] } = useClassroomCompetencies(
+    classroom.id,
+    !!classroom.useCompetencies && !!classroom.curriculumAreaId,
+  );
 
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

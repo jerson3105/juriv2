@@ -26,6 +26,7 @@ import { BadgeCard } from '../../components/badges/BadgeCard';
 import { Button } from '../../components/ui/Button';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
 import toast from 'react-hot-toast';
+import { useClassroomCompetencies } from '../../hooks/useClassroomCompetencies';
 
 // Helper para mostrar icono de insignia (emoji o imagen)
 export const BadgeIcon = ({ badge, size = 'md' }: { badge: Badge; size?: 'sm' | 'md' | 'lg' }) => {
@@ -731,14 +732,10 @@ const CreateBadgeModal = ({
   });
   const [competencyId, setCompetencyId] = useState<string | null>((badge as any)?.competencyId || null);
 
-  // Cargar competencias si la clase las usa
-  const { data: curriculumAreas = [] } = useQuery({
-    queryKey: ['curriculum-areas'],
-    queryFn: () => classroomApi.getCurriculumAreas('PE'),
-    enabled: classroom?.useCompetencies,
-  });
-  
-  const classroomCompetencies = curriculumAreas.find((a: any) => a.id === classroom?.curriculumAreaId)?.competencies || [];
+  const { competencies: classroomCompetencies = [] } = useClassroomCompetencies(
+    classroom?.id,
+    !!classroom?.useCompetencies && !!classroom?.curriculumAreaId,
+  );
 
   // Estado para imagen personalizada
   const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -1541,14 +1538,10 @@ const AIBadgeModal = ({
     enabled: isOpen,
   });
 
-  // Cargar competencias si la clase las usa
-  const { data: curriculumAreas = [] } = useQuery({
-    queryKey: ['curriculum-areas-badges'],
-    queryFn: () => classroomApi.getCurriculumAreas('PE'),
-    enabled: classroom?.useCompetencies,
-  });
-  
-  const classroomCompetencies = curriculumAreas.find((a: any) => a.id === classroom?.curriculumAreaId)?.competencies || [];
+  const { competencies: classroomCompetencies = [] } = useClassroomCompetencies(
+    classroom?.id,
+    !!classroom?.useCompetencies && !!classroom?.curriculumAreaId,
+  );
 
   // Helper para obtener nombre de comportamiento por ID
   const getBehaviorName = (behaviorId: string) => {

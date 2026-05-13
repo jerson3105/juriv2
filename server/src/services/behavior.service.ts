@@ -587,11 +587,7 @@ export class BehaviorService {
       throw new Error('No puedes exportar a la misma clase origen');
     }
 
-    // 4. Para cada clase destino, determinar si comparte área curricular
-    //    Si comparte área → mantener competencyId (siempre que la competencia esté habilitada)
-    //    Si NO comparte → competencyId = null
-
-    // Obtener competencias habilitadas en cada clase destino
+    // 4. Obtener competencias habilitadas en cada clase destino
     const targetIds = validTargets.map(c => c.id);
     const targetCompetencies = await db.query.classroomCompetencies.findMany({
       where: and(
@@ -615,24 +611,12 @@ export class BehaviorService {
     let totalCreated = 0;
 
     for (const target of validTargets) {
-      const sameArea = sourceClassroom.curriculumAreaId &&
-        target.curriculumAreaId &&
-        sourceClassroom.curriculumAreaId === target.curriculumAreaId;
-
       const enabledCompetencies = competenciesByClassroom.get(target.id) || new Set<string>();
 
       for (const src of sourceBehaviors) {
-        // Determinar si mantener la competencia
-        // - Misma área curricular → siempre mantener (la competencia pertenece al área)
-        // - Diferente área → solo mantener si la competencia está explícitamente habilitada
-        let competencyId: string | null = null;
-        if (src.competencyId) {
-          if (sameArea) {
-            competencyId = src.competencyId;
-          } else if (enabledCompetencies.has(src.competencyId)) {
-            competencyId = src.competencyId;
-          }
-        }
+        const competencyId = src.competencyId && enabledCompetencies.has(src.competencyId)
+          ? src.competencyId
+          : null;
 
         insertBatch.push({
           id: uuidv4(),

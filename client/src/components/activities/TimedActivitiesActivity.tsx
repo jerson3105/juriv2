@@ -20,7 +20,6 @@ import {
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { behaviorApi } from '../../lib/behaviorApi';
-import { classroomApi } from '../../lib/classroomApi';
 import {
   timedActivityApi,
   type TimedActivity,
@@ -33,6 +32,7 @@ import { TimedActivityRunner } from './TimedActivityRunner';
 import { BombRandomRunner } from './BombRandomRunner';
 import toast from 'react-hot-toast';
 import { ConfirmModal } from '../ui/ConfirmModal';
+import { useClassroomCompetencies } from '../../hooks/useClassroomCompetencies';
 
 interface TimedActivitiesActivityProps {
   classroom: any;
@@ -382,14 +382,10 @@ const ActivityFormModal = ({ activity, behaviors, classroom, onClose, onSubmit, 
     competencyIds: [],
   });
 
-  // Cargar competencias si la clase las usa
-  const { data: curriculumAreas = [] } = useQuery({
-    queryKey: ['curriculum-areas'],
-    queryFn: () => classroomApi.getCurriculumAreas('PE'),
-    enabled: classroom?.useCompetencies,
-  });
-  
-  const classroomCompetencies = curriculumAreas.find((a: any) => a.id === classroom?.curriculumAreaId)?.competencies || [];
+  const { competencies: classroomCompetencies = [] } = useClassroomCompetencies(
+    classroom?.id,
+    !!classroom?.useCompetencies && !!classroom?.curriculumAreaId,
+  );
   
   const toggleCompetency = (id: string) => {
     setFormData(p => ({

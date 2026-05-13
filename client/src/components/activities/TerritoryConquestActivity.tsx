@@ -225,23 +225,48 @@ function FinishedScreen({
   });
 
   const applyBehaviorMutation = useMutation({
-    mutationFn: async (behavior: Behavior) => {
-      const ids = Array.from(selectedStudentIds);
-      return await behaviorApi.apply({ behaviorId: behavior.id, studentIds: ids });
+    mutationFn: async ({ behavior, studentIds }: { behavior: Behavior; studentIds: string[] }) => {
+      return await behaviorApi.apply({ behaviorId: behavior.id, studentIds });
     },
-    onSuccess: (result) => {
+    onMutate: ({ behavior, studentIds }) => {
+      const studentSuffix = studentIds.length === 1 ? '' : 's';
+      return {
+        toastId: toast.loading(`Aplicando "${behavior.name}" a ${studentIds.length} estudiante${studentSuffix}...`),
+      };
+    },
+    onSuccess: (result, _variables, context) => {
       queryClient.invalidateQueries({ queryKey: ['students'] });
       const behavior = result.behavior;
       const xp = behavior.xpValue || (behavior.pointType === 'XP' ? behavior.pointValue : 0);
       const hp = behavior.hpValue || (behavior.pointType === 'HP' ? behavior.pointValue : 0);
       const gp = behavior.gpValue || (behavior.pointType === 'GP' ? behavior.pointValue : 0);
+      const sign = behavior.isPositive ? '+' : '-';
+      const parts = [];
+      if (xp > 0) parts.push(`${sign}${xp} XP`);
+      if (hp > 0) parts.push(`${sign}${hp} HP`);
+      if (gp > 0) parts.push(`${sign}${gp} GP`);
+      const pointsSummary = parts.length > 0 ? parts.join(', ') : 'Aplicado';
 
       if (xp > 0 || hp > 0 || gp > 0) {
         showMultiPointsEffect(xp, hp, gp, behavior.isPositive);
       }
 
       play(pointsModalPositive ? 'pointsGain' : 'pointsLoss');
-      setShowPointsModal(false);
+      if (context?.toastId) {
+        toast.success(`${pointsSummary} — ${behavior.name}`, { id: context.toastId, duration: 2500 });
+      } else {
+        toast.success(`${pointsSummary} — ${behavior.name}`, { duration: 2500 });
+      }
+    },
+    onError: (error: any, variables, context) => {
+      setSelectedStudentIds((current) => current.size === 0 ? new Set(variables.studentIds) : current);
+
+      const message = error?.response?.data?.message || 'Error al aplicar comportamiento';
+      if (context?.toastId) {
+        toast.error(message, { id: context.toastId });
+      } else {
+        toast.error(message);
+      }
     },
   });
 
@@ -281,6 +306,18 @@ function FinishedScreen({
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
+  };
+
+  const handleApplyBehavior = (behavior: Behavior) => {
+    const studentIds = Array.from(selectedStudentIds);
+    if (studentIds.length === 0) {
+      toast.error('Selecciona al menos un estudiante');
+      return;
+    }
+
+    setShowPointsModal(false);
+    setSelectedStudentIds(new Set());
+    applyBehaviorMutation.mutate({ behavior, studentIds });
   };
 
   const selectTeam = (clanName: string) => {
@@ -464,7 +501,7 @@ function FinishedScreen({
           selectedCount={selectedStudentIds.size}
           selectedStudentNames={selectedStudentNames}
           behaviors={(behaviors as Behavior[]).filter((b) => b.isPositive === pointsModalPositive)}
-          onApplyBehavior={(b) => applyBehaviorMutation.mutate(b)}
+          onApplyBehavior={handleApplyBehavior}
           onApplyManual={(pointType, amount, reason, competencyId) =>
             applyManualMutation.mutateAsync({ pointType, amount, reason, competencyId })
           }

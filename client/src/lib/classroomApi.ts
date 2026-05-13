@@ -137,6 +137,37 @@ export interface CurriculumArea {
   competencies: CurriculumCompetency[];
 }
 
+export interface ClassroomCompetency {
+  classroomCompetencyId: string;
+  id: string;
+  sourceType: 'OFFICIAL' | 'CUSTOM_CLASSROOM';
+  name: string;
+  shortName: string | null;
+  description: string | null;
+  areaId: string;
+  areaName: string;
+  areaShortName: string | null;
+  weight: number;
+  isActive: boolean;
+  isBase: boolean;
+  isCustom: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
+  createdAt: string;
+}
+
+export interface CreateCustomClassroomCompetencyData {
+  name: string;
+  shortName?: string | null;
+  description?: string | null;
+}
+
+export interface UpdateCustomClassroomCompetencyData {
+  name?: string;
+  shortName?: string | null;
+  description?: string | null;
+}
+
 export interface UpdateClassroomSettings {
   // General
   name?: string;
@@ -265,6 +296,44 @@ export const classroomApi = {
   syncCompetencies: async (id: string): Promise<{ created: number; total: number }> => {
     const response = await api.post(`/classrooms/${id}/sync-competencies`);
     return response.data.data;
+  },
+
+  // Obtener competencias habilitadas del aula
+  getCompetencies: async (id: string): Promise<ClassroomCompetency[]> => {
+    const response = await api.get(`/classrooms/${id}/competencies`);
+    return response.data.data;
+  },
+
+  // Agregar competencias al aula
+  addCompetencies: async (id: string, competencyIds: string[]): Promise<{ created: number; totalEnabled: number }> => {
+    const response = await api.post(`/classrooms/${id}/competencies`, { competencyIds });
+    return response.data.data;
+  },
+
+  // Retirar competencia oficial adicional del aula
+  removeCompetency: async (id: string, competencyId: string): Promise<void> => {
+    await api.delete(`/classrooms/${id}/competencies/${competencyId}`);
+  },
+
+  // Crear competencia personalizada del aula
+  createCustomCompetency: async (id: string, data: CreateCustomClassroomCompetencyData): Promise<ClassroomCompetency> => {
+    const response = await api.post(`/classrooms/${id}/competencies/custom`, data);
+    return response.data.data;
+  },
+
+  // Actualizar competencia personalizada del aula
+  updateCustomCompetency: async (
+    id: string,
+    competencyId: string,
+    data: UpdateCustomClassroomCompetencyData,
+  ): Promise<ClassroomCompetency> => {
+    const response = await api.patch(`/classrooms/${id}/competencies/custom/${competencyId}`, data);
+    return response.data.data;
+  },
+
+  // Eliminar competencia personalizada del aula
+  deleteCustomCompetency: async (id: string, competencyId: string): Promise<void> => {
+    await api.delete(`/classrooms/${id}/competencies/custom/${competencyId}`);
   },
 
   // Unirse a clase (estudiante)

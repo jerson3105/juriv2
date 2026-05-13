@@ -11,8 +11,8 @@ import { Input } from '../ui/Input';
 import { Card } from '../ui/Card';
 import { jiroExpeditionApi, type CreateExpeditionData } from '../../lib/jiroExpeditionApi';
 import { questionBankApi } from '../../lib/questionBankApi';
-import { classroomApi } from '../../lib/classroomApi';
 import toast from 'react-hot-toast';
+import { useClassroomCompetencies } from '../../hooks/useClassroomCompetencies';
 
 // Imagen de Jiro - coloca la imagen en: public/jiro-mascot.png (tamaño recomendado: 128x128px o 256x256px)
 const JIRO_IMAGE = '/jiro-mascot.png';
@@ -360,15 +360,10 @@ const CreateExpeditionModal = ({ isOpen, onClose, onSubmit, isLoading, questionB
   const [rewardGpPerCorrect, setRewardGpPerCorrect] = useState(2);
   const [selectedCompetencyIds, setSelectedCompetencyIds] = useState<string[]>([]);
 
-  // Obtener áreas curriculares para las competencias
-  const { data: curriculumAreas = [] } = useQuery({
-    queryKey: ['curriculum-areas'],
-    queryFn: () => classroomApi.getCurriculumAreas('PE'),
-    enabled: isOpen && classroom?.useCompetencies,
-  });
-
-  // Obtener competencias del área de la clase
-  const classroomCompetencies = curriculumAreas.find((a: any) => a.id === classroom?.curriculumAreaId)?.competencies || [];
+  const { competencies: classroomCompetencies = [] } = useClassroomCompetencies(
+    classroom?.id,
+    isOpen && !!classroom?.useCompetencies && !!classroom?.curriculumAreaId,
+  );
 
   const toggleCompetency = (id: string) => {
     setSelectedCompetencyIds(prev => 

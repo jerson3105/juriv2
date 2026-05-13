@@ -24,7 +24,7 @@ import { Card } from '../../components/ui/Card';
 import { useStudentStore } from '../../store/studentStore';
 import { studentApi } from '../../lib/studentApi';
 import { gradeApi, type PerformanceBucket } from '../../lib/gradeApi';
-import { classroomApi } from '../../lib/classroomApi';
+import { useClassroomCompetencies } from '../../hooks/useClassroomCompetencies';
 
 // Componente para mostrar el desglose de actividades
 const ActivityBreakdown = ({ grade }: { grade: any }) => {
@@ -107,14 +107,10 @@ export const StudentGradesPage = () => {
     enabled: !!classroom?.id && !!classroom?.useCompetencies,
   });
 
-  // Obtener áreas curriculares para nombres de competencias
-  const { data: curriculumAreas = [] } = useQuery({
-    queryKey: ['curriculum-areas'],
-    queryFn: () => classroomApi.getCurriculumAreas('PE'),
-    enabled: !!classroom?.useCompetencies,
-  });
-
-  const classroomCompetencies = curriculumAreas.find((a: any) => a.id === classroom?.curriculumAreaId)?.competencies || [];
+  const { competencies: classroomCompetencies = [] } = useClassroomCompetencies(
+    classroom?.id,
+    !!classroom?.useCompetencies && !!classroom?.curriculumAreaId,
+  );
 
   // Período a consultar
   const periodToQuery = selectedPeriod === 'CURRENT' 
@@ -129,6 +125,7 @@ export const StudentGradesPage = () => {
   });
 
   const grades = gradebookResponse?.grades || [];
+  const visibleGrades = grades.filter((grade) => grade.activitiesCount > 0 || grade.isManualOverride);
   const average = gradebookResponse?.average;
   const gradeScaleType = gradebookResponse?.gradeScaleType || classroom?.gradeScaleType;
 
@@ -375,7 +372,7 @@ export const StudentGradesPage = () => {
             )}
           </h2>
           
-          {grades.length === 0 ? (
+          {visibleGrades.length === 0 ? (
             <Card className="p-8 text-center">
               <Award className="mx-auto text-gray-400 mb-4" size={48} />
               <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-2">
@@ -388,7 +385,7 @@ export const StudentGradesPage = () => {
               </p>
             </Card>
           ) : (
-            grades.map((grade) => {
+            visibleGrades.map((grade) => {
               const isExpanded = expandedCompetency === grade.competencyId;
               const comp = classroomCompetencies.find((c: any) => c.id === grade.competencyId);
               

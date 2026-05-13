@@ -32,10 +32,10 @@ import {
   type ExpeditionStatItem,
 } from '../../lib/expeditionApi';
 import { expeditionMapApi, type ExpeditionMap } from '../../lib/expeditionMapApi';
-import { classroomApi } from '../../lib/classroomApi';
 import { ExpeditionEditor } from './ExpeditionEditor';
 import toast from 'react-hot-toast';
 import { ConfirmModal } from '../ui/ConfirmModal';
+import { useClassroomCompetencies } from '../../hooks/useClassroomCompetencies';
 
 interface ExpeditionsActivityProps {
   classroom: any;
@@ -68,14 +68,10 @@ export const ExpeditionsActivity = ({ classroom, onBack }: ExpeditionsActivityPr
     competencyIds: [] as string[],
   });
 
-  // Cargar competencias si la clase las usa
-  const { data: curriculumAreas = [] } = useQuery({
-    queryKey: ['curriculum-areas'],
-    queryFn: () => classroomApi.getCurriculumAreas('PE'),
-    enabled: classroom?.useCompetencies,
-  });
-  
-  const classroomCompetencies = curriculumAreas.find((a: any) => a.id === classroom?.curriculumAreaId)?.competencies || [];
+  const { competencies: classroomCompetencies = [] } = useClassroomCompetencies(
+    classroom?.id,
+    !!classroom?.useCompetencies && !!classroom?.curriculumAreaId,
+  );
   
   const toggleCompetency = (id: string) => {
     setCreateForm(p => ({
