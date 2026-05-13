@@ -75,12 +75,14 @@ export const ClassroomSettingsPage = () => {
   const [competencySearch, setCompetencySearch] = useState('');
   const [selectedCompetencyIds, setSelectedCompetencyIds] = useState<string[]>([]);
   const [showCustomCompetencyModal, setShowCustomCompetencyModal] = useState(false);
+  const [showExportCustomCompetenciesModal, setShowExportCustomCompetenciesModal] = useState(false);
   const [editingCustomCompetency, setEditingCustomCompetency] = useState<ClassroomCompetency | null>(null);
   const [customCompetencyForm, setCustomCompetencyForm] = useState({
     name: '',
     shortName: '',
     description: '',
   });
+  const [selectedExportClassroomIds, setSelectedExportClassroomIds] = useState<string[]>([]);
   const [extraCompetencyToRemove, setExtraCompetencyToRemove] = useState<ClassroomCompetency | null>(null);
   const [customCompetencyToDelete, setCustomCompetencyToDelete] = useState<ClassroomCompetency | null>(null);
 
@@ -94,6 +96,12 @@ export const ClassroomSettingsPage = () => {
     queryKey: ['curriculum-areas', 'settings'],
     queryFn: () => classroomApi.getCurriculumAreas('PE'),
     enabled: classroom.useCompetencies,
+  });
+
+  const { data: myClassrooms = [], isLoading: isLoadingMyClassrooms } = useQuery({
+    queryKey: ['classrooms', 'export-custom-competencies'],
+    queryFn: classroomApi.getMyClassrooms,
+    enabled: showExportCustomCompetenciesModal,
   });
 
   const {
@@ -203,6 +211,87 @@ export const ClassroomSettingsPage = () => {
     },
   });
 
+  const exportCustomCompetenciesMutation = useMutation({
+    mutationFn: async (targetClassroomIds: string[]) => {
+      const exportableCompetencies = customCompetencies.map((competency) => ({
+        name: competency.name,
+        shortName: competency.shortName,
+        description: competency.description,
+      }));
+
+      const classroomMap = new Map(myClassrooms.map((item) => [item.id, item]));
+      let exportedCount = 0;
+      let duplicateCount = 0;
+      const failedExports: Array<{ classroomName: string; competencyName: string; message: string }> = [];
+
+      for (const targetClassroomId of targetClassroomIds) {
+        const targetClassroom = classroomMap.get(targetClassroomId);
+        if (!targetClassroom) {
+          continue;
+        }
+
+        for (const competency of exportableCompetencies) {
+          try {
+            await classroomApi.createCustomCompetency(targetClassroomId, competency);
+            exportedCount += 1;
+          } catch (error: any) {
+            const message = error?.response?.data?.message || 'Error al exportar competencia';
+
+            if (message.includes('Ya existe una competencia con ese nombre en el aula')) {
+              duplicateCount += 1;
+              continue;
+            }
+
+            failedExports.push({
+              classroomName: targetClassroom.name,
+              competencyName: competency.name,
+              message,
+            });
+          }
+        }
+      }
+
+      return {
+        exportedCount,
+        duplicateCount,
+        failedExports,
+        targetClassroomCount: targetClassroomIds.length,
+      };
+    },
+    onSuccess: (result) => {
+      const messages: string[] = [];
+
+      if (result.exportedCount > 0) {
+        messages.push(`${result.exportedCount} copia(s) exportadas`);
+      }
+
+      if (result.duplicateCount > 0) {
+        messages.push(`${result.duplicateCount} omitida(s) por nombre repetido`);
+      }
+
+      if (result.failedExports.length > 0) {
+        messages.push(`${result.failedExports.length} con error`);
+      }
+
+      closeExportCustomCompetenciesModal();
+
+      if (result.exportedCount > 0) {
+        toast.success(messages.join(' · '));
+        return;
+      }
+
+      if (result.duplicateCount > 0 && result.failedExports.length === 0) {
+        toast.error('No se exportaron competencias nuevas porque ya existen en las clases seleccionadas');
+        return;
+      }
+
+      toast.error(messages[0] || 'No se pudo exportar las competencias');
+    },
+    onError: () => {
+      toast.error('Error al exportar competencias personalizadas');
+    },
+  });
+
   const resetNewClassForm = () => {
     setNewClassName(''); setNewClassKey(''); setNewClassDesc(''); setNewClassIcon('⚔️'); setNewClassColor('blue');
   };
@@ -219,6 +308,11 @@ export const ClassroomSettingsPage = () => {
   const closeCustomCompetencyModal = () => {
     setShowCustomCompetencyModal(false);
     resetCustomCompetencyForm();
+  };
+
+  const closeExportCustomCompetenciesModal = () => {
+    setShowExportCustomCompetenciesModal(false);
+    setSelectedExportClassroomIds([]);
   };
 
   // Query para estudiantes placeholder
@@ -431,6 +525,10 @@ export const ClassroomSettingsPage = () => {
   const activeAreaId = formData.curriculumAreaId ?? classroom.curriculumAreaId;
   const activeGradeScale = formData.gradeScaleType ?? classroom.gradeScaleType ?? 'PERU_LETTERS';
   const activeArea = curriculumAreas.find((area) => area.id === activeAreaId) || null;
+  const exportTargetClassrooms = myClassrooms.filter((item) => item.id !== classroom.id);
+  const eligibleExportClassrooms = exportTargetClassrooms.filter((item) => item.useCompetencies && !!item.curriculumAreaId);
+  const ineligibleExportClassrooms = exportTargetClassrooms.filter((item) => !item.useCompetencies || !item.curriculumAreaId);
+  const allEligibleExportSelected = eligibleExportClassrooms.length > 0 && eligibleExportClassrooms.every((item) => selectedExportClassroomIds.includes(item.id));
   const enabledCompetencyIds = new Set(classroomCompetencies.map((competency) => competency.id));
   const filteredAreas = curriculumAreas.filter((area) => {
     if (!activeArea?.educationLevel || !area.educationLevel) {
@@ -495,6 +593,16 @@ export const ClassroomSettingsPage = () => {
     setShowCustomCompetencyModal(true);
   };
 
+  const openExportCustomCompetenciesModal = () => {
+    if (customCompetencies.length === 0) {
+      toast.error('Primero crea al menos una competencia personalizada');
+      return;
+    }
+
+    setSelectedExportClassroomIds([]);
+    setShowExportCustomCompetenciesModal(true);
+  };
+
   const openEditCustomCompetencyModal = (competency: ClassroomCompetency) => {
     setEditingCustomCompetency(competency);
     setCustomCompetencyForm({
@@ -526,6 +634,32 @@ export const ClassroomSettingsPage = () => {
     }
 
     createCustomCompetencyMutation.mutate(payload);
+  };
+
+  const toggleExportClassroomSelection = (classroomId: string) => {
+    setSelectedExportClassroomIds((current) => (
+      current.includes(classroomId)
+        ? current.filter((id) => id !== classroomId)
+        : [...current, classroomId]
+    ));
+  };
+
+  const toggleSelectAllExportClassrooms = () => {
+    if (allEligibleExportSelected) {
+      setSelectedExportClassroomIds([]);
+      return;
+    }
+
+    setSelectedExportClassroomIds(eligibleExportClassrooms.map((item) => item.id));
+  };
+
+  const handleExportCustomCompetencies = () => {
+    if (selectedExportClassroomIds.length === 0) {
+      toast.error('Selecciona al menos una clase destino');
+      return;
+    }
+
+    exportCustomCompetenciesMutation.mutate(selectedExportClassroomIds);
   };
 
   const Toggle = ({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) => (
@@ -1166,9 +1300,20 @@ export const ClassroomSettingsPage = () => {
                           <p className="text-sm font-semibold text-gray-800 dark:text-white">Competencias personalizadas</p>
                           <p className="text-xs text-gray-500 dark:text-gray-400">Se heredan automaticamente del area del aula y solo se usan en esta clase.</p>
                         </div>
-                        <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
-                          {customCompetencies.length}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                            {customCompetencies.length}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={openExportCustomCompetenciesModal}
+                            disabled={customCompetencies.length === 0}
+                            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 text-xs font-medium hover:bg-amber-100 dark:hover:bg-amber-900/40 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <Copy size={14} />
+                            Exportar a mis clases
+                          </button>
+                        </div>
                       </div>
 
                       <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
@@ -2132,6 +2277,133 @@ ${(() => {
         variant="danger"
         isLoading={deleteCustomCompetencyMutation.isPending}
       />
+
+      {showExportCustomCompetenciesModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={closeExportCustomCompetenciesModal}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-3xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden"
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Exportar competencias personalizadas</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Se crearán copias independientes de las {customCompetencies.length} competencia(s) personalizada(s) en otras clases tuyas.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeExportCustomCompetenciesModal}
+                className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/20 px-4 py-3">
+                <div className="text-sm text-amber-800 dark:text-amber-200">
+                  <p className="font-medium">Origen: {classroom.name}</p>
+                  <p className="text-xs mt-1">Solo se pueden seleccionar clases con competencias habilitadas y área curricular configurada.</p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={toggleSelectAllExportClassrooms}
+                  disabled={eligibleExportClassrooms.length === 0}
+                  className="px-3 py-2 rounded-xl border border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 text-xs font-medium hover:bg-amber-100 dark:hover:bg-amber-900/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {allEligibleExportSelected ? 'Quitar selección' : 'Seleccionar todas'}
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                {isLoadingMyClassrooms ? (
+                  <div className="rounded-xl border border-gray-200 dark:border-gray-700 px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                    Cargando clases...
+                  </div>
+                ) : exportTargetClassrooms.length > 0 ? (
+                  exportTargetClassrooms.map((targetClassroom) => {
+                    const isEligible = targetClassroom.useCompetencies && !!targetClassroom.curriculumAreaId;
+                    const isSelected = selectedExportClassroomIds.includes(targetClassroom.id);
+
+                    return (
+                      <label
+                        key={targetClassroom.id}
+                        className={`flex items-start gap-3 rounded-xl border px-4 py-3 transition-colors ${
+                          isEligible
+                            ? 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/60 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800'
+                            : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 opacity-70 cursor-not-allowed'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => isEligible && toggleExportClassroomSelection(targetClassroom.id)}
+                          disabled={!isEligible}
+                          className="mt-1 h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                        />
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-medium text-gray-800 dark:text-white">{targetClassroom.name}</p>
+                            {!isEligible && (
+                              <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                                No elegible
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            {targetClassroom.useCompetencies && targetClassroom.curriculumAreaId
+                              ? 'Lista para recibir copias de estas competencias personalizadas.'
+                              : 'Debes habilitar competencias y configurar un área curricular en esa clase.'}
+                          </p>
+                        </div>
+                      </label>
+                    );
+                  })
+                ) : (
+                  <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                    No tienes otras clases creadas para exportar estas competencias.
+                  </div>
+                )}
+              </div>
+
+              {ineligibleExportClassrooms.length > 0 && (
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {ineligibleExportClassrooms.length} clase(s) no son elegibles porque aún no tienen competencias habilitadas o les falta el área curricular.
+                </p>
+              )}
+            </div>
+
+            <div className="px-5 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3 bg-gray-50 dark:bg-gray-900/40">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Se exportarán {customCompetencies.length} competencia(s) a {selectedExportClassroomIds.length} clase(s) seleccionada(s).
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={closeExportCustomCompetenciesModal}
+                  className="px-4 py-2 text-sm font-medium rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportCustomCompetencies}
+                  disabled={selectedExportClassroomIds.length === 0 || exportCustomCompetenciesMutation.isPending}
+                  className="px-4 py-2 text-sm font-medium rounded-xl bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {exportCustomCompetenciesMutation.isPending && <Loader2 size={14} className="animate-spin" />}
+                  Exportar seleccionadas
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {showCustomCompetencyModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={closeCustomCompetencyModal}>

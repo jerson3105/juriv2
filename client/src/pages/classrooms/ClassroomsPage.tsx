@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Users, Copy, Check, Trash2, X, GraduationCap, Sparkles, BookOpen, Layers, Award, ShoppingBag, HelpCircle, School, MoreVertical, ChevronDown, User } from 'lucide-react';
+import { Plus, Users, Copy, Check, Trash2, X, GraduationCap, Sparkles, BookOpen, Layers, Award, ShoppingBag, HelpCircle, School, MoreVertical, ChevronDown, User, Search } from 'lucide-react';
 import { classroomApi, type Classroom, type CreateClassroomData } from '../../lib/classroomApi';
 import { schoolApi, type MySchool } from '../../lib/schoolApi';
 import { AIClassroomWizard } from '../../components/classroom/AIClassroomWizard';
@@ -18,6 +18,7 @@ export const ClassroomsPage = () => {
   const [cloningClassroom, setCloningClassroom] = useState<Classroom | null>(null);
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   
   const { data: classrooms, isLoading, isError } = useQuery({
     queryKey: ['classrooms'],
@@ -58,6 +59,31 @@ export const ClassroomsPage = () => {
       personal,
     };
   }, [classrooms, pageSchools]);
+
+  const filteredGroupedClassrooms = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+
+    if (!normalizedSearch) {
+      return groupedClassrooms;
+    }
+
+    const matchesSearch = (classroom: Classroom) => classroom.name.toLowerCase().includes(normalizedSearch);
+
+    return {
+      schools: groupedClassrooms.schools
+        .map((group) => ({
+          ...group,
+          classrooms: group.classrooms.filter(matchesSearch),
+        }))
+        .filter((group) => group.classrooms.length > 0),
+      personal: groupedClassrooms.personal.filter(matchesSearch),
+    };
+  }, [groupedClassrooms, searchTerm]);
+
+  const filteredClassroomsCount = useMemo(() => (
+    filteredGroupedClassrooms.schools.reduce((total, group) => total + group.classrooms.length, 0) +
+    filteredGroupedClassrooms.personal.length
+  ), [filteredGroupedClassrooms]);
 
   const isSectionExpanded = (key: string) => !collapsedSections[key];
   const toggleSection = (key: string) => {
@@ -183,6 +209,29 @@ export const ClassroomsPage = () => {
         )}
       </div>
 
+      {!isLoading && !isError && (classrooms?.length || 0) > 0 && (
+        <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="relative w-full md:max-w-md">
+              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Buscar clase por nombre..."
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 text-gray-800 dark:text-white text-sm outline-none focus:ring-2 focus:ring-violet-500"
+              />
+            </div>
+
+            <p className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+              {searchTerm.trim()
+                ? `${filteredClassroomsCount} resultado(s)`
+                : `${classrooms?.length || 0} clase(s)`}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Lista de clases */}
       {isLoading ? (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -219,10 +268,29 @@ export const ClassroomsPage = () => {
             Crear mi primera clase
           </button>
         </div>
+      ) : filteredClassroomsCount === 0 ? (
+        <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg text-center py-12 px-6">
+          <div className="w-16 h-16 mx-auto mb-4 bg-violet-100 dark:bg-violet-900/30 rounded-2xl flex items-center justify-center">
+            <Search size={28} className="text-violet-500" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">
+            No se encontraron clases
+          </h3>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mb-5">
+            No hay coincidencias para "{searchTerm.trim()}".
+          </p>
+          <button
+            onClick={() => setSearchTerm('')}
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-violet-500 to-purple-500 text-white text-sm font-medium rounded-xl shadow-lg shadow-violet-500/25"
+          >
+            <X size={18} />
+            Limpiar búsqueda
+          </button>
+        </div>
       ) : (
         <div className="space-y-4">
           {/* Secciones de escuelas */}
-          {groupedClassrooms.schools.map(({ school, classrooms: schoolClassrooms }) => (
+          {filteredGroupedClassrooms.schools.map(({ school, classrooms: schoolClassrooms }) => (
             <div key={school.id} className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg overflow-hidden">
               <button
                 onClick={() => toggleSection(school.id)}
@@ -272,7 +340,7 @@ export const ClassroomsPage = () => {
           ))}
 
           {/* Sección de clases personales */}
-          {groupedClassrooms.personal.length > 0 && (
+          {filteredGroupedClassrooms.personal.length > 0 && (
             <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg overflow-hidden">
               <button
                 onClick={() => toggleSection('personal')}
@@ -284,7 +352,7 @@ export const ClassroomsPage = () => {
                   </div>
                   <div className="text-left">
                     <h2 className="text-sm font-bold text-gray-800 dark:text-white">Clases Personales</h2>
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400">{groupedClassrooms.personal.length} clase{groupedClassrooms.personal.length !== 1 ? 's' : ''}</p>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400">{filteredGroupedClassrooms.personal.length} clase{filteredGroupedClassrooms.personal.length !== 1 ? 's' : ''}</p>
                   </div>
                 </div>
                 <ChevronDown
@@ -302,7 +370,7 @@ export const ClassroomsPage = () => {
                     className="overflow-hidden"
                   >
                     <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 px-5 pb-5">
-                      {groupedClassrooms.personal.map((classroom, index) => (
+                      {filteredGroupedClassrooms.personal.map((classroom, index) => (
                         <ClassroomCard
                           key={classroom.id}
                           classroom={classroom}
