@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   CheckSquare,
   Square,
+  BookOpen,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -590,11 +591,21 @@ const BehaviorCard = ({
             )}
           </div>
           {behavior.competency && (
-            <div className="mt-1.5 flex items-center gap-1">
-              <Award size={11} className="text-violet-500 flex-shrink-0" />
-              <span className="text-[10px] text-violet-600 dark:text-violet-400 font-medium truncate">
-                {behavior.competency.name}
-              </span>
+            <div className="mt-1.5 space-y-1">
+              <div className="flex items-center gap-1">
+                <Award size={11} className="text-violet-500 flex-shrink-0" />
+                <span className="text-[10px] text-violet-600 dark:text-violet-400 font-medium truncate">
+                  {behavior.competency.name}
+                </span>
+              </div>
+              {behavior.competencyIndicator && (
+                <div className="flex items-center gap-1">
+                  <BookOpen size={11} className="text-indigo-500 flex-shrink-0" />
+                  <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium truncate">
+                    {behavior.competencyIndicator.name}
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -642,6 +653,7 @@ const BehaviorModal = ({
   const [isPositive, setIsPositive] = useState(behavior?.isPositive ?? true);
   const [icon, setIcon] = useState(behavior?.icon || '⭐');
   const [competencyId, setCompetencyId] = useState<string | null>(behavior?.competencyId || null);
+  const [competencyIndicatorId, setCompetencyIndicatorId] = useState<string | null>(behavior?.competencyIndicatorId || null);
 
   const { competencies: classroomCompetencies = [] } = useClassroomCompetencies(
     classroom?.id,
@@ -659,6 +671,7 @@ const BehaviorModal = ({
       setIsPositive(behavior.isPositive);
       setIcon(behavior.icon || '⭐');
       setCompetencyId(behavior?.competencyId || null);
+      setCompetencyIndicatorId(behavior?.competencyIndicatorId || null);
     } else {
       setName('');
       setDescription('');
@@ -668,8 +681,12 @@ const BehaviorModal = ({
       setIsPositive(true);
       setIcon('⭐');
       setCompetencyId(null);
+      setCompetencyIndicatorId(null);
     }
   }, [behavior]);
+
+  const selectedCompetency = classroomCompetencies.find((item: any) => item.id === competencyId);
+  const selectedIndicators = selectedCompetency?.indicators || [];
 
   // Determinar tipo principal para legacy
   const getPrimaryType = (): PointType => {
@@ -692,6 +709,7 @@ const BehaviorModal = ({
       isPositive,
       icon,
       competencyId: competencyId || undefined,
+      competencyIndicatorId: competencyIndicatorId || undefined,
     });
   };
 
@@ -925,7 +943,10 @@ const BehaviorModal = ({
                   <div className="grid grid-cols-1 gap-1.5 max-h-24 overflow-y-auto p-2 bg-gray-50 dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600">
                     <button
                       type="button"
-                      onClick={() => setCompetencyId(null)}
+                      onClick={() => {
+                        setCompetencyId(null);
+                        setCompetencyIndicatorId(null);
+                      }}
                       className={`p-2 rounded-lg text-left text-xs ${!competencyId ? 'bg-white dark:bg-gray-600 ring-1 ring-gray-300 dark:ring-gray-500' : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
                     >
                       <span className="text-gray-500 dark:text-gray-400">Sin competencia</span>
@@ -934,7 +955,12 @@ const BehaviorModal = ({
                       <button
                         key={c.id}
                         type="button"
-                        onClick={() => setCompetencyId(c.id)}
+                        onClick={() => {
+                          setCompetencyId(c.id);
+                          if (competencyIndicatorId && !c.indicators?.some((indicator: any) => indicator.id === competencyIndicatorId)) {
+                            setCompetencyIndicatorId(null);
+                          }
+                        }}
                         className={`p-2 rounded-lg text-left text-xs ${competencyId === c.id ? 'bg-emerald-100 dark:bg-emerald-900/50 ring-1 ring-emerald-500' : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
                       >
                         <div className="flex items-center gap-1.5">
@@ -946,6 +972,43 @@ const BehaviorModal = ({
                   </div>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                     {competencyId ? 'Este comportamiento contribuirá a la competencia seleccionada' : 'Opcional - para calificación por competencias'}
+                  </p>
+                </div>
+              )}
+
+              {classroom?.useCompetencies && competencyId && selectedIndicators.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300 flex items-center gap-1">
+                    <BookOpen size={14} className="text-indigo-500" />
+                    Destreza asociada
+                  </label>
+                  <div className="grid grid-cols-1 gap-1.5 max-h-28 overflow-y-auto p-2 bg-gray-50 dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600">
+                    <button
+                      type="button"
+                      onClick={() => setCompetencyIndicatorId(null)}
+                      className={`p-2 rounded-lg text-left text-xs ${!competencyIndicatorId ? 'bg-white dark:bg-gray-600 ring-1 ring-gray-300 dark:ring-gray-500' : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
+                    >
+                      <span className="text-gray-500 dark:text-gray-400">Sin destreza</span>
+                    </button>
+                    {selectedIndicators.map((indicator: any) => (
+                      <button
+                        key={indicator.id}
+                        type="button"
+                        onClick={() => setCompetencyIndicatorId(indicator.id)}
+                        className={`p-2 rounded-lg text-left text-xs ${competencyIndicatorId === indicator.id ? 'bg-indigo-100 dark:bg-indigo-900/50 ring-1 ring-indigo-500' : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          {competencyIndicatorId === indicator.id && <Check size={12} className="text-indigo-500" />}
+                          <span className="truncate text-gray-800 dark:text-white">{indicator.name}</span>
+                        </div>
+                        {indicator.description && (
+                          <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400 line-clamp-2">{indicator.description}</p>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Opcional - la destreza se usara para el desglose informativo del gradebook.
                   </p>
                 </div>
               )}

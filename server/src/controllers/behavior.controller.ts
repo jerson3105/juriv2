@@ -15,6 +15,7 @@ const createBehaviorSchema = z.object({
   isPositive: z.boolean(),
   icon: z.string().max(50).optional(),
   competencyId: z.string().optional(),
+  competencyIndicatorId: z.string().uuid().optional(),
 });
 
 const updateBehaviorSchema = z.object({
@@ -28,6 +29,7 @@ const updateBehaviorSchema = z.object({
   isPositive: z.boolean().optional(),
   icon: z.string().max(50).optional(),
   competencyId: z.string().nullable().optional(),
+  competencyIndicatorId: z.string().uuid().nullable().optional(),
 });
 
 const applyBehaviorSchema = z.object({

@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { IndicatorEvidenceSplit } from '../../components/ui/IndicatorEvidenceSplit';
 import { classroomApi, type Classroom } from '../../lib/classroomApi';
 import { gradeApi, type PerformanceBucket } from '../../lib/gradeApi';
 import toast from 'react-hot-toast';
@@ -176,6 +177,21 @@ export const GradebookPage = () => {
   const hasEvaluatedEvidence = (grade: { activitiesCount: number; isManualOverride: boolean }) =>
     grade.activitiesCount > 0 || grade.isManualOverride;
 
+  const visibleCompetencies = useMemo(() => {
+    if (!classroomCompetencies.length) {
+      return [];
+    }
+
+    const visibleCompetencyIds = new Set(
+      (gradebookData?.students || [])
+        .flatMap((student) => student.grades)
+        .filter((grade) => hasEvaluatedEvidence(grade))
+        .map((grade) => grade.competencyId),
+    );
+
+    return classroomCompetencies.filter((competency) => visibleCompetencyIds.has(competency.id));
+  }, [classroomCompetencies, gradebookData?.students]);
+
   const getBucketColor = (bucket: PerformanceBucket) => {
     if (bucket === 'AD') return 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900/30';
     if (bucket === 'A') return 'text-blue-600 bg-blue-100 dark:bg-blue-900/30';
@@ -203,6 +219,15 @@ export const GradebookPage = () => {
     }
     
     return 'text-gray-600 bg-gray-100 dark:bg-gray-700';
+  };
+
+  const formatPeriodLabel = (value: string | null) => {
+    if (!value || !value.includes('-B')) {
+      return 'un bimestre posterior';
+    }
+
+    const [year, bimester] = value.split('-B');
+    return `Bimestre ${bimester} ${year}`;
   };
 
   // Estado: competencias no habilitadas
@@ -340,7 +365,7 @@ export const GradebookPage = () => {
               Libro de Calificaciones
             </h1>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              {classroomCompetencies.length} competencias · {realStudents.length} estudiantes
+              {visibleCompetencies.length} competencias visibles · {realStudents.length} estudiantes
             </p>
           </div>
         </div>
@@ -446,6 +471,23 @@ export const GradebookPage = () => {
             Calcular Calificaciones
           </Button>
         </Card>
+      ) : visibleCompetencies.length === 0 ? (
+        <Card className="p-8 text-center">
+          <Award className="mx-auto text-gray-400 mb-4" size={48} />
+          <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-2">
+            Sin competencias con evidencias en este bimestre
+          </h3>
+          <p className="text-gray-600 dark:text-gray-400 mb-4 max-w-md mx-auto">
+            En {formatPeriodLabel(period)} no hay competencias con notas, destrezas ni evidencias registradas. Cuando empieces a usar una competencia en este bimestre, aparecerá aquí.
+          </p>
+          <Button
+            onClick={() => recalculateMutation.mutate()}
+            disabled={recalculateMutation.isPending || isFuturePeriod}
+          >
+            <RefreshCw size={16} className={recalculateMutation.isPending ? 'animate-spin' : ''} />
+            Recalcular calificaciones
+          </Button>
+        </Card>
       ) : (
         <Card className="overflow-hidden">
           {/* Header de competencias */}
@@ -456,7 +498,7 @@ export const GradebookPage = () => {
                   <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 sticky left-0 bg-gray-50 dark:bg-gray-800/50 z-10 min-w-[200px]">
                     Estudiante
                   </th>
-                  {classroomCompetencies.map((comp: any) => (
+                  {visibleCompetencies.map((comp: any) => (
                     <th
                       key={comp.id}
                       className="px-3 py-3 text-center text-xs font-semibold text-gray-600 dark:text-gray-400 min-w-[80px]"
@@ -494,7 +536,7 @@ export const GradebookPage = () => {
                           </span>
                         </button>
                       </td>
-                      {classroomCompetencies.map((comp: any) => {
+                      {visibleCompetencies.map((comp: any) => {
                         const grade = student.grades.find(g => g.competencyId === comp.id);
                         const isEvaluated = grade ? hasEvaluatedEvidence(grade) : false;
                         return (
@@ -523,7 +565,7 @@ export const GradebookPage = () => {
                     {/* Fila expandida con detalles */}
                     {isExpanded && (
                       <tr className="bg-gray-50 dark:bg-gray-800/50">
-                        <td colSpan={classroomCompetencies.length + 2} className="px-4 py-4">
+                        <td colSpan={visibleCompetencies.length + 2} className="px-4 py-4">
                           <div className="space-y-4">
                             <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
                               📊 Desglose de calificaciones de {student.studentName}
@@ -540,6 +582,11 @@ export const GradebookPage = () => {
                             {student.grades.filter(hasEvaluatedEvidence).map((grade) => {
                               const comp = classroomCompetencies.find((c: any) => c.id === grade.competencyId);
                               const activities = grade.calculationDetails?.activities || [];
+                              const hasIndicatorBreakdown = grade.indicatorBreakdownStatus === 'AVAILABLE'
+                                && grade.indicatorBreakdown.length > 0;
+                              const visibleActivities = hasIndicatorBreakdown
+                                ? activities.filter((activity: any) => activity.type !== 'INDICATOR')
+                                : activities;
                               
                               return (
                                 <div
@@ -575,13 +622,13 @@ export const GradebookPage = () => {
                                   </div>
                                   
                                   {/* Lista de actividades que contribuyen */}
-                                  {activities.length > 0 ? (
+                                  {visibleActivities.length > 0 ? (
                                     <div className="space-y-2">
                                       <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
-                                        Actividades que contribuyen a esta nota:
+                                        {hasIndicatorBreakdown ? 'Otras actividades consideradas:' : 'Actividades que contribuyen a esta nota:'}
                                       </span>
                                       <div className="grid gap-2">
-                                        {activities.map((activity: any, idx: number) => (
+                                        {visibleActivities.map((activity: any, idx: number) => (
                                           <div
                                             key={idx}
                                             className="flex items-center justify-between bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2"
@@ -593,6 +640,7 @@ export const GradebookPage = () => {
                                                 activity.type === 'EXPEDITION' ? 'bg-purple-500' :
                                                 activity.type === 'TIMED' ? 'bg-cyan-500' :
                                                 activity.type === 'MANUAL_POINTS' ? 'bg-sky-500' :
+                                                activity.type === 'INDICATOR' ? 'bg-indigo-500' :
                                                 'bg-gray-500'
                                               }`} />
                                               <span className="text-sm text-gray-700 dark:text-gray-300">
@@ -600,6 +648,7 @@ export const GradebookPage = () => {
                                               </span>
                                               <span className="text-xs px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 rounded text-gray-600 dark:text-gray-400">
                                                 {activity.type === 'BEHAVIOR' ? 'Comportamiento' :
+                                                 activity.type === 'INDICATOR' ? 'Destreza' :
                                                  activity.type === 'BADGE' ? 'Insignia' :
                                                  activity.type === 'EXPEDITION' ? 'Expedición' :
                                                  activity.type === 'TIMED' ? 'Actividad' :
@@ -612,17 +661,87 @@ export const GradebookPage = () => {
                                                 {activity.score.toFixed(0)}%
                                               </span>
                                               <span className="text-xs text-gray-500">
-                                                ({activity.type === 'BEHAVIOR' || activity.type === 'MANUAL_POINTS' ? 'peso evidencia' : 'peso'}: {activity.weight})
+                                                ({activity.type === 'BEHAVIOR' || activity.type === 'MANUAL_POINTS' || activity.type === 'INDICATOR' ? 'peso evidencia' : 'peso'}: {activity.weight})
                                               </span>
                                             </div>
                                           </div>
                                         ))}
                                       </div>
                                     </div>
-                                  ) : (
+                                  ) : !hasIndicatorBreakdown ? (
                                     <p className="text-sm text-gray-500 dark:text-gray-400 italic">
                                       No hay actividades registradas para esta competencia.
                                     </p>
+                                  ) : null}
+
+                                  {grade.indicatorBreakdownStatus === 'HISTORICAL_NO_BREAKDOWN' && (
+                                    <div className="mt-3 rounded-lg border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/20 px-3 py-3">
+                                      <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                                        Histórico sin desglose de destrezas
+                                      </p>
+                                      <p className="text-xs text-amber-700 dark:text-amber-200 mt-1">
+                                        Esta competencia empezó a mostrar destrezas desde {formatPeriodLabel(grade.indicatorStartPeriod)}.
+                                      </p>
+                                    </div>
+                                  )}
+
+                                  {grade.indicatorBreakdownStatus === 'AVAILABLE' && grade.indicatorBreakdown.length > 0 && (
+                                    <div className="mt-3 space-y-2 border-t border-gray-100 dark:border-gray-700 pt-3">
+                                      <div className="flex items-center gap-2">
+                                        <Target size={14} className="text-indigo-500" />
+                                        <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                                          Destrezas
+                                        </span>
+                                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
+                                          Cuenta en nota oficial
+                                        </span>
+                                      </div>
+                                      <div className="grid gap-2 md:grid-cols-2">
+                                        {grade.indicatorBreakdown.map((indicator) => (
+                                          <div
+                                            key={indicator.id}
+                                            className="rounded-lg border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50/70 dark:bg-indigo-900/10 px-3 py-3"
+                                          >
+                                            <div className="flex items-start justify-between gap-3">
+                                              <div className="min-w-0">
+                                                <p className="text-sm font-medium text-gray-800 dark:text-white">
+                                                  {indicator.name}
+                                                </p>
+                                                {indicator.description && (
+                                                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
+                                                    {indicator.description}
+                                                  </p>
+                                                )}
+                                              </div>
+                                              {indicator.hasEvidence ? (
+                                                <span className={`inline-flex items-center justify-center px-2 py-1 rounded-lg text-xs font-bold ${indicator.bucket ? getBucketColor(indicator.bucket) : 'text-gray-500 bg-gray-100 dark:bg-gray-800'}`}>
+                                                  {indicator.gradeLabel || `${Number(indicator.score || 0).toFixed(0)}%`}
+                                                </span>
+                                              ) : (
+                                                <span className="inline-flex items-center justify-center px-2 py-1 rounded-lg text-xs font-medium text-gray-500 bg-gray-100 dark:bg-gray-800 dark:text-gray-300">
+                                                  Sin evidencias
+                                                </span>
+                                              )}
+                                            </div>
+
+                                            {indicator.hasEvidence && (
+                                              <IndicatorEvidenceSplit
+                                                positiveObservations={indicator.positiveObservations}
+                                                negativeObservations={indicator.negativeObservations}
+                                                positivePoints={indicator.positivePoints}
+                                                negativePoints={indicator.negativePoints}
+                                              />
+                                            )}
+
+                                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                                              {indicator.hasEvidence
+                                                ? `${Number(indicator.score || 0).toFixed(0)}% · peso evidencia: ${indicator.evidenceWeight} · ${indicator.observations} registro(s)`
+                                                : 'Aun no hay comportamientos vinculados a esta destreza en el periodo.'}
+                                            </p>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
                                   )}
                                   
                                   {grade.isManualOverride && (

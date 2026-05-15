@@ -17,6 +17,22 @@ export interface GradeAverageSummary {
   evaluatedCompetencies: number;
 }
 
+export interface CompetencyIndicatorBreakdown {
+  id: string;
+  name: string;
+  description: string | null;
+  score: number | null;
+  gradeLabel: string | null;
+  bucket: PerformanceBucket | null;
+  observations: number;
+  positiveObservations: number;
+  negativeObservations: number;
+  positivePoints: number;
+  negativePoints: number;
+  evidenceWeight: number;
+  hasEvidence: boolean;
+}
+
 export interface StudentGrade {
   id: string;
   competencyId: string;
@@ -30,6 +46,9 @@ export interface StudentGrade {
     totalWeight: number;
     rawScore: number;
   };
+  indicatorBreakdownStatus: 'AVAILABLE' | 'HISTORICAL_NO_BREAKDOWN' | 'NOT_CONFIGURED';
+  indicatorStartPeriod: string | null;
+  indicatorBreakdown: CompetencyIndicatorBreakdown[];
   isManualOverride: boolean;
   manualScore?: number | null;
   manualNote?: string | null;

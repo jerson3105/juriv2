@@ -27,6 +27,9 @@ router.delete('/:id/competencies/:competencyId', authorize('TEACHER'), classroom
 router.post('/:id/competencies/custom', authorize('TEACHER'), classroomController.createCustomCompetency.bind(classroomController));
 router.patch('/:id/competencies/custom/:competencyId', authorize('TEACHER'), classroomController.updateCustomCompetency.bind(classroomController));
 router.delete('/:id/competencies/custom/:competencyId', authorize('TEACHER'), classroomController.deleteCustomCompetency.bind(classroomController));
+router.post('/:id/competencies/:competencyId/indicators', authorize('TEACHER'), classroomController.createCompetencyIndicator.bind(classroomController));
+router.patch('/:id/competencies/:competencyId/indicators/:indicatorId', authorize('TEACHER'), classroomController.updateCompetencyIndicator.bind(classroomController));
+router.delete('/:id/competencies/:competencyId/indicators/:indicatorId', authorize('TEACHER'), classroomController.deleteCompetencyIndicator.bind(classroomController));
 router.post('/:id/sync-competencies', authorize('TEACHER'), classroomController.syncCompetencies.bind(classroomController));
 router.get('/:classroomId/cloneable-counts', authorize('TEACHER'), classroomController.getCloneableCounts.bind(classroomController));
 router.post('/:classroomId/clone', authorize('TEACHER'), classroomController.cloneClassroom.bind(classroomController));

@@ -229,6 +229,7 @@ export const classrooms = mysqlTable('classrooms', {
       gpReward: number;
     }>;
   }>(),
+  competencyIndicatorStartPeriod: varchar('competency_indicator_start_period', { length: 20 }),
   // Gestión de bimestres
   currentBimester: varchar('current_bimester', { length: 20 }).default('2024-B1'),
   closedBimesters: json('closed_bimesters').$type<Array<{
@@ -484,6 +485,7 @@ export const behaviors = mysqlTable('behaviors', {
   isActive: boolean('is_active').notNull().default(true),
   // Competencia asociada (para calificación por competencias)
   competencyId: varchar('competency_id', { length: 36 }),
+  competencyIndicatorId: varchar('competency_indicator_id', { length: 36 }),
   // Origen: si fue importado de un comportamiento de escuela
   schoolBehaviorId: varchar('school_behavior_id', { length: 36 }),
   createdAt: datetime('created_at').notNull(),
@@ -491,6 +493,7 @@ export const behaviors = mysqlTable('behaviors', {
   classroomIdx: index('idx_behaviors_classroom').on(table.classroomId),
   classroomActiveIdx: index('idx_behaviors_classroom_active').on(table.classroomId, table.isActive),
   competencyIdx: index('idx_behaviors_competency').on(table.competencyId),
+  competencyIndicatorIdx: index('idx_behaviors_competency_indicator').on(table.competencyIndicatorId),
 }));
 
 export const behaviorsRelations = relations(behaviors, ({ one, many }) => ({
@@ -502,6 +505,10 @@ export const behaviorsRelations = relations(behaviors, ({ one, many }) => ({
     fields: [behaviors.competencyId],
     references: [curriculumCompetencies.id],
   }),
+  competencyIndicator: one(classroomCompetencyIndicators, {
+    fields: [behaviors.competencyIndicatorId],
+    references: [classroomCompetencyIndicators.id],
+  }),
   pointLogs: many(pointLogs),
 }));
 
@@ -512,6 +519,7 @@ export const pointLogs = mysqlTable('point_logs', {
   studentId: varchar('student_id', { length: 36 }).notNull(),
   behaviorId: varchar('behavior_id', { length: 36 }),
   competencyId: varchar('competency_id', { length: 36 }),
+  competencyIndicatorId: varchar('competency_indicator_id', { length: 36 }),
   pointType: pointTypeEnum.notNull(),
   action: pointActionEnum.notNull(),
   amount: int('amount').notNull(),
@@ -526,6 +534,7 @@ export const pointLogs = mysqlTable('point_logs', {
   studentDateIdx: index('idx_point_logs_student_date').on(table.studentId, table.createdAt),
   behaviorIdx: index('idx_point_logs_behavior').on(table.behaviorId),
   competencyIdx: index('idx_point_logs_competency').on(table.competencyId),
+  competencyIndicatorIdx: index('idx_point_logs_competency_indicator').on(table.competencyIndicatorId),
 }));
 
 export const pointLogsRelations = relations(pointLogs, ({ one }) => ({
@@ -540,6 +549,10 @@ export const pointLogsRelations = relations(pointLogs, ({ one }) => ({
   competency: one(curriculumCompetencies, {
     fields: [pointLogs.competencyId],
     references: [curriculumCompetencies.id],
+  }),
+  competencyIndicator: one(classroomCompetencyIndicators, {
+    fields: [pointLogs.competencyIndicatorId],
+    references: [classroomCompetencyIndicators.id],
   }),
 }));
 
@@ -1987,7 +2000,7 @@ export const classroomCompetencies = mysqlTable('classroom_competencies', {
   uniqueClassroomCompetency: unique('unique_classroom_competency').on(table.classroomId, table.competencyId),
 }));
 
-export const classroomCompetenciesRelations = relations(classroomCompetencies, ({ one }) => ({
+export const classroomCompetenciesRelations = relations(classroomCompetencies, ({ one, many }) => ({
   classroom: one(classrooms, {
     fields: [classroomCompetencies.classroomId],
     references: [classrooms.id],
@@ -1996,6 +2009,48 @@ export const classroomCompetenciesRelations = relations(classroomCompetencies, (
     fields: [classroomCompetencies.competencyId],
     references: [curriculumCompetencies.id],
   }),
+  indicators: many(classroomCompetencyIndicators),
+}));
+
+export const classroomCompetencyIndicators = mysqlTable('classroom_competency_indicators', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  classroomCompetencyId: varchar('classroom_competency_id', { length: 36 }).notNull(),
+  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
+  competencyId: varchar('competency_id', { length: 36 }).notNull(),
+  name: varchar('name', { length: 255 }).notNull(),
+  description: text('description'),
+  displayOrder: int('display_order').notNull().default(0),
+  isActive: boolean('is_active').notNull().default(true),
+  createdByTeacherId: varchar('created_by_teacher_id', { length: 36 }).notNull(),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  classroomCompetencyIdx: index('idx_classroom_competency_indicators_classroom_competency').on(table.classroomCompetencyId),
+  classroomIdx: index('idx_classroom_competency_indicators_classroom').on(table.classroomId),
+  competencyIdx: index('idx_classroom_competency_indicators_competency').on(table.competencyId),
+  createdByTeacherIdx: index('idx_classroom_competency_indicators_teacher').on(table.createdByTeacherId),
+  uniqueIndicatorName: unique('unique_classroom_competency_indicator_name').on(table.classroomCompetencyId, table.name),
+}));
+
+export const classroomCompetencyIndicatorsRelations = relations(classroomCompetencyIndicators, ({ one, many }) => ({
+  classroomCompetency: one(classroomCompetencies, {
+    fields: [classroomCompetencyIndicators.classroomCompetencyId],
+    references: [classroomCompetencies.id],
+  }),
+  classroom: one(classrooms, {
+    fields: [classroomCompetencyIndicators.classroomId],
+    references: [classrooms.id],
+  }),
+  competency: one(curriculumCompetencies, {
+    fields: [classroomCompetencyIndicators.competencyId],
+    references: [curriculumCompetencies.id],
+  }),
+  createdByTeacher: one(users, {
+    fields: [classroomCompetencyIndicators.createdByTeacherId],
+    references: [users.id],
+  }),
+  behaviors: many(behaviors),
+  pointLogs: many(pointLogs),
 }));
 
 // Actividades vinculadas a competencias

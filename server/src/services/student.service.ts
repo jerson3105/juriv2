@@ -39,6 +39,13 @@ interface UpdatePointsData {
   competencyId?: string;
 }
 
+interface UpdateTeacherStudentProfileData {
+  studentId: string;
+  teacherId: string;
+  displayName?: string;
+  characterName?: string;
+}
+
 export class StudentService {
   // Verificar código (detecta si es código de clase o de estudiante)
   async verifyCode(code: string) {
@@ -223,6 +230,46 @@ export class StudentService {
     }
 
     return { ...profile, user };
+  }
+
+  async updateStudentByTeacher(data: UpdateTeacherStudentProfileData) {
+    const profile = await db.query.studentProfiles.findFirst({
+      where: eq(studentProfiles.id, data.studentId),
+    });
+
+    if (!profile) {
+      throw new Error('Estudiante no encontrado');
+    }
+
+    const classroom = await db.query.classrooms.findFirst({
+      where: eq(classrooms.id, profile.classroomId),
+    });
+
+    if (!classroom || classroom.teacherId !== data.teacherId) {
+      throw new Error('No tienes permiso para modificar este estudiante');
+    }
+
+    if (profile.userId && data.displayName !== undefined) {
+      throw new Error('No puedes editar el nombre base de un estudiante ya vinculado');
+    }
+
+    const updateData: Partial<typeof studentProfiles.$inferInsert> = {
+      updatedAt: new Date(),
+    };
+
+    if (data.displayName !== undefined) {
+      updateData.displayName = data.displayName;
+    }
+
+    if (data.characterName !== undefined) {
+      updateData.characterName = data.characterName;
+    }
+
+    await db.update(studentProfiles)
+      .set(updateData)
+      .where(eq(studentProfiles.id, data.studentId));
+
+    return this.getStudentById(data.studentId);
   }
 
   // Modificar puntos (XP, HP, GP)

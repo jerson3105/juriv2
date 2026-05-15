@@ -3,6 +3,7 @@ import { Outlet, useParams, useNavigate, useLocation, Link } from 'react-router-
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
+  AlertTriangle,
   Users,
   Settings,
   Award,
@@ -50,6 +51,11 @@ import toast from 'react-hot-toast';
 import { AIAssistantWidget } from '../classroom/AIAssistantWidget';
 import { ParticleLayer } from '../story/ParticleLayer';
 import { useTeacherOnboardingSafe } from '../../contexts/TeacherOnboardingContext';
+import {
+  CLASSROOM_SETTINGS_SECTIONS,
+  DEFAULT_CLASSROOM_SETTINGS_SECTION,
+  type ClassroomSettingsSectionKey,
+} from '../../pages/classroom/classroomSettingsSections';
 
 const FEATURE_LABELS: Record<string, string> = {
   students: 'Estudiantes',
@@ -91,6 +97,7 @@ export const ClassroomLayout = () => {
   const [gamificationMenuOpen, setGamificationMenuOpen] = useState(false);
   const [claseMenuOpen, setClaseMenuOpen] = useState(false);
   const [comunicacionMenuOpen, setComunicacionMenuOpen] = useState(false);
+  const [configuracionMenuOpen, setConfiguracionMenuOpen] = useState(location.pathname.includes('/settings'));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showExpeditionsModal, setShowExpeditionsModal] = useState(false);
   const [showUnlockModal, setShowUnlockModal] = useState(false);
@@ -212,6 +219,21 @@ export const ClassroomLayout = () => {
     },
   ];
 
+  const settingsSectionIcons: Record<ClassroomSettingsSectionKey, typeof Settings> = {
+    general: Settings,
+    gamificacion: Gamepad2,
+    clase: BookMarked,
+    personas: Users,
+    riesgo: AlertTriangle,
+  };
+
+  const settingsSubItems = CLASSROOM_SETTINGS_SECTIONS.map((section) => ({
+    path: `/classroom/${id}/settings/${section.key}`,
+    label: section.label,
+    icon: settingsSectionIcons[section.key],
+    featureKey: 'settings',
+  }));
+
   // Bottom items — separated visually from groups
   const bottomMenuItems = [
     { 
@@ -220,13 +242,6 @@ export const ClassroomLayout = () => {
       icon: BarChart3,
       gradient: 'from-violet-500 to-purple-500',
       onboardingId: 'statistics-menu',
-    },
-    { 
-      path: `/classroom/${id}/settings`, 
-      label: 'Configuración', 
-      icon: Settings,
-      gradient: 'from-gray-500 to-slate-500',
-      featureKey: 'settings',
     },
   ];
 
@@ -264,6 +279,10 @@ export const ClassroomLayout = () => {
     }
     return location.pathname.startsWith(path);
   };
+
+  const visibleSettingsSubItems = settingsSubItems.filter((item) => isUnlocked(item.featureKey));
+  const isSettingsSubMenuActive = visibleSettingsSubItems.some((item) => isActive(item.path));
+  const isSettingsMenuOpen = configuracionMenuOpen || isSettingsSubMenuActive;
 
   if (isLoading) {
     return (
@@ -566,6 +585,78 @@ export const ClassroomLayout = () => {
               </Link>
             );
           })}
+
+          {isUnlocked('settings') && visibleSettingsSubItems.length > 0 && (
+            <div className="mt-1">
+              <button
+                onClick={() => {
+                  if (collapsed) {
+                    navigate(`/classroom/${id}/settings/${DEFAULT_CLASSROOM_SETTINGS_SECTION}`);
+                    return;
+                  }
+
+                  setConfiguracionMenuOpen(!configuracionMenuOpen);
+                }}
+                className={`
+                  w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all duration-200 group
+                  ${isSettingsSubMenuActive
+                    ? hasStoryTheme ? 'text-white shadow-md' : 'bg-gradient-to-r from-gray-500 to-slate-500 text-white shadow-md'
+                    : hasStoryTheme ? 'text-white/80 hover:bg-white/10' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  }
+                `}
+                style={isSettingsSubMenuActive && hasStoryTheme ? { background: `linear-gradient(to right, ${tc?.colors?.primary || '#6b7280'}, ${tc?.colors?.secondary || '#475569'})` } : undefined}
+                title={collapsed ? 'Configuración' : undefined}
+              >
+                <div className={`
+                  w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0
+                  ${isSettingsSubMenuActive
+                    ? 'bg-white/20'
+                    : 'bg-gradient-to-br from-gray-500 to-slate-500 text-white shadow-sm group-hover:scale-105'
+                  }
+                `}>
+                  <Settings size={16} />
+                </div>
+                {!collapsed && (
+                  <>
+                    <span className={`text-sm font-medium truncate flex-1 text-left ${isSettingsSubMenuActive ? '' : hasStoryTheme ? 'text-white/90' : 'text-gray-700 dark:text-gray-300'}`}>
+                      Configuración
+                    </span>
+                    <ChevronDown
+                      size={14}
+                      className={`transition-transform ${isSettingsMenuOpen ? 'rotate-180' : ''} ${isSettingsSubMenuActive ? 'text-white' : 'text-gray-400'}`}
+                    />
+                  </>
+                )}
+              </button>
+
+              {isSettingsMenuOpen && !collapsed && (
+                <div className="ml-4 mt-1 space-y-1">
+                  {visibleSettingsSubItems.map((subItem) => {
+                    const SubIcon = subItem.icon;
+                    const subActive = isActive(subItem.path);
+
+                    return (
+                      <Link
+                        key={subItem.path}
+                        to={subItem.path}
+                        className={`
+                          flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all duration-200
+                          ${subActive
+                            ? hasStoryTheme ? 'text-white' : 'bg-slate-50 dark:bg-slate-900/30 text-slate-600 dark:text-slate-300'
+                            : hasStoryTheme ? 'text-white/60 hover:bg-white/10 hover:text-white/90' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
+                          }
+                        `}
+                        style={subActive && hasStoryTheme ? { backgroundColor: `${tc?.colors?.primary || '#6366f1'}40` } : undefined}
+                      >
+                        <SubIcon size={14} />
+                        <span className="text-sm">{subItem.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </nav>
 
         {/* Onboarding sidebar bottom: pending unlocks + unlock link + level */}

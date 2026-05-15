@@ -6,7 +6,7 @@ export type AvatarGender = 'MALE' | 'FEMALE';
 
 export interface StudentProfile {
   id: string;
-  userId: string;
+  userId: string | null;
   classroomId: string;
   characterName: string | null;
   characterClass: CharacterClass;
@@ -19,7 +19,9 @@ export interface StudentProfile {
   gp: number;
   teamId: string | null;
   isActive: boolean;
-  displayName?: string; // Nombre real para mostrar
+  isDemo?: boolean;
+  displayName?: string | null;
+  linkCode?: string | null;
   createdAt: string;
   updatedAt: string;
   user?: {
@@ -27,7 +29,7 @@ export interface StudentProfile {
     firstName: string;
     lastName: string;
     email: string;
-  };
+  } | null;
   classroom?: {
     id: string;
     name: string;
@@ -174,6 +176,12 @@ export const studentApi = {
   // Para profesores: obtener estudiante
   getStudent: async (studentId: string): Promise<StudentProfile> => {
     const response = await api.get(`/students/${studentId}`);
+    return response.data.data;
+  },
+
+  // Para profesores: actualizar datos del perfil del aula
+  updateStudent: async (studentId: string, data: { displayName?: string; characterName?: string }): Promise<StudentProfile> => {
+    const response = await api.patch(`/students/${studentId}`, data);
     return response.data.data;
   },
 

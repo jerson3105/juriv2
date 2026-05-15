@@ -70,6 +70,7 @@ export interface Classroom {
       gpReward: number;
     }>;
   } | null;
+  competencyIndicatorStartPeriod?: string | null;
   
   // Escuela
   schoolId: string | null;
@@ -95,12 +96,17 @@ export interface Student {
   characterClass: 'GUARDIAN' | 'ARCANE' | 'EXPLORER' | 'ALCHEMIST';
   characterClassId?: string | null;
   avatarGender: 'MALE' | 'FEMALE';
+  displayName?: string | null;
+  linkCode?: string | null;
+  linkedEmail?: string | null;
   level: number;
   xp: number;
   hp: number;
   gp: number;
   realName: string | null;
   realLastName: string | null;
+  isActive?: boolean;
+  isDemo?: boolean;
   teamId?: string | null;
   clanName?: string | null;
   clanColor?: string | null;
@@ -153,7 +159,23 @@ export interface ClassroomCompetency {
   isCustom: boolean;
   canEdit: boolean;
   canDelete: boolean;
+  deleteBlockReason?: 'CONFIG_ASSOCIATED' | 'HISTORICAL_RECORDS' | 'CONFIG_AND_HISTORICAL_RECORDS' | null;
+  indicators: ClassroomCompetencyIndicator[];
   createdAt: string;
+}
+
+export interface ClassroomCompetencyIndicator {
+  id: string;
+  classroomCompetencyId: string;
+  classroomId: string;
+  competencyId: string;
+  name: string;
+  description: string | null;
+  displayOrder: number;
+  isActive: boolean;
+  canDelete: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface CreateCustomClassroomCompetencyData {
@@ -165,6 +187,16 @@ export interface CreateCustomClassroomCompetencyData {
 export interface UpdateCustomClassroomCompetencyData {
   name?: string;
   shortName?: string | null;
+  description?: string | null;
+}
+
+export interface CreateClassroomCompetencyIndicatorData {
+  name: string;
+  description?: string | null;
+}
+
+export interface UpdateClassroomCompetencyIndicatorData {
+  name?: string;
   description?: string | null;
 }
 
@@ -334,6 +366,32 @@ export const classroomApi = {
   // Eliminar competencia personalizada del aula
   deleteCustomCompetency: async (id: string, competencyId: string): Promise<void> => {
     await api.delete(`/classrooms/${id}/competencies/custom/${competencyId}`);
+  },
+
+  // Crear destreza para una competencia del aula
+  createCompetencyIndicator: async (
+    id: string,
+    competencyId: string,
+    data: CreateClassroomCompetencyIndicatorData,
+  ): Promise<ClassroomCompetencyIndicator> => {
+    const response = await api.post(`/classrooms/${id}/competencies/${competencyId}/indicators`, data);
+    return response.data.data;
+  },
+
+  // Actualizar destreza de una competencia del aula
+  updateCompetencyIndicator: async (
+    id: string,
+    competencyId: string,
+    indicatorId: string,
+    data: UpdateClassroomCompetencyIndicatorData,
+  ): Promise<ClassroomCompetencyIndicator> => {
+    const response = await api.patch(`/classrooms/${id}/competencies/${competencyId}/indicators/${indicatorId}`, data);
+    return response.data.data;
+  },
+
+  // Eliminar destreza de una competencia del aula
+  deleteCompetencyIndicator: async (id: string, competencyId: string, indicatorId: string): Promise<void> => {
+    await api.delete(`/classrooms/${id}/competencies/${competencyId}/indicators/${indicatorId}`);
   },
 
   // Unirse a clase (estudiante)

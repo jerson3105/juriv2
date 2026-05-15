@@ -33,7 +33,7 @@ import {
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { StudentAvatarMini } from '../../components/avatar/StudentAvatarMini';
-import { classroomApi, type Classroom } from '../../lib/classroomApi';
+import { classroomApi, type Classroom, type Student } from '../../lib/classroomApi';
 import { behaviorApi, type Behavior } from '../../lib/behaviorApi';
 import { studentApi } from '../../lib/studentApi';
 import { useCharacterClasses } from '../../hooks/useCharacterClasses';
@@ -46,7 +46,6 @@ import { LevelUpAnimation } from '../../components/effects/LevelUpAnimation';
 import { MultiPointsAnimation, useMultiPointsEffect } from '../../components/effects/PurchaseEffects';
 import { TeacherBadgeAwardedModal } from '../../components/badges/TeacherBadgeAwardedModal';
 import { AddPlaceholderStudentsModal } from '../../components/students/AddPlaceholderStudentsModal';
-import { placeholderStudentApi } from '../../lib/placeholderStudentApi';
 import { ClassroomUtilities } from '../../components/classroom/ClassroomUtilities';
 import { PointsModal } from '../../components/modals/PointsModal';
 import { useSound } from '../../hooks/useSound';
@@ -134,12 +133,6 @@ export const StudentsPage = () => {
   const { data: pendingNotesCount = 0 } = useQuery({
     queryKey: ['class-notes-count', classroom.id],
     queryFn: () => classNoteApi.pendingCount(classroom.id),
-  });
-
-  // Estudiantes placeholder (sin cuenta vinculada)
-  const { data: placeholderStudents = [] } = useQuery({
-    queryKey: ['placeholder-students', classroom.id],
-    queryFn: () => placeholderStudentApi.getAll(classroom.id),
   });
 
   // Asistencia de hoy (usar fecha local, no UTC)
@@ -365,18 +358,20 @@ export const StudentsPage = () => {
   };
 
   const allStudents = classroomData?.students || [];
-  
+
+  const getRealStudentName = (student: Student) => [student.realName, student.realLastName].filter(Boolean).join(' ').trim();
+
   // Función para obtener el nombre a mostrar según configuración
-  const getDisplayName = (student: typeof allStudents[0]) => {
+  const getDisplayName = (student: Student) => {
     if (classroom.showCharacterName === false) {
       // Mostrar nombre real
       if (student.realName && student.realLastName) {
         return `${student.realName} ${student.realLastName}`;
       }
-      return student.realName || student.characterName || 'Sin nombre';
+      return student.realName || student.displayName || student.characterName || 'Sin nombre';
     }
     // Mostrar nombre de personaje (por defecto)
-    return student.characterName || 'Sin nombre';
+    return student.characterName || student.displayName || getRealStudentName(student) || 'Sin nombre';
   };
 
   // Mapa de asistencia de hoy por studentProfileId
@@ -643,8 +638,8 @@ export const StudentsPage = () => {
 
   // Verificar si un estudiante es placeholder (tiene linkCode)
   const getStudentLinkCode = (studentId: string): string | null => {
-    const placeholder = placeholderStudents.find(p => p.id === studentId);
-    return placeholder?.linkCode || null;
+    const student = allStudents.find((item) => item.id === studentId);
+    return student?.linkCode || null;
   };
 
   // Calcular top estudiante (sobre TODOS los estudiantes, no los filtrados)
@@ -1539,6 +1534,16 @@ export const StudentsPage = () => {
                                 <span className="font-medium text-gray-800 dark:text-white">{getDisplayName(student)}</span>
                                 {isTopStudent && <Crown size={14} className="text-amber-500" />}
                               </div>
+                              {(getRealStudentName(student) || student.linkedEmail) && (
+                                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+                                  {getRealStudentName(student) && (
+                                    <span className="text-gray-500 dark:text-gray-400">{getRealStudentName(student)}</span>
+                                  )}
+                                  {student.linkedEmail && (
+                                    <span className="text-gray-400 dark:text-gray-500">{student.linkedEmail}</span>
+                                  )}
+                                </div>
+                              )}
                               <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
                                 {/* Attendance indicator dot */}
                                 {(() => {
@@ -1661,7 +1666,7 @@ export const StudentsPage = () => {
                             className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-700 text-sm font-medium"
                           >
                             <Eye size={14} />
-                            Ver detalle
+                            Ver perfil
                           </button>
                         </td>
                       </tr>
@@ -1805,6 +1810,11 @@ export const StudentsPage = () => {
                                 <p className="font-semibold text-gray-800 dark:text-white truncate">
                                   {getDisplayName(student)}
                                 </p>
+                                {getRealStudentName(student) && (
+                                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+                                    <span className="text-gray-500 dark:text-gray-400 truncate">{getRealStudentName(student)}</span>
+                                  </div>
+                                )}
                                 <div className="flex items-center gap-2 text-xs text-gray-500">
                                   <span className="text-base">{classInfo?.icon}</span>
                                   <span>{classInfo?.name}</span>
@@ -1834,7 +1844,6 @@ export const StudentsPage = () => {
                                 </div>
                               </div>
 
-                              {/* Ver detalle */}
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();

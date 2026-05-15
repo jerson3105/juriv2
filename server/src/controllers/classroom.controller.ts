@@ -92,6 +92,18 @@ const updateCustomClassroomCompetencySchema = z.object({
   message: 'Debes enviar al menos un campo para actualizar',
 });
 
+const createCompetencyIndicatorSchema = z.object({
+  name: z.string().min(2).max(255),
+  description: z.string().max(1000).optional().nullable(),
+});
+
+const updateCompetencyIndicatorSchema = z.object({
+  name: z.string().min(2).max(255).optional(),
+  description: z.string().max(1000).optional().nullable(),
+}).refine((data) => Object.keys(data).length > 0, {
+  message: 'Debes enviar al menos un campo para actualizar',
+});
+
 const joinClassroomSchema = z.object({
   code: z.string().length(6),
   characterName: z.string().min(2).max(100),
@@ -513,6 +525,149 @@ export class ClassroomController {
       res.status(500).json({
         success: false,
         message: 'Error al eliminar competencia personalizada',
+      });
+    }
+  }
+
+  async createCompetencyIndicator(req: Request, res: Response) {
+    try {
+      const { id, competencyId } = req.params;
+      const data = createCompetencyIndicatorSchema.parse(req.body);
+      const classroom = await classroomService.getById(id);
+
+      if (!classroom) {
+        return res.status(404).json({
+          success: false,
+          message: 'Clase no encontrada',
+        });
+      }
+
+      if (classroom.teacherId !== req.user!.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'No tienes permiso para esta clase',
+        });
+      }
+
+      const indicator = await classroomService.createCompetencyIndicator(id, competencyId, req.user!.id, data);
+
+      res.status(201).json({
+        success: true,
+        message: 'Destreza creada',
+        data: indicator,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          message: 'Datos inválidos',
+          errors: error.errors,
+        });
+      }
+
+      if (error instanceof Error) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      console.error('Error creating competency indicator:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error al crear destreza',
+      });
+    }
+  }
+
+  async updateCompetencyIndicator(req: Request, res: Response) {
+    try {
+      const { id, competencyId, indicatorId } = req.params;
+      const data = updateCompetencyIndicatorSchema.parse(req.body);
+      const classroom = await classroomService.getById(id);
+
+      if (!classroom) {
+        return res.status(404).json({
+          success: false,
+          message: 'Clase no encontrada',
+        });
+      }
+
+      if (classroom.teacherId !== req.user!.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'No tienes permiso para esta clase',
+        });
+      }
+
+      const indicator = await classroomService.updateCompetencyIndicator(id, competencyId, indicatorId, req.user!.id, data);
+
+      res.json({
+        success: true,
+        message: 'Destreza actualizada',
+        data: indicator,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          message: 'Datos inválidos',
+          errors: error.errors,
+        });
+      }
+
+      if (error instanceof Error) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      console.error('Error updating competency indicator:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error al actualizar destreza',
+      });
+    }
+  }
+
+  async deleteCompetencyIndicator(req: Request, res: Response) {
+    try {
+      const { id, competencyId, indicatorId } = req.params;
+      const classroom = await classroomService.getById(id);
+
+      if (!classroom) {
+        return res.status(404).json({
+          success: false,
+          message: 'Clase no encontrada',
+        });
+      }
+
+      if (classroom.teacherId !== req.user!.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'No tienes permiso para esta clase',
+        });
+      }
+
+      await classroomService.deleteCompetencyIndicator(id, competencyId, indicatorId, req.user!.id);
+
+      res.json({
+        success: true,
+        message: 'Destreza eliminada',
+      });
+    } catch (error) {
+      if (error instanceof Error) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      console.error('Error deleting competency indicator:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error al eliminar destreza',
       });
     }
   }

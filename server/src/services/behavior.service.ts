@@ -1,5 +1,5 @@
 import { db } from '../db/index.js';
-import { behaviors, studentProfiles, pointLogs, classrooms, notifications, curriculumCompetencies, classroomCompetencies } from '../db/schema.js';
+import { behaviors, studentProfiles, pointLogs, classrooms, notifications, curriculumCompetencies, classroomCompetencies, classroomCompetencyIndicators } from '../db/schema.js';
 import { eq, and, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { badgeService } from './badge.service.js';
@@ -21,6 +21,7 @@ interface CreateBehaviorData {
   isPositive: boolean;
   icon?: string;
   competencyId?: string | null;
+  competencyIndicatorId?: string | null;
 }
 
 interface ApplyBehaviorData {
@@ -30,6 +31,140 @@ interface ApplyBehaviorData {
 }
 
 export class BehaviorService {
+  private async resolveCompetencyAssignment(
+    classroomId: string,
+    competencyId?: string | null,
+    competencyIndicatorId?: string | null,
+  ): Promise<{ competencyId: string | null; competencyIndicatorId: string | null }> {
+    if (competencyIndicatorId) {
+      const [indicator] = await db
+        .select({
+          id: classroomCompetencyIndicators.id,
+          competencyId: classroomCompetencyIndicators.competencyId,
+        })
+        .from(classroomCompetencyIndicators)
+        .where(and(
+          eq(classroomCompetencyIndicators.id, competencyIndicatorId),
+          eq(classroomCompetencyIndicators.classroomId, classroomId),
+          eq(classroomCompetencyIndicators.isActive, true),
+        ));
+
+      if (!indicator) {
+        throw new Error('La destreza seleccionada no existe o no pertenece a esta clase');
+      }
+
+      if (competencyId && competencyId !== indicator.competencyId) {
+        throw new Error('La destreza seleccionada no pertenece a la competencia elegida');
+      }
+
+      return {
+        competencyId: indicator.competencyId,
+        competencyIndicatorId: indicator.id,
+      };
+    }
+
+    if (!competencyId) {
+      return {
+        competencyId: null,
+        competencyIndicatorId: null,
+      };
+    }
+
+    const [enabledCompetency] = await db
+      .select({ competencyId: classroomCompetencies.competencyId })
+      .from(classroomCompetencies)
+      .where(and(
+        eq(classroomCompetencies.classroomId, classroomId),
+        eq(classroomCompetencies.competencyId, competencyId),
+        eq(classroomCompetencies.isActive, true),
+      ));
+
+    if (!enabledCompetency) {
+      throw new Error('La competencia seleccionada no esta habilitada en esta clase');
+    }
+
+    return {
+      competencyId,
+      competencyIndicatorId: null,
+    };
+  }
+
+  private buildBehaviorResponse(row: any) {
+    return {
+      id: row.id,
+      classroomId: row.classroomId,
+      name: row.name,
+      description: row.description,
+      pointType: row.pointType,
+      pointValue: row.pointValue,
+      xpValue: row.xpValue,
+      hpValue: row.hpValue,
+      gpValue: row.gpValue,
+      isPositive: row.isPositive,
+      icon: row.icon,
+      isActive: row.isActive,
+      competencyId: row.competencyId,
+      competencyIndicatorId: row.competencyIndicatorId,
+      schoolBehaviorId: row.schoolBehaviorId,
+      createdAt: row.createdAt,
+      competency: row.competency_id ? {
+        id: row.competency_id,
+        name: row.competency_name,
+        shortName: row.competency_shortName,
+        areaId: row.competency_areaId,
+      } : null,
+      competencyIndicator: row.indicator_id ? {
+        id: row.indicator_id,
+        name: row.indicator_name,
+        description: row.indicator_description,
+        competencyId: row.indicator_competencyId,
+      } : null,
+    };
+  }
+
+  private async getBehaviorRows(classroomId: string, isPositive?: boolean) {
+    const filters = [
+      eq(behaviors.classroomId, classroomId),
+      eq(behaviors.isActive, true),
+    ];
+
+    if (typeof isPositive === 'boolean') {
+      filters.push(eq(behaviors.isPositive, isPositive));
+    }
+
+    return db
+      .select({
+        id: behaviors.id,
+        classroomId: behaviors.classroomId,
+        name: behaviors.name,
+        description: behaviors.description,
+        pointType: behaviors.pointType,
+        pointValue: behaviors.pointValue,
+        xpValue: behaviors.xpValue,
+        hpValue: behaviors.hpValue,
+        gpValue: behaviors.gpValue,
+        isPositive: behaviors.isPositive,
+        icon: behaviors.icon,
+        isActive: behaviors.isActive,
+        competencyId: behaviors.competencyId,
+        competencyIndicatorId: behaviors.competencyIndicatorId,
+        schoolBehaviorId: behaviors.schoolBehaviorId,
+        createdAt: behaviors.createdAt,
+        competency_id: curriculumCompetencies.id,
+        competency_name: curriculumCompetencies.name,
+        competency_shortName: curriculumCompetencies.shortName,
+        competency_areaId: curriculumCompetencies.areaId,
+        indicator_id: classroomCompetencyIndicators.id,
+        indicator_name: classroomCompetencyIndicators.name,
+        indicator_description: classroomCompetencyIndicators.description,
+        indicator_competencyId: classroomCompetencyIndicators.competencyId,
+      })
+      .from(behaviors)
+      .leftJoin(curriculumCompetencies, eq(behaviors.competencyId, curriculumCompetencies.id))
+      .leftJoin(classroomCompetencyIndicators, eq(behaviors.competencyIndicatorId, classroomCompetencyIndicators.id))
+      .where(and(...filters));
+  }
+
   // Crear un nuevo comportamiento/preset
   async create(data: CreateBehaviorData) {
     const id = uuidv4();
@@ -39,6 +174,11 @@ export class BehaviorService {
     const xpValue = data.xpValue ?? (data.pointType === 'XP' ? data.pointValue : 0);
     const hpValue = data.hpValue ?? (data.pointType === 'HP' ? data.pointValue : 0);
     const gpValue = data.gpValue ?? (data.pointType === 'GP' ? data.pointValue : 0);
+    const assignment = await this.resolveCompetencyAssignment(
+      data.classroomId,
+      data.competencyId,
+      data.competencyIndicatorId,
+    );
 
     await db.insert(behaviors).values({
       id,
@@ -52,7 +192,8 @@ export class BehaviorService {
       gpValue,
       isPositive: data.isPositive,
       icon: data.icon || null,
-      competencyId: data.competencyId || null,
+      competencyId: assignment.competencyId,
+      competencyIndicatorId: assignment.competencyIndicatorId,
       createdAt: now,
     });
 
@@ -68,178 +209,49 @@ export class BehaviorService {
 
   // Obtener todos los comportamientos de una clase
   async getByClassroom(classroomId: string) {
-    const rows = await db
-      .select({
-        id: behaviors.id,
-        classroomId: behaviors.classroomId,
-        name: behaviors.name,
-        description: behaviors.description,
-        pointType: behaviors.pointType,
-        pointValue: behaviors.pointValue,
-        xpValue: behaviors.xpValue,
-        hpValue: behaviors.hpValue,
-        gpValue: behaviors.gpValue,
-        isPositive: behaviors.isPositive,
-        icon: behaviors.icon,
-        isActive: behaviors.isActive,
-        competencyId: behaviors.competencyId,
-        schoolBehaviorId: behaviors.schoolBehaviorId,
-        createdAt: behaviors.createdAt,
-        competency_id: curriculumCompetencies.id,
-        competency_name: curriculumCompetencies.name,
-        competency_shortName: curriculumCompetencies.shortName,
-        competency_areaId: curriculumCompetencies.areaId,
-      })
-      .from(behaviors)
-      .leftJoin(curriculumCompetencies, eq(behaviors.competencyId, curriculumCompetencies.id))
-      .where(and(
-        eq(behaviors.classroomId, classroomId),
-        eq(behaviors.isActive, true)
-      ));
-    
-    return rows.map(row => ({
-      id: row.id,
-      classroomId: row.classroomId,
-      name: row.name,
-      description: row.description,
-      pointType: row.pointType,
-      pointValue: row.pointValue,
-      xpValue: row.xpValue,
-      hpValue: row.hpValue,
-      gpValue: row.gpValue,
-      isPositive: row.isPositive,
-      icon: row.icon,
-      isActive: row.isActive,
-      competencyId: row.competencyId,
-      schoolBehaviorId: row.schoolBehaviorId,
-      createdAt: row.createdAt,
-      competency: row.competency_id ? {
-        id: row.competency_id,
-        name: row.competency_name!,
-        shortName: row.competency_shortName,
-        areaId: row.competency_areaId!,
-      } : null,
-    }));
+    const rows = await this.getBehaviorRows(classroomId);
+
+    return rows.map((row) => this.buildBehaviorResponse(row));
   }
 
   // Obtener comportamientos positivos (para agregar puntos)
   async getPositive(classroomId: string) {
-    const rows = await db
-      .select({
-        id: behaviors.id,
-        classroomId: behaviors.classroomId,
-        name: behaviors.name,
-        description: behaviors.description,
-        pointType: behaviors.pointType,
-        pointValue: behaviors.pointValue,
-        xpValue: behaviors.xpValue,
-        hpValue: behaviors.hpValue,
-        gpValue: behaviors.gpValue,
-        isPositive: behaviors.isPositive,
-        icon: behaviors.icon,
-        isActive: behaviors.isActive,
-        competencyId: behaviors.competencyId,
-        schoolBehaviorId: behaviors.schoolBehaviorId,
-        createdAt: behaviors.createdAt,
-        competency_id: curriculumCompetencies.id,
-        competency_name: curriculumCompetencies.name,
-        competency_shortName: curriculumCompetencies.shortName,
-        competency_areaId: curriculumCompetencies.areaId,
-      })
-      .from(behaviors)
-      .leftJoin(curriculumCompetencies, eq(behaviors.competencyId, curriculumCompetencies.id))
-      .where(and(
-        eq(behaviors.classroomId, classroomId),
-        eq(behaviors.isPositive, true),
-        eq(behaviors.isActive, true)
-      ));
-    
-    return rows.map(row => ({
-      id: row.id,
-      classroomId: row.classroomId,
-      name: row.name,
-      description: row.description,
-      pointType: row.pointType,
-      pointValue: row.pointValue,
-      xpValue: row.xpValue,
-      hpValue: row.hpValue,
-      gpValue: row.gpValue,
-      isPositive: row.isPositive,
-      icon: row.icon,
-      isActive: row.isActive,
-      competencyId: row.competencyId,
-      schoolBehaviorId: row.schoolBehaviorId,
-      createdAt: row.createdAt,
-      competency: row.competency_id ? {
-        id: row.competency_id,
-        name: row.competency_name!,
-        shortName: row.competency_shortName,
-        areaId: row.competency_areaId!,
-      } : null,
-    }));
+    const rows = await this.getBehaviorRows(classroomId, true);
+
+    return rows.map((row) => this.buildBehaviorResponse(row));
   }
 
   // Obtener comportamientos negativos (para quitar puntos)
   async getNegative(classroomId: string) {
-    const rows = await db
-      .select({
-        id: behaviors.id,
-        classroomId: behaviors.classroomId,
-        name: behaviors.name,
-        description: behaviors.description,
-        pointType: behaviors.pointType,
-        pointValue: behaviors.pointValue,
-        xpValue: behaviors.xpValue,
-        hpValue: behaviors.hpValue,
-        gpValue: behaviors.gpValue,
-        isPositive: behaviors.isPositive,
-        icon: behaviors.icon,
-        isActive: behaviors.isActive,
-        competencyId: behaviors.competencyId,
-        schoolBehaviorId: behaviors.schoolBehaviorId,
-        createdAt: behaviors.createdAt,
-        competency_id: curriculumCompetencies.id,
-        competency_name: curriculumCompetencies.name,
-        competency_shortName: curriculumCompetencies.shortName,
-        competency_areaId: curriculumCompetencies.areaId,
-      })
-      .from(behaviors)
-      .leftJoin(curriculumCompetencies, eq(behaviors.competencyId, curriculumCompetencies.id))
-      .where(and(
-        eq(behaviors.classroomId, classroomId),
-        eq(behaviors.isPositive, false),
-        eq(behaviors.isActive, true)
-      ));
-    
-    return rows.map(row => ({
-      id: row.id,
-      classroomId: row.classroomId,
-      name: row.name,
-      description: row.description,
-      pointType: row.pointType,
-      pointValue: row.pointValue,
-      xpValue: row.xpValue,
-      hpValue: row.hpValue,
-      gpValue: row.gpValue,
-      isPositive: row.isPositive,
-      icon: row.icon,
-      isActive: row.isActive,
-      competencyId: row.competencyId,
-      schoolBehaviorId: row.schoolBehaviorId,
-      createdAt: row.createdAt,
-      competency: row.competency_id ? {
-        id: row.competency_id,
-        name: row.competency_name!,
-        shortName: row.competency_shortName,
-        areaId: row.competency_areaId!,
-      } : null,
-    }));
+    const rows = await this.getBehaviorRows(classroomId, false);
+
+    return rows.map((row) => this.buildBehaviorResponse(row));
   }
 
   // Actualizar comportamiento
   async update(id: string, data: Partial<CreateBehaviorData>) {
+    const currentBehavior = await this.getById(id);
+    if (!currentBehavior) {
+      throw new Error('Comportamiento no encontrado');
+    }
+
+    const hasCompetencyUpdate = Object.prototype.hasOwnProperty.call(data, 'competencyId');
+    const hasIndicatorUpdate = Object.prototype.hasOwnProperty.call(data, 'competencyIndicatorId');
+    const payload: Partial<typeof behaviors.$inferInsert> = { ...data };
+
+    if (hasCompetencyUpdate || hasIndicatorUpdate) {
+      const assignment = await this.resolveCompetencyAssignment(
+        currentBehavior.classroomId,
+        hasCompetencyUpdate ? data.competencyId ?? null : currentBehavior.competencyId,
+        hasIndicatorUpdate ? data.competencyIndicatorId ?? null : currentBehavior.competencyIndicatorId,
+      );
+
+      payload.competencyId = assignment.competencyId;
+      payload.competencyIndicatorId = assignment.competencyIndicatorId;
+    }
+
     await db.update(behaviors)
-      .set(data)
+      .set(payload)
       .where(eq(behaviors.id, id));
 
     return this.getById(id);
@@ -359,6 +371,8 @@ export class BehaviorService {
           id: logId,
           studentId: student.id,
           behaviorId: behavior.id,
+          competencyId: behavior.competencyId || null,
+          competencyIndicatorId: behavior.competencyIndicatorId || null,
           pointType: 'XP',
           action: behavior.isPositive ? 'ADD' : 'REMOVE',
           amount: xpChange,
@@ -374,6 +388,8 @@ export class BehaviorService {
           id: logId,
           studentId: student.id,
           behaviorId: behavior.id,
+          competencyId: behavior.competencyId || null,
+          competencyIndicatorId: behavior.competencyIndicatorId || null,
           pointType: 'HP',
           action: behavior.isPositive ? 'ADD' : 'REMOVE',
           amount: hpChange,
@@ -389,6 +405,8 @@ export class BehaviorService {
           id: logId,
           studentId: student.id,
           behaviorId: behavior.id,
+          competencyId: behavior.competencyId || null,
+          competencyIndicatorId: behavior.competencyIndicatorId || null,
           pointType: 'GP',
           action: behavior.isPositive ? 'ADD' : 'REMOVE',
           amount: gpChange,
@@ -632,6 +650,7 @@ export class BehaviorService {
           icon: src.icon,
           isActive: true,
           competencyId,
+          competencyIndicatorId: null,
           createdAt: now,
         });
         totalCreated++;

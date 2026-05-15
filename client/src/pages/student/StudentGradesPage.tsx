@@ -21,21 +21,61 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
+import { IndicatorEvidenceSplit } from '../../components/ui/IndicatorEvidenceSplit';
 import { useStudentStore } from '../../store/studentStore';
 import { studentApi } from '../../lib/studentApi';
-import { gradeApi, type PerformanceBucket } from '../../lib/gradeApi';
+import { gradeApi, type PerformanceBucket, type StudentGrade } from '../../lib/gradeApi';
 import { useClassroomCompetencies } from '../../hooks/useClassroomCompetencies';
 
+const getActivityDotClassName = (type: string) => {
+  if (type === 'BEHAVIOR') return 'bg-emerald-500';
+  if (type === 'INDICATOR') return 'bg-indigo-500';
+  if (type === 'BADGE') return 'bg-amber-500';
+  if (type === 'EXPEDITION') return 'bg-purple-500';
+  if (type === 'TIMED') return 'bg-cyan-500';
+  if (type === 'MANUAL_POINTS') return 'bg-sky-500';
+  return 'bg-gray-500';
+};
+
+const getActivityTypeLabel = (type: string) => {
+  if (type === 'BEHAVIOR') return 'Comportamiento';
+  if (type === 'INDICATOR') return 'Destreza';
+  if (type === 'BADGE') return 'Insignia';
+  if (type === 'EXPEDITION') return 'Expedición';
+  if (type === 'TIMED') return 'Actividad';
+  if (type === 'MANUAL_POINTS') return 'Punto manual';
+  return type;
+};
+
+const getActivityWeightLabel = (type: string) => {
+  if (type === 'BEHAVIOR' || type === 'MANUAL_POINTS' || type === 'INDICATOR') {
+    return 'peso evidencia';
+  }
+
+  return 'peso';
+};
+
 // Componente para mostrar el desglose de actividades
-const ActivityBreakdown = ({ grade }: { grade: any }) => {
+const ActivityBreakdown = ({ grade }: { grade: StudentGrade }) => {
   // Parse calculationDetails if it's a string (MySQL JSON column)
-  let details = grade.calculationDetails;
+  let details: StudentGrade['calculationDetails'] | string | null | undefined = grade.calculationDetails;
   if (typeof details === 'string') {
     try { details = JSON.parse(details); } catch { details = null; }
   }
-  const activities = details?.activities || [];
+  const activities = typeof details === 'object' && details && Array.isArray(details.activities)
+    ? details.activities
+    : [];
+  const hasIndicatorBreakdown = grade.indicatorBreakdownStatus === 'AVAILABLE'
+    && grade.indicatorBreakdown.length > 0;
+  const visibleActivities = hasIndicatorBreakdown
+    ? activities.filter((activity) => activity.type !== 'INDICATOR')
+    : activities;
 
-  if (activities.length === 0) {
+  if (visibleActivities.length === 0) {
+    if (hasIndicatorBreakdown) {
+      return null;
+    }
+
     return (
       <p className="text-sm text-gray-500 dark:text-gray-400 italic">
         Aún no hay actividades registradas para esta competencia.
@@ -46,38 +86,31 @@ const ActivityBreakdown = ({ grade }: { grade: any }) => {
   return (
     <div className="space-y-2">
       <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
-        ¿Cómo se calculó esta nota?
+        {hasIndicatorBreakdown ? 'Otras actividades consideradas' : '¿Cómo se calculó esta nota?'}
       </span>
       <div className="space-y-2">
-        {activities.map((activity: any, idx: number) => (
+        {visibleActivities.map((activity: any, idx: number) => (
           <div
             key={idx}
             className="flex items-center justify-between bg-white dark:bg-gray-900 rounded-lg px-3 py-2 border border-gray-100 dark:border-gray-700"
           >
             <div className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full ${
-                activity.type === 'BEHAVIOR' ? 'bg-emerald-500' :
-                activity.type === 'BADGE' ? 'bg-amber-500' :
-                activity.type === 'EXPEDITION' ? 'bg-purple-500' :
-                activity.type === 'TIMED' ? 'bg-cyan-500' :
-                activity.type === 'MANUAL_POINTS' ? 'bg-sky-500' :
-                'bg-gray-500'
-              }`} />
+              <span className={`w-2 h-2 rounded-full ${getActivityDotClassName(activity.type)}`} />
               <span className="text-sm text-gray-700 dark:text-gray-300">
                 {activity.name}
               </span>
               <span className="text-xs px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-gray-500 dark:text-gray-400">
-                {activity.type === 'BEHAVIOR' ? 'Comportamiento' :
-                 activity.type === 'BADGE' ? 'Insignia' :
-                 activity.type === 'EXPEDITION' ? 'Expedición' :
-                 activity.type === 'TIMED' ? 'Actividad' :
-                  activity.type === 'MANUAL_POINTS' ? 'Punto manual' :
-                 activity.type}
+                {getActivityTypeLabel(activity.type)}
               </span>
             </div>
-            <span className="text-sm font-semibold text-gray-800 dark:text-white">
-              {activity.score.toFixed(0)}%
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-gray-800 dark:text-white">
+                {activity.score.toFixed(0)}%
+              </span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                ({getActivityWeightLabel(activity.type)}: {activity.weight})
+              </span>
+            </div>
           </div>
         ))}
       </div>
@@ -176,6 +209,15 @@ export const StudentGradesPage = () => {
     if (bucket === 'B') return 'En proceso - Está cerca del logro esperado';
     if (bucket === 'C') return 'En inicio - Necesita más apoyo';
     return '';
+  };
+
+  const formatPeriodLabel = (value: string | null) => {
+    if (!value || !value.includes('-B')) {
+      return 'un bimestre posterior';
+    }
+
+    const [year, bimester] = value.split('-B');
+    return `Bimestre ${bimester} ${year}`;
   };
 
   if (!classroom?.useCompetencies) {
@@ -452,6 +494,76 @@ export const StudentGradesPage = () => {
 
                           {/* Desglose de actividades */}
                           <ActivityBreakdown grade={grade} />
+
+                          {grade.indicatorBreakdownStatus === 'HISTORICAL_NO_BREAKDOWN' && (
+                            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 dark:border-amber-900/40 dark:bg-amber-900/20">
+                              <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                                Histórico sin desglose de destrezas
+                              </p>
+                              <p className="mt-1 text-xs text-amber-700 dark:text-amber-200">
+                                Esta competencia empezó a mostrar destrezas desde {formatPeriodLabel(grade.indicatorStartPeriod)}.
+                              </p>
+                            </div>
+                          )}
+
+                          {grade.indicatorBreakdownStatus === 'AVAILABLE' && grade.indicatorBreakdown.length > 0 && (
+                            <div className="space-y-2 border-t border-gray-100 pt-3 dark:border-gray-700">
+                              <div className="flex items-center gap-2">
+                                <Target size={14} className="text-indigo-500" />
+                                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                                  Destrezas
+                                </span>
+                                <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
+                                  Cuenta en nota oficial
+                                </span>
+                              </div>
+                              <div className="grid gap-2 md:grid-cols-2">
+                                {grade.indicatorBreakdown.map((indicator) => (
+                                  <div
+                                    key={indicator.id}
+                                    className="rounded-lg border border-indigo-100 bg-indigo-50/70 px-3 py-3 dark:border-indigo-900/40 dark:bg-indigo-900/10"
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0">
+                                        <p className="text-sm font-medium text-gray-800 dark:text-white">
+                                          {indicator.name}
+                                        </p>
+                                        {indicator.description && (
+                                          <p className="mt-1 line-clamp-2 text-xs text-gray-500 dark:text-gray-400">
+                                            {indicator.description}
+                                          </p>
+                                        )}
+                                      </div>
+                                      {indicator.hasEvidence ? (
+                                        <span className={`inline-flex items-center justify-center rounded-lg px-2 py-1 text-xs font-bold ${indicator.bucket ? getBucketColor(indicator.bucket) : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-300'}`}>
+                                          {indicator.gradeLabel || `${Number(indicator.score || 0).toFixed(0)}%`}
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center justify-center rounded-lg bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500 dark:bg-gray-800 dark:text-gray-300">
+                                          Sin evidencias
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    {indicator.hasEvidence && (
+                                      <IndicatorEvidenceSplit
+                                        positiveObservations={indicator.positiveObservations}
+                                        negativeObservations={indicator.negativeObservations}
+                                        positivePoints={indicator.positivePoints}
+                                        negativePoints={indicator.negativePoints}
+                                      />
+                                    )}
+
+                                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                                      {indicator.hasEvidence
+                                        ? `${Number(indicator.score || 0).toFixed(0)}% · peso evidencia: ${indicator.evidenceWeight} · ${indicator.observations} registro(s)`
+                                        : 'Aun no hay comportamientos vinculados a esta destreza en el periodo.'}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                           
                           {/* Info adicional */}
                           <div className="grid grid-cols-2 gap-3 text-sm">

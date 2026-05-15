@@ -17,12 +17,19 @@ export interface Behavior {
   isActive: boolean;
   createdAt: string;
   competencyId: string | null;
+  competencyIndicatorId: string | null;
   schoolBehaviorId: string | null;
   competency?: {
     id: string;
     name: string;
     shortName: string | null;
     areaId: string;
+  } | null;
+  competencyIndicator?: {
+    id: string;
+    name: string;
+    description: string | null;
+    competencyId: string;
   } | null;
 }
 
@@ -38,6 +45,7 @@ export interface CreateBehaviorData {
   isPositive: boolean;
   icon?: string;
   competencyId?: string;
+  competencyIndicatorId?: string;
 }
 
 export interface ApplyBehaviorData {

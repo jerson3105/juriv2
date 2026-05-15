@@ -14,6 +14,7 @@ import {
   BookOpen,
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
+import { IndicatorEvidenceSplit } from '../../components/ui/IndicatorEvidenceSplit';
 import { type Classroom } from '../../lib/classroomApi';
 import { type AvatarGender } from '../../lib/avatarApi';
 import { gradeApi } from '../../lib/gradeApi';
@@ -41,6 +42,15 @@ export const GradebookStatsPage = () => {
     if (bucket === 'A') return 'bg-blue-100 text-blue-600';
     if (bucket === 'B') return 'bg-amber-100 text-amber-600';
     return 'bg-red-100 text-red-600';
+  };
+
+  const formatPeriodLabel = (value: string | null) => {
+    if (!value || !value.includes('-B')) {
+      return 'un bimestre posterior';
+    }
+
+    const [year, bimester] = value.split('-B');
+    return `Bimestre ${bimester} ${year}`;
   };
 
   const gradeStats = useMemo(() => {
@@ -354,6 +364,15 @@ export const GradebookStatsPage = () => {
                       <div className="space-y-4">
                         {student.gradeInfo.grades.map((grade: any) => (
                           <div key={grade.competencyId} className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4">
+                            {(() => {
+                              const hasIndicatorBreakdown = grade.indicatorBreakdownStatus === 'AVAILABLE'
+                                && grade.indicatorBreakdown.length > 0;
+                              const visibleActivities = hasIndicatorBreakdown
+                                ? (grade.calculationDetails?.activities || []).filter((activity: any) => activity.type !== 'INDICATOR')
+                                : (grade.calculationDetails?.activities || []);
+
+                              return (
+                                <>
                             <div className="flex items-center justify-between mb-3">
                               <div>
                                 <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">{grade.competencyName}</p>
@@ -370,13 +389,16 @@ export const GradebookStatsPage = () => {
                             </div>
                             
                             {/* Detalle de actividades que contribuyen */}
-                            {grade.calculationDetails?.activities && grade.calculationDetails.activities.length > 0 ? (
+                            {visibleActivities.length > 0 ? (
                               <div className="space-y-2 border-t border-gray-200 dark:border-gray-700 pt-3">
-                                <p className="text-xs font-medium text-gray-500 mb-2">📋 Registros que contribuyen a esta nota:</p>
-                                {grade.calculationDetails.activities.map((activity: any, idx: number) => {
+                                <p className="text-xs font-medium text-gray-500 mb-2">
+                                  {hasIndicatorBreakdown ? '📋 Otras actividades consideradas:' : '📋 Registros que contribuyen a esta nota:'}
+                                </p>
+                                {visibleActivities.map((activity: any, idx: number) => {
                                   const getActivityIcon = (type: string) => {
                                     switch (type) {
                                       case 'BEHAVIOR': return '🎯';
+                                      case 'INDICATOR': return '🎯';
                                       case 'BADGE': return '🏅';
                                       case 'TOURNAMENT': return '🏆';
                                       case 'EXPEDITION': return '🗺️';
@@ -388,6 +410,7 @@ export const GradebookStatsPage = () => {
                                   const getActivityLabel = (type: string) => {
                                     switch (type) {
                                       case 'BEHAVIOR': return 'Comportamiento';
+                                      case 'INDICATOR': return 'Destreza';
                                       case 'BADGE': return 'Insignia';
                                       case 'TOURNAMENT': return 'Torneo';
                                       case 'EXPEDITION': return 'Expedición';
@@ -423,11 +446,79 @@ export const GradebookStatsPage = () => {
                                   );
                                 })}
                               </div>
-                            ) : (
+                            ) : !hasIndicatorBreakdown ? (
                               <div className="border-t border-gray-200 dark:border-gray-700 pt-3">
                                 <p className="text-xs text-gray-400 italic">Sin actividades registradas para esta competencia</p>
                               </div>
+                            ) : null}
+
+                            {grade.indicatorBreakdownStatus === 'HISTORICAL_NO_BREAKDOWN' && (
+                              <div className="mt-3 rounded-lg border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/20 px-3 py-3">
+                                <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                                  Histórico sin desglose de destrezas
+                                </p>
+                                <p className="text-xs text-amber-700 dark:text-amber-200 mt-1">
+                                  Esta competencia empezó a mostrar destrezas desde {formatPeriodLabel(grade.indicatorStartPeriod)}.
+                                </p>
+                              </div>
                             )}
+
+                            {grade.indicatorBreakdownStatus === 'AVAILABLE' && grade.indicatorBreakdown.length > 0 && (
+                              <div className="mt-3 space-y-2 border-t border-gray-200 dark:border-gray-700 pt-3">
+                                <div className="flex items-center gap-2">
+                                  <Target size={14} className="text-indigo-500" />
+                                  <p className="text-xs font-medium text-gray-500">Destrezas</p>
+                                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
+                                    Cuenta en nota oficial
+                                  </span>
+                                </div>
+
+                                <div className="grid gap-2 md:grid-cols-2">
+                                  {grade.indicatorBreakdown.map((indicator: any) => (
+                                    <div
+                                      key={indicator.id}
+                                      className="rounded-lg border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50/70 dark:bg-indigo-900/10 px-3 py-3"
+                                    >
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                          <p className="text-sm font-medium text-gray-800 dark:text-white">{indicator.name}</p>
+                                          {indicator.description && (
+                                            <p className="text-xs text-gray-500 mt-1 line-clamp-2">{indicator.description}</p>
+                                          )}
+                                        </div>
+                                        {indicator.hasEvidence ? (
+                                          <span className={`px-2 py-1 rounded-lg text-xs font-bold ${indicator.bucket ? getBucketBadgeClass(indicator.bucket) : 'bg-gray-100 text-gray-500'}`}>
+                                            {indicator.gradeLabel || `${Number(indicator.score || 0).toFixed(0)}%`}
+                                          </span>
+                                        ) : (
+                                          <span className="px-2 py-1 rounded-lg text-xs font-medium bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-300">
+                                            Sin evidencias
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      {indicator.hasEvidence && (
+                                        <IndicatorEvidenceSplit
+                                          positiveObservations={indicator.positiveObservations}
+                                          negativeObservations={indicator.negativeObservations}
+                                          positivePoints={indicator.positivePoints}
+                                          negativePoints={indicator.negativePoints}
+                                        />
+                                      )}
+
+                                      <p className="text-xs text-gray-500 mt-2">
+                                        {indicator.hasEvidence
+                                          ? `${Number(indicator.score || 0).toFixed(0)}% · peso evidencia: ${indicator.evidenceWeight} · ${indicator.observations} registro(s)`
+                                          : 'Aun no hay comportamientos vinculados a esta destreza en el periodo.'}
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                                </>
+                              );
+                            })()}
                           </div>
                         ))}
                       </div>

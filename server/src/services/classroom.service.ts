@@ -42,6 +42,7 @@ import {
   tournamentMatches,
   studentGrades,
   studentActivityScores,
+  classroomCompetencyIndicators,
   collectibleAlbums,
   collectibleCards,
   studentCollectibles,
@@ -58,6 +59,12 @@ import { generateClassCode } from '../utils/helpers.js';
 import { v4 as uuidv4 } from 'uuid';
 import { avatarService } from './avatar.service.js';
 import { characterClassService } from './characterClass.service.js';
+type CompetencyDeleteBlockReason = 'CONFIG_ASSOCIATED' | 'HISTORICAL_RECORDS' | 'CONFIG_AND_HISTORICAL_RECORDS';
+type CompetencyUsageSummary = {
+  hasConfigAssociations: boolean;
+  hasHistoricalRecords: boolean;
+  deleteBlockReason: CompetencyDeleteBlockReason | null;
+};
 
 type AvatarGender = 'MALE' | 'FEMALE';
 
@@ -81,6 +88,16 @@ interface CreateCustomClassroomCompetencyData {
 interface UpdateCustomClassroomCompetencyData {
   name?: string;
   shortName?: string | null;
+  description?: string | null;
+}
+
+interface CreateClassroomCompetencyIndicatorData {
+  name: string;
+  description?: string | null;
+}
+
+interface UpdateClassroomCompetencyIndicatorData {
+  name?: string;
   description?: string | null;
 }
 
@@ -171,12 +188,127 @@ export class ClassroomService {
     }
   }
 
-  private async getCompetencyUsageIds(classroomId: string, competencyIds: string[]): Promise<Set<string>> {
-    if (competencyIds.length === 0) {
+  private async ensureClassroomCompetencyIndicatorNameAvailable(
+    classroomCompetencyId: string,
+    name: string,
+    excludedIndicatorId?: string,
+  ): Promise<void> {
+    const normalizedTarget = this.normalizeCompetencyName(name).toLowerCase();
+
+    const rows = await db
+      .select({
+        indicatorId: classroomCompetencyIndicators.id,
+        name: classroomCompetencyIndicators.name,
+      })
+      .from(classroomCompetencyIndicators)
+      .where(and(
+        eq(classroomCompetencyIndicators.classroomCompetencyId, classroomCompetencyId),
+        eq(classroomCompetencyIndicators.isActive, true),
+      ));
+
+    const duplicate = rows.find((row) => (
+      row.indicatorId !== excludedIndicatorId &&
+      this.normalizeCompetencyName(row.name).toLowerCase() === normalizedTarget
+    ));
+
+    if (duplicate) {
+      throw new Error('Ya existe una destreza con ese nombre en esta competencia');
+    }
+  }
+
+  private async getCompetencyIndicatorUsageIds(classroomId: string, indicatorIds: string[]): Promise<Set<string>> {
+    if (indicatorIds.length === 0) {
       return new Set<string>();
     }
 
-    const [behaviorRows, badgeRows, timedActivityRows, expeditionActivityRows, tournamentActivityRows, gradeRows, pointRows, jiroRows] = await Promise.all([
+    const [behaviorRows, pointRows] = await Promise.all([
+      db.select({ indicatorId: behaviors.competencyIndicatorId })
+        .from(behaviors)
+        .where(and(
+          eq(behaviors.classroomId, classroomId),
+          inArray(behaviors.competencyIndicatorId, indicatorIds),
+          eq(behaviors.isActive, true),
+        )),
+      db.select({ indicatorId: pointLogs.competencyIndicatorId })
+        .from(pointLogs)
+        .innerJoin(studentProfiles, eq(pointLogs.studentId, studentProfiles.id))
+        .where(and(
+          eq(studentProfiles.classroomId, classroomId),
+          inArray(pointLogs.competencyIndicatorId, indicatorIds),
+          eq(pointLogs.isReverted, false),
+        )),
+    ]);
+
+    return new Set<string>([
+      ...behaviorRows,
+      ...pointRows,
+    ].map((row) => row.indicatorId).filter((value): value is string => !!value));
+  }
+
+  private buildCompetencyUsageSummary(
+    hasConfigAssociations: boolean,
+    hasHistoricalRecords: boolean,
+  ): CompetencyUsageSummary {
+    if (hasConfigAssociations && hasHistoricalRecords) {
+      return {
+        hasConfigAssociations,
+        hasHistoricalRecords,
+        deleteBlockReason: 'CONFIG_AND_HISTORICAL_RECORDS',
+      };
+    }
+
+    if (hasConfigAssociations) {
+      return {
+        hasConfigAssociations,
+        hasHistoricalRecords,
+        deleteBlockReason: 'CONFIG_ASSOCIATED',
+      };
+    }
+
+    if (hasHistoricalRecords) {
+      return {
+        hasConfigAssociations,
+        hasHistoricalRecords,
+        deleteBlockReason: 'HISTORICAL_RECORDS',
+      };
+    }
+
+    return {
+      hasConfigAssociations,
+      hasHistoricalRecords,
+      deleteBlockReason: null,
+    };
+  }
+
+  private buildCompetencyDeleteBlockedMessage(
+    summary: CompetencyUsageSummary,
+    mode: 'REMOVE' | 'DELETE',
+  ) {
+    const actionSuffix = mode === 'REMOVE'
+      ? 'No se puede retirar del aula.'
+      : 'Puedes editarla, pero no eliminarla.';
+
+    if (summary.deleteBlockReason === 'HISTORICAL_RECORDS') {
+      return `Esta competencia ya tiene calificaciones o evidencias registradas, incluso en bimestres cerrados. ${actionSuffix}`;
+    }
+
+    if (summary.deleteBlockReason === 'CONFIG_ASSOCIATED') {
+      return `Esta competencia tiene comportamientos, actividades o destrezas configuradas. ${actionSuffix}`;
+    }
+
+    if (summary.deleteBlockReason === 'CONFIG_AND_HISTORICAL_RECORDS') {
+      return `Esta competencia tiene configuraciones activas y tambien calificaciones o evidencias registradas. ${actionSuffix}`;
+    }
+
+    return actionSuffix;
+  }
+
+  private async getCompetencyUsageSummaryMap(classroomId: string, competencyIds: string[]): Promise<Map<string, CompetencyUsageSummary>> {
+    if (competencyIds.length === 0) {
+      return new Map<string, CompetencyUsageSummary>();
+    }
+
+    const [behaviorRows, badgeRows, timedActivityRows, expeditionActivityRows, tournamentActivityRows, gradeRows, pointRows, jiroRows, indicatorRows] = await Promise.all([
       db.select({ competencyId: behaviors.competencyId })
         .from(behaviors)
         .where(and(
@@ -246,18 +378,39 @@ export class ClassroomService {
           eq(jiroExpeditions.classroomId, classroomId),
           inArray(jiroExpeditionCompetencies.competencyId, competencyIds),
         )),
+      db.select({ competencyId: classroomCompetencyIndicators.competencyId })
+        .from(classroomCompetencyIndicators)
+        .where(and(
+          eq(classroomCompetencyIndicators.classroomId, classroomId),
+          inArray(classroomCompetencyIndicators.competencyId, competencyIds),
+          eq(classroomCompetencyIndicators.isActive, true),
+        )),
     ]);
 
-    return new Set<string>([
+    const configAssociatedIds = new Set<string>([
       ...behaviorRows,
       ...badgeRows,
       ...timedActivityRows,
       ...expeditionActivityRows,
       ...tournamentActivityRows,
+      ...jiroRows,
+      ...indicatorRows,
+    ].map((row) => row.competencyId).filter((value): value is string => !!value));
+
+    const historicalRecordIds = new Set<string>([
       ...gradeRows,
       ...pointRows,
-      ...jiroRows,
     ].map((row) => row.competencyId).filter((value): value is string => !!value));
+
+    return new Map(
+      competencyIds.map((competencyId) => ([
+        competencyId,
+        this.buildCompetencyUsageSummary(
+          configAssociatedIds.has(competencyId),
+          historicalRecordIds.has(competencyId),
+        ),
+      ])),
+    );
   }
 
   async create(data: CreateClassroomData) {
@@ -355,6 +508,8 @@ export class ClassroomService {
       characterClass: studentProfiles.characterClass,
       characterClassId: studentProfiles.characterClassId,
       avatarGender: studentProfiles.avatarGender,
+      displayName: studentProfiles.displayName,
+      linkCode: studentProfiles.linkCode,
       level: studentProfiles.level,
       xp: studentProfiles.xp,
       hp: studentProfiles.hp,
@@ -363,6 +518,7 @@ export class ClassroomService {
       isActive: studentProfiles.isActive,
       isDemo: studentProfiles.isDemo,
       // Datos del usuario real
+      linkedEmail: users.email,
       realName: users.firstName,
       realLastName: users.lastName,
       // Datos del clan
@@ -435,17 +591,73 @@ export class ClassroomService {
     const removableCompetencyIds = rows
       .filter((row) => row.sourceType === 'CUSTOM_CLASSROOM' || (row.sourceType === 'OFFICIAL' && row.areaId !== classroom.curriculumAreaId))
       .map((row) => row.id);
-    const usedCompetencyIds = await this.getCompetencyUsageIds(classroomId, removableCompetencyIds);
+    const usageSummaryByCompetencyId = await this.getCompetencyUsageSummaryMap(classroomId, removableCompetencyIds);
+
+    const indicatorRows = rows.length === 0
+      ? []
+      : await db
+          .select({
+            id: classroomCompetencyIndicators.id,
+            classroomCompetencyId: classroomCompetencyIndicators.classroomCompetencyId,
+            classroomId: classroomCompetencyIndicators.classroomId,
+            competencyId: classroomCompetencyIndicators.competencyId,
+            name: classroomCompetencyIndicators.name,
+            description: classroomCompetencyIndicators.description,
+            displayOrder: classroomCompetencyIndicators.displayOrder,
+            isActive: classroomCompetencyIndicators.isActive,
+            createdAt: classroomCompetencyIndicators.createdAt,
+            updatedAt: classroomCompetencyIndicators.updatedAt,
+          })
+          .from(classroomCompetencyIndicators)
+          .where(and(
+            eq(classroomCompetencyIndicators.classroomId, classroomId),
+            inArray(classroomCompetencyIndicators.classroomCompetencyId, rows.map((row) => row.classroomCompetencyId)),
+            eq(classroomCompetencyIndicators.isActive, true),
+          ))
+          .orderBy(
+            asc(classroomCompetencyIndicators.displayOrder),
+            asc(classroomCompetencyIndicators.createdAt),
+          );
+
+    const usedIndicatorIds = await this.getCompetencyIndicatorUsageIds(
+      classroomId,
+      indicatorRows.map((indicator) => indicator.id),
+    );
+
+    const indicatorsByClassroomCompetencyId = new Map<string, Array<{
+      id: string;
+      classroomCompetencyId: string;
+      classroomId: string;
+      competencyId: string;
+      name: string;
+      description: string | null;
+      displayOrder: number;
+      isActive: boolean;
+      createdAt: Date;
+      updatedAt: Date;
+      canDelete: boolean;
+    }>>();
+
+    for (const indicator of indicatorRows) {
+      const current = indicatorsByClassroomCompetencyId.get(indicator.classroomCompetencyId) || [];
+      current.push({
+        ...indicator,
+        canDelete: !usedIndicatorIds.has(indicator.id),
+      });
+      indicatorsByClassroomCompetencyId.set(indicator.classroomCompetencyId, current);
+    }
 
     return rows.map((row) => ({
       ...row,
+      indicators: indicatorsByClassroomCompetencyId.get(row.classroomCompetencyId) || [],
       isBase: row.sourceType === 'OFFICIAL' && row.areaId === classroom.curriculumAreaId,
       isCustom: row.sourceType === 'CUSTOM_CLASSROOM',
       canEdit: row.sourceType === 'CUSTOM_CLASSROOM' && row.ownerClassroomId === classroomId,
+      deleteBlockReason: usageSummaryByCompetencyId.get(row.id)?.deleteBlockReason || null,
       canDelete: (
         (row.sourceType === 'CUSTOM_CLASSROOM' && row.ownerClassroomId === classroomId) ||
         (row.sourceType === 'OFFICIAL' && row.areaId !== classroom.curriculumAreaId)
-      ) && !usedCompetencyIds.has(row.id),
+      ) && !(usageSummaryByCompetencyId.get(row.id)?.deleteBlockReason),
     }));
   }
 
@@ -614,9 +826,12 @@ export class ClassroomService {
       throw new Error('No puedes quitar una competencia base del aula');
     }
 
-    const usedCompetencyIds = await this.getCompetencyUsageIds(classroomId, [competencyId]);
-    if (usedCompetencyIds.has(competencyId)) {
-      throw new Error('No se puede quitar una competencia adicional que ya tiene evidencias o configuraciones asociadas');
+    const usageSummary = this.getUsageSummaryOrDefault(
+      await this.getCompetencyUsageSummaryMap(classroomId, [competencyId]),
+      competencyId,
+    );
+    if (usageSummary.deleteBlockReason) {
+      throw new Error(this.buildCompetencyDeleteBlockedMessage(usageSummary, 'REMOVE'));
     }
 
     await db.delete(classroomCompetencies)
@@ -790,9 +1005,12 @@ export class ClassroomService {
       throw new Error('La competencia personalizada no existe o no pertenece a esta clase');
     }
 
-    const usedCompetencyIds = await this.getCompetencyUsageIds(classroomId, [competencyId]);
-    if (usedCompetencyIds.has(competencyId)) {
-      throw new Error('No se puede eliminar una competencia personalizada que ya tiene evidencias o configuraciones asociadas');
+    const usageSummary = this.getUsageSummaryOrDefault(
+      await this.getCompetencyUsageSummaryMap(classroomId, [competencyId]),
+      competencyId,
+    );
+    if (usageSummary.deleteBlockReason) {
+      throw new Error(this.buildCompetencyDeleteBlockedMessage(usageSummary, 'DELETE'));
     }
 
     await db.transaction(async (tx) => {
@@ -805,6 +1023,225 @@ export class ClassroomService {
       await tx.delete(curriculumCompetencies)
         .where(eq(curriculumCompetencies.id, competencyId));
     });
+
+    return { deleted: true };
+  }
+
+  private getUsageSummaryOrDefault(
+    usageSummaryByCompetencyId: Map<string, CompetencyUsageSummary>,
+    competencyId: string,
+  ): CompetencyUsageSummary {
+    return usageSummaryByCompetencyId.get(competencyId) || this.buildCompetencyUsageSummary(false, false);
+  }
+
+  async createCompetencyIndicator(
+    classroomId: string,
+    competencyId: string,
+    teacherId: string,
+    data: CreateClassroomCompetencyIndicatorData,
+  ) {
+    const [classroom] = await db
+      .select({
+        id: classrooms.id,
+        teacherId: classrooms.teacherId,
+        useCompetencies: classrooms.useCompetencies,
+        currentBimester: classrooms.currentBimester,
+        competencyIndicatorStartPeriod: classrooms.competencyIndicatorStartPeriod,
+      })
+      .from(classrooms)
+      .where(eq(classrooms.id, classroomId));
+
+    if (!classroom) {
+      throw new Error('Clase no encontrada');
+    }
+
+    if (classroom.teacherId !== teacherId) {
+      throw new Error('No tienes permiso para esta clase');
+    }
+
+    if (!classroom.useCompetencies) {
+      throw new Error('La clase debe tener competencias habilitadas');
+    }
+
+    const [existingCompetency] = await db
+      .select({
+        classroomCompetencyId: classroomCompetencies.id,
+      })
+      .from(classroomCompetencies)
+      .innerJoin(curriculumCompetencies, eq(classroomCompetencies.competencyId, curriculumCompetencies.id))
+      .where(and(
+        eq(classroomCompetencies.classroomId, classroomId),
+        eq(classroomCompetencies.competencyId, competencyId),
+        eq(classroomCompetencies.isActive, true),
+        eq(curriculumCompetencies.isActive, true),
+      ));
+
+    if (!existingCompetency) {
+      throw new Error('La competencia no esta habilitada en esta clase');
+    }
+
+    const name = this.normalizeCompetencyName(data.name);
+    const description = data.description === undefined ? null : this.normalizeOptionalCompetencyText(data.description);
+
+    if (name.length < 2) {
+      throw new Error('El nombre de la destreza debe tener al menos 2 caracteres');
+    }
+
+    await this.ensureClassroomCompetencyIndicatorNameAvailable(existingCompetency.classroomCompetencyId, name);
+
+    const [displayOrderRow] = await db
+      .select({
+        maxDisplayOrder: sql<number>`COALESCE(MAX(${classroomCompetencyIndicators.displayOrder}), 0)`,
+      })
+      .from(classroomCompetencyIndicators)
+      .where(eq(classroomCompetencyIndicators.classroomCompetencyId, existingCompetency.classroomCompetencyId));
+
+    const indicatorId = uuidv4();
+    const now = new Date();
+    const startPeriod = classroom.competencyIndicatorStartPeriod || classroom.currentBimester || `${new Date().getFullYear()}-B1`;
+
+    await db.transaction(async (tx) => {
+      await tx.insert(classroomCompetencyIndicators).values({
+        id: indicatorId,
+        classroomCompetencyId: existingCompetency.classroomCompetencyId,
+        classroomId,
+        competencyId,
+        name,
+        description,
+        displayOrder: Number(displayOrderRow?.maxDisplayOrder || 0) + 1,
+        isActive: true,
+        createdByTeacherId: teacherId,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      if (!classroom.competencyIndicatorStartPeriod) {
+        await tx.update(classrooms)
+          .set({
+            competencyIndicatorStartPeriod: startPeriod,
+            updatedAt: now,
+          })
+          .where(eq(classrooms.id, classroomId));
+      }
+    });
+
+    const createdIndicator = (await this.getEnabledCompetencies(classroomId))
+      .find((competency) => competency.id === competencyId)
+      ?.indicators.find((indicator) => indicator.id === indicatorId);
+
+    if (!createdIndicator) {
+      throw new Error('No se pudo recuperar la destreza creada');
+    }
+
+    return createdIndicator;
+  }
+
+  async updateCompetencyIndicator(
+    classroomId: string,
+    competencyId: string,
+    indicatorId: string,
+    teacherId: string,
+    data: UpdateClassroomCompetencyIndicatorData,
+  ) {
+    const [existingIndicator] = await db
+      .select({
+        id: classroomCompetencyIndicators.id,
+        classroomCompetencyId: classroomCompetencyIndicators.classroomCompetencyId,
+        teacherId: classrooms.teacherId,
+      })
+      .from(classroomCompetencyIndicators)
+      .innerJoin(classrooms, eq(classroomCompetencyIndicators.classroomId, classrooms.id))
+      .where(and(
+        eq(classroomCompetencyIndicators.id, indicatorId),
+        eq(classroomCompetencyIndicators.classroomId, classroomId),
+        eq(classroomCompetencyIndicators.competencyId, competencyId),
+        eq(classroomCompetencyIndicators.isActive, true),
+      ));
+
+    if (!existingIndicator) {
+      throw new Error('La destreza no existe en esta competencia');
+    }
+
+    if (existingIndicator.teacherId !== teacherId) {
+      throw new Error('No tienes permiso para esta clase');
+    }
+
+    const payload: Partial<typeof classroomCompetencyIndicators.$inferInsert> = {
+      updatedAt: new Date(),
+    };
+
+    if (data.name !== undefined) {
+      const normalizedName = this.normalizeCompetencyName(data.name);
+      if (normalizedName.length < 2) {
+        throw new Error('El nombre de la destreza debe tener al menos 2 caracteres');
+      }
+
+      await this.ensureClassroomCompetencyIndicatorNameAvailable(
+        existingIndicator.classroomCompetencyId,
+        normalizedName,
+        indicatorId,
+      );
+      payload.name = normalizedName;
+    }
+
+    if (data.description !== undefined) {
+      payload.description = this.normalizeOptionalCompetencyText(data.description);
+    }
+
+    if (Object.keys(payload).length === 1) {
+      throw new Error('No hay cambios para guardar');
+    }
+
+    await db.update(classroomCompetencyIndicators)
+      .set(payload)
+      .where(eq(classroomCompetencyIndicators.id, indicatorId));
+
+    const updatedIndicator = (await this.getEnabledCompetencies(classroomId))
+      .find((competency) => competency.id === competencyId)
+      ?.indicators.find((indicator) => indicator.id === indicatorId);
+
+    if (!updatedIndicator) {
+      throw new Error('No se pudo recuperar la destreza actualizada');
+    }
+
+    return updatedIndicator;
+  }
+
+  async deleteCompetencyIndicator(
+    classroomId: string,
+    competencyId: string,
+    indicatorId: string,
+    teacherId: string,
+  ) {
+    const [existingIndicator] = await db
+      .select({
+        id: classroomCompetencyIndicators.id,
+        teacherId: classrooms.teacherId,
+      })
+      .from(classroomCompetencyIndicators)
+      .innerJoin(classrooms, eq(classroomCompetencyIndicators.classroomId, classrooms.id))
+      .where(and(
+        eq(classroomCompetencyIndicators.id, indicatorId),
+        eq(classroomCompetencyIndicators.classroomId, classroomId),
+        eq(classroomCompetencyIndicators.competencyId, competencyId),
+        eq(classroomCompetencyIndicators.isActive, true),
+      ));
+
+    if (!existingIndicator) {
+      throw new Error('La destreza no existe en esta competencia');
+    }
+
+    if (existingIndicator.teacherId !== teacherId) {
+      throw new Error('No tienes permiso para esta clase');
+    }
+
+    const usedIndicatorIds = await this.getCompetencyIndicatorUsageIds(classroomId, [indicatorId]);
+    if (usedIndicatorIds.has(indicatorId)) {
+      throw new Error('No se puede eliminar una destreza que ya tiene evidencias o comportamientos asociados');
+    }
+
+    await db.delete(classroomCompetencyIndicators)
+      .where(eq(classroomCompetencyIndicators.id, indicatorId));
 
     return { deleted: true };
   }

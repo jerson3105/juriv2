@@ -228,7 +228,8 @@ function App() {
               <Route path="storytelling" element={<StorytellingPage />} />
               <Route path="announcements" element={<AnnouncementsPage />} />
               <Route path="chat" element={<ClassroomChatPage />} />
-              <Route path="settings" element={<ClassroomSettingsPage />} />
+              <Route path="settings" element={<Navigate to="general" replace />} />
+              <Route path="settings/:section" element={<ClassroomSettingsPage />} />
               <Route path="student/:studentId" element={<StudentDetailPage />} />
             </Route>
             

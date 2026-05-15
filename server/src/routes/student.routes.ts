@@ -17,6 +17,7 @@ router.get('/stats/:studentId', authorize('STUDENT', 'TEACHER', 'ADMIN'), studen
 
 // Rutas para profesores
 router.get('/:studentId', authorize('TEACHER'), studentController.getStudent.bind(studentController));
+router.patch('/:studentId', authorize('TEACHER'), studentController.updateStudent.bind(studentController));
 router.post('/:studentId/points', authorize('TEACHER'), studentController.updatePoints.bind(studentController));
 router.get('/:studentId/history', authorize('TEACHER'), studentController.getPointHistory.bind(studentController));
 router.delete('/:studentId/remove-from-class', authorize('TEACHER'), studentController.removeFromClass.bind(studentController));

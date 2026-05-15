@@ -38,9 +38,9 @@ export const placeholderStudentApi = {
   },
 
   // Regenerar código de vinculación
-  regenerateCode: async (studentId: string) => {
+  regenerateCode: async (studentId: string): Promise<{ linkCode: string }> => {
     const response = await api.post(`/students/placeholder/${studentId}/regenerate-code`);
-    return response.data;
+    return response.data.data;
   },
 
   // Descargar PDF con todas las tarjetas

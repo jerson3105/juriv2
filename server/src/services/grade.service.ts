@@ -4,6 +4,7 @@ import {
   studentProfiles,
   classrooms,
   classroomCompetencies,
+  classroomCompetencyIndicators,
   activityCompetencies,
   curriculumCompetencies,
   behaviors,
@@ -108,6 +109,23 @@ export interface GradebookGradeEntry {
     totalWeight: number;
     rawScore: number;
   } | null;
+  indicatorBreakdownStatus: 'AVAILABLE' | 'HISTORICAL_NO_BREAKDOWN' | 'NOT_CONFIGURED';
+  indicatorStartPeriod: string | null;
+  indicatorBreakdown: Array<{
+    id: string;
+    name: string;
+    description: string | null;
+    score: number | null;
+    gradeLabel: string | null;
+    bucket: PerformanceBucket | null;
+    observations: number;
+    positiveObservations: number;
+    negativeObservations: number;
+    positivePoints: number;
+    negativePoints: number;
+    evidenceWeight: number;
+    hasEvidence: boolean;
+  }>;
   isManualOverride: boolean;
   manualScore: number | null;
   manualNote: string | null;
@@ -141,6 +159,43 @@ export interface ClassroomGradebookResponse {
     averageScore: number;
     distribution: Record<PerformanceBucket, number>;
   };
+}
+
+type IndicatorDefinition = {
+  id: string;
+  competencyId: string;
+  name: string;
+  description: string | null;
+  displayOrder: number;
+};
+
+type IndicatorStat = {
+  positivePoints: number;
+  negativePoints: number;
+  observations: number;
+  positiveObservations: number;
+  negativeObservations: number;
+};
+
+type IndicatorAssessment = {
+  id: string;
+  name: string;
+  description: string | null;
+  score: number | null;
+  observations: number;
+  positiveObservations: number;
+  negativeObservations: number;
+  positivePoints: number;
+  negativePoints: number;
+  evidenceWeight: number;
+  hasEvidence: boolean;
+};
+
+interface IndicatorBreakdownContext {
+  indicatorStartPeriod: string | null;
+  isHistoricalWithoutBreakdown: boolean;
+  indicatorsByCompetency: Map<string, IndicatorDefinition[]>;
+  statsByStudentIndicator: Map<string, IndicatorStat>;
 }
 
 // Interfaz para el rango de fechas del bimestre
@@ -430,6 +485,21 @@ class GradeService {
     return Number((50 + (rawScore - 50) * confidence).toFixed(2));
   }
 
+  private compareBimesterPeriods(left: string, right: string): number {
+    const [leftYear, leftBimester] = left.split('-B').map((part) => Number(part));
+    const [rightYear, rightBimester] = right.split('-B').map((part) => Number(part));
+
+    if (leftYear !== rightYear) {
+      return leftYear - rightYear;
+    }
+
+    return leftBimester - rightBimester;
+  }
+
+  private buildIndicatorStatKey(studentProfileId: string, indicatorId: string): string {
+    return `${studentProfileId}::${indicatorId}`;
+  }
+
   private resolveStudentDisplayName(student: {
     characterName?: string | null;
     firstName?: string | null;
@@ -518,16 +588,281 @@ class GradeService {
   private async getClassroomScaleSettings(classroomId: string): Promise<{
     gradeScaleType: GradeScaleType | null;
     gradeScaleConfig: unknown;
+    competencyIndicatorStartPeriod: string | null;
   }> {
     const [classroom] = await db.select({
       gradeScaleType: classrooms.gradeScaleType,
       gradeScaleConfig: classrooms.gradeScaleConfig,
+      competencyIndicatorStartPeriod: classrooms.competencyIndicatorStartPeriod,
     }).from(classrooms).where(eq(classrooms.id, classroomId));
 
     return {
       gradeScaleType: classroom?.gradeScaleType || null,
       gradeScaleConfig: classroom?.gradeScaleConfig || null,
+      competencyIndicatorStartPeriod: classroom?.competencyIndicatorStartPeriod || null,
     };
+  }
+
+  private async buildIndicatorBreakdownContext(
+    classroomId: string,
+    studentProfileIds: string[],
+    competencyIds: string[],
+    dateRange: BimesterDateRange,
+    period: string,
+    indicatorStartPeriod: string | null,
+  ): Promise<IndicatorBreakdownContext> {
+    if (studentProfileIds.length === 0 || competencyIds.length === 0) {
+      return {
+        indicatorStartPeriod,
+        isHistoricalWithoutBreakdown: false,
+        indicatorsByCompetency: new Map(),
+        statsByStudentIndicator: new Map(),
+      };
+    }
+
+    const indicatorRows = await db.select({
+      id: classroomCompetencyIndicators.id,
+      competencyId: classroomCompetencyIndicators.competencyId,
+      name: classroomCompetencyIndicators.name,
+      description: classroomCompetencyIndicators.description,
+      displayOrder: classroomCompetencyIndicators.displayOrder,
+    })
+      .from(classroomCompetencyIndicators)
+      .where(and(
+        eq(classroomCompetencyIndicators.classroomId, classroomId),
+        inArray(classroomCompetencyIndicators.competencyId, competencyIds),
+        eq(classroomCompetencyIndicators.isActive, true),
+      ))
+      .orderBy(
+        asc(classroomCompetencyIndicators.competencyId),
+        asc(classroomCompetencyIndicators.displayOrder),
+        asc(classroomCompetencyIndicators.createdAt),
+      );
+
+    const indicatorsByCompetency = new Map<string, IndicatorDefinition[]>();
+    for (const indicator of indicatorRows) {
+      const current = indicatorsByCompetency.get(indicator.competencyId) || [];
+      current.push(indicator);
+      indicatorsByCompetency.set(indicator.competencyId, current);
+    }
+
+    const indicatorIds = indicatorRows.map((indicator) => indicator.id);
+    const isHistoricalWithoutBreakdown = !!indicatorStartPeriod
+      && BIMESTER_PERIOD_REGEX.test(indicatorStartPeriod)
+      && this.compareBimesterPeriods(period, indicatorStartPeriod) < 0;
+
+    if (indicatorIds.length === 0 || isHistoricalWithoutBreakdown) {
+      return {
+        indicatorStartPeriod,
+        isHistoricalWithoutBreakdown,
+        indicatorsByCompetency,
+        statsByStudentIndicator: new Map(),
+      };
+    }
+
+    const logRows = await db.select({
+      studentId: pointLogs.studentId,
+      indicatorId: pointLogs.competencyIndicatorId,
+      behaviorName: behaviors.name,
+      isPositive: behaviors.isPositive,
+      xpValue: behaviors.xpValue,
+      hpValue: behaviors.hpValue,
+      count: sql<number>`COUNT(DISTINCT ${pointLogs.createdAt})`,
+    })
+      .from(pointLogs)
+      .innerJoin(behaviors, eq(pointLogs.behaviorId, behaviors.id))
+      .where(and(
+        inArray(pointLogs.studentId, studentProfileIds),
+        inArray(pointLogs.competencyIndicatorId, indicatorIds),
+        eq(pointLogs.isReverted, false),
+        gte(pointLogs.createdAt, dateRange.startDate),
+        lte(pointLogs.createdAt, dateRange.endDate),
+      ))
+      .groupBy(
+        pointLogs.studentId,
+        pointLogs.competencyIndicatorId,
+        behaviors.name,
+        behaviors.isPositive,
+        behaviors.xpValue,
+        behaviors.hpValue,
+      );
+
+    const statsByStudentIndicator = new Map<string, IndicatorStat>();
+
+    for (const row of logRows) {
+      if (!row.indicatorId) {
+        continue;
+      }
+
+      const behaviorPoints = Math.abs(row.xpValue || 0) + Math.abs(row.hpValue || 0);
+      if (behaviorPoints <= 0) {
+        continue;
+      }
+
+      const observationCount = Number(row.count) || 0;
+      if (observationCount <= 0) {
+        continue;
+      }
+
+      const statKey = this.buildIndicatorStatKey(row.studentId, row.indicatorId);
+      const current = statsByStudentIndicator.get(statKey) || {
+        positivePoints: 0,
+        negativePoints: 0,
+        observations: 0,
+        positiveObservations: 0,
+        negativeObservations: 0,
+      };
+      const totalPointsFromBehavior = observationCount * behaviorPoints;
+
+      current.observations += observationCount;
+      if (row.isPositive) {
+        current.positivePoints += totalPointsFromBehavior;
+        current.positiveObservations += observationCount;
+      } else {
+        current.negativePoints += totalPointsFromBehavior;
+        current.negativeObservations += observationCount;
+      }
+
+      statsByStudentIndicator.set(statKey, current);
+    }
+
+    return {
+      indicatorStartPeriod,
+      isHistoricalWithoutBreakdown,
+      indicatorsByCompetency,
+      statsByStudentIndicator,
+    };
+  }
+
+  private buildIndicatorBreakdownForGrade(
+    studentProfileId: string,
+    competencyId: string,
+    context: IndicatorBreakdownContext,
+    gradeScaleType: GradeScaleType | null,
+    parsedScaleConfig: unknown,
+  ): Pick<GradebookGradeEntry, 'indicatorBreakdownStatus' | 'indicatorStartPeriod' | 'indicatorBreakdown'> {
+    const indicatorDefinitions = context.indicatorsByCompetency.get(competencyId) || [];
+
+    if (indicatorDefinitions.length === 0) {
+      return {
+        indicatorBreakdownStatus: 'NOT_CONFIGURED',
+        indicatorStartPeriod: context.indicatorStartPeriod,
+        indicatorBreakdown: [],
+      };
+    }
+
+    if (context.isHistoricalWithoutBreakdown) {
+      return {
+        indicatorBreakdownStatus: 'HISTORICAL_NO_BREAKDOWN',
+        indicatorStartPeriod: context.indicatorStartPeriod,
+        indicatorBreakdown: [],
+      };
+    }
+
+    const indicatorBreakdown = this.buildIndicatorAssessmentsForCompetency(studentProfileId, competencyId, context).map((indicator) => {
+      const gradeLabel = indicator.hasEvidence && indicator.score !== null
+        ? this.convertToGradeLabel(indicator.score, gradeScaleType, parsedScaleConfig)
+        : null;
+
+      return {
+        id: indicator.id,
+        name: indicator.name,
+        description: indicator.description,
+        score: indicator.score,
+        gradeLabel,
+        bucket: indicator.hasEvidence && indicator.score !== null && gradeLabel
+          ? this.getPerformanceBucket(indicator.score, gradeScaleType, gradeLabel)
+          : null,
+        observations: indicator.observations,
+        positiveObservations: indicator.positiveObservations,
+        negativeObservations: indicator.negativeObservations,
+        positivePoints: indicator.positivePoints,
+        negativePoints: indicator.negativePoints,
+        evidenceWeight: indicator.evidenceWeight,
+        hasEvidence: indicator.hasEvidence,
+      };
+    });
+
+    return {
+      indicatorBreakdownStatus: 'AVAILABLE',
+      indicatorStartPeriod: context.indicatorStartPeriod,
+      indicatorBreakdown,
+    };
+  }
+
+  private buildIndicatorAssessmentsForCompetency(
+    studentProfileId: string,
+    competencyId: string,
+    context: IndicatorBreakdownContext,
+  ): IndicatorAssessment[] {
+    const indicatorDefinitions = context.indicatorsByCompetency.get(competencyId) || [];
+
+    return indicatorDefinitions.map((indicator) => {
+      const stat = context.statsByStudentIndicator.get(this.buildIndicatorStatKey(studentProfileId, indicator.id));
+
+      if (!stat || stat.observations === 0) {
+        return {
+          id: indicator.id,
+          name: indicator.name,
+          description: indicator.description,
+          score: null,
+          observations: 0,
+          positiveObservations: 0,
+          negativeObservations: 0,
+          positivePoints: 0,
+          negativePoints: 0,
+          evidenceWeight: 0,
+          hasEvidence: false,
+        };
+      }
+
+      const totalPoints = stat.positivePoints + stat.negativePoints;
+      let scorePercent: number;
+      if (stat.negativePoints === 0) {
+        scorePercent = 100;
+      } else if (stat.positivePoints === 0) {
+        scorePercent = 0;
+      } else {
+        scorePercent = (stat.positivePoints / totalPoints) * 100;
+      }
+
+      const score = this.getEvidenceAdjustedScore(scorePercent, stat.observations);
+
+      return {
+        id: indicator.id,
+        name: indicator.name,
+        description: indicator.description,
+        score: Number(score.toFixed(2)),
+        observations: stat.observations,
+        positiveObservations: stat.positiveObservations,
+        negativeObservations: stat.negativeObservations,
+        positivePoints: stat.positivePoints,
+        negativePoints: stat.negativePoints,
+        evidenceWeight: this.getEvidenceWeight(stat.observations),
+        hasEvidence: true,
+      };
+    });
+  }
+
+  private buildIndicatorActivitiesForCompetency(
+    studentProfileId: string,
+    competencyId: string,
+    context: IndicatorBreakdownContext,
+  ): ActivityScoreData[] {
+    if (context.isHistoricalWithoutBreakdown) {
+      return [];
+    }
+
+    return this.buildIndicatorAssessmentsForCompetency(studentProfileId, competencyId, context)
+      .filter((indicator) => indicator.hasEvidence && indicator.score !== null && indicator.evidenceWeight > 0)
+      .map((indicator) => ({
+        type: 'INDICATOR',
+        id: indicator.id,
+        name: indicator.name,
+        score: indicator.score as number,
+        weight: indicator.evidenceWeight,
+        competencyId,
+      }));
   }
 
   private normalizeGradebookEntry(
@@ -571,6 +906,9 @@ class GradeService {
       bucket: this.getPerformanceBucket(effectiveScore, gradeScaleType, gradeLabel),
       activitiesCount: rawGrade.activitiesCount,
       calculationDetails: normalizedCalculationDetails,
+      indicatorBreakdownStatus: 'NOT_CONFIGURED',
+      indicatorStartPeriod: null,
+      indicatorBreakdown: [],
       isManualOverride: rawGrade.isManualOverride,
       manualScore: hasManualScore ? Number(this.toNumericScore(rawGrade.manualScore).toFixed(2)) : null,
       manualNote: rawGrade.manualNote || null,
@@ -594,6 +932,7 @@ class GradeService {
       useCompetencies: classrooms.useCompetencies,
       gradeScaleType: classrooms.gradeScaleType,
       gradeScaleConfig: classrooms.gradeScaleConfig,
+      competencyIndicatorStartPeriod: classrooms.competencyIndicatorStartPeriod,
     }).from(classrooms).where(eq(classrooms.id, classroomId));
     if (!classroom) {
       throw new Error('Clase no encontrada');
@@ -661,6 +1000,14 @@ class GradeService {
     const results: GradeCalculationResult[] = [];
     const now = new Date();
     const parsedScaleConfig = this.parseGradeScaleConfig(classroom.gradeScaleConfig);
+    const indicatorContext = await this.buildIndicatorBreakdownContext(
+      classroomId,
+      [studentProfileId],
+      competencyIds,
+      dateRange,
+      resolvedPeriod,
+      classroom.competencyIndicatorStartPeriod || null,
+    );
     const gradesToPersist: Array<{
       existingGradeId?: string;
       data: {
@@ -689,12 +1036,23 @@ class GradeService {
 
     // 3. Para cada competencia, calcular el puntaje
     for (const comp of classCompetencies) {
-      const activities = await this.getStudentActivityScores(
+      const baseActivities = await this.getStudentActivityScores(
         studentProfileId,
         comp.competencyId,
         classroomId,
         dateRange
       );
+      const hasConfiguredIndicators = !indicatorContext.isHistoricalWithoutBreakdown
+        && (indicatorContext.indicatorsByCompetency.get(comp.competencyId)?.length || 0) > 0;
+      const indicatorActivities = hasConfiguredIndicators
+        ? this.buildIndicatorActivitiesForCompetency(studentProfileId, comp.competencyId, indicatorContext)
+        : [];
+      const activities = hasConfiguredIndicators
+        ? [
+            ...baseActivities.filter((activity) => activity.type !== 'BEHAVIOR'),
+            ...indicatorActivities,
+          ]
+        : baseActivities;
 
       // Calcular promedio ponderado
       let totalWeightedScore = 0;
@@ -1354,7 +1712,7 @@ class GradeService {
 
     const resolvedPeriod = await this.resolveClassroomPeriod(classroomId, period);
 
-    const { gradeScaleType, gradeScaleConfig } = await this.getClassroomScaleSettings(classroomId);
+    const { gradeScaleType, gradeScaleConfig, competencyIndicatorStartPeriod } = await this.getClassroomScaleSettings(classroomId);
     const parsedScaleConfig = this.parseGradeScaleConfig(gradeScaleConfig);
 
     const rows = await db.select({
@@ -1381,7 +1739,32 @@ class GradeService {
       eq(studentGrades.period, resolvedPeriod)
     ));
 
-    const grades = rows.map((row) => this.normalizeGradebookEntry(row, gradeScaleType, parsedScaleConfig));
+    const baseGrades = rows.map((row) => this.normalizeGradebookEntry(row, gradeScaleType, parsedScaleConfig));
+    const indicatorContext = baseGrades.length > 0
+      ? await this.buildIndicatorBreakdownContext(
+          classroomId,
+          [studentProfileId],
+          [...new Set(baseGrades.map((grade) => grade.competencyId))],
+          await this.getBimesterDateRange(classroomId, resolvedPeriod),
+          resolvedPeriod,
+          competencyIndicatorStartPeriod,
+        )
+      : {
+          indicatorStartPeriod: competencyIndicatorStartPeriod,
+          isHistoricalWithoutBreakdown: false,
+          indicatorsByCompetency: new Map(),
+          statsByStudentIndicator: new Map(),
+        };
+    const grades = baseGrades.map((grade) => ({
+      ...grade,
+      ...this.buildIndicatorBreakdownForGrade(
+        studentProfileId,
+        grade.competencyId,
+        indicatorContext,
+        gradeScaleType,
+        parsedScaleConfig,
+      ),
+    }));
     const studentName = rows.length > 0
       ? this.resolveStudentDisplayName(rows[0])
       : 'Estudiante';
@@ -1399,7 +1782,7 @@ class GradeService {
   async getClassroomGrades(classroomId: string, period: string = 'CURRENT'): Promise<ClassroomGradebookResponse> {
     const resolvedPeriod = await this.resolveClassroomPeriod(classroomId, period);
 
-    const { gradeScaleType, gradeScaleConfig } = await this.getClassroomScaleSettings(classroomId);
+    const { gradeScaleType, gradeScaleConfig, competencyIndicatorStartPeriod } = await this.getClassroomScaleSettings(classroomId);
     const parsedScaleConfig = this.parseGradeScaleConfig(gradeScaleConfig);
 
     const rows = await db.select({
@@ -1427,10 +1810,35 @@ class GradeService {
       eq(studentGrades.period, resolvedPeriod)
     ));
 
+    const indicatorContext = rows.length > 0
+      ? await this.buildIndicatorBreakdownContext(
+          classroomId,
+          [...new Set(rows.map((row) => row.studentProfileId))],
+          [...new Set(rows.map((row) => row.competencyId))],
+          await this.getBimesterDateRange(classroomId, resolvedPeriod),
+          resolvedPeriod,
+          competencyIndicatorStartPeriod,
+        )
+      : {
+          indicatorStartPeriod: competencyIndicatorStartPeriod,
+          isHistoricalWithoutBreakdown: false,
+          indicatorsByCompetency: new Map(),
+          statsByStudentIndicator: new Map(),
+        };
+
     const groupedStudents = new Map<string, ClassroomGradebookStudent>();
 
     for (const row of rows) {
-      const gradeEntry = this.normalizeGradebookEntry(row, gradeScaleType, parsedScaleConfig);
+      const gradeEntry = {
+        ...this.normalizeGradebookEntry(row, gradeScaleType, parsedScaleConfig),
+        ...this.buildIndicatorBreakdownForGrade(
+          row.studentProfileId,
+          row.competencyId,
+          indicatorContext,
+          gradeScaleType,
+          parsedScaleConfig,
+        ),
+      };
       const existingStudent = groupedStudents.get(row.studentProfileId);
 
       if (existingStudent) {

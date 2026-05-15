@@ -27,6 +27,13 @@ const updateProfileSchema = z.object({
   avatarUrl: z.string().url().optional(),
 });
 
+const updateTeacherStudentSchema = z.object({
+  displayName: z.string().trim().min(2).max(100).optional(),
+  characterName: z.string().trim().min(2).max(100).optional(),
+}).refine((data) => Object.keys(data).length > 0, {
+  message: 'Debes enviar al menos un campo para actualizar',
+});
+
 const ensureTeacherCanAccessStudent = async (teacherId: string, studentId: string): Promise<boolean> => {
   const [student] = await db
     .select({ id: studentProfiles.id })
@@ -183,6 +190,45 @@ export class StudentController {
       res.status(500).json({
         success: false,
         message: 'Error al obtener el estudiante',
+      });
+    }
+  }
+
+  async updateStudent(req: Request, res: Response) {
+    try {
+      const { studentId } = req.params;
+      const data = updateTeacherStudentSchema.parse(req.body);
+
+      const student = await studentService.updateStudentByTeacher({
+        studentId,
+        teacherId: req.user!.id,
+        ...data,
+      });
+
+      res.json({
+        success: true,
+        message: 'Estudiante actualizado',
+        data: student,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          message: 'Datos inválidos',
+          errors: error.errors,
+        });
+      }
+
+      if (error instanceof Error) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      res.status(500).json({
+        success: false,
+        message: 'Error al actualizar el estudiante',
       });
     }
   }
