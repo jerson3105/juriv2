@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { Suspense, lazy, useState, useEffect } from 'react';
 import { 
   Dices, 
   ChevronRight,
@@ -6,7 +6,6 @@ import {
   Zap,
   Flag,
   Lightbulb,
-  Timer,
   ScrollText,
   Map,
   Target,
@@ -15,7 +14,6 @@ import {
 import { RandomPickerActivity } from '../../components/activities/RandomPickerActivity';
 import { RandomEventsActivity } from '../../components/activities/RandomEventsActivity';
 import { ClanPickerActivity } from '../../components/activities/ClanPickerActivity';
-import { TimedActivitiesActivity } from '../../components/activities/TimedActivitiesActivity';
 import { AulaZenActivity } from '../../components/activities/AulaZenActivity';
 import { ScrollsActivity } from '../../components/activities/ScrollsActivity';
 import { TournamentsActivity } from '../../components/activities/TournamentsActivity';
@@ -25,6 +23,9 @@ import { TerritoryConquestActivity } from '../../components/activities/Territory
 import { useOutletContext, useParams } from 'react-router-dom';
 import RouletteOfDestinyModal from '../../components/modals/RouletteOfDestinyModal';
 import ExpeditionTypeModal from '../../components/modals/ExpeditionTypeModal';
+
+const FinalBossRaidActivity = lazy(() => import('../../components/activities/FinalBossRaidActivity').then((module) => ({ default: module.FinalBossRaidActivity })));
+const FINAL_BOSS_RAID_ENABLED = false;
 
 interface Activity {
   id: string;
@@ -55,20 +56,6 @@ const activities: Activity[] = [
     available: true,
     tag: '⭐ Popular',
     tagColor: 'from-amber-400 to-orange-500',
-  },
-  {
-    id: 'timed-activities',
-    name: 'Actividades de Tiempo',
-    description: 'Cronómetro, temporizador y modo bomba para retos con tiempo.',
-    icon: <Timer size={28} />,
-    emoji: '⏱️',
-    gradient: 'from-cyan-500 via-blue-500 to-indigo-500',
-    bgGradient: 'from-cyan-500/10 via-blue-500/5 to-indigo-500/10',
-    shadowColor: 'shadow-blue-500/30',
-    glowColor: 'blue',
-    available: true,
-    tag: '💣 Bomba',
-    tagColor: 'from-purple-500 to-pink-500',
   },
   {
     id: 'noise-meter',
@@ -136,13 +123,28 @@ const activities: Activity[] = [
     tag: '🌟 Aventura',
     tagColor: 'from-emerald-400 to-teal-500',
   },
+  {
+    id: 'final-boss-raid',
+    name: 'Asalto al Jefe Final',
+    description: FINAL_BOSS_RAID_ENABLED
+      ? 'Toda el aula coopera para derrotar a un jefe 3D respondiendo preguntas del banco antes de que la arena colapse.'
+      : 'Próximamente: esta incursión cooperativa volverá a abrirse cuando la arena esté lista para todo el aula.',
+    icon: <Zap size={28} />,
+    emoji: '🛡️',
+    gradient: 'from-violet-500 via-fuchsia-500 to-rose-500',
+    bgGradient: 'from-violet-500/10 via-fuchsia-500/5 to-rose-500/10',
+    shadowColor: 'shadow-fuchsia-500/30',
+    glowColor: 'fuchsia',
+    available: FINAL_BOSS_RAID_ENABLED,
+    tag: FINAL_BOSS_RAID_ENABLED ? '🆕 Cooperativo' : '🔒 Próximamente',
+    tagColor: FINAL_BOSS_RAID_ENABLED ? 'from-violet-500 to-fuchsia-500' : 'from-slate-500 to-slate-700',
+  },
 ];
 
 // Consejos rotativos
 const tips = [
   { icon: '🎲', title: 'Selección Aleatoria', text: 'Usa la Selección Aleatoria para elegir quién participa en clase. ¡Los estudiantes estarán más atentos!' },
   { icon: '🌙', title: 'Descanso de Jiro', text: '¡No despiertes a Jiro! Mantén el silencio en el aula y gana recompensas.' },
-  { icon: '💣', title: 'Modo Bomba', text: 'El modo bomba añade emoción a las actividades. ¡Perfecto para respuestas rápidas!' },
   { icon: '🛡️', title: 'Clanes', text: 'Seleccionar clanes promueve la colaboración entre equipos. ¡Todos ganan juntos!' },
 ];
 
@@ -214,15 +216,6 @@ export const ActivitiesPage = () => {
     );
   }
 
-  if (selectedActivity === 'timed-activities') {
-    return (
-      <TimedActivitiesActivity 
-        classroom={classroom}
-        onBack={() => setSelectedActivity(null)}
-      />
-    );
-  }
-
   if (selectedActivity === 'noise-meter') {
     return (
       <AulaZenActivity 
@@ -274,6 +267,31 @@ export const ActivitiesPage = () => {
         classroom={classroom}
         onBack={() => setSelectedActivity(null)}
       />
+    );
+  }
+
+  if (selectedActivity === 'final-boss-raid' && FINAL_BOSS_RAID_ENABLED) {
+    return (
+      <Suspense
+        fallback={(
+          <div className="flex min-h-[50vh] items-center justify-center">
+            <div className="rounded-2xl border border-white/10 bg-slate-950 px-6 py-5 text-white shadow-2xl">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 animate-spin rounded-full border-4 border-fuchsia-400/30 border-t-fuchsia-400" />
+                <div>
+                  <p className="text-sm font-semibold">Invocando al jefe final...</p>
+                  <p className="text-xs text-white/60">Cargando escena, bancos y HUD del asalto.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      >
+        <FinalBossRaidActivity
+          classroom={classroom}
+          onBack={() => setSelectedActivity(null)}
+        />
+      </Suspense>
     );
   }
 
@@ -379,9 +397,11 @@ export const ActivitiesPage = () => {
                       </>
                     ) : (
                       <div className="flex items-center gap-2 w-full justify-between">
-                        <span className="text-xs text-gray-400 italic">En desarrollo</span>
+                        <span className="text-xs text-gray-400 italic">
+                          {activity.id === 'final-boss-raid' ? 'Bloqueado temporalmente' : 'En desarrollo'}
+                        </span>
                         <span className="px-3 py-1.5 bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded-lg text-xs font-medium">
-                          Próximamente
+                          {activity.id === 'final-boss-raid' ? 'Pronto se abrirá' : 'Próximamente'}
                         </span>
                       </div>
                     )}

@@ -417,6 +417,7 @@ export class ClassroomService {
     const id = uuidv4();
     const code = generateClassCode();
     const now = new Date();
+    const useCompetencies = data.schoolId ? true : (data.useCompetencies || false);
     
     await db.insert(classrooms).values({
       id,
@@ -425,7 +426,7 @@ export class ClassroomService {
       teacherId: data.teacherId,
       gradeLevel: data.gradeLevel || null,
       code,
-      useCompetencies: data.schoolId ? true : (data.useCompetencies || false),
+      useCompetencies,
       curriculumAreaId: data.curriculumAreaId || null,
       gradeScaleType: data.gradeScaleType || null,
       schoolId: data.schoolId || null,
@@ -438,6 +439,9 @@ export class ClassroomService {
     }).then(async (classroom) => {
       if (classroom) {
         await characterClassService.seedDefaults(id);
+        if (useCompetencies && classroom.curriculumAreaId) {
+          await this.syncClassroomCompetencies(id, classroom.curriculumAreaId);
+        }
       }
       return classroom;
     });
