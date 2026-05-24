@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { classroomService } from '../services/classroom.service.js';
 import { db } from '../db/index.js';
-import { curriculumAreas, curriculumCompetencies } from '../db/schema.js';
+import { curriculumAreas, curriculumCompetencies, studentProfiles } from '../db/schema.js';
 import { eq, and, or, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { GoogleGenAI } from '@google/genai';
@@ -102,6 +102,30 @@ const updateCompetencyIndicatorSchema = z.object({
   description: z.string().max(1000).optional().nullable(),
 }).refine((data) => Object.keys(data).length > 0, {
   message: 'Debes enviar al menos un campo para actualizar',
+});
+
+const transferCompetencyIndicatorsSchema = z.object({
+  mode: z.enum(['IMPORT', 'EXPORT']),
+  sourceClassroomId: z.string().max(36).optional(),
+  targetClassroomIds: z.array(z.string().max(36)).max(50).optional(),
+  competencyIds: z.array(z.string().max(36)).max(100).optional(),
+  copyMissingCustomCompetencies: z.boolean().optional().default(true),
+}).superRefine((data, ctx) => {
+  if (data.mode === 'IMPORT' && !data.sourceClassroomId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['sourceClassroomId'],
+      message: 'Debes seleccionar una clase de origen',
+    });
+  }
+
+  if (data.mode === 'EXPORT' && (!data.targetClassroomIds || data.targetClassroomIds.length === 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['targetClassroomIds'],
+      message: 'Debes seleccionar al menos una clase destino',
+    });
+  }
 });
 
 const joinClassroomSchema = z.object({
@@ -270,11 +294,29 @@ export class ClassroomController {
         });
       }
 
-      if (classroom.teacherId !== req.user!.id) {
+      if (req.user!.role === 'TEACHER' && classroom.teacherId !== req.user!.id) {
         return res.status(403).json({
           success: false,
           message: 'No tienes permiso para esta clase',
         });
+      }
+
+      if (req.user!.role === 'STUDENT') {
+        const [profile] = await db
+          .select({ id: studentProfiles.id })
+          .from(studentProfiles)
+          .where(and(
+            eq(studentProfiles.userId, req.user!.id),
+            eq(studentProfiles.classroomId, id),
+            eq(studentProfiles.isActive, true),
+          ));
+
+        if (!profile) {
+          return res.status(403).json({
+            success: false,
+            message: 'No tienes permiso para esta clase',
+          });
+        }
       }
 
       const competencies = await classroomService.getEnabledCompetencies(id);
@@ -668,6 +710,57 @@ export class ClassroomController {
       res.status(500).json({
         success: false,
         message: 'Error al eliminar destreza',
+      });
+    }
+  }
+
+  async transferCompetencyIndicators(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const data = transferCompetencyIndicatorsSchema.parse(req.body);
+      const classroom = await classroomService.getById(id);
+
+      if (!classroom) {
+        return res.status(404).json({
+          success: false,
+          message: 'Clase no encontrada',
+        });
+      }
+
+      if (classroom.teacherId !== req.user!.id) {
+        return res.status(403).json({
+          success: false,
+          message: 'No tienes permiso para esta clase',
+        });
+      }
+
+      const result = await classroomService.transferCompetencyIndicators(id, req.user!.id, data);
+
+      res.json({
+        success: true,
+        message: data.mode === 'IMPORT' ? 'Destrezas importadas' : 'Destrezas exportadas',
+        data: result,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          message: 'Datos inválidos',
+          errors: error.errors,
+        });
+      }
+
+      if (error instanceof Error) {
+        return res.status(400).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      console.error('Error transferring competency indicators:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error al transferir destrezas',
       });
     }
   }

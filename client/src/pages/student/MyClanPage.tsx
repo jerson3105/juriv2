@@ -56,11 +56,11 @@ export const MyClanPage = () => {
       <div className="space-y-6">
         <div>
           <button
-            onClick={() => navigate('/dashboard')}
+            onClick={() => navigate('/my-class')}
             className="flex items-center gap-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 mb-4 transition-colors"
           >
             <ArrowLeft size={20} />
-            <span>Volver al dashboard</span>
+            <span>Volver a mi clase</span>
           </button>
 
           <div className="flex items-center gap-3">
@@ -100,11 +100,11 @@ export const MyClanPage = () => {
       {/* Header */}
       <div>
         <button
-          onClick={() => navigate('/dashboard')}
+          onClick={() => navigate('/my-class')}
           className="flex items-center gap-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 mb-4 transition-colors"
         >
           <ArrowLeft size={20} />
-          <span>Volver al dashboard</span>
+          <span>Volver a mi clase</span>
         </button>
 
         <div className="flex items-center gap-3">

@@ -200,6 +200,44 @@ export interface UpdateClassroomCompetencyIndicatorData {
   description?: string | null;
 }
 
+export interface TransferCompetencyIndicatorsData {
+  mode: 'IMPORT' | 'EXPORT';
+  sourceClassroomId?: string;
+  targetClassroomIds?: string[];
+  competencyIds?: string[];
+  copyMissingCustomCompetencies?: boolean;
+}
+
+export interface TransferCompetencyIndicatorsTargetSummary {
+  classroomId: string;
+  classroomName: string;
+  createdCompetencies: number;
+  createdIndicators: number;
+  skippedExistingIndicators: number;
+  skippedUnavailableCompetencies: number;
+}
+
+export interface TransferCompetencyIndicatorsResult {
+  mode: 'IMPORT' | 'EXPORT';
+  sourceClassroom: {
+    id: string;
+    name: string;
+  };
+  selectedCompetencyCount: number;
+  selectedTargetCount: number;
+  processedTargetCount: number;
+  createdCompetencies: number;
+  createdIndicators: number;
+  skippedExistingIndicators: number;
+  skippedUnavailableCompetencies: number;
+  failedTargets: Array<{
+    classroomId: string;
+    classroomName: string;
+    message: string;
+  }>;
+  targetSummaries: TransferCompetencyIndicatorsTargetSummary[];
+}
+
 export interface UpdateClassroomSettings {
   // General
   name?: string;
@@ -392,6 +430,15 @@ export const classroomApi = {
   // Eliminar destreza de una competencia del aula
   deleteCompetencyIndicator: async (id: string, competencyId: string, indicatorId: string): Promise<void> => {
     await api.delete(`/classrooms/${id}/competencies/${competencyId}/indicators/${indicatorId}`);
+  },
+
+  // Importar o exportar destrezas entre clases del profesor
+  transferCompetencyIndicators: async (
+    id: string,
+    data: TransferCompetencyIndicatorsData,
+  ): Promise<TransferCompetencyIndicatorsResult> => {
+    const response = await api.post(`/classrooms/${id}/competency-indicators/transfer`, data);
+    return response.data.data;
   },
 
   // Unirse a clase (estudiante)

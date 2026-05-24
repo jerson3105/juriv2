@@ -22,7 +22,6 @@ import {
   ChevronLeft,
   Shield,
   Award,
-  UserMinus,
   AlertTriangle,
   ChevronDown,
   PlayCircle,
@@ -34,14 +33,14 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { StudentAvatarMini } from '../../components/avatar/StudentAvatarMini';
 import { classroomApi, type Classroom, type Student } from '../../lib/classroomApi';
-import { behaviorApi, type Behavior } from '../../lib/behaviorApi';
+import { behaviorApi, type ApplyResult, type Behavior } from '../../lib/behaviorApi';
 import { studentApi } from '../../lib/studentApi';
 import { useCharacterClasses } from '../../hooks/useCharacterClasses';
 import { characterClassApi } from '../../lib/characterClassApi';
 import { badgeApi, type Badge, RARITY_COLORS, RARITY_LABELS } from '../../lib/badgeApi';
 import { CLAN_EMBLEMS } from '../../lib/clanApi';
 import { attendanceApi, type AttendanceRecord } from '../../lib/attendanceApi';
-import { historyApi } from '../../lib/historyApi';
+import { historyApi, type ActivityLogEntry, type HistoryResponse } from '../../lib/historyApi';
 import { LevelUpAnimation } from '../../components/effects/LevelUpAnimation';
 import { MultiPointsAnimation, useMultiPointsEffect } from '../../components/effects/PurchaseEffects';
 import { TeacherBadgeAwardedModal } from '../../components/badges/TeacherBadgeAwardedModal';
@@ -54,20 +53,31 @@ import toast from 'react-hot-toast';
 
 type ListFilter = 'all' | 'low_hp' | 'no_activity' | 'round_pending' | 'round_scored' | 'round_repeated';
 
+type RoundBehaviorConfig = {
+  behaviorId: string;
+  behaviorName: string;
+  behaviorIcon: string | null;
+};
+
+type RoundStudentAwards = {
+  positive: number;
+  negative: number;
+};
+
 type RoundAction = {
   studentId: string;
+  behaviorId: string;
+  isPositive: boolean;
   pointLogEntryId?: string | null;
   timestamp: number;
 };
 
 type ActiveRoundState = {
-  behaviorId: string;
-  behaviorName: string;
-  behaviorIcon: string | null;
-  isPositive: boolean;
+  positiveBehavior: RoundBehaviorConfig | null;
+  negativeBehavior: RoundBehaviorConfig | null;
   startedAt: number;
   updatedAt: number;
-  awardsByStudent: Record<string, number>;
+  awardsByStudent: Record<string, RoundStudentAwards>;
   lastAwardedAtByStudent: Record<string, number>;
   actions: RoundAction[];
 };
@@ -106,16 +116,14 @@ export const StudentsPage = () => {
   const [clanFilter, setClanFilter] = useState<string | null>(null);
   const [showClanDropdown, setShowClanDropdown] = useState(false);
   const [showRoundBehaviorPicker, setShowRoundBehaviorPicker] = useState(false);
+  const [pendingRoundPositiveBehaviorId, setPendingRoundPositiveBehaviorId] = useState<string | null>(null);
+  const [pendingRoundNegativeBehaviorId, setPendingRoundNegativeBehaviorId] = useState<string | null>(null);
   const [activeRound, setActiveRound] = useState<ActiveRoundState | null>(null);
   const [isUndoingRound, setIsUndoingRound] = useState(false);
+  const [roundQuickActivityCounts, setRoundQuickActivityCounts] = useState<Record<string, number>>({});
 
-  // Estado para "Aplicar a Restantes"
   const [showUtilities, setShowUtilities] = useState(false);
   const [showBulkClassMenu, setShowBulkClassMenu] = useState(false);
-  const [showApplyToRestModal, setShowApplyToRestModal] = useState(false);
-  const [lastAppliedStudentIds, setLastAppliedStudentIds] = useState<Set<string>>(new Set());
-  const [lastAppliedBehavior, setLastAppliedBehavior] = useState<Behavior | null>(null);
-  const [isApplyingToRest, setIsApplyingToRest] = useState(false); // Flag para evitar loop
 
   // Hook para animación de puntos
   const { effect: pointsEffect, showMultiPointsEffect, hideMultiPointsEffect } = useMultiPointsEffect();
@@ -149,6 +157,84 @@ export const StudentsPage = () => {
     queryFn: () => historyApi.getClassroomHistory(classroom.id, { limit: 200 }),
   });
 
+  useEffect(() => {
+    setRoundQuickActivityCounts({});
+  }, [classroom.id, todayStr]);
+
+  const syncRoundQuickStudentCache = (studentResult: ApplyResult['results'][number]) => {
+    let updated = false;
+
+    queryClient.setQueryData<Classroom & { students: Student[] }>(['classroom', classroom.id], (current) => {
+      if (!current) return current;
+
+      const nextStudents = current.students.map((student) => {
+        if (student.id !== studentResult.studentId) {
+          return student;
+        }
+
+        updated = true;
+
+        return {
+          ...student,
+          xp: studentResult.newXp,
+          hp: studentResult.newHp,
+          gp: studentResult.newGp,
+          level: studentResult.newLevel ?? student.level,
+        };
+      });
+
+      return updated ? { ...current, students: nextStudents } : current;
+    });
+
+    return updated;
+  };
+
+  const appendRoundQuickHistoryEntry = (
+    result: ApplyResult,
+    studentResult: ApplyResult['results'][number],
+  ) => {
+    queryClient.setQueryData<HistoryResponse>(['history-today', classroom.id, todayStr], (current) => {
+      if (!current) return current;
+
+      const cachedStudent = classroomData?.students?.find((student) => student.id === studentResult.studentId);
+      const behavior = result.behavior;
+      const xpAmount = Math.abs(studentResult.xpChange);
+      const hpAmount = Math.abs(studentResult.hpChange);
+      const gpAmount = Math.abs(studentResult.gpChange);
+      const pointType = [xpAmount > 0, hpAmount > 0, gpAmount > 0].filter(Boolean).length > 1
+        ? 'MIXED'
+        : xpAmount > 0
+          ? 'XP'
+          : hpAmount > 0
+            ? 'HP'
+            : 'GP';
+
+      const nextEntry: ActivityLogEntry = {
+        id: studentResult.pointLogEntryId || `round-${behavior.id}-${studentResult.studentId}-${Date.now()}`,
+        type: 'POINTS',
+        timestamp: new Date().toISOString(),
+        studentId: studentResult.studentId,
+        studentName: studentResult.studentName || cachedStudent?.characterName || null,
+        studentClass: cachedStudent?.characterClass || 'GUARDIAN',
+        details: {
+          pointType,
+          action: behavior.isPositive ? 'ADD' : 'REMOVE',
+          amount: xpAmount || hpAmount || gpAmount,
+          reason: behavior.name,
+          xpAmount: xpAmount || undefined,
+          hpAmount: hpAmount || undefined,
+          gpAmount: gpAmount || undefined,
+        },
+      };
+
+      return {
+        ...current,
+        logs: [nextEntry, ...current.logs].slice(0, 200),
+        total: current.total + 1,
+      };
+    });
+  };
+
   type ApplyBehaviorMode = 'default' | 'round_quick' | 'apply_to_rest';
   type ApplyBehaviorPayload = {
     behaviorId: string;
@@ -174,14 +260,20 @@ export const StudentsPage = () => {
     onSuccess: async (result, variables, context) => {
       const mode = variables.mode || 'default';
       const isRoundQuick = mode === 'round_quick';
+      const roundStudentResult = result.results[0];
+      const hasAutomaticBadges = Boolean(result.awardedBadges && result.awardedBadges.length > 0);
 
-      queryClient.invalidateQueries({ queryKey: ['classroom', classroom.id] });
-      
-      if (!isRoundQuick) {
-        // Guardar los estudiantes a quienes se aplicó para poder ofrecer "aplicar a restantes"
-        const appliedIds = new Set<string>(variables.studentIds);
-        setLastAppliedStudentIds(appliedIds);
-        setLastAppliedBehavior(result.behavior);
+      if (isRoundQuick) {
+        if (roundStudentResult && !hasAutomaticBadges) {
+          const updatedCache = syncRoundQuickStudentCache(roundStudentResult);
+          if (!updatedCache) {
+            queryClient.invalidateQueries({ queryKey: ['classroom', classroom.id] });
+          }
+        } else {
+          queryClient.invalidateQueries({ queryKey: ['classroom', classroom.id] });
+        }
+      } else {
+        queryClient.invalidateQueries({ queryKey: ['classroom', classroom.id] });
       }
       
       // Mostrar animación de puntos
@@ -211,20 +303,34 @@ export const StudentsPage = () => {
 
       if (isRoundQuick) {
         const studentName = result.results[0]?.studentName || 'Estudiante';
-        toast.success(`${studentName}: +1 ${beh.name}`, { duration: 1400 });
+        toast.success(`${studentName}: ${beh.isPositive ? '+1' : '-1'} ${beh.name}`, { duration: 1400 });
 
         const awardedStudentId = variables.studentIds[0];
-        const pointLogEntryId = result.results[0]?.pointLogEntryId || null;
+        const pointLogEntryId = roundStudentResult?.pointLogEntryId || null;
+        if (roundStudentResult) {
+          appendRoundQuickHistoryEntry(result, roundStudentResult);
+        }
         if (awardedStudentId) {
+          setRoundQuickActivityCounts((prev) => ({
+            ...prev,
+            [awardedStudentId]: (prev[awardedStudentId] || 0) + 1,
+          }));
           setActiveRound((prev) => {
-            if (!prev || prev.behaviorId !== beh.id) return prev;
-            const currentCount = prev.awardsByStudent[awardedStudentId] || 0;
+            const matchesPositiveBehavior = prev?.positiveBehavior?.behaviorId === beh.id;
+            const matchesNegativeBehavior = prev?.negativeBehavior?.behaviorId === beh.id;
+
+            if (!prev || (!matchesPositiveBehavior && !matchesNegativeBehavior)) return prev;
+
+            const currentAwards = prev.awardsByStudent[awardedStudentId] || { positive: 0, negative: 0 };
             return {
               ...prev,
               updatedAt: Date.now(),
               awardsByStudent: {
                 ...prev.awardsByStudent,
-                [awardedStudentId]: currentCount + 1,
+                [awardedStudentId]: {
+                  positive: currentAwards.positive + (beh.isPositive ? 1 : 0),
+                  negative: currentAwards.negative + (beh.isPositive ? 0 : 1),
+                },
               },
               lastAwardedAtByStudent: {
                 ...prev.lastAwardedAtByStudent,
@@ -234,6 +340,8 @@ export const StudentsPage = () => {
                 ...prev.actions,
                 {
                   studentId: awardedStudentId,
+                  behaviorId: beh.id,
+                  isPositive: beh.isPositive,
                   pointLogEntryId,
                   timestamp: Date.now(),
                 },
@@ -250,7 +358,9 @@ export const StudentsPage = () => {
         }
       }
       
-      queryClient.invalidateQueries({ queryKey: ['history-today', classroom.id] });
+      if (!isRoundQuick) {
+        queryClient.invalidateQueries({ queryKey: ['history-today', classroom.id] });
+      }
       
       // Si hay subidas de nivel, mostrar animación
       if (!isRoundQuick && result.levelUps && result.levelUps.length > 0) {
@@ -285,19 +395,6 @@ export const StudentsPage = () => {
           // Error al obtener info de insignia - ignorar silenciosamente
         }
       }
-      
-      // Mostrar modal de "aplicar a restantes" si hay estudiantes que no fueron seleccionados
-      // Solo si NO estamos aplicando desde el modal de restantes (evitar loop)
-      // Y solo en vista de lista (viewMode === 'list')
-      if (!isRoundQuick && !isApplyingToRest && viewMode === 'list') {
-        const totalStudents = classroomData?.students?.length || 0;
-        const appliedCount = variables.studentIds.length;
-        if (appliedCount < totalStudents && appliedCount > 0) {
-          // Hay estudiantes restantes, mostrar opción (esperar 4s para que se vea la animación de puntos)
-          setTimeout(() => setShowApplyToRestModal(true), 4000);
-        }
-      }
-      setIsApplyingToRest(false);
     },
     onError: (error: any, variables, context) => {
       const mode = variables.mode || 'default';
@@ -313,8 +410,6 @@ export const StudentsPage = () => {
       } else {
         toast.error(message, { id: context.toastId });
       }
-
-      setIsApplyingToRest(false);
     },
   });
 
@@ -390,6 +485,11 @@ export const StudentsPage = () => {
       }
     });
   }
+  Object.entries(roundQuickActivityCounts).forEach(([studentId, count]) => {
+    if (count > 0) {
+      studentsWithActivityToday.add(studentId);
+    }
+  });
 
   // Extraer lista de clanes únicos para filtro dropdown
   const uniqueClans: { id: string; name: string; color: string }[] = [];
@@ -411,8 +511,6 @@ export const StudentsPage = () => {
     return { bar: 'bg-emerald-500', text: 'text-emerald-600', warning: false };
   };
 
-  const roundAwardsByStudent = activeRound?.awardsByStudent || {};
-
   // Filtrar y ordenar estudiantes alfabéticamente
   const students = allStudents.filter((student) => {
     // Filtro de búsqueda
@@ -433,15 +531,15 @@ export const StudentsPage = () => {
     }
     if (listFilter === 'round_pending') {
       if (!activeRound) return false;
-      if ((roundAwardsByStudent[student.id] || 0) > 0) return false;
+      if (getRoundAwardCount(student.id) > 0) return false;
     }
     if (listFilter === 'round_scored') {
       if (!activeRound) return false;
-      if ((roundAwardsByStudent[student.id] || 0) === 0) return false;
+      if (getRoundAwardCount(student.id) === 0) return false;
     }
     if (listFilter === 'round_repeated') {
       if (!activeRound) return false;
-      if ((roundAwardsByStudent[student.id] || 0) < 2) return false;
+      if (getRoundAwardCount(student.id) < 2) return false;
     }
     if (clanFilter) {
       const sClan = (student as any).teamId || (student as any).clanId;
@@ -494,7 +592,55 @@ export const StudentsPage = () => {
 
   const positiveBehaviors = behaviors?.filter((b) => b.isPositive) || [];
   const negativeBehaviors = behaviors?.filter((b) => !b.isPositive) || [];
+  const availableNegativeRoundBehaviors = classroom.allowNegativePoints === false ? [] : negativeBehaviors;
+  const hasRoundBehaviors = positiveBehaviors.length > 0 || availableNegativeRoundBehaviors.length > 0;
   const roundStorageKey = `students-active-round:${classroom.id}`;
+
+  const buildRoundBehaviorConfig = (behavior: Behavior): RoundBehaviorConfig => ({
+    behaviorId: behavior.id,
+    behaviorName: behavior.name,
+    behaviorIcon: behavior.icon || null,
+  });
+
+  function getRoundAwardCount(studentId: string) {
+    const awards = activeRound?.awardsByStudent[studentId];
+    return (awards?.positive || 0) + (awards?.negative || 0);
+  }
+
+  function getRoundStudentAwards(studentId: string): RoundStudentAwards {
+    return activeRound?.awardsByStudent[studentId] || { positive: 0, negative: 0 };
+  }
+
+  const selectedRoundPositiveBehavior = pendingRoundPositiveBehaviorId
+    ? positiveBehaviors.find((behavior) => behavior.id === pendingRoundPositiveBehaviorId) || null
+    : null;
+  const selectedRoundNegativeBehavior = pendingRoundNegativeBehaviorId
+    ? availableNegativeRoundBehaviors.find((behavior) => behavior.id === pendingRoundNegativeBehaviorId) || null
+    : null;
+
+  useEffect(() => {
+    if (!showRoundBehaviorPicker || activeRound) {
+      return;
+    }
+
+    setPendingRoundPositiveBehaviorId((current) => {
+      if (current && positiveBehaviors.some((behavior) => behavior.id === current)) {
+        return current;
+      }
+
+      return positiveBehaviors.find((behavior) => behavior.name.toLowerCase().includes('particip'))?.id
+        ?? positiveBehaviors[0]?.id
+        ?? null;
+    });
+
+    setPendingRoundNegativeBehaviorId((current) => {
+      if (current && availableNegativeRoundBehaviors.some((behavior) => behavior.id === current)) {
+        return current;
+      }
+
+      return availableNegativeRoundBehaviors[0]?.id ?? null;
+    });
+  }, [showRoundBehaviorPicker, activeRound, positiveBehaviors, availableNegativeRoundBehaviors]);
 
   useEffect(() => {
     try {
@@ -504,20 +650,83 @@ export const StudentsPage = () => {
         return;
       }
 
-      const parsed = JSON.parse(raw) as ActiveRoundState;
-      if (!parsed?.behaviorId || !parsed.startedAt || !parsed.updatedAt) {
+      const parsed = JSON.parse(raw) as ActiveRoundState & {
+        behaviorId?: string;
+        behaviorName?: string;
+        behaviorIcon?: string | null;
+        isPositive?: boolean;
+        awardsByStudent?: Record<string, number | RoundStudentAwards>;
+      };
+
+      const normalizedRound = parsed?.positiveBehavior || parsed?.negativeBehavior
+        ? {
+            positiveBehavior: parsed.positiveBehavior || null,
+            negativeBehavior: parsed.negativeBehavior || null,
+            startedAt: parsed.startedAt,
+            updatedAt: parsed.updatedAt,
+            awardsByStudent: Object.fromEntries(
+              Object.entries(parsed.awardsByStudent || {}).map(([studentId, value]) => {
+                if (typeof value === 'number') {
+                  return [studentId, { positive: value, negative: 0 } satisfies RoundStudentAwards];
+                }
+
+                return [studentId, {
+                  positive: Number(value?.positive || 0),
+                  negative: Number(value?.negative || 0),
+                } satisfies RoundStudentAwards];
+              })
+            ),
+            lastAwardedAtByStudent: parsed.lastAwardedAtByStudent || {},
+            actions: parsed.actions || [],
+          }
+        : parsed?.behaviorId && parsed?.behaviorName
+          ? {
+              positiveBehavior: parsed.isPositive === false
+                ? null
+                : {
+                    behaviorId: parsed.behaviorId,
+                    behaviorName: parsed.behaviorName,
+                    behaviorIcon: parsed.behaviorIcon || null,
+                  },
+              negativeBehavior: parsed.isPositive === false
+                ? {
+                    behaviorId: parsed.behaviorId,
+                    behaviorName: parsed.behaviorName,
+                    behaviorIcon: parsed.behaviorIcon || null,
+                  }
+                : null,
+              startedAt: parsed.startedAt,
+              updatedAt: parsed.updatedAt,
+              awardsByStudent: Object.fromEntries(
+                Object.entries(parsed.awardsByStudent || {}).map(([studentId, value]) => {
+                  const count = typeof value === 'number' ? value : Number((parsed.isPositive === false ? value?.negative : value?.positive) || 0);
+                  return [studentId, parsed.isPositive === false
+                    ? { positive: 0, negative: count }
+                    : { positive: count, negative: 0 }];
+                })
+              ),
+              lastAwardedAtByStudent: parsed.lastAwardedAtByStudent || {},
+              actions: (parsed.actions || []).map((action) => ({
+                ...action,
+                behaviorId: action.behaviorId || parsed.behaviorId!,
+                isPositive: typeof action.isPositive === 'boolean' ? action.isPositive : parsed.isPositive !== false,
+              })),
+            }
+          : null;
+
+      if (!normalizedRound || (!normalizedRound.positiveBehavior && !normalizedRound.negativeBehavior) || !normalizedRound.startedAt || !normalizedRound.updatedAt) {
         localStorage.removeItem(roundStorageKey);
         setActiveRound(null);
         return;
       }
 
-      if (Date.now() - parsed.updatedAt > ROUND_STORAGE_TTL_MS) {
+      if (Date.now() - normalizedRound.updatedAt > ROUND_STORAGE_TTL_MS) {
         localStorage.removeItem(roundStorageKey);
         setActiveRound(null);
         return;
       }
 
-      setActiveRound(parsed);
+      setActiveRound(normalizedRound);
     } catch {
       localStorage.removeItem(roundStorageKey);
       setActiveRound(null);
@@ -545,12 +754,15 @@ export const StudentsPage = () => {
     }
   }, [activeRound, listFilter]);
 
-  const startRoundWithBehavior = (behavior: Behavior) => {
+  const startRound = () => {
+    if (!selectedRoundPositiveBehavior && !selectedRoundNegativeBehavior) {
+      toast.error('Selecciona al menos un comportamiento para iniciar la ronda');
+      return;
+    }
+
     setActiveRound({
-      behaviorId: behavior.id,
-      behaviorName: behavior.name,
-      behaviorIcon: behavior.icon || null,
-      isPositive: behavior.isPositive,
+      positiveBehavior: selectedRoundPositiveBehavior ? buildRoundBehaviorConfig(selectedRoundPositiveBehavior) : null,
+      negativeBehavior: selectedRoundNegativeBehavior ? buildRoundBehaviorConfig(selectedRoundNegativeBehavior) : null,
       startedAt: Date.now(),
       updatedAt: Date.now(),
       awardsByStudent: {},
@@ -559,14 +771,20 @@ export const StudentsPage = () => {
     });
     setShowRoundBehaviorPicker(false);
     setListFilter('round_pending');
-    toast.success(`Ronda iniciada: ${behavior.name}`);
+    toast.success(`Ronda iniciada${selectedRoundPositiveBehavior ? `: + ${selectedRoundPositiveBehavior.name}` : ''}${selectedRoundNegativeBehavior ? `${selectedRoundPositiveBehavior ? ' / ' : ': '}- ${selectedRoundNegativeBehavior.name}` : ''}`);
   };
 
-  const applyRoundAward = (studentId: string) => {
+  const applyRoundAward = (studentId: string, behaviorId?: string) => {
     if (!activeRound) return;
 
+    const targetBehaviorId = behaviorId
+      || activeRound.positiveBehavior?.behaviorId
+      || activeRound.negativeBehavior?.behaviorId;
+
+    if (!targetBehaviorId) return;
+
     applyBehaviorMutation.mutate({
-      behaviorId: activeRound.behaviorId,
+      behaviorId: targetBehaviorId,
       studentIds: [studentId],
       mode: 'round_quick',
     });
@@ -589,13 +807,30 @@ export const StudentsPage = () => {
       await historyApi.revertEntry('POINTS', lastAction.pointLogEntryId);
       queryClient.invalidateQueries({ queryKey: ['classroom', classroom.id] });
       queryClient.invalidateQueries({ queryKey: ['history-today', classroom.id] });
+      setRoundQuickActivityCounts((prev) => {
+        const currentCount = prev[lastAction.studentId] || 0;
+        if (currentCount <= 1) {
+          const { [lastAction.studentId]: _removed, ...rest } = prev;
+          return rest;
+        }
+
+        return {
+          ...prev,
+          [lastAction.studentId]: currentCount - 1,
+        };
+      });
 
       setActiveRound((prev) => {
         if (!prev) return prev;
-        const current = prev.awardsByStudent[lastAction.studentId] || 0;
+        const current = prev.awardsByStudent[lastAction.studentId] || { positive: 0, negative: 0 };
         const nextAwards = { ...prev.awardsByStudent };
-        if (current <= 1) delete nextAwards[lastAction.studentId];
-        else nextAwards[lastAction.studentId] = current - 1;
+        const nextStudentAwards = {
+          positive: Math.max(0, current.positive - (lastAction.isPositive ? 1 : 0)),
+          negative: Math.max(0, current.negative - (lastAction.isPositive ? 0 : 1)),
+        };
+
+        if (nextStudentAwards.positive === 0 && nextStudentAwards.negative === 0) delete nextAwards[lastAction.studentId];
+        else nextAwards[lastAction.studentId] = nextStudentAwards;
 
         const nextActions = prev.actions.slice(0, -1);
         return {
@@ -617,7 +852,7 @@ export const StudentsPage = () => {
   const finishRound = () => {
     if (!activeRound) return;
 
-    const totalAwards = Object.values(activeRound.awardsByStudent).reduce((sum, value) => sum + value, 0);
+    const totalAwards = Object.values(activeRound.awardsByStudent).reduce((sum, value) => sum + value.positive + value.negative, 0);
     const studentsTouched = Object.keys(activeRound.awardsByStudent).length;
     setActiveRound(null);
     setShowRoundBehaviorPicker(false);
@@ -625,10 +860,115 @@ export const StudentsPage = () => {
     toast.success(`Ronda finalizada: ${totalAwards} intervenciones en ${studentsTouched} estudiante(s)`);
   };
 
-  const roundPendingCount = allStudents.filter((s) => (roundAwardsByStudent[s.id] || 0) === 0).length;
-  const roundScoredCount = allStudents.filter((s) => (roundAwardsByStudent[s.id] || 0) > 0).length;
-  const roundRepeatedCount = allStudents.filter((s) => (roundAwardsByStudent[s.id] || 0) > 1).length;
-  const quickRoundSuggestion = positiveBehaviors.find((b) => b.name.toLowerCase().includes('particip'));
+  const roundPendingCount = allStudents.filter((s) => getRoundAwardCount(s.id) === 0).length;
+  const roundScoredCount = allStudents.filter((s) => getRoundAwardCount(s.id) > 0).length;
+  const roundRepeatedCount = allStudents.filter((s) => getRoundAwardCount(s.id) > 1).length;
+  const roundSessionTone = {
+    surface: 'border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-900/20',
+    text: 'text-sky-700 dark:text-sky-300',
+    muted: 'text-sky-600 dark:text-sky-300',
+    iconAction: 'text-sky-700 hover:bg-sky-100 dark:text-sky-300 dark:hover:bg-sky-900/40',
+    outline: 'bg-white dark:bg-gray-800 text-sky-700 dark:text-sky-200 border border-sky-200 dark:border-sky-800 hover:bg-sky-100 dark:hover:bg-sky-900/30',
+    flash: 'ring-1 ring-sky-300 dark:ring-sky-700 bg-sky-50/40 dark:bg-sky-900/10',
+  };
+  const positiveRoundPillClasses = 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300';
+  const negativeRoundPillClasses = 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300';
+  const positiveRoundButtonClasses = 'bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50';
+  const negativeRoundButtonClasses = 'bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50';
+  const roundActiveSummary = activeRound ? (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {activeRound.positiveBehavior && (
+        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ${positiveRoundPillClasses}`}>
+          <span>{activeRound.positiveBehavior.behaviorIcon || '⭐'}</span>
+          <span>+ {activeRound.positiveBehavior.behaviorName}</span>
+        </span>
+      )}
+      {activeRound.negativeBehavior && (
+        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ${negativeRoundPillClasses}`}>
+          <span>{activeRound.negativeBehavior.behaviorIcon || '💥'}</span>
+          <span>- {activeRound.negativeBehavior.behaviorName}</span>
+        </span>
+      )}
+    </div>
+  ) : null;
+  const roundBehaviorPickerContent = (
+    <div className="space-y-3">
+      {positiveBehaviors.length > 0 && (
+        <div className="space-y-1">
+          <p className="px-2 text-[11px] font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-300">
+            Comportamiento positivo
+          </p>
+          {positiveBehaviors.map((behavior) => (
+            <button
+              key={behavior.id}
+              onClick={() => setPendingRoundPositiveBehaviorId((current) => current === behavior.id ? null : behavior.id)}
+              className={`w-full text-left px-2 py-2 rounded-lg border text-sm text-gray-700 dark:text-gray-200 ${pendingRoundPositiveBehaviorId === behavior.id ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30' : 'border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/70 dark:bg-emerald-950/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'}`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="truncate"><span className="mr-2">{behavior.icon || '⭐'}</span>{behavior.name}</span>
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${pendingRoundPositiveBehaviorId === behavior.id ? positiveRoundPillClasses : 'bg-white/80 dark:bg-gray-900/40 text-emerald-700 dark:text-emerald-300'}`}>
+                  {pendingRoundPositiveBehaviorId === behavior.id ? 'Seleccionado' : 'Elegir'}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+      {availableNegativeRoundBehaviors.length > 0 && (
+        <div className="space-y-1">
+          <p className="px-2 text-[11px] font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-300">
+            Comportamiento negativo
+          </p>
+          {availableNegativeRoundBehaviors.map((behavior) => (
+            <button
+              key={behavior.id}
+              onClick={() => setPendingRoundNegativeBehaviorId((current) => current === behavior.id ? null : behavior.id)}
+              className={`w-full text-left px-2 py-2 rounded-lg border text-sm text-gray-700 dark:text-gray-200 ${pendingRoundNegativeBehaviorId === behavior.id ? 'border-rose-500 bg-rose-50 dark:bg-rose-900/30' : 'border-rose-200 dark:border-rose-900/50 bg-rose-50/70 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-900/40'}`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="truncate"><span className="mr-2">{behavior.icon || '💥'}</span>{behavior.name}</span>
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${pendingRoundNegativeBehaviorId === behavior.id ? negativeRoundPillClasses : 'bg-white/80 dark:bg-gray-900/40 text-rose-700 dark:text-rose-300'}`}>
+                  {pendingRoundNegativeBehaviorId === behavior.id ? 'Seleccionado' : 'Elegir'}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-300">
+        <p className="font-semibold text-gray-700 dark:text-gray-200">Configuración de la ronda</p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {selectedRoundPositiveBehavior ? (
+            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 font-semibold ${positiveRoundPillClasses}`}>
+              <span>{selectedRoundPositiveBehavior.icon || '⭐'}</span>
+              <span>+ {selectedRoundPositiveBehavior.name}</span>
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+              Sin positivo
+            </span>
+          )}
+          {selectedRoundNegativeBehavior ? (
+            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 font-semibold ${negativeRoundPillClasses}`}>
+              <span>{selectedRoundNegativeBehavior.icon || '💥'}</span>
+              <span>- {selectedRoundNegativeBehavior.name}</span>
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+              Sin negativo
+            </span>
+          )}
+        </div>
+      </div>
+      <Button
+        onClick={startRound}
+        disabled={!selectedRoundPositiveBehavior && !selectedRoundNegativeBehavior}
+        className="w-full bg-gradient-to-r from-sky-500 to-indigo-500 hover:from-sky-600 hover:to-indigo-600 text-white"
+      >
+        Iniciar ronda
+      </Button>
+    </div>
+  );
 
   // Funciones para estudiantes placeholder
   const copyLinkCode = (code: string) => {
@@ -777,7 +1117,7 @@ export const StudentsPage = () => {
           )}
 
           {/* Controles de ronda rápida */}
-          {viewMode === 'list' && positiveBehaviors.length > 0 && (
+          {viewMode === 'list' && hasRoundBehaviors && (
             <div className="hidden md:flex items-center min-w-0">
               {!activeRound ? (
                 <div className="relative">
@@ -797,50 +1137,36 @@ export const StudentsPage = () => {
                         <p className="px-2 py-1 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
                           Elegir comportamiento de ronda
                         </p>
-                        {quickRoundSuggestion && (
-                          <button
-                            onClick={() => startRoundWithBehavior(quickRoundSuggestion)}
-                            className="w-full text-left p-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 mb-2"
-                          >
-                            <p className="text-xs text-indigo-600 dark:text-indigo-300 font-semibold">Sugerido</p>
-                            <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{quickRoundSuggestion.icon || '⭐'} {quickRoundSuggestion.name}</p>
-                          </button>
-                        )}
-                        <div className="max-h-56 overflow-y-auto space-y-1">
-                          {positiveBehaviors.map((behavior) => (
-                            <button
-                              key={behavior.id}
-                              onClick={() => startRoundWithBehavior(behavior)}
-                              className="w-full text-left px-2 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-sm text-gray-700 dark:text-gray-200"
-                            >
-                              <span className="mr-2">{behavior.icon || '⭐'}</span>
-                              {behavior.name}
-                            </button>
-                          ))}
+                        <p className="px-2 pb-2 text-xs text-gray-500 dark:text-gray-400">
+                          Elige un comportamiento positivo o negativo para puntuar en un toque.
+                        </p>
+                        <div className="max-h-64 overflow-y-auto pr-1">
+                          {roundBehaviorPickerContent}
                         </div>
                       </div>
                     </>
                   )}
                 </div>
               ) : (
-                <div className="flex items-center gap-1.5 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 px-2 py-1.5 max-w-full">
-                  <span className="text-xs font-semibold text-blue-700 dark:text-blue-300 truncate max-w-[180px] lg:max-w-[260px]">
-                    {activeRound.behaviorIcon || '⭐'} {activeRound.behaviorName}
-                  </span>
-                  <span className="text-[10px] text-blue-600 dark:text-blue-300">
+                <div className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 max-w-full ${roundSessionTone.surface}`}>
+                  <div className="min-w-0 flex-1">
+                    <p className={`text-[11px] font-semibold ${roundSessionTone.text}`}>Ronda activa</p>
+                    {roundActiveSummary}
+                  </div>
+                  <span className={`text-[10px] ${roundSessionTone.muted}`}>
                     {roundScoredCount}/{allStudents.length}
                   </span>
                   <button
                     onClick={undoLastRoundAction}
                     disabled={activeRound.actions.length === 0 || isUndoingRound}
-                    className="p-1 rounded-md text-blue-700 hover:bg-blue-100 dark:text-blue-300 dark:hover:bg-blue-900/40 disabled:opacity-40"
+                    className={`p-1 rounded-md disabled:opacity-40 ${roundSessionTone.iconAction}`}
                     title="Deshacer última acción"
                   >
                     <RotateCcw size={14} className={isUndoingRound ? 'animate-spin' : ''} />
                   </button>
                   <button
                     onClick={finishRound}
-                    className="px-2 py-1 rounded-md text-xs font-medium bg-white dark:bg-gray-800 text-blue-700 dark:text-blue-200 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30"
+                    className={`px-2 py-1 rounded-md text-xs font-medium ${roundSessionTone.outline}`}
                   >
                     Finalizar
                   </button>
@@ -870,16 +1196,18 @@ export const StudentsPage = () => {
                 Tomar asistencia
               </button>
 
-              <button
-                onClick={() => {
-                  setViewMode('list');
-                  setShowRoundBehaviorPicker(true);
-                }}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-[11px] font-semibold text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40"
-              >
-                <PlayCircle size={12} />
-                Iniciar ronda
-              </button>
+              {hasRoundBehaviors && (
+                <button
+                  onClick={() => {
+                    setViewMode('list');
+                    setShowRoundBehaviorPicker(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-[11px] font-semibold text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40"
+                >
+                  <PlayCircle size={12} />
+                  Iniciar ronda
+                </button>
+              )}
             </div>
           )}
           </div>
@@ -937,56 +1265,50 @@ export const StudentsPage = () => {
       </div>
 
       {viewMode === 'list' && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl px-3 py-2 border border-gray-200 dark:border-gray-700 shadow-sm">
+        <div className="md:hidden bg-white dark:bg-gray-800 rounded-xl px-3 py-2 border border-gray-200 dark:border-gray-700 shadow-sm">
           {!activeRound ? (
             <div className="space-y-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm text-gray-600 dark:text-gray-300">
-                  Inicia una ronda para puntuar participación en un toque por estudiante.
+                  Inicia una ronda para aplicar comportamientos positivos o negativos en un toque por estudiante.
                 </p>
-                <button
-                  onClick={() => setShowRoundBehaviorPicker((prev) => !prev)}
-                  className="md:hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600"
-                >
-                  <PlayCircle size={14} />
-                  Iniciar ronda
-                </button>
+                {hasRoundBehaviors && (
+                  <button
+                    onClick={() => setShowRoundBehaviorPicker((prev) => !prev)}
+                    className="md:hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600"
+                  >
+                    <PlayCircle size={14} />
+                    Iniciar ronda
+                  </button>
+                )}
               </div>
               {showRoundBehaviorPicker && (
                 <div className="md:hidden mt-1 p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40">
-                  <div className="max-h-44 overflow-y-auto space-y-1">
-                    {positiveBehaviors.map((behavior) => (
-                      <button
-                        key={behavior.id}
-                        onClick={() => startRoundWithBehavior(behavior)}
-                        className="w-full text-left px-2 py-2 rounded-lg bg-white dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 text-sm text-gray-700 dark:text-gray-200"
-                      >
-                        <span className="mr-2">{behavior.icon || '⭐'}</span>
-                        {behavior.name}
-                      </button>
-                    ))}
+                  <div className="max-h-56 overflow-y-auto pr-1">
+                    {roundBehaviorPickerContent}
                   </div>
                 </div>
               )}
             </div>
           ) : (
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="text-sm text-gray-700 dark:text-gray-200">
-                <span className="font-semibold">Ronda activa:</span> {activeRound.behaviorIcon || '⭐'} {activeRound.behaviorName}
-                <span className="text-gray-500 dark:text-gray-400 ml-2">· {roundScoredCount} de {allStudents.length} estudiantes</span>
+            <div className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 ${roundSessionTone.surface}`}>
+              <div className="space-y-1">
+                <div className={`text-sm font-semibold ${roundSessionTone.text}`}>Ronda activa</div>
+                {roundActiveSummary}
+                <div className={`text-xs ${roundSessionTone.muted}`}>{roundScoredCount} de {allStudents.length} estudiantes</div>
               </div>
               <div className="md:hidden flex items-center gap-2">
                 <button
                   onClick={undoLastRoundAction}
                   disabled={activeRound.actions.length === 0 || isUndoingRound}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-700 text-blue-700 dark:text-blue-300 text-sm font-medium disabled:opacity-50"
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-medium disabled:opacity-50 ${roundSessionTone.outline}`}
                 >
                   <RotateCcw size={13} className={isUndoingRound ? 'animate-spin' : ''} />
                   Deshacer
                 </button>
                 <button
                   onClick={finishRound}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-500 text-white text-sm font-medium hover:bg-sky-600"
                 >
                   Finalizar
                 </button>
@@ -1510,7 +1832,8 @@ export const StudentsPage = () => {
                     const isSelected = selectedStudents.has(student.id);
                     const hpPercent = Math.min((student.hp / (classroom.maxHp || 100)) * 100, 100);
                     const isTopStudent = topStudent?.id === student.id;
-                    const roundCount = roundAwardsByStudent[student.id] || 0;
+                    const studentRoundAwards = getRoundStudentAwards(student.id);
+                    const roundCount = getRoundAwardCount(student.id);
                     const lastAwardedAt = activeRound?.lastAwardedAtByStudent[student.id] || 0;
                     const justAwarded = lastAwardedAt > 0 && Date.now() - lastAwardedAt < 4500;
 
@@ -1518,7 +1841,7 @@ export const StudentsPage = () => {
                       <tr 
                         key={student.id}
                         onClick={() => toggleStudent(student.id)}
-                        className={`cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/30' : ''} ${justAwarded ? 'ring-1 ring-emerald-300 dark:ring-emerald-700 bg-emerald-50/40 dark:bg-emerald-900/10' : ''}`}
+                        className={`cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/30' : ''} ${justAwarded ? roundSessionTone.flash : ''}`}
                       >
                         {/* Estudiante */}
                         <td className="px-4 py-3">
@@ -1631,27 +1954,51 @@ export const StudentsPage = () => {
 
                         {activeRound && (
                           <td className="px-4 py-3 text-center">
-                            <div className="flex items-center justify-center gap-2">
+                            <div className="flex items-center justify-center gap-2 flex-wrap">
                               {roundCount === 0 ? (
                                 <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300">
                                   Pendiente
                                 </span>
                               ) : (
-                                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${roundCount > 1 ? 'bg-fuchsia-100 dark:bg-fuchsia-900/30 text-fuchsia-700 dark:text-fuchsia-300' : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'}`}>
-                                  x{roundCount}
-                                </span>
+                                <>
+                                  {studentRoundAwards.positive > 0 && (
+                                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${positiveRoundPillClasses}`}>
+                                      +{studentRoundAwards.positive}
+                                    </span>
+                                  )}
+                                  {studentRoundAwards.negative > 0 && (
+                                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${negativeRoundPillClasses}`}>
+                                      -{studentRoundAwards.negative}
+                                    </span>
+                                  )}
+                                </>
                               )}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  applyRoundAward(student.id);
-                                }}
-                                disabled={applyBehaviorMutation.isPending}
-                                className="px-2 py-1 rounded-lg text-xs font-semibold bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50"
-                                title={`Sumar ${activeRound.behaviorName}`}
-                              >
-                                +1
-                              </button>
+                              {activeRound.positiveBehavior && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    applyRoundAward(student.id, activeRound.positiveBehavior?.behaviorId);
+                                  }}
+                                  disabled={applyBehaviorMutation.isPending}
+                                  className={`px-2 py-1 rounded-lg text-xs font-semibold disabled:opacity-50 ${positiveRoundButtonClasses}`}
+                                  title={`Aplicar ${activeRound.positiveBehavior.behaviorName}`}
+                                >
+                                  +1
+                                </button>
+                              )}
+                              {activeRound.negativeBehavior && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    applyRoundAward(student.id, activeRound.negativeBehavior?.behaviorId);
+                                  }}
+                                  disabled={applyBehaviorMutation.isPending}
+                                  className={`px-2 py-1 rounded-lg text-xs font-semibold disabled:opacity-50 ${negativeRoundButtonClasses}`}
+                                  title={`Aplicar ${activeRound.negativeBehavior.behaviorName}`}
+                                >
+                                  -1
+                                </button>
+                              )}
                             </div>
                           </td>
                         )}
@@ -1961,32 +2308,6 @@ export const StudentsPage = () => {
         showCharacterName={classroom.showCharacterName !== false}
         classroomId={classroom.id}
       />
-
-      {/* Modal para aplicar a estudiantes restantes */}
-      <ApplyToRestModal
-        isOpen={showApplyToRestModal}
-        onClose={() => {
-          setShowApplyToRestModal(false);
-          setLastAppliedStudentIds(new Set());
-          setLastAppliedBehavior(null);
-        }}
-        restStudents={allStudents.filter(s => !lastAppliedStudentIds.has(s.id))}
-        lastBehavior={lastAppliedBehavior}
-        allBehaviors={behaviors || []}
-        onApply={(behavior, studentIds) => {
-          setIsApplyingToRest(true); // Evitar que el modal se reabra
-          applyBehaviorMutation.mutate({
-            behaviorId: behavior.id,
-            studentIds,
-            mode: 'apply_to_rest',
-          });
-          setShowApplyToRestModal(false);
-          setLastAppliedStudentIds(new Set());
-          setLastAppliedBehavior(null);
-        }}
-        isLoading={applyBehaviorMutation.isPending}
-        getDisplayName={getDisplayName}
-      />
     </div>
   );
 };
@@ -2208,192 +2529,3 @@ const BadgeAwardModal = ({
   );
 };
 
-// Modal de "Aplicar a Restantes"
-const ApplyToRestModal = ({
-  isOpen,
-  onClose,
-  restStudents,
-  lastBehavior,
-  allBehaviors,
-  onApply,
-  isLoading,
-  getDisplayName,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  restStudents: Array<{ id: string; characterName: string | null; realName?: string | null; realLastName?: string | null }>;
-  lastBehavior: Behavior | null;
-  allBehaviors: Behavior[];
-  onApply: (behavior: Behavior, studentIds: string[]) => void;
-  isLoading: boolean;
-  getDisplayName: (student: any) => string;
-}) => {
-  const [selectedBehaviorId, setSelectedBehaviorId] = useState<string | null>(null);
-
-  if (!isOpen || restStudents.length === 0) return null;
-
-  const selectedBehavior = allBehaviors.find(b => b.id === selectedBehaviorId);
-  
-  // Sugerir comportamiento opuesto al último aplicado
-  const suggestedBehaviors = lastBehavior 
-    ? allBehaviors.filter(b => b.isPositive !== lastBehavior.isPositive)
-    : allBehaviors;
-
-  return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-        onClick={onClose}
-      >
-        <motion.div
-          initial={{ scale: 0.95, opacity: 0, y: 20 }}
-          animate={{ scale: 1, opacity: 1, y: 0 }}
-          exit={{ scale: 0.95, opacity: 0, y: 20 }}
-          onClick={(e) => e.stopPropagation()}
-          className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden"
-        >
-          {/* Header */}
-          <div className="p-5 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-amber-500 to-orange-500">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3 text-white">
-                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
-                  <UserMinus size={20} />
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold">Aplicar a Restantes</h2>
-                  <p className="text-sm text-white/80">
-                    {restStudents.length} estudiante{restStudents.length !== 1 ? 's' : ''} sin evaluar
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={onClose}
-                className="p-2 hover:bg-white/20 rounded-lg text-white transition-colors"
-              >
-                <X size={20} />
-              </button>
-            </div>
-          </div>
-
-          <div className="p-5 space-y-4">
-            {/* Info del comportamiento anterior */}
-            {lastBehavior && (
-              <div className="p-3 bg-gray-50 dark:bg-gray-900 rounded-xl text-sm">
-                <p className="text-gray-500 dark:text-gray-400 mb-1">Acabas de aplicar:</p>
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">{lastBehavior.icon || '⭐'}</span>
-                  <span className="font-medium text-gray-800 dark:text-white">{lastBehavior.name}</span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${
-                    lastBehavior.isPositive 
-                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                      : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                  }`}>
-                    {lastBehavior.isPositive ? 'Positivo' : 'Negativo'}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Lista de estudiantes restantes (colapsada) */}
-            <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800">
-              <p className="text-sm font-medium text-amber-800 dark:text-amber-300 mb-2">
-                Estudiantes restantes:
-              </p>
-              <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
-                {restStudents.map(student => (
-                  <span 
-                    key={student.id}
-                    className="text-xs px-2 py-1 bg-white dark:bg-gray-800 rounded-lg text-gray-700 dark:text-gray-300 border border-amber-200 dark:border-amber-700"
-                  >
-                    {getDisplayName(student)}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {/* Selector de comportamiento */}
-            <div>
-              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Selecciona el comportamiento a aplicar:
-              </p>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {suggestedBehaviors.length > 0 ? (
-                  suggestedBehaviors.map(behavior => {
-                    const isSelected = selectedBehaviorId === behavior.id;
-                    const xp = behavior.xpValue ?? (behavior.pointType === 'XP' ? behavior.pointValue : 0);
-                    const hp = behavior.hpValue ?? (behavior.pointType === 'HP' ? behavior.pointValue : 0);
-                    const gp = behavior.gpValue ?? (behavior.pointType === 'GP' ? behavior.pointValue : 0);
-                    const sign = behavior.isPositive ? '+' : '-';
-                    
-                    return (
-                      <button
-                        key={behavior.id}
-                        onClick={() => setSelectedBehaviorId(behavior.id)}
-                        className={`w-full flex items-center justify-between p-3 rounded-xl border-2 transition-all ${
-                          isSelected
-                            ? behavior.isPositive
-                              ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
-                              : 'border-red-500 bg-red-50 dark:bg-red-900/20'
-                            : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className="text-xl">{behavior.icon || (behavior.isPositive ? '⭐' : '💔')}</span>
-                          <div className="text-left">
-                            <p className="font-medium text-gray-900 dark:text-white text-sm">
-                              {behavior.name}
-                            </p>
-                            {behavior.description && (
-                              <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[200px]">
-                                {behavior.description}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          {xp > 0 && <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300">{sign}{xp} XP</span>}
-                          {hp > 0 && <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">{sign}{hp} HP</span>}
-                          {gp > 0 && <span className="px-1.5 py-0.5 rounded text-xs font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">{sign}{gp} GP</span>}
-                        </div>
-                      </button>
-                    );
-                  })
-                ) : (
-                  <p className="text-center text-gray-500 dark:text-gray-400 py-4 text-sm">
-                    No hay comportamientos disponibles
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div className="p-5 border-t border-gray-200 dark:border-gray-700 flex gap-3">
-            <Button
-              variant="secondary"
-              onClick={onClose}
-              className="flex-1"
-            >
-              Omitir
-            </Button>
-            <Button
-              onClick={() => {
-                if (selectedBehavior) {
-                  onApply(selectedBehavior, restStudents.map(s => s.id));
-                }
-              }}
-              disabled={!selectedBehavior || isLoading}
-              isLoading={isLoading}
-              className="flex-1 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600"
-            >
-              Aplicar a {restStudents.length}
-            </Button>
-          </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
-  );
-};

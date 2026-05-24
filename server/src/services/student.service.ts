@@ -185,10 +185,33 @@ export class StudentService {
     if (profiles.length === 0) return [];
 
     // Obtener todas las clases en una sola query
-    const classroomIds = profiles.map(p => p.classroomId);
+    const classroomIds = Array.from(new Set(profiles.map(p => p.classroomId)));
     const classroomsData = await db.query.classrooms.findMany({
       where: inArray(classrooms.id, classroomIds),
     });
+
+    const classroomStudents = await db.query.studentProfiles.findMany({
+      where: inArray(studentProfiles.classroomId, classroomIds),
+      columns: {
+        id: true,
+        classroomId: true,
+        xp: true,
+        isActive: true,
+      },
+    });
+
+    const classroomRankingMap = new Map<string, { studentCount: number; rankByStudentId: Map<string, number> }>();
+
+    for (const classroomId of classroomIds) {
+      const activeStudents = classroomStudents
+        .filter((student) => student.classroomId === classroomId && student.isActive !== false)
+        .sort((a, b) => b.xp - a.xp);
+
+      classroomRankingMap.set(classroomId, {
+        studentCount: activeStudents.length,
+        rankByStudentId: new Map(activeStudents.map((student, index) => [student.id, index + 1])),
+      });
+    }
 
     // Crear mapa de clases
     const classroomMap = new Map(classroomsData.map(c => [c.id, c]));
@@ -202,7 +225,15 @@ export class StudentService {
         db.delete(studentProfiles).where(eq(studentProfiles.id, profile.id)).catch(() => {});
         continue;
       }
-      results.push({ ...profile, classroom });
+
+      const classroomRanking = classroomRankingMap.get(profile.classroomId);
+
+      results.push({
+        ...profile,
+        classroom,
+        classroomRank: classroomRanking?.rankByStudentId.get(profile.id) ?? null,
+        classroomStudentCount: classroomRanking?.studentCount ?? 0,
+      });
     }
 
     return results;

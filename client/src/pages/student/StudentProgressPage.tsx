@@ -1,12 +1,14 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import { useStudentStore } from '../../store/studentStore';
 import { useQuery } from '@tanstack/react-query';
 import { studentApi } from '../../lib/studentApi';
 import { StudentProgressView } from '../../components/student/StudentProgressView';
+import type { ThemeConfig } from '../../lib/storyApi';
 
 export const StudentProgressPage = () => {
   const navigate = useNavigate();
   const { selectedClassIndex } = useStudentStore();
+  const { storyTheme, isThemeDark, hasStoryTheme } = useOutletContext<{ storyTheme?: ThemeConfig | null; isThemeDark?: boolean; hasStoryTheme?: boolean }>();
 
   const { data: myClasses } = useQuery({
     queryKey: ['my-classes'],
@@ -20,7 +22,10 @@ export const StudentProgressPage = () => {
   return (
     <StudentProgressView
       studentId={currentProfile.id}
-      onBack={() => navigate('/dashboard')}
+      onBack={() => navigate('/my-class')}
+      storyTheme={storyTheme}
+      isThemeDark={isThemeDark}
+      hasStoryTheme={hasStoryTheme}
     />
   );
 };

@@ -161,7 +161,7 @@ export const StudentShopPage = ({ studentProfile, classmates: propClassmates }: 
           className={`flex items-center gap-2 px-4 py-2 font-medium transition-colors ${
             activeTab === 'shop'
               ? 'text-indigo-600 border-b-2 border-indigo-600'
-              : 'text-gray-500 hover:text-gray-700'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
           }`}
         >
           <ShoppingBag size={18} />
@@ -172,7 +172,7 @@ export const StudentShopPage = ({ studentProfile, classmates: propClassmates }: 
           className={`flex items-center gap-2 px-4 py-2 font-medium transition-colors ${
             activeTab === 'inventory'
               ? 'text-indigo-600 border-b-2 border-indigo-600'
-              : 'text-gray-500 hover:text-gray-700'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
           }`}
         >
           <Package size={18} />
@@ -183,7 +183,7 @@ export const StudentShopPage = ({ studentProfile, classmates: propClassmates }: 
           className={`flex items-center gap-2 px-4 py-2 font-medium transition-colors ${
             activeTab === 'gifts'
               ? 'text-indigo-600 border-b-2 border-indigo-600'
-              : 'text-gray-500 hover:text-gray-700'
+              : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
           }`}
         >
           <Gift size={18} />
@@ -283,7 +283,7 @@ export const StudentShopPage = ({ studentProfile, classmates: propClassmates }: 
                       <h3 className="font-bold text-gray-900 dark:text-white">
                         {purchase.item.name}
                       </h3>
-                      <div className="flex items-center gap-2 text-sm text-gray-500">
+                      <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                         <span>{new Date(purchase.purchasedAt).toLocaleDateString()}</span>
                         {purchase.purchaseType === 'GIFT' && <span>• Regalo recibido</span>}
                         {purchase.purchaseType === 'TEACHER' && <span>• Regalo del profesor</span>}
@@ -316,7 +316,7 @@ export const StudentShopPage = ({ studentProfile, classmates: propClassmates }: 
                         </Button>
                       )}
                       {isConsumable && remaining === 0 && (
-                        <span className="text-xs text-gray-400">Agotado</span>
+                        <span className="text-xs text-gray-400 dark:text-gray-500">Agotado</span>
                       )}
                     </div>
                   </CardContent>
@@ -359,7 +359,7 @@ export const StudentShopPage = ({ studentProfile, classmates: propClassmates }: 
                         🎁 De: {gift.from?.characterName || 'Anónimo'}
                       </p>
                       {gift.giftMessage && (
-                        <p className="text-sm text-gray-500 italic mt-1">
+                        <p className="text-sm text-gray-500 dark:text-gray-400 italic mt-1">
                           "{gift.giftMessage}"
                         </p>
                       )}
@@ -543,7 +543,7 @@ const PurchaseModal = ({
             </h2>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500"
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500 dark:text-gray-400"
             >
               <X size={20} />
             </button>
@@ -571,11 +571,11 @@ const PurchaseModal = ({
             {/* Resumen */}
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-gray-500">Tu oro actual:</span>
+                <span className="text-gray-500 dark:text-gray-400">Tu oro actual:</span>
                 <span className="font-bold text-amber-600">{currentGP} GP</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500">Precio:</span>
+                <span className="text-gray-500 dark:text-gray-400">Precio:</span>
                 <span className="font-bold text-red-500">-{item.price} GP</span>
               </div>
               <div className="flex justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
@@ -651,7 +651,7 @@ const GiftModal = ({
             </h2>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500"
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500 dark:text-gray-400"
             >
               <X size={20} />
             </button>
@@ -675,7 +675,7 @@ const GiftModal = ({
                 ¿A quién quieres regalar?
               </label>
               {classmates.length === 0 ? (
-                <p className="text-gray-500 text-center py-4">No hay compañeros disponibles</p>
+                <p className="text-gray-500 dark:text-gray-400 text-center py-4">No hay compañeros disponibles</p>
               ) : (
                 <div className="space-y-2 max-h-40 overflow-y-auto">
                   {classmates.map((classmate) => {

@@ -20,6 +20,13 @@ export interface AttendanceStats {
   attendanceRate: number;
   totalXpEarned?: number;
   daysRecorded?: number;
+  currentStreak?: number;
+  bestStreak?: number;
+}
+
+export interface MyAttendanceData {
+  stats: AttendanceStats;
+  history: AttendanceRecord[];
 }
 
 export interface BulkAttendanceData {
@@ -86,6 +93,11 @@ export const attendanceApi = {
   async getStudentHistory(studentProfileId: string, limit?: number): Promise<AttendanceRecord[]> {
     const params = limit ? `?limit=${limit}` : '';
     const response = await api.get(`/attendance/student/${studentProfileId}/history${params}`);
+    return response.data.data;
+  },
+
+  async getMyAttendance(classroomId: string): Promise<MyAttendanceData> {
+    const response = await api.get(`/attendance/my/${classroomId}`);
     return response.data.data;
   },
 

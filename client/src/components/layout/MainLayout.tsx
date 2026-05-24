@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -25,10 +25,13 @@ import {
   School,
   BookMarked,
   BarChart3,
-  Plus,
+  ShoppingBag,
+  Medal,
+  Shirt,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useStudentStore } from '../../store/studentStore';
+import { useThemeStore } from '../../store/themeStore';
 import { studentApi } from '../../lib/studentApi';
 import { useCharacterClasses } from '../../hooks/useCharacterClasses';
 import { expeditionApi } from '../../lib/expeditionApi';
@@ -37,6 +40,26 @@ import { NotificationsBell, NotificationsPanel } from '../NotificationsPanel';
 import { BugReportButton } from '../BugReportButton';
 import { ParticleLayer } from '../story/ParticleLayer';
 
+type StudentMenuKey = 'space' | 'rewards' | 'adventures' | 'community';
+
+type StudentMenuItem = {
+  path: string;
+  label: string;
+  icon: JSX.Element;
+  gradient: string;
+  isActive: boolean;
+  meta?: string;
+  showPing?: boolean;
+};
+
+type StudentMenuGroup = {
+  key: StudentMenuKey;
+  label: string;
+  icon: JSX.Element;
+  gradient: string;
+  subItems: StudentMenuItem[];
+};
+
 const teacherNavItems = [
   { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, gradient: 'from-blue-500 to-indigo-500' },
   { path: '/classrooms', label: 'Mis Clases', icon: Users, gradient: 'from-emerald-500 to-teal-500' },
@@ -44,13 +67,10 @@ const teacherNavItems = [
   { path: '/settings', label: 'Configuración', icon: Settings, gradient: 'from-gray-500 to-slate-500' },
 ];
 
-const studentNavItems = [
-  { path: '/dashboard', label: 'Mi Clase', icon: Users, gradient: 'from-emerald-500 to-teal-500' },
-];
-
 export const MainLayout = () => {
   const { user, logout } = useAuthStore();
   const { selectedClassIndex, setSelectedClassIndex } = useStudentStore();
+  const resolvedTheme = useThemeStore((state) => state.resolvedTheme);
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -58,9 +78,14 @@ export const MainLayout = () => {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [showClassSelector, setShowClassSelector] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [studentMenusOpen, setStudentMenusOpen] = useState<Record<StudentMenuKey, boolean>>({
+    space: true,
+    rewards: false,
+    adventures: false,
+    community: false,
+  });
 
   const isTeacher = user?.role === 'TEACHER';
-  const navItems = isTeacher ? teacherNavItems : studentNavItems;
 
   // Cargar clases del estudiante
   const { data: myClasses } = useQuery({
@@ -83,9 +108,35 @@ export const MainLayout = () => {
   const hasActiveExpeditions = studentExpeditions.some(exp => !exp.studentProgress?.isCompleted);
   const characterInfo = currentProfile ? (classMap[currentProfile.characterClassId!] || classMap[currentProfile.characterClass]) : null;
 
-  // Parse storytelling theme from student's classroom
-  const tc = (() => {
-    if (isTeacher) return null;
+  const matchesPath = (path: string, mode: 'exact' | 'startsWith' = 'exact') => {
+    if (mode === 'startsWith') {
+      return location.pathname === path || location.pathname.startsWith(`${path}/`);
+    }
+    return location.pathname === path;
+  };
+
+  const hasCompetencyOverview = !!myClasses?.some((profile) => profile.classroom?.useCompetencies);
+  const isStudentOverviewZone = !isTeacher && ['/dashboard', '/my-classes', '/my-skills', '/join-class'].some((path) => matchesPath(path));
+  const isStudentClassThemeRoute = !isTeacher && [
+    { path: '/my-class', mode: 'exact' as const },
+    { path: '/my-clan', mode: 'exact' as const },
+    { path: '/my-attendance', mode: 'exact' as const },
+    { path: '/scrolls', mode: 'exact' as const },
+    { path: '/my-grades', mode: 'exact' as const },
+    { path: '/my-progress', mode: 'exact' as const },
+    { path: '/my-shop', mode: 'exact' as const },
+    { path: '/my-badges', mode: 'exact' as const },
+    { path: '/my-avatar', mode: 'exact' as const },
+    { path: '/expeditions', mode: 'exact' as const },
+    { path: '/jiro-expeditions', mode: 'exact' as const },
+    { path: '/jiro-expedition', mode: 'startsWith' as const },
+    { path: '/collectibles', mode: 'exact' as const },
+    { path: '/my-story', mode: 'exact' as const },
+  ].some((route) => matchesPath(route.path, route.mode));
+
+  // El tema de clase solo debe afectar rutas dentro del aula del estudiante.
+  const activeStoryTheme = (() => {
+    if (isTeacher || !isStudentClassThemeRoute) return null;
     const raw = currentProfile?.classroom?.themeConfig;
     if (!raw) return null;
     if (typeof raw === 'string') {
@@ -93,11 +144,11 @@ export const MainLayout = () => {
     }
     return raw;
   })();
-  const hasStoryTheme = !isTeacher && !!(tc?.colors?.background && tc?.colors?.sidebar);
+  const hasStoryTheme = !!(activeStoryTheme?.colors?.background && activeStoryTheme?.colors?.sidebar);
 
   const isThemeDark = (() => {
-    if (!hasStoryTheme || !tc?.colors?.background) return false;
-    const hex = tc.colors.background.replace('#', '');
+    if (!hasStoryTheme || !activeStoryTheme?.colors?.background) return false;
+    const hex = activeStoryTheme.colors.background.replace('#', '');
     const r = parseInt(hex.substring(0, 2), 16);
     const g = parseInt(hex.substring(2, 4), 16);
     const b = parseInt(hex.substring(4, 6), 16);
@@ -107,14 +158,14 @@ export const MainLayout = () => {
   const storyThemeClass = hasStoryTheme ? (isThemeDark ? 'story-theme-dark' : 'story-theme-light') : '';
 
   const storyThemeStyle = hasStoryTheme ? {
-    backgroundColor: tc.colors.background,
-    '--story-bg': tc.colors.background,
-    '--story-sidebar': tc.colors.sidebar,
-    '--story-primary': tc.colors.primary,
-    '--story-secondary': tc.colors.secondary,
-    '--story-accent': tc.colors.accent || tc.colors.primary,
+    backgroundColor: activeStoryTheme.colors.background,
+    '--story-bg': activeStoryTheme.colors.background,
+    '--story-sidebar': activeStoryTheme.colors.sidebar,
+    '--story-primary': activeStoryTheme.colors.primary,
+    '--story-secondary': activeStoryTheme.colors.secondary,
+    '--story-accent': activeStoryTheme.colors.accent || activeStoryTheme.colors.primary,
     '--story-primary-rgb': (() => {
-      const hex = (tc.colors.primary || '#6366f1').replace('#', '');
+      const hex = (activeStoryTheme.colors.primary || '#6366f1').replace('#', '');
       const r = parseInt(hex.substring(0, 2), 16);
       const g = parseInt(hex.substring(2, 4), 16);
       const b = parseInt(hex.substring(4, 6), 16);
@@ -127,14 +178,192 @@ export const MainLayout = () => {
     navigate('/login');
   };
 
+  const studentOverviewNavItems: StudentMenuItem[] = !isTeacher ? [
+    {
+      path: '/dashboard',
+      label: 'Principal',
+      icon: <LayoutDashboard size={14} />,
+      gradient: 'from-blue-500 to-indigo-500',
+      isActive: matchesPath('/dashboard'),
+    },
+    {
+      path: '/my-classes',
+      label: 'Mis clases',
+      icon: <Users size={14} />,
+      gradient: 'from-emerald-500 to-teal-500',
+      isActive: matchesPath('/my-classes') || matchesPath('/join-class'),
+    },
+    ...((hasCompetencyOverview || matchesPath('/my-skills')) ? [{
+      path: '/my-skills',
+      label: 'Destrezas',
+      icon: <BookOpen size={14} />,
+      gradient: 'from-violet-500 to-indigo-500',
+      isActive: matchesPath('/my-skills'),
+    }] : []),
+  ] : [];
+
+  const studentMenuGroups: StudentMenuGroup[] = !isTeacher && currentProfile && !isStudentOverviewZone ? [
+    {
+      key: 'space',
+      label: 'Mi espacio',
+      icon: <Users size={16} />,
+      gradient: 'from-emerald-500 to-teal-500',
+      subItems: [
+        {
+          path: '/my-class',
+          label: 'Mi Clase',
+          icon: <Users size={14} />,
+          gradient: 'from-emerald-500 to-teal-500',
+          isActive: matchesPath('/my-class'),
+        },
+        {
+          path: '/my-attendance',
+          label: 'Mi Asistencia',
+          icon: <Calendar size={14} />,
+          gradient: 'from-indigo-500 to-purple-500',
+          isActive: matchesPath('/my-attendance'),
+        },
+        ...(currentProfile.classroom?.useCompetencies ? [{
+          path: '/my-grades',
+          label: 'Mis Calificaciones',
+          icon: <BookOpen size={14} />,
+          gradient: 'from-purple-500 to-indigo-500',
+          isActive: matchesPath('/my-grades'),
+        }] : []),
+        {
+          path: '/my-progress',
+          label: 'Mi Progreso',
+          icon: <BarChart3 size={14} />,
+          gradient: 'from-emerald-500 to-teal-500',
+          isActive: matchesPath('/my-progress'),
+        },
+      ],
+    },
+    {
+      key: 'rewards',
+      label: 'Recompensas',
+      icon: <Medal size={16} />,
+      gradient: 'from-amber-500 to-orange-500',
+      subItems: [
+        {
+          path: '/my-shop',
+          label: 'Tienda de ítems',
+          icon: <ShoppingBag size={14} />,
+          gradient: 'from-amber-500 to-orange-500',
+          isActive: matchesPath('/my-shop'),
+          meta: `${currentProfile.gp} GP`,
+        },
+        {
+          path: '/my-badges',
+          label: 'Mis insignias',
+          icon: <Medal size={14} />,
+          gradient: 'from-amber-500 to-orange-500',
+          isActive: matchesPath('/my-badges'),
+        },
+        {
+          path: '/my-avatar',
+          label: 'Personalizar avatar',
+          icon: <Shirt size={14} />,
+          gradient: 'from-fuchsia-500 to-pink-500',
+          isActive: matchesPath('/my-avatar'),
+        },
+        {
+          path: '/collectibles',
+          label: 'Álbum de cromos',
+          icon: <Album size={14} />,
+          gradient: 'from-amber-500 to-yellow-500',
+          isActive: matchesPath('/collectibles'),
+        },
+      ],
+    },
+    {
+      key: 'adventures',
+      label: 'Aventuras',
+      icon: <Map size={16} />,
+      gradient: 'from-cyan-500 to-blue-500',
+      subItems: [
+        ...(studentExpeditions.length > 0 ? [{
+          path: '/expeditions',
+          label: 'Expediciones',
+          icon: <Map size={14} />,
+          gradient: 'from-emerald-500 to-teal-500',
+          isActive: matchesPath('/expeditions'),
+          showPing: hasActiveExpeditions && !matchesPath('/expeditions'),
+        }] : []),
+        {
+          path: '/jiro-expeditions',
+          label: 'Expedición de Jiro',
+          icon: <span className="text-sm">🦊</span>,
+          gradient: 'from-orange-500 to-amber-500',
+          isActive: matchesPath('/jiro-expeditions') || matchesPath('/jiro-expedition', 'startsWith'),
+        },
+        ...(currentProfile.classroom?.scrollsEnabled ? [{
+          path: '/scrolls',
+          label: 'Pergaminos',
+          icon: <ScrollText size={14} />,
+          gradient: 'from-amber-500 to-orange-500',
+          isActive: matchesPath('/scrolls'),
+          showPing: !!currentProfile.classroom?.scrollsOpen && !matchesPath('/scrolls'),
+        }] : []),
+        ...(hasStoryTheme ? [{
+          path: '/my-story',
+          label: 'Mi Historia',
+          icon: <BookMarked size={14} />,
+          gradient: 'from-violet-500 to-fuchsia-500',
+          isActive: matchesPath('/my-story'),
+        }] : []),
+      ],
+    },
+    {
+      key: 'community',
+      label: 'Comunidad',
+      icon: <Shield size={16} />,
+      gradient: 'from-teal-500 to-cyan-500',
+      subItems: [
+        ...(currentProfile.classroom?.clansEnabled ? [{
+          path: '/my-clan',
+          label: 'Mi Clan',
+          icon: <Shield size={14} />,
+          gradient: 'from-teal-500 to-cyan-500',
+          isActive: matchesPath('/my-clan'),
+        }] : []),
+      ],
+    },
+  ] : [];
+
+  const toggleStudentMenu = (menuKey: StudentMenuKey) => {
+    setStudentMenusOpen((prev) => ({
+      ...prev,
+      [menuKey]: !prev[menuKey],
+    }));
+  };
+
+  const themedActiveGradientStyle = hasStoryTheme
+    ? {
+        background: `linear-gradient(to right, ${activeStoryTheme?.colors?.primary || '#6366f1'}, ${activeStoryTheme?.colors?.secondary || activeStoryTheme?.colors?.primary || '#8b5cf6'})`,
+      }
+    : undefined;
+
+  useEffect(() => {
+    if (typeof document === 'undefined' || isTeacher) {
+      return;
+    }
+
+    document.documentElement.classList.toggle('dark', hasStoryTheme ? false : resolvedTheme === 'dark');
+
+    return () => {
+      document.documentElement.classList.toggle('dark', resolvedTheme === 'dark');
+    };
+  }, [hasStoryTheme, isTeacher, resolvedTheme]);
+
   return (
     <div
       className={`min-h-screen ${hasStoryTheme ? storyThemeClass : 'bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800'}`}
       style={storyThemeStyle}
     >
       {/* Storytelling particles */}
-      {hasStoryTheme && tc.particles && (
-        <ParticleLayer particles={tc.particles} />
+      {hasStoryTheme && activeStoryTheme?.particles && (
+        <ParticleLayer particles={activeStoryTheme.particles} />
       )}
 
       {/* Sidebar Mobile Overlay */}
@@ -162,7 +391,7 @@ export const MainLayout = () => {
           lg:translate-x-0
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
-        style={hasStoryTheme ? { backgroundColor: tc.colors.sidebar } : undefined}
+        style={hasStoryTheme ? { backgroundColor: activeStoryTheme?.colors?.sidebar } : undefined}
       >
         {/* Logo */}
         <div className={`flex items-center justify-between h-14 px-4 ${hasStoryTheme ? 'border-b border-white/10' : 'border-b border-gray-100 dark:border-gray-700'}`}>
@@ -182,7 +411,7 @@ export const MainLayout = () => {
         </div>
 
         {/* Student Stats (solo para estudiantes) */}
-        {!isTeacher && currentProfile && !collapsed && (
+        {!isTeacher && currentProfile && !collapsed && !isStudentOverviewZone && (
           <div className={`p-3 ${hasStoryTheme ? 'border-b border-white/10' : 'border-b border-gray-100 dark:border-gray-700'}`}>
             {/* Selector de clase si tiene múltiples */}
             {myClasses && myClasses.length > 1 && (
@@ -235,383 +464,185 @@ export const MainLayout = () => {
 
         {/* Navigation */}
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {/* Sección: Mi espacio (solo estudiantes) */}
-          {!isTeacher && !collapsed && (
-            <p className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-              Mi espacio
-            </p>
-          )}
-          {navItems.map((item) => {
-            const isActivePath = location.pathname === item.path || 
-              (item.path === '/classrooms' && location.pathname.startsWith('/classroom'));
-            return (
-              <Link
-                key={item.path}
-                to={item.path}
-                onClick={() => setSidebarOpen(false)}
-                className={`
-                  flex items-center gap-3 px-3 py-2.5 rounded-xl
-                  transition-all duration-200 group
-                  ${isActivePath
-                    ? 'bg-gradient-to-r ' + item.gradient + ' text-white shadow-md'
-                    : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                  }
-                `}
-              >
-                <div className={`
-                  w-8 h-8 rounded-lg flex items-center justify-center transition-all
-                  ${isActivePath 
-                    ? 'bg-white/20' 
-                    : 'bg-gradient-to-br ' + item.gradient + ' text-white shadow-sm group-hover:scale-105'
-                  }
-                `}>
-                  <item.icon size={16} />
-                </div>
-                {!(!isTeacher && collapsed) && (
+          {isTeacher ? (
+            teacherNavItems.map((item) => {
+              const isActivePath = location.pathname === item.path ||
+                (item.path === '/classrooms' && location.pathname.startsWith('/classroom'));
+
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  onClick={() => setSidebarOpen(false)}
+                  className={`
+                    flex items-center gap-3 px-3 py-2.5 rounded-xl
+                    transition-all duration-200 group
+                    ${isActivePath
+                      ? 'bg-gradient-to-r ' + item.gradient + ' text-white shadow-md'
+                      : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    }
+                  `}
+                >
+                  <div className={`
+                    w-8 h-8 rounded-lg flex items-center justify-center transition-all
+                    ${isActivePath
+                      ? 'bg-white/20'
+                      : 'bg-gradient-to-br ' + item.gradient + ' text-white shadow-sm group-hover:scale-105'
+                    }
+                  `}>
+                    <item.icon size={16} />
+                  </div>
                   <span className={`text-sm font-medium ${isActivePath ? '' : hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
                     {item.label}
                   </span>
-                )}
-              </Link>
-            );
-          })}
-          
-          {/* Mi Clan - solo para estudiantes con clan habilitado */}
-          {!isTeacher && currentProfile?.classroom?.clansEnabled && (
-            <Link
-              to="/my-clan"
-              onClick={() => setSidebarOpen(false)}
-              className={`
-                flex items-center gap-3 px-3 py-2.5 rounded-xl
-                transition-all duration-200 group
-                ${location.pathname === '/my-clan'
-                  ? 'bg-gradient-to-r from-teal-500 to-cyan-500 text-white shadow-md'
-                  : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                }
-              `}
-            >
-              <div className={`
-                w-8 h-8 rounded-lg flex items-center justify-center transition-all
-                ${location.pathname === '/my-clan'
-                  ? 'bg-white/20' 
-                  : 'bg-gradient-to-br from-teal-500 to-cyan-500 text-white shadow-sm group-hover:scale-105'
-                }
-              `}>
-                <Shield size={16} />
-              </div>
-              {!collapsed && (
-                <span className={`text-sm font-medium ${location.pathname === '/my-clan' ? '' : hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
-                  Mi Clan
-                </span>
-              )}
-            </Link>
-          )}
-
-          {/* Mi Asistencia - solo para estudiantes */}
-          {!isTeacher && currentProfile && (
-            <Link
-              to="/my-attendance"
-              onClick={() => setSidebarOpen(false)}
-              className={`
-                flex items-center gap-3 px-3 py-2.5 rounded-xl
-                transition-all duration-200 group
-                ${location.pathname === '/my-attendance'
-                  ? 'bg-gradient-to-r from-indigo-500 to-purple-500 text-white shadow-md'
-                  : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                }
-              `}
-            >
-              <div className={`
-                w-8 h-8 rounded-lg flex items-center justify-center transition-all
-                ${location.pathname === '/my-attendance'
-                  ? 'bg-white/20' 
-                  : 'bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-sm group-hover:scale-105'
-                }
-              `}>
-                <Calendar size={16} />
-              </div>
-              {!collapsed && (
-                <span className={`text-sm font-medium ${location.pathname === '/my-attendance' ? '' : hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
-                  Mi Asistencia
-                </span>
-              )}
-            </Link>
-          )}
-
-          {/* Mis Calificaciones - solo para estudiantes con competencias habilitadas */}
-          {!isTeacher && currentProfile?.classroom?.useCompetencies && (
-            <Link
-              to="/my-grades"
-              onClick={() => setSidebarOpen(false)}
-              className={`
-                flex items-center gap-3 px-3 py-2.5 rounded-xl
-                transition-all duration-200 group relative
-                ${location.pathname === '/my-grades'
-                  ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-md'
-                  : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                }
-              `}
-            >
-              <div className={`
-                w-8 h-8 rounded-lg flex items-center justify-center transition-all
-                ${location.pathname === '/my-grades'
-                  ? 'bg-white/20' 
-                  : 'bg-gradient-to-br from-purple-500 to-indigo-500 text-white shadow-sm group-hover:scale-105'
-                }
-              `}>
-                <BookOpen size={16} />
-              </div>
-              {!collapsed && (
-                <span className={`text-sm font-medium ${location.pathname === '/my-grades' ? '' : hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
-                  Mis Calificaciones
-                </span>
-              )}
-            </Link>
-          )}
-
-          {/* Mi Progreso - solo para estudiantes */}
-          {!isTeacher && currentProfile && (
-            <Link
-              to="/my-progress"
-              onClick={() => setSidebarOpen(false)}
-              className={`
-                flex items-center gap-3 px-3 py-2.5 rounded-xl
-                transition-all duration-200 group relative
-                ${location.pathname === '/my-progress'
-                  ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-md'
-                  : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                }
-              `}
-            >
-              <div className={`
-                w-8 h-8 rounded-lg flex items-center justify-center transition-all
-                ${location.pathname === '/my-progress'
-                  ? 'bg-white/20' 
-                  : 'bg-gradient-to-br from-emerald-500 to-teal-500 text-white shadow-sm group-hover:scale-105'
-                }
-              `}>
-                <BarChart3 size={16} />
-              </div>
-              {!collapsed && (
-                <span className={`text-sm font-medium ${location.pathname === '/my-progress' ? '' : hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
-                  Mi Progreso
-                </span>
-              )}
-            </Link>
-          )}
-
-          {/* Divider y Sección: Recompensas (solo estudiantes) */}
-          {!isTeacher && (
-            <>
-              <div className="my-2 mx-3 border-t border-gray-200 dark:border-gray-700" style={hasStoryTheme ? { borderColor: 'rgba(255,255,255,0.15)' } : undefined} />
-              {!collapsed && (
-                <p className="px-3 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-                  Recompensas
-                </p>
-              )}
-            </>
-          )}
-
-          {/* Pergaminos del Aula - solo para estudiantes con scrolls habilitado */}
-          {!isTeacher && currentProfile?.classroom?.scrollsEnabled && (
-            <Link
-              to="/scrolls"
-              onClick={() => setSidebarOpen(false)}
-              className={`
-                flex items-center gap-3 px-3 py-2.5 rounded-xl
-                transition-all duration-200 group relative
-                ${location.pathname === '/scrolls'
-                  ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-md'
-                  : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                }
-              `}
-            >
-              <div className={`
-                w-8 h-8 rounded-lg flex items-center justify-center transition-all
-                ${location.pathname === '/scrolls'
-                  ? 'bg-white/20' 
-                  : 'bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-sm group-hover:scale-105'
-                }
-              `}>
-                <ScrollText size={16} />
-              </div>
-              {!collapsed && (
-                <span className={`text-sm font-medium ${location.pathname === '/scrolls' ? '' : hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
-                  Pergaminos
-                </span>
-              )}
-              {/* Indicador animado cuando el mural está abierto */}
-              {currentProfile?.classroom?.scrollsOpen && location.pathname !== '/scrolls' && (
-                <motion.span
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  className="absolute right-2 flex h-2.5 w-2.5"
+                </Link>
+              );
+            })
+          ) : (
+            <div className="space-y-2">
+              {isStudentOverviewZone && studentOverviewNavItems.map((item) => (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  title={collapsed ? item.label : undefined}
+                  onClick={() => setSidebarOpen(false)}
+                  className={`
+                    flex items-center gap-3 px-3 py-2.5 rounded-xl
+                    transition-all duration-200 group
+                    ${item.isActive
+                      ? `${hasStoryTheme ? '' : `bg-gradient-to-r ${item.gradient}`} text-white shadow-md`
+                      : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    }
+                  `}
+                  style={item.isActive && hasStoryTheme ? themedActiveGradientStyle : undefined}
                 >
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
-                </motion.span>
-              )}
-            </Link>
-          )}
+                  <div className={`
+                    w-8 h-8 rounded-lg flex items-center justify-center transition-all
+                    ${item.isActive
+                      ? 'bg-white/20'
+                      : hasStoryTheme
+                        ? 'bg-white/10 text-white shadow-sm group-hover:scale-105'
+                        : 'bg-gradient-to-br ' + item.gradient + ' text-white shadow-sm group-hover:scale-105'
+                    }
+                  `}>
+                    {item.icon}
+                  </div>
+                  {!collapsed && (
+                    <span className={`text-sm font-semibold ${item.isActive ? '' : hasStoryTheme ? 'text-white/85' : 'text-gray-700 dark:text-gray-300'}`}>
+                      {item.label}
+                    </span>
+                  )}
+                </Link>
+              ))}
 
-          {/* Coleccionables - solo para estudiantes */}
-          {!isTeacher && currentProfile && (
-            <Link
-              to="/collectibles"
-              onClick={() => setSidebarOpen(false)}
-              className={`
-                flex items-center gap-3 px-3 py-2.5 rounded-xl
-                transition-all duration-200 group relative
-                ${location.pathname === '/collectibles'
-                  ? 'bg-gradient-to-r from-amber-500 to-yellow-500 text-white shadow-md'
-                  : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                }
-              `}
-            >
-              <div className={`
-                w-8 h-8 rounded-lg flex items-center justify-center transition-all
-                ${location.pathname === '/collectibles'
-                  ? 'bg-white/20' 
-                  : 'bg-gradient-to-br from-amber-500 to-yellow-500 text-white shadow-sm group-hover:scale-105'
-                }
-              `}>
-                <Album size={16} />
-              </div>
-              {!collapsed && (
-                <span className={`text-sm font-medium ${location.pathname === '/collectibles' ? '' : hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
-                  Álbum de Cromos
-                </span>
-              )}
-            </Link>
-          )}
+              {!isStudentOverviewZone && studentMenuGroups.map((group) => {
+                const groupHasActiveItem = group.subItems.some((subItem) => subItem.isActive);
+                const groupKey = group.key;
+                const isGroupOpen = !collapsed && (studentMenusOpen[groupKey] || groupHasActiveItem);
 
-          {/* Expediciones - solo para estudiantes */}
-          {!isTeacher && studentExpeditions.length > 0 && (
-            <Link
-              to="/expeditions"
-              onClick={() => setSidebarOpen(false)}
-              className={`
-                flex items-center gap-3 px-3 py-2.5 rounded-xl
-                transition-all duration-200 group relative
-                ${location.pathname === '/expeditions'
-                  ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-md'
-                  : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                }
-              `}
-            >
-              <div className={`
-                w-8 h-8 rounded-lg flex items-center justify-center transition-all
-                ${location.pathname === '/expeditions'
-                  ? 'bg-white/20' 
-                  : 'bg-gradient-to-br from-emerald-500 to-teal-500 text-white shadow-sm group-hover:scale-105'
-                }
-              `}>
-                <Map size={16} />
-              </div>
-              {!collapsed && (
-                <span className={`text-sm font-medium ${location.pathname === '/expeditions' ? '' : hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
-                  Expediciones
-                </span>
-              )}
-              {/* Indicador animado cuando hay expediciones activas */}
-              {hasActiveExpeditions && location.pathname !== '/expeditions' && (
-                <motion.span
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  className="absolute right-2 flex h-2.5 w-2.5"
-                >
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                </motion.span>
-              )}
-            </Link>
-          )}
+                return (
+                  <div key={group.key} className="space-y-1">
+                    <button
+                      type="button"
+                      title={collapsed ? group.label : undefined}
+                      onClick={() => {
+                        if (collapsed) {
+                          setCollapsed(false);
+                          return;
+                        }
 
-          {/* Expediciones de Jiro - solo para estudiantes */}
-          {!isTeacher && (
-            <Link
-              to="/jiro-expeditions"
-              onClick={() => setSidebarOpen(false)}
-              className={`
-                flex items-center gap-3 px-3 py-2.5 rounded-xl
-                transition-all duration-200 group relative
-                ${location.pathname.startsWith('/jiro-expedition')
-                  ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md'
-                  : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                }
-              `}
-            >
-              <div className={`
-                w-8 h-8 rounded-lg flex items-center justify-center transition-all
-                ${location.pathname.startsWith('/jiro-expedition')
-                  ? 'bg-white/20' 
-                  : 'bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-sm group-hover:scale-105'
-                }
-              `}>
-                <span className="text-sm">🦊</span>
-              </div>
-              {!collapsed && (
-                <span className={`text-sm font-medium ${location.pathname.startsWith('/jiro-expedition') ? '' : hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
-                  Expedición de Jiro
-                </span>
-              )}
-            </Link>
-          )}
+                        toggleStudentMenu(groupKey);
+                      }}
+                      className={`
+                        w-full flex items-center gap-3 px-3 py-2.5 rounded-xl
+                        transition-all duration-200 group
+                        ${groupHasActiveItem
+                          ? `${hasStoryTheme ? '' : `bg-gradient-to-r ${group.gradient}`} text-white shadow-md`
+                          : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }
+                      `}
+                      style={groupHasActiveItem && hasStoryTheme ? themedActiveGradientStyle : undefined}
+                    >
+                      <div className={`
+                        w-8 h-8 rounded-lg flex items-center justify-center transition-all
+                        ${groupHasActiveItem
+                          ? 'bg-white/20'
+                          : hasStoryTheme
+                            ? 'bg-white/10 text-white shadow-sm group-hover:scale-105'
+                            : 'bg-gradient-to-br ' + group.gradient + ' text-white shadow-sm group-hover:scale-105'
+                        }
+                      `}>
+                        {group.icon}
+                      </div>
+                      {!collapsed && (
+                        <>
+                          <span className={`flex-1 text-left text-sm font-semibold ${groupHasActiveItem ? '' : hasStoryTheme ? 'text-white/85' : 'text-gray-700 dark:text-gray-300'}`}>
+                            {group.label}
+                          </span>
+                          <ChevronDown
+                            size={16}
+                            className={`transition-transform duration-200 ${isGroupOpen ? 'rotate-180' : ''}`}
+                          />
+                        </>
+                      )}
+                    </button>
 
-          {/* Historia - solo para estudiantes con storytelling activo */}
-          {!isTeacher && hasStoryTheme && (
-            <Link
-              to="/my-story"
-              onClick={() => setSidebarOpen(false)}
-              className={`
-                flex items-center gap-3 px-3 py-2.5 rounded-xl
-                transition-all duration-200 group relative
-                ${location.pathname === '/my-story'
-                  ? 'bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white shadow-md'
-                  : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                }
-              `}
-            >
-              <div className={`
-                w-8 h-8 rounded-lg flex items-center justify-center transition-all
-                ${location.pathname === '/my-story'
-                  ? 'bg-white/20' 
-                  : 'bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-sm group-hover:scale-105'
-                }
-              `}>
-                <BookMarked size={16} />
-              </div>
-              {!collapsed && (
-                <span className={`text-sm font-medium ${location.pathname === '/my-story' ? '' : hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
-                  Historia
-                </span>
-              )}
-            </Link>
-          )}
-
-          {/* Unirse a otra clase - solo para estudiantes */}
-          {!isTeacher && (
-            <>
-              <div className="my-2 mx-3 border-t border-gray-200 dark:border-gray-700" style={hasStoryTheme ? { borderColor: 'rgba(255,255,255,0.15)' } : undefined} />
-              <Link
-                to="/join-class"
-                onClick={() => setSidebarOpen(false)}
-                className={`
-                  flex items-center gap-3 px-3 py-2.5 rounded-xl
-                  transition-all duration-200 group
-                  ${hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}
-                `}
-              >
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-gradient-to-br from-pink-500 to-rose-500 text-white shadow-sm group-hover:scale-105 transition-all">
-                  <Plus size={16} />
-                </div>
-                {!collapsed && (
-                  <span className={`text-sm font-medium ${hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
-                    Unirse a clase
-                  </span>
-                )}
-              </Link>
-            </>
+                    {!collapsed && isGroupOpen && (
+                      <div className="ml-4 mt-1 space-y-1">
+                        {group.subItems.map((subItem) => (
+                          <Link
+                            key={subItem.path}
+                            to={subItem.path}
+                            onClick={() => setSidebarOpen(false)}
+                            className={`
+                              flex items-center gap-2 px-2.5 py-1.5 rounded-lg
+                              transition-all duration-200 group relative
+                              ${subItem.isActive
+                                ? hasStoryTheme ? 'text-white' : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'
+                                : hasStoryTheme ? 'text-white/60 hover:bg-white/10 hover:text-white/90' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
+                              }
+                            `}
+                            style={subItem.isActive && hasStoryTheme ? { backgroundColor: `${activeStoryTheme?.colors?.primary || '#6366f1'}40` } : undefined}
+                          >
+                            <span className={`
+                              flex h-4 w-4 items-center justify-center flex-shrink-0
+                              ${subItem.isActive
+                                ? hasStoryTheme ? 'text-white' : 'text-indigo-500 dark:text-indigo-400'
+                                : hasStoryTheme ? 'text-white/60' : 'text-gray-400 dark:text-gray-500'
+                              }
+                            `}>
+                              {subItem.icon}
+                            </span>
+                            <span className="flex-1 text-sm font-medium">
+                              {subItem.label}
+                            </span>
+                            {(subItem.meta || subItem.showPing) && (
+                              <div className="ml-auto flex items-center gap-2">
+                                {subItem.meta && (
+                                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${subItem.isActive ? hasStoryTheme ? 'bg-white/15 text-white' : 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300' : hasStoryTheme ? 'bg-white/10 text-white/75' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300'}`}>
+                                    {subItem.meta}
+                                  </span>
+                                )}
+                                {subItem.showPing && (
+                                  <motion.span
+                                    initial={{ scale: 0 }}
+                                    animate={{ scale: 1 }}
+                                    className="relative flex h-2.5 w-2.5"
+                                  >
+                                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+                                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+                                  </motion.span>
+                                )}
+                              </div>
+                            )}
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
 
         </nav>
@@ -670,56 +701,57 @@ export const MainLayout = () => {
         {/* Top Bar */}
         <header
           className={`sticky top-0 z-30 h-14 backdrop-blur-lg shadow-sm ${hasStoryTheme ? 'border-b border-white/10' : 'bg-white/80 dark:bg-gray-800/80 border-b border-white/50 dark:border-gray-700/50'}`}
-          style={hasStoryTheme ? { backgroundColor: `${tc.colors.background}cc` } : undefined}
+          style={hasStoryTheme ? { backgroundColor: `${activeStoryTheme?.colors?.background || '#111827'}cc` } : undefined}
         >
-          <div className="flex items-center justify-between h-full px-4">
-            {/* Mobile Menu Button */}
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className={`lg:hidden p-2 rounded-xl transition-colors ${hasStoryTheme ? 'text-white/70 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
-            >
-              <Menu size={20} />
-            </button>
+          <div className="flex h-full items-center px-4">
+            <div className="flex min-w-0 flex-1 items-center">
+              {/* Mobile Menu Button */}
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className={`lg:hidden p-2 rounded-xl transition-colors ${hasStoryTheme ? 'text-white/70 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700'}`}
+              >
+                <Menu size={20} />
+              </button>
 
-            {/* Student Stats in header */}
-            {!isTeacher && currentProfile && (
-              <div className="flex items-center gap-2 md:gap-3 flex-1 justify-center md:justify-start md:ml-2">
-                {/* Nivel + XP */}
-                <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${hasStoryTheme && isThemeDark ? 'bg-white/10 text-white' : hasStoryTheme ? 'bg-white/40 text-gray-800' : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300'}`}>
-                  <Zap size={13} className={hasStoryTheme ? 'text-amber-400' : 'text-amber-500'} />
-                  <span>Nv.{currentProfile.level}</span>
-                  <span className={`${hasStoryTheme && isThemeDark ? 'text-white/50' : hasStoryTheme ? 'text-gray-500' : 'text-indigo-400 dark:text-indigo-500'}`}>•</span>
-                  <span>{currentProfile.xp} XP</span>
+              {/* Student Stats in header */}
+              {!isTeacher && currentProfile && !isStudentOverviewZone && (
+                <div className="flex items-center gap-2 md:gap-3 flex-1 justify-center md:justify-start md:ml-2">
+                  {/* Nivel + XP */}
+                  <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${hasStoryTheme && isThemeDark ? 'bg-white/10 text-white' : hasStoryTheme ? 'bg-white/40 text-gray-800' : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300'}`}>
+                    <Zap size={13} className={hasStoryTheme ? 'text-amber-400' : 'text-amber-500'} />
+                    <span>Nv.{currentProfile.level}</span>
+                    <span className={`${hasStoryTheme && isThemeDark ? 'text-white/50' : hasStoryTheme ? 'text-gray-500' : 'text-indigo-400 dark:text-indigo-500'}`}>•</span>
+                    <span>{currentProfile.xp} XP</span>
+                  </div>
+
+                  {/* HP */}
+                  <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${hasStoryTheme && isThemeDark ? 'bg-white/10 text-white' : hasStoryTheme ? 'bg-white/40 text-gray-800' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'}`}>
+                    <Heart size={13} className="text-red-500" />
+                    <span>{currentProfile.hp}/100</span>
+                  </div>
+
+                  {/* Oro */}
+                  <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${hasStoryTheme && isThemeDark ? 'bg-white/10 text-white' : hasStoryTheme ? 'bg-white/40 text-gray-800' : 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400'}`}>
+                    <Coins size={13} className="text-amber-500" />
+                    <span>{currentProfile.gp}</span>
+                  </div>
                 </div>
+              )}
 
-                {/* HP */}
-                <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${hasStoryTheme && isThemeDark ? 'bg-white/10 text-white' : hasStoryTheme ? 'bg-white/40 text-gray-800' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'}`}>
-                  <Heart size={13} className="text-red-500" />
-                  <span>{currentProfile.hp}/100</span>
-                </div>
+              {(isTeacher || isStudentOverviewZone || (!isTeacher && !currentProfile)) && <div className="flex-1" />}
+            </div>
 
-                {/* Oro */}
-                <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${hasStoryTheme && isThemeDark ? 'bg-white/10 text-white' : hasStoryTheme ? 'bg-white/40 text-gray-800' : 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400'}`}>
-                  <Coins size={13} className="text-amber-500" />
-                  <span>{currentProfile.gp}</span>
-                </div>
-              </div>
-            )}
+            <div className="ml-auto flex items-center gap-2 md:gap-3">
+              {/* Notificaciones (solo para estudiantes) */}
+              {!isTeacher && (
+                <NotificationsBell onClick={() => setShowNotifications(true)} classroomId={currentProfile?.classroomId} />
+              )}
 
-            {/* Spacer (solo para profesores) */}
-            {isTeacher && <div className="flex-1" />}
+              {/* Theme Toggle */}
+              <ThemeToggle />
 
-
-            {/* Notificaciones (solo para estudiantes) */}
-            {!isTeacher && (
-              <NotificationsBell onClick={() => setShowNotifications(true)} classroomId={currentProfile?.classroomId} />
-            )}
-
-            {/* Theme Toggle */}
-            <ThemeToggle />
-
-            {/* User Menu */}
-            <div className="relative">
+              {/* User Menu */}
+              <div className="relative">
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
                 className={`flex items-center gap-2 rounded-xl px-2 py-1.5 transition-colors ${hasStoryTheme ? 'hover:bg-white/10' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
@@ -781,13 +813,14 @@ export const MainLayout = () => {
                   </>
                 )}
               </AnimatePresence>
+              </div>
             </div>
           </div>
         </header>
 
         {/* Page Content */}
         <main className="p-4 md:p-6 lg:p-8">
-          <Outlet context={{ storyTheme: hasStoryTheme ? tc : null, isThemeDark, hasStoryTheme }} />
+          <Outlet context={{ storyTheme: hasStoryTheme ? activeStoryTheme : null, isThemeDark, hasStoryTheme }} />
         </main>
       </div>
 

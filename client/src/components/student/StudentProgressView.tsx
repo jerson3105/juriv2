@@ -21,10 +21,14 @@ import {
   Zap,
 } from 'lucide-react';
 import { studentApi } from '../../lib/studentApi';
+import type { ThemeConfig } from '../../lib/storyApi';
 
 interface StudentProgressViewProps {
   studentId: string;
   onBack: () => void;
+  storyTheme?: ThemeConfig | null;
+  isThemeDark?: boolean;
+  hasStoryTheme?: boolean;
 }
 
 type HistoryFilter = 'ALL' | 'XP' | 'GP' | 'HP';
@@ -32,9 +36,29 @@ type HistoryFilter = 'ALL' | 'XP' | 'GP' | 'HP';
 const DAY_NAMES = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const ITEMS_PER_PAGE = 10;
 
-export const StudentProgressView = ({ studentId, onBack }: StudentProgressViewProps) => {
+export const StudentProgressView = ({
+  studentId,
+  onBack,
+  storyTheme,
+  isThemeDark = false,
+  hasStoryTheme = false,
+}: StudentProgressViewProps) => {
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('ALL');
   const [currentPage, setCurrentPage] = useState(1);
+  const hasTheme = !!(hasStoryTheme && storyTheme);
+
+  const pageBackgroundClasses = hasTheme
+    ? ''
+    : 'bg-gradient-to-br from-slate-50 via-emerald-50 to-teal-50 dark:from-slate-950 dark:via-slate-900 dark:to-emerald-950';
+
+  const surfaceCardClasses = hasTheme
+    ? isThemeDark
+      ? 'bg-white/10 border border-white/10 shadow-black/20'
+      : 'bg-white/80 border border-white/45 shadow-black/5'
+    : 'bg-white/90 border border-white/60 shadow-lg shadow-emerald-500/10 dark:bg-gray-900/85 dark:border-gray-800 dark:shadow-black/20';
+
+  const titleTextClasses = hasTheme && isThemeDark ? 'text-white' : 'text-gray-800 dark:text-white';
+  const mutedTextClasses = hasTheme && isThemeDark ? 'text-white/60' : 'text-gray-500 dark:text-gray-400';
 
   const { data: stats, isLoading } = useQuery({
     queryKey: ['student-stats', studentId],
@@ -70,13 +94,13 @@ export const StudentProgressView = ({ studentId, onBack }: StudentProgressViewPr
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50 to-teal-50 -m-4 md:-m-6 lg:-m-8 p-4 md:p-6 lg:p-8">
+      <div className={`min-h-screen -m-4 md:-m-6 lg:-m-8 p-4 md:p-6 lg:p-8 ${pageBackgroundClasses}`}>
         <div className="space-y-6">
-          <div className="h-12 w-48 bg-white dark:bg-gray-800 rounded-xl animate-pulse" />
-          <div className="h-32 bg-white dark:bg-gray-800 rounded-2xl animate-pulse" />
+          <div className={`h-12 w-48 rounded-xl animate-pulse ${hasTheme && isThemeDark ? 'bg-white/10' : 'bg-white dark:bg-gray-800'}`} />
+          <div className={`h-32 rounded-2xl animate-pulse ${hasTheme && isThemeDark ? 'bg-white/10' : 'bg-white dark:bg-gray-800'}`} />
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-24 bg-white dark:bg-gray-800 rounded-xl animate-pulse" />
+              <div key={i} className={`h-24 rounded-xl animate-pulse ${hasTheme && isThemeDark ? 'bg-white/10' : 'bg-white dark:bg-gray-800'}`} />
             ))}
           </div>
         </div>
@@ -86,10 +110,10 @@ export const StudentProgressView = ({ studentId, onBack }: StudentProgressViewPr
 
   if (!stats) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50 to-teal-50 -m-4 md:-m-6 lg:-m-8 p-4 md:p-6 lg:p-8 flex items-center justify-center">
+      <div className={`min-h-screen -m-4 md:-m-6 lg:-m-8 p-4 md:p-6 lg:p-8 flex items-center justify-center ${pageBackgroundClasses}`}>
         <div className="text-center">
           <AlertTriangle className="w-12 h-12 mx-auto text-amber-500 mb-4" />
-          <p className="text-gray-600">No se pudieron cargar las estadísticas</p>
+          <p className={mutedTextClasses}>No se pudieron cargar las estadísticas</p>
         </div>
       </div>
     );
@@ -98,29 +122,33 @@ export const StudentProgressView = ({ studentId, onBack }: StudentProgressViewPr
   const maxActivity = Math.max(...stats.activityByDay, 1);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50 to-teal-50 -m-4 md:-m-6 lg:-m-8 p-4 md:p-6 lg:p-8">
+    <div className={`min-h-screen -m-4 md:-m-6 lg:-m-8 p-4 md:p-6 lg:p-8 ${pageBackgroundClasses}`}>
       {/* Decoración */}
-      <div className="absolute top-20 right-10 w-64 h-64 bg-emerald-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse" />
-      <div className="absolute bottom-20 left-10 w-64 h-64 bg-teal-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse" />
+      {!hasTheme && (
+        <>
+          <div className="absolute top-20 right-10 w-64 h-64 bg-emerald-200 dark:bg-emerald-950 rounded-full mix-blend-multiply filter blur-3xl opacity-20 dark:opacity-30 animate-pulse" />
+          <div className="absolute bottom-20 left-10 w-64 h-64 bg-teal-200 dark:bg-teal-950 rounded-full mix-blend-multiply filter blur-3xl opacity-20 dark:opacity-30 animate-pulse" />
+        </>
+      )}
 
       <div className="relative z-10 space-y-6">
         {/* Header */}
         <div>
           <button
             onClick={onBack}
-            className="flex items-center gap-2 text-gray-500 hover:text-gray-700 mb-4 transition-colors"
+            className={`flex items-center gap-2 mb-4 transition-colors ${hasTheme && isThemeDark ? 'text-white/65 hover:text-white' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}
           >
             <ArrowLeft className="w-5 h-5" />
             <span>Volver al dashboard</span>
           </button>
           
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center ring-4 ring-emerald-200">
-              <BarChart3 className="w-6 h-6 text-emerald-600" />
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center ${hasTheme && isThemeDark ? 'bg-white/10 ring-1 ring-white/15' : hasTheme ? 'bg-white/70 ring-4 ring-white/35' : 'bg-emerald-100 ring-4 ring-emerald-200 dark:bg-emerald-500/15 dark:ring-emerald-500/20'}`}>
+              <BarChart3 className={`w-6 h-6 ${hasTheme && isThemeDark ? 'text-white' : 'text-emerald-600 dark:text-emerald-300'}`} />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-800">Mi Progreso</h1>
-              <p className="text-sm text-gray-500">Seguimiento de tu avance y retroalimentación</p>
+              <h1 className={`text-2xl font-bold ${titleTextClasses}`}>Mi Progreso</h1>
+              <p className={`text-sm ${mutedTextClasses}`}>Seguimiento de tu avance y retroalimentación</p>
             </div>
           </div>
         </div>
@@ -130,14 +158,14 @@ export const StudentProgressView = ({ studentId, onBack }: StudentProgressViewPr
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white rounded-xl p-4 shadow-lg border border-emerald-100"
+            className={`rounded-xl p-4 shadow-lg border ${hasTheme ? surfaceCardClasses : 'bg-white border-emerald-100 dark:bg-gray-900/85 dark:border-emerald-900/30 dark:shadow-black/20'}`}
           >
             <div className="flex items-center gap-2 text-emerald-600 mb-2">
               <Sparkles className="w-5 h-5" />
               <span className="text-sm font-medium">XP Total</span>
             </div>
-            <p className="text-2xl font-bold text-gray-800">{stats.summary.netXp}</p>
-            <p className="text-xs text-gray-500">
+            <p className={`text-2xl font-bold ${titleTextClasses}`}>{stats.summary.netXp}</p>
+            <p className={`text-xs ${mutedTextClasses}`}>
               +{stats.summary.totalXpGained} / -{stats.summary.totalXpLost}
             </p>
           </motion.div>
@@ -146,14 +174,14 @@ export const StudentProgressView = ({ studentId, onBack }: StudentProgressViewPr
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="bg-white rounded-xl p-4 shadow-lg border border-amber-100"
+            className={`rounded-xl p-4 shadow-lg border ${hasTheme ? surfaceCardClasses : 'bg-white border-amber-100 dark:bg-gray-900/85 dark:border-amber-900/30 dark:shadow-black/20'}`}
           >
             <div className="flex items-center gap-2 text-amber-600 mb-2">
               <Coins className="w-5 h-5" />
               <span className="text-sm font-medium">Oro</span>
             </div>
-            <p className="text-2xl font-bold text-gray-800">{stats.summary.totalGpGained - stats.summary.totalGpSpent}</p>
-            <p className="text-xs text-gray-500">
+            <p className={`text-2xl font-bold ${titleTextClasses}`}>{stats.summary.totalGpGained - stats.summary.totalGpSpent}</p>
+            <p className={`text-xs ${mutedTextClasses}`}>
               Gastado: {stats.summary.totalGpSpent} GP
             </p>
           </motion.div>
@@ -162,14 +190,14 @@ export const StudentProgressView = ({ studentId, onBack }: StudentProgressViewPr
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="bg-white rounded-xl p-4 shadow-lg border border-orange-100"
+            className={`rounded-xl p-4 shadow-lg border ${hasTheme ? surfaceCardClasses : 'bg-white border-orange-100 dark:bg-gray-900/85 dark:border-orange-900/30 dark:shadow-black/20'}`}
           >
             <div className="flex items-center gap-2 text-orange-600 mb-2">
               <Flame className="w-5 h-5" />
               <span className="text-sm font-medium">Racha</span>
             </div>
-            <p className="text-2xl font-bold text-gray-800">{stats.summary.streak} días</p>
-            <p className="text-xs text-gray-500">
+            <p className={`text-2xl font-bold ${titleTextClasses}`}>{stats.summary.streak} días</p>
+            <p className={`text-xs ${mutedTextClasses}`}>
               ¡Sigue así!
             </p>
           </motion.div>
@@ -178,14 +206,14 @@ export const StudentProgressView = ({ studentId, onBack }: StudentProgressViewPr
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            className="bg-white rounded-xl p-4 shadow-lg border border-blue-100"
+            className={`rounded-xl p-4 shadow-lg border ${hasTheme ? surfaceCardClasses : 'bg-white border-blue-100 dark:bg-gray-900/85 dark:border-blue-900/30 dark:shadow-black/20'}`}
           >
             <div className="flex items-center gap-2 text-blue-600 mb-2">
               <Target className="w-5 h-5" />
               <span className="text-sm font-medium">Acciones</span>
             </div>
-            <p className="text-2xl font-bold text-gray-800">{stats.summary.totalActions}</p>
-            <p className="text-xs text-gray-500">
+            <p className={`text-2xl font-bold ${titleTextClasses}`}>{stats.summary.totalActions}</p>
+            <p className={`text-xs ${mutedTextClasses}`}>
               Total registradas
             </p>
           </motion.div>
@@ -196,19 +224,19 @@ export const StudentProgressView = ({ studentId, onBack }: StudentProgressViewPr
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="bg-white rounded-2xl p-6 shadow-lg"
+          className={`rounded-2xl p-6 shadow-lg ${surfaceCardClasses}`}
         >
-          <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+          <h2 className={`text-lg font-bold mb-4 flex items-center gap-2 ${titleTextClasses}`}>
             <TrendingUp className="w-5 h-5 text-emerald-500" />
             Progreso de XP
           </h2>
           <div className="grid grid-cols-2 gap-6">
-            <div className="text-center p-4 bg-emerald-50 rounded-xl">
+            <div className={`text-center p-4 rounded-xl ${hasTheme && isThemeDark ? 'bg-white/5 border border-white/10' : hasTheme ? 'bg-white/55 border border-white/25' : 'bg-emerald-50 dark:bg-emerald-950/30'}`}>
               <p className="text-sm text-emerald-600 font-medium mb-1">Esta Semana</p>
               <p className="text-3xl font-bold text-emerald-700">+{stats.summary.xpThisWeek}</p>
               <p className="text-xs text-emerald-500">XP ganado</p>
             </div>
-            <div className="text-center p-4 bg-teal-50 rounded-xl">
+            <div className={`text-center p-4 rounded-xl ${hasTheme && isThemeDark ? 'bg-white/5 border border-white/10' : hasTheme ? 'bg-white/55 border border-white/25' : 'bg-teal-50 dark:bg-teal-950/30'}`}>
               <p className="text-sm text-teal-600 font-medium mb-1">Este Mes</p>
               <p className="text-3xl font-bold text-teal-700">+{stats.summary.xpThisMonth}</p>
               <p className="text-xs text-teal-500">XP ganado</p>
@@ -223,9 +251,9 @@ export const StudentProgressView = ({ studentId, onBack }: StudentProgressViewPr
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.5 }}
-            className="bg-white rounded-2xl p-6 shadow-lg"
+            className={`rounded-2xl p-6 shadow-lg ${surfaceCardClasses}`}
           >
-            <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <h2 className={`text-lg font-bold mb-4 flex items-center gap-2 ${titleTextClasses}`}>
               <Calendar className="w-5 h-5 text-purple-500" />
               XP por Día
             </h2>
@@ -236,7 +264,7 @@ export const StudentProgressView = ({ studentId, onBack }: StudentProgressViewPr
                 return (
                   <div key={index} className="flex-1 flex flex-col items-center">
                     {/* Valor de XP */}
-                    <span className={`text-xs font-semibold mb-1 ${xpAmount > 0 ? 'text-purple-600' : 'text-gray-300'}`}>
+                    <span className={`text-xs font-semibold mb-1 ${xpAmount > 0 ? 'text-purple-600' : 'text-gray-300 dark:text-gray-600'}`}>
                       {xpAmount > 0 ? `+${xpAmount}` : '0'}
                     </span>
                     {/* Contenedor de barra con altura fija */}
@@ -245,13 +273,13 @@ export const StudentProgressView = ({ studentId, onBack }: StudentProgressViewPr
                         className={`w-full max-w-[40px] rounded-t-lg transition-all ${
                           xpAmount > 0 
                             ? 'bg-gradient-to-t from-purple-500 to-purple-400' 
-                            : 'bg-gray-200'
+                            : 'bg-gray-200 dark:bg-gray-700'
                         }`}
                         style={{ height: `${barHeight}%` }}
                       />
                     </div>
                     {/* Día */}
-                    <span className="text-xs text-gray-500 font-medium mt-1">{DAY_NAMES[index]}</span>
+                    <span className={`text-xs font-medium mt-1 ${mutedTextClasses}`}>{DAY_NAMES[index]}</span>
                   </div>
                 );
               })}
@@ -263,9 +291,9 @@ export const StudentProgressView = ({ studentId, onBack }: StudentProgressViewPr
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.6 }}
-            className="bg-white rounded-2xl p-6 shadow-lg"
+            className={`rounded-2xl p-6 shadow-lg ${surfaceCardClasses}`}
           >
-            <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <h2 className={`text-lg font-bold mb-4 flex items-center gap-2 ${titleTextClasses}`}>
               <Award className="w-5 h-5 text-amber-500" />
               Retroalimentación
             </h2>
@@ -280,7 +308,7 @@ export const StudentProgressView = ({ studentId, onBack }: StudentProgressViewPr
                 <div className="space-y-1">
                   {stats.strengths.slice(0, 3).map((s) => (
                     <div key={s.id} className="flex items-center justify-between text-sm">
-                      <span className="text-gray-700">{s.name}</span>
+                      <span className={titleTextClasses}>{s.name}</span>
                       <span className="text-emerald-600 font-medium">{s.count}x</span>
                     </div>
                   ))}
@@ -298,7 +326,7 @@ export const StudentProgressView = ({ studentId, onBack }: StudentProgressViewPr
                 <div className="space-y-1">
                   {stats.areasToImprove.slice(0, 3).map((a) => (
                     <div key={a.id} className="flex items-center justify-between text-sm">
-                      <span className="text-gray-700">{a.name}</span>
+                      <span className={titleTextClasses}>{a.name}</span>
                       <span className="text-amber-600 font-medium">{a.count}x</span>
                     </div>
                   ))}
@@ -307,7 +335,7 @@ export const StudentProgressView = ({ studentId, onBack }: StudentProgressViewPr
             )}
 
             {stats.strengths.length === 0 && stats.areasToImprove.length === 0 && (
-              <p className="text-gray-500 text-sm text-center py-4">
+              <p className={`text-sm text-center py-4 ${mutedTextClasses}`}>
                 Aún no hay suficientes datos para mostrar retroalimentación
               </p>
             )}
@@ -319,12 +347,12 @@ export const StudentProgressView = ({ studentId, onBack }: StudentProgressViewPr
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.7 }}
-          className="bg-white rounded-2xl shadow-lg overflow-hidden"
+          className={`rounded-2xl shadow-lg overflow-hidden ${surfaceCardClasses}`}
         >
           {/* Header con filtros */}
-          <div className="p-4 border-b border-gray-100">
+          <div className={`p-4 border-b ${hasTheme && isThemeDark ? 'border-white/10' : 'border-gray-100 dark:border-gray-800'}`}>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+              <h2 className={`text-lg font-bold flex items-center gap-2 ${titleTextClasses}`}>
                 <Clock className="w-5 h-5 text-blue-500" />
                 Historial Reciente
               </h2>
@@ -337,8 +365,10 @@ export const StudentProgressView = ({ studentId, onBack }: StudentProgressViewPr
                     onClick={() => handleFilterChange(filter.id)}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                       historyFilter === filter.id
-                        ? 'bg-emerald-100 text-emerald-700'
-                        : 'text-gray-500 hover:bg-gray-100'
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                        : hasTheme && isThemeDark
+                          ? 'text-white/65 hover:bg-white/10'
+                          : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'
                     }`}
                   >
                     {filter.icon}
@@ -351,7 +381,7 @@ export const StudentProgressView = ({ studentId, onBack }: StudentProgressViewPr
 
           <div className="p-4">
             {filteredHistory.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">
+              <p className={`text-center py-8 ${mutedTextClasses}`}>
                 {historyFilter === 'ALL' 
                   ? 'No hay actividad registrada aún' 
                   : `No hay registros de ${historyFilter}`}
@@ -367,7 +397,7 @@ export const StudentProgressView = ({ studentId, onBack }: StudentProgressViewPr
                       key={item.id}
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
-                      className="flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+                      className={`flex items-center justify-between p-3 rounded-lg transition-colors ${hasTheme && isThemeDark ? 'bg-white/5 hover:bg-white/10' : 'bg-gray-50 hover:bg-gray-100 dark:bg-gray-800/80 dark:hover:bg-gray-800'}`}
                     >
                       <div className="flex items-center gap-3">
                         <div className={`p-2 rounded-lg ${
@@ -380,8 +410,8 @@ export const StudentProgressView = ({ studentId, onBack }: StudentProgressViewPr
                           {item.type === 'HP' && <Heart className="w-4 h-4" />}
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-gray-800">{item.reason}</p>
-                          <p className="text-xs text-gray-500">
+                          <p className={`text-sm font-medium ${titleTextClasses}`}>{item.reason}</p>
+                          <p className={`text-xs ${mutedTextClasses}`}>
                             {new Date(item.date).toLocaleDateString('es-ES', {
                               day: 'numeric',
                               month: 'short',
@@ -411,17 +441,17 @@ export const StudentProgressView = ({ studentId, onBack }: StudentProgressViewPr
 
                 {/* Paginación */}
                 {totalPages > 1 && (
-                  <div className="flex items-center justify-between pt-4 mt-4 border-t border-gray-100">
-                    <p className="text-xs text-gray-500">
+                  <div className={`flex items-center justify-between pt-4 mt-4 border-t ${hasTheme && isThemeDark ? 'border-white/10' : 'border-gray-100 dark:border-gray-800'}`}>
+                    <p className={`text-xs ${mutedTextClasses}`}>
                       Mostrando {startIndex + 1}-{Math.min(endIndex, totalItems)} de {totalItems}
                     </p>
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                         disabled={currentPage === 1}
-                        className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        className={`p-1.5 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${hasTheme && isThemeDark ? 'hover:bg-white/10' : 'hover:bg-gray-100 dark:hover:bg-gray-800'}`}
                       >
-                        <ChevronLeft size={16} className="text-gray-600" />
+                        <ChevronLeft size={16} className={hasTheme && isThemeDark ? 'text-white/70' : 'text-gray-600 dark:text-gray-300'} />
                       </button>
                       
                       {/* Números de página */}
@@ -444,7 +474,9 @@ export const StudentProgressView = ({ studentId, onBack }: StudentProgressViewPr
                               className={`w-7 h-7 rounded-lg text-xs font-medium transition-colors ${
                                 currentPage === pageNum
                                   ? 'bg-emerald-500 text-white'
-                                  : 'text-gray-600 hover:bg-gray-100'
+                                  : hasTheme && isThemeDark
+                                    ? 'text-white/70 hover:bg-white/10'
+                                    : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
                               }`}
                             >
                               {pageNum}
@@ -456,9 +488,9 @@ export const StudentProgressView = ({ studentId, onBack }: StudentProgressViewPr
                       <button
                         onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                         disabled={currentPage === totalPages}
-                        className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        className={`p-1.5 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${hasTheme && isThemeDark ? 'hover:bg-white/10' : 'hover:bg-gray-100 dark:hover:bg-gray-800'}`}
                       >
-                        <ChevronRight size={16} className="text-gray-600" />
+                        <ChevronRight size={16} className={hasTheme && isThemeDark ? 'text-white/70' : 'text-gray-600 dark:text-gray-300'} />
                       </button>
                     </div>
                   </div>

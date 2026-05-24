@@ -76,7 +76,12 @@ export interface ApplyResult {
   results: {
     studentId: string;
     studentName: string;
-    newValue: number;
+    xpChange: number;
+    hpChange: number;
+    gpChange: number;
+    newXp: number;
+    newHp: number;
+    newGp: number;
     leveledUp?: boolean;
     newLevel?: number;
     pointLogEntryId?: string | null;

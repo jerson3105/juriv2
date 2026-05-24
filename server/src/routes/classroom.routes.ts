@@ -5,7 +5,6 @@ import { chatController } from '../controllers/chat.controller.js';
 import { classNoteController } from '../controllers/classNote.controller.js';
 import { characterClassController } from '../controllers/characterClass.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { aiAssistantService } from '../services/aiAssistant.service.js';
 
 const router = Router();
 
@@ -21,7 +20,7 @@ router.put('/:id', authorize('TEACHER'), classroomController.update.bind(classro
 router.delete('/:id', authorize('TEACHER'), classroomController.delete.bind(classroomController));
 router.post('/:id/reset-points', authorize('TEACHER'), classroomController.resetAllPoints.bind(classroomController));
 router.post('/:id/reset-selective', authorize('TEACHER'), classroomController.resetClassroomSelective.bind(classroomController));
-router.get('/:id/competencies', authorize('TEACHER'), classroomController.getCompetencies.bind(classroomController));
+router.get('/:id/competencies', authorize('TEACHER', 'STUDENT'), classroomController.getCompetencies.bind(classroomController));
 router.post('/:id/competencies', authorize('TEACHER'), classroomController.addCompetencies.bind(classroomController));
 router.delete('/:id/competencies/:competencyId', authorize('TEACHER'), classroomController.removeCompetency.bind(classroomController));
 router.post('/:id/competencies/custom', authorize('TEACHER'), classroomController.createCustomCompetency.bind(classroomController));
@@ -30,50 +29,10 @@ router.delete('/:id/competencies/custom/:competencyId', authorize('TEACHER'), cl
 router.post('/:id/competencies/:competencyId/indicators', authorize('TEACHER'), classroomController.createCompetencyIndicator.bind(classroomController));
 router.patch('/:id/competencies/:competencyId/indicators/:indicatorId', authorize('TEACHER'), classroomController.updateCompetencyIndicator.bind(classroomController));
 router.delete('/:id/competencies/:competencyId/indicators/:indicatorId', authorize('TEACHER'), classroomController.deleteCompetencyIndicator.bind(classroomController));
+router.post('/:id/competency-indicators/transfer', authorize('TEACHER'), classroomController.transferCompetencyIndicators.bind(classroomController));
 router.post('/:id/sync-competencies', authorize('TEACHER'), classroomController.syncCompetencies.bind(classroomController));
 router.get('/:classroomId/cloneable-counts', authorize('TEACHER'), classroomController.getCloneableCounts.bind(classroomController));
 router.post('/:classroomId/clone', authorize('TEACHER'), classroomController.cloneClassroom.bind(classroomController));
-
-// AI Assistant - Procesar comando natural
-router.post('/:id/ai-assistant', authorize('TEACHER'), async (req, res) => {
-  try {
-    const { id: classroomId } = req.params;
-    const { command } = req.body;
-
-    if (!command || typeof command !== 'string' || command.trim().length === 0) {
-      return res.status(400).json({ success: false, message: 'Comando requerido' });
-    }
-
-    const result = await aiAssistantService.processCommand({
-      classroomId,
-      command: command.trim(),
-    });
-
-    res.json(result);
-  } catch (error: any) {
-    console.error('Error in AI assistant:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// AI Assistant - Ejecutar acción confirmada
-router.post('/:id/ai-assistant/execute', authorize('TEACHER'), async (req, res) => {
-  try {
-    const { id: classroomId } = req.params;
-    const { action, targetId, studentIds } = req.body;
-    const teacherId = (req as any).user.id;
-
-    if (!action || !targetId || !studentIds || !Array.isArray(studentIds) || studentIds.length === 0) {
-      return res.status(400).json({ success: false, message: 'Datos incompletos' });
-    }
-
-    const result = await aiAssistantService.executeAction(classroomId, action, targetId, studentIds, teacherId);
-    res.json(result);
-  } catch (error: any) {
-    console.error('Error executing AI action:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
 
 // Avisos (profesor → padres)
 router.post('/:id/announcements', authorize('TEACHER'), announcementController.create.bind(announcementController));

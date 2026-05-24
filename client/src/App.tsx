@@ -17,6 +17,9 @@ import { TeacherDashboard } from './pages/dashboard/TeacherDashboard';
 import { ClassroomsPage } from './pages/classrooms/ClassroomsPage';
 import { JoinClassPage } from './pages/student/JoinClassPage';
 import { StudentDashboard } from './pages/student/StudentDashboard';
+import { StudentOverviewPage } from './pages/student/StudentOverviewPage';
+import { StudentClassesOverviewPage } from './pages/student/StudentClassesOverviewPage';
+import { StudentSkillsOverviewPage } from './pages/student/StudentSkillsOverviewPage';
 import { MyClanPage } from './pages/student/MyClanPage';
 import { StudentAttendancePage } from './pages/student/StudentAttendancePage';
 
@@ -49,6 +52,9 @@ import { StudentJiroExpeditionPage } from './pages/student/StudentJiroExpedition
 import { StudentJiroExpeditionsPage } from './pages/student/StudentJiroExpeditionsPage';
 import { StudentStoryPage } from './pages/student/StudentStoryPage';
 import { StudentProgressPage } from './pages/student/StudentProgressPage';
+import { StudentItemsShopPage } from './pages/student/StudentItemsShopPage';
+import { StudentBadgesPage } from './pages/student/StudentBadgesPage';
+import { StudentAvatarPage } from './pages/student/StudentAvatarPage';
 
 // Settings
 import { SettingsPage } from './pages/settings/SettingsPage';
@@ -98,7 +104,7 @@ const DashboardRouter = () => {
   }
   
   if (user?.role === 'STUDENT') {
-    return <StudentDashboard />;
+    return <StudentOverviewPage />;
   }
   
   return <TeacherDashboard />;
@@ -234,12 +240,18 @@ function App() {
             </Route>
             
             {/* Rutas de estudiante */}
+            <Route path="my-class" element={<StudentDashboard />} />
+            <Route path="my-classes" element={<StudentClassesOverviewPage />} />
+            <Route path="my-skills" element={<StudentSkillsOverviewPage />} />
             <Route path="join-class" element={<JoinClassPage />} />
             <Route path="my-clan" element={<MyClanPage />} />
             <Route path="my-attendance" element={<StudentAttendancePage />} />
             <Route path="scrolls" element={<StudentScrollsPage />} />
             <Route path="my-grades" element={<StudentGradesPage />} />
             <Route path="my-progress" element={<StudentProgressPage />} />
+            <Route path="my-shop" element={<StudentItemsShopPage />} />
+            <Route path="my-badges" element={<StudentBadgesPage />} />
+            <Route path="my-avatar" element={<StudentAvatarPage />} />
             <Route path="expeditions" element={<StudentExpeditionsPage />} />
             <Route path="jiro-expeditions" element={<StudentJiroExpeditionsPage />} />
             <Route path="jiro-expedition/:expeditionId" element={<StudentJiroExpeditionPage />} />
@@ -247,7 +259,7 @@ function App() {
             <Route path="my-story" element={<StudentStoryPage />} />
             
             {/* Redirigir rutas antiguas */}
-            <Route path="my-classroom" element={<Navigate to="/dashboard" replace />} />
+            <Route path="my-classroom" element={<Navigate to="/my-class" replace />} />
             
 
           </Route>

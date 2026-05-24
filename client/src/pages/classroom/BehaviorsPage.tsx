@@ -536,7 +536,7 @@ const BehaviorCard = ({
       animate={{ opacity: 1, y: 0 }}
       onClick={selectionMode ? onToggleSelect : undefined}
       className={`
-        flex items-center justify-between p-3 rounded-xl border-2 transition-colors
+        p-3.5 rounded-xl border-2 transition-colors
         ${selectionMode ? 'cursor-pointer' : ''}
         ${isSelected ? 'ring-2 ring-blue-500 border-blue-400 dark:border-blue-500 bg-blue-50/50 dark:bg-blue-900/20' : ''}
         ${isStoryDark && !isSelected
@@ -548,9 +548,9 @@ const BehaviorCard = ({
         }
       `}
     >
-      <div className="flex items-center gap-3">
+      <div className="flex items-start gap-3 min-w-0">
         {selectionMode && (
-          <div className="flex-shrink-0">
+          <div className="flex-shrink-0 pt-2">
             {isSelected ? (
               <CheckSquare size={18} className="text-blue-500" />
             ) : (
@@ -558,52 +558,50 @@ const BehaviorCard = ({
             )}
           </div>
         )}
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl ${
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0 ${
           behavior.isPositive ? 'bg-emerald-100 dark:bg-emerald-900/50' : 'bg-red-100 dark:bg-red-900/50'
         }`}>
           {behavior.icon || '⭐'}
         </div>
-        <div className="min-w-0 flex-1">
-          <p className="font-medium text-gray-800 dark:text-white text-sm">
-            {behavior.name}
-          </p>
-          {behavior.description && (
-            <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
-              {behavior.description}
+        <div className="min-w-0 flex-1 space-y-2.5">
+          <div className="space-y-1">
+            <p className="text-sm font-medium leading-5 text-gray-800 dark:text-white break-words">
+              {behavior.name}
             </p>
-          )}
-          <div className="flex items-center gap-2 text-xs flex-wrap mt-1">
-            {rewards.map((reward, idx) => {
-              const Icon = reward.icon;
-              return (
-                <div key={idx} className="flex items-center gap-0.5">
-                  <Icon size={12} className={`text-${reward.color}-500`} />
-                  <span className={`font-semibold ${behavior.isPositive ? `text-${reward.color}-600` : 'text-red-600'}`}>
-                    {behavior.isPositive ? '+' : '-'}{reward.value}
-                  </span>
-                </div>
-              );
-            })}
-            {behavior.schoolBehaviorId && (
-              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-[10px] font-semibold">
-                🏫 Escuela
-              </span>
+            {behavior.description && (
+              <p className="text-xs leading-5 text-gray-500 dark:text-gray-400 whitespace-normal break-words">
+                {behavior.description}
+              </p>
             )}
           </div>
           {behavior.competency && (
-            <div className="mt-1.5 space-y-1">
-              <div className="flex items-center gap-1">
-                <Award size={11} className="text-violet-500 flex-shrink-0" />
-                <span className="text-[10px] text-violet-600 dark:text-violet-400 font-medium truncate">
-                  {behavior.competency.name}
-                </span>
+            <div className={`grid gap-2 rounded-xl px-3 py-2 ${
+              isStoryDark
+                ? 'bg-[rgba(var(--story-primary-rgb),0.12)]'
+                : 'bg-gray-50 dark:bg-gray-900/40'
+            }`}>
+              <div className="flex items-start gap-2 min-w-0">
+                <Award size={12} className="mt-0.5 text-violet-500 flex-shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-violet-500/80 dark:text-violet-300/80">
+                    Competencia
+                  </p>
+                  <p className="text-[11px] font-medium leading-4 text-violet-700 dark:text-violet-300 whitespace-normal break-words">
+                    {behavior.competency.name}
+                  </p>
+                </div>
               </div>
               {behavior.competencyIndicator && (
-                <div className="flex items-center gap-1">
-                  <BookOpen size={11} className="text-indigo-500 flex-shrink-0" />
-                  <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium truncate">
-                    {behavior.competencyIndicator.name}
-                  </span>
+                <div className="flex items-start gap-2 min-w-0">
+                  <BookOpen size={12} className="mt-0.5 text-indigo-500 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-indigo-500/80 dark:text-indigo-300/80">
+                      Destreza
+                    </p>
+                    <p className="text-[11px] font-medium leading-4 text-indigo-700 dark:text-indigo-300 whitespace-normal break-words">
+                      {behavior.competencyIndicator.name}
+                    </p>
+                  </div>
                 </div>
               )}
             </div>
@@ -611,19 +609,58 @@ const BehaviorCard = ({
         </div>
       </div>
 
-      <div className="flex items-center gap-1">
-        <button
-          onClick={onEdit}
-          className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-        >
-          <Edit2 size={14} className="text-gray-400" />
-        </button>
-        <button
-          onClick={onDelete}
-          className="p-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
-        >
-          <Trash2 size={14} className="text-red-400" />
-        </button>
+      <div className={`mt-3 flex flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-between ${
+        isStoryDark
+          ? 'border-[rgba(var(--story-primary-rgb),0.18)]'
+          : 'border-gray-100 dark:border-gray-700'
+      }`}>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs min-w-0">
+          {rewards.map((reward, idx) => {
+            const Icon = reward.icon;
+            return (
+              <div key={idx} className="flex items-center gap-1 flex-shrink-0">
+                <Icon size={12} className={`text-${reward.color}-500`} />
+                <span className={`font-semibold ${behavior.isPositive ? `text-${reward.color}-600` : 'text-red-600'}`}>
+                  {behavior.isPositive ? '+' : '-'}{reward.value}
+                </span>
+              </div>
+            );
+          })}
+          {behavior.schoolBehaviorId && (
+            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-[10px] font-semibold">
+              🏫 Escuela
+            </span>
+          )}
+        </div>
+
+        <div className={`flex items-center gap-1 self-end rounded-xl border p-1 ${
+          isStoryDark
+            ? 'border-[rgba(var(--story-primary-rgb),0.22)] bg-[rgba(17,24,39,0.28)]'
+            : 'border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-900/60'
+        }`}>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onEdit();
+            }}
+            aria-label="Editar comportamiento"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white"
+          >
+            <Edit2 size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onDelete();
+            }}
+            aria-label="Eliminar comportamiento"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-red-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-300"
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
       </div>
     </motion.div>
   );

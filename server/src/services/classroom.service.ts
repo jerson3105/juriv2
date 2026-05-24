@@ -101,6 +101,62 @@ interface UpdateClassroomCompetencyIndicatorData {
   description?: string | null;
 }
 
+interface TransferCompetencyIndicatorsData {
+  mode: 'IMPORT' | 'EXPORT';
+  sourceClassroomId?: string;
+  targetClassroomIds?: string[];
+  competencyIds?: string[];
+  copyMissingCustomCompetencies?: boolean;
+}
+
+type TransferableCompetencyIndicator = {
+  id: string;
+  name: string;
+  description: string | null;
+  displayOrder: number;
+};
+
+type TransferableCompetency = {
+  classroomCompetencyId: string;
+  id: string;
+  sourceType: 'OFFICIAL' | 'CUSTOM_CLASSROOM';
+  ownerClassroomId: string | null;
+  name: string;
+  shortName: string | null;
+  description: string | null;
+  indicators: TransferableCompetencyIndicator[];
+};
+
+type TransferCompetencyIndicatorsTargetSummary = {
+  classroomId: string;
+  classroomName: string;
+  createdCompetencies: number;
+  createdIndicators: number;
+  skippedExistingIndicators: number;
+  skippedUnavailableCompetencies: number;
+};
+
+type TransferCompetencyIndicatorsResult = {
+  mode: 'IMPORT' | 'EXPORT';
+  sourceClassroom: {
+    id: string;
+    name: string;
+  };
+  selectedCompetencyCount: number;
+  selectedTargetCount: number;
+  processedTargetCount: number;
+  createdCompetencies: number;
+  createdIndicators: number;
+  skippedExistingIndicators: number;
+  skippedUnavailableCompetencies: number;
+  failedTargets: Array<{
+    classroomId: string;
+    classroomName: string;
+    message: string;
+  }>;
+  targetSummaries: TransferCompetencyIndicatorsTargetSummary[];
+};
+
 interface UpdateClassroomData {
   name?: string;
   description?: string | null;
@@ -1248,6 +1304,366 @@ export class ClassroomService {
       .where(eq(classroomCompetencyIndicators.id, indicatorId));
 
     return { deleted: true };
+  }
+
+  private async getTransferableCompetencies(classroomId: string): Promise<TransferableCompetency[]> {
+    const competencyRows = await db
+      .select({
+        classroomCompetencyId: classroomCompetencies.id,
+        id: curriculumCompetencies.id,
+        sourceType: curriculumCompetencies.sourceType,
+        ownerClassroomId: curriculumCompetencies.ownerClassroomId,
+        name: curriculumCompetencies.name,
+        shortName: curriculumCompetencies.shortName,
+        description: curriculumCompetencies.description,
+      })
+      .from(classroomCompetencies)
+      .innerJoin(curriculumCompetencies, eq(classroomCompetencies.competencyId, curriculumCompetencies.id))
+      .where(and(
+        eq(classroomCompetencies.classroomId, classroomId),
+        eq(classroomCompetencies.isActive, true),
+        eq(curriculumCompetencies.isActive, true),
+      ))
+      .orderBy(
+        asc(classroomCompetencies.createdAt),
+        asc(curriculumCompetencies.displayOrder),
+      );
+
+    if (competencyRows.length === 0) {
+      return [];
+    }
+
+    const indicatorRows = await db
+      .select({
+        id: classroomCompetencyIndicators.id,
+        classroomCompetencyId: classroomCompetencyIndicators.classroomCompetencyId,
+        name: classroomCompetencyIndicators.name,
+        description: classroomCompetencyIndicators.description,
+        displayOrder: classroomCompetencyIndicators.displayOrder,
+      })
+      .from(classroomCompetencyIndicators)
+      .where(and(
+        eq(classroomCompetencyIndicators.classroomId, classroomId),
+        inArray(classroomCompetencyIndicators.classroomCompetencyId, competencyRows.map((row) => row.classroomCompetencyId)),
+        eq(classroomCompetencyIndicators.isActive, true),
+      ))
+      .orderBy(
+        asc(classroomCompetencyIndicators.displayOrder),
+        asc(classroomCompetencyIndicators.createdAt),
+      );
+
+    const indicatorsByCompetencyId = new Map<string, TransferableCompetencyIndicator[]>();
+
+    for (const indicator of indicatorRows) {
+      const current = indicatorsByCompetencyId.get(indicator.classroomCompetencyId) || [];
+      current.push({
+        id: indicator.id,
+        name: indicator.name,
+        description: indicator.description,
+        displayOrder: indicator.displayOrder,
+      });
+      indicatorsByCompetencyId.set(indicator.classroomCompetencyId, current);
+    }
+
+    return competencyRows.map((row) => ({
+      ...row,
+      indicators: indicatorsByCompetencyId.get(row.classroomCompetencyId) || [],
+    }));
+  }
+
+  async transferCompetencyIndicators(
+    classroomId: string,
+    teacherId: string,
+    data: TransferCompetencyIndicatorsData,
+  ): Promise<TransferCompetencyIndicatorsResult> {
+    const targetIds = [...new Set((data.targetClassroomIds || []).filter(Boolean))];
+    const requestedCompetencyIds = [...new Set((data.competencyIds || []).filter(Boolean))];
+    const copyMissingCustomCompetencies = data.copyMissingCustomCompetencies !== false;
+    const sourceClassroomId = data.mode === 'IMPORT' ? data.sourceClassroomId : classroomId;
+
+    if (!sourceClassroomId) {
+      throw new Error('Debes seleccionar una clase de origen');
+    }
+
+    if (data.mode === 'IMPORT' && sourceClassroomId === classroomId) {
+      throw new Error('Debes elegir una clase distinta como origen');
+    }
+
+    if (data.mode === 'EXPORT' && targetIds.length === 0) {
+      throw new Error('Selecciona al menos una clase destino');
+    }
+
+    const resolvedTargetIds = data.mode === 'IMPORT'
+      ? [classroomId]
+      : targetIds.filter((targetId) => targetId !== sourceClassroomId);
+
+    if (resolvedTargetIds.length === 0) {
+      throw new Error('No hay clases destino válidas para transferir destrezas');
+    }
+
+    const involvedClassroomIds = [...new Set([classroomId, sourceClassroomId, ...resolvedTargetIds])];
+    const classroomRows = await db
+      .select({
+        id: classrooms.id,
+        name: classrooms.name,
+        teacherId: classrooms.teacherId,
+        useCompetencies: classrooms.useCompetencies,
+        curriculumAreaId: classrooms.curriculumAreaId,
+        currentBimester: classrooms.currentBimester,
+        competencyIndicatorStartPeriod: classrooms.competencyIndicatorStartPeriod,
+      })
+      .from(classrooms)
+      .where(inArray(classrooms.id, involvedClassroomIds));
+
+    const classroomMap = new Map(classroomRows.map((item) => [item.id, item]));
+    const currentClassroom = classroomMap.get(classroomId);
+    const sourceClassroom = classroomMap.get(sourceClassroomId);
+
+    if (!currentClassroom || currentClassroom.teacherId !== teacherId) {
+      throw new Error('No tienes permiso para esta clase');
+    }
+
+    if (!sourceClassroom || sourceClassroom.teacherId !== teacherId) {
+      throw new Error('No tienes permiso para la clase de origen');
+    }
+
+    if (!sourceClassroom.useCompetencies || !sourceClassroom.curriculumAreaId) {
+      throw new Error('La clase de origen debe tener competencias y área curricular configuradas');
+    }
+
+    const sourceCompetencies = (await this.getTransferableCompetencies(sourceClassroomId))
+      .filter((competency) => competency.indicators.length > 0);
+
+    const sourceCompetencyIdSet = new Set(sourceCompetencies.map((competency) => competency.id));
+    const selectedSourceCompetencies = (requestedCompetencyIds.length > 0
+      ? sourceCompetencies.filter((competency) => sourceCompetencyIdSet.has(competency.id) && requestedCompetencyIds.includes(competency.id))
+      : sourceCompetencies
+    );
+
+    if (selectedSourceCompetencies.length === 0) {
+      throw new Error('No hay destrezas disponibles en las competencias seleccionadas');
+    }
+
+    const result: TransferCompetencyIndicatorsResult = {
+      mode: data.mode,
+      sourceClassroom: {
+        id: sourceClassroom.id,
+        name: sourceClassroom.name,
+      },
+      selectedCompetencyCount: selectedSourceCompetencies.length,
+      selectedTargetCount: resolvedTargetIds.length,
+      processedTargetCount: 0,
+      createdCompetencies: 0,
+      createdIndicators: 0,
+      skippedExistingIndicators: 0,
+      skippedUnavailableCompetencies: 0,
+      failedTargets: [],
+      targetSummaries: [],
+    };
+
+    for (const targetClassroomId of resolvedTargetIds) {
+      const targetClassroom = classroomMap.get(targetClassroomId);
+
+      if (!targetClassroom || targetClassroom.teacherId !== teacherId) {
+        result.failedTargets.push({
+          classroomId: targetClassroomId,
+          classroomName: targetClassroom?.name || 'Clase no disponible',
+          message: 'No tienes permiso para esta clase',
+        });
+        continue;
+      }
+
+      if (!targetClassroom.useCompetencies || !targetClassroom.curriculumAreaId) {
+        result.failedTargets.push({
+          classroomId: targetClassroomId,
+          classroomName: targetClassroom.name,
+          message: 'La clase destino debe tener competencias y área curricular configuradas',
+        });
+        continue;
+      }
+
+      try {
+        const targetCompetencies = await this.getTransferableCompetencies(targetClassroomId);
+        const normalizedTargetCompetencyNames = new Map<string, TransferableCompetency>();
+        const targetCustomCompetenciesByName = new Map<string, TransferableCompetency>();
+        const indicatorNamesByClassroomCompetencyId = new Map<string, Set<string>>();
+        const nextIndicatorDisplayOrderByCompetencyId = new Map<string, number>();
+
+        for (const competency of targetCompetencies) {
+          const normalizedName = this.normalizeCompetencyName(competency.name).toLowerCase();
+          if (!normalizedTargetCompetencyNames.has(normalizedName)) {
+            normalizedTargetCompetencyNames.set(normalizedName, competency);
+          }
+          if (competency.sourceType === 'CUSTOM_CLASSROOM' && !targetCustomCompetenciesByName.has(normalizedName)) {
+            targetCustomCompetenciesByName.set(normalizedName, competency);
+          }
+
+          const indicatorNames = new Set(
+            competency.indicators.map((indicator) => this.normalizeCompetencyName(indicator.name).toLowerCase()),
+          );
+          indicatorNamesByClassroomCompetencyId.set(competency.classroomCompetencyId, indicatorNames);
+          nextIndicatorDisplayOrderByCompetencyId.set(
+            competency.classroomCompetencyId,
+            competency.indicators.reduce((maxOrder, indicator) => Math.max(maxOrder, indicator.displayOrder), 0),
+          );
+        }
+
+        const [maxDisplayOrderRow] = await db
+          .select({
+            maxDisplayOrder: sql<number>`COALESCE(MAX(${curriculumCompetencies.displayOrder}), 0)`,
+          })
+          .from(curriculumCompetencies)
+          .where(eq(curriculumCompetencies.areaId, targetClassroom.curriculumAreaId));
+
+        let nextCompetencyDisplayOrder = Number(maxDisplayOrderRow?.maxDisplayOrder || 0);
+        let createdCompetencies = 0;
+        let createdIndicators = 0;
+        let skippedExistingIndicators = 0;
+        let skippedUnavailableCompetencies = 0;
+        let createdAnyIndicator = false;
+
+        await db.transaction(async (tx) => {
+          for (const sourceCompetency of selectedSourceCompetencies) {
+            let targetCompetency: TransferableCompetency | null = null;
+
+            if (sourceCompetency.sourceType === 'OFFICIAL') {
+              targetCompetency = targetCompetencies.find((competency) => competency.id === sourceCompetency.id) || null;
+              if (!targetCompetency) {
+                skippedUnavailableCompetencies += 1;
+                continue;
+              }
+            } else {
+              const normalizedSourceName = this.normalizeCompetencyName(sourceCompetency.name).toLowerCase();
+              const existingCustomCompetency = targetCustomCompetenciesByName.get(normalizedSourceName);
+
+              if (existingCustomCompetency) {
+                targetCompetency = existingCustomCompetency;
+              } else {
+                const conflictingCompetency = normalizedTargetCompetencyNames.get(normalizedSourceName);
+
+                if (!copyMissingCustomCompetencies || conflictingCompetency) {
+                  skippedUnavailableCompetencies += 1;
+                  continue;
+                }
+
+                const now = new Date();
+                const newCompetencyId = uuidv4();
+                const newClassroomCompetencyId = uuidv4();
+                nextCompetencyDisplayOrder += 1;
+
+                await tx.insert(curriculumCompetencies).values({
+                  id: newCompetencyId,
+                  areaId: targetClassroom.curriculumAreaId!,
+                  sourceType: 'CUSTOM_CLASSROOM',
+                  ownerClassroomId: targetClassroom.id,
+                  createdByTeacherId: teacherId,
+                  name: sourceCompetency.name,
+                  shortName: sourceCompetency.shortName,
+                  description: sourceCompetency.description,
+                  displayOrder: nextCompetencyDisplayOrder,
+                  isActive: true,
+                  createdAt: now,
+                });
+
+                await tx.insert(classroomCompetencies).values({
+                  id: newClassroomCompetencyId,
+                  classroomId: targetClassroom.id,
+                  competencyId: newCompetencyId,
+                  weight: 100,
+                  isActive: true,
+                  createdAt: now,
+                });
+
+                targetCompetency = {
+                  classroomCompetencyId: newClassroomCompetencyId,
+                  id: newCompetencyId,
+                  sourceType: 'CUSTOM_CLASSROOM',
+                  ownerClassroomId: targetClassroom.id,
+                  name: sourceCompetency.name,
+                  shortName: sourceCompetency.shortName,
+                  description: sourceCompetency.description,
+                  indicators: [],
+                };
+
+                targetCompetencies.push(targetCompetency);
+                targetCustomCompetenciesByName.set(normalizedSourceName, targetCompetency);
+                normalizedTargetCompetencyNames.set(normalizedSourceName, targetCompetency);
+                indicatorNamesByClassroomCompetencyId.set(targetCompetency.classroomCompetencyId, new Set());
+                nextIndicatorDisplayOrderByCompetencyId.set(targetCompetency.classroomCompetencyId, 0);
+                createdCompetencies += 1;
+              }
+            }
+
+            const indicatorNames = indicatorNamesByClassroomCompetencyId.get(targetCompetency.classroomCompetencyId) || new Set<string>();
+            let nextIndicatorDisplayOrder = nextIndicatorDisplayOrderByCompetencyId.get(targetCompetency.classroomCompetencyId) || 0;
+
+            for (const sourceIndicator of sourceCompetency.indicators) {
+              const normalizedIndicatorName = this.normalizeCompetencyName(sourceIndicator.name).toLowerCase();
+
+              if (indicatorNames.has(normalizedIndicatorName)) {
+                skippedExistingIndicators += 1;
+                continue;
+              }
+
+              nextIndicatorDisplayOrder += 1;
+              const now = new Date();
+
+              await tx.insert(classroomCompetencyIndicators).values({
+                id: uuidv4(),
+                classroomCompetencyId: targetCompetency.classroomCompetencyId,
+                classroomId: targetClassroom.id,
+                competencyId: targetCompetency.id,
+                name: sourceIndicator.name,
+                description: sourceIndicator.description,
+                displayOrder: nextIndicatorDisplayOrder,
+                isActive: true,
+                createdByTeacherId: teacherId,
+                createdAt: now,
+                updatedAt: now,
+              });
+
+              indicatorNames.add(normalizedIndicatorName);
+              createdIndicators += 1;
+              createdAnyIndicator = true;
+            }
+
+            indicatorNamesByClassroomCompetencyId.set(targetCompetency.classroomCompetencyId, indicatorNames);
+            nextIndicatorDisplayOrderByCompetencyId.set(targetCompetency.classroomCompetencyId, nextIndicatorDisplayOrder);
+          }
+
+          if (createdAnyIndicator && !targetClassroom.competencyIndicatorStartPeriod) {
+            await tx.update(classrooms)
+              .set({
+                competencyIndicatorStartPeriod: targetClassroom.currentBimester || `${new Date().getFullYear()}-B1`,
+                updatedAt: new Date(),
+              })
+              .where(eq(classrooms.id, targetClassroom.id));
+          }
+        });
+
+        result.processedTargetCount += 1;
+        result.createdCompetencies += createdCompetencies;
+        result.createdIndicators += createdIndicators;
+        result.skippedExistingIndicators += skippedExistingIndicators;
+        result.skippedUnavailableCompetencies += skippedUnavailableCompetencies;
+        result.targetSummaries.push({
+          classroomId: targetClassroom.id,
+          classroomName: targetClassroom.name,
+          createdCompetencies,
+          createdIndicators,
+          skippedExistingIndicators,
+          skippedUnavailableCompetencies,
+        });
+      } catch (error) {
+        result.failedTargets.push({
+          classroomId: targetClassroom.id,
+          classroomName: targetClassroom.name,
+          message: error instanceof Error ? error.message : 'No se pudo transferir destrezas a esta clase',
+        });
+      }
+    }
+
+    return result;
   }
 
   /**

@@ -41,6 +41,7 @@ interface AvatarShopProps {
     avatarGender: AvatarGender;
   };
   onClose?: () => void;
+  hasStoryTheme?: boolean;
 }
 
 const SLOT_ICONS: Record<AvatarSlot, React.ReactNode> = {
@@ -60,7 +61,7 @@ const SLOT_ICONS: Record<AvatarSlot, React.ReactNode> = {
 type SortOption = 'price_asc' | 'price_desc' | 'name' | 'rarity';
 type TabOption = 'shop' | 'inventory' | 'history';
 
-export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
+export const AvatarShop = ({ studentProfile, onClose, hasStoryTheme = false }: AvatarShopProps) => {
   const queryClient = useQueryClient();
   
   // Estados de UI
@@ -213,22 +214,22 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-indigo-50 p-3 sm:p-4 md:p-6">
+    <div className={`min-h-screen p-3 sm:p-4 md:p-6 ${hasStoryTheme ? '' : 'bg-gradient-to-br from-purple-50 via-pink-50 to-indigo-50 dark:from-slate-950 dark:via-purple-950/30 dark:to-indigo-950'}`}>
       {/* Header */}
       <div className="flex items-center justify-between mb-4 sm:mb-6">
         <div className="flex items-center gap-2 sm:gap-3">
-          <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-full bg-purple-100 flex items-center justify-center ring-2 sm:ring-4 ring-purple-200 flex-shrink-0">
-            <ShoppingBag className="w-4 h-4 sm:w-6 sm:h-6 text-purple-600" />
+          <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-full bg-purple-100 dark:bg-purple-500/15 flex items-center justify-center ring-2 sm:ring-4 ring-purple-200 dark:ring-purple-500/20 flex-shrink-0">
+            <ShoppingBag className="w-4 h-4 sm:w-6 sm:h-6 text-purple-600 dark:text-purple-300" />
           </div>
           <div>
-            <h1 className="text-lg sm:text-2xl font-bold text-gray-800">Tienda de Avatares</h1>
-            <p className="text-xs sm:text-sm text-gray-500">Personaliza tu personaje</p>
+            <h1 className="text-lg sm:text-2xl font-bold text-gray-800 dark:text-white">Tienda de Avatares</h1>
+            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Personaliza tu personaje</p>
           </div>
         </div>
         
         <div className="flex items-center gap-2 sm:gap-4">
           {/* Balance */}
-          <div className="flex items-center gap-1 sm:gap-2 bg-amber-100 px-2 sm:px-4 py-1.5 sm:py-2 rounded-xl">
+          <div className="flex items-center gap-1 sm:gap-2 bg-amber-100 dark:bg-amber-500/15 px-2 sm:px-4 py-1.5 sm:py-2 rounded-xl">
             <Coins className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600" />
             <span className="font-bold text-amber-700 text-sm sm:text-base">{studentProfile.gp}</span>
             <span className="text-amber-600 text-xs sm:text-sm">GP</span>
@@ -249,7 +250,7 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
           className={`flex items-center gap-1 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl font-medium transition-all text-xs sm:text-sm whitespace-nowrap ${
             activeTab === 'shop'
               ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg'
-              : 'bg-white/80 text-gray-600 hover:bg-white'
+              : 'bg-white/80 dark:bg-gray-900/85 text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800'
           }`}
         >
           <ShoppingBag className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -260,7 +261,7 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
           className={`flex items-center gap-1 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl font-medium transition-all text-xs sm:text-sm whitespace-nowrap ${
             activeTab === 'inventory'
               ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg'
-              : 'bg-white/80 text-gray-600 hover:bg-white'
+              : 'bg-white/80 dark:bg-gray-900/85 text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800'
           }`}
         >
           <Package className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -275,7 +276,7 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
           className={`flex items-center gap-1 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl font-medium transition-all text-xs sm:text-sm whitespace-nowrap ${
             activeTab === 'history'
               ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg'
-              : 'bg-white/80 text-gray-600 hover:bg-white'
+              : 'bg-white/80 dark:bg-gray-900/85 text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800'
           }`}
         >
           <History className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -286,8 +287,8 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Columna izquierda - Preview del avatar */}
         <div className="lg:col-span-1 order-first">
-          <div className="bg-white/80 backdrop-blur-lg rounded-2xl p-3 sm:p-6 shadow-lg border border-white/50 lg:sticky lg:top-4">
-            <h2 className="text-base sm:text-lg font-bold text-gray-800 mb-3 sm:mb-4 text-center">Tu Avatar</h2>
+          <div className="bg-white/80 dark:bg-gray-900/85 backdrop-blur-lg rounded-2xl p-3 sm:p-6 shadow-lg dark:shadow-black/20 border border-white/50 dark:border-gray-800 lg:sticky lg:top-4">
+            <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-white mb-3 sm:mb-4 text-center">Tu Avatar</h2>
             
             <div className="flex justify-center mb-3 sm:mb-4">
               {(() => {
@@ -297,7 +298,7 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
                   <motion.div 
                     animate={{ y: [0, -5, 0] }}
                     transition={{ duration: 3, repeat: Infinity }}
-                    className={`rounded-2xl overflow-hidden ${hasBackground ? '' : 'bg-gradient-to-br from-indigo-100 to-purple-100 p-4'}`}
+                    className={`rounded-2xl overflow-hidden ${hasBackground ? '' : 'bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-slate-800 dark:to-slate-700 p-4'}`}
                   >
                     <AvatarPreview
                       gender={studentProfile.avatarGender}
@@ -317,9 +318,9 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
 
             {/* Items equipados */}
             <div className="space-y-2">
-              <h3 className="text-xs sm:text-sm font-semibold text-gray-600">Equipado:</h3>
+              <h3 className="text-xs sm:text-sm font-semibold text-gray-600 dark:text-gray-300">Equipado:</h3>
               {equippedItems.length === 0 ? (
-                <p className="text-[10px] sm:text-xs text-gray-400 text-center py-2">Sin items equipados</p>
+                <p className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500 text-center py-2">Sin items equipados</p>
               ) : (
                 <div className="grid grid-cols-4 sm:grid-cols-3 gap-1.5 sm:gap-2">
                   {equippedItems.map((item) => (
@@ -328,7 +329,7 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
                       onClick={() => unequipMutation.mutate(item.slot)}
-                      className="relative bg-gray-100 rounded-lg p-1 sm:p-2 group"
+                      className="relative bg-gray-100 dark:bg-gray-800 rounded-lg p-1 sm:p-2 group"
                       title={`Quitar ${item.avatarItem.name}`}
                     >
                       <img 
@@ -339,7 +340,7 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
                       <div className="absolute inset-0 bg-red-500/80 rounded-lg opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
                         <X className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
                       </div>
-                      <p className="text-[8px] sm:text-[10px] text-gray-500 text-center mt-0.5 sm:mt-1 truncate">
+                      <p className="text-[8px] sm:text-[10px] text-gray-500 dark:text-gray-400 text-center mt-0.5 sm:mt-1 truncate">
                         {SLOT_LABELS[item.slot]}
                       </p>
                     </motion.button>
@@ -355,17 +356,17 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
           {activeTab === 'shop' && (
             <>
               {/* Filtros mejorados */}
-              <div className="bg-white/80 backdrop-blur-lg rounded-xl p-3 sm:p-4 shadow-lg border border-white/50 space-y-2 sm:space-y-3">
+              <div className="bg-white/80 dark:bg-gray-900/85 backdrop-blur-lg rounded-xl p-3 sm:p-4 shadow-lg dark:shadow-black/20 border border-white/50 dark:border-gray-800 space-y-2 sm:space-y-3">
                 {/* Toggle de filtros avanzados */}
                 <div className="flex items-center justify-between">
                   <button
                     onClick={() => setShowFilters(!showFilters)}
-                    className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium text-gray-600 hover:text-purple-600"
+                    className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-300"
                   >
                     <Filter className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                     {showFilters ? 'Ocultar filtros' : 'Mostrar filtros'}
                   </button>
-                  <span className="text-[10px] sm:text-xs text-gray-400">{filteredItems.length} items</span>
+                  <span className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500">{filteredItems.length} items</span>
                 </div>
 
                 {/* Filtros por slot */}
@@ -377,7 +378,7 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
                       className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-sm font-medium whitespace-nowrap transition-all ${
                         selectedSlot === slot
                           ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-md'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
                       }`}
                     >
                       {slot === 'ALL' ? (
@@ -399,10 +400,10 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
                       exit={{ height: 0, opacity: 0 }}
                       className="overflow-hidden"
                     >
-                      <div className="grid grid-cols-2 gap-3 pt-3 border-t border-gray-100">
+                      <div className="grid grid-cols-2 gap-3 pt-3 border-t border-gray-100 dark:border-gray-800">
                         {/* Filtro por rareza */}
                         <div>
-                          <label className="text-xs font-medium text-gray-500 mb-1 block">Rareza</label>
+                          <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">Rareza</label>
                           <div className="flex flex-wrap gap-1">
                             {rarities.map((rarity) => (
                               <button
@@ -413,7 +414,7 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
                                     ? rarity === 'ALL' 
                                       ? 'bg-gray-800 text-white'
                                       : RARITY_COLORS[rarity]
-                                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
                                 }`}
                               >
                                 {rarity === 'ALL' ? (
@@ -427,11 +428,11 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
 
                         {/* Ordenamiento */}
                         <div>
-                          <label className="text-xs font-medium text-gray-500 mb-1 block">Ordenar por</label>
+                          <label className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1 block">Ordenar por</label>
                           <select
                             value={sortBy}
                             onChange={(e) => setSortBy(e.target.value as SortOption)}
-                            className="w-full px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            className="w-full px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
                           >
                             {SORT_OPTIONS.map((option) => (
                               <option key={option.value} value={option.value}>
@@ -450,13 +451,13 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
               {isLoading ? (
                 <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-4">
                   {[1, 2, 3, 4, 5, 6].map((i) => (
-                    <div key={i} className="bg-white/50 rounded-xl h-48 animate-pulse" />
+                    <div key={i} className="bg-white/50 dark:bg-gray-900/60 rounded-xl h-48 animate-pulse" />
                   ))}
                 </div>
               ) : filteredItems.length === 0 ? (
-                <div className="bg-white/80 backdrop-blur-lg rounded-xl p-8 text-center">
-                  <ShoppingBag className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-                  <p className="text-gray-500">No hay items disponibles con estos filtros</p>
+                <div className="bg-white/80 dark:bg-gray-900/85 backdrop-blur-lg rounded-xl p-8 text-center border border-transparent dark:border-gray-800">
+                  <ShoppingBag className="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-3" />
+                  <p className="text-gray-500 dark:text-gray-400">No hay items disponibles con estos filtros</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-4">
@@ -475,12 +476,12 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
                       transition={{ delay: index * 0.05 }}
                       onMouseEnter={() => setPreviewItem(item)}
                       onMouseLeave={() => setPreviewItem(null)}
-                      className={`bg-white/80 backdrop-blur-lg rounded-xl p-2 sm:p-4 shadow-lg border-2 transition-all ${
+                      className={`bg-white/80 dark:bg-gray-900/85 backdrop-blur-lg rounded-xl p-2 sm:p-4 shadow-lg dark:shadow-black/20 border-2 transition-all ${
                         isEquipped 
-                          ? 'border-green-400 bg-green-50/50' 
+                          ? 'border-green-400 bg-green-50/50 dark:bg-green-950/30' 
                           : isPurchased 
-                            ? 'border-blue-300 bg-blue-50/50'
-                            : 'border-white/50 hover:border-purple-300'
+                            ? 'border-blue-300 bg-blue-50/50 dark:bg-blue-950/30'
+                            : 'border-white/50 dark:border-gray-800 hover:border-purple-300 dark:hover:border-purple-500/50'
                       }`}
                     >
                       {/* Badge de rareza */}
@@ -503,10 +504,10 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
                       </div>
 
                       {/* Info */}
-                      <h3 className="font-semibold text-gray-800 text-[11px] sm:text-sm truncate">
+                      <h3 className="font-semibold text-gray-800 dark:text-white text-[11px] sm:text-sm truncate">
                         {item.avatarItem.name}
                       </h3>
-                      <p className="text-[10px] sm:text-xs text-gray-500 mb-2 sm:mb-3">
+                      <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mb-2 sm:mb-3">
                         {SLOT_LABELS[item.avatarItem.slot]}
                       </p>
 
@@ -551,16 +552,16 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
           {/* Tab de Inventario */}
           {activeTab === 'inventory' && (
             <div className="space-y-4">
-              <div className="bg-white/80 backdrop-blur-lg rounded-xl p-4 shadow-lg border border-white/50">
-                <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+              <div className="bg-white/80 dark:bg-gray-900/85 backdrop-blur-lg rounded-xl p-4 shadow-lg dark:shadow-black/20 border border-white/50 dark:border-gray-800">
+                <h3 className="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
                   <Package className="w-5 h-5 text-blue-500" />
                   Mis Items ({purchases.length})
                 </h3>
                 
                 {purchases.length === 0 ? (
                   <div className="text-center py-8">
-                    <Package className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-                    <p className="text-gray-500">Aún no has comprado ningún item</p>
+                    <Package className="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-3" />
+                    <p className="text-gray-500 dark:text-gray-400">Aún no has comprado ningún item</p>
                     <button
                       onClick={() => setActiveTab('shop')}
                       className="mt-3 text-purple-600 hover:text-purple-700 font-medium text-sm"
@@ -588,8 +589,8 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
                             avatarItem: purchase.avatarItem,
                           } as ClassroomShopItem)}
                           onMouseLeave={() => setPreviewItem(null)}
-                          className={`bg-white rounded-xl p-4 shadow border-2 transition-all ${
-                            isEquipped ? 'border-green-400 bg-green-50' : 'border-gray-100'
+                          className={`bg-white dark:bg-gray-900/85 rounded-xl p-4 shadow dark:shadow-black/20 border-2 transition-all ${
+                            isEquipped ? 'border-green-400 bg-green-50 dark:bg-green-950/30' : 'border-gray-100 dark:border-gray-800'
                           }`}
                         >
                           <div className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium mb-2 ${RARITY_COLORS[itemRarity]}`}>
@@ -604,8 +605,8 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
                             />
                           </div>
                           
-                          <h4 className="font-medium text-gray-800 text-sm truncate">{purchase.avatarItem.name}</h4>
-                          <p className="text-xs text-gray-500 mb-3">{SLOT_LABELS[itemSlot]}</p>
+                          <h4 className="font-medium text-gray-800 dark:text-white text-sm truncate">{purchase.avatarItem.name}</h4>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">{SLOT_LABELS[itemSlot]}</p>
                           
                           <Button
                             size="sm"
@@ -633,16 +634,16 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
 
           {/* Tab de Historial */}
           {activeTab === 'history' && (
-            <div className="bg-white/80 backdrop-blur-lg rounded-xl p-4 shadow-lg border border-white/50">
-              <h3 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <div className="bg-white/80 dark:bg-gray-900/85 backdrop-blur-lg rounded-xl p-4 shadow-lg dark:shadow-black/20 border border-white/50 dark:border-gray-800">
+              <h3 className="font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
                 <History className="w-5 h-5 text-amber-500" />
                 Historial de Compras
               </h3>
               
               {purchases.length === 0 ? (
                 <div className="text-center py-8">
-                  <Clock className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-                  <p className="text-gray-500">No tienes compras registradas</p>
+                  <Clock className="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-3" />
+                  <p className="text-gray-500 dark:text-gray-400">No tienes compras registradas</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -652,9 +653,9 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
                     return (
                       <div 
                         key={purchase.id}
-                        className="flex items-center gap-4 p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
+                        className="flex items-center gap-4 p-3 bg-gray-50 dark:bg-gray-800/80 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                       >
-                        <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center shadow-sm">
+                        <div className="w-12 h-12 bg-white dark:bg-gray-900 rounded-lg flex items-center justify-center shadow-sm">
                           <img 
                             src={purchase.avatarItem.imagePath} 
                             alt={purchase.avatarItem.name}
@@ -663,8 +664,8 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
                         </div>
                         
                         <div className="flex-1 min-w-0">
-                          <h4 className="font-medium text-gray-800 truncate">{purchase.avatarItem.name}</h4>
-                          <div className="flex items-center gap-2 text-xs text-gray-500">
+                          <h4 className="font-medium text-gray-800 dark:text-white truncate">{purchase.avatarItem.name}</h4>
+                          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                             <span className={`px-1.5 py-0.5 rounded ${RARITY_COLORS[rarity]}`}>
                               {rarity}
                             </span>
@@ -678,7 +679,7 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
                             <Coins className="w-4 h-4" />
                             {purchase.pricePaid}
                           </div>
-                          <p className="text-xs text-gray-400">
+                          <p className="text-xs text-gray-400 dark:text-gray-500">
                             {new Date(purchase.purchasedAt).toLocaleDateString('es', {
                               day: 'numeric',
                               month: 'short',
@@ -711,9 +712,9 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl"
+              className="bg-white dark:bg-gray-900 rounded-2xl p-6 max-w-lg w-full shadow-2xl dark:shadow-black/30"
             >
-              <h3 className="text-xl font-bold text-gray-800 mb-4 text-center">
+              <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-4 text-center">
                 ¿Comprar este item?
               </h3>
 
@@ -721,8 +722,8 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
               <div className="grid grid-cols-2 gap-4 mb-4">
                 {/* Avatar actual */}
                 <div className="text-center">
-                  <p className="text-xs text-gray-500 mb-2">Actual</p>
-                  <div className="bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl p-3 inline-block">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Actual</p>
+                  <div className="bg-gradient-to-br from-gray-100 to-gray-200 dark:from-slate-800 dark:to-slate-700 rounded-xl p-3 inline-block">
                     <AvatarPreview
                       gender={studentProfile.avatarGender}
                       currentItems={equippedForRenderer}
@@ -750,9 +751,9 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
               </div>
 
               {/* Info del item */}
-              <div className="bg-gray-50 rounded-xl p-4 mb-4">
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-4 mb-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-16 h-16 bg-white rounded-lg flex items-center justify-center shadow-sm">
+                  <div className="w-16 h-16 bg-white dark:bg-gray-900 rounded-lg flex items-center justify-center shadow-sm">
                     <img 
                       src={itemToBuy.avatarItem.imagePath} 
                       alt={itemToBuy.avatarItem.name}
@@ -760,12 +761,12 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
                     />
                   </div>
                   <div className="flex-1">
-                    <h4 className="font-bold text-gray-800">{itemToBuy.avatarItem.name}</h4>
+                    <h4 className="font-bold text-gray-800 dark:text-white">{itemToBuy.avatarItem.name}</h4>
                     <div className="flex items-center gap-2 mt-1">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${RARITY_COLORS[itemToBuy.avatarItem.rarity]}`}>
                         {itemToBuy.avatarItem.rarity}
                       </span>
-                      <span className="text-xs text-gray-500">{SLOT_LABELS[itemToBuy.avatarItem.slot]}</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">{SLOT_LABELS[itemToBuy.avatarItem.slot]}</span>
                     </div>
                   </div>
                   <div className="text-right">
@@ -773,18 +774,18 @@ export const AvatarShop = ({ studentProfile, onClose }: AvatarShopProps) => {
                       <Coins className="w-5 h-5" />
                       <span className="text-xl font-bold">{itemToBuy.price}</span>
                     </div>
-                    <p className="text-xs text-gray-400">GP</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">GP</p>
                   </div>
                 </div>
               </div>
 
               {/* Balance */}
               <div className="flex items-center justify-between text-sm mb-4 px-2">
-                <span className="text-gray-500">Tu balance:</span>
-                <span className="font-bold text-gray-700">{studentProfile.gp} GP</span>
+                <span className="text-gray-500 dark:text-gray-400">Tu balance:</span>
+                <span className="font-bold text-gray-700 dark:text-gray-200">{studentProfile.gp} GP</span>
               </div>
               <div className="flex items-center justify-between text-sm mb-4 px-2">
-                <span className="text-gray-500">Después de comprar:</span>
+                <span className="text-gray-500 dark:text-gray-400">Después de comprar:</span>
                 <span className={`font-bold ${studentProfile.gp - itemToBuy.price >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                   {studentProfile.gp - itemToBuy.price} GP
                 </span>

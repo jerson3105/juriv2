@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, Check, ArrowLeft, Sparkles, Loader2, Search, PartyPopper, School, UserCheck } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
@@ -28,6 +28,7 @@ const STEP_LABELS = [
 
 export const JoinClassPage = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   // Step flow: 1=code, 2=character name+avatar, 3=class selection (only for classroom mode)
   const [step, setStep] = useState(1);
@@ -58,9 +59,10 @@ export const JoinClassPage = () => {
 
   const joinMutation = useMutation({
     mutationFn: studentApi.joinClass,
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
+      await queryClient.invalidateQueries({ queryKey: ['my-classes'] });
       toast.success(`¡Te has unido a ${data.classroom.name}!`);
-      navigate('/dashboard');
+      navigate('/my-classes');
     },
     onError: (error: any) => {
       const message = error?.response?.data?.message || error.message || 'Error al unirse a la clase';
@@ -150,8 +152,9 @@ export const JoinClassPage = () => {
         characterName: characterName.trim() || undefined,
         avatarGender,
       });
+      await queryClient.invalidateQueries({ queryKey: ['my-classes'] });
       toast.success(`¡Te has unido a ${result.data.classroom.name}!`);
-      navigate('/dashboard');
+      navigate('/my-classes');
     } catch (error: any) {
       const message = error?.response?.data?.message || 'Error al vincular cuenta';
       toast.error(message);
@@ -162,13 +165,44 @@ export const JoinClassPage = () => {
 
   const totalSteps = codeType === 'classroom' ? 3 : 2;
   const isNameOptional = codeType === 'student';
+  const joinTargetName = verifyResult?.classroomName;
+  const joinTargetCode = verifyResult?.classroomCode || code.toUpperCase();
+
+  const renderClassroomContext = () => {
+    if (!joinTargetName || step === 1) return null;
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: -8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="rounded-2xl border border-indigo-200/80 bg-gradient-to-r from-indigo-50 to-purple-50 px-4 py-3 dark:border-indigo-800/70 dark:from-indigo-950/40 dark:to-purple-950/40"
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-300">
+            <School className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-500 dark:text-indigo-300">
+              Clase a la que te unirás
+            </p>
+            <p className="truncate text-base font-semibold text-slate-900 dark:text-white">
+              {joinTargetName}
+            </p>
+            <p className="text-sm text-slate-500 dark:text-gray-400">
+              Código {joinTargetCode}
+            </p>
+          </div>
+        </div>
+      </motion.div>
+    );
+  };
 
   return (
-    <div className="-m-4 md:-m-6 lg:-m-8 h-[calc(100vh-3.5rem)] bg-gradient-to-br from-slate-50 via-purple-50 to-indigo-50 flex items-start justify-center overflow-auto pt-8 px-4">
+    <div className="-m-4 md:-m-6 lg:-m-8 h-[calc(100vh-3.5rem)] bg-gradient-to-br from-slate-50 via-purple-50 to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-indigo-950 flex items-start justify-center overflow-auto pt-8 px-4">
       {/* Background effects */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-300/20 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-300/20 rounded-full blur-3xl" />
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-300/20 rounded-full blur-3xl dark:bg-purple-900/20" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-300/20 rounded-full blur-3xl dark:bg-indigo-900/20" />
       </div>
 
       <motion.div
@@ -189,7 +223,7 @@ export const JoinClassPage = () => {
           <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-700 via-indigo-600 to-purple-600 bg-clip-text text-transparent">
             ¡Únete a la aventura!
           </h1>
-          <p className="text-gray-500 mt-1 text-base">
+          <p className="text-gray-500 dark:text-gray-400 mt-1 text-base">
             {STEP_LABELS[step - 1]}
           </p>
         </div>
@@ -207,7 +241,7 @@ export const JoinClassPage = () => {
                     ? 'bg-green-500 text-white shadow-lg shadow-green-500/30'
                     : s === step
                       ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-lg shadow-purple-500/30'
-                      : 'bg-gray-200 text-gray-400'
+                      : 'bg-gray-200 text-gray-400 dark:bg-gray-800 dark:text-gray-500'
                 }`}
               >
                 {s < step ? <Check size={16} /> : s}
@@ -224,7 +258,7 @@ export const JoinClassPage = () => {
         {/* Card principal */}
         <motion.div
           layout
-          className="bg-white/80 backdrop-blur-xl rounded-3xl p-6 border border-gray-200/80 shadow-xl"
+          className="bg-white/80 dark:bg-gray-900/85 backdrop-blur-xl rounded-3xl p-6 border border-gray-200/80 dark:border-gray-700/80 shadow-xl"
         >
           <AnimatePresence mode="wait">
             {/* ===== STEP 1: Código unificado ===== */}
@@ -237,14 +271,14 @@ export const JoinClassPage = () => {
                 className="space-y-6"
               >
                 {/* Jiro speech bubble */}
-                <div className="relative bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200/60 rounded-2xl p-4">
-                  <p className="text-gray-600 text-sm text-center">
+                <div className="relative bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-950/40 dark:to-indigo-950/40 border border-purple-200/60 dark:border-purple-800/60 rounded-2xl p-4">
+                  <p className="text-gray-600 dark:text-gray-300 text-sm text-center">
                     Escribe el código que te dio tu profe. Puede ser <span className="text-purple-600 font-semibold">el código de tu clase</span> o <span className="text-blue-600 font-semibold">tu código personal</span>. ¡Yo lo detecto automáticamente!
                   </p>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-2">
+                  <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-2">
                     Tu código
                   </label>
                   <div className="relative">
@@ -259,10 +293,10 @@ export const JoinClassPage = () => {
                         setCodeType(null);
                       }}
                       onKeyDown={(e) => e.key === 'Enter' && code.length >= 6 && !isVerifying && handleVerifyCode()}
-                      className={`w-full px-6 py-4 bg-gray-50 border rounded-xl text-center text-2xl font-mono tracking-widest text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:border-transparent transition-all ${
+                      className={`w-full px-6 py-4 bg-gray-50 dark:bg-gray-800 border rounded-xl text-center text-2xl font-mono tracking-widest text-gray-800 dark:text-white placeholder-gray-300 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:border-transparent transition-all ${
                         verifyError ? 'border-red-400 focus:ring-red-500' :
                         verifyResult ? 'border-green-400 focus:ring-green-500' :
-                        'border-gray-200 focus:ring-purple-500'
+                        'border-gray-200 dark:border-gray-700 focus:ring-purple-500'
                       }`}
                       maxLength={8}
                       autoFocus
@@ -288,8 +322,8 @@ export const JoinClassPage = () => {
                       exit={{ opacity: 0, scale: 0.95 }}
                       className={`rounded-2xl p-5 border ${
                         verifyResult.type === 'classroom'
-                          ? 'bg-gradient-to-r from-purple-50 to-indigo-50 border-purple-200'
-                          : 'bg-gradient-to-r from-blue-50 to-cyan-50 border-blue-200'
+                          ? 'bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-950/40 dark:to-indigo-950/40 border-purple-200 dark:border-purple-800'
+                          : 'bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-950/40 dark:to-cyan-950/40 border-blue-200 dark:border-blue-800'
                       }`}
                     >
                       <div className="flex items-center gap-4">
@@ -310,7 +344,7 @@ export const JoinClassPage = () => {
                                 <PartyPopper size={18} className="text-yellow-500" />
                                 ¡Clase encontrada!
                               </p>
-                              <p className="text-gray-500 text-sm">{verifyResult.classroomName}</p>
+                              <p className="text-gray-500 dark:text-gray-400 text-sm">{verifyResult.classroomName}</p>
                             </>
                           ) : (
                             <>
@@ -318,7 +352,7 @@ export const JoinClassPage = () => {
                                 <PartyPopper size={18} className="text-yellow-500" />
                                 ¡Te estábamos esperando!
                               </p>
-                              <p className="text-gray-500 text-sm">
+                              <p className="text-gray-500 dark:text-gray-400 text-sm">
                                 {verifyResult.studentName && <span className="font-medium text-blue-600">{verifyResult.studentName}</span>}
                                 {verifyResult.studentName && ' · '}
                                 {verifyResult.classroomName}
@@ -382,8 +416,10 @@ export const JoinClassPage = () => {
                 exit={{ opacity: 0, x: -20 }}
                 className="space-y-6"
               >
+                {renderClassroomContext()}
+
                 <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-2">
+                  <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-2">
                     Nombre de tu personaje{isNameOptional ? ' (opcional)' : ''}
                   </label>
                   <input
@@ -391,16 +427,16 @@ export const JoinClassPage = () => {
                     placeholder="Ej: Sir Lancelot, Luna Mágica..."
                     value={characterName}
                     onChange={(e) => setCharacterName(e.target.value)}
-                    className="w-full px-6 py-4 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+                    className="w-full px-6 py-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-800 dark:text-white placeholder-gray-300 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
                   />
                   {isNameOptional && (
-                    <p className="text-xs text-gray-400 mt-1">Si lo dejas vacío, se usará el nombre que asignó tu profesor</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Si lo dejas vacío, se usará el nombre que asignó tu profesor</p>
                   )}
                 </div>
 
                 {/* Avatar gender */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-3">
+                  <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-3">
                     Elige tu avatar
                   </label>
                   <div className="grid grid-cols-2 gap-4">
@@ -415,7 +451,7 @@ export const JoinClassPage = () => {
                             ? gender === 'MALE'
                               ? 'bg-gradient-to-br from-blue-500/30 to-indigo-500/30 border-2 border-blue-400'
                               : 'bg-gradient-to-br from-pink-500/30 to-purple-500/30 border-2 border-pink-400'
-                            : 'bg-gray-50 border-2 border-gray-200 hover:border-gray-300'
+                            : 'bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
                         }`}
                       >
                         {avatarGender === gender && (
@@ -434,7 +470,7 @@ export const JoinClassPage = () => {
                             className="h-40 object-contain"
                           />
                         </div>
-                        <p className="text-gray-800 font-medium text-center">
+                        <p className="text-gray-800 dark:text-white font-medium text-center">
                           {gender === 'MALE' ? 'Masculino' : 'Femenino'}
                         </p>
                       </motion.button>
@@ -442,7 +478,7 @@ export const JoinClassPage = () => {
                   </div>
                 </div>
 
-                <p className="text-sm text-gray-500 flex items-center gap-2">
+                <p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2">
                   <Sparkles size={14} />
                   Podrás personalizar tu avatar con atuendos en la tienda.
                 </p>
@@ -450,7 +486,7 @@ export const JoinClassPage = () => {
                 <div className="flex gap-3">
                   <Button
                     variant="secondary"
-                    className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 border-0"
+                    className="flex-1 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 border-0"
                     onClick={() => setStep(1)}
                     leftIcon={<ArrowLeft size={18} />}
                   >
@@ -489,6 +525,8 @@ export const JoinClassPage = () => {
                 exit={{ opacity: 0, x: -20 }}
                 className="space-y-6"
               >
+                {renderClassroomContext()}
+
                 <div className="grid grid-cols-2 gap-4">
                   {(dynamicClasses.length > 0
                     ? dynamicClasses.map((cc) => ({ key: cc.key, id: cc.id, name: cc.name, icon: cc.icon, description: cc.description || '' }))
@@ -506,7 +544,7 @@ export const JoinClassPage = () => {
                         relative p-5 rounded-2xl text-left transition-all duration-300
                         ${selectedClass === cls.key
                           ? 'bg-gradient-to-br from-purple-100 to-indigo-100 border-2 border-purple-400 shadow-lg shadow-purple-500/20'
-                          : 'bg-gray-50 border-2 border-gray-200 hover:border-gray-300'
+                          : 'bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
                         }
                       `}
                     >
@@ -520,8 +558,8 @@ export const JoinClassPage = () => {
                         </motion.div>
                       )}
                       <span className="text-4xl block mb-2">{cls.icon}</span>
-                      <h3 className="font-bold text-gray-800 text-lg">{cls.name}</h3>
-                      <p className="text-sm text-gray-500 mt-1 line-clamp-2">{cls.description}</p>
+                      <h3 className="font-bold text-gray-800 dark:text-white text-lg">{cls.name}</h3>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{cls.description}</p>
                     </motion.button>
                   ))}
                 </div>
@@ -529,7 +567,7 @@ export const JoinClassPage = () => {
                 <div className="flex gap-3 pt-2">
                   <Button
                     variant="secondary"
-                    className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 border-0"
+                    className="flex-1 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 border-0"
                     onClick={() => setStep(2)}
                     leftIcon={<ArrowLeft size={18} />}
                   >
@@ -552,10 +590,10 @@ export const JoinClassPage = () => {
         {/* Link para volver */}
         <div className="text-center mt-4">
           <button
-            onClick={() => navigate('/dashboard')}
-            className="text-gray-400 hover:text-gray-600 transition-colors text-sm"
+            onClick={() => navigate('/my-classes')}
+            className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors text-sm"
           >
-            ← Volver al dashboard
+            ← Volver a mis clases
           </button>
         </div>
       </motion.div>

@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Link, Navigate, useOutletContext, useParams } from 'react-router-dom';
-import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
+import { useMutation, useQueries, useQueryClient, useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { 
   Settings, 
+  ArrowRightLeft,
   Zap, 
   Heart, 
   Coins,
@@ -31,6 +32,7 @@ import {
   Swords,
   GripVertical,
   Pencil,
+  ChevronDown,
 } from 'lucide-react';
 import {
   classroomApi,
@@ -40,6 +42,8 @@ import {
   type ClassroomCompetencyIndicator,
   type CreateCustomClassroomCompetencyData,
   type CreateClassroomCompetencyIndicatorData,
+  type TransferCompetencyIndicatorsData,
+  type TransferCompetencyIndicatorsResult,
   type UpdateClassroomSettings,
 } from '../../lib/classroomApi';
 import { characterClassApi, type CharacterClassData } from '../../lib/characterClassApi';
@@ -84,14 +88,21 @@ export const ClassroomSettingsPage = () => {
   const [newClassIcon, setNewClassIcon] = useState('⚔️');
   const [newClassColor, setNewClassColor] = useState('blue');
   const [showAddCompetenciesModal, setShowAddCompetenciesModal] = useState(false);
+  const [showCompetencyActionsMenu, setShowCompetencyActionsMenu] = useState(false);
   const [competencySearch, setCompetencySearch] = useState('');
   const [selectedCompetencyIds, setSelectedCompetencyIds] = useState<string[]>([]);
   const [showCustomCompetencyModal, setShowCustomCompetencyModal] = useState(false);
   const [showExportCustomCompetenciesModal, setShowExportCustomCompetenciesModal] = useState(false);
+  const [showIndicatorTransferModal, setShowIndicatorTransferModal] = useState(false);
   const [editingCustomCompetency, setEditingCustomCompetency] = useState<ClassroomCompetency | null>(null);
   const [showCompetencyIndicatorModal, setShowCompetencyIndicatorModal] = useState(false);
   const [selectedIndicatorCompetency, setSelectedIndicatorCompetency] = useState<ClassroomCompetency | null>(null);
   const [editingCompetencyIndicator, setEditingCompetencyIndicator] = useState<ClassroomCompetencyIndicator | null>(null);
+  const [indicatorTransferMode, setIndicatorTransferMode] = useState<'IMPORT' | 'EXPORT'>('IMPORT');
+  const [selectedIndicatorTransferSourceClassroomId, setSelectedIndicatorTransferSourceClassroomId] = useState<string | null>(null);
+  const [selectedIndicatorTransferTargetClassroomIds, setSelectedIndicatorTransferTargetClassroomIds] = useState<string[]>([]);
+  const [selectedIndicatorTransferCompetencyIds, setSelectedIndicatorTransferCompetencyIds] = useState<string[]>([]);
+  const [copyMissingTransferCustomCompetencies, setCopyMissingTransferCustomCompetencies] = useState(true);
   const [customCompetencyForm, setCustomCompetencyForm] = useState({
     name: '',
     shortName: '',
@@ -124,7 +135,7 @@ export const ClassroomSettingsPage = () => {
   const { data: myClassrooms = [], isLoading: isLoadingMyClassrooms } = useQuery({
     queryKey: ['classrooms', 'export-custom-competencies'],
     queryFn: classroomApi.getMyClassrooms,
-    enabled: showExportCustomCompetenciesModal,
+    enabled: showExportCustomCompetenciesModal || showIndicatorTransferModal,
   });
 
   const {
@@ -134,6 +145,23 @@ export const ClassroomSettingsPage = () => {
     customCompetencies,
     refetch: refetchCompetencies,
   } = useClassroomCompetencies(classroom.id, classroom.useCompetencies);
+
+  const { data: indicatorTransferSourceCompetencies = [], isLoading: isLoadingIndicatorTransferSourceCompetencies } = useQuery({
+    queryKey: ['classroom-competencies-transfer-source', selectedIndicatorTransferSourceClassroomId],
+    queryFn: () => classroomApi.getCompetencies(selectedIndicatorTransferSourceClassroomId!),
+    enabled: showIndicatorTransferModal && indicatorTransferMode === 'IMPORT' && !!selectedIndicatorTransferSourceClassroomId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const indicatorTransferTargetQueries = useQueries({
+    queries: showIndicatorTransferModal && indicatorTransferMode === 'EXPORT'
+      ? selectedIndicatorTransferTargetClassroomIds.map((targetClassroomId) => ({
+          queryKey: ['classroom-competencies-transfer-target', targetClassroomId],
+          queryFn: () => classroomApi.getCompetencies(targetClassroomId),
+          staleTime: 5 * 60 * 1000,
+        }))
+      : [],
+  });
 
   // Mutations para clases de personaje
   const createClassMutation = useMutation({
@@ -293,6 +321,54 @@ export const ClassroomSettingsPage = () => {
     },
   });
 
+  const transferCompetencyIndicatorsMutation = useMutation({
+    mutationFn: (data: TransferCompetencyIndicatorsData) => classroomApi.transferCompetencyIndicators(classroom.id, data),
+    onSuccess: (result: TransferCompetencyIndicatorsResult, variables) => {
+      if (variables.mode === 'IMPORT') {
+        queryClient.invalidateQueries({ queryKey: ['classroom', classroom.id] });
+        queryClient.invalidateQueries({ queryKey: ['classroom-competencies', classroom.id] });
+        queryClient.invalidateQueries({ queryKey: ['classroom-grades', classroom.id] });
+        queryClient.invalidateQueries({ queryKey: ['behaviors', classroom.id] });
+        refetchCompetencies();
+        refetch();
+      }
+
+      closeIndicatorTransferModal();
+
+      const summary: string[] = [];
+
+      if (result.createdIndicators > 0) {
+        summary.push(`${result.createdIndicators} destreza(s) creada(s)`);
+      }
+
+      if (result.createdCompetencies > 0) {
+        summary.push(`${result.createdCompetencies} competencia(s) personalizada(s) creada(s)`);
+      }
+
+      if (result.skippedExistingIndicators > 0) {
+        summary.push(`${result.skippedExistingIndicators} omitida(s) por repetidas`);
+      }
+
+      if (result.skippedUnavailableCompetencies > 0) {
+        summary.push(`${result.skippedUnavailableCompetencies} competencia(s) incompatible(s)`);
+      }
+
+      if (result.failedTargets.length > 0) {
+        summary.push(`${result.failedTargets.length} clase(s) con error`);
+      }
+
+      if (result.createdIndicators > 0 || result.createdCompetencies > 0) {
+        toast.success(summary.join(' · '));
+        return;
+      }
+
+      toast.error(summary[0] || 'No se transfirieron destrezas nuevas');
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Error al transferir destrezas');
+    },
+  });
+
   const exportCustomCompetenciesMutation = useMutation({
     mutationFn: async (targetClassroomIds: string[]) => {
       const exportableCompetencies = customCompetencies.map((competency) => ({
@@ -409,6 +485,59 @@ export const ClassroomSettingsPage = () => {
   const closeExportCustomCompetenciesModal = () => {
     setShowExportCustomCompetenciesModal(false);
     setSelectedExportClassroomIds([]);
+  };
+
+  const closeIndicatorTransferModal = () => {
+    setShowIndicatorTransferModal(false);
+    setIndicatorTransferMode('IMPORT');
+    setSelectedIndicatorTransferSourceClassroomId(null);
+    setSelectedIndicatorTransferTargetClassroomIds([]);
+    setSelectedIndicatorTransferCompetencyIds([]);
+    setCopyMissingTransferCustomCompetencies(true);
+  };
+
+  const openIndicatorTransferModal = () => {
+    if (!classroom.useCompetencies) {
+      toast.error('Primero habilita competencias en esta clase');
+      return;
+    }
+
+    setIndicatorTransferMode('IMPORT');
+    setSelectedIndicatorTransferSourceClassroomId(null);
+    setSelectedIndicatorTransferTargetClassroomIds([]);
+    setSelectedIndicatorTransferCompetencyIds([]);
+    setCopyMissingTransferCustomCompetencies(true);
+    setShowIndicatorTransferModal(true);
+  };
+
+  const closeCompetencyActionsMenu = () => {
+    setShowCompetencyActionsMenu(false);
+  };
+
+  const handleOpenCustomCompetencyFromMenu = () => {
+    closeCompetencyActionsMenu();
+    openCreateCustomCompetencyModal();
+  };
+
+  const handleOpenAddCompetenciesFromMenu = () => {
+    closeCompetencyActionsMenu();
+    setShowAddCompetenciesModal(true);
+  };
+
+  const toggleIndicatorTransferTargetClassroomSelection = (classroomId: string) => {
+    setSelectedIndicatorTransferTargetClassroomIds((current) => (
+      current.includes(classroomId)
+        ? current.filter((id) => id !== classroomId)
+        : [...current, classroomId]
+    ));
+  };
+
+  const toggleIndicatorTransferCompetencySelection = (competencyId: string) => {
+    setSelectedIndicatorTransferCompetencyIds((current) => (
+      current.includes(competencyId)
+        ? current.filter((id) => id !== competencyId)
+        : [...current, competencyId]
+    ));
   };
 
   // Query para estudiantes placeholder
@@ -686,10 +815,135 @@ export const ClassroomSettingsPage = () => {
       ? 'No se puede retirar del aula.'
       : 'Puedes editarla, pero no eliminarla.';
   };
+
+  const normalizeTransferName = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase();
+
+  const buildIndicatorTransferPreview = (
+    sourceCompetencies: ClassroomCompetency[],
+    targetCompetencies: ClassroomCompetency[],
+    copyMissingCustomCompetencies: boolean,
+  ) => {
+    const targetAnyByName = new Map<string, ClassroomCompetency>();
+    const targetCustomByName = new Map<string, ClassroomCompetency>();
+    const indicatorNamesByCompetencyId = new Map<string, Set<string>>();
+    const simulatedCustomIndicatorNames = new Map<string, Set<string>>();
+
+    targetCompetencies.forEach((competency) => {
+      const normalizedName = normalizeTransferName(competency.name);
+      if (!targetAnyByName.has(normalizedName)) {
+        targetAnyByName.set(normalizedName, competency);
+      }
+      if (competency.isCustom && !targetCustomByName.has(normalizedName)) {
+        targetCustomByName.set(normalizedName, competency);
+      }
+      indicatorNamesByCompetencyId.set(
+        competency.id,
+        new Set(competency.indicators.map((indicator) => normalizeTransferName(indicator.name))),
+      );
+    });
+
+    let createdCompetencies = 0;
+    let createdIndicators = 0;
+    let skippedExistingIndicators = 0;
+    let skippedUnavailableCompetencies = 0;
+
+    sourceCompetencies.forEach((sourceCompetency) => {
+      let indicatorNames: Set<string> | null = null;
+
+      if (!sourceCompetency.isCustom) {
+        const targetCompetency = targetCompetencies.find((competency) => competency.id === sourceCompetency.id) || null;
+        if (!targetCompetency) {
+          skippedUnavailableCompetencies += 1;
+          return;
+        }
+
+        indicatorNames = indicatorNamesByCompetencyId.get(targetCompetency.id) || new Set<string>();
+      } else {
+        const normalizedName = normalizeTransferName(sourceCompetency.name);
+        const targetCustomCompetency = targetCustomByName.get(normalizedName);
+
+        if (targetCustomCompetency) {
+          indicatorNames = indicatorNamesByCompetencyId.get(targetCustomCompetency.id) || new Set<string>();
+        } else if (simulatedCustomIndicatorNames.has(normalizedName)) {
+          indicatorNames = simulatedCustomIndicatorNames.get(normalizedName)!;
+        } else if (copyMissingCustomCompetencies && !targetAnyByName.has(normalizedName)) {
+          createdCompetencies += 1;
+          indicatorNames = new Set<string>();
+          simulatedCustomIndicatorNames.set(normalizedName, indicatorNames);
+        } else {
+          skippedUnavailableCompetencies += 1;
+          return;
+        }
+      }
+
+      sourceCompetency.indicators.forEach((indicator) => {
+        const normalizedIndicatorName = normalizeTransferName(indicator.name);
+        if (indicatorNames!.has(normalizedIndicatorName)) {
+          skippedExistingIndicators += 1;
+          return;
+        }
+
+        indicatorNames!.add(normalizedIndicatorName);
+        createdIndicators += 1;
+      });
+    });
+
+    return {
+      createdCompetencies,
+      createdIndicators,
+      skippedExistingIndicators,
+      skippedUnavailableCompetencies,
+    };
+  };
+
   const exportTargetClassrooms = myClassrooms.filter((item) => item.id !== classroom.id);
   const eligibleExportClassrooms = exportTargetClassrooms.filter((item) => item.useCompetencies && !!item.curriculumAreaId);
   const ineligibleExportClassrooms = exportTargetClassrooms.filter((item) => !item.useCompetencies || !item.curriculumAreaId);
   const allEligibleExportSelected = eligibleExportClassrooms.length > 0 && eligibleExportClassrooms.every((item) => selectedExportClassroomIds.includes(item.id));
+  const selectedIndicatorTransferSourceClassroom = eligibleExportClassrooms.find((item) => item.id === selectedIndicatorTransferSourceClassroomId) || null;
+  const indicatorTransferSourcePool = indicatorTransferMode === 'IMPORT'
+    ? indicatorTransferSourceCompetencies
+    : classroomCompetencies;
+  const indicatorTransferSelectableCompetencies = indicatorTransferSourcePool.filter((competency) => competency.indicators.length > 0);
+  const allIndicatorTransferCompetenciesSelected = indicatorTransferSelectableCompetencies.length > 0
+    && indicatorTransferSelectableCompetencies.every((competency) => selectedIndicatorTransferCompetencyIds.includes(competency.id));
+  const allIndicatorTransferTargetClassroomsSelected = eligibleExportClassrooms.length > 0
+    && eligibleExportClassrooms.every((item) => selectedIndicatorTransferTargetClassroomIds.includes(item.id));
+  const selectedIndicatorTransferCompetencies = indicatorTransferSelectableCompetencies.filter((competency) => selectedIndicatorTransferCompetencyIds.includes(competency.id));
+  const indicatorTransferTargetCompetenciesByClassroomId = new Map(
+    selectedIndicatorTransferTargetClassroomIds.map((targetClassroomId, index) => [
+      targetClassroomId,
+      indicatorTransferTargetQueries[index]?.data || [],
+    ]),
+  );
+  const indicatorTransferPreview = indicatorTransferMode === 'IMPORT'
+    ? buildIndicatorTransferPreview(selectedIndicatorTransferCompetencies, classroomCompetencies, copyMissingTransferCustomCompetencies)
+    : selectedIndicatorTransferTargetClassroomIds.reduce((summary, targetClassroomId) => {
+        const targetCompetencies = indicatorTransferTargetCompetenciesByClassroomId.get(targetClassroomId) || [];
+        const targetPreview = buildIndicatorTransferPreview(
+          selectedIndicatorTransferCompetencies,
+          targetCompetencies,
+          copyMissingTransferCustomCompetencies,
+        );
+
+        return {
+          createdCompetencies: summary.createdCompetencies + targetPreview.createdCompetencies,
+          createdIndicators: summary.createdIndicators + targetPreview.createdIndicators,
+          skippedExistingIndicators: summary.skippedExistingIndicators + targetPreview.skippedExistingIndicators,
+          skippedUnavailableCompetencies: summary.skippedUnavailableCompetencies + targetPreview.skippedUnavailableCompetencies,
+        };
+      }, {
+        createdCompetencies: 0,
+        createdIndicators: 0,
+        skippedExistingIndicators: 0,
+        skippedUnavailableCompetencies: 0,
+      });
+  const indicatorTransferPreviewLoading = indicatorTransferMode === 'IMPORT'
+    ? !!selectedIndicatorTransferSourceClassroomId && isLoadingIndicatorTransferSourceCompetencies
+    : indicatorTransferTargetQueries.some((query) => query.isLoading);
+  const indicatorTransferHasLoadedTargets = indicatorTransferMode === 'EXPORT'
+    ? selectedIndicatorTransferTargetClassroomIds.length > 0 && indicatorTransferTargetQueries.length === selectedIndicatorTransferTargetClassroomIds.length && indicatorTransferTargetQueries.every((query) => query.isSuccess)
+    : true;
   const enabledCompetencyIds = new Set(classroomCompetencies.map((competency) => competency.id));
   const filteredAreas = curriculumAreas.filter((area) => {
     if (!activeArea?.educationLevel || !area.educationLevel) {
@@ -722,19 +976,114 @@ export const ClassroomSettingsPage = () => {
     }))
     .filter((area) => area.competencies.length > 0);
 
-  const scalePreview = activeGradeScale === 'PERU_VIGESIMAL'
-    ? [
-        { label: '18-20', desc: 'Logro destacado' },
-        { label: '14-17', desc: 'Logro esperado' },
-        { label: '11-13', desc: 'En proceso' },
-        { label: '0-10', desc: 'En inicio' },
-      ]
-    : [
-        { label: 'AD', desc: 'Logro destacado' },
-        { label: 'A', desc: 'Logro esperado' },
-        { label: 'B', desc: 'En proceso' },
-        { label: 'C', desc: 'En inicio' },
-      ];
+  const eligibleIndicatorTransferClassroomIdsKey = eligibleExportClassrooms.map((item) => item.id).join('|');
+  const indicatorTransferSelectableCompetencyIdsKey = indicatorTransferSelectableCompetencies.map((competency) => competency.id).join('|');
+
+  useEffect(() => {
+    if (!showIndicatorTransferModal || indicatorTransferMode !== 'IMPORT') {
+      return;
+    }
+
+    setSelectedIndicatorTransferSourceClassroomId((current) => {
+      if (current && eligibleExportClassrooms.some((item) => item.id === current)) {
+        return current;
+      }
+
+      return eligibleExportClassrooms[0]?.id ?? null;
+    });
+  }, [showIndicatorTransferModal, indicatorTransferMode, eligibleIndicatorTransferClassroomIdsKey]);
+
+  useEffect(() => {
+    if (!showIndicatorTransferModal || indicatorTransferMode !== 'EXPORT') {
+      return;
+    }
+
+    setSelectedIndicatorTransferTargetClassroomIds((current) => {
+      const next = current.filter((classroomId) => eligibleExportClassrooms.some((item) => item.id === classroomId));
+      return next.length === current.length ? current : next;
+    });
+  }, [showIndicatorTransferModal, indicatorTransferMode, eligibleIndicatorTransferClassroomIdsKey]);
+
+  useEffect(() => {
+    if (!showIndicatorTransferModal) {
+      return;
+    }
+
+    const availableCompetencyIds = indicatorTransferSelectableCompetencies.map((competency) => competency.id);
+
+    setSelectedIndicatorTransferCompetencyIds((current) => {
+      const validSelections = current.filter((competencyId) => availableCompetencyIds.includes(competencyId));
+
+      if (validSelections.length === current.length && current.length > 0) {
+        return current;
+      }
+
+      return validSelections.length > 0 ? validSelections : availableCompetencyIds;
+    });
+  }, [
+    showIndicatorTransferModal,
+    indicatorTransferMode,
+    selectedIndicatorTransferSourceClassroomId,
+    indicatorTransferSelectableCompetencyIdsKey,
+  ]);
+
+  const toggleSelectAllIndicatorTransferTargetClassrooms = () => {
+    if (allIndicatorTransferTargetClassroomsSelected) {
+      setSelectedIndicatorTransferTargetClassroomIds([]);
+      return;
+    }
+
+    setSelectedIndicatorTransferTargetClassroomIds(eligibleExportClassrooms.map((item) => item.id));
+  };
+
+  const toggleSelectAllIndicatorTransferCompetencies = () => {
+    if (allIndicatorTransferCompetenciesSelected) {
+      setSelectedIndicatorTransferCompetencyIds([]);
+      return;
+    }
+
+    setSelectedIndicatorTransferCompetencyIds(indicatorTransferSelectableCompetencies.map((competency) => competency.id));
+  };
+
+  const handleIndicatorTransferSubmit = () => {
+    if (selectedIndicatorTransferCompetencyIds.length === 0) {
+      toast.error('Selecciona al menos una competencia con destrezas');
+      return;
+    }
+
+    if (indicatorTransferMode === 'IMPORT' && !selectedIndicatorTransferSourceClassroomId) {
+      toast.error('Selecciona una clase de origen');
+      return;
+    }
+
+    if (indicatorTransferMode === 'EXPORT' && selectedIndicatorTransferTargetClassroomIds.length === 0) {
+      toast.error('Selecciona al menos una clase destino');
+      return;
+    }
+
+    transferCompetencyIndicatorsMutation.mutate({
+      mode: indicatorTransferMode,
+      sourceClassroomId: indicatorTransferMode === 'IMPORT' ? selectedIndicatorTransferSourceClassroomId || undefined : undefined,
+      targetClassroomIds: indicatorTransferMode === 'EXPORT' ? selectedIndicatorTransferTargetClassroomIds : undefined,
+      competencyIds: selectedIndicatorTransferCompetencyIds,
+      copyMissingCustomCompetencies: copyMissingTransferCustomCompetencies,
+    });
+  };
+
+  const gradeScaleOptions = [
+    {
+      value: 'PERU_LETTERS' as const,
+      label: 'Letras',
+      helper: 'AD, A, B, C',
+      description: 'Ideal si quieres comunicar niveles de logro de forma rápida y fácil de interpretar.',
+    },
+    {
+      value: 'PERU_VIGESIMAL' as const,
+      label: 'Vigesimal',
+      helper: '0 a 20',
+      description: 'Útil si prefieres registrar notas con una escala numérica tradicional.',
+    },
+  ];
 
   const toggleCompetencySelection = (competencyId: string) => {
     setSelectedCompetencyIds((current) => (
@@ -1787,25 +2136,82 @@ export const ClassroomSettingsPage = () => {
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="relative self-start">
               <button
                 type="button"
-                onClick={openCreateCustomCompetencyModal}
-                disabled={!activeAreaId}
-                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 rounded-xl text-sm font-medium hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors border border-amber-200 dark:border-amber-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => setShowCompetencyActionsMenu((current) => !current)}
+                aria-haspopup="menu"
+                aria-expanded={showCompetencyActionsMenu}
+                className="inline-flex min-h-[44px] items-center justify-center gap-2 px-3 py-2 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-gray-900/60 text-indigo-700 dark:text-indigo-300 text-sm font-medium hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors"
               >
-                <Plus size={16} />
-                Crear personalizada
+                <Plus size={15} />
+                Gestionar competencias
+                <ChevronDown size={15} className={`transition-transform ${showCompetencyActionsMenu ? 'rotate-180' : ''}`} />
               </button>
 
-              <button
-                type="button"
-                onClick={() => setShowAddCompetenciesModal(true)}
-                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 rounded-xl text-sm font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors border border-emerald-200 dark:border-emerald-800"
-              >
-                <Plus size={16} />
-                Agregar oficiales
-              </button>
+              {showCompetencyActionsMenu && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={closeCompetencyActionsMenu} />
+                  <div className="absolute right-0 top-full z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl shadow-indigo-100/40 dark:shadow-black/30">
+                    <div className="border-b border-gray-100 dark:border-gray-800 px-4 py-3">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">Agregar competencias</p>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        Elige si deseas crear una competencia propia para esta clase o habilitar una oficial del currículo.
+                      </p>
+                    </div>
+
+                    <div className="p-2 space-y-1.5">
+                      <button
+                        type="button"
+                        onClick={handleOpenCustomCompetencyFromMenu}
+                        disabled={!activeAreaId}
+                        className="flex w-full min-h-[52px] items-start gap-3 rounded-xl px-3 py-3 text-left transition-colors hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                          <Plus size={16} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-sm font-semibold text-gray-900 dark:text-white">Crear personalizada</span>
+                            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                              Solo esta clase
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            Crea una competencia nueva asociada al área curricular actual del aula.
+                          </p>
+                          {!activeAreaId && (
+                            <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
+                              Primero configura el área curricular para habilitar esta opción.
+                            </p>
+                          )}
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleOpenAddCompetenciesFromMenu}
+                        className="flex w-full min-h-[52px] items-start gap-3 rounded-xl px-3 py-3 text-left transition-colors hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+                      >
+                        <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                          <Plus size={16} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-sm font-semibold text-gray-900 dark:text-white">Agregar oficiales</span>
+                            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                              Currículo
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            Habilita competencias oficiales adicionales desde otras áreas del mismo nivel.
+                          </p>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -1983,9 +2389,19 @@ export const ClassroomSettingsPage = () => {
                         Organiza evidencias debajo de cada competencia y permite que las destrezas aporten a la nota oficial cuando corresponda.
                       </p>
                     </div>
-                    <span className="text-xs px-2 py-1 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
-                      {totalCompetencyIndicators}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs px-2 py-1 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+                        {totalCompetencyIndicators}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={openIndicatorTransferModal}
+                        className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-gray-900/60 text-indigo-700 dark:text-indigo-300 text-xs font-medium hover:bg-indigo-50 dark:hover:bg-indigo-900/30"
+                      >
+                        <ArrowRightLeft size={14} />
+                        Gestionar destrezas
+                      </button>
+                    </div>
                   </div>
 
                   {classroom.competencyIndicatorStartPeriod && (
@@ -2096,39 +2512,50 @@ export const ClassroomSettingsPage = () => {
                 </p>
               </div>
 
-              <div className="grid gap-3 md:grid-cols-2">
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { value: 'PERU_LETTERS' as const, label: 'Letras', helper: 'AD, A, B, C' },
-                    { value: 'PERU_VIGESIMAL' as const, label: 'Vigesimal', helper: '0 a 20' },
-                  ].map((scale) => (
-                    <button
+              <div className="grid gap-3 lg:grid-cols-2">
+                {gradeScaleOptions.map((scale) => {
+                  const isSelected = activeGradeScale === scale.value;
+
+                  return (
+                    <label
                       key={scale.value}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, gradeScaleType: scale.value })}
-                      className={`rounded-xl border px-3 py-3 text-left transition-all ${
-                        activeGradeScale === scale.value
-                          ? 'border-emerald-400 bg-emerald-100/80 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-                          : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/60 text-gray-600 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+                      className={`flex min-h-[132px] cursor-pointer flex-col rounded-2xl border px-4 py-4 transition-all ${
+                        isSelected
+                          ? 'border-emerald-400 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20'
+                          : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/60 hover:border-gray-300 dark:hover:border-gray-600'
                       }`}
                     >
-                      <p className="text-sm font-semibold">{scale.label}</p>
-                      <p className="text-xs opacity-80 mt-1">{scale.helper}</p>
-                    </button>
-                  ))}
-                </div>
+                      <div className="flex items-start gap-3">
+                        <input
+                          type="radio"
+                          name="gradeScaleType"
+                          checked={isSelected}
+                          onChange={() => setFormData((current) => ({ ...current, gradeScaleType: scale.value }))}
+                          className="mt-1 h-4 w-4 border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                        />
 
-                <div className="space-y-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/60 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Vista previa
-                  </p>
-                  {scalePreview.map((item) => (
-                    <div key={item.label} className="flex items-center justify-between rounded-lg bg-gray-50 dark:bg-gray-800 px-3 py-2">
-                      <span className="text-sm font-medium text-gray-800 dark:text-white">{item.label}</span>
-                      <span className="text-xs text-gray-500 dark:text-gray-400">{item.desc}</span>
-                    </div>
-                  ))}
-                </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className={`text-base font-semibold ${isSelected ? 'text-emerald-800 dark:text-emerald-200' : 'text-gray-800 dark:text-white'}`}>
+                              {scale.label}
+                            </p>
+                            {isSelected && (
+                              <span className="rounded-full bg-white/80 dark:bg-emerald-950/40 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+                                Activo
+                              </span>
+                            )}
+                          </div>
+                          <p className={`mt-1 text-sm ${isSelected ? 'text-emerald-700 dark:text-emerald-300' : 'text-gray-500 dark:text-gray-400'}`}>
+                            {scale.helper}
+                          </p>
+                          <p className="mt-3 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                            {scale.description}
+                          </p>
+                        </div>
+                      </div>
+                    </label>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -2716,6 +3143,368 @@ ${(() => {
         variant="danger"
         isLoading={deleteCompetencyIndicatorMutation.isPending}
       />
+
+      {showIndicatorTransferModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={closeIndicatorTransferModal}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-6xl bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden"
+          >
+            <div className="flex items-start justify-between gap-4 px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Transferir destrezas</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Importa o exporta destrezas entre tus clases sin sobrescribir lo que ya existe. El sistema solo agrega faltantes y omite duplicados.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeIndicatorTransferModal}
+                className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-5 max-h-[78vh] overflow-y-auto">
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-indigo-200 dark:border-indigo-900/40 bg-indigo-50/80 dark:bg-indigo-900/20 p-4">
+                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
+                          Accion
+                        </label>
+                        <select
+                          value={indicatorTransferMode}
+                          onChange={(e) => {
+                            const nextMode = e.target.value as 'IMPORT' | 'EXPORT';
+                            setIndicatorTransferMode(nextMode);
+                            setSelectedIndicatorTransferCompetencyIds([]);
+                            if (nextMode === 'IMPORT') {
+                              setSelectedIndicatorTransferTargetClassroomIds([]);
+                            } else {
+                              setSelectedIndicatorTransferSourceClassroomId(null);
+                            }
+                          }}
+                          className="w-full px-4 py-3 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-gray-900 text-gray-800 dark:text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                        >
+                          <option value="IMPORT">Importar desde otra clase</option>
+                          <option value="EXPORT">Exportar a mis clases</option>
+                        </select>
+                      </div>
+
+                      <label className="flex items-start gap-3 rounded-2xl border border-white/70 dark:border-gray-700 bg-white/80 dark:bg-gray-900/60 px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={copyMissingTransferCustomCompetencies}
+                          onChange={(e) => setCopyMissingTransferCustomCompetencies(e.target.checked)}
+                          className="mt-1 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <div>
+                          <p className="text-sm font-medium text-gray-800 dark:text-white">
+                            Copiar competencias personalizadas faltantes
+                          </p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            Si una destreza pertenece a una competencia personalizada inexistente en la clase destino, se crea primero la competencia y luego se copian sus destrezas.
+                          </p>
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 p-4 space-y-3">
+                    {indicatorTransferMode === 'IMPORT' ? (
+                      <>
+                        <div>
+                          <p className="text-sm font-semibold text-gray-800 dark:text-white">Clase de origen</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            Elige de qué clase quieres traer las destrezas hacia esta aula.
+                          </p>
+                        </div>
+
+                        {eligibleExportClassrooms.length > 0 ? (
+                          <>
+                            <select
+                              value={selectedIndicatorTransferSourceClassroomId || ''}
+                              onChange={(e) => {
+                                setSelectedIndicatorTransferSourceClassroomId(e.target.value || null);
+                                setSelectedIndicatorTransferCompetencyIds([]);
+                              }}
+                              className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-800 dark:text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                            >
+                              <option value="">Selecciona una clase</option>
+                              {eligibleExportClassrooms.map((item) => (
+                                <option key={item.id} value={item.id}>{item.name}</option>
+                              ))}
+                            </select>
+
+                            <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-900/20 px-4 py-3 text-sm text-emerald-800 dark:text-emerald-200">
+                              Destino actual: {classroom.name}
+                              {selectedIndicatorTransferSourceClassroom && (
+                                <span className="block text-xs mt-1 text-emerald-700/80 dark:text-emerald-200/80">
+                                  Origen seleccionado: {selectedIndicatorTransferSourceClassroom.name}
+                                </span>
+                              )}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+                            No tienes otras clases elegibles con competencias activas para importar destrezas.
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-gray-800 dark:text-white">Clases destino</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              Selecciona a cuáles de tus otras clases quieres exportar las destrezas de esta aula.
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={toggleSelectAllIndicatorTransferTargetClassrooms}
+                            disabled={eligibleExportClassrooms.length === 0}
+                            className="px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {allIndicatorTransferTargetClassroomsSelected ? 'Quitar selección' : 'Seleccionar todas'}
+                          </button>
+                        </div>
+
+                        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                          {exportTargetClassrooms.length > 0 ? exportTargetClassrooms.map((item) => {
+                            const isEligible = item.useCompetencies && !!item.curriculumAreaId;
+                            const isSelected = selectedIndicatorTransferTargetClassroomIds.includes(item.id);
+
+                            return (
+                              <label
+                                key={item.id}
+                                className={`flex items-start gap-3 rounded-xl border px-4 py-3 transition-colors ${
+                                  isEligible
+                                    ? 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/60 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800'
+                                    : 'border-gray-200 dark:border-gray-700 bg-gray-100/70 dark:bg-gray-900/30 opacity-70 cursor-not-allowed'
+                                }`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => isEligible && toggleIndicatorTransferTargetClassroomSelection(item.id)}
+                                  disabled={!isEligible}
+                                  className="mt-1 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                />
+
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <p className="text-sm font-medium text-gray-800 dark:text-white">{item.name}</p>
+                                    {!isEligible && (
+                                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+                                        No elegible
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                    {isEligible
+                                      ? 'Lista para recibir nuevas destrezas sin afectar las existentes.'
+                                      : 'Debes habilitar competencias y configurar un área curricular en esa clase.'}
+                                  </p>
+                                </div>
+                              </label>
+                            );
+                          }) : (
+                            <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+                              No tienes otras clases creadas para exportar destrezas.
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/40 p-4 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-800 dark:text-white">Competencias a transferir</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          Solo se muestran competencias que ya tienen al menos una destreza configurada.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={toggleSelectAllIndicatorTransferCompetencies}
+                        disabled={indicatorTransferSelectableCompetencies.length === 0 || indicatorTransferPreviewLoading}
+                        className="px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {allIndicatorTransferCompetenciesSelected ? 'Quitar selección' : 'Seleccionar todas'}
+                      </button>
+                    </div>
+
+                    {indicatorTransferPreviewLoading ? (
+                      <div className="rounded-xl border border-dashed border-indigo-200 dark:border-indigo-900/40 px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400 flex items-center justify-center gap-2">
+                        <Loader2 size={16} className="animate-spin" />
+                        Cargando competencias y destrezas...
+                      </div>
+                    ) : indicatorTransferSelectableCompetencies.length > 0 ? (
+                      <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                        {indicatorTransferSelectableCompetencies.map((competency) => {
+                          const isSelected = selectedIndicatorTransferCompetencyIds.includes(competency.id);
+
+                          return (
+                            <label
+                              key={competency.id}
+                              className={`flex items-start gap-3 rounded-xl border px-4 py-3 cursor-pointer transition-colors ${
+                                isSelected
+                                  ? 'border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-900/20'
+                                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/60 hover:bg-gray-50 dark:hover:bg-gray-800'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleIndicatorTransferCompetencySelection(competency.id)}
+                                className="mt-1 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                              />
+
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="text-sm font-medium text-gray-800 dark:text-white">{competency.name}</p>
+                                  {competency.isBase && (
+                                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">Base</span>
+                                  )}
+                                  {!competency.isBase && !competency.isCustom && (
+                                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">Extra</span>
+                                  )}
+                                  {competency.isCustom && (
+                                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">Personalizada</span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                  {competency.indicators.length} destreza(s) disponibles · {competency.areaName}
+                                </p>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-600 px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+                        {indicatorTransferMode === 'IMPORT' && !selectedIndicatorTransferSourceClassroomId
+                          ? 'Selecciona primero una clase de origen.'
+                          : 'No hay competencias con destrezas disponibles para transferir en esta selección.'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-indigo-200 dark:border-indigo-900/40 bg-indigo-50 dark:bg-indigo-900/20 p-4 space-y-4">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800 dark:text-white">Vista previa</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Resumen estimado de lo que se agregará si confirmas esta transferencia.
+                      </p>
+                    </div>
+
+                    {indicatorTransferPreviewLoading ? (
+                      <div className="rounded-xl border border-dashed border-indigo-200 dark:border-indigo-900/40 bg-white/70 dark:bg-gray-900/40 px-4 py-8 text-center text-sm text-gray-500 dark:text-gray-400 flex items-center justify-center gap-2">
+                        <Loader2 size={16} className="animate-spin" />
+                        Preparando vista previa...
+                      </div>
+                    ) : (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-xl bg-white dark:bg-gray-900/50 px-4 py-3 border border-white/70 dark:border-gray-700">
+                          <p className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Destrezas nuevas</p>
+                          <p className="text-2xl font-semibold text-gray-900 dark:text-white mt-1">{indicatorTransferPreview.createdIndicators}</p>
+                        </div>
+                        <div className="rounded-xl bg-white dark:bg-gray-900/50 px-4 py-3 border border-white/70 dark:border-gray-700">
+                          <p className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Competencias creadas</p>
+                          <p className="text-2xl font-semibold text-gray-900 dark:text-white mt-1">{indicatorTransferPreview.createdCompetencies}</p>
+                        </div>
+                        <div className="rounded-xl bg-white dark:bg-gray-900/50 px-4 py-3 border border-white/70 dark:border-gray-700">
+                          <p className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Omitidas por repetidas</p>
+                          <p className="text-2xl font-semibold text-gray-900 dark:text-white mt-1">{indicatorTransferPreview.skippedExistingIndicators}</p>
+                        </div>
+                        <div className="rounded-xl bg-white dark:bg-gray-900/50 px-4 py-3 border border-white/70 dark:border-gray-700">
+                          <p className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Competencias incompatibles</p>
+                          <p className="text-2xl font-semibold text-gray-900 dark:text-white mt-1">{indicatorTransferPreview.skippedUnavailableCompetencies}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="rounded-xl border border-white/80 dark:border-gray-700 bg-white/80 dark:bg-gray-900/50 px-4 py-3 space-y-2">
+                      <div className="flex items-center justify-between gap-3 text-sm">
+                        <span className="text-gray-600 dark:text-gray-300">Competencias seleccionadas</span>
+                        <span className="font-semibold text-gray-900 dark:text-white">{selectedIndicatorTransferCompetencies.length}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 text-sm">
+                        <span className="text-gray-600 dark:text-gray-300">
+                          {indicatorTransferMode === 'IMPORT' ? 'Clase destino' : 'Clases destino'}
+                        </span>
+                        <span className="font-semibold text-gray-900 dark:text-white">
+                          {indicatorTransferMode === 'IMPORT' ? 1 : selectedIndicatorTransferTargetClassroomIds.length}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/40 p-4 space-y-3">
+                    <p className="text-sm font-semibold text-gray-800 dark:text-white">Reglas de seguridad</p>
+                    <ul className="space-y-2 text-xs text-gray-500 dark:text-gray-400">
+                      <li>Solo se transfieren destrezas entre clases tuyas con competencias activas.</li>
+                      <li>La operación no borra ni sobrescribe destrezas existentes.</li>
+                      <li>Los nombres repetidos dentro de la misma competencia se omiten automáticamente.</li>
+                      <li>Las competencias oficiales solo reciben destrezas si ya están habilitadas en la clase destino.</li>
+                    </ul>
+                    {ineligibleExportClassrooms.length > 0 && (
+                      <div className="rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-xs text-amber-800 dark:text-amber-200">
+                        {ineligibleExportClassrooms.length} clase(s) tuyas no son elegibles todavía porque les falta activar competencias o configurar su área curricular.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-5 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3 bg-gray-50 dark:bg-gray-900/40">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {indicatorTransferMode === 'IMPORT'
+                  ? 'Las nuevas destrezas se agregarán a esta clase manteniendo intacta tu configuración actual.'
+                  : 'La exportación agregará destrezas faltantes en cada clase seleccionada sin borrar configuraciones previas.'}
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={closeIndicatorTransferModal}
+                  className="px-4 py-2 text-sm font-medium rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleIndicatorTransferSubmit}
+                  disabled={
+                    transferCompetencyIndicatorsMutation.isPending
+                    || indicatorTransferPreviewLoading
+                    || selectedIndicatorTransferCompetencyIds.length === 0
+                    || (indicatorTransferMode === 'IMPORT' && !selectedIndicatorTransferSourceClassroomId)
+                    || (indicatorTransferMode === 'EXPORT' && selectedIndicatorTransferTargetClassroomIds.length === 0)
+                    || !indicatorTransferHasLoadedTargets
+                  }
+                  className="px-4 py-2 text-sm font-medium rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {transferCompetencyIndicatorsMutation.isPending && <Loader2 size={14} className="animate-spin" />}
+                  {indicatorTransferMode === 'IMPORT' ? 'Importar destrezas' : 'Exportar destrezas'}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {showExportCustomCompetenciesModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={closeExportCustomCompetenciesModal}>

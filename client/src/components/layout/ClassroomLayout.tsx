@@ -48,7 +48,6 @@ import { NotificationsBell, NotificationsPanel } from '../NotificationsPanel';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { BugReportButton } from '../BugReportButton';
 import toast from 'react-hot-toast';
-import { AIAssistantWidget } from '../classroom/AIAssistantWidget';
 import { ParticleLayer } from '../story/ParticleLayer';
 import { useTeacherOnboardingSafe } from '../../contexts/TeacherOnboardingContext';
 import {
@@ -1144,9 +1143,6 @@ export const ClassroomLayout = () => {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* AI Assistant Widget - Flotante */}
-      {id && <AIAssistantWidget classroomId={id} />}
     </div>
   );
 };

@@ -1,4 +1,3 @@
-import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -12,38 +11,11 @@ import {
   TrendingUp,
   Award,
   Sparkles,
-  ChevronLeft,
-  ChevronRight,
 } from 'lucide-react';
+import { StudentAttendanceCalendarCard } from '../../components/student/StudentAttendanceCalendarCard';
 import { useStudentStore } from '../../store/studentStore';
 import { studentApi } from '../../lib/studentApi';
-import api from '../../lib/api';
-
-// Tipos
-interface AttendanceRecord {
-  id: string;
-  date: string;
-  status: 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED';
-  notes: string | null;
-  xpAwarded: number;
-}
-
-interface AttendanceStats {
-  total: number;
-  present: number;
-  absent: number;
-  late: number;
-  excused: number;
-  attendanceRate: number;
-  totalXpEarned: number;
-  currentStreak: number;
-  bestStreak: number;
-}
-
-interface AttendanceData {
-  stats: AttendanceStats;
-  history: AttendanceRecord[];
-}
+import { attendanceApi, type AttendanceStats } from '../../lib/attendanceApi';
 
 // Configuración de estados
 const STATUS_CONFIG = {
@@ -53,13 +25,9 @@ const STATUS_CONFIG = {
   EXCUSED: { label: 'Justificado', color: 'bg-blue-500', textColor: 'text-blue-600', bgLight: 'bg-blue-100', icon: FileText },
 };
 
-const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-const DAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-
 export const StudentAttendancePage = () => {
   const navigate = useNavigate();
   const { selectedClassIndex } = useStudentStore();
-  const [currentMonth, setCurrentMonth] = useState(new Date());
 
   // Obtener clases del estudiante
   const { data: myClasses } = useQuery({
@@ -73,48 +41,9 @@ export const StudentAttendancePage = () => {
   // Obtener asistencia
   const { data: attendanceData, isLoading } = useQuery({
     queryKey: ['my-attendance', classroomId],
-    queryFn: async () => {
-      const { data } = await api.get(`/attendance/my/${classroomId}`);
-      return data.data as AttendanceData;
-    },
+    queryFn: () => attendanceApi.getMyAttendance(classroomId!),
     enabled: !!classroomId,
   });
-
-  // Crear mapa de asistencia por fecha
-  const attendanceMap = useMemo(() => {
-    const map = new Map<string, AttendanceRecord>();
-    attendanceData?.history.forEach(record => {
-      const dateKey = new Date(record.date).toISOString().split('T')[0];
-      map.set(dateKey, record);
-    });
-    return map;
-  }, [attendanceData]);
-
-  // Generar días del calendario
-  const calendarDays = useMemo(() => {
-    const year = currentMonth.getFullYear();
-    const month = currentMonth.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    const startPadding = firstDay.getDay();
-    const days: (Date | null)[] = [];
-
-    // Días vacíos al inicio
-    for (let i = 0; i < startPadding; i++) {
-      days.push(null);
-    }
-
-    // Días del mes
-    for (let d = 1; d <= lastDay.getDate(); d++) {
-      days.push(new Date(year, month, d));
-    }
-
-    return days;
-  }, [currentMonth]);
-
-  const navigateMonth = (delta: number) => {
-    setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + delta, 1));
-  };
 
   // Formatear tiempo relativo
   const formatTimeAgo = (dateStr: string) => {
@@ -157,11 +86,11 @@ export const StudentAttendancePage = () => {
       {/* Header */}
       <div>
         <button
-          onClick={() => navigate('/dashboard')}
+          onClick={() => navigate('/my-class')}
           className="flex items-center gap-1.5 sm:gap-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 mb-3 sm:mb-4 transition-colors text-sm"
         >
           <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
-          Volver al dashboard
+          Volver a mi clase
         </button>
         
         <div className="flex items-center gap-2 sm:gap-3">
@@ -284,83 +213,12 @@ export const StudentAttendancePage = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-        {/* Calendario */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25 }}
-          className="bg-white dark:bg-gray-800 rounded-xl sm:rounded-2xl p-3 sm:p-5 shadow-lg"
         >
-          <div className="flex items-center justify-between mb-3 sm:mb-4">
-            <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-white flex items-center gap-1.5 sm:gap-2">
-              <Calendar className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-500" />
-              Calendario
-            </h2>
-            <div className="flex items-center gap-1 sm:gap-2">
-              <button
-                onClick={() => navigateMonth(-1)}
-                className="p-1 sm:p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-              >
-                <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600 dark:text-gray-400" />
-              </button>
-              <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300 min-w-[100px] sm:min-w-[120px] text-center">
-                {MONTHS[currentMonth.getMonth()]} {currentMonth.getFullYear()}
-              </span>
-              <button
-                onClick={() => navigateMonth(1)}
-                className="p-1 sm:p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-              >
-                <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600 dark:text-gray-400" />
-              </button>
-            </div>
-          </div>
-
-          {/* Días de la semana */}
-          <div className="grid grid-cols-7 gap-0.5 sm:gap-1 mb-1 sm:mb-2">
-            {DAYS.map(day => (
-              <div key={day} className="text-center text-[10px] sm:text-xs font-medium text-gray-500 py-1 sm:py-2">
-                {day}
-              </div>
-            ))}
-          </div>
-
-          {/* Días del mes */}
-          <div className="grid grid-cols-7 gap-0.5 sm:gap-1">
-            {calendarDays.map((day, index) => {
-              if (!day) {
-                return <div key={`empty-${index}`} className="aspect-square" />;
-              }
-
-              const dateKey = day.toISOString().split('T')[0];
-              const record = attendanceMap.get(dateKey);
-              const isToday = new Date().toDateString() === day.toDateString();
-              const statusConfig = record ? STATUS_CONFIG[record.status] : null;
-
-              return (
-                <div
-                  key={dateKey}
-                  className={`aspect-square rounded-md sm:rounded-lg flex items-center justify-center text-xs sm:text-sm relative ${
-                    isToday ? 'ring-2 ring-indigo-500' : ''
-                  } ${
-                    statusConfig ? statusConfig.color + ' text-white font-medium' : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
-                  }`}
-                  title={record ? `${statusConfig?.label}${record.xpAwarded ? ` (+${record.xpAwarded} XP)` : ''}` : undefined}
-                >
-                  {day.getDate()}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Leyenda */}
-          <div className="flex flex-wrap gap-2 sm:gap-3 mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-gray-100 dark:border-gray-700">
-            {Object.entries(STATUS_CONFIG).map(([status, config]) => (
-              <div key={status} className="flex items-center gap-1 sm:gap-1.5">
-                <div className={`w-2.5 h-2.5 sm:w-3 sm:h-3 rounded ${config.color}`} />
-                <span className="text-[10px] sm:text-xs text-gray-600 dark:text-gray-400">{config.label}</span>
-              </div>
-            ))}
-          </div>
+          <StudentAttendanceCalendarCard classroomId={classroomId!} />
         </motion.div>
 
         {/* Historial Reciente */}

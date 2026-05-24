@@ -22,6 +22,8 @@ export interface StudentProfile {
   isDemo?: boolean;
   displayName?: string | null;
   linkCode?: string | null;
+  classroomRank?: number | null;
+  classroomStudentCount?: number;
   createdAt: string;
   updatedAt: string;
   user?: {
