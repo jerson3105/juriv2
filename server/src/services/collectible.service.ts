@@ -16,6 +16,7 @@ import {
 import { eq, and, sql, desc, asc, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { studentService } from './student.service.js';
+import { logger } from '../utils/logger.js';
 
 // Probabilidades de rareza
 const RARITY_PROBABILITIES: Record<CardRarity, number> = {
@@ -751,6 +752,7 @@ class CollectibleService {
   async getClassroomProgress(classroomId: string, albumId: string) {
     const album = await this.getAlbumById(albumId);
     if (!album) return null;
+    if (album.classroomId !== classroomId) return null;
 
     // Obtener todos los estudiantes de la clase
     const students = await db
@@ -765,36 +767,196 @@ class CollectibleService {
         eq(studentProfiles.isActive, true)
       ));
 
-    // Para cada estudiante, calcular progreso
-    const studentsProgress = await Promise.all(
-      students.map(async (student) => {
-        const collection = await this.getStudentCollection(student.id, albumId);
+    const totalCards = album.totalCards || album.cards.length || 0;
+
+    const buildResponse = (studentsProgress: Array<{
+      studentId: string;
+      studentName: string;
+      progress: number;
+      uniqueCollected: number;
+      isCompleted: boolean;
+      completedAt?: Date | null;
+    }>) => {
+      studentsProgress.sort((a, b) => b.progress - a.progress);
+
+      const completedCount = studentsProgress.filter(s => s.isCompleted).length;
+      const avgProgress = studentsProgress.length > 0
+        ? studentsProgress.reduce((sum, s) => sum + s.progress, 0) / studentsProgress.length
+        : 0;
+
+      return {
+        album,
+        students: studentsProgress,
+        totalStudents: students.length,
+        completedCount,
+        averageProgress: Math.round(avgProgress * 100) / 100,
+      };
+    };
+
+    if (students.length === 0) {
+      return buildResponse([]);
+    }
+
+    const emptyStudentsProgress = students.map((student) => ({
+      studentId: student.id,
+      studentName: student.displayName || student.characterName || 'Sin nombre',
+      progress: 0,
+      uniqueCollected: 0,
+      isCompleted: false,
+      completedAt: null,
+    }));
+
+    try {
+      const studentIds = students.map(student => student.id);
+
+      let collectedRows: Array<{
+        studentProfileId: string;
+        cardId: string;
+        isShiny: boolean;
+      }> = [];
+
+      try {
+        collectedRows = await db
+          .select({
+            studentProfileId: studentCollectibles.studentProfileId,
+            cardId: studentCollectibles.cardId,
+            isShiny: studentCollectibles.isShiny,
+          })
+          .from(studentCollectibles)
+          .innerJoin(collectibleCards, eq(studentCollectibles.cardId, collectibleCards.id))
+          .where(and(
+            inArray(studentCollectibles.studentProfileId, studentIds),
+            eq(collectibleCards.albumId, albumId)
+          ));
+      } catch (error) {
+        const dbError = error as {
+          code?: string;
+          errno?: number;
+          message?: string;
+          sqlMessage?: string;
+        };
+        const errorDetails = `${dbError.message || ''} ${dbError.sqlMessage || ''}`;
+        const isSchemaIssue = dbError.code === 'ER_NO_SUCH_TABLE'
+          || dbError.code === 'ER_BAD_FIELD_ERROR'
+          || /student_collectibles|collectible_cards/i.test(errorDetails);
+
+        logger.error('Error al consultar cartas recolectadas para progreso de álbum', {
+          classroomId,
+          albumId,
+          studentCount: students.length,
+          error: dbError.message,
+          code: dbError.code,
+          errno: dbError.errno,
+          sqlMessage: dbError.sqlMessage,
+        });
+
+        if (!isSchemaIssue) {
+          throw error;
+        }
+      }
+
+      let completedRows: Array<{
+        studentProfileId: string;
+        completedAt: Date;
+      }> = [];
+
+      try {
+        completedRows = await db
+          .select({
+            studentProfileId: completedAlbums.studentProfileId,
+            completedAt: completedAlbums.completedAt,
+          })
+          .from(completedAlbums)
+          .where(and(
+            inArray(completedAlbums.studentProfileId, studentIds),
+            eq(completedAlbums.albumId, albumId)
+          ));
+      } catch (error) {
+        const dbError = error as {
+          code?: string;
+          errno?: number;
+          message?: string;
+          sqlMessage?: string;
+        };
+        const errorDetails = `${dbError.message || ''} ${dbError.sqlMessage || ''}`;
+        const isSchemaIssue = dbError.code === 'ER_NO_SUCH_TABLE'
+          || dbError.code === 'ER_BAD_FIELD_ERROR'
+          || /completed_albums/i.test(errorDetails);
+
+        logger.error('Error al consultar álbumes completados para progreso de álbum', {
+          classroomId,
+          albumId,
+          studentCount: students.length,
+          error: dbError.message,
+          code: dbError.code,
+          errno: dbError.errno,
+          sqlMessage: dbError.sqlMessage,
+        });
+
+        if (!isSchemaIssue) {
+          throw error;
+        }
+      }
+
+      const uniqueCollectedByStudent = new Map<string, Set<string>>();
+      for (const row of collectedRows) {
+        if (row.isShiny) continue;
+
+        const existing = uniqueCollectedByStudent.get(row.studentProfileId) || new Set<string>();
+        existing.add(row.cardId);
+        uniqueCollectedByStudent.set(row.studentProfileId, existing);
+      }
+
+      const completedByStudent = new Map(
+        completedRows.map((row) => [row.studentProfileId, row.completedAt] as const)
+      );
+
+      const studentsProgress = students.map((student) => {
+        const uniqueCollected = uniqueCollectedByStudent.get(student.id)?.size || 0;
+        const progress = totalCards > 0
+          ? Math.round(((uniqueCollected / totalCards) * 100) * 100) / 100
+          : 0;
+        const completedAt = completedByStudent.get(student.id) || null;
+
         return {
           studentId: student.id,
           studentName: student.displayName || student.characterName || 'Sin nombre',
-          progress: collection?.progress || 0,
-          uniqueCollected: collection?.uniqueCollected || 0,
-          isCompleted: collection?.isCompleted || false,
-          completedAt: collection?.completedAt,
+          progress,
+          uniqueCollected,
+          isCompleted: !!completedAt,
+          completedAt,
         };
-      })
-    );
+      });
 
-    // Ordenar por progreso descendente
-    studentsProgress.sort((a, b) => b.progress - a.progress);
+      return buildResponse(studentsProgress);
+    } catch (error) {
+      const dbError = error as {
+        code?: string;
+        errno?: number;
+        message?: string;
+        sqlMessage?: string;
+      };
+      const errorDetails = `${dbError.message || ''} ${dbError.sqlMessage || ''}`;
+      const isSchemaIssue = dbError.code === 'ER_NO_SUCH_TABLE'
+        || dbError.code === 'ER_BAD_FIELD_ERROR'
+        || /completed_albums|student_collectibles|collectible_cards/i.test(errorDetails);
 
-    const completedCount = studentsProgress.filter(s => s.isCompleted).length;
-    const avgProgress = studentsProgress.length > 0
-      ? studentsProgress.reduce((sum, s) => sum + s.progress, 0) / studentsProgress.length
-      : 0;
+      logger.error('Error al calcular progreso de álbum de coleccionables', {
+        classroomId,
+        albumId,
+        studentCount: students.length,
+        error: dbError.message,
+        code: dbError.code,
+        errno: dbError.errno,
+        sqlMessage: dbError.sqlMessage,
+      });
 
-    return {
-      album,
-      students: studentsProgress,
-      totalStudents: students.length,
-      completedCount,
-      averageProgress: Math.round(avgProgress * 100) / 100,
-    };
+      if (isSchemaIssue) {
+        return buildResponse(emptyStudentsProgress);
+      }
+
+      throw error;
+    }
   }
 
   // ==================== PROGRESO DE ESTUDIANTE (TODOS LOS ÁLBUMES) ====================
