@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Users, Copy, Check, Trash2, X, GraduationCap, Sparkles, BookOpen, Layers, Award, ShoppingBag, HelpCircle, School, MoreVertical, ChevronDown, User, Search } from 'lucide-react';
+import { Plus, Users, Copy, Check, Trash2, X, GraduationCap, Sparkles, BookOpen, Layers, Award, ShoppingBag, HelpCircle, School, MoreVertical, ChevronDown, ChevronLeft, User, Search } from 'lucide-react';
 import { classroomApi, type Classroom, type CreateClassroomData } from '../../lib/classroomApi';
 import { schoolApi, type MySchool } from '../../lib/schoolApi';
 import { AIClassroomWizard } from '../../components/classroom/AIClassroomWizard';
@@ -149,246 +149,281 @@ export const ClassroomsPage = () => {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-violet-500/30">
-            <GraduationCap size={22} />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold text-gray-800 dark:text-white">Mis Clases</h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Gestiona tus aulas y estudiantes</p>
-          </div>
-        </div>
-        {canCreateClasses && (
-          <div className="flex items-center gap-2">
-            {/* Options button - solo si tiene escuelas verificadas */}
-            {pageVerifiedSchools.length > 0 && (
-              <div className="relative">
-                <button
-                  onClick={() => setShowOptionsMenu(!showOptionsMenu)}
-                  className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors"
-                  title="Opciones"
-                >
-                  <MoreVertical size={20} />
-                </button>
-                {showOptionsMenu && (
-                  <>
-                    <div className="fixed inset-0 z-10" onClick={() => setShowOptionsMenu(false)} />
-                    <div className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 z-20 py-1">
-                      <button
-                        onClick={() => {
-                          setShowBulkAssignModal(true);
-                          setShowOptionsMenu(false);
-                        }}
-                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                      >
-                        <School size={16} className="text-blue-500" />
-                        Asignar clases a escuela
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-            <button 
-              onClick={() => setShowAIWizard(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-sm font-medium rounded-xl shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 transition-shadow"
-            >
-              <Sparkles size={18} />
-              Crear con IA
-            </button>
-            <button 
-              onClick={() => setShowCreateModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-violet-500 to-purple-500 text-white text-sm font-medium rounded-xl shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 transition-shadow"
-            >
-              <Plus size={18} />
-              Nueva Clase
-            </button>
-          </div>
-        )}
-      </div>
-
-      {!isLoading && !isError && (classrooms?.length || 0) > 0 && (
-        <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg p-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="relative w-full md:max-w-md">
-              <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Buscar clase por nombre..."
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 text-gray-800 dark:text-white text-sm outline-none focus:ring-2 focus:ring-violet-500"
-              />
+      {showAIWizard ? (
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <img
+              src="/logo-solo.png"
+              alt="Juried"
+              className="h-11 w-11 rounded-xl object-contain shadow-lg shadow-emerald-500/15"
+            />
+            <div>
+              <h1 className="text-lg font-bold text-gray-800 dark:text-white">Crear Clase con Jiro <span className="font-semibold text-gray-500 dark:text-gray-400">(Fase Beta)</span></h1>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Diseña tu clase guiado por Jiro y revísala antes de crearla.</p>
             </div>
+          </div>
 
-            <p className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
-              {searchTerm.trim()
-                ? `${filteredClassroomsCount} resultado(s)`
-                : `${classrooms?.length || 0} clase(s)`}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Lista de clases */}
-      {isLoading ? (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-44 bg-white/50 dark:bg-gray-800/50 rounded-xl animate-pulse" />
-          ))}
-        </div>
-      ) : isError ? (
-        <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg text-center py-12 px-6">
-          <p className="text-red-500 mb-2">Error al cargar las clases</p>
-          <button 
-            onClick={() => window.location.reload()}
-            className="text-sm text-violet-600 hover:underline"
-          >
-            Reintentar
-          </button>
-        </div>
-      ) : classrooms?.length === 0 ? (
-        <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg text-center py-12 px-6">
-          <div className="w-16 h-16 mx-auto mb-4 bg-violet-100 dark:bg-violet-900/30 rounded-2xl flex items-center justify-center">
-            <Sparkles size={28} className="text-violet-500" />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">
-            No tienes clases aún
-          </h3>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mb-5">
-            Crea tu primera clase para comenzar la aventura
-          </p>
-          <button 
-            onClick={() => setShowCreateModal(true)}
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-violet-500 to-purple-500 text-white text-sm font-medium rounded-xl shadow-lg shadow-violet-500/25"
-          >
-            <Plus size={18} />
-            Crear mi primera clase
-          </button>
-        </div>
-      ) : filteredClassroomsCount === 0 ? (
-        <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg text-center py-12 px-6">
-          <div className="w-16 h-16 mx-auto mb-4 bg-violet-100 dark:bg-violet-900/30 rounded-2xl flex items-center justify-center">
-            <Search size={28} className="text-violet-500" />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">
-            No se encontraron clases
-          </h3>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mb-5">
-            No hay coincidencias para "{searchTerm.trim()}".
-          </p>
           <button
-            onClick={() => setSearchTerm('')}
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-violet-500 to-purple-500 text-white text-sm font-medium rounded-xl shadow-lg shadow-violet-500/25"
+            type="button"
+            onClick={() => setShowAIWizard(false)}
+            className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
           >
-            <X size={18} />
-            Limpiar búsqueda
+            <ChevronLeft size={16} />
+            Volver a clases
           </button>
         </div>
       ) : (
-        <div className="space-y-4">
-          {/* Secciones de escuelas */}
-          {filteredGroupedClassrooms.schools.map(({ school, classrooms: schoolClassrooms }) => (
-            <div key={school.id} className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg overflow-hidden">
-              <button
-                onClick={() => toggleSection(school.id)}
-                className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-white shadow-md shadow-blue-500/20">
-                    <School size={18} />
-                  </div>
-                  <div className="text-left">
-                    <h2 className="text-sm font-bold text-gray-800 dark:text-white">{school.name}</h2>
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400">{schoolClassrooms.length} clase{schoolClassrooms.length !== 1 ? 's' : ''}</p>
-                  </div>
-                </div>
-                <ChevronDown
-                  size={18}
-                  className={`text-gray-400 transition-transform duration-200 ${isSectionExpanded(school.id) ? 'rotate-180' : ''}`}
-                />
-              </button>
-              <AnimatePresence initial={false}>
-                {isSectionExpanded(school.id) && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 px-5 pb-5">
-                      {schoolClassrooms.map((classroom, index) => (
-                        <ClassroomCard
-                          key={classroom.id}
-                          classroom={classroom}
-                          index={index}
-                          onCopyCode={copyCode}
-                          copiedCode={copiedCode}
-                          onDelete={(id) => handleDelete(classrooms?.find(c => c.id === id)!)}
-                          onClone={(id) => setCloningClassroom(classrooms?.find(c => c.id === id)!)}
-                          onView={(id) => navigate(`/classroom/${id}`)}
-                        />
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-violet-500/30">
+              <GraduationCap size={22} />
             </div>
-          ))}
-
-          {/* Sección de clases personales */}
-          {filteredGroupedClassrooms.personal.length > 0 && (
-            <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg overflow-hidden">
-              <button
-                onClick={() => toggleSection('personal')}
-                className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 bg-gradient-to-br from-gray-400 to-gray-500 rounded-xl flex items-center justify-center text-white shadow-md shadow-gray-400/20">
-                    <User size={18} />
-                  </div>
-                  <div className="text-left">
-                    <h2 className="text-sm font-bold text-gray-800 dark:text-white">Clases Personales</h2>
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400">{filteredGroupedClassrooms.personal.length} clase{filteredGroupedClassrooms.personal.length !== 1 ? 's' : ''}</p>
-                  </div>
-                </div>
-                <ChevronDown
-                  size={18}
-                  className={`text-gray-400 transition-transform duration-200 ${isSectionExpanded('personal') ? 'rotate-180' : ''}`}
-                />
-              </button>
-              <AnimatePresence initial={false}>
-                {isSectionExpanded('personal') && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="overflow-hidden"
+            <div>
+              <h1 className="text-lg font-bold text-gray-800 dark:text-white">Mis Clases</h1>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Gestiona tus aulas y estudiantes</p>
+            </div>
+          </div>
+          {canCreateClasses && (
+            <div className="flex items-center gap-2">
+              {pageVerifiedSchools.length > 0 && (
+                <div className="relative">
+                  <button
+                    onClick={() => setShowOptionsMenu(!showOptionsMenu)}
+                    className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors"
+                    title="Opciones"
                   >
-                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 px-5 pb-5">
-                      {filteredGroupedClassrooms.personal.map((classroom, index) => (
-                        <ClassroomCard
-                          key={classroom.id}
-                          classroom={classroom}
-                          index={index}
-                          onCopyCode={copyCode}
-                          copiedCode={copiedCode}
-                          onDelete={(id) => handleDelete(classrooms?.find(c => c.id === id)!)}
-                          onClone={(id) => setCloningClassroom(classrooms?.find(c => c.id === id)!)}
-                          onView={(id) => navigate(`/classroom/${id}`)}
-                        />
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                    <MoreVertical size={20} />
+                  </button>
+                  {showOptionsMenu && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setShowOptionsMenu(false)} />
+                      <div className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 z-20 py-1">
+                        <button
+                          onClick={() => {
+                            setShowBulkAssignModal(true);
+                            setShowOptionsMenu(false);
+                          }}
+                          className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                        >
+                          <School size={16} className="text-blue-500" />
+                          Asignar clases a escuela
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+              <button 
+                onClick={() => {
+                  setShowOptionsMenu(false);
+                  setShowAIWizard(true);
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white text-sm font-medium rounded-xl shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 transition-shadow"
+              >
+                <Sparkles size={18} />
+                Crear con Jiro (Beta)
+              </button>
+              <button 
+                onClick={() => setShowCreateModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-violet-500 to-purple-500 text-white text-sm font-medium rounded-xl shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40 transition-shadow"
+              >
+                <Plus size={18} />
+                Nueva Clase
+              </button>
             </div>
           )}
         </div>
+      )}
+
+      {showAIWizard ? (
+        <AIClassroomWizard
+          isOpen={showAIWizard}
+          onClose={() => setShowAIWizard(false)}
+          onSuccess={(classroomId) => {
+            navigate(`/classroom/${classroomId}`);
+          }}
+        />
+      ) : (
+        <>
+          {!isLoading && !isError && (classrooms?.length || 0) > 0 && (
+            <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg p-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="relative w-full md:max-w-md">
+                  <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Buscar clase por nombre..."
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/60 text-gray-800 dark:text-white text-sm outline-none focus:ring-2 focus:ring-violet-500"
+                  />
+                </div>
+
+                <p className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                  {searchTerm.trim()
+                    ? `${filteredClassroomsCount} resultado(s)`
+                    : `${classrooms?.length || 0} clase(s)`}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {isLoading ? (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-44 bg-white/50 dark:bg-gray-800/50 rounded-xl animate-pulse" />
+              ))}
+            </div>
+          ) : isError ? (
+            <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg text-center py-12 px-6">
+              <p className="text-red-500 mb-2">Error al cargar las clases</p>
+              <button 
+                onClick={() => window.location.reload()}
+                className="text-sm text-violet-600 hover:underline"
+              >
+                Reintentar
+              </button>
+            </div>
+          ) : classrooms?.length === 0 ? (
+            <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg text-center py-12 px-6">
+              <div className="w-16 h-16 mx-auto mb-4 bg-violet-100 dark:bg-violet-900/30 rounded-2xl flex items-center justify-center">
+                <Sparkles size={28} className="text-violet-500" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">
+                No tienes clases aún
+              </h3>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mb-5">
+                Crea tu primera clase para comenzar la aventura
+              </p>
+              <button 
+                onClick={() => setShowCreateModal(true)}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-violet-500 to-purple-500 text-white text-sm font-medium rounded-xl shadow-lg shadow-violet-500/25"
+              >
+                <Plus size={18} />
+                Crear mi primera clase
+              </button>
+            </div>
+          ) : filteredClassroomsCount === 0 ? (
+            <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg text-center py-12 px-6">
+              <div className="w-16 h-16 mx-auto mb-4 bg-violet-100 dark:bg-violet-900/30 rounded-2xl flex items-center justify-center">
+                <Search size={28} className="text-violet-500" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">
+                No se encontraron clases
+              </h3>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mb-5">
+                No hay coincidencias para "{searchTerm.trim()}".
+              </p>
+              <button
+                onClick={() => setSearchTerm('')}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-violet-500 to-purple-500 text-white text-sm font-medium rounded-xl shadow-lg shadow-violet-500/25"
+              >
+                <X size={18} />
+                Limpiar búsqueda
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {filteredGroupedClassrooms.schools.map(({ school, classrooms: schoolClassrooms }) => (
+                <div key={school.id} className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg overflow-hidden">
+                  <button
+                    onClick={() => toggleSection(school.id)}
+                    className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center text-white shadow-md shadow-blue-500/20">
+                        <School size={18} />
+                      </div>
+                      <div className="text-left">
+                        <h2 className="text-sm font-bold text-gray-800 dark:text-white">{school.name}</h2>
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400">{schoolClassrooms.length} clase{schoolClassrooms.length !== 1 ? 's' : ''}</p>
+                      </div>
+                    </div>
+                    <ChevronDown
+                      size={18}
+                      className={`text-gray-400 transition-transform duration-200 ${isSectionExpanded(school.id) ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+                  <AnimatePresence initial={false}>
+                    {isSectionExpanded(school.id) && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 px-5 pb-5">
+                          {schoolClassrooms.map((classroom, index) => (
+                            <ClassroomCard
+                              key={classroom.id}
+                              classroom={classroom}
+                              index={index}
+                              onCopyCode={copyCode}
+                              copiedCode={copiedCode}
+                              onDelete={(id) => handleDelete(classrooms?.find(c => c.id === id)!)}
+                              onClone={(id) => setCloningClassroom(classrooms?.find(c => c.id === id)!)}
+                              onView={(id) => navigate(`/classroom/${id}`)}
+                            />
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              ))}
+
+              {filteredGroupedClassrooms.personal.length > 0 && (
+                <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg overflow-hidden">
+                  <button
+                    onClick={() => toggleSection('personal')}
+                    className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 bg-gradient-to-br from-gray-400 to-gray-500 rounded-xl flex items-center justify-center text-white shadow-md shadow-gray-400/20">
+                        <User size={18} />
+                      </div>
+                      <div className="text-left">
+                        <h2 className="text-sm font-bold text-gray-800 dark:text-white">Clases Personales</h2>
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400">{filteredGroupedClassrooms.personal.length} clase{filteredGroupedClassrooms.personal.length !== 1 ? 's' : ''}</p>
+                      </div>
+                    </div>
+                    <ChevronDown
+                      size={18}
+                      className={`text-gray-400 transition-transform duration-200 ${isSectionExpanded('personal') ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+                  <AnimatePresence initial={false}>
+                    {isSectionExpanded('personal') && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 px-5 pb-5">
+                          {filteredGroupedClassrooms.personal.map((classroom, index) => (
+                            <ClassroomCard
+                              key={classroom.id}
+                              classroom={classroom}
+                              index={index}
+                              onCopyCode={copyCode}
+                              copiedCode={copiedCode}
+                              onDelete={(id) => handleDelete(classrooms?.find(c => c.id === id)!)}
+                              onClone={(id) => setCloningClassroom(classrooms?.find(c => c.id === id)!)}
+                              onView={(id) => navigate(`/classroom/${id}`)}
+                            />
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
 
       {/* Modal de crear clase */}
@@ -397,15 +432,6 @@ export const ClassroomsPage = () => {
         onClose={() => setShowCreateModal(false)}
         onSubmit={(data) => createMutation.mutate(data)}
         isLoading={createMutation.isPending}
-      />
-
-      {/* Modal de crear clase con IA */}
-      <AIClassroomWizard
-        isOpen={showAIWizard}
-        onClose={() => setShowAIWizard(false)}
-        onSuccess={(classroomId) => {
-          navigate(`/classroom/${classroomId}`);
-        }}
       />
 
       {/* Modal de confirmación de eliminación */}

@@ -23,6 +23,13 @@ router.get(
   collectibleController.getAlbums
 );
 
+// Listar álbumes importables desde otras clases del profesor
+router.get(
+  '/classroom/:classroomId/importable-albums',
+  authorize('TEACHER'),
+  collectibleController.getImportableAlbums
+);
+
 // Obtener álbum con cartas
 router.get(
   '/albums/:albumId',
@@ -42,6 +49,13 @@ router.delete(
   '/albums/:albumId',
   authorize('TEACHER'),
   collectibleController.deleteAlbum
+);
+
+// Copiar álbum a otras clases del profesor
+router.post(
+  '/albums/:albumId/clone',
+  authorize('TEACHER'),
+  collectibleController.cloneAlbum
 );
 
 // ==================== CARTAS (PROFESOR) ====================

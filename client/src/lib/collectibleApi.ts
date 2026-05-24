@@ -148,6 +148,24 @@ export interface CreateCardData {
   slotNumber?: number;
 }
 
+export interface ImportableAlbumSource {
+  classroomId: string;
+  classroomName: string;
+  albums: CollectibleAlbum[];
+}
+
+export interface CloneAlbumResult {
+  sourceAlbumId: string;
+  sourceAlbumName: string;
+  totalCards: number;
+  skippedRewardBadge: boolean;
+  created: Array<{
+    classroomId: string;
+    classroomName: string;
+    albumId: string;
+  }>;
+}
+
 export interface GenerateAlbumRequest {
   theme: string;
   cardCount: number;
@@ -176,6 +194,11 @@ export const collectibleApi = {
     return response.data;
   },
 
+  getImportableAlbums: async (classroomId: string): Promise<ImportableAlbumSource[]> => {
+    const response = await api.get(`/collectibles/classroom/${classroomId}/importable-albums`);
+    return response.data;
+  },
+
   getAlbumById: async (albumId: string): Promise<AlbumWithCards> => {
     const response = await api.get(`/collectibles/albums/${albumId}`);
     return response.data;
@@ -188,6 +211,11 @@ export const collectibleApi = {
 
   deleteAlbum: async (albumId: string): Promise<void> => {
     await api.delete(`/collectibles/albums/${albumId}`);
+  },
+
+  cloneAlbum: async (albumId: string, targetClassroomIds: string[]): Promise<CloneAlbumResult> => {
+    const response = await api.post(`/collectibles/albums/${albumId}/clone`, { targetClassroomIds });
+    return response.data;
   },
 
   // ==================== CARTAS ====================

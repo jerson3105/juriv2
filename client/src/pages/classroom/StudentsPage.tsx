@@ -1325,10 +1325,10 @@ export const StudentsPage = () => {
             <Users className="w-8 h-8 text-blue-500" />
           </div>
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-2">
-            Agregá a tus estudiantes
+            Agrega estudiantes a tu clase
           </h3>
           <p className="text-gray-600 dark:text-gray-300 text-sm mb-2 max-w-md mx-auto">
-            Agregá a tus estudiantes para empezar a gamificar tu clase. Podés hacerlo uno por uno o compartiendo el código de clase.
+            Agrega estudiantes a tu clase para empezar a gamificarla. Puedes hacerlo uno por uno o compartiendo el código de clase.
           </p>
           <p className="text-gray-500 dark:text-gray-400 text-sm mb-6">
             Código: <span className="font-mono font-bold px-2 py-1 bg-blue-100 text-blue-700 rounded">{classroom.code}</span>

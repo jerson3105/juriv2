@@ -34,6 +34,26 @@ export const collectibleController = {
     }
   },
 
+  async getImportableAlbums(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { classroomId } = req.params;
+      const teacherId = req.user?.id;
+
+      if (!teacherId) {
+        return res.status(401).json({ message: 'No autenticado' });
+      }
+
+      const importableAlbums = await collectibleService.getImportableAlbumsForTeacher(teacherId, classroomId);
+      res.json(importableAlbums);
+    } catch (error: any) {
+      if (error.message === 'Aula no encontrada') {
+        return res.status(404).json({ message: error.message });
+      }
+
+      next(error);
+    }
+  },
+
   async getAlbumById(req: Request, res: Response, next: NextFunction) {
     try {
       const { albumId } = req.params;
@@ -67,6 +87,44 @@ export const collectibleController = {
       await collectibleService.deleteAlbum(albumId);
       res.status(204).send();
     } catch (error) {
+      next(error);
+    }
+  },
+
+  async cloneAlbum(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { albumId } = req.params;
+      const { targetClassroomIds } = req.body;
+      const teacherId = req.user?.id;
+
+      if (!teacherId) {
+        return res.status(401).json({ message: 'No autenticado' });
+      }
+
+      const result = await collectibleService.cloneAlbumToClassrooms(
+        teacherId,
+        albumId,
+        Array.isArray(targetClassroomIds) ? targetClassroomIds : []
+      );
+
+      res.status(201).json(result);
+    } catch (error: any) {
+      if (error.message === 'Álbum no encontrado' || error.message === 'Aula no encontrada') {
+        return res.status(404).json({ message: error.message });
+      }
+
+      if (error.message === 'No tienes acceso a este álbum') {
+        return res.status(403).json({ message: error.message });
+      }
+
+      if (
+        error.message === 'Selecciona al menos una clase destino' ||
+        error.message === 'Selecciona otra clase destino' ||
+        error.message === 'Hay clases destino no válidas'
+      ) {
+        return res.status(400).json({ message: error.message });
+      }
+
       next(error);
     }
   },

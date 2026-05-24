@@ -1,32 +1,55 @@
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Sparkles, X, ChevronRight, ChevronLeft, Check, GraduationCap,
-  BookOpen, Award, ShoppingBag, HelpCircle, Loader2,
-  Edit2, Trash2, Heart, Coins,
+  Sparkles,
+  ChevronRight,
+  ChevronLeft,
+  Check,
+  BookOpen,
+  Award,
+  ShoppingBag,
+  HelpCircle,
+  Loader2,
+  Lock,
+  Wand2,
+  Users,
+  Trophy,
+  Settings2,
+  CalendarCheck,
+  Gem,
+  ScrollText,
+  Map,
+  Gamepad2,
+  ShieldCheck,
+  type LucideIcon,
 } from 'lucide-react';
-import { classroomApi } from '../../lib/classroomApi';
+import {
+  classroomApi,
+  type AIClassroomBlueprint,
+  type AIClassroomBlueprintModule,
+  type AIClassroomFeatureKey,
+} from '../../lib/classroomApi';
 import { behaviorApi } from '../../lib/behaviorApi';
 import { badgeApi } from '../../lib/badgeApi';
 import { shopApi } from '../../lib/shopApi';
-import { questionBankApi } from '../../lib/questionBankApi';
+import { storyApi, type ThemeConfig } from '../../lib/storyApi';
 import toast from 'react-hot-toast';
-import api from '../../lib/api';
 
-// Constantes
-const SUBJECTS = [
-  { value: 'matematicas', label: 'Matemáticas', emoji: '📐' },
-  { value: 'comunicacion', label: 'Comunicación', emoji: '📝' },
-  { value: 'ciencias', label: 'Ciencias', emoji: '🔬' },
-  { value: 'historia', label: 'Historia', emoji: '🏛️' },
-  { value: 'ingles', label: 'Inglés', emoji: '🇬🇧' },
-  { value: 'arte', label: 'Arte', emoji: '🎨' },
-  { value: 'educacion_fisica', label: 'Educación Física', emoji: '⚽' },
-  { value: 'tecnologia', label: 'Tecnología', emoji: '💻' },
-];
+const SUBJECT_OPTIONS = [
+  { value: '', label: 'Seleccionar asignatura...' },
+  { value: 'matematicas', label: 'Matemáticas' },
+  { value: 'comunicacion', label: 'Comunicación' },
+  { value: 'ciencias', label: 'Ciencias' },
+  { value: 'historia', label: 'Historia' },
+  { value: 'ingles', label: 'Inglés' },
+  { value: 'arte', label: 'Arte' },
+  { value: 'educacion_fisica', label: 'Educación Física' },
+  { value: 'tecnologia', label: 'Tecnología' },
+] as const;
 
-const GRADE_LEVELS = [
+const GRADE_LEVEL_OPTIONS = [
+  { value: '', label: 'Seleccionar nivel...' },
   { value: 'inicial', label: 'Inicial (3-5 años)' },
   { value: 'primaria_baja', label: 'Primaria (6-8 años)' },
   { value: 'primaria_alta', label: 'Primaria (9-11 años)' },
@@ -34,16 +57,152 @@ const GRADE_LEVELS = [
   { value: 'secundaria_alta', label: 'Secundaria (15-17 años)' },
   { value: 'preparatoria', label: 'Preparatoria/Bachillerato' },
   { value: 'universidad', label: 'Universidad' },
-];
+] as const;
 
-const STEPS = [
-  { id: 'info', title: 'Información', icon: <GraduationCap size={16} /> },
-  { id: 'behaviors', title: 'Comportamientos', icon: <BookOpen size={16} /> },
-  { id: 'badges', title: 'Insignias', icon: <Award size={16} /> },
-  { id: 'shop', title: 'Tienda', icon: <ShoppingBag size={16} /> },
-  { id: 'questions', title: 'Preguntas', icon: <HelpCircle size={16} /> },
-  { id: 'review', title: 'Resumen', icon: <Check size={16} /> },
-];
+const GRADE_SCALE_OPTIONS = [
+  { value: 'PERU_LETTERS', label: 'Perú - Letras (AD, A, B, C)' },
+  { value: 'PERU_VIGESIMAL', label: 'Perú - Vigesimal (0-20)' },
+] as const;
+
+type EditablePreviewModuleKey = 'behaviors' | 'badges' | 'shop' | 'storytelling';
+
+type PreviewState = {
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  error: string | null;
+};
+
+type BehaviorDraft = {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  isPositive: boolean;
+  pointType: 'XP' | 'HP' | 'GP';
+  pointValue: number;
+  competencyId: string;
+};
+
+type BadgeDraft = {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  rarity: string;
+  assignmentMode: 'MANUAL' | 'AUTOMATIC' | 'BOTH';
+  rewardXp: number;
+  rewardGp: number;
+  competencyId: string;
+  triggerCondition: string;
+};
+
+type ShopDraft = {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  category: string;
+  rarity: string;
+  price: number;
+};
+
+type ThemeDraft = {
+  name: string;
+  themeConfig: ThemeConfig;
+};
+
+const SELECTABLE_MODULES: AIClassroomFeatureKey[] = ['behaviors', 'badges', 'shop', 'clans', 'storytelling'];
+const HIDDEN_WIZARD_MODULES: AIClassroomFeatureKey[] = ['question_bank'];
+const EDITABLE_PREVIEW_MODULES: EditablePreviewModuleKey[] = ['behaviors', 'badges', 'shop', 'storytelling'];
+
+const FEATURE_ICONS: Record<AIClassroomFeatureKey, LucideIcon> = {
+  students: Users,
+  behaviors: Award,
+  rankings: Trophy,
+  grades: BookOpen,
+  settings: Settings2,
+  badges: ShieldCheck,
+  shop: ShoppingBag,
+  clans: Users,
+  attendance: CalendarCheck,
+  collectibles: Gem,
+  storytelling: ScrollText,
+  expedition: Map,
+  question_bank: HelpCircle,
+  activities: Gamepad2,
+};
+
+type DraftClassroom = {
+  name: string;
+  description: string;
+  subject: string;
+  gradeLevel: string;
+  educationLevel: '' | 'PRIMARIA' | 'SECUNDARIA';
+  useCompetencies: boolean;
+  curriculumAreaId: string;
+  gradeScaleType: 'PERU_LETTERS' | 'PERU_VIGESIMAL' | 'CENTESIMAL' | 'USA_LETTERS' | 'CUSTOM';
+};
+
+type ReviewSectionKey = 'classroom' | 'competencies' | AIClassroomFeatureKey;
+
+type ReviewSection = {
+  key: ReviewSectionKey;
+  title: string;
+  subtitle: string;
+  loaderMessage: string;
+  module?: AIClassroomBlueprintModule;
+};
+
+const buildEmptySelections = (): Record<AIClassroomFeatureKey, boolean> => ({
+  students: false,
+  behaviors: false,
+  rankings: false,
+  grades: false,
+  settings: false,
+  badges: false,
+  shop: false,
+  clans: false,
+  attendance: false,
+  collectibles: false,
+  storytelling: false,
+  expedition: false,
+  question_bank: false,
+  activities: false,
+});
+
+const buildPreviewStates = (): Record<EditablePreviewModuleKey, PreviewState> => ({
+  behaviors: { status: 'idle', error: null },
+  badges: { status: 'idle', error: null },
+  shop: { status: 'idle', error: null },
+  storytelling: { status: 'idle', error: null },
+});
+
+const emptyDraft: DraftClassroom = {
+  name: '',
+  description: '',
+  subject: '',
+  gradeLevel: '',
+  educationLevel: '',
+  useCompetencies: false,
+  curriculumAreaId: '',
+  gradeScaleType: 'PERU_LETTERS',
+};
+
+const normalizeForMatch = (value: string) => value
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, ' ')
+  .trim();
+
+const buildDraftId = (prefix: string, index: number) => `${prefix}-${index}-${Math.random().toString(36).slice(2, 8)}`;
+
+const getSubjectLabel = (value: string) => SUBJECT_OPTIONS.find((option) => option.value === value)?.label || 'Sin definir';
+const getGradeLabel = (value: string) => GRADE_LEVEL_OPTIONS.find((option) => option.value === value)?.label || 'Sin definir';
+const isSelectableModule = (featureKey: AIClassroomFeatureKey) => SELECTABLE_MODULES.includes(featureKey);
+const isHiddenWizardModule = (featureKey: AIClassroomFeatureKey) => HIDDEN_WIZARD_MODULES.includes(featureKey);
+const isEditablePreviewModule = (featureKey: AIClassroomFeatureKey): featureKey is EditablePreviewModuleKey => (
+  EDITABLE_PREVIEW_MODULES.includes(featureKey as EditablePreviewModuleKey)
+);
 
 interface Props {
   isOpen: boolean;
@@ -54,1117 +213,2041 @@ interface Props {
 export const AIClassroomWizard = ({ isOpen, onClose, onSuccess }: Props) => {
   const queryClient = useQueryClient();
   const [currentStep, setCurrentStep] = useState(0);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [activeReviewIndex, setActiveReviewIndex] = useState(0);
+  const [teacherPrompt, setTeacherPrompt] = useState('');
+  const [blueprint, setBlueprint] = useState<AIClassroomBlueprint | null>(null);
+  const [classDraft, setClassDraft] = useState<DraftClassroom>(emptyDraft);
+  const [moduleSelections, setModuleSelections] = useState<Record<AIClassroomFeatureKey, boolean>>(buildEmptySelections());
+  const [curriculumAreaHint, setCurriculumAreaHint] = useState('');
+  const [isPlanning, setIsPlanning] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [isStepThinking, setIsStepThinking] = useState(false);
+  const [editingReviewStep, setEditingReviewStep] = useState<ReviewSectionKey | null>(null);
+  const [creationStatus, setCreationStatus] = useState('');
+  const [behaviorDrafts, setBehaviorDrafts] = useState<BehaviorDraft[]>([]);
+  const [badgeDrafts, setBadgeDrafts] = useState<BadgeDraft[]>([]);
+  const [shopDrafts, setShopDrafts] = useState<ShopDraft[]>([]);
+  const [storyThemeDraft, setStoryThemeDraft] = useState<ThemeDraft | null>(null);
+  const [storyThemePrompt, setStoryThemePrompt] = useState('');
+  const [previewStates, setPreviewStates] = useState<Record<EditablePreviewModuleKey, PreviewState>>(buildPreviewStates());
+  const reviewTransitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Datos de la clase
-  const [classData, setClassData] = useState({
-    name: '', description: '', subject: '', gradeLevel: '', useCompetencies: false,
-    educationLevel: '' as '' | 'PRIMARIA' | 'SECUNDARIA',
-    curriculumAreaId: '', gradeScaleType: 'PERU_LETTERS' as 'PERU_LETTERS' | 'PERU_VIGESIMAL' | 'CENTESIMAL' | 'USA_LETTERS',
-  });
-
-  // Query para áreas curriculares filtradas por nivel educativo
   const { data: curriculumAreas = [] } = useQuery({
-    queryKey: ['curriculum-areas', classData.educationLevel],
-    queryFn: () => classroomApi.getCurriculumAreas('PE', classData.educationLevel || undefined),
-    enabled: classData.useCompetencies && !!classData.educationLevel,
+    queryKey: ['curriculum-areas', classDraft.educationLevel],
+    queryFn: () => classroomApi.getCurriculumAreas('PE', classDraft.educationLevel || undefined),
+    enabled: classDraft.useCompetencies && !!classDraft.educationLevel,
   });
 
-  // Opciones de generación
-  const [behaviorsDesc, setBehaviorsDesc] = useState('');
-  const [behaviorsCount, setBehaviorsCount] = useState(10);
-  const [pointMode, setPointMode] = useState('COMBINED');
-  const [includePositive, setIncludePositive] = useState(true);
-  const [includeNegative, setIncludeNegative] = useState(true);
+  const selectedCurriculumArea = curriculumAreas.find((area) => area.id === classDraft.curriculumAreaId) || null;
+  const suggestedCurriculumArea = !selectedCurriculumArea && classDraft.useCompetencies && curriculumAreaHint && curriculumAreas.length
+    ? curriculumAreas.find((area) => {
+      const areaName = normalizeForMatch(area.name);
+      const shortName = normalizeForMatch(area.shortName || '');
+      const hint = normalizeForMatch(curriculumAreaHint);
+      return areaName === hint || shortName === hint || areaName.includes(hint) || hint.includes(areaName);
+    }) || null
+    : null;
+  const resolvedCurriculumArea = selectedCurriculumArea || suggestedCurriculumArea;
+  const selectedCompetencies = resolvedCurriculumArea?.competencies || [];
+  const competenciesPayload = classDraft.useCompetencies
+    ? selectedCompetencies.map((competency) => ({ id: competency.id, name: competency.name }))
+    : undefined;
 
-  const [badgesDesc, setBadgesDesc] = useState('');
-  const [badgesCount, setBadgesCount] = useState(8);
-  const [badgeAssignmentMode, setBadgeAssignmentMode] = useState('MANUAL');
-
-  const [shopDesc, setShopDesc] = useState('');
-  const [shopCount, setShopCount] = useState(8);
-
-  const [questionBankName, setQuestionBankName] = useState('');
-  const [questionsDesc, setQuestionsDesc] = useState('');
-  const [questionsCount, setQuestionsCount] = useState(15);
-  const [questionTypes, setQuestionTypes] = useState(new Set(['TRUE_FALSE', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE']));
-  const [includeQuestionBank, setIncludeQuestionBank] = useState(false);
-
-  // Contenido generado
-  const [generated, setGenerated] = useState<any>({
-    behaviors: [], badges: [], shopItems: [], questionBank: null,
-  });
-
-  // Selección
-  const [selectedBehaviors, setSelectedBehaviors] = useState<Set<number>>(new Set());
-  const [selectedBadges, setSelectedBadges] = useState<Set<number>>(new Set());
-  const [selectedShopItems, setSelectedShopItems] = useState<Set<number>>(new Set());
-
-  // Edición
-  const [editingIdx, setEditingIdx] = useState<{ type: string; idx: number } | null>(null);
-
-  const generateContent = async (section: string) => {
-    setIsGenerating(true);
-    try {
-      const baseContext = `Clase: ${classData.name}\nAsignatura: ${classData.subject}\nNivel: ${classData.gradeLevel}\n${classData.description}`;
-      
-      // Obtener competencias si está habilitado
-      const selectedCompetencies = classData.useCompetencies && classData.curriculumAreaId
-        ? curriculumAreas.find((a: any) => a.id === classData.curriculumAreaId)?.competencies || []
-        : [];
-
-      // Obtener nombres de comportamientos seleccionados para el prompt de insignias
-      const selectedBehaviorNames = generated.behaviors
-        .filter((_: any, i: number) => selectedBehaviors.has(i))
-        .map((b: any) => b.name);
-      
-      const result = await api.post('/classrooms/generate-ai-content', {
-        section,
-        context: baseContext,
-        description: section === 'behaviors' ? behaviorsDesc : section === 'badges' ? badgesDesc : section === 'shop' ? shopDesc : questionsDesc,
-        count: section === 'behaviors' ? behaviorsCount : section === 'badges' ? badgesCount : section === 'shop' ? shopCount : questionsCount,
-        pointMode, includePositive, includeNegative, assignmentMode: badgeAssignmentMode,
-        questionTypes: Array.from(questionTypes),
-        // Competencias para behaviors y badges
-        competencies: (section === 'behaviors' || section === 'badges') ? selectedCompetencies.map((c: any) => ({ id: c.id, name: c.name })) : undefined,
-        // Comportamientos para badges
-        behaviors: section === 'badges' ? selectedBehaviorNames : undefined,
-      });
-
-      if (result.data.success) {
-        if (section === 'behaviors') {
-          setGenerated((p: any) => ({ ...p, behaviors: result.data.data.items }));
-          setSelectedBehaviors(new Set(result.data.data.items.map((_: any, i: number) => i)));
-        } else if (section === 'badges') {
-          setGenerated((p: any) => ({ ...p, badges: result.data.data.items }));
-          setSelectedBadges(new Set(result.data.data.items.map((_: any, i: number) => i)));
-        } else if (section === 'shop') {
-          setGenerated((p: any) => ({ ...p, shopItems: result.data.data.items }));
-          setSelectedShopItems(new Set(result.data.data.items.map((_: any, i: number) => i)));
-        } else if (section === 'questions') {
-          setGenerated((p: any) => ({ ...p, questionBank: result.data.data }));
-          setIncludeQuestionBank(true);
-        }
-        toast.success('Contenido generado');
-      }
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Error al generar');
-    } finally {
-      setIsGenerating(false);
+  useEffect(() => {
+    if (!classDraft.useCompetencies || !curriculumAreaHint || !curriculumAreas.length || classDraft.curriculumAreaId) {
+      return;
     }
-  };
 
-  const updateItem = (type: string, idx: number, updates: any) => {
-    setGenerated((p: any) => ({
-      ...p,
-      [type]: p[type].map((item: any, i: number) => i === idx ? { ...item, ...updates } : item),
-    }));
-  };
-
-  const deleteItem = (type: string, idx: number) => {
-    setGenerated((p: any) => ({ ...p, [type]: p[type].filter((_: any, i: number) => i !== idx) }));
-    const setFn = type === 'behaviors' ? setSelectedBehaviors : type === 'badges' ? setSelectedBadges : setSelectedShopItems;
-    setFn((prev: Set<number>) => {
-      const newSet = new Set<number>();
-      prev.forEach(i => { if (i < idx) newSet.add(i); else if (i > idx) newSet.add(i - 1); });
-      return newSet;
+    const hint = normalizeForMatch(curriculumAreaHint);
+    const matchedArea = curriculumAreas.find((area) => {
+      const areaName = normalizeForMatch(area.name);
+      const shortName = normalizeForMatch(area.shortName || '');
+      return areaName === hint || shortName === hint || areaName.includes(hint) || hint.includes(areaName);
     });
-    setEditingIdx(null);
-  };
 
-  const createClassroom = async () => {
-    if (!classData.name.trim()) { toast.error('Nombre requerido'); return; }
-    setIsCreating(true);
-    try {
-      const classroom = await classroomApi.create({
-        name: classData.name, description: classData.description,
-        gradeLevel: classData.gradeLevel, useCompetencies: classData.useCompetencies,
-        curriculumAreaId: classData.useCompetencies ? classData.curriculumAreaId || null : null,
-        gradeScaleType: classData.useCompetencies ? classData.gradeScaleType : null,
-      });
-      const cid = classroom.id;
-
-      // Crear comportamientos y guardar mapeo nombre -> id para insignias
-      const behaviorNameToId: Record<string, string> = {};
-      for (const b of generated.behaviors.filter((_: any, i: number) => selectedBehaviors.has(i))) {
-        try {
-          const created = await behaviorApi.create({
-            classroomId: cid, name: b.name, description: b.description || '',
-            isPositive: b.isPositive, pointType: b.isPositive ? 'XP' : 'HP',
-            pointValue: Math.abs(b.xpValue || b.hpValue || 10),
-            xpValue: b.xpValue || 0, hpValue: b.hpValue || 0, gpValue: b.gpValue || 0, icon: b.icon || '⭐',
-            competencyId: b.competencyId || null,
-          });
-          if (created?.id) behaviorNameToId[b.name] = created.id;
-        } catch (e) { console.error(e); }
-      }
-
-      for (const b of generated.badges.filter((_: any, i: number) => selectedBadges.has(i))) {
-        try {
-          // Construir unlockCondition si es automática
-          let unlockCondition = null;
-          if (b.triggerCondition && (b.assignmentMode === 'AUTOMATIC' || b.assignmentMode === 'BOTH')) {
-            // Buscar patrón "Obtener X veces 'NombreComportamiento'"
-            const match = b.triggerCondition.match(/(\d+)\s*veces\s*['"']([^'"']+)['"']/i);
-            if (match) {
-              const triggerCount = parseInt(match[1]) || 5;
-              const behaviorName = match[2];
-              const behaviorId = behaviorNameToId[behaviorName] || null;
-              if (behaviorId) {
-                unlockCondition = {
-                  type: 'BEHAVIOR_COUNT',
-                  behaviorId: behaviorId,
-                  count: triggerCount,
-                };
-              }
-            }
-          }
-          
-          await badgeApi.createBadge(cid, {
-            name: b.name, description: b.description || '', icon: b.icon || '🏆',
-            rarity: b.rarity || 'COMMON', assignmentMode: b.assignmentMode || 'MANUAL',
-            rewardXp: b.rewardXp || 0, rewardGp: b.rewardGp || 0,
-            competencyId: b.competencyId || null,
-            unlockCondition: unlockCondition,
-          });
-        } catch (e) { console.error(e); }
-      }
-
-      for (const s of generated.shopItems.filter((_: any, i: number) => selectedShopItems.has(i))) {
-        try {
-          await shopApi.createItem({
-            classroomId: cid, name: s.name, description: s.description || '',
-            category: s.category || 'CONSUMABLE', rarity: s.rarity || 'COMMON',
-            price: s.price || 50, icon: s.icon || '🎁',
-          });
-        } catch (e) { console.error(e); }
-      }
-
-      if (includeQuestionBank && generated.questionBank) {
-        try {
-          const bank = await questionBankApi.createBank(cid, {
-            name: questionBankName || `Banco de ${classData.name}`,
-            description: questionsDesc || generated.questionBank.description || `Banco de preguntas para ${classData.subject} - ${classData.gradeLevel}`,
-          });
-          for (const q of generated.questionBank.questions || []) {
-            try {
-              await questionBankApi.createQuestion(bank.id, {
-                type: q.type || 'SINGLE_CHOICE', questionText: q.question || q.questionText,
-                difficulty: q.difficulty || 'MEDIUM', points: q.points || 10,
-                options: q.options?.map((o: any, i: number) => ({
-                  text: typeof o === 'string' ? o : o.text,
-                  isCorrect: typeof o === 'string' ? i === q.correctAnswer : o.isCorrect,
-                })) || [],
-              });
-            } catch (e) { console.error(e); }
-          }
-        } catch (e) { console.error(e); }
-      }
-
-      queryClient.invalidateQueries({ queryKey: ['classrooms'] });
-      toast.success('¡Clase creada!');
-      onSuccess(cid);
-      handleClose();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Error');
-    } finally {
-      setIsCreating(false);
+    if (matchedArea) {
+      setClassDraft((prev) => ({ ...prev, curriculumAreaId: matchedArea.id }));
     }
-  };
+  }, [classDraft.curriculumAreaId, classDraft.useCompetencies, curriculumAreaHint, curriculumAreas]);
 
-  const handleClose = () => {
-    setCurrentStep(0);
-    setClassData({ name: '', description: '', subject: '', gradeLevel: '', useCompetencies: false, educationLevel: '', curriculumAreaId: '', gradeScaleType: 'PERU_LETTERS' });
-    setGenerated({ behaviors: [], badges: [], shopItems: [], questionBank: null });
-    setSelectedBehaviors(new Set()); setSelectedBadges(new Set()); setSelectedShopItems(new Set());
-    setIncludeQuestionBank(false);
-    onClose();
-  };
+  useEffect(() => () => {
+    if (reviewTransitionTimeoutRef.current) {
+      clearTimeout(reviewTransitionTimeoutRef.current);
+    }
+  }, []);
 
   if (!isOpen) return null;
 
-  const canNext = currentStep === 0 
-    ? classData.name && classData.subject && classData.gradeLevel && (!classData.useCompetencies || (classData.educationLevel && classData.curriculumAreaId))
-    : true;
+  const visibleModules = blueprint?.modules.filter((module) => !isHiddenWizardModule(module.featureKey)) || [];
+  const availableModules = visibleModules.filter((module) => module.state === 'AVAILABLE');
+  const lockedModules = visibleModules.filter((module) => module.state === 'LOCKED');
+  const storytellingModule = availableModules.find((module) => module.featureKey === 'storytelling') || null;
+  const createNowModules = availableModules.filter((module) => isSelectableModule(module.featureKey) && moduleSelections[module.featureKey]);
+  const readyAfterCreateModules = availableModules.filter((module) => !isSelectableModule(module.featureKey));
+  const configurableModules = availableModules.filter((module) => module.configurable && module.featureKey !== 'storytelling');
+  const reviewableModules = configurableModules.filter((module) => module.state === 'AVAILABLE');
+  const reviewSections: ReviewSection[] = blueprint ? [
+    {
+      key: 'classroom',
+      title: 'Jiro ha pensado en esta info para tu clase. ¿Qué opinas?',
+      subtitle: 'Revisa primero la base del aula y ajusta solo lo necesario.',
+      loaderMessage: 'Estoy afinando la base de tu clase para que tenga sentido desde el inicio.',
+    },
+    ...reviewableModules.map((module) => ({
+      key: module.featureKey,
+      title: `Jiro te propone esto para ${module.title.toLowerCase()}`,
+      subtitle: module.shortDescription,
+      loaderMessage: `Estoy preparando ${module.title.toLowerCase()} para que lo revises con calma.`,
+      module,
+    })),
+    {
+      key: 'competencies',
+      title: '¿Usaremos calificaciones por competencias?',
+      subtitle: 'Déjalo listo al final del recorrido, cuando ya hayas visto el resto de la propuesta.',
+      loaderMessage: 'Estoy revisando la forma de evaluar mejor esta clase.',
+    },
+    ...(storytellingModule ? [{
+      key: 'storytelling' as const,
+      title: 'Jiro te propone un tema visual para la historia de tu clase',
+      subtitle: 'Si te gusta, la clase nacerá con una ambientación inicial ya preparada en storytelling.',
+      loaderMessage: 'Estoy imaginando un tema visual que acompañe la historia de tu aula.',
+      module: storytellingModule,
+    }] : []),
+  ] : [];
+  const activeReviewSection = reviewSections[activeReviewIndex] || null;
+  const canContinueClassroomReview = Boolean(classDraft.name.trim() && classDraft.subject && classDraft.gradeLevel);
+  const canContinueCompetenciesReview = !classDraft.useCompetencies || (classDraft.educationLevel && classDraft.curriculumAreaId);
+  const canContinueCurrentReview = !activeReviewSection
+    ? false
+    : activeReviewSection.key === 'classroom'
+      ? canContinueClassroomReview
+      : activeReviewSection.key === 'competencies'
+        ? canContinueCompetenciesReview
+        : true;
+  const defaultFlowSteps = ['Idea', 'Base del aula', 'Propuestas', 'Competencias', 'Crear'];
+  const flowSteps = blueprint
+    ? ['Idea', ...reviewSections.map((section) => (
+      section.key === 'classroom'
+        ? 'Base del aula'
+        : section.key === 'competencies'
+          ? 'Competencias'
+          : section.module?.title || 'Paso'
+    )), 'Crear']
+    : defaultFlowSteps;
+  const activeFlowIndex = currentStep === 0
+    ? (isPlanning ? 1 : 0)
+    : currentStep === 1
+      ? Math.min(isStepThinking ? activeReviewIndex + 2 : activeReviewIndex + 1, Math.max(flowSteps.length - 2, 0))
+      : flowSteps.length - 1;
+  const isEditingCurrentReview = Boolean(activeReviewSection && editingReviewStep === activeReviewSection.key);
+  const canContinuePlan = Boolean(
+    classDraft.name.trim() &&
+    classDraft.subject &&
+    classDraft.gradeLevel &&
+    (!classDraft.useCompetencies || (classDraft.educationLevel && classDraft.curriculumAreaId))
+  );
 
-  return (
-    <AnimatePresence>
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={handleClose}>
-        <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
-          onClick={(e) => e.stopPropagation()}
-          className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] min-h-[600px] overflow-hidden flex flex-col md:flex-row">
-          
-          {/* Panel izquierdo - Jiro */}
-          <div className="hidden md:block md:w-72 relative overflow-hidden flex-shrink-0">
-            <motion.img
-              src="/assets/mascot/jiro-crearclaseIA.jpg"
-              alt="Jiro"
-              className="absolute inset-0 w-full h-full object-cover"
-              initial={{ scale: 1.1, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ duration: 0.4 }}
-            />
-          </div>
+  const buildBaseContext = () => [
+    `Clase: ${classDraft.name}`,
+    `Asignatura: ${getSubjectLabel(classDraft.subject)}`,
+    `Nivel: ${getGradeLabel(classDraft.gradeLevel)}`,
+    classDraft.description || blueprint?.classroom.objective || '',
+  ].filter(Boolean).join('\n');
 
-          {/* Panel derecho - Contenido */}
-          <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Header */}
-            <div className="border-b border-gray-200 dark:border-gray-700 p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center">
-                    <Sparkles size={20} className="text-white" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-bold text-gray-800 dark:text-white">Crear Clase con IA</h2>
-                    <p className="text-xs text-gray-500">Paso {currentStep + 1} de {STEPS.length}: {STEPS[currentStep].title}</p>
-                  </div>
-                </div>
-                <button onClick={handleClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
-                  <X size={20} className="text-gray-500" />
-                </button>
-              </div>
-              <div className="flex gap-1">{STEPS.map((s, i) => (
-                <div key={s.id} className={`flex-1 h-1.5 rounded-full ${i <= currentStep ? 'bg-emerald-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              ))}</div>
+  const buildStoryThemePrompt = () => [
+    `Tema visual para ${classDraft.name || blueprint?.classroom.name || 'una nueva clase'}.`,
+    `Asignatura: ${getSubjectLabel(classDraft.subject || blueprint?.classroom.subject || '')}.`,
+    `Nivel: ${getGradeLabel(classDraft.gradeLevel || blueprint?.classroom.gradeLevel || '')}.`,
+    `Objetivo central: ${blueprint?.classroom.objective || classDraft.description || 'motivar el aprendizaje con una historia coherente'}.`,
+    teacherPrompt.trim() ? `Contexto del docente: ${teacherPrompt.trim()}` : '',
+  ].filter(Boolean).join(' ');
+
+  const resetPreviewDrafts = () => {
+    setBehaviorDrafts([]);
+    setBadgeDrafts([]);
+    setShopDrafts([]);
+    setStoryThemeDraft(null);
+    setPreviewStates(buildPreviewStates());
+  };
+
+  const clearDependentBadgePreview = () => {
+    setBadgeDrafts([]);
+    setPreviewStates((prev) => ({
+      ...prev,
+      badges: { status: 'idle', error: null },
+    }));
+  };
+
+  const getCompetencyName = (competencyId: string) => selectedCompetencies.find((competency) => competency.id === competencyId)?.name || '';
+
+  const loadModulePreview = async (featureKey: EditablePreviewModuleKey, force = false) => {
+    if (!blueprint) {
+      return;
+    }
+
+    const currentState = previewStates[featureKey].status;
+    const hasDrafts = featureKey === 'behaviors'
+      ? behaviorDrafts.length > 0
+      : featureKey === 'badges'
+        ? badgeDrafts.length > 0
+        : featureKey === 'shop'
+          ? shopDrafts.length > 0
+          : Boolean(storyThemeDraft);
+
+    if (!force && (currentState === 'loading' || (currentState === 'ready' && hasDrafts))) {
+      return;
+    }
+
+    setPreviewStates((prev) => ({
+      ...prev,
+      [featureKey]: { status: 'loading', error: null },
+    }));
+
+    try {
+      const context = buildBaseContext();
+
+      if (featureKey === 'behaviors') {
+        const generatedBehaviors = await classroomApi.generateAIContent({
+          section: 'behaviors',
+          context,
+          description: blueprint.generationPlan.behaviors.description,
+          count: blueprint.generationPlan.behaviors.count,
+          pointMode: blueprint.generationPlan.behaviors.pointMode,
+          includePositive: blueprint.generationPlan.behaviors.includePositive,
+          includeNegative: blueprint.generationPlan.behaviors.includeNegative,
+          competencies: competenciesPayload,
+        });
+
+        const nextBehaviorDrafts: BehaviorDraft[] = (Array.isArray(generatedBehaviors?.items) ? generatedBehaviors.items : []).map((behavior: any, index: number) => {
+          const pointType: BehaviorDraft['pointType'] = behavior.xpValue
+            ? 'XP'
+            : behavior.hpValue
+              ? 'HP'
+              : behavior.gpValue
+                ? 'GP'
+                : behavior.isPositive
+                  ? 'XP'
+                  : 'HP';
+
+          const pointValue = Math.abs(
+            pointType === 'XP'
+              ? behavior.xpValue || 10
+              : pointType === 'HP'
+                ? behavior.hpValue || 10
+                : behavior.gpValue || 10
+          );
+
+          return {
+            id: buildDraftId('behavior', index),
+            name: behavior.name || `Comportamiento ${index + 1}`,
+            description: behavior.description || '',
+            icon: behavior.icon || '⭐',
+            isPositive: typeof behavior.isPositive === 'boolean' ? behavior.isPositive : pointType !== 'HP',
+            pointType,
+            pointValue,
+            competencyId: behavior.competencyId || '',
+          };
+        });
+
+        setBehaviorDrafts(nextBehaviorDrafts);
+      }
+
+      if (featureKey === 'badges') {
+        const generatedBadges = await classroomApi.generateAIContent({
+          section: 'badges',
+          context,
+          description: blueprint.generationPlan.badges.description,
+          count: blueprint.generationPlan.badges.count,
+          assignmentMode: blueprint.generationPlan.badges.assignmentMode,
+          competencies: competenciesPayload,
+          behaviors: behaviorDrafts.map((behavior) => behavior.name.trim()).filter(Boolean),
+        });
+
+        const nextBadgeDrafts: BadgeDraft[] = (Array.isArray(generatedBadges?.items) ? generatedBadges.items : []).map((badge: any, index: number) => ({
+          id: buildDraftId('badge', index),
+          name: badge.name || `Insignia ${index + 1}`,
+          description: badge.description || '',
+          icon: badge.icon || '🏆',
+          rarity: badge.rarity || 'COMMON',
+          assignmentMode: badge.assignmentMode || blueprint.generationPlan.badges.assignmentMode,
+          rewardXp: badge.rewardXp || 0,
+          rewardGp: badge.rewardGp || 0,
+          competencyId: badge.competencyId || '',
+          triggerCondition: badge.triggerCondition || '',
+        }));
+
+        setBadgeDrafts(nextBadgeDrafts);
+      }
+
+      if (featureKey === 'shop') {
+        const generatedShop = await classroomApi.generateAIContent({
+          section: 'shop',
+          context,
+          description: blueprint.generationPlan.shop.description,
+          count: blueprint.generationPlan.shop.count,
+        });
+
+        const nextShopDrafts: ShopDraft[] = (Array.isArray(generatedShop?.items) ? generatedShop.items : []).map((item: any, index: number) => ({
+          id: buildDraftId('shop', index),
+          name: item.name || `Artículo ${index + 1}`,
+          description: item.description || '',
+          icon: item.icon || '🎁',
+          category: item.category || 'CONSUMABLE',
+          rarity: item.rarity || 'COMMON',
+          price: item.price || 50,
+        }));
+
+        setShopDrafts(nextShopDrafts);
+      }
+
+      if (featureKey === 'storytelling') {
+        const generatedTheme = await storyApi.generateAIThemePreview(storyThemePrompt.trim() || buildStoryThemePrompt());
+        setStoryThemeDraft(generatedTheme);
+      }
+
+      setPreviewStates((prev) => ({
+        ...prev,
+        [featureKey]: { status: 'ready', error: null },
+      }));
+    } catch (error: any) {
+      console.error(`Error loading ${featureKey} preview:`, error);
+      setPreviewStates((prev) => ({
+        ...prev,
+        [featureKey]: {
+          status: 'error',
+          error: error?.response?.data?.message || 'No se pudo preparar esta propuesta.',
+        },
+      }));
+    }
+  };
+
+  const updateBehaviorDraft = (draftId: string, changes: Partial<BehaviorDraft>) => {
+    setBehaviorDrafts((prev) => prev.map((draft) => (draft.id === draftId ? { ...draft, ...changes } : draft)));
+    clearDependentBadgePreview();
+  };
+
+  const updateBadgeDraft = (draftId: string, changes: Partial<BadgeDraft>) => {
+    setBadgeDrafts((prev) => prev.map((draft) => (draft.id === draftId ? { ...draft, ...changes } : draft)));
+  };
+
+  const updateShopDraft = (draftId: string, changes: Partial<ShopDraft>) => {
+    setShopDrafts((prev) => prev.map((draft) => (draft.id === draftId ? { ...draft, ...changes } : draft)));
+  };
+
+  useEffect(() => {
+    if (currentStep !== 1 || isStepThinking || !activeReviewSection?.module) {
+      return;
+    }
+
+    const featureKey = activeReviewSection.module.featureKey;
+    if (!isEditablePreviewModule(featureKey)) {
+      return;
+    }
+
+    const previewState = previewStates[featureKey];
+    const hasDrafts = featureKey === 'behaviors'
+      ? behaviorDrafts.length > 0
+      : featureKey === 'badges'
+        ? badgeDrafts.length > 0
+        : shopDrafts.length > 0;
+
+    if (previewState.status === 'idle' || (previewState.status === 'ready' && !hasDrafts)) {
+      void loadModulePreview(featureKey);
+    }
+  }, [
+    activeReviewSection,
+    badgeDrafts.length,
+    behaviorDrafts.length,
+    currentStep,
+    isStepThinking,
+    previewStates,
+    storyThemeDraft,
+    shopDrafts.length,
+  ]);
+
+  const handleClose = () => {
+    if (reviewTransitionTimeoutRef.current) {
+      clearTimeout(reviewTransitionTimeoutRef.current);
+    }
+    setCurrentStep(0);
+    setActiveReviewIndex(0);
+    setTeacherPrompt('');
+    setBlueprint(null);
+    setClassDraft(emptyDraft);
+    setModuleSelections(buildEmptySelections());
+    setCurriculumAreaHint('');
+    setIsPlanning(false);
+    setIsCreating(false);
+    setIsStepThinking(false);
+    setEditingReviewStep(null);
+    setCreationStatus('');
+    setStoryThemePrompt('');
+    resetPreviewDrafts();
+    onClose();
+  };
+
+  const applyBlueprint = (nextBlueprint: AIClassroomBlueprint) => {
+    const nextSelections = buildEmptySelections();
+    nextBlueprint.modules.forEach((module) => {
+      if (!isHiddenWizardModule(module.featureKey) && module.state === 'AVAILABLE' && module.configurable) {
+        nextSelections[module.featureKey] = module.recommended;
+      }
+    });
+
+    setBlueprint(nextBlueprint);
+    setClassDraft({
+      name: nextBlueprint.classroom.name,
+      description: nextBlueprint.classroom.description,
+      subject: nextBlueprint.classroom.subject,
+      gradeLevel: nextBlueprint.classroom.gradeLevel,
+      educationLevel: nextBlueprint.classroom.educationLevel,
+      useCompetencies: nextBlueprint.classroom.useCompetencies,
+      curriculumAreaId: '',
+      gradeScaleType: nextBlueprint.classroom.gradeScaleType,
+    });
+    setCurriculumAreaHint(nextBlueprint.classroom.curriculumAreaName);
+    setModuleSelections(nextSelections);
+    setActiveReviewIndex(0);
+    setIsStepThinking(false);
+    setEditingReviewStep(null);
+    setStoryThemePrompt('');
+    resetPreviewDrafts();
+    setCurrentStep(1);
+  };
+
+  const handleGenerateBlueprint = async () => {
+    if (teacherPrompt.trim().length < 10) {
+      toast.error('Cuéntale un poco más a Jiro sobre tu clase.');
+      return;
+    }
+
+    setIsPlanning(true);
+    try {
+      const nextBlueprint = await classroomApi.generateAIClassroomBlueprint(teacherPrompt.trim());
+      applyBlueprint(nextBlueprint);
+      toast.success('Jiro ya preparó una propuesta para tu clase.');
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'No se pudo generar la propuesta con IA');
+    } finally {
+      setIsPlanning(false);
+    }
+  };
+
+  const startReviewThinking = (onComplete: () => void) => {
+    if (reviewTransitionTimeoutRef.current) {
+      clearTimeout(reviewTransitionTimeoutRef.current);
+    }
+
+    setIsStepThinking(true);
+    setEditingReviewStep(null);
+
+    reviewTransitionTimeoutRef.current = setTimeout(() => {
+      setIsStepThinking(false);
+      onComplete();
+    }, 950);
+  };
+
+  const handleBackAction = () => {
+    if (currentStep === 0) {
+      handleClose();
+      return;
+    }
+
+    if (currentStep === 1) {
+      if (isStepThinking) {
+        return;
+      }
+
+      if (activeReviewIndex === 0) {
+        setCurrentStep(0);
+        setEditingReviewStep(null);
+        return;
+      }
+
+      setActiveReviewIndex((prev) => Math.max(0, prev - 1));
+      setEditingReviewStep(null);
+      return;
+    }
+
+    setCurrentStep(1);
+    setActiveReviewIndex(Math.max(reviewSections.length - 1, 0));
+    setEditingReviewStep(null);
+  };
+
+  const handleContinueReview = () => {
+    if (!activeReviewSection) {
+      return;
+    }
+
+    if (activeReviewSection.key === 'classroom' && !canContinueClassroomReview) {
+      toast.error('Revisa el nombre, la asignatura y el nivel antes de seguir.');
+      return;
+    }
+
+    if (activeReviewSection.key === 'competencies' && !canContinueCompetenciesReview) {
+      toast.error('Selecciona el nivel curricular y el área antes de seguir con competencias.');
+      return;
+    }
+
+    if (activeReviewIndex >= reviewSections.length - 1) {
+      setCurrentStep(2);
+      setEditingReviewStep(null);
+      return;
+    }
+
+    startReviewThinking(() => {
+      setActiveReviewIndex((prev) => prev + 1);
+    });
+  };
+
+  const handleToggleModule = (featureKey: AIClassroomFeatureKey) => {
+    const module = blueprint?.modules.find((item) => item.featureKey === featureKey);
+    if (!module || module.state !== 'AVAILABLE' || (!module.configurable && featureKey !== 'storytelling')) {
+      return;
+    }
+
+    setModuleSelections((prev) => ({
+      ...prev,
+      [featureKey]: !prev[featureKey],
+    }));
+  };
+
+  const handleCreateClassroom = async () => {
+    if (!blueprint || !canContinuePlan) {
+      toast.error('Completa la información principal antes de crear la clase.');
+      return;
+    }
+
+    setIsCreating(true);
+    setCreationStatus('Jiro está creando la base de tu aula...');
+
+    try {
+      const createdClassroom = await classroomApi.create({
+        name: classDraft.name.trim(),
+        description: classDraft.description.trim(),
+        gradeLevel: classDraft.gradeLevel,
+        useCompetencies: classDraft.useCompetencies,
+        curriculumAreaId: classDraft.useCompetencies ? classDraft.curriculumAreaId : null,
+        gradeScaleType: classDraft.useCompetencies ? classDraft.gradeScaleType : null,
+      });
+
+      setCreationStatus('Jiro está ajustando la configuración inicial...');
+      await classroomApi.update(createdClassroom.id, {
+        allowNegativePoints: blueprint.settings.allowNegativePoints,
+        showReasonToStudent: blueprint.settings.showReasonToStudent,
+        notifyOnPoints: blueprint.settings.notifyOnPoints,
+        classAssignmentMode: blueprint.settings.classAssignmentMode,
+        showCharacterName: blueprint.settings.showCharacterName,
+        shopEnabled: moduleSelections.shop,
+        requirePurchaseApproval: moduleSelections.shop ? blueprint.settings.requirePurchaseApproval : false,
+        clansEnabled: moduleSelections.clans,
+      });
+
+      const baseContext = buildBaseContext();
+
+      const behaviorNameToId: Record<string, string> = {};
+      const createdBehaviorNames: string[] = [];
+      const moduleWarnings: string[] = [];
+
+      if (moduleSelections.behaviors) {
+        setCreationStatus('Jiro está preparando los comportamientos de tu clase...');
+        try {
+          const generatedBehaviors = behaviorDrafts.length > 0
+            ? null
+            : await classroomApi.generateAIContent({
+              section: 'behaviors',
+              context: baseContext,
+              description: blueprint.generationPlan.behaviors.description,
+              count: blueprint.generationPlan.behaviors.count,
+              pointMode: blueprint.generationPlan.behaviors.pointMode,
+              includePositive: blueprint.generationPlan.behaviors.includePositive,
+              includeNegative: blueprint.generationPlan.behaviors.includeNegative,
+              competencies: competenciesPayload,
+            });
+
+          const behaviorItems = behaviorDrafts.length > 0
+            ? behaviorDrafts.map((behavior) => ({
+              name: behavior.name,
+              description: behavior.description,
+              isPositive: behavior.isPositive,
+              pointType: behavior.pointType,
+              xpValue: behavior.pointType === 'XP' ? behavior.pointValue : 0,
+              hpValue: behavior.pointType === 'HP' ? behavior.pointValue : 0,
+              gpValue: behavior.pointType === 'GP' ? behavior.pointValue : 0,
+              icon: behavior.icon,
+              competencyId: behavior.competencyId || undefined,
+            }))
+            : Array.isArray(generatedBehaviors?.items)
+              ? generatedBehaviors.items
+              : [];
+
+          for (const behavior of behaviorItems) {
+            const createdBehavior = await behaviorApi.create({
+              classroomId: createdClassroom.id,
+              name: behavior.name,
+              description: behavior.description || '',
+              isPositive: !!behavior.isPositive,
+              pointType: behavior.pointType || (behavior.isPositive ? 'XP' : 'HP'),
+              pointValue: Math.abs(behavior.xpValue || behavior.hpValue || behavior.gpValue || 10),
+              xpValue: behavior.xpValue || 0,
+              hpValue: behavior.hpValue || 0,
+              gpValue: behavior.gpValue || 0,
+              icon: behavior.icon || '⭐',
+              competencyId: behavior.competencyId || undefined,
+            });
+
+            createdBehaviorNames.push(createdBehavior.name);
+            behaviorNameToId[createdBehavior.name] = createdBehavior.id;
+          }
+        } catch (error) {
+          console.error('Error creating AI behaviors:', error);
+          moduleWarnings.push('comportamientos');
+        }
+      }
+
+      if (moduleSelections.badges) {
+        setCreationStatus('Jiro está armando las insignias de tu clase...');
+        try {
+          const generatedBadges = badgeDrafts.length > 0
+            ? null
+            : await classroomApi.generateAIContent({
+              section: 'badges',
+              context: baseContext,
+              description: blueprint.generationPlan.badges.description,
+              count: blueprint.generationPlan.badges.count,
+              assignmentMode: blueprint.generationPlan.badges.assignmentMode,
+              competencies: competenciesPayload,
+              behaviors: createdBehaviorNames,
+            });
+
+          const badgeItems = badgeDrafts.length > 0
+            ? badgeDrafts.map((badge) => ({
+              name: badge.name,
+              description: badge.description,
+              icon: badge.icon,
+              rarity: badge.rarity,
+              assignmentMode: badge.assignmentMode,
+              rewardXp: badge.rewardXp,
+              rewardGp: badge.rewardGp,
+              competencyId: badge.competencyId || null,
+              triggerCondition: badge.triggerCondition,
+            }))
+            : Array.isArray(generatedBadges?.items)
+              ? generatedBadges.items
+              : [];
+
+          for (const badge of badgeItems) {
+            let unlockCondition = null;
+            const requestedAssignmentMode = badge.assignmentMode || blueprint.generationPlan.badges.assignmentMode;
+
+            if (typeof badge.triggerCondition === 'string' && (requestedAssignmentMode === 'AUTOMATIC' || requestedAssignmentMode === 'BOTH')) {
+              const match = badge.triggerCondition.match(/(\d+)\s*veces\s*['\"]([^'\"]+)['\"]/i);
+              if (match) {
+                const triggerCount = parseInt(match[1], 10) || 5;
+                const behaviorName = match[2];
+                const behaviorId = behaviorNameToId[behaviorName] || null;
+
+                if (behaviorId) {
+                  unlockCondition = {
+                    type: 'BEHAVIOR_COUNT',
+                    behaviorId,
+                    count: triggerCount,
+                  };
+                }
+              }
+            }
+
+            const finalAssignmentMode = unlockCondition
+              ? requestedAssignmentMode
+              : requestedAssignmentMode === 'AUTOMATIC' || requestedAssignmentMode === 'BOTH'
+                ? 'MANUAL'
+                : requestedAssignmentMode;
+
+            await badgeApi.createBadge(createdClassroom.id, {
+              name: badge.name,
+              description: badge.description || '',
+              icon: badge.icon || '🏆',
+              rarity: badge.rarity || 'COMMON',
+              assignmentMode: finalAssignmentMode,
+              rewardXp: badge.rewardXp || 0,
+              rewardGp: badge.rewardGp || 0,
+              competencyId: badge.competencyId || null,
+              unlockCondition,
+            });
+          }
+        } catch (error) {
+          console.error('Error creating AI badges:', error);
+          moduleWarnings.push('insignias');
+        }
+      }
+
+      if (moduleSelections.shop) {
+        setCreationStatus('Jiro está llenando la tienda de tu clase...');
+        try {
+          const generatedShop = shopDrafts.length > 0
+            ? null
+            : await classroomApi.generateAIContent({
+              section: 'shop',
+              context: baseContext,
+              description: blueprint.generationPlan.shop.description,
+              count: blueprint.generationPlan.shop.count,
+            });
+
+          const shopItems = shopDrafts.length > 0
+            ? shopDrafts.map((item) => ({
+              name: item.name,
+              description: item.description,
+              category: item.category,
+              rarity: item.rarity,
+              price: item.price,
+              icon: item.icon,
+            }))
+            : Array.isArray(generatedShop?.items)
+              ? generatedShop.items
+              : [];
+
+          for (const item of shopItems) {
+            await shopApi.createItem({
+              classroomId: createdClassroom.id,
+              name: item.name,
+              description: item.description || '',
+              category: item.category || 'CONSUMABLE',
+              rarity: item.rarity || 'COMMON',
+              price: item.price || 50,
+              icon: item.icon || '🎁',
+            });
+          }
+        } catch (error) {
+          console.error('Error creating AI shop items:', error);
+          moduleWarnings.push('tienda');
+        }
+      }
+
+      if (moduleSelections.storytelling) {
+        setCreationStatus('Jiro está aplicando el tema visual de tu clase...');
+        try {
+          if (storyThemeDraft?.themeConfig) {
+            await storyApi.updateClassroomTheme(createdClassroom.id, storyThemeDraft.themeConfig, 'AI');
+          } else {
+            await storyApi.generateAITheme(createdClassroom.id, storyThemePrompt.trim() || buildStoryThemePrompt());
+          }
+        } catch (error) {
+          console.error('Error applying storytelling theme:', error);
+          moduleWarnings.push('tema visual');
+        }
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['classrooms'] });
+
+      if (moduleWarnings.length > 0) {
+        toast(`La clase se creó, pero Jiro no pudo completar: ${moduleWarnings.join(', ')}.`);
+      } else {
+        toast.success('Tu clase ya quedó lista con la ayuda de Jiro.');
+      }
+
+      onSuccess(createdClassroom.id);
+      handleClose();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'No se pudo crear la clase con IA');
+    } finally {
+      setIsCreating(false);
+      setCreationStatus('');
+    }
+  };
+
+  const primaryAction = () => {
+    if (currentStep === 0) {
+      void handleGenerateBlueprint();
+      return;
+    }
+
+    if (currentStep === 1) {
+      handleContinueReview();
+      return;
+    }
+
+    void handleCreateClassroom();
+  };
+
+  const isPrimaryDisabled = currentStep === 0
+    ? isPlanning || teacherPrompt.trim().length < 10
+    : currentStep === 1
+      ? isPlanning || isStepThinking || !canContinueCurrentReview
+      : isCreating || !canContinuePlan;
+
+  const renderModuleCard = (featureKey: AIClassroomFeatureKey) => {
+    const module = blueprint?.modules.find((item) => item.featureKey === featureKey);
+    if (!module) return null;
+
+    const Icon = FEATURE_ICONS[featureKey];
+    const isSelected = moduleSelections[featureKey];
+    const isLocked = module.state === 'LOCKED';
+    const selectable = (module.configurable || featureKey === 'storytelling') && !isLocked;
+
+    return (
+      <button
+        key={module.featureKey}
+        type="button"
+        onClick={() => selectable && handleToggleModule(module.featureKey)}
+        className={`group rounded-2xl border p-3.5 text-left transition-all ${
+          isLocked
+            ? 'border-gray-200 bg-gray-50/80 opacity-75 dark:border-gray-700 dark:bg-gray-900/50'
+            : isSelected
+              ? 'border-emerald-300 bg-emerald-50 shadow-sm shadow-emerald-100 dark:border-emerald-700 dark:bg-emerald-900/20'
+              : 'border-gray-200 bg-white hover:border-emerald-200 hover:bg-emerald-50/60 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/10'
+        } ${selectable ? 'cursor-pointer' : 'cursor-default'}`}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+              isLocked
+                ? 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-300'
+                : isSelected
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+            }`}>
+              <Icon size={18} />
             </div>
 
-          {/* Content */}
-          <div className="flex-1 overflow-y-auto p-4">
-            {/* Step 0: Info */}
-            {currentStep === 0 && (
-              <div className="space-y-4">
-                <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-200 dark:border-emerald-800">
-                  <p className="text-sm text-emerald-700 dark:text-emerald-300">
-                    💡 <strong>¡Bienvenido!</strong> Completa la información básica de tu clase para que la IA genere contenido personalizado.
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">{module.title}</h3>
+                {module.recommended && (
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                    Recomendado por Jiro
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 text-sm leading-5 text-gray-600 dark:text-gray-300">{module.shortDescription}</p>
+            </div>
+          </div>
+
+          {isLocked ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-gray-300 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-500 dark:border-gray-600 dark:text-gray-300">
+              <Lock size={12} /> Bloqueado
+            </span>
+          ) : selectable ? (
+            <span className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${
+              isSelected
+                ? 'border-emerald-500 bg-emerald-500 text-white'
+                : 'border-gray-300 bg-white text-transparent dark:border-gray-600 dark:bg-gray-800'
+            }`}>
+              <Check size={14} />
+            </span>
+          ) : (
+            <span className="rounded-full bg-sky-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
+              {module.actionType === 'ENABLE_ON_CREATE' ? 'Se habilita al crear' : 'Disponible al entrar'}
+            </span>
+          )}
+        </div>
+
+        <div className="mt-3 rounded-xl bg-white/70 px-3 py-2 dark:bg-gray-900/60">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">Por qué lo propone Jiro</p>
+          <p className="mt-1 text-xs leading-5 text-gray-700 dark:text-gray-200">{module.reason}</p>
+        </div>
+
+        {!isLocked && module.autoCreateSupported && blueprint && (
+          <div className="mt-3 flex flex-wrap gap-2 text-xs font-medium text-gray-600 dark:text-gray-300">
+            {featureKey === 'behaviors' && <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">{blueprint.generationPlan.behaviors.count} comportamientos</span>}
+            {featureKey === 'badges' && <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">{blueprint.generationPlan.badges.count} insignias</span>}
+            {featureKey === 'shop' && <span className="rounded-full bg-orange-100 px-2.5 py-1 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">{blueprint.generationPlan.shop.count} artículos</span>}
+            {featureKey === 'storytelling' && <span className="rounded-full bg-violet-100 px-2.5 py-1 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">Tema visual con IA</span>}
+          </div>
+        )}
+
+        {isLocked && (
+          <p className="mt-3 text-xs leading-5 text-gray-500 dark:text-gray-400">
+            Jiro lo deja contemplado en el plan, pero esta cuenta aún no puede activarlo desde el primer día.
+          </p>
+        )}
+      </button>
+    );
+  };
+
+  const renderFeaturePill = (featureKey: AIClassroomFeatureKey, tone: 'ready' | 'locked' = 'ready') => {
+    const module = visibleModules.find((item) => item.featureKey === featureKey);
+    if (!module) return null;
+
+    const Icon = FEATURE_ICONS[featureKey];
+    const toneClasses = tone === 'locked'
+      ? 'border-gray-200 bg-gray-50 text-gray-600 dark:border-gray-700 dark:bg-gray-900/50 dark:text-gray-300'
+      : 'border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-800 dark:bg-sky-900/20 dark:text-sky-200';
+
+    return (
+      <div
+        key={module.featureKey}
+        className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium ${toneClasses}`}
+      >
+        <Icon size={14} />
+        <span>{module.title}</span>
+      </div>
+    );
+  };
+
+  const currentFlowLabel = flowSteps[Math.min(activeFlowIndex, flowSteps.length - 1)] || 'Idea';
+  const currentThinkingMessage = currentStep === 0
+    ? 'Estoy organizando la primera propuesta de tu clase.'
+    : activeReviewSection?.loaderMessage || 'Estoy preparando el siguiente paso para tu clase.';
+  const backActionLabel = currentStep === 0
+    ? 'Cancelar'
+    : currentStep === 1 && activeReviewIndex === 0
+      ? 'Volver a idea'
+      : 'Anterior';
+  const primaryActionLabel = currentStep === 0
+    ? (isPlanning ? 'Jiro está pensando...' : 'Jiro, piensa mi propuesta')
+    : currentStep === 1
+      ? (activeReviewIndex >= reviewSections.length - 1 ? 'Ir al resumen' : 'Sí, adelante')
+      : (isCreating ? 'Creando clase...' : 'Crear clase con Jiro');
+
+  const renderJiroImage = ({
+    imageSrc,
+    imageAlt,
+    frameClassName,
+    imageClassName,
+  }: {
+    imageSrc: string;
+    imageAlt: string;
+    frameClassName: string;
+    imageClassName?: string;
+  }) => (
+    <div className={frameClassName}>
+      <img
+        src={imageSrc}
+        alt={imageAlt}
+        className={`block h-full w-full object-cover object-center ${imageClassName || ''}`}
+      />
+    </div>
+  );
+
+  const renderSmallJiroPanel = () => (
+    <div className="flex justify-center lg:sticky lg:top-24 lg:justify-end">
+      {renderJiroImage({
+        imageSrc: '/assets/mascot/jiro-ranking-xp.png',
+        imageAlt: 'Jiro lateral',
+        frameClassName: 'aspect-square w-full max-w-[220px]',
+      })}
+    </div>
+  );
+
+  const getFriendlyPreviewError = (featureKey: EditablePreviewModuleKey, label: string) => {
+    const rawError = previewStates[featureKey].error || '';
+    let extractedMessage = rawError;
+    let extractedStatus = '';
+    let extractedCode = '';
+
+    if (rawError.trim().startsWith('{')) {
+      try {
+        const parsed = JSON.parse(rawError);
+        const details = parsed.error || parsed;
+        extractedMessage = details.message || rawError;
+        extractedStatus = String(details.status || parsed.status || '');
+        extractedCode = String(details.code || parsed.code || '');
+      } catch {
+        extractedMessage = rawError;
+      }
+    }
+
+    const normalized = extractedMessage.toLowerCase();
+
+    if (
+      extractedCode === '503'
+      || extractedStatus.toUpperCase() === 'UNAVAILABLE'
+      || normalized.includes('high demand')
+      || normalized.includes('temporar')
+    ) {
+      return {
+        title: `Jiro no pudo preparar ${label} en este momento`,
+        message: 'El servicio de IA está con mucha demanda temporal. Intenta de nuevo en unos segundos.',
+      };
+    }
+
+    if (normalized.includes('api key')) {
+      return {
+        title: `No pude preparar ${label}`,
+        message: 'La configuración de IA no está disponible ahora mismo. Puedes continuar con la clase y probar más tarde.',
+      };
+    }
+
+    if (normalized.includes('quota') || normalized.includes('rate limit')) {
+      return {
+        title: `Jiro alcanzó un límite temporal`,
+        message: `No pude terminar ${label} por ahora. Espera un momento y vuelve a intentarlo.`,
+      };
+    }
+
+    return {
+      title: `Jiro no pudo preparar ${label}`,
+      message: 'Hubo un problema temporal al consultar la IA. Puedes intentar de nuevo sin perder el resto de la propuesta.',
+    };
+  };
+
+  const renderPreviewLoading = (label: string) => (
+    <div className="rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/70 p-4 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-900/10 dark:text-emerald-300">
+      <div className="flex items-center gap-2 font-medium">
+        <Loader2 size={16} className="animate-spin" />
+        Jiro está detallando {label}...
+      </div>
+    </div>
+  );
+
+  const renderPreviewError = (featureKey: EditablePreviewModuleKey, label: string) => {
+    const errorSummary = getFriendlyPreviewError(featureKey, label);
+
+    return (
+      <div className="rounded-2xl border border-rose-200 bg-rose-50/80 p-4 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-900/10 dark:text-rose-300">
+        <p className="font-semibold">{errorSummary.title}</p>
+        <p className="mt-1 leading-6">{errorSummary.message}</p>
+      <button
+        type="button"
+        onClick={() => void loadModulePreview(featureKey, true)}
+        className="mt-3 inline-flex items-center gap-2 rounded-2xl border border-rose-200 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:text-rose-200 dark:hover:bg-rose-900/20"
+      >
+        <Wand2 size={14} />
+        Intentar de nuevo
+      </button>
+      </div>
+    );
+  };
+
+  const renderBehaviorDrafts = () => {
+    const previewState = previewStates.behaviors;
+
+    if (previewState.status === 'loading') {
+      return renderPreviewLoading('los comportamientos');
+    }
+
+    if (previewState.status === 'error') {
+      return renderPreviewError('behaviors', 'comportamientos');
+    }
+
+    if (!behaviorDrafts.length) {
+      return null;
+    }
+
+    return (
+      <div className="space-y-3">
+        {behaviorDrafts.map((behavior, index) => (
+          <div key={behavior.id} className="rounded-2xl border border-gray-200 bg-white/90 p-4 dark:border-gray-700 dark:bg-gray-900/70">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-lg">{behavior.icon}</span>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">{behavior.name}</p>
+                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${behavior.isPositive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300' : 'bg-rose-100 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300'}`}>
+                    {behavior.isPositive ? 'Positivo' : 'Correctivo'}
+                  </span>
+                  <span className="rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-semibold text-sky-700 dark:bg-sky-900/20 dark:text-sky-300">
+                    {behavior.pointType} {behavior.pointValue}
+                  </span>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">{behavior.description || 'Sin descripción adicional.'}</p>
+                {classDraft.useCompetencies && behavior.competencyId && (
+                  <p className="mt-2 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                    Competencia: {getCompetencyName(behavior.competencyId)}
                   </p>
-                </div>
+                )}
+              </div>
+              <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-600 dark:bg-gray-700 dark:text-gray-200">
+                #{index + 1}
+              </span>
+            </div>
 
-                {/* Nombre de la clase */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    📝 Nombre de la clase
-                  </label>
-                  <input 
-                    value={classData.name} 
-                    onChange={(e) => setClassData(p => ({ ...p, name: e.target.value }))}
-                    placeholder="Ej: Matemáticas 3°A - Turno mañana"
-                    className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                  />
-                </div>
-
-                {/* Asignatura - Grid de botones */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    📚 Asignatura <span className="font-normal text-gray-500">(selecciona una)</span>
-                  </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {SUBJECTS.map(s => (
-                      <button
-                        key={s.value}
-                        type="button"
-                        onClick={() => setClassData(p => ({ ...p, subject: s.value }))}
-                        className={`p-3 rounded-xl border-2 text-left transition-all ${
-                          classData.subject === s.value
-                            ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30'
-                            : 'border-gray-200 dark:border-gray-600 hover:border-emerald-300 hover:bg-emerald-50/50'
-                        }`}
-                      >
-                        <div className="text-xl mb-1">{s.emoji}</div>
-                        <div className="text-sm font-medium text-gray-800 dark:text-white">{s.label}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Nivel educativo */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    🎓 Nivel educativo
-                  </label>
-                  <select 
-                    value={classData.gradeLevel} 
-                    onChange={(e) => setClassData(p => ({ ...p, gradeLevel: e.target.value }))}
-                    className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-emerald-500"
+            {isEditingCurrentReview && (
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <input
+                  value={behavior.name}
+                  onChange={(event) => updateBehaviorDraft(behavior.id, { name: event.target.value })}
+                  className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                  placeholder="Nombre del comportamiento"
+                />
+                <input
+                  value={behavior.icon}
+                  onChange={(event) => updateBehaviorDraft(behavior.id, { icon: event.target.value.slice(0, 2) || '⭐' })}
+                  className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                  placeholder="Icono"
+                />
+                <textarea
+                  value={behavior.description}
+                  onChange={(event) => updateBehaviorDraft(behavior.id, { description: event.target.value })}
+                  rows={3}
+                  className="md:col-span-2 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm leading-6 text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                  placeholder="Descripción del comportamiento"
+                />
+                <select
+                  value={behavior.isPositive ? 'positive' : 'negative'}
+                  onChange={(event) => updateBehaviorDraft(behavior.id, {
+                    isPositive: event.target.value === 'positive',
+                    pointType: event.target.value === 'positive' && behavior.pointType === 'HP'
+                      ? 'XP'
+                      : event.target.value === 'negative' && behavior.pointType === 'XP'
+                        ? 'HP'
+                        : behavior.pointType,
+                  })}
+                  className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                >
+                  <option value="positive">Positivo</option>
+                  <option value="negative">Correctivo</option>
+                </select>
+                <select
+                  value={behavior.pointType}
+                  onChange={(event) => updateBehaviorDraft(behavior.id, { pointType: event.target.value as BehaviorDraft['pointType'] })}
+                  className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                >
+                  <option value="XP">XP</option>
+                  <option value="HP">HP</option>
+                  <option value="GP">GP</option>
+                </select>
+                <input
+                  type="number"
+                  min={1}
+                  value={behavior.pointValue}
+                  onChange={(event) => updateBehaviorDraft(behavior.id, { pointValue: Math.max(1, Number(event.target.value) || 1) })}
+                  className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                  placeholder="Puntaje"
+                />
+                {classDraft.useCompetencies && selectedCompetencies.length > 0 && (
+                  <select
+                    value={behavior.competencyId}
+                    onChange={(event) => updateBehaviorDraft(behavior.id, { competencyId: event.target.value })}
+                    className="md:col-span-2 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
                   >
-                    <option value="">Seleccionar nivel...</option>
-                    {GRADE_LEVELS.map(g => <option key={g.value} value={g.value}>{g.label}</option>)}
+                    <option value="">Sin competencia asociada</option>
+                    {selectedCompetencies.map((competency) => (
+                      <option key={competency.id} value={competency.id}>{competency.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderBadgeDrafts = () => {
+    const previewState = previewStates.badges;
+
+    if (previewState.status === 'loading') {
+      return renderPreviewLoading('las insignias');
+    }
+
+    if (previewState.status === 'error') {
+      return renderPreviewError('badges', 'insignias');
+    }
+
+    if (!badgeDrafts.length) {
+      return null;
+    }
+
+    return (
+      <div className="space-y-3">
+        {badgeDrafts.map((badge, index) => (
+          <div key={badge.id} className="rounded-2xl border border-gray-200 bg-white/90 p-4 dark:border-gray-700 dark:bg-gray-900/70">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-lg">{badge.icon}</span>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">{badge.name}</p>
+                  <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">{badge.rarity}</span>
+                  <span className="rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-semibold text-sky-700 dark:bg-sky-900/20 dark:text-sky-300">{badge.assignmentMode}</span>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">{badge.description || 'Sin descripción adicional.'}</p>
+                <div className="mt-2 flex flex-wrap gap-2 text-xs font-medium">
+                  {badge.rewardXp > 0 && <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">XP {badge.rewardXp}</span>}
+                  {badge.rewardGp > 0 && <span className="rounded-full bg-orange-100 px-2.5 py-1 text-orange-700 dark:bg-orange-900/20 dark:text-orange-300">GP {badge.rewardGp}</span>}
+                  {classDraft.useCompetencies && badge.competencyId && <span className="rounded-full bg-white px-2.5 py-1 text-emerald-700 dark:bg-gray-950 dark:text-emerald-300">{getCompetencyName(badge.competencyId)}</span>}
+                </div>
+              </div>
+              <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-600 dark:bg-gray-700 dark:text-gray-200">
+                #{index + 1}
+              </span>
+            </div>
+
+            {isEditingCurrentReview && (
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <input
+                  value={badge.name}
+                  onChange={(event) => updateBadgeDraft(badge.id, { name: event.target.value })}
+                  className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                  placeholder="Nombre de la insignia"
+                />
+                <input
+                  value={badge.icon}
+                  onChange={(event) => updateBadgeDraft(badge.id, { icon: event.target.value.slice(0, 2) || '🏆' })}
+                  className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                  placeholder="Icono"
+                />
+                <textarea
+                  value={badge.description}
+                  onChange={(event) => updateBadgeDraft(badge.id, { description: event.target.value })}
+                  rows={3}
+                  className="md:col-span-2 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm leading-6 text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                  placeholder="Descripción de la insignia"
+                />
+                <select
+                  value={badge.rarity}
+                  onChange={(event) => updateBadgeDraft(badge.id, { rarity: event.target.value })}
+                  className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                >
+                  <option value="COMMON">COMMON</option>
+                  <option value="UNCOMMON">UNCOMMON</option>
+                  <option value="RARE">RARE</option>
+                  <option value="EPIC">EPIC</option>
+                  <option value="LEGENDARY">LEGENDARY</option>
+                </select>
+                <select
+                  value={badge.assignmentMode}
+                  onChange={(event) => updateBadgeDraft(badge.id, { assignmentMode: event.target.value as BadgeDraft['assignmentMode'] })}
+                  className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                >
+                  <option value="MANUAL">MANUAL</option>
+                  <option value="AUTOMATIC">AUTOMATIC</option>
+                  <option value="BOTH">BOTH</option>
+                </select>
+                <input
+                  type="number"
+                  min={0}
+                  value={badge.rewardXp}
+                  onChange={(event) => updateBadgeDraft(badge.id, { rewardXp: Math.max(0, Number(event.target.value) || 0) })}
+                  className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                  placeholder="XP de recompensa"
+                />
+                <input
+                  type="number"
+                  min={0}
+                  value={badge.rewardGp}
+                  onChange={(event) => updateBadgeDraft(badge.id, { rewardGp: Math.max(0, Number(event.target.value) || 0) })}
+                  className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                  placeholder="GP de recompensa"
+                />
+                <input
+                  value={badge.triggerCondition}
+                  onChange={(event) => updateBadgeDraft(badge.id, { triggerCondition: event.target.value })}
+                  className="md:col-span-2 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                  placeholder="Condición de desbloqueo (opcional)"
+                />
+                {classDraft.useCompetencies && selectedCompetencies.length > 0 && (
+                  <select
+                    value={badge.competencyId}
+                    onChange={(event) => updateBadgeDraft(badge.id, { competencyId: event.target.value })}
+                    className="md:col-span-2 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                  >
+                    <option value="">Sin competencia asociada</option>
+                    {selectedCompetencies.map((competency) => (
+                      <option key={competency.id} value={competency.id}>{competency.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderShopDrafts = () => {
+    const previewState = previewStates.shop;
+
+    if (previewState.status === 'loading') {
+      return renderPreviewLoading('la tienda');
+    }
+
+    if (previewState.status === 'error') {
+      return renderPreviewError('shop', 'la tienda');
+    }
+
+    if (!shopDrafts.length) {
+      return null;
+    }
+
+    return (
+      <div className="space-y-3">
+        {shopDrafts.map((item, index) => (
+          <div key={item.id} className="rounded-2xl border border-gray-200 bg-white/90 p-4 dark:border-gray-700 dark:bg-gray-900/70">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-lg">{item.icon}</span>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">{item.name}</p>
+                  <span className="rounded-full bg-orange-100 px-2.5 py-1 text-[11px] font-semibold text-orange-700 dark:bg-orange-900/20 dark:text-orange-300">{item.price} GP</span>
+                  <span className="rounded-full bg-sky-100 px-2.5 py-1 text-[11px] font-semibold text-sky-700 dark:bg-sky-900/20 dark:text-sky-300">{item.category}</span>
+                  <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">{item.rarity}</span>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">{item.description || 'Sin descripción adicional.'}</p>
+              </div>
+              <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-semibold text-gray-600 dark:bg-gray-700 dark:text-gray-200">
+                #{index + 1}
+              </span>
+            </div>
+
+            {isEditingCurrentReview && (
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <input
+                  value={item.name}
+                  onChange={(event) => updateShopDraft(item.id, { name: event.target.value })}
+                  className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                  placeholder="Nombre del artículo"
+                />
+                <input
+                  value={item.icon}
+                  onChange={(event) => updateShopDraft(item.id, { icon: event.target.value.slice(0, 2) || '🎁' })}
+                  className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                  placeholder="Icono"
+                />
+                <textarea
+                  value={item.description}
+                  onChange={(event) => updateShopDraft(item.id, { description: event.target.value })}
+                  rows={3}
+                  className="md:col-span-2 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm leading-6 text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                  placeholder="Descripción del artículo"
+                />
+                <input
+                  type="number"
+                  min={0}
+                  value={item.price}
+                  onChange={(event) => updateShopDraft(item.id, { price: Math.max(0, Number(event.target.value) || 0) })}
+                  className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                  placeholder="Precio"
+                />
+                <input
+                  value={item.category}
+                  onChange={(event) => updateShopDraft(item.id, { category: event.target.value })}
+                  className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                  placeholder="Categoría"
+                />
+                <input
+                  value={item.rarity}
+                  onChange={(event) => updateShopDraft(item.id, { rarity: event.target.value })}
+                  className="md:col-span-2 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                  placeholder="Rareza"
+                />
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderStoryThemeDraft = () => {
+    const previewState = previewStates.storytelling;
+
+    if (previewState.status === 'loading') {
+      return renderPreviewLoading('el tema visual');
+    }
+
+    if (previewState.status === 'error') {
+      return renderPreviewError('storytelling', 'el tema visual');
+    }
+
+    if (!storyThemeDraft) {
+      return null;
+    }
+
+    const colors = storyThemeDraft.themeConfig.colors || {};
+    const particles = storyThemeDraft.themeConfig.particles;
+    const banner = storyThemeDraft.themeConfig.banner;
+
+    return (
+      <div className="space-y-4">
+        <div
+          className="overflow-hidden rounded-3xl border border-gray-200 shadow-lg dark:border-gray-700"
+          style={{
+            background: `linear-gradient(135deg, ${colors.primary || '#6d28d9'} 0%, ${colors.secondary || '#0f766e'} 100%)`,
+          }}
+        >
+          <div className="bg-black/10 p-5 text-white backdrop-blur-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-white/90">
+                  <span>{banner?.emoji || '✨'}</span>
+                  <span>{storyThemeDraft.name}</span>
+                </div>
+                <h3 className="mt-4 text-2xl font-bold">{banner?.title || storyThemeDraft.name}</h3>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-white/80">
+                  Este sería el tono visual inicial de storytelling para tu clase.
+                </p>
+              </div>
+
+              {particles?.type && (
+                <span className="rounded-full bg-white/15 px-3 py-1.5 text-xs font-semibold text-white/90">
+                  Partículas: {particles.type}
+                </span>
+              )}
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-3">
+              {[colors.primary, colors.secondary, colors.accent, colors.background, colors.sidebar].filter(Boolean).map((color) => (
+                <div key={color} className="flex items-center gap-2 rounded-full bg-white/15 px-3 py-2 text-xs font-medium text-white/90">
+                  <span className="h-4 w-4 rounded-full border border-white/40" style={{ backgroundColor: color }} />
+                  <span>{color}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {isEditingCurrentReview && (
+          <div className="rounded-2xl border border-gray-200 bg-white/90 p-4 dark:border-gray-700 dark:bg-gray-900/70">
+            <label className="block text-sm font-semibold text-gray-900 dark:text-white">Describe el tema que quieres para storytelling</label>
+            <textarea
+              value={storyThemePrompt}
+              onChange={(event) => setStoryThemePrompt(event.target.value)}
+              rows={3}
+              placeholder={buildStoryThemePrompt()}
+              className="mt-3 w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm leading-6 text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+            />
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Si quieres otro estilo, cambia la idea y vuelve a generar la propuesta.
+              </p>
+              <button
+                type="button"
+                onClick={() => void loadModulePreview('storytelling', true)}
+                className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+              >
+                <Wand2 size={14} />
+                Probar otra ambientación
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderModulePreviewSection = (module: AIClassroomBlueprintModule) => {
+    if (!isEditablePreviewModule(module.featureKey)) {
+      return null;
+    }
+
+    const featureKey = module.featureKey;
+
+    return (
+      <section className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg p-4 md:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+              {module.featureKey === 'behaviors' && 'Estos son los comportamientos que Jiro prepararía'}
+              {module.featureKey === 'badges' && 'Estas son las insignias que Jiro dejaría listas'}
+              {module.featureKey === 'shop' && 'Estos son los artículos que Jiro llevaría a la tienda'}
+              {module.featureKey === 'storytelling' && 'Este es el tema visual que Jiro propone para storytelling'}
+            </h3>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              Puedes revisar el detalle ahora y, si lo necesitas, editarlo antes de crear la clase.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void loadModulePreview(featureKey, true)}
+            className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+          >
+            <Wand2 size={14} />
+            Generar otra propuesta
+          </button>
+        </div>
+
+        <div className="mt-4">
+          {featureKey === 'behaviors' && renderBehaviorDrafts()}
+          {featureKey === 'badges' && renderBadgeDrafts()}
+          {featureKey === 'shop' && renderShopDrafts()}
+          {featureKey === 'storytelling' && renderStoryThemeDraft()}
+        </div>
+      </section>
+    );
+  };
+
+  const renderCompetencyList = () => {
+    if (!classDraft.useCompetencies || !selectedCompetencies.length) {
+      return (
+        <div className="rounded-2xl bg-white/80 px-4 py-3 text-sm text-gray-600 shadow-sm dark:bg-gray-900/60 dark:text-gray-300">
+          Aún no hay competencias confirmadas para esta clase. Usa Seleccionar competencias para revisarlas o ajustar el área.
+        </div>
+      );
+    }
+
+    return (
+      <div className="rounded-2xl bg-white/80 px-4 py-4 shadow-sm dark:bg-gray-900/60">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-semibold text-gray-900 dark:text-white">{selectedCurriculumArea ? 'Competencias que se activarán' : 'Competencias sugeridas por Jiro'}</p>
+          <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
+            {selectedCompetencies.length} competencias
+          </span>
+        </div>
+        {!selectedCurriculumArea && resolvedCurriculumArea && (
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            Jiro detectó el área {resolvedCurriculumArea.name}. Confírmala con el selector para dejarla fija antes de crear la clase.
+          </p>
+        )}
+        <div className="mt-3 flex flex-wrap gap-2">
+          {selectedCompetencies.map((competency) => (
+            <span key={competency.id} className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
+              {competency.name}
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderThinkingState = (message: string) => (
+    <section className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg p-4 md:p-5">
+      <div className="mx-auto grid max-w-5xl gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-center">
+        <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-6 text-center shadow-sm dark:border-gray-700 dark:bg-gray-900/50 md:p-8 lg:text-left">
+          <div className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300">
+            <Loader2 size={20} className="animate-spin" />
+          </div>
+          <h2 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">Jiro está pensando, un momento</h2>
+          <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">{message}</p>
+          <div className="mt-6 h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+            <motion.div
+              className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-600"
+              animate={{ width: ['28%', '74%', '52%', '82%'] }}
+              transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+            />
+          </div>
+        </div>
+
+        <div className="flex justify-center lg:justify-end">
+          {renderJiroImage({
+            imageSrc: '/assets/mascot/jiro-ranking-boss.png',
+            imageAlt: 'Jiro en carga',
+            frameClassName: 'aspect-square w-full max-w-[200px]',
+          })}
+        </div>
+      </div>
+    </section>
+  );
+
+  const renderPromptStep = () => (
+    <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[minmax(0,1.08fr)_minmax(340px,0.92fr)]">
+      <div className="space-y-3 md:space-y-4">
+        <section className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg p-4 md:p-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">Conversación inicial</p>
+          <h2 className="mt-2 text-xl font-bold text-gray-900 dark:text-white md:text-2xl">¿De qué trata tu clase?</h2>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-gray-700 dark:text-gray-300">
+            Cuéntale a Jiro la materia, el nivel, qué te preocupa y qué quieres lograr. Después irá mostrándote sus propuestas paso a paso para que decidas si las mantienes o las ajustas.
+          </p>
+        </section>
+
+        <section className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg p-4 md:p-5">
+          <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200">
+            Tu briefing para Jiro
+          </label>
+          <textarea
+            value={teacherPrompt}
+            onChange={(event) => setTeacherPrompt(event.target.value)}
+            placeholder="Ejemplo: 5to de primaria en Ciencia y Tecnología. Quiero más participación, trabajo en equipo y evidencias claras de aprendizaje."
+            rows={4}
+            className="mt-3 w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-4 text-sm leading-6 text-gray-800 outline-none transition-colors focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:focus:border-emerald-600"
+          />
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-gray-500 dark:text-gray-400">
+            <span>Mientras más concreta sea tu explicación, mejor afinará Jiro el aula.</span>
+            <span>{teacherPrompt.trim().length} caracteres</span>
+          </div>
+        </section>
+      </div>
+
+      <div>
+        {renderJiroImage({
+          imageSrc: '/assets/mascot/jiro-crearclase.jpg',
+          imageAlt: 'Jiro creando clase',
+          frameClassName: 'aspect-[3/4] w-full',
+          imageClassName: 'object-top',
+        })}
+      </div>
+    </div>
+  );
+
+  const renderClassroomReviewStep = () => (
+    <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[minmax(0,1fr)_240px] lg:items-start">
+      <div className="space-y-4">
+        <section className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg p-4 md:p-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">Paso guiado</p>
+          <h2 className="mt-2 text-xl font-bold text-gray-900 dark:text-white">{activeReviewSection?.title}</h2>
+          <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">{activeReviewSection?.subtitle}</p>
+
+          <div className="mt-4 rounded-xl border border-emerald-200 bg-[linear-gradient(135deg,_rgba(236,253,245,1)_0%,_rgba(240,249,255,1)_100%)] p-4 dark:border-emerald-900 dark:bg-emerald-950/30">
+            <div className="grid gap-3 md:grid-cols-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">Nombre</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{classDraft.name}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">Asignatura</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{getSubjectLabel(classDraft.subject)}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">Nivel</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{getGradeLabel(classDraft.gradeLevel)}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-xl bg-white/80 px-4 py-3 shadow-sm dark:bg-gray-900/70">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400">Lo que Jiro detectó</p>
+              <p className="mt-1 text-sm leading-6 text-gray-700 dark:text-gray-200">{blueprint?.classroom.objective}</p>
+              <p className="mt-3 text-sm leading-6 text-gray-600 dark:text-gray-300">{classDraft.description || blueprint?.classroom.description}</p>
+            </div>
+          </div>
+        </section>
+
+        {isEditingCurrentReview && (
+          <section className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg p-4 md:p-5">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white">Ajusta la base del aula</h3>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nombre de la clase</label>
+                <input
+                  value={classDraft.name}
+                  onChange={(event) => setClassDraft((prev) => ({ ...prev, name: event.target.value }))}
+                  className="mt-1.5 w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Asignatura</label>
+                <select
+                  value={classDraft.subject}
+                  onChange={(event) => setClassDraft((prev) => ({ ...prev, subject: event.target.value }))}
+                  className="mt-1.5 w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                >
+                  {SUBJECT_OPTIONS.map((subject) => (
+                    <option key={subject.value || 'empty'} value={subject.value}>{subject.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nivel educativo</label>
+                <select
+                  value={classDraft.gradeLevel}
+                  onChange={(event) => setClassDraft((prev) => ({ ...prev, gradeLevel: event.target.value }))}
+                  className="mt-1.5 w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                >
+                  {GRADE_LEVEL_OPTIONS.map((gradeLevel) => (
+                    <option key={gradeLevel.value || 'empty'} value={gradeLevel.value}>{gradeLevel.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Descripción inicial</label>
+              <textarea
+                value={classDraft.description}
+                onChange={(event) => setClassDraft((prev) => ({ ...prev, description: event.target.value }))}
+                rows={4}
+                className="mt-1.5 w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm leading-6 text-gray-800 outline-none focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+              />
+            </div>
+          </section>
+        )}
+      </div>
+
+      {renderSmallJiroPanel()}
+    </div>
+  );
+
+  const renderModuleReviewStep = (module: AIClassroomBlueprintModule) => {
+    const isSelected = moduleSelections[module.featureKey];
+
+    return (
+      <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[minmax(0,1fr)_240px] lg:items-start">
+        <div className="space-y-4">
+          <section className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg p-4 md:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">Paso guiado</p>
+                <h2 className="mt-2 text-xl font-bold text-gray-900 dark:text-white">{activeReviewSection?.title}</h2>
+                <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">{module.reason}</p>
+              </div>
+
+              <span className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+                isSelected
+                  ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300'
+                  : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+              }`}>
+                {isSelected ? 'Jiro lo preparará' : 'No se aplicará por ahora'}
+              </span>
+            </div>
+
+            <div className="mt-4">
+              {renderModuleCard(module.featureKey)}
+            </div>
+          </section>
+
+          {renderModulePreviewSection(module)}
+
+          {isEditingCurrentReview && (
+            <section className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg p-4 md:p-5">
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white">Decide si quieres mantener esta propuesta</h3>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setModuleSelections((prev) => ({ ...prev, [module.featureKey]: true }))}
+                  className={`rounded-2xl border px-4 py-3 text-left transition-colors ${
+                    isSelected
+                      ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300'
+                      : 'border-gray-200 bg-white text-gray-700 hover:border-emerald-300 hover:bg-emerald-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200'
+                  }`}
+                >
+                  <p className="text-sm font-semibold">Sí, quiero que Jiro lo prepare</p>
+                  <p className="mt-1 text-xs leading-5 opacity-80">Se tomará en cuenta cuando se cree tu clase.</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setModuleSelections((prev) => ({ ...prev, [module.featureKey]: false }))}
+                  className={`rounded-2xl border px-4 py-3 text-left transition-colors ${
+                    !isSelected
+                      ? 'border-gray-900 bg-gray-50 text-gray-900 dark:border-gray-500 dark:bg-gray-900/70 dark:text-white'
+                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200'
+                  }`}
+                >
+                  <p className="text-sm font-semibold">No por ahora</p>
+                  <p className="mt-1 text-xs leading-5 opacity-80">Podrás activarlo o configurarlo después desde la clase.</p>
+                </button>
+              </div>
+            </section>
+          )}
+        </div>
+
+        {renderSmallJiroPanel()}
+      </div>
+    );
+  };
+
+  const renderCompetenciesReviewStep = () => (
+    <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[minmax(0,1fr)_240px] lg:items-start">
+      <div className="space-y-4">
+        <section className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg p-4 md:p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">Paso guiado</p>
+              <h2 className="mt-2 text-xl font-bold text-gray-900 dark:text-white">{activeReviewSection?.title}</h2>
+              <p className="mt-2 text-sm leading-6 text-gray-500 dark:text-gray-400">{activeReviewSection?.subtitle}</p>
+            </div>
+
+            <span className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+              classDraft.useCompetencies
+                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300'
+                : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+            }`}>
+              {classDraft.useCompetencies ? 'Se usarán competencias' : 'Clase sin competencias'}
+            </span>
+          </div>
+
+          <div className="mt-4 rounded-xl border border-emerald-200 bg-[linear-gradient(135deg,_rgba(236,253,245,1)_0%,_rgba(240,249,255,1)_100%)] p-4 dark:border-emerald-900 dark:bg-emerald-950/30">
+            <p className="text-sm leading-6 text-gray-700 dark:text-gray-200">
+              {classDraft.useCompetencies
+                ? 'Jiro recomienda dejar la clase lista para evaluar por competencias desde el inicio.'
+                : 'Jiro considera que puedes empezar con una estructura más simple y decidir las competencias más adelante.'}
+            </p>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              {classDraft.useCompetencies && (
+                <span className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 shadow-sm dark:bg-gray-900 dark:text-emerald-300">
+                  {resolvedCurriculumArea?.name || curriculumAreaHint || 'Área curricular por definir'}
+                </span>
+              )}
+              {classDraft.useCompetencies && (
+                <span className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-sky-700 shadow-sm dark:bg-gray-900 dark:text-sky-300">
+                  {GRADE_SCALE_OPTIONS.find((scale) => scale.value === classDraft.gradeScaleType)?.label || classDraft.gradeScaleType}
+                </span>
+              )}
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setEditingReviewStep((prev) => (prev === 'competencies' ? null : 'competencies'))}
+                className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+              >
+                <BookOpen size={14} />
+                {isEditingCurrentReview ? 'Ocultar selector' : classDraft.useCompetencies ? 'Seleccionar competencias' : 'Configurar competencias'}
+              </button>
+            </div>
+
+            <div className="mt-4">
+              {renderCompetencyList()}
+            </div>
+          </div>
+        </section>
+
+        {isEditingCurrentReview && (
+          <section className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg p-4 md:p-5">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <BookOpen size={18} className="text-emerald-500" />
+                  <h3 className="text-base font-semibold text-gray-900 dark:text-white">Calificaciones por competencias</h3>
+                </div>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Actívalo solo si quieres dejar la clase lista para evidencias y escalas curriculares.</p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setClassDraft((prev) => ({
+                  ...prev,
+                  useCompetencies: !prev.useCompetencies,
+                  curriculumAreaId: !prev.useCompetencies ? prev.curriculumAreaId : '',
+                }))}
+                className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full p-1 transition-colors ${classDraft.useCompetencies ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-700'}`}
+              >
+                <span className={`h-6 w-6 rounded-full bg-white shadow-sm transition-transform ${classDraft.useCompetencies ? 'translate-x-6' : 'translate-x-0'}`} />
+              </button>
+            </div>
+
+            {classDraft.useCompetencies && (
+              <div className="mt-4 space-y-4 rounded-2xl bg-emerald-50 p-4 dark:bg-emerald-900/15">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nivel curricular</label>
+                  <select
+                    value={classDraft.educationLevel}
+                    onChange={(event) => setClassDraft((prev) => ({
+                      ...prev,
+                      educationLevel: event.target.value as DraftClassroom['educationLevel'],
+                      curriculumAreaId: '',
+                    }))}
+                    className="mt-1.5 w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                  >
+                    <option value="">Seleccionar nivel curricular...</option>
+                    <option value="PRIMARIA">Primaria</option>
+                    <option value="SECUNDARIA">Secundaria</option>
                   </select>
                 </div>
 
-                {/* Descripción opcional */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    ✏️ Descripción adicional <span className="font-normal text-gray-500">(opcional)</span>
-                  </label>
-                  <textarea 
-                    value={classData.description} 
-                    onChange={(e) => setClassData(p => ({ ...p, description: e.target.value }))}
-                    placeholder="Ej: Grupo avanzado, enfocado en resolución de problemas..."
-                    rows={2}
-                    className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-emerald-500 resize-none"
-                  />
-                </div>
-
-                {/* Toggle de Competencias */}
-                <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <BookOpen size={18} className="text-emerald-500" />
-                      <div>
-                        <p className="text-sm font-medium text-gray-800 dark:text-white">¿Usar Competencias?</p>
-                        <p className="text-xs text-gray-500">Habilita calificaciones por competencias curriculares</p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setClassData(p => ({ ...p, useCompetencies: !p.useCompetencies }))}
-                      className={`relative w-11 h-6 rounded-full transition-colors ${classData.useCompetencies ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}
-                    >
-                      <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${classData.useCompetencies ? 'translate-x-5' : 'translate-x-0'}`} />
-                    </button>
-                  </div>
-
-                  {/* Opciones de Competencias */}
-                  <AnimatePresence>
-                    {classData.useCompetencies && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="overflow-hidden"
-                      >
-                        <div className="mt-4 space-y-3 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-200 dark:border-emerald-800">
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                              🏫 Nivel Educativo
-                            </label>
-                            <select
-                              value={classData.educationLevel}
-                              onChange={(e) => setClassData(p => ({ ...p, educationLevel: e.target.value as any, curriculumAreaId: '' }))}
-                              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-emerald-500"
-                            >
-                              <option value="">Selecciona un nivel...</option>
-                              <option value="PRIMARIA">Primaria</option>
-                              <option value="SECUNDARIA">Secundaria</option>
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                              📚 Área Curricular
-                            </label>
-                            <select
-                              value={classData.curriculumAreaId}
-                              onChange={(e) => setClassData(p => ({ ...p, curriculumAreaId: e.target.value }))}
-                              disabled={!classData.educationLevel}
-                              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
-                            >
-                              <option value="">Selecciona un área...</option>
-                              {curriculumAreas.map((area: any) => (
-                                <option key={area.id} value={area.id}>
-                                  {area.name} ({area.competencies?.length || 0} competencias)
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                              📊 Sistema de Calificación
-                            </label>
-                            <select
-                              value={classData.gradeScaleType}
-                              onChange={(e) => setClassData(p => ({ ...p, gradeScaleType: e.target.value as any }))}
-                              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-emerald-500"
-                            >
-                              <option value="PERU_LETTERS">Perú - Letras (AD, A, B, C)</option>
-                              <option value="PERU_VIGESIMAL">Perú - Vigesimal (0-20)</option>
-                            </select>
-                          </div>
-
-                          <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2 rounded-lg flex items-center gap-2">
-                            <span>🇵🇪</span>
-                            <span>Por el momento solo están disponibles las competencias del currículo de Perú.</span>
-                          </div>
-
-                          {classData.curriculumAreaId && (
-                            <div className="text-xs text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800 p-2 rounded-lg">
-                              <p className="font-medium text-emerald-600 mb-1">Competencias incluidas:</p>
-                              <ul className="space-y-0.5 max-h-20 overflow-y-auto">
-                                {curriculumAreas
-                                  .find((a: any) => a.id === classData.curriculumAreaId)
-                                  ?.competencies?.map((c: any, i: number) => (
-                                    <li key={c.id} className="truncate" title={c.name}>
-                                      {i + 1}. {c.name}
-                                    </li>
-                                  ))}
-                              </ul>
-                            </div>
-                          )}
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </div>
-            )}
-
-            {/* Step 1: Behaviors */}
-            {currentStep === 1 && (
-              <div className="space-y-4">
-                <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-200 dark:border-emerald-800">
-                  <p className="text-sm text-emerald-700 dark:text-emerald-300">
-                    💡 <strong>¿Qué son los comportamientos?</strong> Son acciones que premias o penalizas en clase.
-                    Los <span className="text-emerald-600 font-bold">positivos</span> dan puntos y los <span className="text-red-500 font-bold">negativos</span> los quitan.
-                  </p>
-                </div>
-
-                {/* Descripción */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    ✏️ ¿Qué comportamientos evaluar?
-                  </label>
-                  <textarea 
-                    value={behaviorsDesc} 
-                    onChange={(e) => setBehaviorsDesc(e.target.value)}
-                    placeholder="Ej: Participación en clase, entrega de tareas, respeto a compañeros..."
-                    rows={2}
-                    className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-emerald-500 resize-none"
-                  />
-                </div>
-
-                {/* Opciones en grid */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      🔢 ¿Cuántos generar?
-                    </label>
-                    <input 
-                      type="number" 
-                      min={5} 
-                      max={20} 
-                      value={behaviorsCount} 
-                      onChange={(e) => setBehaviorsCount(+e.target.value || 10)}
-                      className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-emerald-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      🎮 ¿Qué puntos usar?
-                    </label>
-                    <select 
-                      value={pointMode} 
-                      onChange={(e) => setPointMode(e.target.value)}
-                      className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-emerald-500"
-                    >
-                      <option value="COMBINED">🎮 Combinado (XP+HP+GP)</option>
-                      <option value="XP_ONLY">⭐ Solo XP (Experiencia)</option>
-                      <option value="HP_ONLY">❤️ Solo HP (Vida)</option>
-                      <option value="GP_ONLY">🪙 Solo GP (Monedas)</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Tipo de comportamientos */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    ✅ ¿Qué tipo de comportamientos incluir?
-                  </label>
-                  <div className="flex gap-3">
-                    <label className={`flex-1 flex items-center gap-2 p-3 rounded-xl border-2 cursor-pointer transition-all ${
-                      includePositive ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : 'border-gray-200 dark:border-gray-600'
-                    }`}>
-                      <input type="checkbox" checked={includePositive} onChange={(e) => setIncludePositive(e.target.checked)} className="sr-only" />
-                      <Sparkles size={18} className="text-emerald-500" />
-                      <div>
-                        <div className="text-sm font-medium">Positivos</div>
-                        <div className="text-xs text-gray-500">Dan puntos</div>
-                      </div>
-                    </label>
-                    <label className={`flex-1 flex items-center gap-2 p-3 rounded-xl border-2 cursor-pointer transition-all ${
-                      includeNegative ? 'border-red-500 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-600'
-                    }`}>
-                      <input type="checkbox" checked={includeNegative} onChange={(e) => setIncludeNegative(e.target.checked)} className="sr-only" />
-                      <Heart size={18} className="text-red-500" />
-                      <div>
-                        <div className="text-sm font-medium">Negativos</div>
-                        <div className="text-xs text-gray-500">Quitan puntos</div>
-                      </div>
-                    </label>
-                  </div>
-                </div>
-
-                {/* Botón generar */}
-                <button 
-                  onClick={() => generateContent('behaviors')} 
-                  disabled={isGenerating}
-                  className="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl font-medium flex items-center justify-center gap-2 hover:from-emerald-600 hover:to-teal-700 disabled:opacity-50 transition-all"
-                >
-                  {isGenerating ? (
-                    <><Loader2 size={18} className="animate-spin" /> Generando comportamientos...</>
-                  ) : (
-                    <><Sparkles size={18} /> {generated.behaviors.length ? 'Regenerar comportamientos' : 'Generar con IA'}</>
-                  )}
-                </button>
-
-                {/* Lista de comportamientos generados */}
-                {generated.behaviors.length > 0 && (
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                    <div className="flex items-center justify-between text-sm text-gray-500 px-1">
-                      <span>{selectedBehaviors.size} de {generated.behaviors.length} seleccionados</span>
-                      <button 
-                        onClick={() => setSelectedBehaviors(new Set(generated.behaviors.map((_: any, i: number) => i)))}
-                        className="text-emerald-600 hover:underline"
-                      >
-                        Seleccionar todos
-                      </button>
-                    </div>
-                    {generated.behaviors.map((b: any, i: number) => (
-                      editingIdx?.type === 'behaviors' && editingIdx.idx === i ? (
-                        <div key={i} className="p-4 rounded-xl border-2 border-blue-500 bg-blue-50 dark:bg-blue-900/20 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium text-blue-700 dark:text-blue-400">Editando comportamiento</span>
-                            <div className="flex gap-2">
-                              <button onClick={() => deleteItem('behaviors', i)} className="p-1.5 text-red-500 hover:bg-red-100 rounded-lg" title="Eliminar">
-                                <Trash2 size={16} />
-                              </button>
-                              <button onClick={() => setEditingIdx(null)} className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg">
-                                <X size={16} />
-                              </button>
-                            </div>
-                          </div>
-                          <div className="flex gap-3">
-                            <div className="flex gap-1">
-                              <button onClick={() => updateItem('behaviors', i, { isPositive: true })} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${b.isPositive ? 'bg-emerald-500 text-white' : 'bg-gray-200 dark:bg-gray-700'}`}>Dar</button>
-                              <button onClick={() => updateItem('behaviors', i, { isPositive: false })} className={`px-3 py-1.5 rounded-lg text-xs font-medium ${!b.isPositive ? 'bg-red-500 text-white' : 'bg-gray-200 dark:bg-gray-700'}`}>Quitar</button>
-                            </div>
-                            <div className="flex gap-1 flex-wrap">
-                              {['⭐', '🎯', '📚', '✅', '🏆', '💪', '🧠', '❤️', '💔', '⚡', '🔥', '❌'].map(emoji => (
-                                <button key={emoji} onClick={() => updateItem('behaviors', i, { icon: emoji })} className={`w-7 h-7 rounded text-sm ${b.icon === emoji ? 'bg-blue-500 ring-2 ring-blue-400' : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300'}`}>{emoji}</button>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <input type="text" value={b.name} onChange={(e) => updateItem('behaviors', i, { name: e.target.value })} className="px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg" placeholder="Nombre" />
-                            <input type="text" value={b.description || ''} onChange={(e) => updateItem('behaviors', i, { description: e.target.value })} className="px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg" placeholder="Descripción" />
-                          </div>
-                          <div className="flex gap-2">
-                            <div className="flex items-center gap-1 px-2 py-1 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
-                              <Sparkles size={12} className="text-purple-600" />
-                              <input type="number" value={b.xpValue || 0} onChange={(e) => updateItem('behaviors', i, { xpValue: parseInt(e.target.value) || 0 })} className="w-12 px-1 py-0.5 text-xs text-center bg-transparent border-b border-purple-400" min={0} />
-                            </div>
-                            <div className="flex items-center gap-1 px-2 py-1 bg-red-100 dark:bg-red-900/30 rounded-lg">
-                              <Heart size={12} className="text-red-600" />
-                              <input type="number" value={b.hpValue || 0} onChange={(e) => updateItem('behaviors', i, { hpValue: parseInt(e.target.value) || 0 })} className="w-12 px-1 py-0.5 text-xs text-center bg-transparent border-b border-red-400" />
-                            </div>
-                            <div className="flex items-center gap-1 px-2 py-1 bg-amber-100 dark:bg-amber-900/30 rounded-lg">
-                              <Coins size={12} className="text-amber-600" />
-                              <input type="number" value={b.gpValue || 0} onChange={(e) => updateItem('behaviors', i, { gpValue: parseInt(e.target.value) || 0 })} className="w-12 px-1 py-0.5 text-xs text-center bg-transparent border-b border-amber-400" min={0} />
-                            </div>
-                          </div>
-                          {classData.useCompetencies && curriculumAreas.length > 0 && (
-                            <div>
-                              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">📚 Competencia asociada</label>
-                              <select
-                                value={b.competencyId || ''}
-                                onChange={(e) => updateItem('behaviors', i, { competencyId: e.target.value || null })}
-                                className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg"
-                              >
-                                <option value="">Sin competencia</option>
-                                {curriculumAreas.find((a: any) => a.id === classData.curriculumAreaId)?.competencies?.map((c: any) => (
-                                  <option key={c.id} value={c.id}>{c.name}</option>
-                                ))}
-                              </select>
-                            </div>
-                          )}
-                          <button onClick={() => setEditingIdx(null)} className="w-full py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600">
-                            <Check size={14} className="inline mr-1" /> Listo
-                          </button>
-                        </div>
-                      ) : (
-                        <div 
-                          key={i} 
-                          className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
-                            selectedBehaviors.has(i)
-                              ? b.isPositive
-                                ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
-                                : 'border-red-500 bg-red-50 dark:bg-red-900/20'
-                              : 'border-gray-200 dark:border-gray-600 opacity-50'
-                          }`}
-                        >
-                          <button
-                            onClick={() => { const s = new Set(selectedBehaviors); s.has(i) ? s.delete(i) : s.add(i); setSelectedBehaviors(s); }}
-                            className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
-                              selectedBehaviors.has(i) ? (b.isPositive ? 'bg-emerald-500 border-emerald-500' : 'bg-red-500 border-red-500') : 'border-gray-300'
-                            }`}
-                          >
-                            {selectedBehaviors.has(i) && <Check size={12} className="text-white" />}
-                          </button>
-                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0 ${b.isPositive ? 'bg-emerald-100' : 'bg-red-100'}`}>
-                            {b.icon}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-medium text-gray-800 dark:text-white truncate">{b.name}</span>
-                              <span className={`text-xs px-2 py-0.5 rounded-full ${b.isPositive ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                                {b.isPositive ? 'Da puntos' : 'Quita puntos'}
-                              </span>
-                              {b.competencyId && classData.useCompetencies && (
-                                <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 truncate max-w-[150px]" title={curriculumAreas.find((a: any) => a.id === classData.curriculumAreaId)?.competencies?.find((c: any) => c.id === b.competencyId)?.name}>
-                                  📚 {curriculumAreas.find((a: any) => a.id === classData.curriculumAreaId)?.competencies?.find((c: any) => c.id === b.competencyId)?.name?.substring(0, 25) || 'Competencia'}...
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-xs text-gray-500 truncate">{b.description}</p>
-                            <div className="flex gap-2 mt-1">
-                              {b.xpValue > 0 && <span className="text-xs text-purple-600 font-medium">+{b.xpValue} XP</span>}
-                              {b.hpValue !== 0 && <span className={`text-xs font-medium ${b.hpValue > 0 ? 'text-green-600' : 'text-red-600'}`}>{b.hpValue > 0 ? '+' : ''}{b.hpValue} HP</span>}
-                              {b.gpValue > 0 && <span className="text-xs text-amber-600 font-medium">+{b.gpValue} GP</span>}
-                            </div>
-                          </div>
-                          <button onClick={() => setEditingIdx({ type: 'behaviors', idx: i })} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg" title="Editar">
-                            <Edit2 size={14} className="text-gray-500" />
-                          </button>
-                        </div>
-                      )
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Área curricular</label>
+                  <select
+                    value={classDraft.curriculumAreaId}
+                    onChange={(event) => setClassDraft((prev) => ({ ...prev, curriculumAreaId: event.target.value }))}
+                    disabled={!classDraft.educationLevel}
+                    className="mt-1.5 w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                  >
+                    <option value="">Seleccionar área...</option>
+                    {curriculumAreas.map((area) => (
+                      <option key={area.id} value={area.id}>{area.name}</option>
                     ))}
-                  </div>
-                )}
-                
-                {!generated.behaviors.length && !isGenerating && (
-                  <div className="text-center py-8 text-gray-400">
-                    <Sparkles size={40} className="mx-auto mb-3 opacity-30" />
-                    <p className="text-sm">Haz clic en "Generar con IA" para crear comportamientos</p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Step 2: Badges */}
-            {currentStep === 2 && <StepBadges {...{ badgesDesc, setBadgesDesc, badgesCount, setBadgesCount, badgeAssignmentMode, setBadgeAssignmentMode, isGenerating, generateContent, generated, selectedBadges, setSelectedBadges, editingIdx, setEditingIdx, updateItem, deleteItem, useCompetencies: classData.useCompetencies, competencies: curriculumAreas.find((a: any) => a.id === classData.curriculumAreaId)?.competencies || [] }} />}
-            {currentStep === 3 && <StepShop {...{ shopDesc, setShopDesc, shopCount, setShopCount, isGenerating, generateContent, generated, selectedShopItems, setSelectedShopItems, editingIdx, setEditingIdx, updateItem, deleteItem }} />}
-            {currentStep === 4 && <StepQuestions {...{ questionBankName, setQuestionBankName, questionsDesc, setQuestionsDesc, questionsCount, setQuestionsCount, questionTypes, setQuestionTypes, isGenerating, generateContent, generated, includeQuestionBank, setIncludeQuestionBank }} />}
-            {currentStep === 5 && <StepReview {...{ classData, generated, selectedBehaviors, selectedBadges, selectedShopItems, includeQuestionBank, isCreating, createClassroom }} />}
-          </div>
-
-          {/* Footer */}
-          <div className="border-t border-gray-200 dark:border-gray-700 p-4 flex justify-between">
-            <button onClick={() => currentStep > 0 ? setCurrentStep(currentStep - 1) : handleClose()}
-              className="px-4 py-2 border rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center gap-2">
-              <ChevronLeft size={18} /> {currentStep > 0 ? 'Anterior' : 'Cancelar'}
-            </button>
-            {currentStep < STEPS.length - 1 ? (
-              <button onClick={() => setCurrentStep(currentStep + 1)} disabled={!canNext}
-                className="px-6 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl flex items-center gap-2 disabled:opacity-50">
-                Siguiente <ChevronRight size={18} />
-              </button>
-            ) : (
-              <button onClick={createClassroom} disabled={isCreating}
-                className="px-6 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl flex items-center gap-2 disabled:opacity-50">
-                {isCreating ? <><Loader2 size={18} className="animate-spin" /> Creando...</> : <><Check size={18} /> Crear Clase</>}
-              </button>
-            )}
-          </div>
-          </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
-  );
-};
-
-// Sub-componentes para cada paso
-const StepBadges = (props: any) => {
-  const rarityLabels: Record<string, string> = { COMMON: 'Común', RARE: 'Raro', EPIC: 'Épico', LEGENDARY: 'Legendario' };
-  const modeLabels: Record<string, string> = { MANUAL: 'Manual', AUTOMATIC: 'Automático', BOTH: 'Ambos' };
-  return (
-    <div className="space-y-4">
-      <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800">
-        <p className="text-sm text-amber-700 dark:text-amber-300">
-          💡 <strong>¿Qué son las insignias?</strong> Son reconocimientos especiales que premian logros de tus estudiantes.
-          Pueden ser <span className="font-bold">manuales</span> (tú las asignas) o <span className="font-bold">automáticas</span>.
-        </p>
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">✏️ ¿Qué logros reconocer?</label>
-        <textarea value={props.badgesDesc} onChange={(e: any) => props.setBadgesDesc(e.target.value)} placeholder="Ej: Puntualidad, mejor promedio, participación destacada..." rows={2} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-amber-500 resize-none" />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">🔢 ¿Cuántas generar?</label>
-          <input type="number" min={3} max={15} value={props.badgesCount} onChange={(e: any) => props.setBadgesCount(+e.target.value)} className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-amber-500" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">⚙️ Modo de asignación</label>
-          <select value={props.badgeAssignmentMode} onChange={(e: any) => props.setBadgeAssignmentMode(e.target.value)} className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-amber-500">
-            <option value="MANUAL">✋ Manual (tú asignas)</option>
-            <option value="AUTOMATIC">⚡ Automático (por logros)</option>
-            <option value="BOTH">🔄 Ambos modos</option>
-          </select>
-        </div>
-      </div>
-
-      <button onClick={() => props.generateContent('badges')} disabled={props.isGenerating} className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-xl font-medium flex items-center justify-center gap-2 hover:from-amber-600 hover:to-orange-700 disabled:opacity-50 transition-all">
-        {props.isGenerating ? <><Loader2 size={18} className="animate-spin" /> Generando insignias...</> : <><Sparkles size={18} /> {props.generated.badges.length ? 'Regenerar insignias' : 'Generar con IA'}</>}
-      </button>
-
-      {props.generated.badges.length > 0 && (
-        <div className="space-y-2 max-h-64 overflow-y-auto">
-          <div className="flex items-center justify-between text-sm text-gray-500 px-1">
-            <span>{props.selectedBadges.size} de {props.generated.badges.length} seleccionadas</span>
-            <button onClick={() => props.setSelectedBadges(new Set(props.generated.badges.map((_: any, i: number) => i)))} className="text-amber-600 hover:underline">Seleccionar todas</button>
-          </div>
-          {props.generated.badges.map((b: any, i: number) => (
-            <div key={i} className={`rounded-xl border-2 transition-all ${
-              props.selectedBadges.has(i)
-                ? b.rarity === 'LEGENDARY' ? 'border-amber-500 bg-amber-50' : b.rarity === 'EPIC' ? 'border-purple-500 bg-purple-50' : b.rarity === 'RARE' ? 'border-blue-500 bg-blue-50' : 'border-gray-400 bg-gray-50'
-                : 'border-gray-200 dark:border-gray-600 opacity-50'
-            }`}>
-              {props.editingIdx?.type === 'badges' && props.editingIdx.idx === i ? (
-                <div className="p-3 space-y-3">
-                  <div className="flex gap-2">
-                    <input value={b.icon || '🏆'} onChange={(e: any) => props.updateItem('badges', i, { icon: e.target.value })} className="w-14 text-center text-xl border border-gray-300 rounded-lg px-2 py-1" />
-                    <input value={b.name || ''} onChange={(e: any) => props.updateItem('badges', i, { name: e.target.value })} className="flex-1 border border-gray-300 rounded-lg px-3 py-1" placeholder="Nombre de la insignia" />
-                  </div>
-                  <textarea value={b.description || ''} onChange={(e: any) => props.updateItem('badges', i, { description: e.target.value })} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none" rows={2} placeholder="Descripción" />
-                  <div className="flex gap-2 items-center flex-wrap">
-                    <select value={b.rarity || 'COMMON'} onChange={(e: any) => props.updateItem('badges', i, { rarity: e.target.value })} className="border border-gray-300 rounded-lg px-2 py-1 text-sm">
-                      <option value="COMMON">⚪ Común</option>
-                      <option value="RARE">🔵 Raro</option>
-                      <option value="EPIC">🟣 Épico</option>
-                      <option value="LEGENDARY">🟡 Legendario</option>
-                    </select>
-                    <select value={b.assignmentMode || 'MANUAL'} onChange={(e: any) => props.updateItem('badges', i, { assignmentMode: e.target.value })} className="border border-gray-300 rounded-lg px-2 py-1 text-sm">
-                      <option value="MANUAL">✋ Manual</option>
-                      <option value="AUTOMATIC">⚡ Automático</option>
-                      <option value="BOTH">🔄 Ambos</option>
-                    </select>
-                    <div className="flex items-center gap-1">
-                      <input type="number" value={b.rewardXp || 0} onChange={(e: any) => props.updateItem('badges', i, { rewardXp: +e.target.value })} className="w-16 border border-gray-300 rounded-lg px-2 py-1 text-sm" />
-                      <span className="text-xs text-purple-600 font-medium">XP</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <input type="number" value={b.rewardGp || 0} onChange={(e: any) => props.updateItem('badges', i, { rewardGp: +e.target.value })} className="w-16 border border-gray-300 rounded-lg px-2 py-1 text-sm" />
-                      <span className="text-xs text-amber-600 font-medium">GP</span>
-                    </div>
-                  </div>
-                  {(b.assignmentMode === 'AUTOMATIC' || b.assignmentMode === 'BOTH') && (
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">⚡ Condición de activación</label>
-                      <input value={b.triggerCondition || ''} onChange={(e: any) => props.updateItem('badges', i, { triggerCondition: e.target.value })} className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm" placeholder="Ej: Obtener 5 comportamientos de participación" />
-                    </div>
+                  </select>
+                  {curriculumAreaHint && !classDraft.curriculumAreaId && (
+                    <p className="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                      Jiro sugirió: {curriculumAreaHint}. Si no coincide, elige la opción más cercana.
+                    </p>
                   )}
-                  {props.useCompetencies && props.competencies?.length > 0 && (
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">📚 Competencia asociada</label>
-                      <select
-                        value={b.competencyId || ''}
-                        onChange={(e: any) => props.updateItem('badges', i, { competencyId: e.target.value || null })}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm"
-                      >
-                        <option value="">Sin competencia</option>
-                        {props.competencies.map((c: any) => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                  <button onClick={() => props.setEditingIdx(null)} className="ml-auto px-4 py-1.5 bg-amber-500 text-white text-sm rounded-lg hover:bg-amber-600">✓ Listo</button>
                 </div>
-              ) : (
-                <div className="flex items-center gap-3 p-3">
-                  <button onClick={() => { const s = new Set(props.selectedBadges); s.has(i) ? s.delete(i) : s.add(i); props.setSelectedBadges(s); }} className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${props.selectedBadges.has(i) ? 'bg-amber-500 border-amber-500' : 'border-gray-300'}`}>
-                    {props.selectedBadges.has(i) && <Check size={12} className="text-white" />}
-                  </button>
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0 ${b.rarity === 'LEGENDARY' ? 'bg-amber-100' : b.rarity === 'EPIC' ? 'bg-purple-100' : b.rarity === 'RARE' ? 'bg-blue-100' : 'bg-gray-100'}`}>{b.icon}</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-gray-800 dark:text-white">{b.name}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${b.rarity === 'LEGENDARY' ? 'bg-amber-200 text-amber-800' : b.rarity === 'EPIC' ? 'bg-purple-200 text-purple-800' : b.rarity === 'RARE' ? 'bg-blue-200 text-blue-800' : 'bg-gray-200 text-gray-700'}`}>{rarityLabels[b.rarity] || 'Común'}</span>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-gray-200 text-gray-700">{modeLabels[b.assignmentMode] || 'Manual'}</span>
-                      {b.competencyId && props.useCompetencies && (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 truncate max-w-[120px]" title={props.competencies?.find((c: any) => c.id === b.competencyId)?.name}>
-                          📚 {props.competencies?.find((c: any) => c.id === b.competencyId)?.name?.substring(0, 20) || 'Competencia'}...
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Escala de calificación</label>
+                  <select
+                    value={classDraft.gradeScaleType}
+                    onChange={(event) => setClassDraft((prev) => ({ ...prev, gradeScaleType: event.target.value as DraftClassroom['gradeScaleType'] }))}
+                    className="mt-1.5 w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/20 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+                  >
+                    {GRADE_SCALE_OPTIONS.map((scale) => (
+                      <option key={scale.value} value={scale.value}>{scale.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {resolvedCurriculumArea && (
+                  <div className="rounded-2xl bg-white px-4 py-3 text-sm text-gray-600 dark:bg-gray-950 dark:text-gray-300">
+                    <p className="font-semibold text-gray-900 dark:text-white">Competencias base incluidas</p>
+                    <p className="mt-1">{resolvedCurriculumArea.competencies.length} competencias oficiales quedarán disponibles desde el inicio.</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {resolvedCurriculumArea.competencies.map((competency) => (
+                        <span key={competency.id} className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">
+                          {competency.name}
                         </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-gray-500 truncate">{b.description}</p>
-                    {b.triggerCondition && (b.assignmentMode === 'AUTOMATIC' || b.assignmentMode === 'BOTH') && (
-                      <p className="text-xs text-emerald-600 mt-0.5 flex items-center gap-1">
-                        <span>⚡</span>
-                        <span className="truncate">Se activa: {b.triggerCondition}</span>
-                      </p>
-                    )}
-                    <div className="flex gap-2 mt-1">
-                      {b.rewardXp > 0 && <span className="text-xs text-purple-600 font-medium">+{b.rewardXp} XP</span>}
-                      {b.rewardGp > 0 && <span className="text-xs text-amber-600 font-medium">+{b.rewardGp} GP</span>}
+                      ))}
                     </div>
                   </div>
-                  <button onClick={() => props.setEditingIdx({ type: 'badges', idx: i })} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><Edit2 size={14} className="text-gray-500" /></button>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+                )}
+              </div>
+            )}
+          </section>
+        )}
+      </div>
 
-      {!props.generated.badges.length && !props.isGenerating && (
-        <div className="text-center py-8 text-gray-400">
-          <Award size={40} className="mx-auto mb-3 opacity-30" />
-          <p className="text-sm">Haz clic en "Generar con IA" para crear insignias</p>
-        </div>
+      {renderSmallJiroPanel()}
+    </div>
+  );
+
+  const renderSummaryStep = () => (
+    <div className="mx-auto flex max-w-5xl flex-col gap-4">
+      <section className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg p-4 md:p-5">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">Resumen final</p>
+        <h2 className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">Jiro ya tiene lista tu propuesta</h2>
+        <p className="mt-3 text-sm leading-6 text-gray-700 dark:text-gray-300">
+          Vas a crear una clase centrada en <span className="font-semibold text-gray-900 dark:text-white">{blueprint?.classroom.objective}</span>.
+        </p>
+      </section>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <section className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg p-4 md:p-5">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">Base del aula</h3>
+          <div className="mt-4 space-y-3 text-sm text-gray-600 dark:text-gray-300">
+            <div className="rounded-2xl bg-gray-50 px-4 py-3 dark:bg-gray-950">
+              <p className="font-semibold text-gray-900 dark:text-white">{classDraft.name}</p>
+              <p className="mt-1">{getSubjectLabel(classDraft.subject)} • {getGradeLabel(classDraft.gradeLevel)}</p>
+            </div>
+            <div className="rounded-2xl bg-gray-50 px-4 py-3 dark:bg-gray-950">
+              <p className="font-medium text-gray-900 dark:text-white">Descripción</p>
+              <p className="mt-1 leading-6">{classDraft.description || 'Sin descripción adicional.'}</p>
+            </div>
+            <div className="rounded-2xl bg-gray-50 px-4 py-3 dark:bg-gray-950">
+              <p className="font-medium text-gray-900 dark:text-white">Competencias</p>
+              <p className="mt-1 leading-6">
+                {classDraft.useCompetencies
+                  ? `${selectedCurriculumArea?.name || curriculumAreaHint || 'Área pendiente'} • ${classDraft.gradeScaleType}`
+                  : 'La clase se creará sin sistema de competencias.'}
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg p-4 md:p-5">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">Lo que Jiro hará ahora</h3>
+          <div className="mt-4 space-y-3 text-sm text-gray-600 dark:text-gray-300">
+            {createNowModules.length > 0 ? createNowModules.map((module) => (
+              <div key={module.featureKey} className="rounded-2xl bg-emerald-50 px-4 py-3 dark:bg-emerald-900/15">
+                <p className="font-semibold text-gray-900 dark:text-white">{module.title}</p>
+                <p className="mt-1 leading-6">{module.reason}</p>
+              </div>
+            )) : (
+              <div className="rounded-2xl bg-gray-50 px-4 py-3 dark:bg-gray-950">
+                <p>No hay módulos automáticos seleccionados. Se creará la base del aula y podrás configurarla después.</p>
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <section className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg p-4 md:p-5">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">Quedará disponible al entrar</h3>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {readyAfterCreateModules.length > 0
+              ? readyAfterCreateModules.map((module) => renderFeaturePill(module.featureKey, 'ready'))
+              : <span className="rounded-full bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-200">No hay módulos adicionales en espera.</span>}
+          </div>
+        </section>
+
+        <section className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg p-4 md:p-5">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-white">Módulos que aún esperan desbloqueo</h3>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {lockedModules.length > 0
+              ? lockedModules.map((module) => renderFeaturePill(module.featureKey, 'locked'))
+              : <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">Esta cuenta ya ve todo Juried desbloqueado.</span>}
+          </div>
+        </section>
+      </div>
+
+      {isCreating && (
+        <section className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-emerald-200 dark:border-emerald-900 shadow-lg p-5 text-center">
+          <Loader2 size={28} className="mx-auto animate-spin text-emerald-500" />
+          <p className="mt-3 text-base font-semibold text-gray-900 dark:text-white">Jiro está creando tu clase</p>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">{creationStatus || 'Organizando todo para que empieces con una base sólida.'}</p>
+        </section>
       )}
     </div>
   );
-};
 
-const StepShop = (props: any) => {
-  const rarityLabels: Record<string, string> = { COMMON: 'Común', RARE: 'Raro', LEGENDARY: 'Legendario' };
   return (
-    <div className="space-y-4">
-      <div className="p-3 bg-orange-50 dark:bg-orange-900/20 rounded-xl border border-orange-200 dark:border-orange-800">
-        <p className="text-sm text-orange-700 dark:text-orange-300">
-          💡 <strong>¿Qué es la tienda?</strong> Es donde los estudiantes gastan sus monedas (GP) en privilegios, 
-          recompensas o poderes especiales que tú defines.
-        </p>
-      </div>
+    <motion.section
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="space-y-4"
+    >
+      <section className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg p-4 md:p-5">
+        <div className="flex flex-wrap items-center gap-2 md:gap-3">
+          {flowSteps.map((label, index) => (
+            <div key={label} className="flex items-center gap-2 md:gap-3">
+              <div className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold ${
+                index < activeFlowIndex
+                  ? 'bg-emerald-500 text-white'
+                  : index === activeFlowIndex
+                    ? 'bg-emerald-100 text-emerald-700 ring-2 ring-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:ring-emerald-900/60'
+                    : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-300'
+              }`}>
+                {index < activeFlowIndex ? <Check size={16} /> : index + 1}
+              </div>
+              {index < flowSteps.length - 1 && <div className={`h-px w-5 md:w-10 ${index < activeFlowIndex ? 'bg-emerald-300' : 'bg-gray-200 dark:bg-gray-700'}`} />}
+            </div>
+          ))}
+        </div>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">✏️ ¿Qué artículos crear?</label>
-        <textarea value={props.shopDesc} onChange={(e: any) => props.setShopDesc(e.target.value)} placeholder="Ej: Tiempo extra en exámenes, elegir asiento, día sin tarea..." rows={2} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-orange-500 resize-none" />
-      </div>
+        <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">Paso {Math.min(activeFlowIndex + 1, flowSteps.length)} de {flowSteps.length}: {currentFlowLabel}</p>
+      </section>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">🔢 ¿Cuántos generar?</label>
-        <input type="number" min={3} max={15} value={props.shopCount} onChange={(e: any) => props.setShopCount(+e.target.value)} className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-orange-500" />
-      </div>
+      {isPlanning
+        ? renderThinkingState(currentThinkingMessage)
+        : currentStep === 0
+          ? renderPromptStep()
+          : currentStep === 1
+            ? (isStepThinking
+              ? renderThinkingState(currentThinkingMessage)
+              : activeReviewSection?.key === 'classroom'
+                ? renderClassroomReviewStep()
+                : activeReviewSection?.key === 'competencies'
+                  ? renderCompetenciesReviewStep()
+                  : activeReviewSection?.module
+                    ? renderModuleReviewStep(activeReviewSection.module)
+                    : null)
+            : renderSummaryStep()}
 
-      <button onClick={() => props.generateContent('shop')} disabled={props.isGenerating} className="w-full py-3 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl font-medium flex items-center justify-center gap-2 hover:from-orange-600 hover:to-red-600 disabled:opacity-50 transition-all">
-        {props.isGenerating ? <><Loader2 size={18} className="animate-spin" /> Generando artículos...</> : <><Sparkles size={18} /> {props.generated.shopItems.length ? 'Regenerar artículos' : 'Generar con IA'}</>}
-      </button>
+      <section className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-xl border border-white/50 dark:border-gray-700/50 shadow-lg p-4 md:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <button
+            type="button"
+            onClick={handleBackAction}
+            disabled={isPlanning || isCreating || isStepThinking}
+            className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+          >
+            <ChevronLeft size={16} />
+            {backActionLabel}
+          </button>
 
-      {props.generated.shopItems.length > 0 && (
-        <div className="space-y-2 max-h-64 overflow-y-auto">
-          <div className="flex items-center justify-between text-sm text-gray-500 px-1">
-            <span>{props.selectedShopItems.size} de {props.generated.shopItems.length} seleccionados</span>
-            <button onClick={() => props.setSelectedShopItems(new Set(props.generated.shopItems.map((_: any, i: number) => i)))} className="text-orange-600 hover:underline">Seleccionar todos</button>
-          </div>
-          {props.generated.shopItems.map((s: any, i: number) => (
-            <div key={i} className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
-              props.selectedShopItems.has(i)
-                ? s.rarity === 'LEGENDARY' ? 'border-amber-500 bg-amber-50' : s.rarity === 'RARE' ? 'border-blue-500 bg-blue-50' : 'border-gray-400 bg-gray-50'
-                : 'border-gray-200 dark:border-gray-600 opacity-50'
-            }`}>
-              <button onClick={() => { const x = new Set(props.selectedShopItems); x.has(i) ? x.delete(i) : x.add(i); props.setSelectedShopItems(x); }} className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${props.selectedShopItems.has(i) ? 'bg-orange-500 border-orange-500' : 'border-gray-300'}`}>
-                {props.selectedShopItems.has(i) && <Check size={12} className="text-white" />}
+          <div className="flex flex-wrap items-center gap-3">
+            {currentStep === 1 && activeReviewSection && !isStepThinking && (
+              <button
+                type="button"
+                onClick={() => setEditingReviewStep((prev) => (prev === activeReviewSection.key ? null : activeReviewSection.key))}
+                className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+              >
+                {isEditingCurrentReview ? 'Ocultar cambios' : 'Quiero cambiar algo'}
               </button>
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0 ${s.rarity === 'LEGENDARY' ? 'bg-amber-100' : s.rarity === 'RARE' ? 'bg-blue-100' : 'bg-gray-100'}`}>{s.icon}</div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium text-gray-800 dark:text-white">{s.name}</span>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-amber-200 text-amber-700 font-bold">{s.price} GP</span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${s.rarity === 'LEGENDARY' ? 'bg-amber-200 text-amber-800' : s.rarity === 'RARE' ? 'bg-blue-200 text-blue-800' : 'bg-gray-200 text-gray-700'}`}>{rarityLabels[s.rarity] || 'Común'}</span>
-                </div>
-                <p className="text-xs text-gray-500 truncate">{s.description}</p>
-              </div>
-              <button onClick={() => props.setEditingIdx({ type: 'shopItems', idx: i })} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><Edit2 size={14} className="text-gray-500" /></button>
-            </div>
-          ))}
-        </div>
-      )}
+            )}
 
-      {!props.generated.shopItems.length && !props.isGenerating && (
-        <div className="text-center py-8 text-gray-400">
-          <ShoppingBag size={40} className="mx-auto mb-3 opacity-30" />
-          <p className="text-sm">Haz clic en "Generar con IA" para crear artículos</p>
-        </div>
-      )}
-    </div>
-  );
-};
+            {currentStep === 1 && !isStepThinking && (
+              <button
+                type="button"
+                onClick={() => void handleGenerateBlueprint()}
+                disabled={isPlanning}
+                className="inline-flex items-center gap-2 rounded-2xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-60 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+              >
+                {isPlanning ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
+                Replantear con Jiro
+              </button>
+            )}
 
-const StepQuestions = (props: any) => {
-  const typeLabels: Record<string, { icon: string; label: string; color: string }> = {
-    TRUE_FALSE: { icon: '✓✗', label: 'Verdadero/Falso', color: 'bg-green-100 text-green-700' },
-    SINGLE_CHOICE: { icon: '⭕', label: 'Opción única', color: 'bg-blue-100 text-blue-700' },
-    MULTIPLE_CHOICE: { icon: '☑️', label: 'Opción múltiple', color: 'bg-purple-100 text-purple-700' },
-    MATCHING: { icon: '🔗', label: 'Relacionar', color: 'bg-amber-100 text-amber-700' },
-  };
-  const diffLabels: Record<string, string> = { EASY: 'Fácil', MEDIUM: 'Media', HARD: 'Difícil' };
-  const diffColors: Record<string, string> = { EASY: 'bg-green-200 text-green-800', MEDIUM: 'bg-yellow-200 text-yellow-800', HARD: 'bg-red-200 text-red-800' };
-  return (
-    <div className="space-y-4">
-      <div className="p-3 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl border border-indigo-200 dark:border-indigo-800">
-        <p className="text-sm text-indigo-700 dark:text-indigo-300">
-          💡 <strong>¿Qué es el banco de preguntas?</strong> Es un conjunto de preguntas que puedes usar para evaluaciones y actividades.
-          Soporta varios tipos: verdadero/falso, opción única, opción múltiple y relacionar.
-        </p>
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">📝 Nombre del banco *</label>
-        <input value={props.questionBankName} onChange={(e: any) => props.setQuestionBankName(e.target.value)} placeholder="Ej: Evaluación Unidad 1 - Fracciones" className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500" />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">✏️ Temas a evaluar</label>
-        <textarea value={props.questionsDesc} onChange={(e: any) => props.setQuestionsDesc(e.target.value)} placeholder="Ej: Suma y resta de fracciones, fracciones equivalentes, comparación de fracciones..." rows={2} className="w-full px-4 py-3 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500 resize-none" />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">🔢 ¿Cuántas preguntas?</label>
-          <input type="number" min={5} max={30} value={props.questionsCount} onChange={(e: any) => props.setQuestionsCount(+e.target.value)} className="w-full px-4 py-2 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-indigo-500" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">📋 Tipos de pregunta</label>
-          <div className="flex flex-wrap gap-1">
-            {[
-              { v: 'TRUE_FALSE', l: '✓✗ V/F' },
-              { v: 'SINGLE_CHOICE', l: '⭕ Única' },
-              { v: 'MULTIPLE_CHOICE', l: '☑️ Múltiple' },
-              { v: 'MATCHING', l: '🔗 Relacionar' }
-            ].map(t => (
-              <button key={t.v} type="button" onClick={() => { const s = new Set(props.questionTypes); s.has(t.v) && s.size > 1 ? s.delete(t.v) : s.add(t.v); props.setQuestionTypes(s); }} className={`px-3 py-1.5 text-xs rounded-xl border-2 transition-all ${props.questionTypes.has(t.v) ? 'bg-indigo-100 border-indigo-500' : 'bg-gray-50 border-gray-200 hover:border-indigo-300'}`}>{t.l}</button>
-            ))}
+            <button
+              type="button"
+              onClick={primaryAction}
+              disabled={isPrimaryDisabled}
+              className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition-all hover:from-emerald-600 hover:to-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {currentStep === 0 && (isPlanning ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />)}
+              {currentStep === 1 && <ChevronRight size={16} />}
+              {currentStep === 2 && (isCreating ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />)}
+              {primaryActionLabel}
+            </button>
           </div>
         </div>
-      </div>
-
-      <button onClick={() => props.generateContent('questions')} disabled={props.isGenerating || !props.questionBankName} className="w-full py-3 bg-gradient-to-r from-indigo-500 to-blue-600 text-white rounded-xl font-medium flex items-center justify-center gap-2 hover:from-indigo-600 hover:to-blue-700 disabled:opacity-50 transition-all">
-        {props.isGenerating ? <><Loader2 size={18} className="animate-spin" /> Generando preguntas...</> : <><Sparkles size={18} /> Generar banco de preguntas</>}
-      </button>
-
-      {props.generated.questionBank && (
-        <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl border-2 border-indigo-300">
-          <div className="flex items-center justify-between mb-3">
-            <span className="font-bold text-indigo-800">{props.generated.questionBank.name || props.questionBankName}</span>
-            <span className="text-sm font-bold px-3 py-1 bg-indigo-200 text-indigo-800 rounded-full">{props.generated.questionBank.questions?.length || 0} preguntas</span>
-          </div>
-          <div className="space-y-2 max-h-48 overflow-y-auto">
-            {props.generated.questionBank.questions?.map((q: any, i: number) => (
-              <div key={i} className="text-xs p-3 bg-white dark:bg-gray-800 rounded-xl border border-indigo-100">
-                <div className="flex items-start gap-2">
-                  <span className="font-bold text-indigo-600 shrink-0 w-6 h-6 bg-indigo-100 rounded-full flex items-center justify-center">{i + 1}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1 mb-1 flex-wrap">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${typeLabels[q.type]?.color || 'bg-gray-100 text-gray-700'}`}>{typeLabels[q.type]?.icon} {typeLabels[q.type]?.label || q.type}</span>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${diffColors[q.difficulty] || diffColors.MEDIUM}`}>{diffLabels[q.difficulty] || 'Media'}</span>
-                      <span className="text-[10px] text-gray-500 font-medium">{q.points} pts</span>
-                    </div>
-                    <p className="text-gray-700 dark:text-gray-300 font-medium">{q.question || q.questionText}</p>
-                    {q.options && q.type !== 'MATCHING' && (
-                      <div className="mt-2 pl-2 border-l-2 border-indigo-200 space-y-1">
-                        {q.options.slice(0, 4).map((opt: any, oi: number) => (
-                          <div key={oi} className={`flex items-center gap-1 ${(typeof opt === 'object' ? opt.isCorrect : oi === q.correctAnswer) ? 'text-green-600 font-medium' : 'text-gray-500'}`}>
-                            <span className="w-4">{(typeof opt === 'object' ? opt.isCorrect : oi === q.correctAnswer) ? '✓' : '○'}</span>
-                            <span>{typeof opt === 'string' ? opt : opt.text}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <label className={`flex items-center gap-3 mt-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${props.includeQuestionBank ? 'bg-indigo-100 border-indigo-500' : 'bg-white border-gray-200'}`}>
-            <input type="checkbox" checked={props.includeQuestionBank} onChange={(e: any) => props.setIncludeQuestionBank(e.target.checked)} className="sr-only" />
-            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${props.includeQuestionBank ? 'bg-indigo-500 border-indigo-500' : 'border-gray-300'}`}>
-              {props.includeQuestionBank && <Check size={12} className="text-white" />}
-            </div>
-            <span className="text-sm font-medium">Incluir este banco de preguntas al crear la clase</span>
-          </label>
-        </div>
-      )}
-
-      {!props.generated.questionBank && !props.isGenerating && (
-        <div className="text-center py-8 text-gray-400">
-          <HelpCircle size={40} className="mx-auto mb-3 opacity-30" />
-          <p className="text-sm">Ingresa un nombre y haz clic en "Generar" para crear preguntas</p>
-        </div>
-      )}
-    </div>
-  );
-};
-
-const StepReview = (props: any) => {
-  const subjectLabels: Record<string, string> = {
-    matematicas: 'Matemáticas', comunicacion: 'Comunicación', ciencias: 'Ciencias',
-    historia: 'Historia', ingles: 'Inglés', arte: 'Arte',
-    educacion_fisica: 'Educación Física', tecnologia: 'Tecnología'
-  };
-  return (
-    <div className="space-y-4">
-      <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-200 dark:border-emerald-800">
-        <p className="text-sm text-emerald-700 dark:text-emerald-300">
-          🎉 <strong>¡Casi listo!</strong> Revisa el resumen de lo que vas a crear y haz clic en "Crear Clase" para finalizar.
-        </p>
-      </div>
-
-      {/* Info de la clase */}
-      <div className="p-4 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 rounded-xl border-2 border-emerald-300">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center">
-            <GraduationCap size={24} className="text-white" />
-          </div>
-          <div>
-            <p className="font-bold text-lg text-gray-800 dark:text-white">{props.classData.name}</p>
-            <p className="text-sm text-gray-600">{subjectLabels[props.classData.subject] || props.classData.subject} • {props.classData.gradeLevel}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Grid de contenido */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <div className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-200">
-          <div className="flex items-center gap-2 mb-2">
-            <BookOpen size={16} className="text-emerald-600" />
-            <span className="text-xs font-medium text-gray-600">Comportamientos</span>
-          </div>
-          <p className="font-bold text-2xl text-emerald-600">{props.selectedBehaviors.size}</p>
-          <p className="text-xs text-gray-500">de {props.generated.behaviors.length} generados</p>
-        </div>
-
-        <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200">
-          <div className="flex items-center gap-2 mb-2">
-            <Award size={16} className="text-amber-600" />
-            <span className="text-xs font-medium text-gray-600">Insignias</span>
-          </div>
-          <p className="font-bold text-2xl text-amber-600">{props.selectedBadges.size}</p>
-          <p className="text-xs text-gray-500">de {props.generated.badges.length} generadas</p>
-        </div>
-
-        <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-xl border border-orange-200">
-          <div className="flex items-center gap-2 mb-2">
-            <ShoppingBag size={16} className="text-orange-600" />
-            <span className="text-xs font-medium text-gray-600">Tienda</span>
-          </div>
-          <p className="font-bold text-2xl text-orange-600">{props.selectedShopItems.size}</p>
-          <p className="text-xs text-gray-500">de {props.generated.shopItems.length} artículos</p>
-        </div>
-
-        <div className="p-4 bg-indigo-50 dark:bg-indigo-900/20 rounded-xl border border-indigo-200">
-          <div className="flex items-center gap-2 mb-2">
-            <HelpCircle size={16} className="text-indigo-600" />
-            <span className="text-xs font-medium text-gray-600">Preguntas</span>
-          </div>
-          <p className="font-bold text-2xl text-indigo-600">{props.includeQuestionBank ? props.generated.questionBank?.questions?.length || 0 : 0}</p>
-          <p className="text-xs text-gray-500">{props.includeQuestionBank ? 'incluidas' : 'no incluidas'}</p>
-        </div>
-      </div>
-
-      {props.isCreating && (
-        <div className="flex flex-col items-center justify-center gap-3 py-6 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
-          <Loader2 size={32} className="animate-spin text-emerald-500" />
-          <span className="text-gray-600 font-medium">Creando tu clase y todo su contenido...</span>
-          <span className="text-xs text-gray-500">Esto puede tomar unos segundos</span>
-        </div>
-      )}
-    </div>
+      </section>
+    </motion.section>
   );
 };

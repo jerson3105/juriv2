@@ -172,6 +172,11 @@ export const storyApi = {
     await api.delete(`/stories/classroom/${classroomId}/theme`);
   },
 
+  generateAIThemePreview: async (description: string): Promise<{ name: string; themeConfig: ThemeConfig }> => {
+    const res = await api.post('/stories/theme/generate-ai-preview', { description });
+    return res.data.data;
+  },
+
   generateAITheme: async (classroomId: string, description: string): Promise<{ name: string; themeConfig: ThemeConfig }> => {
     const res = await api.post(`/stories/classroom/${classroomId}/theme/generate-ai`, { description });
     return res.data.data;

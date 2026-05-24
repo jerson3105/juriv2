@@ -1,10 +1,273 @@
 import type { Request, Response } from 'express';
 import { classroomService } from '../services/classroom.service.js';
+import { onboardingService, ALL_FEATURES, type Feature } from '../services/onboarding.service.js';
 import { db } from '../db/index.js';
 import { curriculumAreas, curriculumCompetencies, studentProfiles } from '../db/schema.js';
 import { eq, and, or, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { GoogleGenAI } from '@google/genai';
+
+const AI_CLASSROOM_SUBJECTS = [
+  'matematicas',
+  'comunicacion',
+  'ciencias',
+  'historia',
+  'ingles',
+  'arte',
+  'educacion_fisica',
+  'tecnologia',
+  '',
+] as const;
+
+const AI_CLASSROOM_GRADE_LEVELS = [
+  'inicial',
+  'primaria_baja',
+  'primaria_alta',
+  'secundaria_baja',
+  'secundaria_alta',
+  'preparatoria',
+  'universidad',
+  '',
+] as const;
+
+const AI_CLASSROOM_EDUCATION_LEVELS = ['', 'PRIMARIA', 'SECUNDARIA'] as const;
+const AI_CLASSROOM_GRADE_SCALE_TYPES = ['PERU_LETTERS', 'PERU_VIGESIMAL', 'CENTESIMAL', 'USA_LETTERS', 'CUSTOM'] as const;
+const AI_CLASSROOM_POINT_MODES = ['COMBINED', 'XP_ONLY', 'HP_ONLY', 'GP_ONLY'] as const;
+const AI_CLASSROOM_BADGE_ASSIGNMENT_MODES = ['MANUAL', 'AUTOMATIC', 'BOTH'] as const;
+const AI_CLASSROOM_QUESTION_TYPES = ['TRUE_FALSE', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'MATCHING'] as const;
+
+type AIWizardModuleAction = 'AUTO_CREATE' | 'ENABLE_ON_CREATE' | 'READY_AFTER_CREATE' | 'LOCKED';
+
+type AIWizardModuleDefinition = {
+  title: string;
+  shortDescription: string;
+  actionType: Exclude<AIWizardModuleAction, 'LOCKED'>;
+  configurable: boolean;
+  autoCreateSupported: boolean;
+  defaultRecommended: boolean;
+  fallbackReason: string;
+};
+
+const AI_WIZARD_MODULES: Record<Feature, AIWizardModuleDefinition> = {
+  students: {
+    title: 'Estudiantes',
+    shortDescription: 'La base del aula para registrar, invitar y organizar a tus estudiantes.',
+    actionType: 'READY_AFTER_CREATE',
+    configurable: false,
+    autoCreateSupported: false,
+    defaultRecommended: true,
+    fallbackReason: 'Es la base para empezar a usar Juried con tu grupo desde el primer día.',
+  },
+  behaviors: {
+    title: 'Comportamientos',
+    shortDescription: 'Acciones positivas y correctivas que Jiro puede preparar por ti.',
+    actionType: 'AUTO_CREATE',
+    configurable: true,
+    autoCreateSupported: true,
+    defaultRecommended: true,
+    fallbackReason: 'Ayuda a traducir tus reglas y objetivos en acciones claras dentro del aula.',
+  },
+  rankings: {
+    title: 'Rankings',
+    shortDescription: 'Visualiza el progreso y la participación de forma inmediata.',
+    actionType: 'READY_AFTER_CREATE',
+    configurable: false,
+    autoCreateSupported: false,
+    defaultRecommended: true,
+    fallbackReason: 'Te permite mostrar avances y reforzar motivación sin configuración extra.',
+  },
+  grades: {
+    title: 'Calificaciones',
+    shortDescription: 'Sistema por competencias para evaluar con más claridad y seguimiento.',
+    actionType: 'ENABLE_ON_CREATE',
+    configurable: false,
+    autoCreateSupported: false,
+    defaultRecommended: true,
+    fallbackReason: 'Encaja bien cuando quieres seguir evidencias y avances de aprendizaje.',
+  },
+  settings: {
+    title: 'Configuración',
+    shortDescription: 'Ajustes iniciales del aula para adaptar Juried a tu estilo docente.',
+    actionType: 'READY_AFTER_CREATE',
+    configurable: false,
+    autoCreateSupported: false,
+    defaultRecommended: true,
+    fallbackReason: 'Te deja un punto de partida ordenado para personalizar el aula luego.',
+  },
+  badges: {
+    title: 'Insignias',
+    shortDescription: 'Reconocimientos que Jiro puede dejar listos según tus metas.',
+    actionType: 'AUTO_CREATE',
+    configurable: true,
+    autoCreateSupported: true,
+    defaultRecommended: true,
+    fallbackReason: 'Sirve para reconocer logros visibles y sostener motivación en el tiempo.',
+  },
+  shop: {
+    title: 'Tienda',
+    shortDescription: 'Recompensas y privilegios para convertir puntos en decisiones significativas.',
+    actionType: 'AUTO_CREATE',
+    configurable: true,
+    autoCreateSupported: true,
+    defaultRecommended: true,
+    fallbackReason: 'Hace tangible la progresión del aula con recompensas alineadas a tus normas.',
+  },
+  clans: {
+    title: 'Clanes',
+    shortDescription: 'Trabajo en equipo y colaboración con identidad compartida.',
+    actionType: 'ENABLE_ON_CREATE',
+    configurable: true,
+    autoCreateSupported: false,
+    defaultRecommended: false,
+    fallbackReason: 'Conviene cuando tu clase necesita colaboración, apoyo entre pares o retos grupales.',
+  },
+  attendance: {
+    title: 'Asistencia',
+    shortDescription: 'Seguimiento diario para mantener ritmo, orden y evidencia.',
+    actionType: 'READY_AFTER_CREATE',
+    configurable: false,
+    autoCreateSupported: false,
+    defaultRecommended: false,
+    fallbackReason: 'Te ayuda a sostener hábitos y detectar ausencias desde el inicio.',
+  },
+  collectibles: {
+    title: 'Coleccionables',
+    shortDescription: 'Progresión visual para reforzar constancia y curiosidad.',
+    actionType: 'READY_AFTER_CREATE',
+    configurable: false,
+    autoCreateSupported: false,
+    defaultRecommended: false,
+    fallbackReason: 'Agrega una capa de progreso visual que sostiene el interés a mediano plazo.',
+  },
+  storytelling: {
+    title: 'Historia de clase',
+    shortDescription: 'Narrativa para que el aula tenga una identidad más memorable.',
+    actionType: 'READY_AFTER_CREATE',
+    configurable: false,
+    autoCreateSupported: false,
+    defaultRecommended: false,
+    fallbackReason: 'Te permite envolver objetivos del curso en una narrativa más atractiva.',
+  },
+  expedition: {
+    title: 'Expediciones',
+    shortDescription: 'Recorridos, misiones y mapas para experiencias más inmersivas.',
+    actionType: 'READY_AFTER_CREATE',
+    configurable: false,
+    autoCreateSupported: false,
+    defaultRecommended: false,
+    fallbackReason: 'Es útil cuando quieres convertir el contenido en una secuencia exploratoria.',
+  },
+  question_bank: {
+    title: 'Banco de preguntas',
+    shortDescription: 'Preguntas listas para evaluación, repaso y actividades.',
+    actionType: 'AUTO_CREATE',
+    configurable: true,
+    autoCreateSupported: true,
+    defaultRecommended: true,
+    fallbackReason: 'Te da material inmediato para evaluar o dinamizar la clase sin empezar de cero.',
+  },
+  activities: {
+    title: 'Actividades',
+    shortDescription: 'Dinámicas interactivas para mover la energía de la clase.',
+    actionType: 'READY_AFTER_CREATE',
+    configurable: false,
+    autoCreateSupported: false,
+    defaultRecommended: true,
+    fallbackReason: 'Funciona bien para variar ritmo, participación y energía del grupo.',
+  },
+};
+
+const generateAIClassroomBlueprintSchema = z.object({
+  prompt: z.string().min(10).max(2500),
+});
+
+const asCleanString = (value: unknown, fallback = '') => {
+  if (typeof value !== 'string') return fallback;
+  return value.trim().replace(/\s+/g, ' ').slice(0, 400);
+};
+
+const asParagraph = (value: unknown, fallback = '') => {
+  if (typeof value !== 'string') return fallback;
+  return value.trim().replace(/\s+/g, ' ').slice(0, 1000);
+};
+
+const asBoolean = (value: unknown, fallback: boolean) => {
+  return typeof value === 'boolean' ? value : fallback;
+};
+
+const clampNumber = (value: unknown, min: number, max: number, fallback: number) => {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(parsed)));
+};
+
+const pickEnumValue = <T extends readonly string[]>(value: unknown, options: T, fallback: T[number]) => {
+  return typeof value === 'string' && options.includes(value as T[number])
+    ? value as T[number]
+    : fallback;
+};
+
+const normalizeQuestionTypes = (value: unknown) => {
+  if (!Array.isArray(value)) {
+    return ['TRUE_FALSE', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE'];
+  }
+
+  const unique = new Set<string>();
+  for (const item of value) {
+    if (typeof item === 'string' && AI_CLASSROOM_QUESTION_TYPES.includes(item as typeof AI_CLASSROOM_QUESTION_TYPES[number])) {
+      unique.add(item);
+    }
+  }
+
+  return unique.size > 0 ? Array.from(unique) : ['TRUE_FALSE', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE'];
+};
+
+const normalizeRecommendedFeatures = (value: unknown) => {
+  if (!Array.isArray(value)) return [] as Feature[];
+
+  const recommended = new Set<Feature>();
+  for (const item of value) {
+    if (typeof item === 'string' && ALL_FEATURES.includes(item as Feature)) {
+      recommended.add(item as Feature);
+    }
+  }
+
+  return Array.from(recommended);
+};
+
+const normalizeFeatureReasons = (value: unknown) => {
+  if (!value || typeof value !== 'object') {
+    return {} as Partial<Record<Feature, string>>;
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([featureKey]) => ALL_FEATURES.includes(featureKey as Feature))
+    .map(([featureKey, reason]) => [featureKey as Feature, asParagraph(reason)]);
+
+  return Object.fromEntries(entries) as Partial<Record<Feature, string>>;
+};
+
+const buildAIWizardModules = (
+  unlockedFeatures: string[],
+  recommendedFeatures: Feature[],
+  featureReasons: Partial<Record<Feature, string>>,
+) => {
+  return ALL_FEATURES.map((featureKey) => {
+    const meta = AI_WIZARD_MODULES[featureKey];
+    const available = unlockedFeatures.includes(featureKey);
+    return {
+      featureKey,
+      title: meta.title,
+      shortDescription: meta.shortDescription,
+      state: available ? 'AVAILABLE' : 'LOCKED',
+      actionType: available ? meta.actionType : 'LOCKED',
+      configurable: available ? meta.configurable : false,
+      autoCreateSupported: available ? meta.autoCreateSupported : false,
+      recommended: recommendedFeatures.includes(featureKey) || meta.defaultRecommended,
+      reason: featureReasons[featureKey] || meta.fallbackReason,
+    };
+  });
+};
 
 const createClassroomSchema = z.object({
   name: z.string().min(2).max(255),
@@ -135,6 +398,229 @@ const joinClassroomSchema = z.object({
 });
 
 export class ClassroomController {
+  async generateAIClassroomBlueprint(req: Request, res: Response) {
+    try {
+      const { prompt } = generateAIClassroomBlueprintSchema.parse(req.body);
+
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({
+          success: false,
+          message: 'API Key de Gemini no configurada',
+        });
+      }
+
+      let onboardingRecord = await onboardingService.get(req.user!.id);
+      if (!onboardingRecord) {
+        const created = await onboardingService.create(req.user!.id);
+        onboardingRecord = { ...created, level: 'Principiante' };
+      }
+
+      const unlockedFeatures = onboardingRecord.isExperienced
+        ? [...ALL_FEATURES]
+        : [...(onboardingRecord.unlockedFeatures || [])];
+      const lockedFeatures = onboardingService.getLockedFeatures(unlockedFeatures);
+
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-lite',
+        contents: `Eres Jiro, la mascota y guía pedagógica de Juried. Tu trabajo es acompañar a un profesor a crear su clase con una propuesta inicial clara, accionable y cálida.
+
+CONTEXTO DEL PROFESOR:
+${prompt}
+
+FEATURES DISPONIBLES HOY EN SU CUENTA:
+${unlockedFeatures.join(', ') || 'ninguna'}
+
+FEATURES BLOQUEADAS TEMPORALMENTE:
+${lockedFeatures.join(', ') || 'ninguna'}
+
+Necesito que devuelvas SOLO un JSON válido con esta forma exacta:
+{
+  "introMessage": "mensaje breve de Jiro en primera persona, 1-2 frases",
+  "classroom": {
+    "name": "nombre sugerido para la clase",
+    "description": "descripción breve y concreta",
+    "subject": "uno de: matematicas, comunicacion, ciencias, historia, ingles, arte, educacion_fisica, tecnologia, o cadena vacía",
+    "gradeLevel": "uno de: inicial, primaria_baja, primaria_alta, secundaria_baja, secundaria_alta, preparatoria, universidad, o cadena vacía",
+    "educationLevel": "uno de: PRIMARIA, SECUNDARIA, o cadena vacía",
+    "useCompetencies": true,
+    "curriculumAreaName": "nombre sugerido de área curricular o cadena vacía",
+    "gradeScaleType": "uno de: PERU_LETTERS, PERU_VIGESIMAL, CENTESIMAL, USA_LETTERS, CUSTOM",
+    "objective": "frase corta con el principal objetivo pedagógico"
+  },
+  "settings": {
+    "allowNegativePoints": true,
+    "showReasonToStudent": true,
+    "notifyOnPoints": true,
+    "classAssignmentMode": "STUDENT_CHOICE o TEACHER_ASSIGNS",
+    "showCharacterName": true,
+    "requirePurchaseApproval": false
+  },
+  "generationPlan": {
+    "behaviors": {
+      "description": "qué debería evaluar el profesor",
+      "count": 10,
+      "pointMode": "COMBINED",
+      "includePositive": true,
+      "includeNegative": true
+    },
+    "badges": {
+      "description": "qué logros reconocer",
+      "count": 8,
+      "assignmentMode": "MANUAL"
+    },
+    "shop": {
+      "description": "qué recompensas o privilegios incluir",
+      "count": 8
+    },
+    "questions": {
+      "questionBankName": "nombre del banco",
+      "description": "temas clave a evaluar",
+      "count": 12,
+      "questionTypes": ["TRUE_FALSE", "SINGLE_CHOICE"]
+    }
+  },
+  "recommendedFeatures": ["students", "behaviors", "rankings"],
+  "featureReasons": {
+    "students": "una razón breve",
+    "behaviors": "una razón breve",
+    "rankings": "una razón breve",
+    "grades": "una razón breve",
+    "settings": "una razón breve",
+    "badges": "una razón breve",
+    "shop": "una razón breve",
+    "clans": "una razón breve",
+    "attendance": "una razón breve",
+    "collectibles": "una razón breve",
+    "storytelling": "una razón breve",
+    "expedition": "una razón breve",
+    "question_bank": "una razón breve",
+    "activities": "una razón breve"
+  }
+}
+
+REGLAS:
+- Escribe todo en español.
+- No incluyas markdown, comentarios ni texto fuera del JSON.
+- introMessage debe sonar a acompañamiento de Jiro, no a un sistema genérico.
+- recommendedFeatures debe usar SOLO keys válidas de Juried.
+- Si el contexto no alcanza para inferir subject o gradeLevel, devuelve cadena vacía.
+- useCompetencies solo debe ser true si realmente aporta al caso.
+- gradeScaleType debe ser PERU_LETTERS cuando useCompetencies sea true y no exista una razón clara para otra escala.
+- behaviors.count entre 6 y 18.
+- badges.count entre 4 y 12.
+- shop.count entre 4 y 12.
+- questions.count entre 8 y 20.
+- pointMode solo puede ser COMBINED, XP_ONLY, HP_ONLY o GP_ONLY.
+- assignmentMode solo puede ser MANUAL, AUTOMATIC o BOTH.
+- questionTypes solo puede incluir TRUE_FALSE, SINGLE_CHOICE, MULTIPLE_CHOICE, MATCHING.
+- Cada featureReason debe tener máximo 18 palabras y explicar el valor pedagógico o práctico de esa feature.`,
+      });
+
+      const responseText = response.text || '';
+      if (!responseText.trim()) {
+        return res.status(500).json({
+          success: false,
+          message: 'La IA no generó una propuesta de clase',
+        });
+      }
+
+      let parsed: any;
+      try {
+        let cleanText = responseText.trim();
+        if (cleanText.startsWith('```json')) {
+          cleanText = cleanText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        } else if (cleanText.startsWith('```')) {
+          cleanText = cleanText.replace(/^```\s*/, '').replace(/\s*```$/, '');
+        }
+        parsed = JSON.parse(cleanText);
+      } catch (parseError) {
+        console.error('Error parsing AI classroom blueprint:', responseText);
+        return res.status(500).json({
+          success: false,
+          message: 'Error al procesar la propuesta de Jiro',
+        });
+      }
+
+      const recommendedFeatures = normalizeRecommendedFeatures(parsed?.recommendedFeatures);
+      const featureReasons = normalizeFeatureReasons(parsed?.featureReasons);
+
+      const blueprint = {
+        introMessage: asParagraph(parsed?.introMessage, 'Cuéntame un poco más de tu clase y yo me encargo de proponerte un buen punto de partida.'),
+        classroom: {
+          name: asCleanString(parsed?.classroom?.name, 'Nueva clase con Jiro'),
+          description: asParagraph(parsed?.classroom?.description),
+          subject: pickEnumValue(parsed?.classroom?.subject, AI_CLASSROOM_SUBJECTS, ''),
+          gradeLevel: pickEnumValue(parsed?.classroom?.gradeLevel, AI_CLASSROOM_GRADE_LEVELS, ''),
+          educationLevel: pickEnumValue(parsed?.classroom?.educationLevel, AI_CLASSROOM_EDUCATION_LEVELS, ''),
+          useCompetencies: asBoolean(parsed?.classroom?.useCompetencies, false),
+          curriculumAreaName: asCleanString(parsed?.classroom?.curriculumAreaName),
+          gradeScaleType: pickEnumValue(parsed?.classroom?.gradeScaleType, AI_CLASSROOM_GRADE_SCALE_TYPES, 'PERU_LETTERS'),
+          objective: asParagraph(parsed?.classroom?.objective, 'Organizar una experiencia de clase clara, motivadora y útil desde el inicio.'),
+        },
+        settings: {
+          allowNegativePoints: asBoolean(parsed?.settings?.allowNegativePoints, true),
+          showReasonToStudent: asBoolean(parsed?.settings?.showReasonToStudent, true),
+          notifyOnPoints: asBoolean(parsed?.settings?.notifyOnPoints, true),
+          classAssignmentMode: pickEnumValue(parsed?.settings?.classAssignmentMode, ['STUDENT_CHOICE', 'TEACHER_ASSIGNS'] as const, 'STUDENT_CHOICE'),
+          showCharacterName: asBoolean(parsed?.settings?.showCharacterName, true),
+          requirePurchaseApproval: asBoolean(parsed?.settings?.requirePurchaseApproval, false),
+        },
+        generationPlan: {
+          behaviors: {
+            description: asParagraph(parsed?.generationPlan?.behaviors?.description, 'Participación, responsabilidad, convivencia y hábitos de aprendizaje.'),
+            count: clampNumber(parsed?.generationPlan?.behaviors?.count, 6, 18, 10),
+            pointMode: pickEnumValue(parsed?.generationPlan?.behaviors?.pointMode, AI_CLASSROOM_POINT_MODES, 'COMBINED'),
+            includePositive: asBoolean(parsed?.generationPlan?.behaviors?.includePositive, true),
+            includeNegative: asBoolean(parsed?.generationPlan?.behaviors?.includeNegative, true),
+          },
+          badges: {
+            description: asParagraph(parsed?.generationPlan?.badges?.description, 'Constancia, colaboración, progreso y logros visibles para el grupo.'),
+            count: clampNumber(parsed?.generationPlan?.badges?.count, 4, 12, 8),
+            assignmentMode: pickEnumValue(parsed?.generationPlan?.badges?.assignmentMode, AI_CLASSROOM_BADGE_ASSIGNMENT_MODES, 'MANUAL'),
+          },
+          shop: {
+            description: asParagraph(parsed?.generationPlan?.shop?.description, 'Privilegios y recompensas que tengan sentido para el ritmo de esta clase.'),
+            count: clampNumber(parsed?.generationPlan?.shop?.count, 4, 12, 8),
+          },
+          questions: {
+            questionBankName: asCleanString(parsed?.generationPlan?.questions?.questionBankName, 'Banco inicial de la clase'),
+            description: asParagraph(parsed?.generationPlan?.questions?.description, 'Repaso diagnóstico y preguntas base alineadas al foco del curso.'),
+            count: clampNumber(parsed?.generationPlan?.questions?.count, 8, 20, 12),
+            questionTypes: normalizeQuestionTypes(parsed?.generationPlan?.questions?.questionTypes),
+          },
+        },
+        modules: buildAIWizardModules(unlockedFeatures, recommendedFeatures, featureReasons),
+        unlockedFeatures,
+        lockedFeatures,
+        onboarding: {
+          isExperienced: onboardingRecord.isExperienced,
+          level: onboardingRecord.level,
+        },
+      };
+
+      res.json({
+        success: true,
+        data: blueprint,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          success: false,
+          message: 'Datos inválidos',
+          errors: error.errors,
+        });
+      }
+
+      console.error('Error generating AI classroom blueprint:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error al generar la propuesta de clase con IA',
+      });
+    }
+  }
+
   async create(req: Request, res: Response) {
     try {
       const data = createClassroomSchema.parse(req.body);

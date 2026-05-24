@@ -118,6 +118,112 @@ const ensureTeacherClassroomAccess = async (
   return userId;
 };
 
+const buildAIThemePrompt = (description: string) => `Eres un diseñador de temas visuales para una plataforma educativa gamificada. El profesor quiere un tema visual personalizado para su aula.
+
+DESCRIPCIÓN DEL PROFESOR:
+"${description.trim()}"
+
+Genera un tema visual completo basado en la descripción. El tema debe ser visualmente atractivo y coherente.
+
+Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni bloques de código:
+
+{
+  "name": "Nombre corto del tema (máx 20 caracteres)",
+  "colors": {
+    "primary": "#hexcolor (color principal, vibrante)",
+    "secondary": "#hexcolor (color secundario, complementario)",
+    "accent": "#hexcolor (color de acento, para detalles)",
+    "background": "#hexcolor (fondo del contenido, claro u oscuro según el tema)",
+    "sidebar": "#hexcolor (fondo del sidebar, oscuro)"
+  },
+  "particles": {
+    "type": "uno de los tipos válidos (ver lista abajo)",
+    "color": "#hexcolor (color de las partículas, coherente con el tema)",
+    "speed": "slow|medium|fast",
+    "density": "low|medium|high"
+  },
+  "banner": {
+    "emoji": "un emoji representativo del tema",
+    "title": "Título del tema"
+  }
+}
+
+TIPOS DE PARTÍCULAS VÁLIDOS (elige el más coherente con el tema):
+- "stars" → estrellas brillantes (espacio, noche, magia)
+- "snow" → copos de nieve (invierno, navidad, hielo)
+- "petals" → pétalos de flores (primavera, jardín, romance)
+- "sparkles" → destellos mágicos (fantasía, hadas, celebración)
+- "bubbles" → burbujas que suben (océano, agua, submarino)
+- "fireflies" → luciérnagas brillantes (bosque, noche, naturaleza)
+- "smoke" → humo difuso que sube (volcán, fuego, misterio, niebla)
+- "embers" → brasas incandescentes que suben (volcán, forja, dragones, fuego)
+- "ash" → ceniza que cae lentamente (volcán, apocalipsis, otoño oscuro)
+- "dust" → polvo flotante (desierto, ruinas, antigüedad, western)
+- "lava" → gotas de lava brillante que suben (volcán, infierno, magma)
+- "hearts" → corazones flotantes (amor, San Valentín, amistad)
+- "confetti" → confeti colorido que cae (fiesta, celebración, carnaval)
+- "rain" → lluvia que cae (tormenta, selva, melancolía)
+- "leaves" → hojas que caen (otoño, bosque, naturaleza)
+- "swords" → espadas que caen girando (medieval, caballeros, batallas, RPG)
+- "math" → símbolos matemáticos cayendo: +, −, ×, ÷, π, √, ∑, ∞ (matemáticas, números, álgebra, geometría)
+- "computing" → código binario y símbolos: 0, 1, {}, </> (informática, programación, robótica, tecnología)
+- "science" → átomos con órbitas de electrones (ciencias, química, física, biología, laboratorio)
+- "religion" → cruces que caen suavemente (religión, fe, espiritualidad, iglesia)
+
+REGLAS:
+1. Los colores deben ser armónicos y visualmente atractivos
+2. Si el tema es oscuro/nocturno, background debe ser oscuro (#0D0D2B, #1A1A2E, etc.) y sidebar más oscuro
+3. Si el tema es claro/diurno, background debe ser claro (#E8F5E9, #FFF3E0, etc.) y sidebar oscuro
+4. El sidebar SIEMPRE debe ser oscuro para buena legibilidad
+5. El emoji debe representar bien la temática
+6. IMPORTANTE: Elige el tipo de partícula que MEJOR represente la descripción del profesor. Si menciona humo, usa "smoke". Si menciona ceniza, usa "ash". Si menciona fuego/volcán, usa "embers" o "lava".
+7. El color de las partículas debe ser coherente (humo=gris, brasas=naranja/rojo, nieve=blanco, etc.)
+8. Nombre en español`;
+
+const generateThemeFromAI = async (description: string) => {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('API Key de Gemini no configurada');
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash-lite',
+    contents: buildAIThemePrompt(description),
+  });
+
+  const responseText = response.text || '';
+  if (!responseText.trim()) {
+    throw new Error('La IA no generó contenido');
+  }
+
+  let parsedData;
+  try {
+    let cleanText = responseText.trim();
+    if (cleanText.startsWith('```json')) {
+      cleanText = cleanText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    } else if (cleanText.startsWith('```')) {
+      cleanText = cleanText.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
+    parsedData = JSON.parse(cleanText);
+  } catch {
+    console.error('Error parsing AI theme response:', responseText);
+    throw new Error('Error al procesar la respuesta de la IA');
+  }
+
+  const themeConfig = {
+    colors: parsedData.colors,
+    particles: parsedData.particles,
+    decorations: [] as any[],
+    banner: parsedData.banner,
+  };
+
+  return {
+    name: parsedData.name,
+    themeConfig,
+  };
+};
+
 const ensureTeacherStoryAccess = async (
   req: Request,
   res: Response,
@@ -804,122 +910,39 @@ Responde ÚNICAMENTE con un JSON válido:
       if (!description || typeof description !== 'string' || description.trim().length === 0) {
         return res.status(400).json({ success: false, message: 'Se requiere una descripción del tema' });
       }
-
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        return res.status(500).json({ success: false, message: 'API Key de Gemini no configurada' });
-      }
-
-      const prompt = `Eres un diseñador de temas visuales para una plataforma educativa gamificada. El profesor quiere un tema visual personalizado para su aula.
-
-DESCRIPCIÓN DEL PROFESOR:
-"${description.trim()}"
-
-Genera un tema visual completo basado en la descripción. El tema debe ser visualmente atractivo y coherente.
-
-Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni bloques de código:
-
-{
-  "name": "Nombre corto del tema (máx 20 caracteres)",
-  "colors": {
-    "primary": "#hexcolor (color principal, vibrante)",
-    "secondary": "#hexcolor (color secundario, complementario)",
-    "accent": "#hexcolor (color de acento, para detalles)",
-    "background": "#hexcolor (fondo del contenido, claro u oscuro según el tema)",
-    "sidebar": "#hexcolor (fondo del sidebar, oscuro)"
-  },
-  "particles": {
-    "type": "uno de los tipos válidos (ver lista abajo)",
-    "color": "#hexcolor (color de las partículas, coherente con el tema)",
-    "speed": "slow|medium|fast",
-    "density": "low|medium|high"
-  },
-  "banner": {
-    "emoji": "un emoji representativo del tema",
-    "title": "Título del tema"
-  }
-}
-
-TIPOS DE PARTÍCULAS VÁLIDOS (elige el más coherente con el tema):
-- "stars" → estrellas brillantes (espacio, noche, magia)
-- "snow" → copos de nieve (invierno, navidad, hielo)
-- "petals" → pétalos de flores (primavera, jardín, romance)
-- "sparkles" → destellos mágicos (fantasía, hadas, celebración)
-- "bubbles" → burbujas que suben (océano, agua, submarino)
-- "fireflies" → luciérnagas brillantes (bosque, noche, naturaleza)
-- "smoke" → humo difuso que sube (volcán, fuego, misterio, niebla)
-- "embers" → brasas incandescentes que suben (volcán, forja, dragones, fuego)
-- "ash" → ceniza que cae lentamente (volcán, apocalipsis, otoño oscuro)
-- "dust" → polvo flotante (desierto, ruinas, antigüedad, western)
-- "lava" → gotas de lava brillante que suben (volcán, infierno, magma)
-- "hearts" → corazones flotantes (amor, San Valentín, amistad)
-- "confetti" → confeti colorido que cae (fiesta, celebración, carnaval)
-- "rain" → lluvia que cae (tormenta, selva, melancolía)
-- "leaves" → hojas que caen (otoño, bosque, naturaleza)
-- "swords" → espadas que caen girando (medieval, caballeros, batallas, RPG)
-- "math" → símbolos matemáticos cayendo: +, −, ×, ÷, π, √, ∑, ∞ (matemáticas, números, álgebra, geometría)
-- "computing" → código binario y símbolos: 0, 1, {}, </> (informática, programación, robótica, tecnología)
-- "science" → átomos con órbitas de electrones (ciencias, química, física, biología, laboratorio)
-- "religion" → cruces que caen suavemente (religión, fe, espiritualidad, iglesia)
-
-REGLAS:
-1. Los colores deben ser armónicos y visualmente atractivos
-2. Si el tema es oscuro/nocturno, background debe ser oscuro (#0D0D2B, #1A1A2E, etc.) y sidebar más oscuro
-3. Si el tema es claro/diurno, background debe ser claro (#E8F5E9, #FFF3E0, etc.) y sidebar oscuro
-4. El sidebar SIEMPRE debe ser oscuro para buena legibilidad
-5. El emoji debe representar bien la temática
-6. IMPORTANTE: Elige el tipo de partícula que MEJOR represente la descripción del profesor. Si menciona humo, usa "smoke". Si menciona ceniza, usa "ash". Si menciona fuego/volcán, usa "embers" o "lava".
-7. El color de las partículas debe ser coherente (humo=gris, brasas=naranja/rojo, nieve=blanco, etc.)
-8. Nombre en español`;
-
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-lite',
-        contents: prompt,
-      });
-
-      const responseText = response.text || '';
-
-      if (!responseText.trim()) {
-        return res.status(500).json({ success: false, message: 'La IA no generó contenido' });
-      }
-
-      let parsedData;
-      try {
-        let cleanText = responseText.trim();
-        if (cleanText.startsWith('```json')) {
-          cleanText = cleanText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-        } else if (cleanText.startsWith('```')) {
-          cleanText = cleanText.replace(/^```\s*/, '').replace(/\s*```$/, '');
-        }
-        parsedData = JSON.parse(cleanText);
-      } catch (parseError) {
-        console.error('Error parsing AI theme response:', responseText);
-        return res.status(500).json({ success: false, message: 'Error al procesar la respuesta de la IA' });
-      }
-
-      // Build themeConfig from AI response
-      const themeConfig = {
-        colors: parsedData.colors,
-        particles: parsedData.particles,
-        decorations: [] as any[],
-        banner: parsedData.banner,
-      };
+      const generatedTheme = await generateThemeFromAI(description);
 
       // Apply the theme to the classroom
-      await storyService.updateClassroomTheme(classroomId, themeConfig, 'AI');
+      await storyService.updateClassroomTheme(classroomId, generatedTheme.themeConfig, 'AI');
 
       res.json({
         success: true,
-        data: {
-          name: parsedData.name,
-          themeConfig,
-        },
+        data: generatedTheme,
       });
 
     } catch (error: any) {
       console.error('Error generating AI theme:', error);
       res.status(500).json({ success: false, message: error.message || 'Error al generar tema con IA' });
+    }
+  }
+
+  async generateAIThemePreview(req: Request, res: Response) {
+    try {
+      const { description } = req.body;
+
+      if (!description || typeof description !== 'string' || description.trim().length === 0) {
+        return res.status(400).json({ success: false, message: 'Se requiere una descripción del tema' });
+      }
+
+      const generatedTheme = await generateThemeFromAI(description);
+
+      res.json({
+        success: true,
+        data: generatedTheme,
+      });
+    } catch (error: any) {
+      console.error('Error generating AI theme preview:', error);
+      res.status(500).json({ success: false, message: error.message || 'Error al generar la vista previa del tema con IA' });
     }
   }
 }

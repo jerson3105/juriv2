@@ -124,6 +124,104 @@ export interface CreateClassroomData {
   schoolId?: string | null;
 }
 
+export type AIClassroomFeatureKey =
+  | 'students'
+  | 'behaviors'
+  | 'rankings'
+  | 'grades'
+  | 'settings'
+  | 'badges'
+  | 'shop'
+  | 'clans'
+  | 'attendance'
+  | 'collectibles'
+  | 'storytelling'
+  | 'expedition'
+  | 'question_bank'
+  | 'activities';
+
+export type AIClassroomModuleAction = 'AUTO_CREATE' | 'ENABLE_ON_CREATE' | 'READY_AFTER_CREATE' | 'LOCKED';
+
+export interface AIClassroomBlueprintModule {
+  featureKey: AIClassroomFeatureKey;
+  title: string;
+  shortDescription: string;
+  state: 'AVAILABLE' | 'LOCKED';
+  actionType: AIClassroomModuleAction;
+  configurable: boolean;
+  autoCreateSupported: boolean;
+  recommended: boolean;
+  reason: string;
+}
+
+export interface AIClassroomBlueprint {
+  introMessage: string;
+  classroom: {
+    name: string;
+    description: string;
+    subject: string;
+    gradeLevel: string;
+    educationLevel: '' | 'PRIMARIA' | 'SECUNDARIA';
+    useCompetencies: boolean;
+    curriculumAreaName: string;
+    gradeScaleType: 'PERU_LETTERS' | 'PERU_VIGESIMAL' | 'CENTESIMAL' | 'USA_LETTERS' | 'CUSTOM';
+    objective: string;
+  };
+  settings: {
+    allowNegativePoints: boolean;
+    showReasonToStudent: boolean;
+    notifyOnPoints: boolean;
+    classAssignmentMode: 'STUDENT_CHOICE' | 'TEACHER_ASSIGNS';
+    showCharacterName: boolean;
+    requirePurchaseApproval: boolean;
+  };
+  generationPlan: {
+    behaviors: {
+      description: string;
+      count: number;
+      pointMode: 'COMBINED' | 'XP_ONLY' | 'HP_ONLY' | 'GP_ONLY';
+      includePositive: boolean;
+      includeNegative: boolean;
+    };
+    badges: {
+      description: string;
+      count: number;
+      assignmentMode: 'MANUAL' | 'AUTOMATIC' | 'BOTH';
+    };
+    shop: {
+      description: string;
+      count: number;
+    };
+    questions: {
+      questionBankName: string;
+      description: string;
+      count: number;
+      questionTypes: string[];
+    };
+  };
+  modules: AIClassroomBlueprintModule[];
+  unlockedFeatures: AIClassroomFeatureKey[];
+  lockedFeatures: AIClassroomFeatureKey[];
+  onboarding: {
+    isExperienced: boolean;
+    level: string;
+  };
+}
+
+export interface GenerateAIContentRequest {
+  section: 'behaviors' | 'badges' | 'shop' | 'questions';
+  context: string;
+  description?: string;
+  count?: number;
+  pointMode?: 'COMBINED' | 'XP_ONLY' | 'HP_ONLY' | 'GP_ONLY';
+  includePositive?: boolean;
+  includeNegative?: boolean;
+  assignmentMode?: 'MANUAL' | 'AUTOMATIC' | 'BOTH';
+  questionTypes?: string[];
+  competencies?: Array<{ id: string; name: string }>;
+  behaviors?: string[];
+}
+
 export interface CurriculumCompetency {
   id: string;
   areaId: string;
@@ -325,6 +423,18 @@ export const classroomApi = {
   // Obtener mis clases (profesor)
   getMyClassrooms: async (): Promise<Classroom[]> => {
     const response = await api.get('/classrooms/my');
+    return response.data.data;
+  },
+
+  // Generar el plan maestro de Jiro para una nueva clase
+  generateAIClassroomBlueprint: async (prompt: string): Promise<AIClassroomBlueprint> => {
+    const response = await api.post('/classrooms/generate-ai-blueprint', { prompt });
+    return response.data.data;
+  },
+
+  // Generar contenido IA por módulo usando el contexto de la clase
+  generateAIContent: async (data: GenerateAIContentRequest): Promise<any> => {
+    const response = await api.post('/classrooms/generate-ai-content', data);
     return response.data.data;
   },
 

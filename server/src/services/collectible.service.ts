@@ -13,7 +13,7 @@ import {
   type PackType,
   type ImageStyle,
 } from '../db/schema.js';
-import { eq, and, sql, desc, asc } from 'drizzle-orm';
+import { eq, and, sql, desc, asc, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { studentService } from './student.service.js';
 
@@ -64,6 +64,15 @@ export interface GeneratedAlbum {
 
 class CollectibleService {
   private ai: GoogleGenAI | null = null;
+
+  private async getTeacherClassroom(teacherId: string, classroomId: string) {
+    const [classroom] = await db
+      .select({ id: classrooms.id, name: classrooms.name })
+      .from(classrooms)
+      .where(and(eq(classrooms.id, classroomId), eq(classrooms.teacherId, teacherId)));
+
+    return classroom ?? null;
+  }
 
   private getAI(): GoogleGenAI {
     if (!this.ai) {
@@ -145,6 +154,31 @@ class CollectibleService {
     return albumsWithCount;
   }
 
+  async getImportableAlbumsForTeacher(teacherId: string, currentClassroomId: string) {
+    const currentClassroom = await this.getTeacherClassroom(teacherId, currentClassroomId);
+
+    if (!currentClassroom) {
+      throw new Error('Aula no encontrada');
+    }
+
+    const teacherClassrooms = await db
+      .select({ id: classrooms.id, name: classrooms.name })
+      .from(classrooms)
+      .where(eq(classrooms.teacherId, teacherId));
+
+    const sources = await Promise.all(
+      teacherClassrooms
+        .filter((classroom) => classroom.id !== currentClassroomId)
+        .map(async (classroom) => ({
+          classroomId: classroom.id,
+          classroomName: classroom.name,
+          albums: await this.getAlbumsByClassroom(classroom.id),
+        }))
+    );
+
+    return sources.filter((source) => source.albums.length > 0);
+  }
+
   async getAlbumById(albumId: string) {
     const [album] = await db
       .select()
@@ -184,6 +218,104 @@ class CollectibleService {
       .where(eq(collectibleAlbums.id, albumId));
 
     return this.getAlbumById(albumId);
+  }
+
+  async cloneAlbumToClassrooms(teacherId: string, albumId: string, targetClassroomIds: string[]) {
+    if (targetClassroomIds.length === 0) {
+      throw new Error('Selecciona al menos una clase destino');
+    }
+
+    const sourceAlbum = await this.getAlbumById(albumId);
+
+    if (!sourceAlbum) {
+      throw new Error('Álbum no encontrado');
+    }
+
+    const sourceClassroom = await this.getTeacherClassroom(teacherId, sourceAlbum.classroomId);
+
+    if (!sourceClassroom) {
+      throw new Error('No tienes acceso a este álbum');
+    }
+
+    const uniqueTargetIds = Array.from(new Set(targetClassroomIds))
+      .map((classroomId) => classroomId?.trim())
+      .filter((classroomId): classroomId is string => Boolean(classroomId) && classroomId !== sourceAlbum.classroomId);
+
+    if (uniqueTargetIds.length === 0) {
+      throw new Error('Selecciona otra clase destino');
+    }
+
+    const targetClassrooms = await db
+      .select({ id: classrooms.id, name: classrooms.name })
+      .from(classrooms)
+      .where(and(eq(classrooms.teacherId, teacherId), inArray(classrooms.id, uniqueTargetIds)));
+
+    if (targetClassrooms.length !== uniqueTargetIds.length) {
+      throw new Error('Hay clases destino no válidas');
+    }
+
+    const created = await db.transaction(async (tx) => {
+      const createdAlbums: Array<{ classroomId: string; classroomName: string; albumId: string }> = [];
+
+      for (const targetClassroom of targetClassrooms) {
+        const now = new Date();
+        const clonedAlbumId = uuidv4();
+
+        await tx.insert(collectibleAlbums).values({
+          id: clonedAlbumId,
+          classroomId: targetClassroom.id,
+          name: sourceAlbum.name,
+          description: sourceAlbum.description,
+          coverImage: sourceAlbum.coverImage,
+          theme: sourceAlbum.theme,
+          imageStyle: sourceAlbum.imageStyle,
+          singlePackPrice: sourceAlbum.singlePackPrice,
+          fivePackPrice: sourceAlbum.fivePackPrice,
+          tenPackPrice: sourceAlbum.tenPackPrice,
+          rewardXp: sourceAlbum.rewardXp,
+          rewardHp: sourceAlbum.rewardHp,
+          rewardGp: sourceAlbum.rewardGp,
+          rewardBadgeId: null,
+          allowTrades: sourceAlbum.allowTrades,
+          isActive: sourceAlbum.isActive,
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        if (sourceAlbum.cards.length > 0) {
+          await tx.insert(collectibleCards).values(
+            sourceAlbum.cards.map((card) => ({
+              id: uuidv4(),
+              albumId: clonedAlbumId,
+              name: card.name,
+              description: card.description,
+              imageUrl: card.imageUrl,
+              rarity: card.rarity,
+              slotNumber: card.slotNumber,
+              isShiny: card.isShiny,
+              createdAt: now,
+              updatedAt: now,
+            }))
+          );
+        }
+
+        createdAlbums.push({
+          classroomId: targetClassroom.id,
+          classroomName: targetClassroom.name,
+          albumId: clonedAlbumId,
+        });
+      }
+
+      return createdAlbums;
+    });
+
+    return {
+      sourceAlbumId: sourceAlbum.id,
+      sourceAlbumName: sourceAlbum.name,
+      totalCards: sourceAlbum.cards.length,
+      skippedRewardBadge: Boolean(sourceAlbum.rewardBadgeId),
+      created,
+    };
   }
 
   async deleteAlbum(albumId: string) {

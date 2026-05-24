@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
@@ -18,6 +18,7 @@ import {
   Sparkles,
   Eye,
   Coins,
+  Share2,
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
@@ -29,7 +30,9 @@ import {
   type AlbumWithCards,
   type CardRarity,
   type GeneratedAlbum,
+  type ImportableAlbumSource,
 } from '../../lib/collectibleApi';
+import { classroomApi, type Classroom } from '../../lib/classroomApi';
 import toast from 'react-hot-toast';
 import { ConfirmModal } from '../ui/ConfirmModal';
 
@@ -48,13 +51,27 @@ export const CollectiblesActivity = ({ classroom }: CollectiblesActivityProps) =
   const [showEditCardModal, setShowEditCardModal] = useState<CollectibleCard | null>(null);
   const [showGenerateAlbumModal, setShowGenerateAlbumModal] = useState(false);
   const [showGenerateCardModal, setShowGenerateCardModal] = useState(false);
+  const [showImportAlbumModal, setShowImportAlbumModal] = useState(false);
   const [deleteAlbumConfirm, setDeleteAlbumConfirm] = useState<CollectibleAlbum | null>(null);
   const [deleteCardConfirm, setDeleteCardConfirm] = useState<CollectibleCard | null>(null);
   const [editAlbumFromList, setEditAlbumFromList] = useState<CollectibleAlbum | null>(null);
+  const [albumToExport, setAlbumToExport] = useState<CollectibleAlbum | null>(null);
 
   const { data: albums = [], isLoading: loadingAlbums } = useQuery({
     queryKey: ['collectible-albums', classroom.id],
     queryFn: () => collectibleApi.getAlbums(classroom.id),
+  });
+
+  const { data: importableAlbumSources = [], isLoading: loadingImportableAlbumSources } = useQuery({
+    queryKey: ['collectible-importable-albums', classroom.id],
+    queryFn: () => collectibleApi.getImportableAlbums(classroom.id),
+    enabled: showImportAlbumModal,
+  });
+
+  const { data: teacherClassrooms = [], isLoading: loadingTeacherClassrooms } = useQuery({
+    queryKey: ['collectible-transfer-classrooms'],
+    queryFn: classroomApi.getMyClassrooms,
+    enabled: !!albumToExport,
   });
 
   const { data: albumProgress, isLoading: loadingProgress } = useQuery({
@@ -150,6 +167,62 @@ export const CollectiblesActivity = ({ classroom }: CollectiblesActivityProps) =
     onError: () => toast.error('Error al eliminar'),
   });
 
+  const cloneAlbumMutation = useMutation({
+    mutationFn: ({ albumId, targetClassroomIds }: { albumId: string; targetClassroomIds: string[] }) =>
+      collectibleApi.cloneAlbum(albumId, targetClassroomIds),
+    onSuccess: (result, variables) => {
+      if (variables.targetClassroomIds.includes(classroom.id)) {
+        queryClient.invalidateQueries({ queryKey: ['collectible-albums', classroom.id] });
+      }
+
+      setShowImportAlbumModal(false);
+      setAlbumToExport(null);
+
+      const baseMessage = variables.targetClassroomIds.includes(classroom.id)
+        ? 'Álbum importado'
+        : result.created.length > 1
+          ? `Álbum exportado a ${result.created.length} clases`
+          : 'Álbum exportado';
+
+      toast.success(
+        result.skippedRewardBadge
+          ? `${baseMessage}. La insignia no se copió`
+          : baseMessage
+      );
+    },
+    onError: (error: any) => toast.error(error?.response?.data?.message || 'Error al copiar álbum'),
+  });
+
+  const exportableClassrooms = teacherClassrooms.filter((teacherClassroom) => teacherClassroom.id !== classroom.id);
+
+  const transferModals = (
+    <>
+      <ImportAlbumModal
+        isOpen={showImportAlbumModal}
+        onClose={() => setShowImportAlbumModal(false)}
+        sources={importableAlbumSources}
+        isLoading={loadingImportableAlbumSources}
+        isSubmitting={cloneAlbumMutation.isPending}
+        onSubmit={(albumId) => cloneAlbumMutation.mutate({ albumId, targetClassroomIds: [classroom.id] })}
+      />
+      <ExportAlbumModal
+        isOpen={!!albumToExport}
+        onClose={() => setAlbumToExport(null)}
+        album={albumToExport}
+        classrooms={exportableClassrooms}
+        isLoading={loadingTeacherClassrooms}
+        isSubmitting={cloneAlbumMutation.isPending}
+        onSubmit={(targetClassroomIds) => {
+          if (!albumToExport) {
+            return;
+          }
+
+          cloneAlbumMutation.mutate({ albumId: albumToExport.id, targetClassroomIds });
+        }}
+      />
+    </>
+  );
+
   const openAlbum = async (album: CollectibleAlbum) => {
     const fullAlbum = await collectibleApi.getAlbumById(album.id);
     setSelectedAlbum(fullAlbum);
@@ -193,6 +266,13 @@ export const CollectiblesActivity = ({ classroom }: CollectiblesActivityProps) =
               className="!bg-blue-50 dark:!bg-blue-900/20 !text-blue-600 dark:!text-blue-400 !border-blue-200 dark:!border-blue-800 hover:!bg-blue-100"
             >
               <Users className="w-4 h-4 mr-2" />Progreso
+            </Button>
+            <Button 
+              variant="secondary"
+              onClick={() => setAlbumToExport(selectedAlbum)}
+              className="!bg-violet-50 dark:!bg-violet-900/20 !text-violet-600 dark:!text-violet-300 !border-violet-200 dark:!border-violet-800 hover:!bg-violet-100"
+            >
+              <Share2 className="w-4 h-4 mr-2" />Exportar
             </Button>
             <Button 
               variant="secondary" 
@@ -372,6 +452,7 @@ export const CollectiblesActivity = ({ classroom }: CollectiblesActivityProps) =
         {showEditCardModal && <EditCardModal isOpen={true} onClose={() => setShowEditCardModal(null)} card={showEditCardModal} onSubmit={(data) => updateCardMutation.mutate({ cardId: showEditCardModal.id, data })} isLoading={updateCardMutation.isPending} />}
         <ConfirmModal isOpen={!!deleteCardConfirm} onClose={() => setDeleteCardConfirm(null)} onConfirm={() => deleteCardConfirm && deleteCardMutation.mutate(deleteCardConfirm.id)} title="Eliminar cromo" message={`¿Eliminar "${deleteCardConfirm?.name}"?`} confirmText="Eliminar" isLoading={deleteCardMutation.isPending} variant="danger" />
         <ConfirmModal isOpen={!!deleteAlbumConfirm} onClose={() => setDeleteAlbumConfirm(null)} onConfirm={() => deleteAlbumConfirm && deleteAlbumMutation.mutate(deleteAlbumConfirm.id)} title="Eliminar álbum" message={`¿Eliminar "${deleteAlbumConfirm?.name}"? Se perderá todo el progreso.`} confirmText="Eliminar" isLoading={deleteAlbumMutation.isPending} variant="danger" />
+        {transferModals}
       </div>
     );
   }
@@ -524,6 +605,13 @@ export const CollectiblesActivity = ({ classroom }: CollectiblesActivityProps) =
           </div>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => setShowImportAlbumModal(true)}
+            className="!bg-gradient-to-r !from-sky-500 !to-blue-600 !text-white !border-0 hover:!from-sky-600 hover:!to-blue-700 shadow-lg shadow-sky-500/25"
+          >
+            <Album className="w-4 h-4 mr-2" />Importar
+          </Button>
           <Button 
             variant="secondary" 
             onClick={() => setShowGenerateAlbumModal(true)}
@@ -549,6 +637,13 @@ export const CollectiblesActivity = ({ classroom }: CollectiblesActivityProps) =
             Crea tu primer álbum de cromos coleccionables para motivar a tus estudiantes
           </p>
           <div className="flex justify-center gap-3">
+            <Button
+              variant="secondary"
+              onClick={() => setShowImportAlbumModal(true)}
+              className="!bg-gradient-to-r !from-sky-500 !to-blue-600 !text-white !border-0 shadow-lg shadow-sky-500/25 hover:!from-sky-600 hover:!to-blue-700"
+            >
+              <Album className="w-4 h-4 mr-2" />Importar
+            </Button>
             <Button 
               variant="secondary" 
               onClick={() => setShowGenerateAlbumModal(true)}
@@ -655,6 +750,7 @@ export const CollectiblesActivity = ({ classroom }: CollectiblesActivityProps) =
         </div>
       )}
 
+      {transferModals}
       <CreateAlbumModal isOpen={showCreateAlbumModal} onClose={() => setShowCreateAlbumModal(false)} onSubmit={(data) => createAlbumMutation.mutate(data)} isLoading={createAlbumMutation.isPending} />
       <GenerateAlbumModal isOpen={showGenerateAlbumModal} onClose={() => setShowGenerateAlbumModal(false)} classroomId={classroom.id} onSubmit={async (albumData, cards) => { const album = await createAlbumMutation.mutateAsync(albumData); if (cards.length > 0) await createManyCardsMutation.mutateAsync({ albumId: album.id, cards }); setShowGenerateAlbumModal(false); }} isLoading={createAlbumMutation.isPending || createManyCardsMutation.isPending} />
       <ConfirmModal isOpen={!!deleteAlbumConfirm} onClose={() => setDeleteAlbumConfirm(null)} onConfirm={() => deleteAlbumConfirm && deleteAlbumMutation.mutate(deleteAlbumConfirm.id)} title="Eliminar álbum" message={`¿Eliminar "${deleteAlbumConfirm?.name}"? Se perderá todo el progreso.`} confirmText="Eliminar" isLoading={deleteAlbumMutation.isPending} variant="danger" />
@@ -664,6 +760,285 @@ export const CollectiblesActivity = ({ classroom }: CollectiblesActivityProps) =
 };
 
 // ==================== MODALS ====================
+
+const ImportAlbumModal = ({
+  isOpen,
+  onClose,
+  sources,
+  isLoading,
+  isSubmitting,
+  onSubmit,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  sources: ImportableAlbumSource[];
+  isLoading: boolean;
+  isSubmitting: boolean;
+  onSubmit: (albumId: string) => void;
+}) => {
+  const [selectedClassroomId, setSelectedClassroomId] = useState('');
+  const [selectedAlbumId, setSelectedAlbumId] = useState('');
+
+  useEffect(() => {
+    if (!isOpen || sources.length === 0) {
+      setSelectedClassroomId('');
+      setSelectedAlbumId('');
+      return;
+    }
+
+    setSelectedClassroomId(sources[0].classroomId);
+    setSelectedAlbumId(sources[0].albums[0]?.id ?? '');
+  }, [isOpen, sources]);
+
+  const selectedSource = sources.find((source) => source.classroomId === selectedClassroomId) ?? sources[0];
+  const selectedAlbum = selectedSource?.albums.find((album) => album.id === selectedAlbumId) ?? selectedSource?.albums[0];
+
+  useEffect(() => {
+    if (!selectedSource) {
+      setSelectedAlbumId('');
+      return;
+    }
+
+    if (!selectedSource.albums.some((album) => album.id === selectedAlbumId)) {
+      setSelectedAlbumId(selectedSource.albums[0]?.id ?? '');
+    }
+  }, [selectedAlbumId, selectedSource]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 16 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-800"
+      >
+        <div className="flex items-center justify-between border-b border-gray-100 p-5 dark:border-gray-700">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Importar álbum</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Desde otra de tus clases</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-4 p-5">
+          {isLoading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-7 w-7 animate-spin text-amber-500" />
+            </div>
+          ) : sources.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-gray-200 p-6 text-center dark:border-gray-700">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-200">No hay álbumes para importar</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Crea uno en otra clase y luego impórtalo aquí.</p>
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Clase</label>
+                <select
+                  value={selectedClassroomId}
+                  onChange={(e) => {
+                    const nextClassroomId = e.target.value;
+                    const nextSource = sources.find((source) => source.classroomId === nextClassroomId);
+                    setSelectedClassroomId(nextClassroomId);
+                    setSelectedAlbumId(nextSource?.albums[0]?.id ?? '');
+                  }}
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 outline-none transition-colors focus:border-amber-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                >
+                  {sources.map((source) => (
+                    <option key={source.classroomId} value={source.classroomId}>
+                      {source.classroomName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Álbum</label>
+                <select
+                  value={selectedAlbumId}
+                  onChange={(e) => setSelectedAlbumId(e.target.value)}
+                  className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 outline-none transition-colors focus:border-amber-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                >
+                  {selectedSource?.albums.map((album) => (
+                    <option key={album.id} value={album.id}>
+                      {album.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedAlbum && (
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{selectedAlbum.name}</p>
+                      {selectedAlbum.description && (
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{selectedAlbum.description}</p>
+                      )}
+                    </div>
+                    <span className="rounded-full bg-white px-2 py-1 text-xs font-medium text-gray-600 shadow-sm dark:bg-gray-800 dark:text-gray-300">
+                      {selectedAlbum.totalCards || 0} cromos
+                    </span>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-3 border-t border-gray-100 bg-gray-50 p-5 dark:border-gray-700 dark:bg-gray-900/30">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button
+            type="button"
+            onClick={() => selectedAlbum && onSubmit(selectedAlbum.id)}
+            disabled={!selectedAlbum || isLoading}
+            isLoading={isSubmitting}
+            className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600"
+          >
+            Importar
+          </Button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const ExportAlbumModal = ({
+  isOpen,
+  onClose,
+  album,
+  classrooms,
+  isLoading,
+  isSubmitting,
+  onSubmit,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  album: CollectibleAlbum | null;
+  classrooms: Classroom[];
+  isLoading: boolean;
+  isSubmitting: boolean;
+  onSubmit: (targetClassroomIds: string[]) => void;
+}) => {
+  const [selectedTargetIds, setSelectedTargetIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setSelectedTargetIds([]);
+      return;
+    }
+
+    setSelectedTargetIds([]);
+  }, [isOpen, album?.id]);
+
+  if (!isOpen || !album) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 16 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-800"
+      >
+        <div className="flex items-center justify-between border-b border-gray-100 p-5 dark:border-gray-700">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Exportar álbum</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Elige tus clases destino</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-4 p-5">
+          <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{album.name}</p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{album.totalCards || 0} cromos</p>
+              </div>
+              <Share2 className="h-4 w-4 text-violet-500" />
+            </div>
+          </div>
+
+          {isLoading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-7 w-7 animate-spin text-amber-500" />
+            </div>
+          ) : classrooms.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-gray-200 p-6 text-center dark:border-gray-700">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-200">No tienes otras clases disponibles</p>
+            </div>
+          ) : (
+            <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+              {classrooms.map((targetClassroom) => {
+                const isSelected = selectedTargetIds.includes(targetClassroom.id);
+
+                return (
+                  <label
+                    key={targetClassroom.id}
+                    className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 transition-colors ${
+                      isSelected
+                        ? 'border-violet-300 bg-violet-50 dark:border-violet-700 dark:bg-violet-900/20'
+                        : 'border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/20'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => {
+                        setSelectedTargetIds((current) =>
+                          current.includes(targetClassroom.id)
+                            ? current.filter((id) => id !== targetClassroom.id)
+                            : [...current, targetClassroom.id]
+                        );
+                      }}
+                      className="rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                    />
+                    <span className="min-w-0 text-sm font-medium text-gray-800 dark:text-gray-100">{targetClassroom.name}</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between gap-3 border-t border-gray-100 bg-gray-50 p-5 dark:border-gray-700 dark:bg-gray-900/30">
+          <span className="text-xs text-gray-500 dark:text-gray-400">
+            {selectedTargetIds.length === 0 ? 'Sin clases seleccionadas' : `${selectedTargetIds.length} seleccionada(s)`}
+          </span>
+          <div className="flex items-center gap-3">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={() => onSubmit(selectedTargetIds)}
+              disabled={selectedTargetIds.length === 0 || isLoading}
+              isLoading={isSubmitting}
+              className="bg-gradient-to-r from-violet-500 to-fuchsia-500 hover:from-violet-600 hover:to-fuchsia-600"
+            >
+              Exportar
+            </Button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
 
 const CreateAlbumModal = ({ isOpen, onClose, onSubmit, isLoading }: { isOpen: boolean; onClose: () => void; onSubmit: (data: any) => void; isLoading: boolean }) => {
   const [name, setName] = useState('');
