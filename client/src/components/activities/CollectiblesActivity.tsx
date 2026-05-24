@@ -41,6 +41,56 @@ interface CollectiblesActivityProps {
   onBack?: () => void;
 }
 
+const TEACHER_CARD_RARITY_UI: Record<CardRarity, {
+  frameGradient: string;
+  auraClass: string;
+  shadowClass: string;
+  badgeClass: string;
+  sheenClass: string;
+  pulseDuration: number;
+}> = {
+  COMMON: {
+    frameGradient: 'linear-gradient(135deg, rgba(148,163,184,0.95), rgba(226,232,240,0.9), rgba(148,163,184,0.95))',
+    auraClass: 'bg-slate-300/20 dark:bg-slate-400/10',
+    shadowClass: 'shadow-slate-200/80 dark:shadow-black/10',
+    badgeClass: 'border-white/70 bg-white/92 text-slate-600',
+    sheenClass: 'from-transparent via-white/20 to-transparent',
+    pulseDuration: 4.8,
+  },
+  UNCOMMON: {
+    frameGradient: 'linear-gradient(135deg, rgba(34,197,94,0.95), rgba(110,231,183,0.95), rgba(16,185,129,0.92))',
+    auraClass: 'bg-emerald-400/25 dark:bg-emerald-500/15',
+    shadowClass: 'shadow-emerald-300/60 dark:shadow-emerald-950/30',
+    badgeClass: 'border-emerald-100/80 bg-white/90 text-emerald-700',
+    sheenClass: 'from-transparent via-emerald-100/25 to-transparent',
+    pulseDuration: 4.2,
+  },
+  RARE: {
+    frameGradient: 'linear-gradient(135deg, rgba(59,130,246,0.95), rgba(129,140,248,0.95), rgba(96,165,250,0.92))',
+    auraClass: 'bg-blue-400/30 dark:bg-blue-500/18',
+    shadowClass: 'shadow-blue-300/70 dark:shadow-blue-950/35',
+    badgeClass: 'border-blue-100/80 bg-white/92 text-blue-700',
+    sheenClass: 'from-transparent via-blue-100/30 to-transparent',
+    pulseDuration: 3.6,
+  },
+  EPIC: {
+    frameGradient: 'linear-gradient(135deg, rgba(168,85,247,0.96), rgba(236,72,153,0.94), rgba(192,132,252,0.94), rgba(99,102,241,0.92))',
+    auraClass: 'bg-fuchsia-500/35 dark:bg-fuchsia-500/20',
+    shadowClass: 'shadow-fuchsia-400/80 dark:shadow-fuchsia-950/45',
+    badgeClass: 'border-fuchsia-100/80 bg-white/92 text-fuchsia-700',
+    sheenClass: 'from-transparent via-fuchsia-100/35 to-transparent',
+    pulseDuration: 2.7,
+  },
+  LEGENDARY: {
+    frameGradient: 'linear-gradient(135deg, rgba(251,191,36,0.98), rgba(249,115,22,0.96), rgba(253,224,71,0.96), rgba(245,158,11,0.94))',
+    auraClass: 'bg-amber-400/40 dark:bg-amber-500/24',
+    shadowClass: 'shadow-amber-300/90 dark:shadow-amber-950/45',
+    badgeClass: 'border-amber-100/80 bg-white/94 text-amber-700',
+    sheenClass: 'from-transparent via-amber-100/45 to-transparent',
+    pulseDuration: 2.1,
+  },
+};
+
 export const CollectiblesActivity = ({ classroom }: CollectiblesActivityProps) => {
   const queryClient = useQueryClient();
   const [view, setView] = useState<'list' | 'album' | 'progress'>('list');
@@ -386,63 +436,130 @@ export const CollectiblesActivity = ({ classroom }: CollectiblesActivityProps) =
           </Card>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-            {selectedAlbum.cards.map((card, index) => (
-              <motion.div 
-                key={card.id} 
-                initial={{ opacity: 0, scale: 0.9 }} 
-                animate={{ opacity: 1, scale: 1 }} 
-                transition={{ delay: index * 0.03 }}
-                className="group relative"
-              >
-                <Card className="overflow-hidden hover:shadow-xl transition-all duration-300 hover:-translate-y-1 border-0 shadow-md">
-                  <div className="aspect-[3/4] relative overflow-hidden">
-                    {card.imageUrl ? (
-                      <img src={card.imageUrl} alt={card.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className={`w-full h-full flex flex-col items-center justify-center bg-gradient-to-br ${RARITY_CONFIG[card.rarity].gradient}`}>
-                        <span className="text-5xl mb-2">{RARITY_CONFIG[card.rarity].icon}</span>
-                        <span className="text-white/90 text-xs font-bold px-2 py-1 bg-black/20 rounded-full">
-                          {RARITY_CONFIG[card.rarity].label}
-                        </span>
+            {selectedAlbum.cards.map((card, index) => {
+              const rarityUi = TEACHER_CARD_RARITY_UI[card.rarity];
+              const isSpecialCard = card.rarity === 'EPIC' || card.rarity === 'LEGENDARY';
+              const showAnimatedFrame = card.rarity !== 'COMMON';
+
+              return (
+                <motion.div 
+                  key={card.id} 
+                  initial={{ opacity: 0, scale: 0.9 }} 
+                  animate={{ opacity: 1, scale: 1 }} 
+                  transition={{ delay: index * 0.03 }}
+                  className="group relative"
+                >
+                  {isSpecialCard && (
+                    <motion.div
+                      className={`pointer-events-none absolute -inset-1 rounded-[1.55rem] blur-xl ${rarityUi.auraClass}`}
+                      animate={{
+                        opacity: [0.35, 0.9, 0.35],
+                        scale: [0.98, 1.05, 0.99],
+                      }}
+                      transition={{ duration: rarityUi.pulseDuration, repeat: Infinity, ease: 'easeInOut' }}
+                    />
+                  )}
+
+                  {showAnimatedFrame && (
+                    <motion.div
+                      className="pointer-events-none absolute inset-0 rounded-[1.45rem] p-[1.5px] opacity-80 transition-opacity duration-300 group-hover:opacity-100"
+                      style={{
+                        backgroundImage: rarityUi.frameGradient,
+                        backgroundSize: '220% 220%',
+                      }}
+                      animate={{ backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'] }}
+                      transition={{ duration: isSpecialCard ? 3.2 : 5.2, repeat: Infinity, ease: 'linear' }}
+                    >
+                      <div className="h-full w-full rounded-[1.35rem] bg-white/85 dark:bg-gray-900/75" />
+                    </motion.div>
+                  )}
+
+                  <Card className={`relative overflow-hidden border-0 bg-white/95 shadow-xl backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 ${rarityUi.shadowClass} hover:shadow-2xl dark:bg-gray-800/95`}>
+                    <div className="aspect-[3/4] relative overflow-hidden">
+                      <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-20 bg-gradient-to-b from-white/16 via-white/5 to-transparent" />
+
+                      {card.imageUrl ? (
+                        <img src={card.imageUrl} alt={card.name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
+                      ) : (
+                        <div className={`w-full h-full flex flex-col items-center justify-center bg-gradient-to-br ${RARITY_CONFIG[card.rarity].gradient}`}>
+                          <span className="text-5xl mb-2 drop-shadow-[0_8px_18px_rgba(15,23,42,0.22)]">{RARITY_CONFIG[card.rarity].icon}</span>
+                          <span className="text-white/90 text-xs font-bold px-2 py-1 bg-black/20 rounded-full">
+                            {RARITY_CONFIG[card.rarity].label}
+                          </span>
+                        </div>
+                      )}
+
+                      {isSpecialCard && (
+                        <motion.div
+                          className={`pointer-events-none absolute inset-y-0 -left-1/2 w-1/2 bg-gradient-to-r ${rarityUi.sheenClass} mix-blend-screen opacity-90`}
+                          animate={{ x: ['-18%', '240%'] }}
+                          transition={{
+                            duration: 2.4,
+                            repeat: Infinity,
+                            repeatDelay: 0.9,
+                            ease: 'easeInOut',
+                          }}
+                        />
+                      )}
+
+                      {isSpecialCard && (
+                        <motion.div
+                          className="pointer-events-none absolute inset-0"
+                          style={{
+                            background: card.rarity === 'LEGENDARY'
+                              ? 'radial-gradient(circle at 18% 20%, rgba(254,240,138,0.34), transparent 32%), radial-gradient(circle at 82% 18%, rgba(251,191,36,0.24), transparent 30%), radial-gradient(circle at 50% 90%, rgba(249,115,22,0.2), transparent 34%)'
+                              : 'radial-gradient(circle at 22% 18%, rgba(244,114,182,0.28), transparent 30%), radial-gradient(circle at 80% 24%, rgba(192,132,252,0.24), transparent 30%), radial-gradient(circle at 50% 88%, rgba(99,102,241,0.18), transparent 34%)',
+                          }}
+                          animate={{ opacity: [0.45, 0.9, 0.45] }}
+                          transition={{ duration: rarityUi.pulseDuration, repeat: Infinity, ease: 'easeInOut' }}
+                        />
+                      )}
+
+                      <motion.div
+                        className="pointer-events-none absolute inset-[6px] rounded-[1rem] border border-white/55"
+                        animate={{ opacity: showAnimatedFrame ? [0.32, 0.72, 0.32] : [0.18, 0.3, 0.18] }}
+                        transition={{ duration: rarityUi.pulseDuration, repeat: Infinity, ease: 'easeInOut' }}
+                      />
+
+                      <div className={`absolute top-2 right-2 z-[2] inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.14em] shadow-lg backdrop-blur-md ${rarityUi.badgeClass}`}>
+                        <span>{RARITY_CONFIG[card.rarity].icon}</span>
+                        <span>{RARITY_CONFIG[card.rarity].label}</span>
                       </div>
-                    )}
-                    {/* Rarity badge mejorado */}
-                    <div className={`absolute top-2 right-2 px-2 py-1 rounded-lg text-xs font-bold shadow-lg backdrop-blur-sm ${RARITY_CONFIG[card.rarity].bgColor} ${RARITY_CONFIG[card.rarity].color}`}>
-                      {RARITY_CONFIG[card.rarity].label}
+
+                      <div className="absolute bottom-2 left-2 z-[2] min-w-[1.9rem] rounded-lg bg-black/65 px-2 py-1 text-center text-xs font-black text-white shadow-lg backdrop-blur-sm">
+                        {card.slotNumber}
+                      </div>
+
+                      <div className="absolute inset-0 z-[3] bg-gradient-to-t from-black/80 via-black/38 to-transparent opacity-0 transition-all duration-300 group-hover:opacity-100 flex items-end justify-center pb-4 gap-2">
+                        <Button 
+                          size="sm" 
+                          variant="secondary" 
+                          onClick={() => setShowEditCardModal(card)}
+                          className="!bg-white/90 hover:!bg-white !text-gray-800"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="secondary" 
+                          onClick={() => setDeleteCardConfirm(card)} 
+                          className="!bg-red-500/90 hover:!bg-red-500 !text-white !border-0"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </div>
-                    {/* Slot number mejorado */}
-                    <div className="absolute bottom-2 left-2 w-7 h-7 rounded-lg bg-black/60 backdrop-blur-sm flex items-center justify-center text-white text-xs font-bold shadow-lg">
-                      {card.slotNumber}
+                    <div className="relative bg-white/95 p-3 dark:bg-gray-800/95">
+                      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-gray-200/70 to-transparent dark:via-white/10" />
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{card.name}</p>
+                      {card.description && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">{card.description}</p>
+                      )}
                     </div>
-                    {/* Overlay de acciones */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-end justify-center pb-4 gap-2">
-                      <Button 
-                        size="sm" 
-                        variant="secondary" 
-                        onClick={() => setShowEditCardModal(card)}
-                        className="!bg-white/90 hover:!bg-white !text-gray-800"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        variant="secondary" 
-                        onClick={() => setDeleteCardConfirm(card)} 
-                        className="!bg-red-500/90 hover:!bg-red-500 !text-white !border-0"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="p-3 bg-white dark:bg-gray-800">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{card.name}</p>
-                    {card.description && (
-                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">{card.description}</p>
-                    )}
-                  </div>
-                </Card>
-              </motion.div>
-            ))}
+                  </Card>
+                </motion.div>
+              );
+            })}
           </div>
         )}
 
