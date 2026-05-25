@@ -17,9 +17,12 @@ cp -rf dist/* /home/wwplat/public_html/
 
 echo "Instalando dependencias del servidor..."
 cd ../server
-npm ci && npm run build && npm ci --omit=dev
+npm ci
+npm run build
+npm prune --omit=dev
 
 echo "Reiniciando servidor..."
+cd /home/juried
 pm2 reload ecosystem.config.cjs --env production
 
 echo "Despliegue completado."
