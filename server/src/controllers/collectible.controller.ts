@@ -171,6 +171,48 @@ export const collectibleController = {
     }
   },
 
+  async moveCards(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { albumId } = req.params;
+      const { targetAlbumId, cardIds } = req.body;
+      const teacherId = req.user?.id;
+
+      if (!teacherId) {
+        return res.status(401).json({ message: 'No autenticado' });
+      }
+
+      const result = await collectibleService.moveCardsBetweenAlbums(
+        teacherId,
+        albumId,
+        typeof targetAlbumId === 'string' ? targetAlbumId : '',
+        Array.isArray(cardIds) ? cardIds : []
+      );
+
+      res.json(result);
+    } catch (error: any) {
+      if (error.message === 'Álbum no encontrado') {
+        return res.status(404).json({ message: error.message });
+      }
+
+      if (error.message === 'No tienes acceso a este álbum') {
+        return res.status(403).json({ message: error.message });
+      }
+
+      if (
+        error.message === 'Selecciona al menos un cromo' ||
+        error.message === 'Selecciona un álbum destino' ||
+        error.message === 'Selecciona otro álbum destino' ||
+        error.message === 'Solo puedes mover cromos entre álbumes de la misma clase' ||
+        error.message === 'Hay cromos inválidos para mover' ||
+        error.message === 'No puedes mover cromos porque uno de los álbumes ya tiene progreso de estudiantes'
+      ) {
+        return res.status(400).json({ message: error.message });
+      }
+
+      next(error);
+    }
+  },
+
   async deleteCard(req: Request, res: Response, next: NextFunction) {
     try {
       const { cardId } = req.params;

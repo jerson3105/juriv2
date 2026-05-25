@@ -74,6 +74,13 @@ router.post(
   collectibleController.createManyCards
 );
 
+// Mover cromos entre álbumes de la misma clase
+router.post(
+  '/albums/:albumId/cards/move',
+  authorize('TEACHER'),
+  collectibleController.moveCards
+);
+
 // Actualizar carta
 router.put(
   '/cards/:cardId',

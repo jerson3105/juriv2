@@ -86,6 +86,43 @@ class CollectibleService {
     return this.ai;
   }
 
+  private async albumHasStudentUsage(executor: any, albumId: string) {
+    const [[purchaseUsage], [completionUsage], [collectionUsage]] = await Promise.all([
+      executor
+        .select({ count: sql<number>`count(*)` })
+        .from(collectiblePurchases)
+        .where(eq(collectiblePurchases.albumId, albumId)),
+      executor
+        .select({ count: sql<number>`count(*)` })
+        .from(completedAlbums)
+        .where(eq(completedAlbums.albumId, albumId)),
+      executor
+        .select({ count: sql<number>`count(*)` })
+        .from(studentCollectibles)
+        .innerJoin(collectibleCards, eq(studentCollectibles.cardId, collectibleCards.id))
+        .where(eq(collectibleCards.albumId, albumId)),
+    ]);
+
+    return (purchaseUsage?.count || 0) > 0
+      || (completionUsage?.count || 0) > 0
+      || (collectionUsage?.count || 0) > 0;
+  }
+
+  private async resequenceAlbumCards(executor: any, albumId: string) {
+    const cards = await executor
+      .select({ id: collectibleCards.id })
+      .from(collectibleCards)
+      .where(eq(collectibleCards.albumId, albumId))
+      .orderBy(asc(collectibleCards.slotNumber), asc(collectibleCards.createdAt));
+
+    for (const [index, card] of cards.entries()) {
+      await executor
+        .update(collectibleCards)
+        .set({ slotNumber: index + 1 })
+        .where(eq(collectibleCards.id, card.id));
+    }
+  }
+
   // ==================== ÁLBUMES ====================
 
   async createAlbum(data: {
@@ -336,6 +373,115 @@ class CollectibleService {
     await db.delete(collectibleCards).where(eq(collectibleCards.albumId, albumId));
     await db.delete(completedAlbums).where(eq(completedAlbums.albumId, albumId));
     await db.delete(collectibleAlbums).where(eq(collectibleAlbums.id, albumId));
+  }
+
+  async moveCardsBetweenAlbums(
+    teacherId: string,
+    sourceAlbumId: string,
+    targetAlbumId: string,
+    cardIds: string[]
+  ) {
+    const uniqueCardIds = Array.from(new Set(
+      cardIds
+        .map((cardId) => cardId?.trim())
+        .filter((cardId): cardId is string => Boolean(cardId))
+    ));
+
+    if (uniqueCardIds.length === 0) {
+      throw new Error('Selecciona al menos un cromo');
+    }
+
+    if (!targetAlbumId?.trim()) {
+      throw new Error('Selecciona un álbum destino');
+    }
+
+    if (sourceAlbumId === targetAlbumId) {
+      throw new Error('Selecciona otro álbum destino');
+    }
+
+    const sourceAlbum = await this.getAlbumById(sourceAlbumId);
+    const targetAlbum = await this.getAlbumById(targetAlbumId);
+
+    if (!sourceAlbum || !targetAlbum) {
+      throw new Error('Álbum no encontrado');
+    }
+
+    const [sourceClassroom, targetClassroom] = await Promise.all([
+      this.getTeacherClassroom(teacherId, sourceAlbum.classroomId),
+      this.getTeacherClassroom(teacherId, targetAlbum.classroomId),
+    ]);
+
+    if (!sourceClassroom || !targetClassroom) {
+      throw new Error('No tienes acceso a este álbum');
+    }
+
+    if (sourceAlbum.classroomId !== targetAlbum.classroomId) {
+      throw new Error('Solo puedes mover cromos entre álbumes de la misma clase');
+    }
+
+    return db.transaction(async (tx) => {
+      const [sourceHasUsage, targetHasUsage] = await Promise.all([
+        this.albumHasStudentUsage(tx, sourceAlbumId),
+        this.albumHasStudentUsage(tx, targetAlbumId),
+      ]);
+
+      if (sourceHasUsage || targetHasUsage) {
+        throw new Error('No puedes mover cromos porque uno de los álbumes ya tiene progreso de estudiantes');
+      }
+
+      const cardsToMove = await tx
+        .select({
+          id: collectibleCards.id,
+          name: collectibleCards.name,
+          slotNumber: collectibleCards.slotNumber,
+        })
+        .from(collectibleCards)
+        .where(and(
+          eq(collectibleCards.albumId, sourceAlbumId),
+          inArray(collectibleCards.id, uniqueCardIds)
+        ))
+        .orderBy(asc(collectibleCards.slotNumber), asc(collectibleCards.createdAt));
+
+      if (cardsToMove.length !== uniqueCardIds.length) {
+        throw new Error('Hay cromos inválidos para mover');
+      }
+
+      const [maxSlotRow] = await tx
+        .select({ max: sql<number>`COALESCE(MAX(slot_number), 0)` })
+        .from(collectibleCards)
+        .where(eq(collectibleCards.albumId, targetAlbumId));
+
+      let nextSlotNumber = (maxSlotRow?.max || 0) + 1;
+      const now = new Date();
+
+      for (const card of cardsToMove) {
+        await tx
+          .update(collectibleCards)
+          .set({
+            albumId: targetAlbumId,
+            slotNumber: nextSlotNumber,
+            updatedAt: now,
+          })
+          .where(eq(collectibleCards.id, card.id));
+
+        nextSlotNumber += 1;
+      }
+
+      await this.resequenceAlbumCards(tx, sourceAlbumId);
+
+      await tx
+        .update(collectibleAlbums)
+        .set({ updatedAt: now })
+        .where(inArray(collectibleAlbums.id, [sourceAlbumId, targetAlbumId]));
+
+      return {
+        sourceAlbumId,
+        sourceAlbumName: sourceAlbum.name,
+        targetAlbumId,
+        targetAlbumName: targetAlbum.name,
+        movedCount: cardsToMove.length,
+      };
+    });
   }
 
   // ==================== CARTAS ====================

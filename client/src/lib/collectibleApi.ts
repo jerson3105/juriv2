@@ -166,6 +166,14 @@ export interface CloneAlbumResult {
   }>;
 }
 
+export interface MoveCardsResult {
+  sourceAlbumId: string;
+  sourceAlbumName: string;
+  targetAlbumId: string;
+  targetAlbumName: string;
+  movedCount: number;
+}
+
 export interface GenerateAlbumRequest {
   theme: string;
   cardCount: number;
@@ -227,6 +235,14 @@ export const collectibleApi = {
 
   createManyCards: async (albumId: string, cards: CreateCardData[]): Promise<CollectibleCard[]> => {
     const response = await api.post(`/collectibles/albums/${albumId}/cards/batch`, { cards });
+    return response.data;
+  },
+
+  moveCards: async (albumId: string, targetAlbumId: string, cardIds: string[]): Promise<MoveCardsResult> => {
+    const response = await api.post(`/collectibles/albums/${albumId}/cards/move`, {
+      targetAlbumId,
+      cardIds,
+    });
     return response.data;
   },
 

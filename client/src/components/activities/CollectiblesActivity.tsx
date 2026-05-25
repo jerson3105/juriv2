@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import {
   Album,
   ArrowLeft,
+  ArrowRight,
   Plus,
   Settings,
   Trash2,
@@ -95,6 +96,7 @@ export const CollectiblesActivity = ({ classroom }: CollectiblesActivityProps) =
   const queryClient = useQueryClient();
   const [view, setView] = useState<'list' | 'album' | 'progress'>('list');
   const [selectedAlbum, setSelectedAlbum] = useState<AlbumWithCards | null>(null);
+  const [showMoveCardsModal, setShowMoveCardsModal] = useState(false);
   const [showCreateAlbumModal, setShowCreateAlbumModal] = useState(false);
   const [showEditAlbumModal, setShowEditAlbumModal] = useState(false);
   const [showCreateCardModal, setShowCreateCardModal] = useState(false);
@@ -217,6 +219,22 @@ export const CollectiblesActivity = ({ classroom }: CollectiblesActivityProps) =
     onError: () => toast.error('Error al eliminar'),
   });
 
+  const moveCardsMutation = useMutation({
+    mutationFn: ({ albumId, targetAlbumId, cardIds }: { albumId: string; targetAlbumId: string; cardIds: string[] }) =>
+      collectibleApi.moveCards(albumId, targetAlbumId, cardIds),
+    onSuccess: async (result, variables) => {
+      if (selectedAlbum?.id === variables.albumId) {
+        const updated = await collectibleApi.getAlbumById(variables.albumId);
+        setSelectedAlbum(updated);
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['collectible-albums', classroom.id] });
+      setShowMoveCardsModal(false);
+      toast.success(`${result.movedCount} cromo(s) movido(s) a ${result.targetAlbumName}`);
+    },
+    onError: (error: any) => toast.error(error?.response?.data?.message || 'Error al mover cromos'),
+  });
+
   const cloneAlbumMutation = useMutation({
     mutationFn: ({ albumId, targetClassroomIds }: { albumId: string; targetClassroomIds: string[] }) =>
       collectibleApi.cloneAlbum(albumId, targetClassroomIds),
@@ -244,6 +262,9 @@ export const CollectiblesActivity = ({ classroom }: CollectiblesActivityProps) =
   });
 
   const exportableClassrooms = teacherClassrooms.filter((teacherClassroom) => teacherClassroom.id !== classroom.id);
+  const moveTargetAlbums = selectedAlbum
+    ? albums.filter((album) => album.id !== selectedAlbum.id)
+    : [];
 
   const transferModals = (
     <>
@@ -323,6 +344,14 @@ export const CollectiblesActivity = ({ classroom }: CollectiblesActivityProps) =
               className="!bg-violet-50 dark:!bg-violet-900/20 !text-violet-600 dark:!text-violet-300 !border-violet-200 dark:!border-violet-800 hover:!bg-violet-100"
             >
               <Share2 className="w-4 h-4 mr-2" />Exportar
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => setShowMoveCardsModal(true)}
+              disabled={selectedAlbum.cards.length === 0 || moveTargetAlbums.length === 0}
+              className="!bg-emerald-50 dark:!bg-emerald-900/20 !text-emerald-600 dark:!text-emerald-300 !border-emerald-200 dark:!border-emerald-800 hover:!bg-emerald-100 disabled:!bg-gray-100 disabled:!text-gray-400 dark:disabled:!bg-gray-800"
+            >
+              <ArrowRight className="w-4 h-4 mr-2" />Mover cromos
             </Button>
             <Button 
               variant="secondary" 
@@ -564,6 +593,14 @@ export const CollectiblesActivity = ({ classroom }: CollectiblesActivityProps) =
         )}
 
         <EditAlbumModal isOpen={showEditAlbumModal} onClose={() => setShowEditAlbumModal(false)} album={selectedAlbum} onSubmit={(data) => updateAlbumMutation.mutate({ albumId: selectedAlbum.id, data })} isLoading={updateAlbumMutation.isPending} />
+        <MoveCardsModal
+          isOpen={showMoveCardsModal}
+          onClose={() => setShowMoveCardsModal(false)}
+          album={selectedAlbum}
+          availableAlbums={moveTargetAlbums}
+          isSubmitting={moveCardsMutation.isPending}
+          onSubmit={(targetAlbumId, cardIds) => moveCardsMutation.mutate({ albumId: selectedAlbum.id, targetAlbumId, cardIds })}
+        />
         <CreateCardModal isOpen={showCreateCardModal} onClose={() => setShowCreateCardModal(false)} onSubmit={(data) => createCardMutation.mutate({ albumId: selectedAlbum.id, data })} isLoading={createCardMutation.isPending} />
         <GenerateCardModal isOpen={showGenerateCardModal} onClose={() => setShowGenerateCardModal(false)} album={selectedAlbum} classroomId={classroom.id} onSubmit={async (cards) => { await createManyCardsMutation.mutateAsync({ albumId: selectedAlbum.id, cards }); setShowGenerateCardModal(false); }} isLoading={createManyCardsMutation.isPending} />
         {showEditCardModal && <EditCardModal isOpen={true} onClose={() => setShowEditCardModal(null)} card={showEditCardModal} onSubmit={(data) => updateCardMutation.mutate({ cardId: showEditCardModal.id, data })} isLoading={updateCardMutation.isPending} />}
@@ -818,7 +855,7 @@ export const CollectiblesActivity = ({ classroom }: CollectiblesActivityProps) =
                     <div className="flex items-center gap-2">
                       <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20">
                         <Trophy className="w-3.5 h-3.5 text-purple-500" />
-                        <span className="text-xs font-medium text-gray-600 dark:text-gray-300">Recompensa:</span>
+                        <span className="text-xs font-medium text-gray-600 dark:text-gray-300"></span>
                         {(album.rewardXp > 0 || album.rewardGp > 0) ? (
                           <div className="flex items-center gap-1">
                             {album.rewardXp > 0 && (
@@ -877,6 +914,193 @@ export const CollectiblesActivity = ({ classroom }: CollectiblesActivityProps) =
 };
 
 // ==================== MODALS ====================
+
+const MoveCardsModal = ({
+  isOpen,
+  onClose,
+  album,
+  availableAlbums,
+  isSubmitting,
+  onSubmit,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  album: AlbumWithCards | null;
+  availableAlbums: CollectibleAlbum[];
+  isSubmitting: boolean;
+  onSubmit: (targetAlbumId: string, cardIds: string[]) => void;
+}) => {
+  const [targetAlbumId, setTargetAlbumId] = useState('');
+  const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!isOpen || !album) {
+      setTargetAlbumId('');
+      setSelectedCardIds([]);
+      return;
+    }
+
+    setTargetAlbumId(availableAlbums[0]?.id ?? '');
+    setSelectedCardIds(album.cards.map((card) => card.id));
+  }, [album, availableAlbums, isOpen]);
+
+  if (!isOpen || !album) {
+    return null;
+  }
+
+  const allSelected = album.cards.length > 0 && selectedCardIds.length === album.cards.length;
+  const selectedCount = selectedCardIds.length;
+  const targetAlbum = availableAlbums.find((candidate) => candidate.id === targetAlbumId) ?? availableAlbums[0];
+
+  const toggleCard = (cardId: string) => {
+    setSelectedCardIds((current) =>
+      current.includes(cardId)
+        ? current.filter((id) => id !== cardId)
+        : [...current, cardId]
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 16 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-800"
+      >
+        <div className="flex items-center justify-between border-b border-gray-100 p-5 dark:border-gray-700">
+          <div>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Mover cromos</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Del álbum {album.name} hacia otro álbum de la misma clase</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-4 p-5">
+          {availableAlbums.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-gray-200 p-6 text-center dark:border-gray-700">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-200">Necesitas al menos otro álbum en esta clase</p>
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Crea o importa un álbum destino antes de mover cromos.</p>
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600 dark:text-emerald-300">Resumen</p>
+                  <p className="mt-2 text-sm font-medium text-gray-900 dark:text-white">
+                    Vas a mover {selectedCount} cromo(s) de <span className="text-emerald-600 dark:text-emerald-300">{album.name}</span>
+                    {targetAlbum ? <> a <span className="text-violet-600 dark:text-violet-300">{targetAlbum.name}</span></> : null}.
+                  </p>
+                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    La acción solo funciona cuando ninguno de los dos álbumes tiene progreso estudiantil.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">Álbum destino</label>
+                  <select
+                    value={targetAlbumId}
+                    onChange={(e) => setTargetAlbumId(e.target.value)}
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900 outline-none transition-colors focus:border-emerald-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                  >
+                    {availableAlbums.map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {candidate.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Selecciona los cromos</h4>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Puedes mover varios a la vez. Se reordenarán automáticamente.</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCardIds(album.cards.map((card) => card.id))}
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-700"
+                  >
+                    Seleccionar todos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCardIds([])}
+                    disabled={!allSelected && selectedCardIds.length === 0}
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-700"
+                  >
+                    Limpiar
+                  </button>
+                </div>
+              </div>
+
+              <div className="max-h-[22rem] space-y-2 overflow-y-auto pr-1">
+                {album.cards.map((card) => {
+                  const isSelected = selectedCardIds.includes(card.id);
+                  return (
+                    <label
+                      key={card.id}
+                      className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 transition-colors ${
+                        isSelected
+                          ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/20'
+                          : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/20'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleCard(card.id)}
+                        className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                      />
+                      <div className={`flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br ${RARITY_CONFIG[card.rarity].gradient} text-lg text-white shadow-sm`}>
+                        {RARITY_CONFIG[card.rarity].icon}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{card.name}</p>
+                        <div className="mt-1 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                          <span>#{card.slotNumber}</span>
+                          <span>•</span>
+                          <span>{RARITY_CONFIG[card.rarity].label}</span>
+                        </div>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between gap-3 border-t border-gray-100 bg-gray-50 p-5 dark:border-gray-700 dark:bg-gray-900/30">
+          <span className="text-xs text-gray-500 dark:text-gray-400">
+            {selectedCount === 0 ? 'Sin cromos seleccionados' : `${selectedCount} cromo(s) listos para mover`}
+          </span>
+          <div className="flex items-center gap-3">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={() => targetAlbum && onSubmit(targetAlbum.id, selectedCardIds)}
+              disabled={!targetAlbum || selectedCount === 0 || availableAlbums.length === 0}
+              isLoading={isSubmitting}
+              className="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600"
+            >
+              Mover cromos
+            </Button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
 
 const ImportAlbumModal = ({
   isOpen,
