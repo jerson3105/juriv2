@@ -197,6 +197,16 @@ export const LoginPage = () => {
               >
                 Iniciar Sesión
               </Button>
+
+              <div className="-mt-1 text-center">
+                <Link
+                  to="/register/student-code"
+                  className="inline-flex items-center gap-2 text-sm font-medium text-primary-600 transition-colors hover:text-primary-700"
+                >
+                  <Users className="h-4 w-4" />
+                  Tengo código de estudiante
+                </Link>
+              </div>
             </form>
 
             {/* Separador */}

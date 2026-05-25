@@ -23,6 +23,16 @@ const registerSchema = z.object({
   role: z.enum(['TEACHER', 'STUDENT', 'PARENT']),
 });
 
+const studentCodeVerificationSchema = z.object({
+  code: z.string().trim().min(6, 'El código debe tener entre 6 y 8 caracteres').max(8, 'El código debe tener entre 6 y 8 caracteres'),
+});
+
+const registerStudentWithCodeSchema = z.object({
+  code: z.string().trim().min(6, 'El código debe tener entre 6 y 8 caracteres').max(8, 'El código debe tener entre 6 y 8 caracteres'),
+  email: z.string().trim().email('Email inválido'),
+  password: passwordSchema,
+});
+
 const loginSchema = z.object({
   email: z.string().trim().email('Email inválido'),
   password: z.string().min(1, 'La contraseña es requerida'),
@@ -241,12 +251,20 @@ const getAuthStatusCode = (error: Error): number => {
   }
 
   if (
-    normalizedMessage.includes('codigo invalido') ||
+    (normalizedMessage.includes('codigo') && normalizedMessage.includes('invalido')) ||
     normalizedMessage.includes('codigo expirado') ||
     normalizedMessage.includes('codigo de registro invalido') ||
     normalizedMessage.includes('codigo de registro expirado')
   ) {
     return 400;
+  }
+
+  if (
+    normalizedMessage.includes('ya esta registrado') ||
+    normalizedMessage.includes('ya esta registrada') ||
+    normalizedMessage.includes('ya fue usado')
+  ) {
+    return 409;
   }
 
   if (normalizedMessage.includes('desactivada') || normalizedMessage.includes('no autorizado')) {
@@ -326,6 +344,51 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     });
   } catch (error) {
     handleAuthError(res, error, 'Error al registrar usuario');
+  }
+};
+
+/**
+ * POST /api/auth/student-code/verify
+ * Verificar código de estudiante para activación de cuenta
+ */
+export const verifyStudentCode = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { code } = studentCodeVerificationSchema.parse(req.body);
+    const result = await authService.verifyStudentRegistrationCode(code);
+
+    if (!result) {
+      res.status(404).json({
+        success: false,
+        message: 'Código de estudiante no encontrado',
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    handleAuthError(res, error, 'Error al verificar el código de estudiante');
+  }
+};
+
+/**
+ * POST /api/auth/student-code/register
+ * Crear cuenta de estudiante y vincularla con un código oficial
+ */
+export const registerStudentWithCode = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const validatedData = registerStudentWithCodeSchema.parse(req.body);
+    const result = await authService.registerStudentWithCode(validatedData);
+
+    res.status(201).json({
+      success: true,
+      message: 'Cuenta de estudiante activada exitosamente',
+      data: result,
+    });
+  } catch (error) {
+    handleAuthError(res, error, 'Error al activar la cuenta de estudiante');
   }
 };
 

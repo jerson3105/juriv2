@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
-import { eq, or } from 'drizzle-orm';
-import { db, users, parentProfiles } from '../db/index.js';
+import { and, eq, or, sql } from 'drizzle-orm';
+import { db, users, parentProfiles, studentProfiles, classrooms } from '../db/index.js';
 import { consumeRefreshToken, generateTokenPair, revokeRefreshToken, revokeAllUserTokens } from '../utils/jwt.js';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -42,15 +42,49 @@ interface AuthResponse {
   refreshToken: string;
 }
 
+export interface StudentCodeVerificationResult {
+  studentName: string | null;
+  classroomName: string | null;
+  alreadyLinked: boolean;
+}
+
 // Constantes
 const SALT_ROUNDS = 12;
 const DUMMY_PASSWORD_HASH = '$2a$10$7EqJtq98hPqEX7fNZaFWoOHiZy6u9j9l56k97X3CJidb8sRP/6ID.';
 
 const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 const normalizeName = (value: string): string => value.trim();
+const normalizeStudentCode = (code: string): string => code.trim().toUpperCase();
 const normalizeAvatarUrl = (value?: string | null): string | null => {
   const normalized = value?.trim();
   return normalized ? normalized : null;
+};
+
+const splitOfficialStudentName = (value: string): { firstName: string; lastName: string } => {
+  const tokens = normalizeName(value)
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (tokens.length === 0) {
+    return { firstName: 'Estudiante', lastName: 'Juried' };
+  }
+
+  if (tokens.length === 1) {
+    return { firstName: tokens[0], lastName: 'Estudiante' };
+  }
+
+  if (tokens.length === 2) {
+    return { firstName: tokens[0], lastName: tokens[1] };
+  }
+
+  if (tokens.length === 3) {
+    return { firstName: tokens[0], lastName: tokens.slice(1).join(' ') };
+  }
+
+  return {
+    firstName: tokens.slice(0, 2).join(' '),
+    lastName: tokens.slice(2).join(' '),
+  };
 };
 
 const isDuplicateEntryError = (error: unknown): boolean => {
@@ -126,6 +160,139 @@ export const register = async (input: RegisterInput): Promise<AuthResponse> => {
       firstName: normalizedFirstName,
       lastName: normalizedLastName,
       role,
+      avatarUrl: null,
+    },
+    ...tokens,
+  };
+};
+
+export const verifyStudentRegistrationCode = async (code: string): Promise<StudentCodeVerificationResult | null> => {
+  const normalizedCode = normalizeStudentCode(code);
+
+  const profile = await db.query.studentProfiles.findFirst({
+    where: and(
+      eq(studentProfiles.linkCode, normalizedCode),
+      eq(studentProfiles.isActive, true)
+    ),
+    columns: {
+      userId: true,
+      classroomId: true,
+      displayName: true,
+      characterName: true,
+    },
+  });
+
+  if (!profile) {
+    return null;
+  }
+
+  const classroom = await db.query.classrooms.findFirst({
+    where: eq(classrooms.id, profile.classroomId),
+    columns: {
+      name: true,
+    },
+  });
+
+  return {
+    studentName: profile.displayName || profile.characterName || null,
+    classroomName: classroom?.name || null,
+    alreadyLinked: !!profile.userId,
+  };
+};
+
+export const registerStudentWithCode = async (input: {
+  code: string;
+  email: string;
+  password: string;
+}): Promise<AuthResponse> => {
+  const normalizedCode = normalizeStudentCode(input.code);
+  const normalizedEmail = normalizeEmail(input.email);
+  const hashedPassword = await bcrypt.hash(input.password, SALT_ROUNDS);
+  const now = new Date();
+  const userId = uuidv4();
+  let firstName = 'Estudiante';
+  let lastName = 'Juried';
+
+  try {
+    await db.transaction(async (tx) => {
+      const profile = await tx.query.studentProfiles.findFirst({
+        where: and(
+          eq(studentProfiles.linkCode, normalizedCode),
+          eq(studentProfiles.isActive, true)
+        ),
+        columns: {
+          id: true,
+          userId: true,
+          displayName: true,
+          characterName: true,
+        },
+      });
+
+      if (!profile) {
+        throw new Error('Código inválido');
+      }
+
+      if (profile.userId) {
+        throw new Error('Este código ya fue usado');
+      }
+
+      const officialName = normalizeName(profile.displayName || profile.characterName || 'Estudiante');
+      const parsedName = splitOfficialStudentName(officialName);
+      firstName = parsedName.firstName;
+      lastName = parsedName.lastName;
+
+      await tx.insert(users).values({
+        id: userId,
+        email: normalizedEmail,
+        password: hashedPassword,
+        firstName,
+        lastName,
+        role: 'STUDENT',
+        provider: 'LOCAL',
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      const updateResult = await tx
+        .update(studentProfiles)
+        .set({
+          userId,
+          linkCode: null,
+          updatedAt: now,
+        })
+        .where(and(
+          eq(studentProfiles.id, profile.id),
+          eq(studentProfiles.linkCode, normalizedCode),
+          sql`${studentProfiles.userId} IS NULL`
+        ));
+
+      const header = Array.isArray(updateResult) ? updateResult[0] : updateResult;
+      const affectedRows = Number((header as { affectedRows?: number }).affectedRows ?? 0);
+      if (affectedRows !== 1) {
+        throw new Error('Este código ya fue usado');
+      }
+    });
+  } catch (error) {
+    if (isDuplicateEntryError(error)) {
+      throw new Error('El correo electrónico ya está registrado');
+    }
+    throw error;
+  }
+
+  const tokens = await generateTokenPair({
+    userId,
+    email: normalizedEmail,
+    role: 'STUDENT',
+  });
+
+  return {
+    user: {
+      id: userId,
+      email: normalizedEmail,
+      firstName,
+      lastName,
+      role: 'STUDENT',
       avatarUrl: null,
     },
     ...tokens,

@@ -65,6 +65,8 @@ api.interceptors.response.use(
     const noRefreshRoutes = [
       '/auth/login',
       '/auth/register',
+      '/auth/student-code/verify',
+      '/auth/student-code/register',
       '/auth/refresh',
       '/auth/logout',
       '/auth/google',
@@ -156,6 +158,19 @@ export const authApi = {
     lastName: string;
     role: 'TEACHER' | 'STUDENT' | 'PARENT';
   }) => api.post<ApiResponse<AuthData>>('/auth/register', data),
+
+  verifyStudentCode: (code: string) =>
+    api.post<ApiResponse<{
+      studentName: string | null;
+      classroomName: string | null;
+      alreadyLinked: boolean;
+    }>>('/auth/student-code/verify', { code }),
+
+  registerStudentWithCode: (data: {
+    code: string;
+    email: string;
+    password: string;
+  }) => api.post<ApiResponse<AuthData>>('/auth/student-code/register', data),
 
   login: (data: { email: string; password: string }) =>
     api.post<ApiResponse<AuthData>>('/auth/login', data),

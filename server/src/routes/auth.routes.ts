@@ -42,6 +42,8 @@ const avatarUpload = multer({
 // Rutas públicas (con rate limiting estricto)
 router.post('/register', authLimiter, authController.register);
 router.post('/login', authLimiter, authController.login);
+router.post('/student-code/verify', authLimiter, authController.verifyStudentCode);
+router.post('/student-code/register', authLimiter, authController.registerStudentWithCode);
 router.post('/refresh', authTokenLimiter, authController.refresh);
 router.post('/logout', authTokenLimiter, authController.logout);
 

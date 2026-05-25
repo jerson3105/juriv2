@@ -9,6 +9,7 @@ import { NotificationProvider } from './contexts/NotificationContext';
 // Pages
 import { LoginPage } from './pages/auth/LoginPage';
 import { RegisterPage } from './pages/auth/RegisterPage';
+import { StudentCodeRegistrationPage } from './pages/auth/StudentCodeRegistrationPage';
 import { GoogleCallbackPage } from './pages/auth/GoogleCallbackPage';
 import { SelectRolePage } from './pages/auth/SelectRolePage';
 import { AboutPage } from './pages/AboutPage';
@@ -185,6 +186,14 @@ function App() {
             element={
               <PublicRoute>
                 <RegisterPage />
+              </PublicRoute>
+            }
+          />
+          <Route
+            path="/register/student-code"
+            element={
+              <PublicRoute>
+                <StudentCodeRegistrationPage />
               </PublicRoute>
             }
           />
