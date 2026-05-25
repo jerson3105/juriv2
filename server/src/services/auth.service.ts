@@ -3,6 +3,8 @@ import { and, eq, or, sql } from 'drizzle-orm';
 import { db, users, parentProfiles, studentProfiles, classrooms } from '../db/index.js';
 import { consumeRefreshToken, generateTokenPair, revokeRefreshToken, revokeAllUserTokens } from '../utils/jwt.js';
 import { v4 as uuidv4 } from 'uuid';
+import { avatarService } from './avatar.service.js';
+import { studentService } from './student.service.js';
 
 // Tipos
 type UserRole = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'PARENT';
@@ -204,14 +206,78 @@ export const registerStudentWithCode = async (input: {
   code: string;
   email: string;
   password: string;
+  avatarGender?: 'MALE' | 'FEMALE';
 }): Promise<AuthResponse> => {
   const normalizedCode = normalizeStudentCode(input.code);
   const normalizedEmail = normalizeEmail(input.email);
+  const avatarGender = input.avatarGender || 'MALE';
+
+  const existingUser = await db.query.users.findFirst({
+    where: eq(users.email, normalizedEmail),
+    columns: {
+      id: true,
+      email: true,
+      password: true,
+      firstName: true,
+      lastName: true,
+      role: true,
+      provider: true,
+      isActive: true,
+      avatarUrl: true,
+    },
+  });
+
+  if (existingUser) {
+    const passwordHash = existingUser.password || DUMMY_PASSWORD_HASH;
+    const isValidPassword = await bcrypt.compare(input.password, passwordHash);
+
+    if (!existingUser.isActive) {
+      throw new Error('Tu cuenta no está activa. Contacta a soporte.');
+    }
+
+    if (existingUser.role !== 'STUDENT') {
+      throw new Error('Este correo ya está registrado con otro tipo de cuenta. Usa otro correo o entra con tu cuenta actual.');
+    }
+
+    if (existingUser.provider !== 'LOCAL' || !existingUser.password) {
+      throw new Error('Este correo ya tiene otro método de acceso. Inicia sesión con ese método y luego vincula este código desde tu cuenta.');
+    }
+
+    if (!isValidPassword) {
+      throw new Error('Ese correo ya tiene una cuenta. Usa tu contraseña actual para agregar esta nueva clase.');
+    }
+
+    await studentService.linkStudentAccount({
+      userId: existingUser.id,
+      linkCode: normalizedCode,
+      avatarGender,
+    });
+
+    const tokens = await generateTokenPair({
+      userId: existingUser.id,
+      email: existingUser.email,
+      role: existingUser.role as UserRole,
+    });
+
+    return {
+      user: {
+        id: existingUser.id,
+        email: existingUser.email,
+        firstName: existingUser.firstName,
+        lastName: existingUser.lastName,
+        role: existingUser.role as UserRole,
+        avatarUrl: existingUser.avatarUrl,
+      },
+      ...tokens,
+    };
+  }
+
   const hashedPassword = await bcrypt.hash(input.password, SALT_ROUNDS);
   const now = new Date();
   const userId = uuidv4();
   let firstName = 'Estudiante';
   let lastName = 'Juried';
+  let linkedProfileId: string | null = null;
 
   try {
     await db.transaction(async (tx) => {
@@ -236,6 +302,8 @@ export const registerStudentWithCode = async (input: {
         throw new Error('Este código ya fue usado');
       }
 
+      linkedProfileId = profile.id;
+
       const officialName = normalizeName(profile.displayName || profile.characterName || 'Estudiante');
       const parsedName = splitOfficialStudentName(officialName);
       firstName = parsedName.firstName;
@@ -258,6 +326,7 @@ export const registerStudentWithCode = async (input: {
         .update(studentProfiles)
         .set({
           userId,
+          avatarGender,
           linkCode: null,
           updatedAt: now,
         })
@@ -278,6 +347,10 @@ export const registerStudentWithCode = async (input: {
       throw new Error('El correo electrónico ya está registrado');
     }
     throw error;
+  }
+
+  if (linkedProfileId) {
+    await avatarService.assignDefaultItems(linkedProfileId, avatarGender);
   }
 
   const tokens = await generateTokenPair({

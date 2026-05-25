@@ -22,6 +22,8 @@ interface VerifiedStudentCode {
   classroomName: string | null;
 }
 
+type AvatarGender = 'MALE' | 'FEMALE';
+
 export const StudentCodeRegistrationPage = () => {
   const navigate = useNavigate();
   const { setAuth } = useAuthStore();
@@ -31,6 +33,7 @@ export const StudentCodeRegistrationPage = () => {
   const [formError, setFormError] = useState<string | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [avatarGender, setAvatarGender] = useState<AvatarGender>('MALE');
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -116,6 +119,7 @@ export const StudentCodeRegistrationPage = () => {
         code: verifiedStudent.code,
         email: formData.email,
         password: formData.password,
+        avatarGender,
       });
 
       if (!response.data.success || !response.data.data) {
@@ -161,7 +165,7 @@ export const StudentCodeRegistrationPage = () => {
                 Usa tu código y conserva el nombre oficial de tu aula.
               </h1>
               <p className="mt-5 max-w-md text-base leading-7 text-blue-100">
-                Tu profe ya registró tu nombre. Aquí solo validarás tu código y crearás tu acceso con correo y contraseña.
+                Tu profe ya registró tu nombre. Aquí validarás tu código y podrás crear tu acceso o sumar una nueva clase a la cuenta que ya usas.
               </p>
             </div>
 
@@ -169,7 +173,7 @@ export const StudentCodeRegistrationPage = () => {
               {[
                 'Validas tu código personal de estudiante',
                 'Vemos el nombre oficial asignado por tu docente',
-                'Creas tu acceso y entras a Juried',
+                'Creas tu acceso o agregas esta clase a tu cuenta actual',
               ].map((item) => (
                 <div key={item} className="flex items-center gap-3 rounded-2xl bg-white/10 px-4 py-3 backdrop-blur-sm">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15 text-white">
@@ -297,7 +301,58 @@ export const StudentCodeRegistrationPage = () => {
                   </div>
 
                   <div className="rounded-2xl border border-gray-100 bg-gray-50/80 px-4 py-3 text-sm text-gray-500 dark:border-gray-800 dark:bg-gray-800/70 dark:text-gray-400">
-                    Usaremos el nombre oficial que registró tu profesor. Aquí solo crearás tu correo y contraseña para ingresar.
+                    Usaremos el nombre oficial que registró tu profesor. Ahora elige tu avatar y luego crea tu correo y contraseña para ingresar.
+                  </div>
+
+                  <div className="rounded-2xl border border-blue-100 bg-blue-50/80 px-4 py-3 text-sm text-blue-700 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-200">
+                    Si ya tienes una cuenta en Juried, escribe ese mismo correo y tu contraseña actual o inicia sesión y dentro de "Mis clases" coloca tu código.
+                  </div>
+
+                  <div>
+                    <label className="mb-3 block text-sm font-medium text-gray-600 dark:text-gray-300">
+                      Elige tu avatar
+                    </label>
+                    <div className="grid grid-cols-2 gap-4">
+                      {(['MALE', 'FEMALE'] as const).map((gender) => (
+                        <motion.button
+                          key={gender}
+                          type="button"
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => setAvatarGender(gender)}
+                          className={`relative rounded-2xl border-2 p-4 transition-all ${
+                            avatarGender === gender
+                              ? gender === 'MALE'
+                                ? 'border-blue-400 bg-gradient-to-br from-blue-500/30 to-indigo-500/30'
+                                : 'border-pink-400 bg-gradient-to-br from-pink-500/30 to-purple-500/30'
+                              : 'border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600'
+                          }`}
+                        >
+                          {avatarGender === gender && (
+                            <motion.div
+                              initial={{ scale: 0 }}
+                              animate={{ scale: 1 }}
+                              className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-green-500"
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5 text-white" />
+                            </motion.div>
+                          )}
+                          <div className="mb-2 flex justify-center">
+                            <img
+                              src={gender === 'MALE' ? '/avatars/base/skin-initial-m.png' : '/avatars/base/skin-initial-f.png'}
+                              alt={gender === 'MALE' ? 'Masculino' : 'Femenino'}
+                              className="h-36 object-contain"
+                            />
+                          </div>
+                          <p className="text-center font-medium text-gray-800 dark:text-white">
+                            {gender === 'MALE' ? 'Masculino' : 'Femenino'}
+                          </p>
+                        </motion.button>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
+                      Después podrás personalizarlo con más atuendos desde tu cuenta.
+                    </p>
                   </div>
 
                   <Input

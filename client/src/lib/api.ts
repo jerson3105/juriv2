@@ -170,6 +170,7 @@ export const authApi = {
     code: string;
     email: string;
     password: string;
+    avatarGender: 'MALE' | 'FEMALE';
   }) => api.post<ApiResponse<AuthData>>('/auth/student-code/register', data),
 
   login: (data: { email: string; password: string }) =>

@@ -31,6 +31,7 @@ const registerStudentWithCodeSchema = z.object({
   code: z.string().trim().min(6, 'El código debe tener entre 6 y 8 caracteres').max(8, 'El código debe tener entre 6 y 8 caracteres'),
   email: z.string().trim().email('Email inválido'),
   password: passwordSchema,
+  avatarGender: z.enum(['MALE', 'FEMALE']).default('MALE'),
 });
 
 const loginSchema = z.object({
