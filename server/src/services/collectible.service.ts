@@ -922,6 +922,14 @@ class CollectibleService {
       uniqueCollected: number;
       isCompleted: boolean;
       completedAt?: Date | null;
+      previewCards: Array<{
+        cardId: string;
+        name: string;
+        imageUrl: string | null;
+        rarity: CardRarity;
+        slotNumber: number;
+        hasShiny: boolean;
+      }>;
     }>) => {
       studentsProgress.sort((a, b) => b.progress - a.progress);
 
@@ -950,6 +958,7 @@ class CollectibleService {
       uniqueCollected: 0,
       isCompleted: false,
       completedAt: null,
+      previewCards: [],
     }));
 
     try {
@@ -959,6 +968,10 @@ class CollectibleService {
         studentProfileId: string;
         cardId: string;
         isShiny: boolean;
+        cardName: string;
+        cardImageUrl: string | null;
+        cardRarity: CardRarity;
+        slotNumber: number;
       }> = [];
 
       try {
@@ -967,13 +980,18 @@ class CollectibleService {
             studentProfileId: studentCollectibles.studentProfileId,
             cardId: studentCollectibles.cardId,
             isShiny: studentCollectibles.isShiny,
+            cardName: collectibleCards.name,
+            cardImageUrl: collectibleCards.imageUrl,
+            cardRarity: collectibleCards.rarity,
+            slotNumber: collectibleCards.slotNumber,
           })
           .from(studentCollectibles)
           .innerJoin(collectibleCards, eq(studentCollectibles.cardId, collectibleCards.id))
           .where(and(
             inArray(studentCollectibles.studentProfileId, studentIds),
             eq(collectibleCards.albumId, albumId)
-          ));
+          ))
+          .orderBy(asc(collectibleCards.slotNumber), asc(studentCollectibles.obtainedAt));
       } catch (error) {
         const dbError = error as {
           code?: string;
@@ -1045,7 +1063,37 @@ class CollectibleService {
       }
 
       const uniqueCollectedByStudent = new Map<string, Set<string>>();
+      const previewCardsByStudent = new Map<string, Map<string, {
+        cardId: string;
+        name: string;
+        imageUrl: string | null;
+        rarity: CardRarity;
+        slotNumber: number;
+        hasShiny: boolean;
+      }>>();
+
       for (const row of collectedRows) {
+        const existingPreviewCards = previewCardsByStudent.get(row.studentProfileId) || new Map<string, {
+          cardId: string;
+          name: string;
+          imageUrl: string | null;
+          rarity: CardRarity;
+          slotNumber: number;
+          hasShiny: boolean;
+        }>();
+        const existingPreview = existingPreviewCards.get(row.cardId);
+
+        existingPreviewCards.set(row.cardId, {
+          cardId: row.cardId,
+          name: row.cardName,
+          imageUrl: row.cardImageUrl,
+          rarity: row.cardRarity,
+          slotNumber: row.slotNumber,
+          hasShiny: existingPreview?.hasShiny || row.isShiny,
+        });
+
+        previewCardsByStudent.set(row.studentProfileId, existingPreviewCards);
+
         if (row.isShiny) continue;
 
         const existing = uniqueCollectedByStudent.get(row.studentProfileId) || new Set<string>();
@@ -1063,6 +1111,9 @@ class CollectibleService {
           ? Math.round(((uniqueCollected / totalCards) * 100) * 100) / 100
           : 0;
         const completedAt = completedByStudent.get(student.id) || null;
+        const previewCards = Array.from(previewCardsByStudent.get(student.id)?.values() || [])
+          .sort((a, b) => a.slotNumber - b.slotNumber)
+          .slice(0, 4);
 
         return {
           studentId: student.id,
@@ -1071,6 +1122,7 @@ class CollectibleService {
           uniqueCollected,
           isCompleted: !!completedAt,
           completedAt,
+          previewCards,
         };
       });
 

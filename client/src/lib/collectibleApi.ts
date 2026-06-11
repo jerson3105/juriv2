@@ -74,6 +74,16 @@ export interface StudentProgress {
   uniqueCollected: number;
   isCompleted: boolean;
   completedAt?: string;
+  previewCards: StudentProgressPreviewCard[];
+}
+
+export interface StudentProgressPreviewCard {
+  cardId: string;
+  name: string;
+  imageUrl: string | null;
+  rarity: CardRarity;
+  slotNumber: number;
+  hasShiny: boolean;
 }
 
 export interface ClassroomProgress {

@@ -92,10 +92,35 @@ const TEACHER_CARD_RARITY_UI: Record<CardRarity, {
   },
 };
 
+type ProgressCollectionFilter = 'all' | 'owned' | 'missing' | 'shiny';
+
+const PROGRESS_COLLECTION_FILTERS: Array<{ value: ProgressCollectionFilter; label: string }> = [
+  { value: 'all', label: 'Todos' },
+  { value: 'owned', label: 'Desbloqueados' },
+  { value: 'missing', label: 'Faltantes' },
+  { value: 'shiny', label: 'Brillantes' },
+];
+
+const formatProgressDate = (value?: string | Date | null) => {
+  if (!value) return 'Sin fecha';
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return 'Sin fecha';
+  }
+
+  return date.toLocaleDateString('es-PE', {
+    day: '2-digit',
+    month: 'short',
+  });
+};
+
 export const CollectiblesActivity = ({ classroom }: CollectiblesActivityProps) => {
   const queryClient = useQueryClient();
   const [view, setView] = useState<'list' | 'album' | 'progress'>('list');
   const [selectedAlbum, setSelectedAlbum] = useState<AlbumWithCards | null>(null);
+  const [selectedProgressStudentId, setSelectedProgressStudentId] = useState<string | null>(null);
+  const [progressCollectionFilter, setProgressCollectionFilter] = useState<ProgressCollectionFilter>('all');
   const [showMoveCardsModal, setShowMoveCardsModal] = useState(false);
   const [showCreateAlbumModal, setShowCreateAlbumModal] = useState(false);
   const [showEditAlbumModal, setShowEditAlbumModal] = useState(false);
@@ -131,6 +156,33 @@ export const CollectiblesActivity = ({ classroom }: CollectiblesActivityProps) =
     queryFn: () => selectedAlbum ? collectibleApi.getClassroomProgress(classroom.id, selectedAlbum.id) : null,
     enabled: !!selectedAlbum && view === 'progress',
   });
+
+  const { data: selectedStudentCollection, isLoading: loadingSelectedStudentCollection } = useQuery({
+    queryKey: ['collectible-progress-student-detail', selectedAlbum?.id, selectedProgressStudentId],
+    queryFn: () => selectedAlbum && selectedProgressStudentId
+      ? collectibleApi.getStudentCollection(selectedAlbum.id, selectedProgressStudentId)
+      : null,
+    enabled: !!selectedAlbum && !!selectedProgressStudentId && view === 'progress',
+  });
+
+  useEffect(() => {
+    if (view !== 'progress') {
+      return;
+    }
+
+    if (!albumProgress?.students.length) {
+      setSelectedProgressStudentId(null);
+      return;
+    }
+
+    const currentStudentStillExists = selectedProgressStudentId
+      ? albumProgress.students.some((student) => student.studentId === selectedProgressStudentId)
+      : false;
+
+    if (!currentStudentStillExists) {
+      setSelectedProgressStudentId(albumProgress.students[0].studentId);
+    }
+  }, [albumProgress, selectedProgressStudentId, view]);
 
   const createAlbumMutation = useMutation({
     mutationFn: (data: Parameters<typeof collectibleApi.createAlbum>[1]) => collectibleApi.createAlbum(classroom.id, data),
@@ -302,6 +354,8 @@ export const CollectiblesActivity = ({ classroom }: CollectiblesActivityProps) =
 
   const openProgress = async (album: CollectibleAlbum) => {
     const fullAlbum = await collectibleApi.getAlbumById(album.id);
+    setSelectedProgressStudentId(null);
+    setProgressCollectionFilter('all');
     setSelectedAlbum(fullAlbum);
     setView('progress');
   };
@@ -613,6 +667,42 @@ export const CollectiblesActivity = ({ classroom }: CollectiblesActivityProps) =
 
   // ==================== PROGRESS VIEW ====================
   if (view === 'progress' && selectedAlbum) {
+    const selectedProgressStudent = albumProgress?.students.find(
+      (student) => student.studentId === selectedProgressStudentId
+    ) || null;
+    const selectedAlbumTotalCards = selectedAlbum.totalCards || selectedAlbum.cards.length || 0;
+    const filteredStudentCards = selectedStudentCollection?.cards.filter((card) => {
+      if (progressCollectionFilter === 'owned') {
+        return card.hasNormal || card.hasShiny;
+      }
+
+      if (progressCollectionFilter === 'missing') {
+        return !card.hasNormal && !card.hasShiny;
+      }
+
+      if (progressCollectionFilter === 'shiny') {
+        return card.hasShiny;
+      }
+
+      return true;
+    }) || [];
+    const shinyUnlockedCount = selectedStudentCollection?.cards.filter((card) => card.hasShiny).length || 0;
+    const missingCardsCount = selectedStudentCollection?.cards.filter((card) => !card.hasNormal && !card.hasShiny).length || 0;
+    const latestUnlockedCards = selectedStudentCollection
+      ? selectedStudentCollection.cards
+        .flatMap((card) => card.collected.map((entry) => ({
+          cardId: card.id,
+          name: card.name,
+          imageUrl: card.imageUrl,
+          rarity: card.rarity,
+          slotNumber: card.slotNumber,
+          isShiny: entry.isShiny,
+          obtainedAt: entry.obtainedAt,
+        })))
+        .sort((a, b) => new Date(b.obtainedAt).getTime() - new Date(a.obtainedAt).getTime())
+        .slice(0, 4)
+      : [];
+
     return (
       <div className="space-y-5">
         {/* Header mejorado */}
@@ -674,66 +764,329 @@ export const CollectiblesActivity = ({ classroom }: CollectiblesActivityProps) =
               </motion.div>
             </div>
 
-            {/* Lista de estudiantes mejorada */}
-            <Card className="overflow-hidden border-0 shadow-md">
-              <div className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-750 px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-                <h3 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                  <Album className="w-4 h-4" />
-                  Ranking de colección
-                </h3>
-              </div>
-              <div className="divide-y divide-gray-100 dark:divide-gray-700/50">
-                {albumProgress.students.map((student, index) => (
-                  <motion.div 
-                    key={student.studentId} 
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                    className={`p-4 flex items-center gap-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${student.isCompleted ? 'bg-gradient-to-r from-emerald-50/50 to-transparent dark:from-emerald-900/10' : ''}`}
-                  >
-                    {/* Posición con medalla para top 3 */}
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm shadow-md ${
-                      index === 0 ? 'bg-gradient-to-br from-yellow-400 to-amber-500 text-white' :
-                      index === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-400 text-white' :
-                      index === 2 ? 'bg-gradient-to-br from-orange-400 to-amber-600 text-white' :
-                      'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
-                    }`}>
-                      {index + 1}
-                    </div>
-                    
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="font-semibold text-gray-900 dark:text-white truncate">{student.studentName}</p>
-                        {student.isCompleted && (
-                          <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 text-xs font-bold flex items-center gap-1">
-                            <CheckCircle2 className="w-3 h-3" />
-                            Completado
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3 mt-2">
-                        <div className="flex-1 h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shadow-inner">
-                          <motion.div 
-                            initial={{ width: 0 }}
-                            animate={{ width: `${student.progress}%` }}
-                            transition={{ duration: 0.8, delay: index * 0.05 }}
-                            className={`h-full rounded-full ${student.isCompleted ? 'bg-gradient-to-r from-emerald-400 to-teal-500' : 'bg-gradient-to-r from-amber-400 to-orange-500'}`} 
-                          />
+            <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.9fr)]">
+              <Card className="overflow-hidden border-0 shadow-md">
+                <div className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-750 px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                  <h3 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                    <Album className="w-4 h-4" />
+                    Ranking de colección
+                  </h3>
+                </div>
+                <div className="divide-y divide-gray-100 dark:divide-gray-700/50">
+                  {albumProgress.students.map((student, index) => {
+                    const isSelectedStudent = student.studentId === selectedProgressStudentId;
+                    const hiddenPreviewCount = Math.max(student.uniqueCollected - student.previewCards.length, 0);
+
+                    return (
+                      <motion.button
+                        type="button"
+                        key={student.studentId}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.05 }}
+                        onClick={() => {
+                          setSelectedProgressStudentId(student.studentId);
+                          setProgressCollectionFilter('all');
+                        }}
+                        className={`w-full p-4 text-left transition-colors ${
+                          isSelectedStudent
+                            ? 'bg-gradient-to-r from-blue-50 via-indigo-50 to-white dark:from-blue-950/20 dark:via-indigo-950/20 dark:to-gray-900/10'
+                            : student.isCompleted
+                              ? 'bg-gradient-to-r from-emerald-50/50 to-transparent dark:from-emerald-900/10'
+                              : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                        }`}
+                        aria-pressed={isSelectedStudent}
+                      >
+                        <div className="flex items-start gap-4">
+                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm shadow-md ${
+                            index === 0 ? 'bg-gradient-to-br from-yellow-400 to-amber-500 text-white' :
+                            index === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-400 text-white' :
+                            index === 2 ? 'bg-gradient-to-br from-orange-400 to-amber-600 text-white' :
+                            'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                          }`}>
+                            {index + 1}
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-semibold text-gray-900 dark:text-white truncate">{student.studentName}</p>
+                              {student.isCompleted && (
+                                <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 text-xs font-bold flex items-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  Completado
+                                </span>
+                              )}
+                              {isSelectedStudent && (
+                                <span className="px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 text-xs font-bold">
+                                  Viendo detalle
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-3 mt-2">
+                              <div className="flex-1 h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden shadow-inner">
+                                <motion.div
+                                  initial={{ width: 0 }}
+                                  animate={{ width: `${student.progress}%` }}
+                                  transition={{ duration: 0.8, delay: index * 0.05 }}
+                                  className={`h-full rounded-full ${student.isCompleted ? 'bg-gradient-to-r from-emerald-400 to-teal-500' : 'bg-gradient-to-r from-amber-400 to-orange-500'}`}
+                                />
+                              </div>
+                              <span className="text-sm font-bold text-gray-600 dark:text-gray-300 min-w-[60px] text-right">
+                                {student.uniqueCollected}/{selectedAlbumTotalCards}
+                              </span>
+                            </div>
+
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              {student.previewCards.length > 0 ? (
+                                <>
+                                  {student.previewCards.map((previewCard) => (
+                                    <div
+                                      key={previewCard.cardId}
+                                      className={`relative h-12 w-9 overflow-hidden rounded-lg border border-white/70 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800 ${previewCard.hasShiny ? 'ring-1 ring-amber-300 dark:ring-amber-500/60' : ''}`}
+                                      title={previewCard.name}
+                                    >
+                                      {previewCard.imageUrl ? (
+                                        <img
+                                          src={previewCard.imageUrl}
+                                          alt={previewCard.name}
+                                          className="h-full w-full object-cover"
+                                        />
+                                      ) : (
+                                        <div className={`flex h-full w-full items-center justify-center bg-gradient-to-br ${RARITY_CONFIG[previewCard.rarity].gradient} text-[10px] font-bold text-white`}>
+                                          #{previewCard.slotNumber}
+                                        </div>
+                                      )}
+                                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-1 py-0.5 text-center text-[9px] font-semibold text-white">
+                                        #{previewCard.slotNumber}
+                                      </div>
+                                      {previewCard.hasShiny && (
+                                        <div className="absolute right-0.5 top-0.5 rounded-full bg-amber-400/95 p-0.5 text-white shadow-sm">
+                                          <Sparkles className="h-2.5 w-2.5" />
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                  {hiddenPreviewCount > 0 && (
+                                    <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-[11px] font-semibold text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                                      +{hiddenPreviewCount} más
+                                    </span>
+                                  )}
+                                </>
+                              ) : (
+                                <span className="text-xs text-gray-400 dark:text-gray-500">
+                                  Sin cromos desbloqueados todavía
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className={`text-lg font-bold ${student.isCompleted ? 'text-emerald-500' : 'text-amber-500'}`}>
+                            {student.progress.toFixed(0)}%
+                          </div>
                         </div>
-                        <span className="text-sm font-bold text-gray-600 dark:text-gray-300 min-w-[60px] text-right">
-                          {student.uniqueCollected}/{selectedAlbum.totalCards}
-                        </span>
+                      </motion.button>
+                    );
+                  })}
+                </div>
+              </Card>
+
+              <Card className="overflow-hidden border-0 shadow-md xl:sticky xl:top-4 self-start">
+                {!selectedProgressStudent ? (
+                  <div className="flex min-h-[22rem] flex-col items-center justify-center gap-3 px-6 py-10 text-center">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300">
+                      <Eye className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Selecciona un estudiante</h3>
+                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        Aquí verás qué cromos ya desbloqueó y cuáles le faltan en este álbum.
+                      </p>
+                    </div>
+                  </div>
+                ) : loadingSelectedStudentCollection ? (
+                  <div className="flex min-h-[22rem] items-center justify-center py-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+                  </div>
+                ) : selectedStudentCollection ? (
+                  <div className="space-y-5 p-4 sm:p-5">
+                    <div className="rounded-3xl bg-gradient-to-br from-slate-900 via-indigo-900 to-blue-900 p-5 text-white shadow-lg">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-100/80">Colección del estudiante</p>
+                          <h3 className="mt-2 text-2xl font-bold">{selectedProgressStudent.studentName}</h3>
+                          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-blue-100/90">
+                            <span className="rounded-full bg-white/10 px-3 py-1 font-medium">
+                              {selectedStudentCollection.uniqueCollected}/{selectedStudentCollection.totalCards} base
+                            </span>
+                            <span className="rounded-full bg-white/10 px-3 py-1 font-medium">
+                              {shinyUnlockedCount} brillantes
+                            </span>
+                            <span className="rounded-full bg-white/10 px-3 py-1 font-medium">
+                              {missingCardsCount} faltantes
+                            </span>
+                          </div>
+                        </div>
+                        <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-center backdrop-blur-sm">
+                          <p className="text-xs font-medium uppercase tracking-[0.18em] text-blue-100/80">Progreso</p>
+                          <p className="mt-1 text-3xl font-bold">{selectedProgressStudent.progress.toFixed(0)}%</p>
+                          <p className="text-xs text-blue-100/80">
+                            {selectedStudentCollection.isCompleted ? `Completó el ${formatProgressDate(selectedStudentCollection.completedAt)}` : 'Aún no completa el álbum'}
+                          </p>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Porcentaje */}
-                    <div className={`text-lg font-bold ${student.isCompleted ? 'text-emerald-500' : 'text-amber-500'}`}>
-                      {student.progress.toFixed(0)}%
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap gap-2">
+                        {PROGRESS_COLLECTION_FILTERS.map((filter) => {
+                          const isActive = progressCollectionFilter === filter.value;
+
+                          return (
+                            <button
+                              key={filter.value}
+                              type="button"
+                              onClick={() => setProgressCollectionFilter(filter.value)}
+                              className={`rounded-full px-3.5 py-2 text-sm font-semibold transition-colors ${
+                                isActive
+                                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                              }`}
+                            >
+                              {filter.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {latestUnlockedCards.length > 0 && (
+                        <div className="rounded-2xl border border-amber-100 bg-amber-50/80 p-4 dark:border-amber-900/30 dark:bg-amber-950/10">
+                          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-amber-700 dark:text-amber-300">
+                            <Sparkles className="h-4 w-4" />
+                            Últimos desbloqueados
+                          </div>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {latestUnlockedCards.map((card) => (
+                              <div key={`${card.cardId}-${card.obtainedAt}-${card.isShiny ? 'shiny' : 'base'}`} className="flex items-center gap-3 rounded-xl bg-white/80 px-3 py-2 shadow-sm dark:bg-gray-900/40">
+                                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${RARITY_CONFIG[card.rarity].gradient} text-base text-white shadow-sm`}>
+                                  {card.imageUrl ? (
+                                    <img src={card.imageUrl} alt={card.name} className="h-full w-full rounded-xl object-cover" />
+                                  ) : (
+                                    <span>#{card.slotNumber}</span>
+                                  )}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{card.name}</p>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    {card.isShiny ? 'Versión brillante' : 'Versión base'} • {formatProgressDate(card.obtainedAt)}
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </motion.div>
-                ))}
-              </div>
-            </Card>
+
+                    <div>
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <div>
+                          <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Álbum del estudiante</h4>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">
+                            {filteredStudentCards.length} cromo(s) visibles con el filtro actual
+                          </p>
+                        </div>
+                      </div>
+
+                      {filteredStudentCards.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/80 px-4 py-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800/40 dark:text-gray-400">
+                          No hay cromos para mostrar con este filtro.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 xl:grid-cols-3 2xl:grid-cols-4">
+                          {filteredStudentCards.map((card) => {
+                            const isUnlocked = card.hasNormal || card.hasShiny;
+                            const rarityUi = TEACHER_CARD_RARITY_UI[card.rarity];
+
+                            return (
+                              <div
+                                key={card.id}
+                                className={`group relative overflow-hidden rounded-2xl border p-2 transition-all ${
+                                  isUnlocked
+                                    ? 'border-gray-200 bg-white shadow-sm hover:-translate-y-0.5 hover:shadow-md dark:border-gray-700 dark:bg-gray-900/60'
+                                    : 'border-dashed border-gray-200 bg-gray-50/80 dark:border-gray-700 dark:bg-gray-800/40'
+                                }`}
+                              >
+                                <div
+                                  className={`relative aspect-[3/4] overflow-hidden rounded-xl ${isUnlocked ? 'shadow-sm' : 'opacity-75 grayscale'}`}
+                                  style={{ backgroundImage: rarityUi.frameGradient }}
+                                >
+                                  <div className="absolute inset-[2px] overflow-hidden rounded-[10px] bg-white dark:bg-gray-900">
+                                    {card.imageUrl ? (
+                                      <img
+                                        src={card.imageUrl}
+                                        alt={card.name}
+                                        className={`h-full w-full object-cover ${isUnlocked ? '' : 'scale-105 opacity-35'}`}
+                                      />
+                                    ) : (
+                                      <div className={`flex h-full w-full items-center justify-center bg-gradient-to-br ${RARITY_CONFIG[card.rarity].gradient} text-center text-[11px] font-bold text-white ${isUnlocked ? '' : 'opacity-40'}`}>
+                                        <div>
+                                          <div className="text-lg">{RARITY_CONFIG[card.rarity].icon}</div>
+                                          <div>#{card.slotNumber}</div>
+                                        </div>
+                                      </div>
+                                    )}
+                                    {!isUnlocked && (
+                                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-slate-900/45 text-white">
+                                        <ImageIcon className="h-4 w-4" />
+                                        <span className="text-[10px] font-bold uppercase tracking-[0.16em]">Falta</span>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="absolute left-2 top-2 rounded-full bg-black/60 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                                    #{card.slotNumber}
+                                  </div>
+
+                                  {card.hasShiny && (
+                                    <div className="absolute right-2 top-2 rounded-full bg-amber-400 px-1.5 py-1 text-white shadow-md shadow-amber-500/30">
+                                      <Sparkles className="h-3 w-3" />
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="mt-2 space-y-1">
+                                  <p className="line-clamp-2 text-xs font-semibold text-gray-900 dark:text-white">{card.name}</p>
+                                  <div className="flex flex-wrap gap-1">
+                                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${RARITY_CONFIG[card.rarity].bgColor} ${RARITY_CONFIG[card.rarity].color}`}>
+                                      {RARITY_CONFIG[card.rarity].label}
+                                    </span>
+                                    {card.hasNormal && (
+                                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                                        Base
+                                      </span>
+                                    )}
+                                    {card.hasShiny && (
+                                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                                        Brillante
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex min-h-[22rem] items-center justify-center px-6 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                    No se pudo cargar el detalle de este estudiante.
+                  </div>
+                )}
+              </Card>
+            </div>
           </>
         ) : <Card className="p-12 text-center"><p className="text-gray-500">Sin datos</p></Card>}
       </div>
