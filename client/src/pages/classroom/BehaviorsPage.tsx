@@ -18,15 +18,191 @@ import {
   CheckSquare,
   Square,
   BookOpen,
+  ChevronDown,
+  Search,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { EmojiPicker } from '../../components/ui/EmojiPicker';
 import { classroomApi, type Classroom } from '../../lib/classroomApi';
 import { behaviorApi, type Behavior, type PointType, type GeneratedBehavior } from '../../lib/behaviorApi';
 import toast from 'react-hot-toast';
 import { useClassroomCompetencies } from '../../hooks/useClassroomCompetencies';
 
-const EMOJI_OPTIONS = ['⭐', '🎯', '📚', '✅', '🏆', '💪', '🧠', '❤️', '💔', '⚡', '🔥', '❌', '😴', '📵'];
+type ComboboxOption = {
+  id: string;
+  name: string;
+  description?: string | null;
+};
+
+const SingleSelectCombobox = ({
+  id,
+  label,
+  options,
+  value,
+  onChange,
+  emptyOptionLabel,
+  searchPlaceholder,
+  noResultsLabel,
+  accent,
+  openUpward = false,
+}: {
+  id: string;
+  label: string;
+  options: ComboboxOption[];
+  value: string | null;
+  onChange: (value: string | null) => void;
+  emptyOptionLabel: string;
+  searchPlaceholder: string;
+  noResultsLabel: string;
+  accent: 'emerald' | 'indigo';
+  openUpward?: boolean;
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const comboboxRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const selectedOption = options.find((option) => option.id === value);
+  const normalizedSearchTerm = searchTerm.trim().toLocaleLowerCase();
+  const filteredOptions = options.filter((option) =>
+    `${option.name} ${option.description || ''}`.toLocaleLowerCase().includes(normalizedSearchTerm),
+  );
+  const selectedOptionClasses = accent === 'emerald'
+    ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/30'
+    : 'border-indigo-300 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-900/30';
+  const selectedIconClasses = accent === 'emerald' ? 'text-emerald-600 dark:text-emerald-300' : 'text-indigo-600 dark:text-indigo-300';
+
+  useEffect(() => {
+    if (!isOpen) {
+      setSearchTerm('');
+      return;
+    }
+
+    searchInputRef.current?.focus();
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!comboboxRef.current?.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  const selectOption = (optionId: string | null) => {
+    onChange(optionId);
+    setIsOpen(false);
+  };
+
+  const closeAndRestoreFocus = () => {
+    setIsOpen(false);
+    triggerRef.current?.focus();
+  };
+
+  return (
+    <div ref={comboboxRef} className="relative">
+      <button
+        ref={triggerRef}
+        id={`${id}-trigger`}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        aria-controls={isOpen ? `${id}-listbox` : undefined}
+        onClick={() => setIsOpen((previous) => !previous)}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            setIsOpen(true);
+          }
+        }}
+        className="flex min-h-11 w-full items-center gap-3 rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-left transition-colors hover:border-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-700 dark:hover:border-gray-500"
+      >
+        <span className={`min-w-0 flex-1 truncate text-sm ${selectedOption ? 'font-medium text-gray-800 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}>
+          {selectedOption?.name || emptyOptionLabel}
+        </span>
+        <ChevronDown
+          size={16}
+          aria-hidden="true"
+          className={`shrink-0 text-gray-400 transition-transform dark:text-gray-500 ${isOpen ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: openUpward ? 8 : -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: openUpward ? 8 : -8 }}
+            transition={{ duration: 0.15 }}
+            className={`absolute left-0 right-0 z-30 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-600 dark:bg-gray-800 ${openUpward ? 'bottom-full mb-2' : 'top-full mt-2'}`}
+          >
+            <div className="border-b border-gray-100 p-2 dark:border-gray-700">
+              <div className="relative">
+                <Search size={14} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
+                <input
+                  ref={searchInputRef}
+                  type="search"
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape') {
+                      event.preventDefault();
+                      closeAndRestoreFocus();
+                    }
+                  }}
+                  aria-label={`Buscar ${label.toLocaleLowerCase()}`}
+                  placeholder={searchPlaceholder}
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm text-gray-800 outline-none transition-colors focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100"
+                />
+              </div>
+            </div>
+
+            <div id={`${id}-listbox`} role="listbox" aria-labelledby={`${id}-trigger`} className="max-h-56 overflow-y-auto p-2">
+              <button
+                type="button"
+                role="option"
+                aria-selected={!value}
+                onClick={() => selectOption(null)}
+                className={`w-full rounded-lg border px-3 py-2 text-left text-sm transition-colors ${!value ? selectedOptionClasses : 'border-transparent text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700'}`}
+              >
+                {emptyOptionLabel}
+              </button>
+
+              {filteredOptions.length > 0 ? (
+                filteredOptions.map((option) => {
+                  const isSelected = option.id === value;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      role="option"
+                      aria-selected={isSelected}
+                      onClick={() => selectOption(option.id)}
+                      className={`mt-1 w-full rounded-lg border px-3 py-2 text-left transition-colors ${isSelected ? selectedOptionClasses : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-700'}`}
+                    >
+                      <span className="flex items-start gap-2">
+                        <Check size={15} aria-hidden="true" className={`mt-0.5 shrink-0 ${isSelected ? selectedIconClasses : 'invisible'}`} />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium text-gray-800 dark:text-white">{option.name}</span>
+                          {option.description && (
+                            <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">{option.description}</span>
+                          )}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })
+              ) : (
+                <p className="px-3 py-4 text-center text-sm text-gray-500 dark:text-gray-400">{noResultsLabel}</p>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
 
 export const BehaviorsPage = () => {
   const { classroom, isThemeDark } = useOutletContext<{ classroom: Classroom; isThemeDark?: boolean }>();
@@ -745,8 +921,8 @@ const BehaviorModal = ({
       gpValue,
       isPositive,
       icon,
-      competencyId: competencyId || undefined,
-      competencyIndicatorId: competencyIndicatorId || undefined,
+      competencyId,
+      competencyIndicatorId,
     });
   };
 
@@ -847,40 +1023,24 @@ const BehaviorModal = ({
                   </div>
                 </div>
 
-                {/* Icono seleccionado preview */}
+                {/* Selector de icono */}
                 <div>
                   <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Icono</label>
-                  <div className={`
-                    w-[76px] h-[42px] rounded-xl flex items-center justify-center text-2xl
+                  <EmojiPicker
+                    value={icon}
+                    onChange={setIcon}
+                    ariaLabel="Cambiar icono del comportamiento"
+                    triggerClassName={`
+                    w-[76px] h-[42px] rounded-xl flex items-center justify-center text-2xl transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2
                     ${isPositive ? 'bg-emerald-100 dark:bg-emerald-900/30 border-2 border-emerald-300 dark:border-emerald-700' : 'bg-red-100 dark:bg-red-900/30 border-2 border-red-300 dark:border-red-700'}
-                  `}>
-                    {icon}
-                  </div>
+                    ${isPositive ? 'hover:bg-emerald-200 focus:ring-emerald-500 dark:hover:bg-emerald-900/50' : 'hover:bg-red-200 focus:ring-red-500 dark:hover:bg-red-900/50'}
+                  `}
+                  />
                 </div>
               </div>
 
-              {/* Row 2: Iconos grid */}
-              <div className="flex flex-wrap gap-2">
-                {EMOJI_OPTIONS.map((emoji) => (
-                  <button
-                    key={emoji}
-                    type="button"
-                    onClick={() => setIcon(emoji)}
-                    className={`w-10 h-10 text-lg rounded-xl transition-all hover:scale-105 ${
-                      icon === emoji
-                        ? isPositive 
-                          ? 'bg-emerald-500 ring-2 ring-emerald-400 ring-offset-2 ring-offset-white dark:ring-offset-gray-800'
-                          : 'bg-red-500 ring-2 ring-red-400 ring-offset-2 ring-offset-white dark:ring-offset-gray-800'
-                        : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'
-                    }`}
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-
-              {/* Row 3: Nombre y Descripción en grid */}
-              <div className="grid grid-cols-2 gap-4">
+              {/* Nombre y descripción */}
+              <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Nombre *</label>
                   <input
@@ -894,17 +1054,18 @@ const BehaviorModal = ({
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Descripción</label>
-                  <input
-                    type="text"
-                    placeholder="Opcional"
+                  <textarea
+                    rows={3}
+                    maxLength={500}
+                    placeholder="Describe la acción que se reconocerá o corregirá (opcional)"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    className="w-full px-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white text-sm placeholder-gray-400 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
+                    className="w-full min-h-[84px] resize-y px-4 py-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white text-sm placeholder-gray-400 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all"
                   />
                 </div>
               </div>
 
-              {/* Row 4: Recompensas combinadas */}
+              {/* Recompensas combinadas */}
               <div>
                 <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
                   Recompensas {isPositive ? '(dar)' : '(quitar)'} - Puedes combinar
@@ -977,36 +1138,22 @@ const BehaviorModal = ({
                     <Award size={14} className="text-emerald-500" />
                     Competencia asociada
                   </label>
-                  <div className="grid grid-cols-1 gap-1.5 max-h-24 overflow-y-auto p-2 bg-gray-50 dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCompetencyId(null);
+                  <SingleSelectCombobox
+                    id="behavior-competency"
+                    label="Competencia asociada"
+                    options={classroomCompetencies}
+                    value={competencyId}
+                    onChange={(nextCompetencyId) => {
+                      setCompetencyId(nextCompetencyId);
+                      if (!nextCompetencyId || (competencyIndicatorId && !classroomCompetencies.find((competency: any) => competency.id === nextCompetencyId)?.indicators?.some((indicator: any) => indicator.id === competencyIndicatorId))) {
                         setCompetencyIndicatorId(null);
-                      }}
-                      className={`p-2 rounded-lg text-left text-xs ${!competencyId ? 'bg-white dark:bg-gray-600 ring-1 ring-gray-300 dark:ring-gray-500' : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
-                    >
-                      <span className="text-gray-500 dark:text-gray-400">Sin competencia</span>
-                    </button>
-                    {classroomCompetencies.map((c: any) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => {
-                          setCompetencyId(c.id);
-                          if (competencyIndicatorId && !c.indicators?.some((indicator: any) => indicator.id === competencyIndicatorId)) {
-                            setCompetencyIndicatorId(null);
-                          }
-                        }}
-                        className={`p-2 rounded-lg text-left text-xs ${competencyId === c.id ? 'bg-emerald-100 dark:bg-emerald-900/50 ring-1 ring-emerald-500' : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
-                      >
-                        <div className="flex items-center gap-1.5">
-                          {competencyId === c.id && <Check size={12} className="text-emerald-500" />}
-                          <span className="truncate text-gray-800 dark:text-white">{c.name}</span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
+                      }
+                    }}
+                    emptyOptionLabel="Sin competencia"
+                    searchPlaceholder="Buscar competencia..."
+                    noResultsLabel="No se encontraron competencias."
+                    accent="emerald"
+                  />
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                     {competencyId ? 'Este comportamiento contribuirá a la competencia seleccionada' : 'Opcional - para calificación por competencias'}
                   </p>
@@ -1019,31 +1166,18 @@ const BehaviorModal = ({
                     <BookOpen size={14} className="text-indigo-500" />
                     Destreza asociada
                   </label>
-                  <div className="grid grid-cols-1 gap-1.5 max-h-28 overflow-y-auto p-2 bg-gray-50 dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600">
-                    <button
-                      type="button"
-                      onClick={() => setCompetencyIndicatorId(null)}
-                      className={`p-2 rounded-lg text-left text-xs ${!competencyIndicatorId ? 'bg-white dark:bg-gray-600 ring-1 ring-gray-300 dark:ring-gray-500' : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
-                    >
-                      <span className="text-gray-500 dark:text-gray-400">Sin destreza</span>
-                    </button>
-                    {selectedIndicators.map((indicator: any) => (
-                      <button
-                        key={indicator.id}
-                        type="button"
-                        onClick={() => setCompetencyIndicatorId(indicator.id)}
-                        className={`p-2 rounded-lg text-left text-xs ${competencyIndicatorId === indicator.id ? 'bg-indigo-100 dark:bg-indigo-900/50 ring-1 ring-indigo-500' : 'bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
-                      >
-                        <div className="flex items-center gap-1.5">
-                          {competencyIndicatorId === indicator.id && <Check size={12} className="text-indigo-500" />}
-                          <span className="truncate text-gray-800 dark:text-white">{indicator.name}</span>
-                        </div>
-                        {indicator.description && (
-                          <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400 line-clamp-2">{indicator.description}</p>
-                        )}
-                      </button>
-                    ))}
-                  </div>
+                  <SingleSelectCombobox
+                    id="behavior-competency-indicator"
+                    label="Destreza asociada"
+                    options={selectedIndicators}
+                    value={competencyIndicatorId}
+                    onChange={setCompetencyIndicatorId}
+                    emptyOptionLabel="Sin destreza"
+                    searchPlaceholder="Buscar destreza..."
+                    noResultsLabel="No se encontraron destrezas."
+                    accent="indigo"
+                    openUpward
+                  />
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                     Opcional - la destreza se usara para el desglose informativo del gradebook.
                   </p>

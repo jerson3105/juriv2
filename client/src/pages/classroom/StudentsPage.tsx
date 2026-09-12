@@ -57,6 +57,7 @@ type RoundBehaviorConfig = {
   behaviorId: string;
   behaviorName: string;
   behaviorIcon: string | null;
+  multiplier: number;
 };
 
 type RoundStudentAwards = {
@@ -118,6 +119,8 @@ export const StudentsPage = () => {
   const [showRoundBehaviorPicker, setShowRoundBehaviorPicker] = useState(false);
   const [pendingRoundPositiveBehaviorId, setPendingRoundPositiveBehaviorId] = useState<string | null>(null);
   const [pendingRoundNegativeBehaviorId, setPendingRoundNegativeBehaviorId] = useState<string | null>(null);
+  const [pendingRoundPositiveMultiplier, setPendingRoundPositiveMultiplier] = useState(1);
+  const [pendingRoundNegativeMultiplier, setPendingRoundNegativeMultiplier] = useState(1);
   const [activeRound, setActiveRound] = useState<ActiveRoundState | null>(null);
   const [isUndoingRound, setIsUndoingRound] = useState(false);
   const [roundQuickActivityCounts, setRoundQuickActivityCounts] = useState<Record<string, number>>({});
@@ -221,6 +224,11 @@ export const StudentsPage = () => {
           action: behavior.isPositive ? 'ADD' : 'REMOVE',
           amount: xpAmount || hpAmount || gpAmount,
           reason: behavior.name,
+          multiplier: Math.round((activeRound?.positiveBehavior?.behaviorId === behavior.id
+            ? activeRound.positiveBehavior.multiplier
+            : activeRound?.negativeBehavior?.behaviorId === behavior.id
+              ? activeRound.negativeBehavior.multiplier
+              : 1) * 1000),
           xpAmount: xpAmount || undefined,
           hpAmount: hpAmount || undefined,
           gpAmount: gpAmount || undefined,
@@ -240,6 +248,7 @@ export const StudentsPage = () => {
     behaviorId: string;
     studentIds: string[];
     mode?: ApplyBehaviorMode;
+    multiplier?: number;
   };
 
   const applyBehaviorMutation = useMutation({
@@ -278,9 +287,10 @@ export const StudentsPage = () => {
       
       // Mostrar animación de puntos
       const behavior = result.behavior;
-      const xp = behavior.xpValue || (behavior.pointType === 'XP' ? behavior.pointValue : 0);
-      const hp = behavior.hpValue || (behavior.pointType === 'HP' ? behavior.pointValue : 0);
-      const gp = behavior.gpValue || (behavior.pointType === 'GP' ? behavior.pointValue : 0);
+      const appliedPoints = result.results[0];
+      const xp = Math.abs(appliedPoints?.xpChange || 0);
+      const hp = Math.abs(appliedPoints?.hpChange || 0);
+      const gp = Math.abs(appliedPoints?.gpChange || 0);
       
       if (!isRoundQuick && (xp > 0 || hp > 0 || gp > 0)) {
         showMultiPointsEffect(xp, hp, gp, behavior.isPositive);
@@ -291,9 +301,9 @@ export const StudentsPage = () => {
       
       // Detailed feedback toast
       const beh = result.behavior;
-      const txp = beh.xpValue || (beh.pointType === 'XP' ? beh.pointValue : 0);
-      const thp = beh.hpValue || (beh.pointType === 'HP' ? beh.pointValue : 0);
-      const tgp = beh.gpValue || (beh.pointType === 'GP' ? beh.pointValue : 0);
+      const txp = xp;
+      const thp = hp;
+      const tgp = gp;
       const sign = beh.isPositive ? '+' : '-';
       const parts = [];
       if (txp > 0) parts.push(`${sign}${txp} XP`);
@@ -575,7 +585,7 @@ export const StudentsPage = () => {
     setShowBehaviorModal(true);
   };
 
-  const applyBehavior = (behavior: Behavior) => {
+  const applyBehavior = (behavior: Behavior, multiplier: number = 1) => {
     const studentIds = Array.from(selectedStudents);
     if (studentIds.length === 0) {
       toast.error('Selecciona al menos un estudiante');
@@ -587,6 +597,7 @@ export const StudentsPage = () => {
     applyBehaviorMutation.mutate({
       behaviorId: behavior.id,
       studentIds,
+      multiplier,
     });
   };
 
@@ -596,10 +607,11 @@ export const StudentsPage = () => {
   const hasRoundBehaviors = positiveBehaviors.length > 0 || availableNegativeRoundBehaviors.length > 0;
   const roundStorageKey = `students-active-round:${classroom.id}`;
 
-  const buildRoundBehaviorConfig = (behavior: Behavior): RoundBehaviorConfig => ({
+  const buildRoundBehaviorConfig = (behavior: Behavior, multiplier: number): RoundBehaviorConfig => ({
     behaviorId: behavior.id,
     behaviorName: behavior.name,
     behaviorIcon: behavior.icon || null,
+    multiplier,
   });
 
   function getRoundAwardCount(studentId: string) {
@@ -660,8 +672,8 @@ export const StudentsPage = () => {
 
       const normalizedRound = parsed?.positiveBehavior || parsed?.negativeBehavior
         ? {
-            positiveBehavior: parsed.positiveBehavior || null,
-            negativeBehavior: parsed.negativeBehavior || null,
+            positiveBehavior: parsed.positiveBehavior ? { ...parsed.positiveBehavior, multiplier: parsed.positiveBehavior.multiplier ?? 1 } : null,
+            negativeBehavior: parsed.negativeBehavior ? { ...parsed.negativeBehavior, multiplier: parsed.negativeBehavior.multiplier ?? 1 } : null,
             startedAt: parsed.startedAt,
             updatedAt: parsed.updatedAt,
             awardsByStudent: Object.fromEntries(
@@ -687,12 +699,14 @@ export const StudentsPage = () => {
                     behaviorId: parsed.behaviorId,
                     behaviorName: parsed.behaviorName,
                     behaviorIcon: parsed.behaviorIcon || null,
+                    multiplier: 1,
                   },
               negativeBehavior: parsed.isPositive === false
                 ? {
                     behaviorId: parsed.behaviorId,
                     behaviorName: parsed.behaviorName,
                     behaviorIcon: parsed.behaviorIcon || null,
+                    multiplier: 1,
                   }
                 : null,
               startedAt: parsed.startedAt,
@@ -761,8 +775,8 @@ export const StudentsPage = () => {
     }
 
     setActiveRound({
-      positiveBehavior: selectedRoundPositiveBehavior ? buildRoundBehaviorConfig(selectedRoundPositiveBehavior) : null,
-      negativeBehavior: selectedRoundNegativeBehavior ? buildRoundBehaviorConfig(selectedRoundNegativeBehavior) : null,
+      positiveBehavior: selectedRoundPositiveBehavior ? buildRoundBehaviorConfig(selectedRoundPositiveBehavior, pendingRoundPositiveMultiplier) : null,
+      negativeBehavior: selectedRoundNegativeBehavior ? buildRoundBehaviorConfig(selectedRoundNegativeBehavior, pendingRoundNegativeMultiplier) : null,
       startedAt: Date.now(),
       updatedAt: Date.now(),
       awardsByStudent: {},
@@ -783,10 +797,16 @@ export const StudentsPage = () => {
 
     if (!targetBehaviorId) return;
 
+    const selectedBehavior = activeRound.positiveBehavior?.behaviorId === targetBehaviorId
+      ? activeRound.positiveBehavior
+      : activeRound.negativeBehavior?.behaviorId === targetBehaviorId
+        ? activeRound.negativeBehavior
+        : null;
     applyBehaviorMutation.mutate({
       behaviorId: targetBehaviorId,
       studentIds: [studentId],
       mode: 'round_quick',
+      multiplier: selectedBehavior?.multiplier ?? 1,
     });
   };
 
@@ -880,13 +900,13 @@ export const StudentsPage = () => {
       {activeRound.positiveBehavior && (
         <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ${positiveRoundPillClasses}`}>
           <span>{activeRound.positiveBehavior.behaviorIcon || '⭐'}</span>
-          <span>+ {activeRound.positiveBehavior.behaviorName}</span>
+          <span>+ {activeRound.positiveBehavior.behaviorName} ({activeRound.positiveBehavior.multiplier}x)</span>
         </span>
       )}
       {activeRound.negativeBehavior && (
         <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ${negativeRoundPillClasses}`}>
           <span>{activeRound.negativeBehavior.behaviorIcon || '💥'}</span>
-          <span>- {activeRound.negativeBehavior.behaviorName}</span>
+          <span>- {activeRound.negativeBehavior.behaviorName} ({activeRound.negativeBehavior.multiplier}x)</span>
         </span>
       )}
     </div>
@@ -910,6 +930,7 @@ export const StudentsPage = () => {
                   {pendingRoundPositiveBehaviorId === behavior.id ? 'Seleccionado' : 'Elegir'}
                 </span>
               </div>
+              {behavior.competencyIndicator && <p className="mt-1 truncate pl-6 text-[10px] text-sky-600 dark:text-sky-400">Destreza: {behavior.competencyIndicator.name}</p>}
             </button>
           ))}
         </div>
@@ -931,6 +952,7 @@ export const StudentsPage = () => {
                   {pendingRoundNegativeBehaviorId === behavior.id ? 'Seleccionado' : 'Elegir'}
                 </span>
               </div>
+              {behavior.competencyIndicator && <p className="mt-1 truncate pl-6 text-[10px] text-sky-600 dark:text-sky-400">Destreza: {behavior.competencyIndicator.name}</p>}
             </button>
           ))}
         </div>
@@ -942,6 +964,9 @@ export const StudentsPage = () => {
             <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 font-semibold ${positiveRoundPillClasses}`}>
               <span>{selectedRoundPositiveBehavior.icon || '⭐'}</span>
               <span>+ {selectedRoundPositiveBehavior.name}</span>
+              <select value={pendingRoundPositiveMultiplier} onChange={(event) => setPendingRoundPositiveMultiplier(Number(event.target.value))} className="bg-transparent text-[11px] font-semibold outline-none">
+                <option value={1}>1x</option><option value={0.5}>1/2</option><option value={0.25}>1/4</option><option value={0.125}>1/8</option>
+              </select>
             </span>
           ) : (
             <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
@@ -952,6 +977,9 @@ export const StudentsPage = () => {
             <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 font-semibold ${negativeRoundPillClasses}`}>
               <span>{selectedRoundNegativeBehavior.icon || '💥'}</span>
               <span>- {selectedRoundNegativeBehavior.name}</span>
+              <select value={pendingRoundNegativeMultiplier} onChange={(event) => setPendingRoundNegativeMultiplier(Number(event.target.value))} className="bg-transparent text-[11px] font-semibold outline-none">
+                <option value={1}>1x</option><option value={0.5}>1/2</option><option value={0.25}>1/4</option><option value={0.125}>1/8</option>
+              </select>
             </span>
           ) : (
             <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-gray-500 dark:bg-gray-800 dark:text-gray-400">

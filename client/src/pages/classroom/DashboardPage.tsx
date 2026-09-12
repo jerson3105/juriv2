@@ -821,6 +821,11 @@ export const DashboardPage = () => {
                         </>
                       )}
                       {activity.type === 'POINTS' && activity.details.pointType !== 'MIXED' && ` ${activity.details.action === 'ADD' ? 'ganó' : 'perdió'} ${activity.details.amount} ${activity.details.pointType}`}
+                      {activity.type === 'POINTS' && activity.details.multiplier && activity.details.multiplier !== 1000 && (
+                        <span className="ml-1 text-xs font-semibold text-violet-600 dark:text-violet-400">
+                          ({activity.details.multiplier === 500 ? '1/2x' : activity.details.multiplier === 250 ? '1/4x' : activity.details.multiplier === 125 ? '1/8x' : `${(activity.details.multiplier / 1000).toFixed(2).replace(/0+$/, '').replace(/\.$/, '')}x`})
+                        </span>
+                      )}
                       {activity.type === 'PURCHASE' && ` compró ${activity.details.itemName}`}
                       {activity.type === 'LEVEL_UP' && ` subió al nivel ${activity.details.newLevel}`}
                     </p>

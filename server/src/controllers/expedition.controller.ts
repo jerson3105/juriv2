@@ -224,7 +224,7 @@ export const handleExpeditionUpload = async (req: Request, res: Response) => {
 
 export const createExpedition = async (req: Request, res: Response) => {
   try {
-    const { classroomId, name, description, mapImageUrl, competencyIds } = req.body;
+    const { classroomId, name, description, mapImageUrl, competencyIds, competencyIndicatorIds } = req.body;
     
     if (!classroomId || !name || !mapImageUrl) {
       return res.status(400).json({ error: 'classroomId, name y mapImageUrl son requeridos' });
@@ -239,6 +239,7 @@ export const createExpedition = async (req: Request, res: Response) => {
       description,
       mapImageUrl,
       competencyIds: Array.isArray(competencyIds) ? competencyIds : undefined,
+      competencyIndicatorIds: Array.isArray(competencyIndicatorIds) ? competencyIndicatorIds : undefined,
     });
     
     res.status(201).json(expedition);

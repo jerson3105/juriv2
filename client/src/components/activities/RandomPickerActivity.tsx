@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { 
   ArrowLeft, Dices, RotateCcw, Volume2, VolumeX, UserMinus, History,
   Crown, Zap, Heart, Coins, Check, X, Settings, Sparkles, Star, Trophy, Users, BookOpen, CheckCircle2,
-  Eye, ArrowRight, HelpCircle,
+  Eye, ArrowRight, HelpCircle, Search,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { studentApi } from '../../lib/studentApi';
@@ -62,6 +62,7 @@ export const RandomPickerActivity = ({ classroom, onBack }: RandomPickerActivity
   const [wheelRotation, setWheelRotation] = useState(0);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [appliedBehaviors, setAppliedBehaviors] = useState<Map<string, number>>(new Map());
+  const [studentSearch, setStudentSearch] = useState('');
 
   // Question bank state
   const [questionsEnabled, setQuestionsEnabled] = useState(false);
@@ -92,6 +93,20 @@ export const RandomPickerActivity = ({ classroom, onBack }: RandomPickerActivity
       setAvailableStudents(available.filter(s => !selectedStudents.find(sel => sel.id === s.id)));
     }
   }, [classroom?.students, excludedStudents, selectedStudents]);
+
+  const visibleStudents = useMemo(() => {
+    const normalizedSearch = studentSearch.trim().toLocaleLowerCase('es');
+
+    return [...classroom.students]
+      .filter((student) => (student.characterName || 'Sin nombre').toLocaleLowerCase('es').includes(normalizedSearch))
+      .sort((firstStudent, secondStudent) =>
+        (firstStudent.characterName || 'Sin nombre').localeCompare(
+          secondStudent.characterName || 'Sin nombre',
+          'es',
+          { sensitivity: 'base' },
+        ),
+      );
+  }, [classroom.students, studentSearch]);
 
   const pointsMutation = useMutation({
     mutationFn: ({ studentId, type, amount }: { studentId: string; type: 'xp' | 'hp' | 'gp'; amount: number }) =>
@@ -449,8 +464,19 @@ export const RandomPickerActivity = ({ classroom, onBack }: RandomPickerActivity
 
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="bg-white/90 backdrop-blur-sm rounded-2xl border border-white/50 p-4 shadow-xl">
             <h3 className="font-bold text-gray-800 text-sm mb-3 flex items-center gap-2"><UserMinus size={16} className="text-violet-500" />Estudiantes<span className="ml-auto text-[10px] px-2 py-0.5 bg-gray-100 rounded-full text-gray-500">{classroom.students.length} total</span></h3>
+            <div className="relative mb-3">
+              <Search size={15} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="search"
+                value={studentSearch}
+                onChange={(event) => setStudentSearch(event.target.value)}
+                placeholder="Buscar estudiante..."
+                aria-label="Buscar estudiante por nombre"
+                className="w-full rounded-xl border border-gray-200 bg-white py-2 pl-9 pr-3 text-xs text-gray-800 outline-none transition-colors placeholder:text-gray-400 focus:border-violet-400 focus:ring-2 focus:ring-violet-200"
+              />
+            </div>
             <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
-              {classroom.students.map((student) => {
+              {visibleStudents.map((student) => {
                 const isExcluded = excludedStudents.has(student.id);
                 const isSelected = selectedStudents.find(s => s.id === student.id);
                 return (
@@ -467,6 +493,9 @@ export const RandomPickerActivity = ({ classroom, onBack }: RandomPickerActivity
                   </motion.div>
                 );
               })}
+              {visibleStudents.length === 0 && (
+                <p className="py-6 text-center text-xs text-gray-500">No se encontraron estudiantes.</p>
+              )}
             </div>
           </motion.div>
         </div>

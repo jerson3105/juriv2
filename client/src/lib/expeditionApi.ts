@@ -114,6 +114,8 @@ export interface CreateExpeditionDto {
   name: string;
   description?: string;
   mapImageUrl: string;
+  competencyIds?: string[];
+  competencyIndicatorIds?: string[];
 }
 
 export interface CreatePinDto {

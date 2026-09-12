@@ -60,6 +60,7 @@ export interface UpdatePointsData {
   amount: number;
   reason: string;
   competencyId?: string;
+  competencyIndicatorId?: string;
 }
 
 export interface UpdatePointsResult {

@@ -523,6 +523,8 @@ export const pointLogs = mysqlTable('point_logs', {
   pointType: pointTypeEnum.notNull(),
   action: pointActionEnum.notNull(),
   amount: int('amount').notNull(),
+  baseAmount: int('base_amount'),
+  multiplier: int('multiplier').notNull().default(1000),
   xpAmount: int('xp_amount'),
   gpAmount: int('gp_amount'),
   reason: text('reason'),
@@ -2076,6 +2078,30 @@ export const activityCompetenciesRelations = relations(activityCompetencies, ({ 
   }),
 }));
 
+export const activityCompetencyIndicators = mysqlTable('activity_competency_indicators', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  activityType: activityTypeEnum.notNull(),
+  activityId: varchar('activity_id', { length: 36 }).notNull(),
+  competencyId: varchar('competency_id', { length: 36 }).notNull(),
+  competencyIndicatorId: varchar('competency_indicator_id', { length: 36 }).notNull(),
+  createdAt: datetime('created_at').notNull(),
+}, (table) => ({
+  activityIdx: index('idx_activity_competency_indicators_activity').on(table.activityType, table.activityId),
+  indicatorIdx: index('idx_activity_competency_indicators_indicator').on(table.competencyIndicatorId),
+  uniqueActivityCompetencyIndicator: unique('unique_activity_competency_indicator').on(table.activityType, table.activityId, table.competencyIndicatorId),
+}));
+
+export const activityCompetencyIndicatorsRelations = relations(activityCompetencyIndicators, ({ one }) => ({
+  competency: one(curriculumCompetencies, {
+    fields: [activityCompetencyIndicators.competencyId],
+    references: [curriculumCompetencies.id],
+  }),
+  competencyIndicator: one(classroomCompetencyIndicators, {
+    fields: [activityCompetencyIndicators.competencyIndicatorId],
+    references: [classroomCompetencyIndicators.id],
+  }),
+}));
+
 // ==================== CALIFICACIONES POR COMPETENCIAS ====================
 
 // Tipo de actividad extendido para incluir comportamientos e insignias
@@ -2173,6 +2199,8 @@ export type ClassroomCompetency = typeof classroomCompetencies.$inferSelect;
 export type NewClassroomCompetency = typeof classroomCompetencies.$inferInsert;
 export type ActivityCompetency = typeof activityCompetencies.$inferSelect;
 export type NewActivityCompetency = typeof activityCompetencies.$inferInsert;
+export type ActivityCompetencyIndicator = typeof activityCompetencyIndicators.$inferSelect;
+export type NewActivityCompetencyIndicator = typeof activityCompetencyIndicators.$inferInsert;
 export type StudentGrade = typeof studentGrades.$inferSelect;
 export type NewStudentGrade = typeof studentGrades.$inferInsert;
 export type StudentActivityScore = typeof studentActivityScores.$inferSelect;

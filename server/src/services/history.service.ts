@@ -37,6 +37,7 @@ export interface ActivityLogEntry {
     xpAmount?: number;
     hpAmount?: number;
     gpAmount?: number;
+    multiplier?: number;
     // Asistencia
     attendanceStatus?: string;
     attendanceDate?: string;
@@ -166,6 +167,7 @@ class HistoryService {
           pointType: pointLogs.pointType,
           action: pointLogs.action,
           amount: pointLogs.amount,
+          multiplier: pointLogs.multiplier,
           reason: pointLogs.reason,
           createdAt: pointLogs.createdAt,
           behaviorName: behaviors.name,
@@ -191,6 +193,7 @@ class HistoryService {
         reason: string | null;
         behaviorName: string | null;
         isReverted: boolean;
+        multiplier: number;
         xpAmount: number;
         hpAmount: number;
         gpAmount: number;
@@ -224,6 +227,7 @@ class HistoryService {
             reason: log.reason,
             behaviorName: log.behaviorName,
             isReverted: log.isReverted ?? false,
+            multiplier: log.multiplier ?? 1000,
             xpAmount: log.pointType === 'XP' ? log.amount : 0,
             hpAmount: log.pointType === 'HP' ? log.amount : 0,
             gpAmount: log.pointType === 'GP' ? log.amount : 0,
@@ -263,6 +267,7 @@ class HistoryService {
             xpAmount: group.xpAmount > 0 ? group.xpAmount : undefined,
             hpAmount: group.hpAmount > 0 ? group.hpAmount : undefined,
             gpAmount: group.gpAmount > 0 ? group.gpAmount : undefined,
+            multiplier: group.multiplier,
           } as ActivityLogEntry['details'],
         });
       }

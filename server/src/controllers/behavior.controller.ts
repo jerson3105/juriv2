@@ -35,6 +35,7 @@ const updateBehaviorSchema = z.object({
 const applyBehaviorSchema = z.object({
   behaviorId: z.string().uuid(),
   studentIds: z.array(z.string().uuid()).min(1),
+  multiplier: z.number().positive().max(10).optional(),
 });
 
 export class BehaviorController {

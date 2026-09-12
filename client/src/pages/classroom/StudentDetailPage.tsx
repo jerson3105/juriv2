@@ -794,6 +794,11 @@ export const StudentDetailPage = () => {
                             {activity.details.action === 'ADD' ? '+' : '-'}{activity.details.amount} {activity.details.pointType}
                           </span>
                           {activity.details.reason && <span className="text-gray-500"> - {activity.details.reason}</span>}
+                          {activity.details.multiplier && activity.details.multiplier !== 1000 && (
+                            <span className="ml-1 text-xs font-semibold text-violet-600 dark:text-violet-400">
+                              ({activity.details.multiplier === 500 ? '1/2x' : activity.details.multiplier === 250 ? '1/4x' : activity.details.multiplier === 125 ? '1/8x' : `${(activity.details.multiplier / 1000).toFixed(2).replace(/0+$/, '').replace(/\.$/, '')}x`})
+                            </span>
+                          )}
                         </>
                       )}
                       {activity.type === 'POINTS' && activity.details.pointType === 'MIXED' && (
@@ -809,6 +814,11 @@ export const StudentDetailPage = () => {
                             </span>
                           ))}
                           {activity.details.reason && <span className="text-gray-500"> - {activity.details.reason}</span>}
+                          {activity.details.multiplier && activity.details.multiplier !== 1000 && (
+                            <span className="ml-1 text-xs font-semibold text-violet-600 dark:text-violet-400">
+                              ({activity.details.multiplier === 500 ? '1/2x' : activity.details.multiplier === 250 ? '1/4x' : activity.details.multiplier === 125 ? '1/8x' : `${(activity.details.multiplier / 1000).toFixed(2).replace(/0+$/, '').replace(/\.$/, '')}x`})
+                            </span>
+                          )}
                         </>
                       )}
                       {activity.type === 'PURCHASE' && (

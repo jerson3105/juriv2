@@ -234,6 +234,11 @@ export const HistoryPage = () => {
               {entry.details.reason && (
                 <span className="text-gray-500"> • {entry.details.reason}</span>
               )}
+              {getMultiplierLabel(entry.details.multiplier) && (
+                <span className="ml-1 text-xs font-semibold text-violet-600 dark:text-violet-400">
+                  ({getMultiplierLabel(entry.details.multiplier)})
+                </span>
+              )}
             </span>
           );
         }
@@ -247,6 +252,11 @@ export const HistoryPage = () => {
             </span>
             {entry.details.reason && (
               <span className="text-gray-500"> • {entry.details.reason}</span>
+            )}
+            {getMultiplierLabel(entry.details.multiplier) && (
+              <span className="ml-1 text-xs font-semibold text-violet-600 dark:text-violet-400">
+                ({getMultiplierLabel(entry.details.multiplier)})
+              </span>
             )}
           </span>
         );
@@ -315,6 +325,14 @@ export const HistoryPage = () => {
       default:
         return <span>{studentName}</span>;
     }
+  };
+
+  const getMultiplierLabel = (multiplier?: number) => {
+    if (!multiplier || multiplier === 1000) return null;
+    if (multiplier === 500) return '1/2x';
+    if (multiplier === 250) return '1/4x';
+    if (multiplier === 125) return '1/8x';
+    return `${(multiplier / 1000).toFixed(2).replace(/0+$/, '').replace(/\.$/, '')}x`;
   };
 
   const formatTime = (timestamp: string) => {

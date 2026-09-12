@@ -1,6 +1,6 @@
 import { db } from '../db/index.js';
 import { 
-  studentProfiles, classrooms, users, pointLogs, notifications, behaviors,
+  studentProfiles, classrooms, users, pointLogs, notifications, behaviors, classroomCompetencyIndicators,
   studentAvatarPurchases, studentEquippedItems, studentGrades, studentActivityScores,
   badgeProgress, studentBadges, loginStreaks, studentStreaks, attendanceRecords,
   purchases, itemUsages, powerUsages, expeditionSubmissions, expeditionStudentProgress,
@@ -37,6 +37,7 @@ interface UpdatePointsData {
   reason: string;
   teacherId: string;
   competencyId?: string;
+  competencyIndicatorId?: string;
 }
 
 interface UpdateTeacherStudentProfileData {
@@ -322,6 +323,24 @@ export class StudentService {
       throw new Error('No tienes permiso para modificar este estudiante');
     }
 
+    if (data.competencyIndicatorId) {
+      const [indicator] = await db.select({
+        competencyId: classroomCompetencyIndicators.competencyId,
+      })
+        .from(classroomCompetencyIndicators)
+        .where(and(
+          eq(classroomCompetencyIndicators.id, data.competencyIndicatorId),
+          eq(classroomCompetencyIndicators.classroomId, profile.classroomId),
+          eq(classroomCompetencyIndicators.isActive, true),
+        ));
+
+      if (!indicator || (data.competencyId && indicator.competencyId !== data.competencyId)) {
+        throw new Error('La destreza seleccionada no pertenece a la competencia de esta clase');
+      }
+
+      data.competencyId = indicator.competencyId;
+    }
+
     // Calcular nuevo valor
     let newValue: number;
     const currentValue = profile[data.pointType.toLowerCase() as 'xp' | 'hp' | 'gp'];
@@ -366,6 +385,7 @@ export class StudentService {
       id: uuidv4(),
       studentId: data.studentId,
       competencyId: data.competencyId || undefined,
+      competencyIndicatorId: data.competencyIndicatorId || undefined,
       pointType: data.pointType,
       action: data.amount >= 0 ? 'ADD' : 'REMOVE',
       amount: Math.abs(data.amount),

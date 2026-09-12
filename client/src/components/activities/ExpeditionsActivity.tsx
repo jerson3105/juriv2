@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -22,6 +22,9 @@ import {
   BarChart3,
   Award,
   Check,
+  BookOpen,
+  ChevronDown,
+  Search,
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
@@ -41,6 +44,153 @@ interface ExpeditionsActivityProps {
   classroom: any;
   onBack: () => void;
 }
+
+type SelectionOption = {
+  id: string;
+  name: string;
+  description?: string | null;
+};
+
+const MultiSelectCombobox = ({
+  id,
+  label,
+  options,
+  selectedIds,
+  onChange,
+  emptyLabel,
+  searchPlaceholder,
+  noResultsLabel,
+  accent,
+  disabled = false,
+}: {
+  id: string;
+  label: string;
+  options: SelectionOption[];
+  selectedIds: string[];
+  onChange: (selectedIds: string[]) => void;
+  emptyLabel: string;
+  searchPlaceholder: string;
+  noResultsLabel: string;
+  accent: 'emerald' | 'indigo';
+  disabled?: boolean;
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const comboboxRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const normalizedSearchTerm = searchTerm.trim().toLocaleLowerCase('es');
+  const filteredOptions = options.filter((option) =>
+    `${option.name} ${option.description || ''}`.toLocaleLowerCase('es').includes(normalizedSearchTerm),
+  );
+  const selectedCount = selectedIds.length;
+  const selectedOptionClasses = accent === 'emerald'
+    ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-700 dark:bg-emerald-900/30'
+    : 'border-indigo-300 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-900/30';
+  const selectedIconClasses = accent === 'emerald' ? 'text-emerald-600 dark:text-emerald-300' : 'text-indigo-600 dark:text-indigo-300';
+
+  useEffect(() => {
+    if (!isOpen) {
+      setSearchTerm('');
+      return;
+    }
+
+    searchInputRef.current?.focus();
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!comboboxRef.current?.contains(event.target as Node)) setIsOpen(false);
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  const toggleOption = (optionId: string) => {
+    onChange(selectedIds.includes(optionId)
+      ? selectedIds.filter((selectedId) => selectedId !== optionId)
+      : [...selectedIds, optionId]);
+  };
+
+  return (
+    <div ref={comboboxRef} className="relative">
+      <button
+        id={`${id}-trigger`}
+        type="button"
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        aria-controls={isOpen ? `${id}-listbox` : undefined}
+        onClick={() => setIsOpen((previous) => !previous)}
+        className="flex min-h-11 w-full items-center gap-3 rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-left transition-colors hover:border-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:hover:border-gray-500"
+      >
+        <span className={`min-w-0 flex-1 truncate text-sm ${selectedCount > 0 ? 'font-medium text-gray-800 dark:text-white' : 'text-gray-500 dark:text-gray-400'}`}>
+          {selectedCount === 0 ? emptyLabel : `${selectedCount} ${selectedCount === 1 ? 'seleccionada' : 'seleccionadas'}`}
+        </span>
+        {selectedCount > 0 && (
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${accent === 'emerald' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'}`}>
+            {selectedCount}
+          </span>
+        )}
+        <ChevronDown size={16} aria-hidden="true" className={`shrink-0 text-gray-400 transition-transform dark:text-gray-500 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.15 }}
+            className="absolute left-0 right-0 top-full z-30 mt-2 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl dark:border-gray-600 dark:bg-gray-800"
+          >
+            <div className="border-b border-gray-100 p-2 dark:border-gray-700">
+              <div className="relative">
+                <Search size={14} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
+                <input
+                  ref={searchInputRef}
+                  type="search"
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape') setIsOpen(false);
+                  }}
+                  aria-label={`Buscar ${label.toLocaleLowerCase()}`}
+                  placeholder={searchPlaceholder}
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm text-gray-800 outline-none transition-colors focus:border-emerald-400 focus:bg-white focus:ring-2 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-900/50 dark:text-gray-100"
+                />
+              </div>
+            </div>
+            <div id={`${id}-listbox`} role="listbox" aria-labelledby={`${id}-trigger`} aria-multiselectable="true" className="max-h-56 overflow-y-auto p-2">
+              {filteredOptions.length > 0 ? (
+                filteredOptions.map((option) => {
+                  const isSelected = selectedIds.includes(option.id);
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      role="option"
+                      aria-selected={isSelected}
+                      onClick={() => toggleOption(option.id)}
+                      className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${isSelected ? selectedOptionClasses : 'border-transparent hover:bg-gray-50 dark:hover:bg-gray-700'}`}
+                    >
+                      <span className="flex items-start gap-2">
+                        <Check size={15} aria-hidden="true" className={`mt-0.5 shrink-0 ${isSelected ? selectedIconClasses : 'invisible'}`} />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium text-gray-800 dark:text-white">{option.name}</span>
+                          {option.description && <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">{option.description}</span>}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })
+              ) : (
+                <p className="px-3 py-4 text-center text-sm text-gray-500 dark:text-gray-400">{noResultsLabel}</p>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
 
 // Helper para construir URLs de archivos estáticos
 const getStaticUrl = (url: string) => {
@@ -66,6 +216,7 @@ export const ExpeditionsActivity = ({ classroom, onBack }: ExpeditionsActivityPr
     name: '',
     selectedMap: '',
     competencyIds: [] as string[],
+    competencyIndicatorIds: [] as string[],
   });
 
   const { competencies: classroomCompetencies = [] } = useClassroomCompetencies(
@@ -73,12 +224,24 @@ export const ExpeditionsActivity = ({ classroom, onBack }: ExpeditionsActivityPr
     !!classroom?.useCompetencies && !!classroom?.curriculumAreaId,
   );
   
-  const toggleCompetency = (id: string) => {
-    setCreateForm(p => ({
-      ...p,
-      competencyIds: p.competencyIds.includes(id) 
-        ? p.competencyIds.filter(x => x !== id) 
-        : [...p.competencyIds, id]
+  const selectedIndicators = useMemo(
+    () => classroomCompetencies
+      .filter((competency: any) => createForm.competencyIds.includes(competency.id))
+      .flatMap((competency: any) => competency.indicators || []),
+    [classroomCompetencies, createForm.competencyIds],
+  );
+
+  const updateCompetencies = (competencyIds: string[]) => {
+    const availableIndicatorIds = new Set(
+      classroomCompetencies
+        .filter((competency: any) => competencyIds.includes(competency.id))
+        .flatMap((competency: any) => (competency.indicators || []).map((indicator: any) => indicator.id)),
+    );
+
+    setCreateForm((previous) => ({
+      ...previous,
+      competencyIds,
+      competencyIndicatorIds: previous.competencyIndicatorIds.filter((indicatorId) => availableIndicatorIds.has(indicatorId)),
     }));
   };
 
@@ -106,7 +269,7 @@ export const ExpeditionsActivity = ({ classroom, onBack }: ExpeditionsActivityPr
       queryClient.invalidateQueries({ queryKey: ['expedition-stats', classroom.id] });
       setSelectedExpedition(expedition);
       setView('edit');
-      setCreateForm({ name: '', selectedMap: '', competencyIds: [] });
+      setCreateForm({ name: '', selectedMap: '', competencyIds: [], competencyIndicatorIds: [] });
       toast.success('Expedición creada');
     },
     onError: () => toast.error('Error al crear expedición'),
@@ -155,6 +318,8 @@ export const ExpeditionsActivity = ({ classroom, onBack }: ExpeditionsActivityPr
       classroomId: classroom.id,
       name: createForm.name,
       mapImageUrl: createForm.selectedMap,
+      competencyIds: createForm.competencyIds,
+      competencyIndicatorIds: createForm.competencyIndicatorIds,
     });
   };
 
@@ -322,19 +487,43 @@ export const ExpeditionsActivity = ({ classroom, onBack }: ExpeditionsActivityPr
                     <Award size={16} className="text-emerald-500" />
                     Competencias que evalúa
                   </label>
-                  <div className="grid grid-cols-1 gap-2 max-h-32 overflow-y-auto p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-200 dark:border-emerald-800">
-                    {classroomCompetencies.map((c: any) => (
-                      <button key={c.id} type="button" onClick={() => toggleCompetency(c.id)}
-                        className={`p-2 rounded-lg text-left text-sm ${createForm.competencyIds.includes(c.id) ? 'bg-emerald-200 dark:bg-emerald-800 ring-2 ring-emerald-500' : 'bg-white dark:bg-gray-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/50'}`}>
-                        <div className="flex items-center gap-2">
-                          {createForm.competencyIds.includes(c.id) && <Check size={14} className="text-emerald-600" />}
-                          <span className="truncate">{c.name}</span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
+                  <MultiSelectCombobox
+                    id="expedition-competencies"
+                    label="Competencias"
+                    options={classroomCompetencies}
+                    selectedIds={createForm.competencyIds}
+                    onChange={updateCompetencies}
+                    emptyLabel="Selecciona competencias (opcional)"
+                    searchPlaceholder="Buscar competencia..."
+                    noResultsLabel="No se encontraron competencias."
+                    accent="emerald"
+                  />
                   <p className="text-xs text-gray-500 text-center mt-1">
                     {createForm.competencyIds.length === 0 ? 'Selecciona competencias (opcional)' : `${createForm.competencyIds.length} competencia(s)`}
+                  </p>
+                </div>
+              )}
+
+              {classroom?.useCompetencies && createForm.competencyIds.length > 0 && (
+                <div className="mt-4 max-w-md mx-auto">
+                  <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-2 text-center uppercase tracking-wide flex items-center justify-center gap-2">
+                    <BookOpen size={16} className="text-indigo-500" />
+                    Destrezas que evalúa
+                  </label>
+                  <MultiSelectCombobox
+                    id="expedition-competency-indicators"
+                    label="Destrezas"
+                    options={selectedIndicators}
+                    selectedIds={createForm.competencyIndicatorIds}
+                    onChange={(competencyIndicatorIds) => setCreateForm((previous) => ({ ...previous, competencyIndicatorIds }))}
+                    emptyLabel={selectedIndicators.length > 0 ? 'Selecciona destrezas (opcional)' : 'No hay destrezas disponibles'}
+                    searchPlaceholder="Buscar destreza..."
+                    noResultsLabel="No se encontraron destrezas."
+                    accent="indigo"
+                    disabled={selectedIndicators.length === 0}
+                  />
+                  <p className="text-xs text-gray-500 text-center mt-1">
+                    {createForm.competencyIndicatorIds.length === 0 ? 'Opcional - selecciona las destrezas que evaluará la expedición' : `${createForm.competencyIndicatorIds.length} destreza(s)`}
                   </p>
                 </div>
               )}
@@ -345,7 +534,7 @@ export const ExpeditionsActivity = ({ classroom, onBack }: ExpeditionsActivityPr
                   variant="secondary"
                   onClick={() => {
                     setView('list');
-                    setCreateForm({ name: '', selectedMap: '', competencyIds: [] });
+                    setCreateForm({ name: '', selectedMap: '', competencyIds: [], competencyIndicatorIds: [] });
                   }}
                 >
                   Cancelar

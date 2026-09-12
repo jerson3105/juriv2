@@ -23,6 +23,7 @@ export interface ActivityLogEntry {
     xpAmount?: number;
     hpAmount?: number;
     gpAmount?: number;
+    multiplier?: number;
     // Asistencia
     attendanceStatus?: string;
     attendanceDate?: string;

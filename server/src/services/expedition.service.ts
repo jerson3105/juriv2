@@ -12,6 +12,9 @@ import {
   notifications,
   classrooms,
   activityCompetencies,
+  activityCompetencyIndicators,
+  classroomCompetencies,
+  classroomCompetencyIndicators,
   type ExpeditionStatus,
   type ExpeditionPinType,
   type ExpeditionProgressStatus,
@@ -24,6 +27,54 @@ import { storyService } from './story.service.js';
 // ==================== EXPEDITION CRUD ====================
 
 export class ExpeditionService {
+
+  private async validateCompetencyAssignments(
+    classroomId: string,
+    competencyIds?: string[],
+    competencyIndicatorIds?: string[],
+  ) {
+    const uniqueCompetencyIds = [...new Set((competencyIds || []).filter(Boolean))];
+    const uniqueIndicatorIds = [...new Set((competencyIndicatorIds || []).filter(Boolean))];
+
+    if (uniqueCompetencyIds.length > 0) {
+      const enabledCompetencies = await db.select({ competencyId: classroomCompetencies.competencyId })
+        .from(classroomCompetencies)
+        .where(and(
+          eq(classroomCompetencies.classroomId, classroomId),
+          eq(classroomCompetencies.isActive, true),
+          inArray(classroomCompetencies.competencyId, uniqueCompetencyIds),
+        ));
+
+      if (enabledCompetencies.length !== uniqueCompetencyIds.length) {
+        throw new Error('Una o más competencias no están habilitadas en esta clase');
+      }
+    }
+
+    if (uniqueIndicatorIds.length === 0) {
+      return { competencyIds: uniqueCompetencyIds, indicators: [] as { id: string; competencyId: string }[] };
+    }
+
+    if (uniqueCompetencyIds.length === 0) {
+      throw new Error('Selecciona una competencia antes de asociar destrezas');
+    }
+
+    const indicators = await db.select({
+      id: classroomCompetencyIndicators.id,
+      competencyId: classroomCompetencyIndicators.competencyId,
+    })
+      .from(classroomCompetencyIndicators)
+      .where(and(
+        eq(classroomCompetencyIndicators.classroomId, classroomId),
+        eq(classroomCompetencyIndicators.isActive, true),
+        inArray(classroomCompetencyIndicators.id, uniqueIndicatorIds),
+      ));
+
+    if (indicators.length !== uniqueIndicatorIds.length || indicators.some((indicator) => !uniqueCompetencyIds.includes(indicator.competencyId))) {
+      throw new Error('Una o más destrezas no pertenecen a las competencias seleccionadas');
+    }
+
+    return { competencyIds: uniqueCompetencyIds, indicators };
+  }
 
   private calculateLevel(totalXp: number, xpPerLevel: number): number {
     const level = Math.floor((1 + Math.sqrt(1 + (8 * totalXp) / xpPerLevel)) / 2);
@@ -140,9 +191,15 @@ export class ExpeditionService {
     description?: string;
     mapImageUrl: string;
     competencyIds?: string[];
+    competencyIndicatorIds?: string[];
   }) {
     const now = new Date();
     const id = uuidv4();
+    const competencyAssignment = await this.validateCompetencyAssignments(
+      data.classroomId,
+      data.competencyIds,
+      data.competencyIndicatorIds,
+    );
 
     await db.transaction(async (tx) => {
       await tx.insert(expeditions).values({
@@ -158,10 +215,8 @@ export class ExpeditionService {
       });
 
       // Guardar competencias asociadas si existen
-      if (data.competencyIds && data.competencyIds.length > 0) {
-        const competencyIds = [...new Set(data.competencyIds.filter(Boolean))];
-        if (competencyIds.length > 0) {
-          const competencyValues = competencyIds.map(competencyId => ({
+      if (competencyAssignment.competencyIds.length > 0) {
+          const competencyValues = competencyAssignment.competencyIds.map(competencyId => ({
             id: uuidv4(),
             activityType: 'EXPEDITION' as const,
             activityId: id,
@@ -170,7 +225,19 @@ export class ExpeditionService {
             createdAt: now,
           }));
           await tx.insert(activityCompetencies).values(competencyValues);
-        }
+      }
+
+      if (competencyAssignment.indicators.length > 0) {
+        await tx.insert(activityCompetencyIndicators).values(
+          competencyAssignment.indicators.map((indicator) => ({
+            id: uuidv4(),
+            activityType: 'EXPEDITION' as const,
+            activityId: id,
+            competencyId: indicator.competencyId,
+            competencyIndicatorId: indicator.id,
+            createdAt: now,
+          })),
+        );
       }
     });
     
@@ -313,6 +380,10 @@ export class ExpeditionService {
       await tx.delete(expeditionStudentProgress).where(eq(expeditionStudentProgress.expeditionId, id));
       await tx.delete(expeditionConnections).where(eq(expeditionConnections.expeditionId, id));
       await tx.delete(expeditionPins).where(eq(expeditionPins.expeditionId, id));
+      await tx.delete(activityCompetencyIndicators).where(and(
+        eq(activityCompetencyIndicators.activityType, 'EXPEDITION'),
+        eq(activityCompetencyIndicators.activityId, id)
+      ));
       await tx.delete(activityCompetencies).where(and(
         eq(activityCompetencies.activityType, 'EXPEDITION'),
         eq(activityCompetencies.activityId, id)

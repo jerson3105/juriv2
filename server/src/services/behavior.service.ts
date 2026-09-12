@@ -28,6 +28,7 @@ interface ApplyBehaviorData {
   behaviorId: string;
   studentIds: string[];
   teacherId: string;
+  multiplier?: number;
 }
 
 export class BehaviorService {
@@ -298,9 +299,15 @@ export class BehaviorService {
     const xpPerLevel = classroom.xpPerLevel || 100;
 
     // Usar valores combinados, con fallback a legacy
-    const xpChange = behavior.xpValue ?? (behavior.pointType === 'XP' ? behavior.pointValue : 0);
-    const hpChange = behavior.hpValue ?? (behavior.pointType === 'HP' ? behavior.pointValue : 0);
-    const gpChange = behavior.gpValue ?? (behavior.pointType === 'GP' ? behavior.pointValue : 0);
+    const multiplier = data.multiplier ?? 1;
+    const roundPoints = (value: number) => value > 0 ? Math.max(1, Math.round(value * multiplier)) : 0;
+    const baseXpChange = behavior.xpValue ?? (behavior.pointType === 'XP' ? behavior.pointValue : 0);
+    const baseHpChange = behavior.hpValue ?? (behavior.pointType === 'HP' ? behavior.pointValue : 0);
+    const baseGpChange = behavior.gpValue ?? (behavior.pointType === 'GP' ? behavior.pointValue : 0);
+    const xpChange = roundPoints(baseXpChange);
+    const hpChange = roundPoints(baseHpChange);
+    const gpChange = roundPoints(baseGpChange);
+    const multiplierValue = Math.round(multiplier * 1000);
 
     // Preparar datos para batch inserts
     const pointLogsBatch: typeof pointLogs.$inferInsert[] = [];
@@ -376,6 +383,8 @@ export class BehaviorService {
           pointType: 'XP',
           action: behavior.isPositive ? 'ADD' : 'REMOVE',
           amount: xpChange,
+          baseAmount: baseXpChange,
+          multiplier: multiplierValue,
           reason: behavior.name,
           givenBy: data.teacherId,
           createdAt: now,
@@ -393,6 +402,8 @@ export class BehaviorService {
           pointType: 'HP',
           action: behavior.isPositive ? 'ADD' : 'REMOVE',
           amount: hpChange,
+          baseAmount: baseHpChange,
+          multiplier: multiplierValue,
           reason: behavior.name,
           givenBy: data.teacherId,
           createdAt: now,
@@ -410,6 +421,8 @@ export class BehaviorService {
           pointType: 'GP',
           action: behavior.isPositive ? 'ADD' : 'REMOVE',
           amount: gpChange,
+          baseAmount: baseGpChange,
+          multiplier: multiplierValue,
           reason: behavior.name,
           givenBy: data.teacherId,
           createdAt: now,

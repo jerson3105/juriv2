@@ -20,6 +20,7 @@ const updatePointsSchema = z.object({
   amount: z.number().int(),
   reason: z.string().min(1).max(255),
   competencyId: z.string().max(36).optional(),
+  competencyIndicatorId: z.string().uuid().optional(),
 });
 
 const updateProfileSchema = z.object({

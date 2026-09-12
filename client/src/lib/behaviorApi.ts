@@ -44,13 +44,14 @@ export interface CreateBehaviorData {
   gpValue?: number;
   isPositive: boolean;
   icon?: string;
-  competencyId?: string;
-  competencyIndicatorId?: string;
+  competencyId?: string | null;
+  competencyIndicatorId?: string | null;
 }
 
 export interface ApplyBehaviorData {
   behaviorId: string;
   studentIds: string[];
+  multiplier?: number;
 }
 
 export interface LevelUpInfo {

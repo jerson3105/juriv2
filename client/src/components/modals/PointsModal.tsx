@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
@@ -10,6 +10,7 @@ import {
   Users,
   Award,
   Settings,
+  Target,
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -28,8 +29,8 @@ interface PointsModalProps {
   selectedCount: number;
   selectedStudentNames: string[];
   behaviors: Behavior[];
-  onApplyBehavior: (behavior: Behavior) => void;
-  onApplyManual: (pointType: PointType, amount: number, reason: string, competencyId?: string) => Promise<void>;
+  onApplyBehavior: (behavior: Behavior, multiplier: number) => void;
+  onApplyManual: (pointType: PointType, amount: number, reason: string, competencyId?: string, competencyIndicatorId?: string) => Promise<void>;
   isLoading: boolean;
   classroomId: string;
   classroom: Classroom;
@@ -54,6 +55,9 @@ export const PointsModal = ({
   const [manualAmount, setManualAmount] = useState(10);
   const [manualReason, setManualReason] = useState('');
   const [manualCompetencyId, setManualCompetencyId] = useState<string>('');
+  const [manualCompetencyIndicatorId, setManualCompetencyIndicatorId] = useState<string>('');
+  const [selectedBehavior, setSelectedBehavior] = useState<Behavior | null>(null);
+  const [behaviorMultiplier, setBehaviorMultiplier] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { competencies: classroomCompetencies = [] } = useClassroomCompetencies(
@@ -61,14 +65,22 @@ export const PointsModal = ({
     !!classroom.useCompetencies && !!classroom.curriculumAreaId,
   );
 
+  useEffect(() => {
+    if (!isOpen || (selectedBehavior && !behaviors.some((behavior) => behavior.id === selectedBehavior.id))) {
+      setSelectedBehavior(null);
+      setBehaviorMultiplier(1);
+    }
+  }, [isOpen, behaviors, selectedBehavior]);
+
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!manualReason.trim()) return;
     setIsSubmitting(true);
     try {
-      await onApplyManual(manualPointType, manualAmount, manualReason, manualCompetencyId || undefined);
+      await onApplyManual(manualPointType, manualAmount, manualReason, manualCompetencyId || undefined, manualCompetencyIndicatorId || undefined);
       setManualReason('');
       setManualCompetencyId('');
+      setManualCompetencyIndicatorId('');
     } finally {
       setIsSubmitting(false);
     }
@@ -186,9 +198,12 @@ export const PointsModal = ({
                       {behaviors.map((behavior) => (
                         <button
                           key={behavior.id}
-                          onClick={() => onApplyBehavior(behavior)}
+                          onClick={() => {
+                            setSelectedBehavior(behavior);
+                            setBehaviorMultiplier(1);
+                          }}
                           disabled={isLoading}
-                          className={`w-full flex items-center justify-between p-4 rounded-xl border-2 transition-all hover:scale-[1.02] active:scale-[0.98] ${
+                          className={`w-full flex items-center justify-between p-4 rounded-xl border-2 transition-all hover:scale-[1.02] active:scale-[0.98] ${selectedBehavior?.id === behavior.id ? (isPositive ? 'border-green-500 bg-green-50 dark:bg-green-900/30' : 'border-red-500 bg-red-50 dark:bg-red-900/30') : 
                             isPositive
                               ? 'border-green-200 dark:border-green-800 hover:border-green-400 hover:bg-green-50 dark:hover:bg-green-900/20'
                               : 'border-red-200 dark:border-red-800 hover:border-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
@@ -209,6 +224,12 @@ export const PointsModal = ({
                                   <span className="text-[10px] text-violet-600 dark:text-violet-400 font-medium truncate">{behavior.competency.name}</span>
                                 </div>
                               )}
+                              {behavior.competencyIndicator && (
+                                <div className="mt-1 flex items-center gap-1">
+                                  <Target size={11} className="text-sky-500 flex-shrink-0" />
+                                  <span className="text-[10px] text-sky-600 dark:text-sky-400 font-medium truncate">{behavior.competencyIndicator.name}</span>
+                                </div>
+                              )}
                             </div>
                           </div>
                           <div className="flex items-center gap-1">
@@ -226,6 +247,22 @@ export const PointsModal = ({
                           </div>
                         </button>
                       ))}
+                    </div>
+                  )}
+                  {selectedBehavior && (
+                    <div className="mt-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3">
+                      <p className="text-sm font-semibold text-gray-800 dark:text-white">Puntaje a otorgar</p>
+                      <div className="mt-2 grid grid-cols-5 gap-2">
+                        {[1, 0.5, 0.25, 0.125].map((multiplier) => (
+                          <button key={multiplier} type="button" onClick={() => setBehaviorMultiplier(multiplier)} className={`min-h-10 rounded-lg text-xs font-semibold ${behaviorMultiplier === multiplier ? (isPositive ? 'bg-green-500 text-white' : 'bg-red-500 text-white') : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700'}`}>
+                            {multiplier === 1 ? '1x' : `1/${1 / multiplier}`}
+                          </button>
+                        ))}
+                        <input type="number" min="0.01" max="10" step="0.01" value={behaviorMultiplier} onChange={(event) => setBehaviorMultiplier(Math.max(0.01, Number(event.target.value) || 1))} aria-label="Multiplicador personalizado" className="min-w-0 rounded-lg border border-gray-200 bg-white px-2 text-center text-xs font-semibold text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200" />
+                      </div>
+                      <Button type="button" onClick={() => onApplyBehavior(selectedBehavior, behaviorMultiplier)} disabled={isLoading} className={`mt-3 w-full ${isPositive ? '!bg-green-500 hover:!bg-green-600' : '!bg-red-500 hover:!bg-red-600'}`}>
+                        {isPositive ? 'Aplicar' : 'Quitar'} {Math.max(1, Math.round((selectedBehavior.xpValue || selectedBehavior.hpValue || selectedBehavior.gpValue || selectedBehavior.pointValue) * behaviorMultiplier))} puntos
+                      </Button>
                     </div>
                   )}
                 </>
@@ -317,7 +354,7 @@ export const PointsModal = ({
                         </label>
                         <select
                           value={manualCompetencyId}
-                          onChange={(e) => setManualCompetencyId(e.target.value)}
+                          onChange={(e) => { setManualCompetencyId(e.target.value); setManualCompetencyIndicatorId(''); }}
                           className="w-full px-4 py-2.5 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-gray-700 dark:text-gray-200"
                         >
                           <option value="">Sin competencia</option>
@@ -328,6 +365,17 @@ export const PointsModal = ({
                         <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
                           {manualCompetencyId ? '📊 Estos puntos contarán en el libro de calificaciones' : 'Vincular a una competencia hace que cuenten en calificaciones'}
                         </p>
+                        {manualCompetencyId && (() => {
+                          const indicators = classroomCompetencies.find((competency) => competency.id === manualCompetencyId)?.indicators.filter((indicator) => indicator.isActive) || [];
+                          if (indicators.length === 0) return null;
+                          return <div className="mt-3">
+                            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Destreza <span className="text-gray-400 font-normal">(opcional)</span></label>
+                            <select value={manualCompetencyIndicatorId} onChange={(e) => setManualCompetencyIndicatorId(e.target.value)} className="w-full px-4 py-2.5 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-700 dark:text-gray-200">
+                              <option value="">Sin destreza específica</option>
+                              {indicators.map((indicator) => <option key={indicator.id} value={indicator.id}>{indicator.name}</option>)}
+                            </select>
+                          </div>;
+                        })()}
                       </div>
                     )}
 
