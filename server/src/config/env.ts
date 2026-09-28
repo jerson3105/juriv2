@@ -29,18 +29,47 @@ const envSchema = z.object({
   
   // Frontend
   CLIENT_URL: z.string().default('http://localhost:5173'),
+
+  // IA (Gemini)
+  GEMINI_API_KEY: z.string().optional(),
 });
+
+// Valores de ejemplo publicados en el repositorio (.env.example, docs): nunca válidos en producción
+const PLACEHOLDER_SECRET = /^(tu_|your_|cambia|change|<)|cambiar_en_produccion/i;
+
+const findWeakSecrets = (data: z.infer<typeof envSchema>): Record<string, string[]> => {
+  const issues: Record<string, string[]> = {};
+  for (const key of ['JWT_SECRET', 'JWT_REFRESH_SECRET'] as const) {
+    if (PLACEHOLDER_SECRET.test(data[key])) {
+      issues[key] = ['Usa un valor de ejemplo; genera uno con scripts/generate-secrets.js'];
+    }
+  }
+  if (data.JWT_SECRET === data.JWT_REFRESH_SECRET) {
+    issues.JWT_REFRESH_SECRET = [...(issues.JWT_REFRESH_SECRET ?? []), 'Debe ser distinto de JWT_SECRET'];
+  }
+  return issues;
+};
 
 // Validar y exportar configuración
 const parseEnv = () => {
   const parsed = envSchema.safeParse(process.env);
-  
+
   if (!parsed.success) {
     console.error('❌ Variables de entorno inválidas:');
     console.error(parsed.error.flatten().fieldErrors);
     process.exit(1);
   }
-  
+
+  const weakSecrets = findWeakSecrets(parsed.data);
+  if (Object.keys(weakSecrets).length > 0) {
+    if (parsed.data.NODE_ENV === 'production') {
+      console.error('❌ Secretos JWT inseguros en producción:');
+      console.error(weakSecrets);
+      process.exit(1);
+    }
+    console.warn('⚠️ Secretos JWT inseguros (bloquearían el arranque en producción):', weakSecrets);
+  }
+
   return parsed.data;
 };
 
