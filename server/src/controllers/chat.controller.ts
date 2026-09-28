@@ -1,5 +1,10 @@
 import { Request, Response } from 'express';
 import { chatService } from '../services/chat.service.js';
+import {
+  requireClassroomTeacher,
+  requireClassroomTeacherOrParent,
+  classroomIdOfChatMessage,
+} from '../utils/access.js';
 
 class ChatController {
 
@@ -7,6 +12,7 @@ class ChatController {
   async getMessages(req: Request, res: Response) {
     try {
       const classroomId = req.params.id;
+      if (!(await requireClassroomTeacherOrParent(req, res, classroomId))) return;
       const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
       const before = req.query.before as string | undefined;
 
@@ -22,6 +28,7 @@ class ChatController {
   async sendMessage(req: Request, res: Response) {
     try {
       const classroomId = req.params.id;
+      if (!(await requireClassroomTeacherOrParent(req, res, classroomId))) return;
       const senderId = req.user!.id;
       const senderRole = req.user!.role === 'TEACHER' ? 'TEACHER' : 'PARENT';
       const { message } = req.body;
@@ -50,6 +57,12 @@ class ChatController {
       const { messageId } = req.params;
       const deletedBy = req.user!.id;
 
+      const msgClassroomId = await classroomIdOfChatMessage(messageId);
+      if (!msgClassroomId) {
+        return res.status(404).json({ success: false, message: 'Mensaje no encontrado' });
+      }
+      if (!(await requireClassroomTeacher(req, res, msgClassroomId))) return;
+
       const result = await chatService.deleteMessage(messageId, deletedBy);
       res.json({ success: true, data: result });
     } catch (error) {
@@ -62,6 +75,7 @@ class ChatController {
   async getSettings(req: Request, res: Response) {
     try {
       const classroomId = req.params.id;
+      if (!(await requireClassroomTeacherOrParent(req, res, classroomId))) return;
       const settings = await chatService.getSettings(classroomId);
       res.json({ success: true, data: settings });
     } catch (error) {
@@ -74,6 +88,7 @@ class ChatController {
   async updateSettings(req: Request, res: Response) {
     try {
       const classroomId = req.params.id;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
       const userId = req.user!.id;
       const { isOpen } = req.body;
 

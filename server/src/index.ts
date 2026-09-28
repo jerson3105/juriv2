@@ -13,6 +13,7 @@ import routes from './routes/index.js';
 import { logger, replaceConsole } from './utils/logger.js';
 import { AppError } from './utils/errors.js';
 import { setIO } from './utils/notificationEmitter.js';
+import { userCanAccessClassroom } from './utils/access.js';
 import { eq } from 'drizzle-orm';
 import { announcementService } from './services/announcement.service.js';
 import { chatService } from './services/chat.service.js';
@@ -219,8 +220,13 @@ io.on('connection', (socket) => {
   // Unirse a sala de aula (con validación de permisos)
   socket.on('join-classroom', async (classroomId: string) => {
     try {
-      // TODO: Verificar que el usuario tiene acceso a esta clase
-      // Por ahora permitimos el acceso si está autenticado
+      if (!classroomId || !(await userCanAccessClassroom(user, classroomId))) {
+        logger.warn('Socket.io: join-classroom denegado', {
+          socketId: socket.id, userId: user.id, role: user.role, classroomId,
+        });
+        socket.emit('access:denied', { room: 'classroom', classroomId });
+        return;
+      }
       socket.join(`classroom:${classroomId}`);
       logger.info(`📚 Usuario se unió al aula`, {
         socketId: socket.id,
@@ -247,7 +253,16 @@ io.on('connection', (socket) => {
   });
 
   // Unirse a sala de chat grupal
-  socket.on('join-chat', (classroomId: string) => {
+  socket.on('join-chat', async (classroomId: string) => {
+    // El chat es solo profesor dueño / padre vinculado (no estudiantes).
+    const canChat = classroomId && user.role !== 'STUDENT' && await userCanAccessClassroom(user, classroomId);
+    if (!canChat) {
+      logger.warn('Socket.io: join-chat denegado', {
+        socketId: socket.id, userId: user.id, role: user.role, classroomId,
+      });
+      socket.emit('access:denied', { room: 'chat', classroomId });
+      return;
+    }
     socket.join(`classroom:${classroomId}:chat`);
     logger.info(`💬 Usuario se unió al chat`, {
       socketId: socket.id,

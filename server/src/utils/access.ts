@@ -7,6 +7,9 @@ import {
   schoolMembers,
   parentStudentLinks,
   parentProfiles,
+  classroomMessages,
+  classroomAvatarItems,
+  badges,
 } from '../db/schema.js';
 
 /**
@@ -52,6 +55,18 @@ export const userOwnsStudentProfile = async (
   return !!row;
 };
 
+/** ¿El usuario (ESTUDIANTE) tiene un perfil activo en esa clase? */
+export const studentInClassroom = async (
+  userId: string,
+  classroomId: string
+): Promise<boolean> => {
+  const [row] = await db
+    .select({ id: studentProfiles.id })
+    .from(studentProfiles)
+    .where(and(eq(studentProfiles.userId, userId), eq(studentProfiles.classroomId, classroomId)));
+  return !!row;
+};
+
 /** Rol del usuario en la escuela, solo si su membresía está VERIFIED. `null` si no. */
 export const verifiedSchoolRole = async (
   userId: string,
@@ -94,6 +109,44 @@ export const schoolIdOfMember = async (memberId: string): Promise<string | null>
   return row?.schoolId ?? null;
 };
 
+/** Clase a la que pertenece un mensaje de chat (para scope de borrado). */
+export const classroomIdOfChatMessage = async (messageId: string): Promise<string | null> => {
+  const [row] = await db
+    .select({ classroomId: classroomMessages.classroomId })
+    .from(classroomMessages)
+    .where(eq(classroomMessages.id, messageId));
+  return row?.classroomId ?? null;
+};
+
+/** Clase dueña de un ítem de la tienda de avatar (por id de classroom_avatar_items). */
+export const classroomIdOfShopItem = async (shopItemId: string): Promise<string | null> => {
+  const [row] = await db
+    .select({ classroomId: classroomAvatarItems.classroomId })
+    .from(classroomAvatarItems)
+    .where(eq(classroomAvatarItems.id, shopItemId));
+  return row?.classroomId ?? null;
+};
+
+/** Clase de un perfil de estudiante. */
+export const classroomIdOfStudentProfile = async (studentProfileId: string): Promise<string | null> => {
+  const [row] = await db
+    .select({ classroomId: studentProfiles.classroomId })
+    .from(studentProfiles)
+    .where(eq(studentProfiles.id, studentProfileId));
+  return row?.classroomId ?? null;
+};
+
+/** Ámbito y clase de una insignia (para distinguir SYSTEM de CLASSROOM). */
+export const badgeScopeAndClassroom = async (
+  badgeId: string
+): Promise<{ scope: 'SYSTEM' | 'CLASSROOM'; classroomId: string | null } | null> => {
+  const [row] = await db
+    .select({ scope: badges.scope, classroomId: badges.classroomId })
+    .from(badges)
+    .where(eq(badges.id, badgeId));
+  return row ? { scope: row.scope as 'SYSTEM' | 'CLASSROOM', classroomId: row.classroomId } : null;
+};
+
 /** Clase a la que está asignada una clase (para verificar antes de desasignar). */
 export const schoolIdOfClassroom = async (classroomId: string): Promise<string | null> => {
   const [row] = await db
@@ -101,6 +154,25 @@ export const schoolIdOfClassroom = async (classroomId: string): Promise<string |
     .from(classrooms)
     .where(eq(classrooms.id, classroomId));
   return row?.schoolId ?? null;
+};
+
+/**
+ * ¿El usuario puede acceder a la sala/datos de una clase? (sin efectos HTTP)
+ * ADMIN siempre; TEACHER dueño; PARENT con hijo vinculado; STUDENT con perfil en la clase.
+ * Pensado para autorizar `join` de Socket.io.
+ */
+export const userCanAccessClassroom = async (
+  user: { id: string; role: string },
+  classroomId: string
+): Promise<boolean> => {
+  if (!user || !classroomId) return false;
+  switch (user.role) {
+    case 'ADMIN': return true;
+    case 'TEACHER': return teacherOwnsClassroom(user.id, classroomId);
+    case 'PARENT': return parentHasClassroomAccess(user.id, classroomId);
+    case 'STUDENT': return studentInClassroom(user.id, classroomId);
+    default: return false;
+  }
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -194,6 +266,50 @@ export const requireClassroomTeacherOrParent = async (
     return true;
   }
   return deny(res, 403, 'No tienes permisos para esta acción');
+};
+
+/** El usuario tiene rol TEACHER (o ADMIN). Gate sin recurso concreto. */
+export const requireTeacherRole = (req: Request, res: Response): boolean => {
+  const user = req.user;
+  if (!user) return deny(res, 401, 'No autenticado');
+  if (user.role === 'ADMIN' || user.role === 'TEACHER') return true;
+  return deny(res, 403, 'No tienes permisos para esta acción');
+};
+
+/** Cualquier miembro de la clase (profesor dueño, alumno, padre vinculado) o ADMIN. */
+export const requireClassroomMember = async (
+  req: Request,
+  res: Response,
+  classroomId: string
+): Promise<boolean> => {
+  const user = req.user;
+  if (!user) return deny(res, 401, 'No autenticado');
+  if (!classroomId) return deny(res, 400, 'Falta el identificador de la clase');
+  if (await userCanAccessClassroom(user, classroomId)) return true;
+  return deny(res, 403, 'No tienes acceso a esta clase');
+};
+
+/**
+ * Lectura del perfil de un estudiante: el propio alumno, el profesor dueño de su
+ * clase, un padre vinculado, o ADMIN.
+ */
+export const requireStudentProfileReadAccess = async (
+  req: Request,
+  res: Response,
+  studentProfileId: string
+): Promise<boolean> => {
+  const user = req.user;
+  if (!user) return deny(res, 401, 'No autenticado');
+  if (user.role === 'ADMIN') return true;
+  if (!studentProfileId) return deny(res, 400, 'Falta el identificador del estudiante');
+  if (user.role === 'STUDENT') {
+    if (await userOwnsStudentProfile(user.id, studentProfileId)) return true;
+    return deny(res, 403, 'No tienes acceso a este perfil');
+  }
+  const classroomId = await classroomIdOfStudentProfile(studentProfileId);
+  if (!classroomId) return deny(res, 404, 'Estudiante no encontrado');
+  if (await userCanAccessClassroom(user, classroomId)) return true;
+  return deny(res, 403, 'No tienes acceso a este perfil');
 };
 
 /** Como `requireSchoolOwner` pero resolviendo la escuela a partir de una membresía. */

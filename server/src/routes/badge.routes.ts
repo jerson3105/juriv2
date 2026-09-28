@@ -1,6 +1,15 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { badgeService, type CreateBadgeDto } from '../services/badge.service.js';
+import {
+  requireClassroomTeacher,
+  requireClassroomMember,
+  requireTeacherRole,
+  requireStudentProfileOwner,
+  requireStudentProfileReadAccess,
+  badgeScopeAndClassroom,
+  classroomIdOfStudentProfile,
+} from '../utils/access.js';
 import { behaviorService } from '../services/behavior.service.js';
 import multer from 'multer';
 import path from 'path';
@@ -51,6 +60,7 @@ const upload = multer({
 router.get('/classroom/:classroomId/stats', authenticate, async (req, res) => {
   try {
     const { classroomId } = req.params;
+    if (!(await requireClassroomTeacher(req, res, classroomId))) return;
     const stats = await badgeService.getClassroomBadgeStats(classroomId);
     res.json(stats);
   } catch (error: any) {
@@ -63,6 +73,7 @@ router.get('/classroom/:classroomId/stats', authenticate, async (req, res) => {
 router.get('/classroom/:classroomId/awards-breakdown', authenticate, async (req, res) => {
   try {
     const { classroomId } = req.params;
+    if (!(await requireClassroomTeacher(req, res, classroomId))) return;
     const search = typeof req.query.search === 'string' ? req.query.search : undefined;
     const rarity = typeof req.query.rarity === 'string' ? req.query.rarity : undefined;
     const assignmentMode = typeof req.query.assignmentMode === 'string' ? req.query.assignmentMode : undefined;
@@ -95,6 +106,7 @@ router.get('/classroom/:classroomId/awards-breakdown', authenticate, async (req,
 router.get('/classroom/:classroomId', authenticate, async (req, res) => {
   try {
     const { classroomId } = req.params;
+    if (!(await requireClassroomMember(req, res, classroomId))) return;
     const badges = await badgeService.getClassroomBadges(classroomId);
     res.json(badges);
   } catch (error: any) {
@@ -106,6 +118,7 @@ router.get('/classroom/:classroomId', authenticate, async (req, res) => {
 // Subir imagen de insignia
 router.post('/upload-image', authenticate, upload.single('image'), async (req, res) => {
   try {
+    if (!requireTeacherRole(req, res)) return;
     if (!req.file) {
       return res.status(400).json({ message: 'No se proporcionó imagen' });
     }
@@ -124,6 +137,7 @@ router.post('/upload-image', authenticate, upload.single('image'), async (req, r
 
 router.post('/generate-ai', authenticate, async (req, res) => {
   try {
+    if (!requireTeacherRole(req, res)) return;
     const { description, level, count = 8, assignmentMode = 'MANUAL', rarities = ['COMMON', 'RARE', 'EPIC'], includeSecret = false, classroomId, competencies } = req.body;
 
     if (!description || !level) {
@@ -276,8 +290,9 @@ ${competencies && competencies.length > 0 ? '8. Asigna competencyId usando los I
 router.post('/classroom/:classroomId', authenticate, async (req, res) => {
   try {
     const { classroomId } = req.params;
+    if (!(await requireClassroomTeacher(req, res, classroomId))) return;
     const userId = (req as any).user.id;
-    
+
     const data: CreateBadgeDto = {
       classroomId,
       name: req.body.name,
@@ -302,11 +317,47 @@ router.post('/classroom/:classroomId', authenticate, async (req, res) => {
   }
 });
 
+// Campos que un profesor puede modificar de su insignia (evita mass assignment
+// sobre scope/classroomId/createdBy y otras columnas internas).
+const BADGE_UPDATABLE_FIELDS = [
+  'name', 'description', 'icon', 'customImage', 'category', 'rarity',
+  'assignmentMode', 'unlockCondition', 'rewardXp', 'rewardGp', 'isSecret', 'competencyId',
+] as const;
+
+const pickBadgeFields = (body: Record<string, unknown>): Partial<CreateBadgeDto> => {
+  const out: Record<string, unknown> = {};
+  for (const k of BADGE_UPDATABLE_FIELDS) {
+    if (body[k] !== undefined) out[k] = body[k];
+  }
+  return out as Partial<CreateBadgeDto>;
+};
+
+// Verifica que el usuario puede modificar/borrar la insignia indicada.
+// SYSTEM: solo ADMIN. CLASSROOM: profesor dueño de la clase (o ADMIN).
+const ensureBadgeMutable = async (req: any, res: any, badgeId: string): Promise<boolean> => {
+  const info = await badgeScopeAndClassroom(badgeId);
+  if (!info) {
+    res.status(404).json({ message: 'Insignia no encontrada' });
+    return false;
+  }
+  if (info.scope === 'SYSTEM') {
+    if (req.user?.role === 'ADMIN') return true;
+    res.status(403).json({ message: 'No puedes modificar insignias del sistema' });
+    return false;
+  }
+  if (!info.classroomId) {
+    res.status(403).json({ message: 'Insignia sin clase asociada' });
+    return false;
+  }
+  return requireClassroomTeacher(req, res, info.classroomId);
+};
+
 // Actualizar insignia
 router.put('/:badgeId', authenticate, async (req, res) => {
   try {
     const { badgeId } = req.params;
-    await badgeService.updateBadge(badgeId, req.body);
+    if (!(await ensureBadgeMutable(req, res, badgeId))) return;
+    await badgeService.updateBadge(badgeId, pickBadgeFields(req.body));
     res.json({ message: 'Insignia actualizada' });
   } catch (error: any) {
     console.error('Error updating badge:', error);
@@ -318,6 +369,7 @@ router.put('/:badgeId', authenticate, async (req, res) => {
 router.delete('/:badgeId', authenticate, async (req, res) => {
   try {
     const { badgeId } = req.params;
+    if (!(await ensureBadgeMutable(req, res, badgeId))) return;
     await badgeService.deleteBadge(badgeId);
     res.json({ message: 'Insignia eliminada' });
   } catch (error: any) {
@@ -334,6 +386,7 @@ router.delete('/:badgeId', authenticate, async (req, res) => {
 router.get('/student/:studentProfileId', authenticate, async (req, res) => {
   try {
     const { studentProfileId } = req.params;
+    if (!(await requireStudentProfileReadAccess(req, res, studentProfileId))) return;
     const badges = await badgeService.getStudentBadges(studentProfileId);
     res.json(badges);
   } catch (error: any) {
@@ -346,6 +399,7 @@ router.get('/student/:studentProfileId', authenticate, async (req, res) => {
 router.get('/student/:studentProfileId/displayed', authenticate, async (req, res) => {
   try {
     const { studentProfileId } = req.params;
+    if (!(await requireStudentProfileReadAccess(req, res, studentProfileId))) return;
     const badges = await badgeService.getDisplayedBadges(studentProfileId);
     res.json(badges);
   } catch (error: any) {
@@ -358,6 +412,7 @@ router.get('/student/:studentProfileId/displayed', authenticate, async (req, res
 router.put('/student/:studentProfileId/displayed', authenticate, async (req, res) => {
   try {
     const { studentProfileId } = req.params;
+    if (!(await requireStudentProfileOwner(req, res, studentProfileId))) return;
     const { badgeIds } = req.body;
     await badgeService.setDisplayedBadges(studentProfileId, badgeIds);
     res.json({ message: 'Insignias actualizadas' });
@@ -371,6 +426,7 @@ router.put('/student/:studentProfileId/displayed', authenticate, async (req, res
 router.get('/student/:studentProfileId/progress/:classroomId', authenticate, async (req, res) => {
   try {
     const { studentProfileId, classroomId } = req.params;
+    if (!(await requireStudentProfileReadAccess(req, res, studentProfileId))) return;
     const progress = await badgeService.getStudentProgress(studentProfileId, classroomId);
     res.json(progress);
   } catch (error: any) {
@@ -388,7 +444,11 @@ router.post('/award', authenticate, async (req, res) => {
   try {
     const userId = (req as any).user.id;
     const { studentProfileId, badgeId, reason } = req.body;
-    
+
+    const awardClassroomId = await classroomIdOfStudentProfile(studentProfileId);
+    if (!awardClassroomId) return res.status(404).json({ message: 'Estudiante no encontrado' });
+    if (!(await requireClassroomTeacher(req, res, awardClassroomId))) return;
+
     const awarded = await badgeService.awardBadgeManually(
       studentProfileId,
       badgeId,
@@ -407,6 +467,9 @@ router.post('/award', authenticate, async (req, res) => {
 router.delete('/revoke/:studentProfileId/:badgeId', authenticate, async (req, res) => {
   try {
     const { studentProfileId, badgeId } = req.params;
+    const revokeClassroomId = await classroomIdOfStudentProfile(studentProfileId);
+    if (!revokeClassroomId) return res.status(404).json({ message: 'Estudiante no encontrado' });
+    if (!(await requireClassroomTeacher(req, res, revokeClassroomId))) return;
     await badgeService.revokeBadge(studentProfileId, badgeId);
     res.json({ message: 'Insignia revocada' });
   } catch (error: any) {
