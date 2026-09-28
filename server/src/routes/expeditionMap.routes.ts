@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { verifyUploadedFile } from '../utils/fileValidation.js';
 import {
   getAllMaps,
   getActiveMaps,
@@ -24,6 +25,6 @@ router.get('/:id', authenticate, authorize('ADMIN'), getMapById);
 router.post('/', authenticate, authorize('ADMIN'), createMap);
 router.put('/:id', authenticate, authorize('ADMIN'), updateMap);
 router.delete('/:id', authenticate, authorize('ADMIN'), deleteMap);
-router.post('/upload', authenticate, authorize('ADMIN'), uploadMapImage, uploadImage);
+router.post('/upload', authenticate, authorize('ADMIN'), uploadMapImage, verifyUploadedFile, uploadImage);
 
 export default router;

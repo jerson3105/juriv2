@@ -6,6 +6,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
+import { createUploadFilter, safeUploadFilename, verifyUploadedFile } from '../utils/fileValidation.js';
 
 const router = Router();
 
@@ -43,22 +44,12 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, TEMP_DIR);
   },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    const uniqueName = `${uuidv4()}${ext}`;
-    cb(null, uniqueName);
-  }
+  filename: safeUploadFilename,
 });
 
 const upload = multer({
   storage,
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype === 'image/png' || file.mimetype === 'image/gif') {
-      cb(null, true);
-    } else {
-      cb(new Error('Solo se permiten archivos PNG o GIF'));
-    }
-  },
+  fileFilter: createUploadFilter(['image/png', 'image/gif'], 'Solo se permiten archivos PNG o GIF'),
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB max (GIFs pueden ser más grandes)
   }
@@ -78,7 +69,7 @@ router.patch('/users/:userId/role', adminController.updateUserRole);
 
 // ==================== GESTIÓN DE ITEMS DE AVATAR ====================
 router.get('/avatar-items', adminController.getAvatarItems);
-router.post('/avatar-items', upload.single('image'), adminController.createAvatarItem);
+router.post('/avatar-items', upload.single('image'), verifyUploadedFile, adminController.createAvatarItem);
 router.patch('/avatar-items/:itemId', adminController.updateAvatarItem);
 router.delete('/avatar-items/:itemId', adminController.deleteAvatarItem);
 

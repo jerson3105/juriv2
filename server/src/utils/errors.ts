@@ -67,3 +67,12 @@ export class RateLimitError extends AppError {
     super(429, message);
   }
 }
+
+/**
+ * Mensaje apto para una respuesta 500. En producción no expone el detalle interno
+ * (los errores de BD incluyen la consulta SQL y sus parámetros); en desarrollo sí.
+ */
+export const publicErrorMessage = (error: unknown, fallback = 'Error interno del servidor'): string => {
+  if (process.env.NODE_ENV === 'production') return fallback;
+  return error instanceof Error && error.message ? error.message : fallback;
+};

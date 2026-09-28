@@ -2,6 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { questionBankController } from '../controllers/questionBank.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { verifyUploadedFile } from '../utils/fileValidation.js';
 
 const router = Router();
 
@@ -42,7 +43,7 @@ router.post('/question/:questionId/check', authorize('TEACHER'), questionBankCon
 
 // Generación con IA
 router.post('/generate-ai', authorize('TEACHER'), questionBankController.generateWithAI.bind(questionBankController));
-router.post('/generate-from-pdf', authorize('TEACHER'), pdfUpload.single('pdf'), questionBankController.generateFromPDF.bind(questionBankController));
+router.post('/generate-from-pdf', authorize('TEACHER'), pdfUpload.single('pdf'), verifyUploadedFile, questionBankController.generateFromPDF.bind(questionBankController));
 
 // Exportar bancos a otras clases
 router.post('/export', authorize('TEACHER'), questionBankController.exportBanks.bind(questionBankController));

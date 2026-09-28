@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { timedActivityService } from '../services/timedActivity.service.js';
+import { publicErrorMessage } from '../utils/errors.js';
 
 const ensureTeacherClassroomAccess = async (
   req: Request,
@@ -229,7 +230,7 @@ export const timedActivityController = {
       res.json(result);
     } catch (error: any) {
       console.error('Error marking student complete:', error);
-      res.status(500).json({ error: error.message || 'Error al marcar estudiante' });
+      res.status(500).json({ error: publicErrorMessage(error) || 'Error al marcar estudiante' });
     }
   },
 
@@ -248,7 +249,7 @@ export const timedActivityController = {
       res.json(result);
     } catch (error: any) {
       console.error('Error marking student exploded:', error);
-      res.status(500).json({ error: error.message || 'Error al marcar explosión' });
+      res.status(500).json({ error: publicErrorMessage(error) || 'Error al marcar explosión' });
     }
   },
 

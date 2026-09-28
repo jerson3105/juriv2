@@ -13,6 +13,7 @@ import routes from './routes/index.js';
 import { logger, replaceConsole } from './utils/logger.js';
 import { AppError } from './utils/errors.js';
 import { setIO } from './utils/notificationEmitter.js';
+import { serveUploads } from './utils/fileValidation.js';
 import { eq } from 'drizzle-orm';
 import { announcementService } from './services/announcement.service.js';
 import { chatService } from './services/chat.service.js';
@@ -20,8 +21,10 @@ import { chatService } from './services/chat.service.js';
 // Crear aplicación Express
 const app = express();
 
-// Confiar en el proxy (necesario para express-rate-limit detrás de nginx/reverse proxy)
-app.set('trust proxy', 1);
+// Confiar en X-Forwarded-For solo si la conexión llega desde el propio host (Apache como proxy).
+// Con `1` se confiaba en cualquier cliente: quien llegara directo al puerto 3001 podía falsear su IP
+// y saltarse los rate limits.
+app.set('trust proxy', 'loopback');
 
 const httpServer = createServer(app);
 
@@ -42,18 +45,25 @@ app.use(passport.initialize());
 // En producción, estos se sirven bajo /api/ para que pasen por el proxy de Apache
 // NOTA: Usamos /api/static/avatars para archivos, porque /api/avatars es para rutas de API
 const uploadsBaseDir = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
-app.use('/api/badges', cors(corsOptions), express.static(path.join(process.cwd(), 'public', 'badges')));
-app.use('/api/static/avatars', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'avatars')));
-app.use('/api/uploads/expeditions', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'expeditions')));
-app.use('/api/uploads/maps', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'maps')));
-app.use('/api/uploads/collectibles', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'collectibles')));
-app.use('/api/uploads/jiro-deliveries', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'jiro-deliveries')));
+// Los uploads deben vivir fuera de la raíz pública del servidor web: si Apache los sirve
+// directamente, se saltan la validación y cabeceras de `serveUploads` (y podría ejecutar scripts).
+if (/[\\/](public_html|www|htdocs)([\\/]|$)/i.test(uploadsBaseDir) && config_app.isProd) {
+  logger.warn('⚠️ UPLOAD_DIR está dentro de una carpeta pública del servidor web; muévelo fuera de ella', {
+    uploadsBaseDir,
+  });
+}
+app.use('/api/badges', cors(corsOptions), ...serveUploads(path.join(process.cwd(), 'public', 'badges')));
+app.use('/api/static/avatars', cors(corsOptions), ...serveUploads(path.join(uploadsBaseDir, 'avatars')));
+app.use('/api/uploads/expeditions', cors(corsOptions), ...serveUploads(path.join(uploadsBaseDir, 'expeditions')));
+app.use('/api/uploads/maps', cors(corsOptions), ...serveUploads(path.join(uploadsBaseDir, 'maps')));
+app.use('/api/uploads/collectibles', cors(corsOptions), ...serveUploads(path.join(uploadsBaseDir, 'collectibles')));
+app.use('/api/uploads/jiro-deliveries', cors(corsOptions), ...serveUploads(path.join(uploadsBaseDir, 'jiro-deliveries')));
 // También mantener rutas sin /api para desarrollo local
-app.use('/badges', cors(corsOptions), express.static(path.join(process.cwd(), 'public', 'badges')));
-app.use('/avatars', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'avatars')));
-app.use('/uploads/expeditions', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'expeditions')));
-app.use('/uploads/maps', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'maps')));
-app.use('/uploads/collectibles', cors(corsOptions), express.static(path.join(uploadsBaseDir, 'collectibles')));
+app.use('/badges', cors(corsOptions), ...serveUploads(path.join(process.cwd(), 'public', 'badges')));
+app.use('/avatars', cors(corsOptions), ...serveUploads(path.join(uploadsBaseDir, 'avatars')));
+app.use('/uploads/expeditions', cors(corsOptions), ...serveUploads(path.join(uploadsBaseDir, 'expeditions')));
+app.use('/uploads/maps', cors(corsOptions), ...serveUploads(path.join(uploadsBaseDir, 'maps')));
+app.use('/uploads/collectibles', cors(corsOptions), ...serveUploads(path.join(uploadsBaseDir, 'collectibles')));
 
 // Aplicar middleware de seguridad
 applySecurityMiddleware(app);

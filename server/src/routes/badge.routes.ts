@@ -7,6 +7,8 @@ import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { GoogleGenAI } from '@google/genai';
+import { createUploadFilter, safeUploadFilename, verifyUploadedFile, IMAGE_MIMES } from '../utils/fileValidation.js';
+import { publicErrorMessage } from '../utils/errors.js';
 
 const router = Router();
 
@@ -21,23 +23,12 @@ const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, BADGES_DIR);
   },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    const uniqueName = `badge-${uuidv4()}${ext}`;
-    cb(null, uniqueName);
-  }
+  filename: safeUploadFilename,
 });
 
 const upload = multer({
   storage,
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'];
-    if (allowedTypes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Solo se permiten imágenes (PNG, JPG, GIF, WEBP)'));
-    }
-  },
+  fileFilter: createUploadFilter(IMAGE_MIMES, 'Solo se permiten imágenes (PNG, JPG, GIF, WEBP)'),
   limits: {
     fileSize: 2 * 1024 * 1024, // 2MB max
   }
@@ -55,7 +46,7 @@ router.get('/classroom/:classroomId/stats', authenticate, async (req, res) => {
     res.json(stats);
   } catch (error: any) {
     console.error('Error getting badge stats:', error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: publicErrorMessage(error) });
   }
 });
 
@@ -87,7 +78,7 @@ router.get('/classroom/:classroomId/awards-breakdown', authenticate, async (req,
     res.json(breakdown);
   } catch (error: any) {
     console.error('Error getting awards breakdown:', error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: publicErrorMessage(error) });
   }
 });
 
@@ -99,12 +90,12 @@ router.get('/classroom/:classroomId', authenticate, async (req, res) => {
     res.json(badges);
   } catch (error: any) {
     console.error('Error getting classroom badges:', error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: publicErrorMessage(error) });
   }
 });
 
 // Subir imagen de insignia
-router.post('/upload-image', authenticate, upload.single('image'), async (req, res) => {
+router.post('/upload-image', authenticate, upload.single('image'), verifyUploadedFile, async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: 'No se proporcionó imagen' });
@@ -114,7 +105,7 @@ router.post('/upload-image', authenticate, upload.single('image'), async (req, r
     res.json({ imageUrl });
   } catch (error: any) {
     console.error('Error uploading badge image:', error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: publicErrorMessage(error) });
   }
 });
 
@@ -268,7 +259,7 @@ ${competencies && competencies.length > 0 ? '8. Asigna competencyId usando los I
     });
   } catch (error: any) {
     console.error('Error generating badges with AI:', error);
-    res.status(500).json({ message: error.message || 'Error al generar insignias' });
+    res.status(500).json({ message: publicErrorMessage(error) || 'Error al generar insignias' });
   }
 });
 
@@ -298,7 +289,7 @@ router.post('/classroom/:classroomId', authenticate, async (req, res) => {
     res.status(201).json(badge);
   } catch (error: any) {
     console.error('Error creating badge:', error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: publicErrorMessage(error) });
   }
 });
 
@@ -310,7 +301,7 @@ router.put('/:badgeId', authenticate, async (req, res) => {
     res.json({ message: 'Insignia actualizada' });
   } catch (error: any) {
     console.error('Error updating badge:', error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: publicErrorMessage(error) });
   }
 });
 
@@ -322,7 +313,7 @@ router.delete('/:badgeId', authenticate, async (req, res) => {
     res.json({ message: 'Insignia eliminada' });
   } catch (error: any) {
     console.error('Error deleting badge:', error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: publicErrorMessage(error) });
   }
 });
 
@@ -338,7 +329,7 @@ router.get('/student/:studentProfileId', authenticate, async (req, res) => {
     res.json(badges);
   } catch (error: any) {
     console.error('Error getting student badges:', error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: publicErrorMessage(error) });
   }
 });
 
@@ -350,7 +341,7 @@ router.get('/student/:studentProfileId/displayed', authenticate, async (req, res
     res.json(badges);
   } catch (error: any) {
     console.error('Error getting displayed badges:', error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: publicErrorMessage(error) });
   }
 });
 
@@ -363,7 +354,7 @@ router.put('/student/:studentProfileId/displayed', authenticate, async (req, res
     res.json({ message: 'Insignias actualizadas' });
   } catch (error: any) {
     console.error('Error setting displayed badges:', error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: publicErrorMessage(error) });
   }
 });
 
@@ -375,7 +366,7 @@ router.get('/student/:studentProfileId/progress/:classroomId', authenticate, asy
     res.json(progress);
   } catch (error: any) {
     console.error('Error getting badge progress:', error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: publicErrorMessage(error) });
   }
 });
 
@@ -411,7 +402,7 @@ router.delete('/revoke/:studentProfileId/:badgeId', authenticate, async (req, re
     res.json({ message: 'Insignia revocada' });
   } catch (error: any) {
     console.error('Error revoking badge:', error);
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: publicErrorMessage(error) });
   }
 });
 

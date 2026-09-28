@@ -4,6 +4,14 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
+import {
+  createUploadFilter,
+  safeUploadFilename,
+  verifyUploadedFile,
+  IMAGE_MIMES,
+  PDF_MIMES,
+} from '../utils/fileValidation.js';
+import { publicErrorMessage } from '../utils/errors.js';
 
 const ensureTeacherClassroomAccess = async (
   req: Request,
@@ -174,36 +182,25 @@ const expeditionStorage = multer.diskStorage({
     }
     cb(null, uploadDir);
   },
-  filename: (req, file, cb) => {
-    const uniqueName = `${uuidv4()}${path.extname(file.originalname)}`;
-    cb(null, uniqueName);
-  },
+  filename: safeUploadFilename,
 });
 
-const expeditionFileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  // Solo permitir imágenes y PDFs
-  const allowedTypes = [
-    'application/pdf',
-    'image/jpeg',
-    'image/png',
-    'image/gif',
-    'image/webp',
-  ];
+// Solo imágenes y PDFs; la extensión sale del MIME y el contenido se verifica tras guardar.
+const expeditionFileFilter = createUploadFilter(
+  [...PDF_MIMES, ...IMAGE_MIMES],
+  'Solo se permiten imágenes (JPG, PNG, GIF, WebP) y PDFs'
+);
 
-  if (allowedTypes.includes(file.mimetype)) {
-    cb(null, true);
-  } else {
-    cb(new Error('Solo se permiten imágenes (JPG, PNG, GIF, WebP) y PDFs'));
-  }
-};
-
-export const uploadExpeditionFile = multer({
-  storage: expeditionStorage,
-  fileFilter: expeditionFileFilter,
-  limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB máximo
-  },
-}).single('file');
+export const uploadExpeditionFile = [
+  multer({
+    storage: expeditionStorage,
+    fileFilter: expeditionFileFilter,
+    limits: {
+      fileSize: 5 * 1024 * 1024, // 5MB máximo
+    },
+  }).single('file'),
+  verifyUploadedFile,
+];
 
 // Controlador para manejar la subida de archivo
 export const handleExpeditionUpload = async (req: Request, res: Response) => {
@@ -871,6 +868,6 @@ export const completePin = async (req: Request, res: Response) => {
     res.json(progress);
   } catch (error: any) {
     console.error('Error completing pin:', error);
-    res.status(500).json({ error: error.message || 'Error al completar pin' });
+    res.status(500).json({ error: publicErrorMessage(error) || 'Error al completar pin' });
   }
 };
