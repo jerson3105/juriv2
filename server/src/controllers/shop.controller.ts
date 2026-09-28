@@ -252,6 +252,12 @@ export class ShopController {
         return res.status(400).json({ message: 'El destinatario no está en esta clase' });
       }
 
+      // Quien paga también debe ser de esa clase: si no, se podía mover oro entre clases.
+      const buyerInClass = await shopService.verifyStudentInClassroom(buyerId, item.classroomId);
+      if (!buyerInClass) {
+        return res.status(400).json({ message: 'Solo puedes regalar en la tienda de tu clase' });
+      }
+
       const result = await shopService.purchaseItem({
         studentId: data.recipientId,
         itemId: data.itemId,
