@@ -9,6 +9,7 @@ import {
   requireStudentProfileReadAccess,
   badgeScopeAndClassroom,
   classroomIdOfStudentProfile,
+  pickFields,
 } from '../utils/access.js';
 import { behaviorService } from '../services/behavior.service.js';
 import multer from 'multer';
@@ -324,13 +325,8 @@ const BADGE_UPDATABLE_FIELDS = [
   'assignmentMode', 'unlockCondition', 'rewardXp', 'rewardGp', 'isSecret', 'competencyId',
 ] as const;
 
-const pickBadgeFields = (body: Record<string, unknown>): Partial<CreateBadgeDto> => {
-  const out: Record<string, unknown> = {};
-  for (const k of BADGE_UPDATABLE_FIELDS) {
-    if (body[k] !== undefined) out[k] = body[k];
-  }
-  return out as Partial<CreateBadgeDto>;
-};
+const pickBadgeFields = (body: Record<string, unknown>): Partial<CreateBadgeDto> =>
+  pickFields(body, BADGE_UPDATABLE_FIELDS) as Partial<CreateBadgeDto>;
 
 // Verifica que el usuario puede modificar/borrar la insignia indicada.
 // SYSTEM: solo ADMIN. CLASSROOM: profesor dueño de la clase (o ADMIN).

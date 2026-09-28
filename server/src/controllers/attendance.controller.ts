@@ -4,6 +4,11 @@ import { pdfService } from '../services/pdf.service.js';
 import { db } from '../db/index.js';
 import { studentProfiles, classrooms } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
+import {
+  requireClassroomTeacher,
+  requireStudentProfileReadAccess,
+  studentsBelongToClassroom,
+} from '../utils/access.js';
 
 // Parsear fecha string YYYY-MM-DD a Date en UTC medianoche
 // Esto garantiza consistencia independiente de la zona horaria del servidor
@@ -18,6 +23,10 @@ export const attendanceController = {
     try {
       const { classroomId } = req.params;
       const { studentProfileId, date, status, notes, xpAwarded } = req.body;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
+      if (!(await studentsBelongToClassroom([studentProfileId], classroomId))) {
+        return res.status(400).json({ success: false, message: 'El estudiante no pertenece a esta clase' });
+      }
 
       const result = await attendanceService.recordAttendance(
         classroomId,
@@ -44,6 +53,11 @@ export const attendanceController = {
     try {
       const { classroomId } = req.params;
       const { date, attendanceData, xpForPresent } = req.body;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
+      const bulkIds = Array.isArray(attendanceData) ? attendanceData.map((r: any) => r?.studentProfileId) : [];
+      if (!(await studentsBelongToClassroom(bulkIds, classroomId))) {
+        return res.status(400).json({ success: false, message: 'Hay estudiantes que no pertenecen a esta clase' });
+      }
 
       const results = await attendanceService.recordBulkAttendance(
         classroomId,
@@ -67,6 +81,7 @@ export const attendanceController = {
   async getAttendanceByDate(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
       const { date } = req.query;
 
       const attendance = await attendanceService.getAttendanceByDate(
@@ -88,6 +103,7 @@ export const attendanceController = {
   async getStudentHistory(req: Request, res: Response) {
     try {
       const { studentProfileId } = req.params;
+      if (!(await requireStudentProfileReadAccess(req, res, studentProfileId))) return;
       const { limit } = req.query;
 
       const history = await attendanceService.getStudentAttendanceHistory(
@@ -109,6 +125,7 @@ export const attendanceController = {
   async getStudentStats(req: Request, res: Response) {
     try {
       const { studentProfileId } = req.params;
+      if (!(await requireStudentProfileReadAccess(req, res, studentProfileId))) return;
 
       const stats = await attendanceService.getStudentAttendanceStats(studentProfileId);
 
@@ -126,6 +143,7 @@ export const attendanceController = {
   async getClassroomStats(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
       const { startDate, endDate } = req.query;
 
       const stats = await attendanceService.getClassroomAttendanceStats(
@@ -148,6 +166,7 @@ export const attendanceController = {
   async getAttendanceByRange(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
       const { startDate, endDate } = req.query;
 
       if (!startDate || !endDate) {
@@ -245,6 +264,7 @@ export const attendanceController = {
   async downloadAttendanceReportPDF(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
       const { startDate, endDate } = req.query;
 
       // Obtener información de la clase
@@ -345,6 +365,7 @@ export const attendanceController = {
   async downloadStudentAttendanceReportPDF(req: Request, res: Response) {
     try {
       const { studentProfileId } = req.params;
+      if (!(await requireStudentProfileReadAccess(req, res, studentProfileId))) return;
 
       // Obtener información del estudiante
       const [student] = await db

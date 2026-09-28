@@ -64,6 +64,7 @@ class AnnouncementController {
   async markRead(req: Request, res: Response) {
     try {
       const classroomId = req.params.id;
+      if (!(await requireClassroomTeacherOrParent(req, res, classroomId))) return;
       const userId = req.user!.id;
       await announcementService.markAnnouncementsAsRead(classroomId, userId);
       res.json({ success: true });

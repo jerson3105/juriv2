@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
   classrooms,
@@ -10,6 +10,11 @@ import {
   classroomMessages,
   classroomAvatarItems,
   badges,
+  collectibleAlbums,
+  collectibleCards,
+  behaviors,
+  classroomCharacterClasses,
+  itemUsages,
 } from '../db/schema.js';
 
 /**
@@ -109,30 +114,73 @@ export const schoolIdOfMember = async (memberId: string): Promise<string | null>
   return row?.schoolId ?? null;
 };
 
-/** Clase a la que pertenece un mensaje de chat (para scope de borrado). */
-export const classroomIdOfChatMessage = async (messageId: string): Promise<string | null> => {
+/** Tablas con columnas `id` y `classroomId`: el recurso pertenece a una clase. */
+type ClassroomScopedTable =
+  | typeof classroomMessages
+  | typeof classroomAvatarItems
+  | typeof studentProfiles
+  | typeof collectibleAlbums
+  | typeof behaviors
+  | typeof classroomCharacterClasses
+  | typeof itemUsages;
+
+/** Clase dueña de un recurso, o `null` si el recurso no existe. */
+const classroomIdById = async (table: ClassroomScopedTable, id: string): Promise<string | null> => {
+  if (!id) return null;
   const [row] = await db
-    .select({ classroomId: classroomMessages.classroomId })
-    .from(classroomMessages)
-    .where(eq(classroomMessages.id, messageId));
+    .select({ classroomId: table.classroomId })
+    .from(table as typeof classroomMessages)
+    .where(eq(table.id, id));
   return row?.classroomId ?? null;
 };
+
+/** Clase a la que pertenece un mensaje de chat (para scope de borrado). */
+export const classroomIdOfChatMessage = (messageId: string) => classroomIdById(classroomMessages, messageId);
 
 /** Clase dueña de un ítem de la tienda de avatar (por id de classroom_avatar_items). */
-export const classroomIdOfShopItem = async (shopItemId: string): Promise<string | null> => {
-  const [row] = await db
-    .select({ classroomId: classroomAvatarItems.classroomId })
-    .from(classroomAvatarItems)
-    .where(eq(classroomAvatarItems.id, shopItemId));
-  return row?.classroomId ?? null;
-};
+export const classroomIdOfShopItem = (shopItemId: string) => classroomIdById(classroomAvatarItems, shopItemId);
 
 /** Clase de un perfil de estudiante. */
-export const classroomIdOfStudentProfile = async (studentProfileId: string): Promise<string | null> => {
-  const [row] = await db
-    .select({ classroomId: studentProfiles.classroomId })
+export const classroomIdOfStudentProfile = (studentProfileId: string) => classroomIdById(studentProfiles, studentProfileId);
+
+/** Clase de un álbum de cromos. */
+export const classroomIdOfAlbum = (albumId: string) => classroomIdById(collectibleAlbums, albumId);
+
+/** Clase de un comportamiento. */
+export const classroomIdOfBehavior = (behaviorId: string) => classroomIdById(behaviors, behaviorId);
+
+/** Clase de una clase de personaje personalizada. */
+export const classroomIdOfCharacterClass = (characterClassId: string) =>
+  classroomIdById(classroomCharacterClasses, characterClassId);
+
+/** Clase de una solicitud de uso de artículo de la tienda. */
+export const classroomIdOfItemUsage = (usageId: string) => classroomIdById(itemUsages, usageId);
+
+/** ¿Todos los perfiles de estudiante indicados pertenecen a la clase? */
+export const studentsBelongToClassroom = async (
+  studentProfileIds: string[],
+  classroomId: string
+): Promise<boolean> => {
+  if (!Array.isArray(studentProfileIds) || studentProfileIds.some((id) => typeof id !== 'string' || !id)) {
+    return false;
+  }
+  const unique = [...new Set(studentProfileIds)];
+  if (unique.length === 0) return false;
+  const rows = await db
+    .select({ id: studentProfiles.id })
     .from(studentProfiles)
-    .where(eq(studentProfiles.id, studentProfileId));
+    .where(and(eq(studentProfiles.classroomId, classroomId), inArray(studentProfiles.id, unique)));
+  return rows.length === unique.length;
+};
+
+/** Clase de una carta de cromos (a través de su álbum). */
+export const classroomIdOfCard = async (cardId: string): Promise<string | null> => {
+  if (!cardId) return null;
+  const [row] = await db
+    .select({ classroomId: collectibleAlbums.classroomId })
+    .from(collectibleCards)
+    .innerJoin(collectibleAlbums, eq(collectibleCards.albumId, collectibleAlbums.id))
+    .where(eq(collectibleCards.id, cardId));
   return row?.classroomId ?? null;
 };
 
@@ -266,6 +314,50 @@ export const requireClassroomTeacherOrParent = async (
     return true;
   }
   return deny(res, 403, 'No tienes permisos para esta acción');
+};
+
+type ClassroomResolver = (id: string) => Promise<string | null>;
+
+/**
+ * Resuelve la clase de un recurso (álbum, carta, comportamiento...) y exige que el
+ * usuario sea el profesor dueño. 404 si el recurso no existe.
+ */
+export const requireResourceTeacher = async (
+  req: Request,
+  res: Response,
+  resolveClassroom: ClassroomResolver,
+  resourceId: string,
+  notFoundMessage = 'Recurso no encontrado'
+): Promise<boolean> => {
+  const classroomId = await resolveClassroom(resourceId);
+  if (!classroomId) return deny(res, 404, notFoundMessage);
+  return requireClassroomTeacher(req, res, classroomId);
+};
+
+/** Como `requireResourceTeacher`, pero basta con ser miembro de la clase. */
+export const requireResourceMember = async (
+  req: Request,
+  res: Response,
+  resolveClassroom: ClassroomResolver,
+  resourceId: string,
+  notFoundMessage = 'Recurso no encontrado'
+): Promise<boolean> => {
+  const classroomId = await resolveClassroom(resourceId);
+  if (!classroomId) return deny(res, 404, notFoundMessage);
+  return requireClassroomMember(req, res, classroomId);
+};
+
+/** Copia solo las claves permitidas de un body (evita mass assignment). */
+export const pickFields = <K extends string>(
+  body: Record<string, unknown> | undefined,
+  allowed: readonly K[]
+): Partial<Record<K, unknown>> => {
+  const out: Partial<Record<K, unknown>> = {};
+  if (!body || typeof body !== 'object') return out;
+  for (const key of allowed) {
+    if (body[key] !== undefined) out[key] = body[key];
+  }
+  return out;
 };
 
 /** El usuario tiene rol TEACHER (o ADMIN). Gate sin recurso concreto. */

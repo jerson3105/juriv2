@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { behaviorService } from '../services/behavior.service.js';
 import { z } from 'zod';
 import { GoogleGenAI } from '@google/genai';
+import { requireClassroomTeacher, requireResourceTeacher, classroomIdOfBehavior } from '../utils/access.js';
 
 const createBehaviorSchema = z.object({
   classroomId: z.string().uuid(),
@@ -43,6 +44,7 @@ export class BehaviorController {
   async create(req: Request, res: Response) {
     try {
       const data = createBehaviorSchema.parse(req.body);
+      if (!(await requireClassroomTeacher(req, res, data.classroomId))) return;
       const behavior = await behaviorService.create(data);
 
       res.status(201).json({
@@ -69,6 +71,7 @@ export class BehaviorController {
   async getByClassroom(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
       const behaviors = await behaviorService.getByClassroom(classroomId);
 
       res.json({
@@ -87,6 +90,7 @@ export class BehaviorController {
   async getPositive(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
       const behaviors = await behaviorService.getPositive(classroomId);
 
       res.json({
@@ -105,6 +109,7 @@ export class BehaviorController {
   async getNegative(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
       const behaviors = await behaviorService.getNegative(classroomId);
 
       res.json({
@@ -124,6 +129,7 @@ export class BehaviorController {
     try {
       const { id } = req.params;
       const data = updateBehaviorSchema.parse(req.body);
+      if (!(await requireResourceTeacher(req, res, classroomIdOfBehavior, id, 'Comportamiento no encontrado'))) return;
       const behavior = await behaviorService.update(id, data);
 
       res.json({
@@ -150,6 +156,7 @@ export class BehaviorController {
   async delete(req: Request, res: Response) {
     try {
       const { id } = req.params;
+      if (!(await requireResourceTeacher(req, res, classroomIdOfBehavior, id, 'Comportamiento no encontrado'))) return;
       await behaviorService.delete(id);
 
       res.json({

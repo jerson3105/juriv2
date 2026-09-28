@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { shopService } from '../services/shop.service.js';
+import { requireResourceTeacher, classroomIdOfItemUsage } from '../utils/access.js';
 import { GoogleGenAI } from '@google/genai';
 
 // Schemas de validación
@@ -411,6 +412,7 @@ export class ShopController {
       const { usageId } = req.params;
       const { status } = req.body;
       const teacherId = req.user!.id;
+      if (!(await requireResourceTeacher(req, res, classroomIdOfItemUsage, usageId, 'Solicitud no encontrada'))) return;
 
       if (!['APPROVED', 'REJECTED'].includes(status)) {
         return res.status(400).json({ message: 'Estado inválido' });

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { storyService, THEME_PRESETS } from '../services/story.service.js';
 import { z } from 'zod';
 import { GoogleGenAI } from '@google/genai';
+import { requireClassroomMember } from '../utils/access.js';
 
 // ==================== VALIDATION SCHEMAS ====================
 
@@ -297,6 +298,7 @@ class StoryController {
   async getClassroomTheme(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+      if (!(await requireClassroomMember(req, res, classroomId))) return;
       const theme = await storyService.getClassroomTheme(classroomId);
       res.json({ success: true, data: theme });
     } catch (error: any) {

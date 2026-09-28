@@ -1,7 +1,15 @@
 import { Request, Response } from 'express';
 import { avatarService } from '../services/avatar.service.js';
 import { z } from 'zod';
-import { requireStudentProfileOwner, requireClassroomTeacher, classroomIdOfShopItem } from '../utils/access.js';
+import {
+  requireStudentProfileOwner,
+  requireStudentProfileReadAccess,
+  requireClassroomTeacher,
+  requireClassroomMember,
+  requireResourceMember,
+  classroomIdOfShopItem,
+  classroomIdOfStudentProfile,
+} from '../utils/access.js';
 
 const createAvatarItemSchema = z.object({
   name: z.string().min(1).max(100),
@@ -132,6 +140,7 @@ export const avatarController = {
   async getClassroomShopItems(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+      if (!(await requireClassroomMember(req, res, classroomId))) return;
       const gender = req.query.gender as 'MALE' | 'FEMALE' | undefined;
 
       const items = await avatarService.getClassroomShopItems(classroomId, gender);
@@ -259,6 +268,7 @@ export const avatarController = {
     try {
       const { studentProfileId } = req.params;
 
+      if (!(await requireStudentProfileReadAccess(req, res, studentProfileId))) return;
       const purchases = await avatarService.getStudentPurchases(studentProfileId);
 
       res.json({
@@ -328,6 +338,7 @@ export const avatarController = {
     try {
       const { studentProfileId } = req.params;
 
+      if (!(await requireResourceMember(req, res, classroomIdOfStudentProfile, studentProfileId, 'Estudiante no encontrado'))) return;
       const items = await avatarService.getEquippedItems(studentProfileId);
 
       res.json({
@@ -347,6 +358,7 @@ export const avatarController = {
     try {
       const { studentProfileId } = req.params;
 
+      if (!(await requireResourceMember(req, res, classroomIdOfStudentProfile, studentProfileId, 'Estudiante no encontrado'))) return;
       const avatarData = await avatarService.getStudentAvatarData(studentProfileId);
 
       res.json({

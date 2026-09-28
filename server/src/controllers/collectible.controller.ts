@@ -4,6 +4,26 @@ import { collectibleService } from '../services/collectible.service.js';
 import { db } from '../db/index.js';
 import { studentProfiles, collectibleAlbums } from '../db/schema.js';
 import type { CardRarity, PackType, ImageStyle } from '../db/schema.js';
+import {
+  requireClassroomTeacher,
+  requireClassroomMember,
+  requireResourceTeacher,
+  requireResourceMember,
+  requireStudentProfileReadAccess,
+  classroomIdOfAlbum,
+  classroomIdOfCard,
+  classroomIdOfStudentProfile,
+  pickFields,
+} from '../utils/access.js';
+
+// Campos que el profesor puede fijar en álbumes y cartas (classroomId/albumId salen de la ruta).
+const ALBUM_FIELDS = [
+  'name', 'description', 'coverImage', 'theme', 'imageStyle',
+  'singlePackPrice', 'fivePackPrice', 'tenPackPrice',
+  'rewardXp', 'rewardHp', 'rewardGp', 'rewardBadgeId', 'allowTrades',
+] as const;
+const ALBUM_UPDATE_FIELDS = [...ALBUM_FIELDS, 'isActive'] as const;
+const CARD_FIELDS = ['name', 'description', 'imageUrl', 'rarity', 'slotNumber'] as const;
 
 export const collectibleController = {
   // ==================== ÁLBUMES ====================
@@ -11,11 +31,12 @@ export const collectibleController = {
   async createAlbum(req: Request, res: Response, next: NextFunction) {
     try {
       const { classroomId } = req.params;
-      const data = req.body;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
+      const data = pickFields(req.body, ALBUM_FIELDS);
 
       const album = await collectibleService.createAlbum({
+        ...(data as any),
         classroomId,
-        ...data,
       });
 
       res.status(201).json(album);
@@ -27,6 +48,7 @@ export const collectibleController = {
   async getAlbums(req: Request, res: Response, next: NextFunction) {
     try {
       const { classroomId } = req.params;
+      if (!(await requireClassroomMember(req, res, classroomId))) return;
       const albums = await collectibleService.getAlbumsByClassroom(classroomId);
       res.json(albums);
     } catch (error) {
@@ -57,6 +79,7 @@ export const collectibleController = {
   async getAlbumById(req: Request, res: Response, next: NextFunction) {
     try {
       const { albumId } = req.params;
+      if (!(await requireResourceMember(req, res, classroomIdOfAlbum, albumId, 'Álbum no encontrado'))) return;
       const album = await collectibleService.getAlbumById(albumId);
 
       if (!album) {
@@ -72,9 +95,10 @@ export const collectibleController = {
   async updateAlbum(req: Request, res: Response, next: NextFunction) {
     try {
       const { albumId } = req.params;
-      const data = req.body;
+      if (!(await requireResourceTeacher(req, res, classroomIdOfAlbum, albumId, 'Álbum no encontrado'))) return;
+      const data = pickFields(req.body, ALBUM_UPDATE_FIELDS);
 
-      const album = await collectibleService.updateAlbum(albumId, data);
+      const album = await collectibleService.updateAlbum(albumId, data as any);
       res.json(album);
     } catch (error) {
       next(error);
@@ -84,6 +108,7 @@ export const collectibleController = {
   async deleteAlbum(req: Request, res: Response, next: NextFunction) {
     try {
       const { albumId } = req.params;
+      if (!(await requireResourceTeacher(req, res, classroomIdOfAlbum, albumId, 'Álbum no encontrado'))) return;
       await collectibleService.deleteAlbum(albumId);
       res.status(204).send();
     } catch (error) {
@@ -134,11 +159,12 @@ export const collectibleController = {
   async createCard(req: Request, res: Response, next: NextFunction) {
     try {
       const { albumId } = req.params;
-      const data = req.body;
+      if (!(await requireResourceTeacher(req, res, classroomIdOfAlbum, albumId, 'Álbum no encontrado'))) return;
+      const data = pickFields(req.body, CARD_FIELDS);
 
       const card = await collectibleService.createCard({
+        ...(data as any),
         albumId,
-        ...data,
       });
 
       res.status(201).json(card);
@@ -150,7 +176,11 @@ export const collectibleController = {
   async createManyCards(req: Request, res: Response, next: NextFunction) {
     try {
       const { albumId } = req.params;
+      if (!(await requireResourceTeacher(req, res, classroomIdOfAlbum, albumId, 'Álbum no encontrado'))) return;
       const { cards } = req.body;
+      if (!Array.isArray(cards)) {
+        return res.status(400).json({ message: 'Se requiere una lista de cartas' });
+      }
 
       const createdCards = await collectibleService.createManyCards(albumId, cards);
       res.status(201).json(createdCards);
@@ -162,9 +192,10 @@ export const collectibleController = {
   async updateCard(req: Request, res: Response, next: NextFunction) {
     try {
       const { cardId } = req.params;
-      const data = req.body;
+      if (!(await requireResourceTeacher(req, res, classroomIdOfCard, cardId, 'Carta no encontrada'))) return;
+      const data = pickFields(req.body, CARD_FIELDS);
 
-      const card = await collectibleService.updateCard(cardId, data);
+      const card = await collectibleService.updateCard(cardId, data as any);
       res.json(card);
     } catch (error) {
       next(error);
@@ -216,6 +247,7 @@ export const collectibleController = {
   async deleteCard(req: Request, res: Response, next: NextFunction) {
     try {
       const { cardId } = req.params;
+      if (!(await requireResourceTeacher(req, res, classroomIdOfCard, cardId, 'Carta no encontrada'))) return;
       await collectibleService.deleteCard(cardId);
       res.status(204).send();
     } catch (error) {
@@ -288,6 +320,17 @@ export const collectibleController = {
       
       let studentProfileId = paramStudentProfileId;
 
+      if (paramStudentProfileId) {
+        if (!(await requireStudentProfileReadAccess(req, res, paramStudentProfileId))) return;
+        const [albumClassroomId, studentClassroomId] = await Promise.all([
+          classroomIdOfAlbum(albumId),
+          classroomIdOfStudentProfile(paramStudentProfileId),
+        ]);
+        if (!albumClassroomId || albumClassroomId !== studentClassroomId) {
+          return res.status(404).json({ message: 'Álbum no encontrado' });
+        }
+      }
+
       // Si no viene por params, buscar el perfil del usuario logueado
       if (!studentProfileId && userId) {
         const [album] = await db
@@ -330,6 +373,10 @@ export const collectibleController = {
   async getClassroomProgress(req: Request, res: Response, next: NextFunction) {
     try {
       const { classroomId, albumId } = req.params;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
+      if ((await classroomIdOfAlbum(albumId)) !== classroomId) {
+        return res.status(404).json({ message: 'Álbum no encontrado' });
+      }
       const progress = await collectibleService.getClassroomProgress(classroomId, albumId);
 
       if (!progress) {
@@ -347,6 +394,7 @@ export const collectibleController = {
   async generateAlbumWithAI(req: Request, res: Response, next: NextFunction) {
     try {
       const { classroomId } = req.params;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
       const { theme, cardCount, imageStyle, rarityDistribution } = req.body;
 
       const generated = await collectibleService.generateAlbumWithAI({

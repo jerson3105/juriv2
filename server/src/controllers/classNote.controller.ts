@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { classNoteService } from '../services/classNote.service.js';
+import { requireClassroomMember } from '../utils/access.js';
 
 class ClassNoteController {
 
@@ -25,6 +26,7 @@ class ClassNoteController {
   async list(req: Request, res: Response) {
     try {
       const classroomId = req.params.id;
+      if (!(await requireClassroomMember(req, res, classroomId))) return;
       const notes = await classNoteService.list(classroomId);
       res.json(notes);
     } catch (error) {
@@ -62,6 +64,7 @@ class ClassNoteController {
   async pendingCount(req: Request, res: Response) {
     try {
       const classroomId = req.params.id;
+      if (!(await requireClassroomMember(req, res, classroomId))) return;
       const count = await classNoteService.getPendingCount(classroomId);
       res.json({ count });
     } catch (error) {
