@@ -1,4 +1,4 @@
-import { eq, and, desc, asc, inArray, sql } from 'drizzle-orm';
+import { eq, and, desc, asc, inArray, sql, ne } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import { clanService } from './clan.service.js';
@@ -27,6 +27,7 @@ import {
   type TournamentMatchStatus,
 } from '../db/schema.js';
 import { teacherOwnsClassroom } from '../utils/access.js';
+import { addXpGp, affectedRows } from '../utils/points.js';
 
 // ==================== INTERFACES ====================
 
@@ -1318,23 +1319,16 @@ class TournamentService {
       }
 
       // Otorgar recompensas
-      await this.grantRewards(tournamentId);
-
-      // Marcar torneo finalizado solo cuando recompensas se otorgaron correctamente
-      await db.update(tournaments)
-        .set({
-          status: 'FINISHED',
-          firstPlaceId,
-          secondPlaceId,
-          thirdPlaceId,
-          finishedAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(eq(tournaments.id, tournamentId));
+      // Marca FINISHED y paga en la misma transacción (ver grantRewards): si el pago falla
+      // no queda finalizado (se puede reintentar) y dos finalizaciones simultáneas no pagan doble.
+      await this.grantRewards(tournamentId, { firstPlaceId, secondPlaceId, thirdPlaceId });
     }
   }
 
-  private async grantRewards(tournamentId: string): Promise<void> {
+  private async grantRewards(
+    tournamentId: string,
+    placements: { firstPlaceId: string | null; secondPlaceId: string | null; thirdPlaceId: string | null }
+  ): Promise<void> {
     const tournament = await this.getTournament(tournamentId);
     if (!tournament || !tournament.participants) return;
 
@@ -1349,7 +1343,15 @@ class TournamentService {
     const xpAwardsForSideEffects: { studentProfileId: string; xpReward: number; reason: string }[] = [];
     const notifiedUserIds: string[] = [];
 
+    let claimed = false;
     await db.transaction(async (tx) => {
+      // Reclamar la finalización: solo una ejecución simultánea pasa de aquí y paga.
+      const claim = await tx.update(tournaments)
+        .set({ status: 'FINISHED', ...placements, finishedAt: now, updatedAt: now })
+        .where(and(eq(tournaments.id, tournamentId), ne(tournaments.status, 'FINISHED')));
+      if (affectedRows(claim) !== 1) return;
+      claimed = true;
+
       for (const participant of tournament.participants!) {
         let xpReward = tournament.rewardXpParticipation;
         let gpReward = 0;
@@ -1384,20 +1386,11 @@ class TournamentService {
           continue;
         }
 
-        const newXp = studentProfile.xp + xpReward;
-        const newLevel = xpReward > 0
-          ? this.calculateLevel(newXp, xpPerLevel)
-          : studentProfile.level;
-        const leveledUp = newLevel > studentProfile.level;
-
-        await tx.update(studentProfiles)
-          .set({
-            xp: newXp,
-            gp: studentProfile.gp + gpReward,
-            level: newLevel,
-            updatedAt: now,
-          })
-          .where(eq(studentProfiles.id, participant.studentProfileId));
+        // Suma atómica: no pisa otras escrituras simultáneas sobre el alumno.
+        const updated = await addXpGp(tx, participant.studentProfileId, { xp: xpReward, gp: gpReward }, xpPerLevel);
+        if (!updated) continue;
+        const newLevel = updated.level;
+        const leveledUp = updated.level > updated.previousLevel;
 
         const reason = `Torneo: ${tournament.name} - Posición ${participant.finalPosition || 'Participación'}`;
         const logsBatch: typeof pointLogs.$inferInsert[] = [];
@@ -1462,6 +1455,8 @@ class TournamentService {
         }
       }
     });
+    if (!claimed) return;
+
 
     // Emit after tx commit
     for (const uid of [...new Set(notifiedUserIds)]) {

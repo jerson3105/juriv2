@@ -33,39 +33,75 @@ export const spendGp = async (exec: Executor, studentProfileId: string, amount: 
   return affectedRows(result) === 1;
 };
 
+export interface PointRules {
+  /** XP por nivel de la clase (para recalcular el nivel). */
+  xpPerLevel?: number;
+  /** Mínimo de PV al restar (0 si la clase no permite PV negativos; null = sin mínimo). */
+  hpMin?: number | null;
+  /** Máximo de PV al sumar (maxHp de la clase; null = sin máximo). */
+  hpMax?: number | null;
+  /** Mínimo de oro al restar (null = sin mínimo). */
+  gpMin?: number | null;
+}
+
+export interface PointResult {
+  xp: number;
+  hp: number;
+  gp: number;
+  level: number;
+  previousLevel: number;
+}
+
+const clampedDelta = (column: any, delta: number, min?: number | null, max?: number | null) => {
+  if (delta > 0 && max !== undefined && max !== null) return sql`LEAST(${max}, ${column} + ${delta})`;
+  if (delta < 0 && min !== undefined && min !== null) return sql`GREATEST(${min}, ${column} + ${delta})`;
+  return sql`${column} + ${delta}`;
+};
+
 /**
- * Suma XP/oro de forma atómica y recalcula el nivel a partir del XP real resultante.
- * Devuelve los valores finales para notificaciones (subida de nivel, etc.).
+ * Aplica deltas de XP/PV/oro en una sola sentencia atómica, con los límites de la clase
+ * calculados en SQL (no a partir de un saldo leído antes). Después recalcula el nivel desde
+ * el XP real; el nivel solo sube. Devuelve los valores finales, o null si el alumno no existe.
  */
-export const addXpGp = async (
+export const applyPointDeltas = async (
   exec: Executor,
   studentProfileId: string,
-  deltas: { xp?: number; gp?: number },
-  xpPerLevel = 100
-): Promise<{ xp: number; gp: number; level: number; previousLevel: number } | null> => {
+  deltas: { xp?: number; hp?: number; gp?: number },
+  rules: PointRules = {}
+): Promise<PointResult | null> => {
   const xp = Math.trunc(deltas.xp ?? 0);
+  const hp = Math.trunc(deltas.hp ?? 0);
   const gp = Math.trunc(deltas.gp ?? 0);
+
+  const set: Record<string, unknown> = { updatedAt: new Date() };
+  if (xp !== 0) set.xp = sql`${studentProfiles.xp} + ${xp}`;
+  if (hp !== 0) set.hp = clampedDelta(studentProfiles.hp, hp, rules.hpMin, rules.hpMax);
+  if (gp !== 0) set.gp = clampedDelta(studentProfiles.gp, gp, rules.gpMin, null);
 
   const result = await exec
     .update(studentProfiles)
-    .set({
-      xp: sql`${studentProfiles.xp} + ${xp}`,
-      gp: sql`${studentProfiles.gp} + ${gp}`,
-      updatedAt: new Date(),
-    })
+    .set(set)
     .where(eq(studentProfiles.id, studentProfileId));
   if (affectedRows(result) !== 1) return null;
 
   // El UPDATE bloqueó la fila dentro de la transacción: esta lectura ya es consistente.
   const [row] = await exec
-    .select({ xp: studentProfiles.xp, gp: studentProfiles.gp, level: studentProfiles.level })
+    .select({ xp: studentProfiles.xp, hp: studentProfiles.hp, gp: studentProfiles.gp, level: studentProfiles.level })
     .from(studentProfiles)
     .where(eq(studentProfiles.id, studentProfileId));
   if (!row) return null;
 
-  const level = xp > 0 ? Math.max(row.level, calculateLevel(row.xp, xpPerLevel)) : row.level;
+  const level = xp > 0 ? Math.max(row.level, calculateLevel(row.xp, rules.xpPerLevel || 100)) : row.level;
   if (level !== row.level) {
     await exec.update(studentProfiles).set({ level }).where(eq(studentProfiles.id, studentProfileId));
   }
-  return { xp: row.xp, gp: row.gp, level, previousLevel: row.level };
+  return { xp: row.xp, hp: row.hp, gp: row.gp, level, previousLevel: row.level };
 };
+
+/** Atajo para recompensas de XP/oro sin límites. */
+export const addXpGp = (
+  exec: Executor,
+  studentProfileId: string,
+  deltas: { xp?: number; gp?: number },
+  xpPerLevel = 100
+) => applyPointDeltas(exec, studentProfileId, deltas, { xpPerLevel });

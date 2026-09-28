@@ -6,6 +6,7 @@ import { badgeService } from './badge.service.js';
 import { clanService } from './clan.service.js';
 import { storyService } from './story.service.js';
 import { prepareForTx } from '../utils/notificationEmitter.js';
+import { applyPointDeltas } from '../utils/points.js';
 
 type PointType = 'XP' | 'HP' | 'GP';
 
@@ -312,7 +313,17 @@ export class BehaviorService {
     // Preparar datos para batch inserts
     const pointLogsBatch: typeof pointLogs.$inferInsert[] = [];
     const notificationsBatch: typeof notifications.$inferInsert[] = [];
-    const studentUpdates: { studentId: string; updateData: Record<string, unknown> }[] = [];
+    // Deltas por alumno: se aplican de forma atómica (ver utils/points.ts). Los valores
+    // calculados abajo solo alimentan avisos y la respuesta.
+    const signedDeltas = behavior.isPositive
+      ? { xp: xpChange, hp: hpChange, gp: gpChange }
+      : { xp: -xpChange, hp: -hpChange, gp: -gpChange };
+    const pointRules = {
+      xpPerLevel,
+      hpMin: classroom.allowNegativeHp ? null : 0,
+      hpMax: classroom.maxHp,
+    };
+    const studentUpdates: { studentId: string }[] = [];
     const xpAwardsForSideEffects: { studentId: string; xpAmount: number }[] = [];
 
     // Calcular nuevos valores para cada estudiante
@@ -348,19 +359,7 @@ export class BehaviorService {
         }
       }
 
-      // Actualizar perfil
-      const updateData: Record<string, unknown> = { 
-        updatedAt: now,
-        xp: newXp,
-        hp: newHp,
-        gp: newGp,
-      };
-      if (leveledUp) updateData.level = newLevel;
-
-      studentUpdates.push({
-        studentId: student.id,
-        updateData,
-      });
+      studentUpdates.push({ studentId: student.id });
 
       // Contribuir XP al clan y procesar storytelling después del commit
       if (behavior.isPositive && xpChange > 0) {
@@ -498,9 +497,7 @@ export class BehaviorService {
 
     await db.transaction(async (tx) => {
       for (const update of studentUpdates) {
-        await tx.update(studentProfiles)
-          .set(update.updateData)
-          .where(eq(studentProfiles.id, update.studentId));
+        await applyPointDeltas(tx, update.studentId, signedDeltas, pointRules);
       }
 
       if (pointLogsBatch.length > 0) {

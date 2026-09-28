@@ -672,7 +672,15 @@ class TimedActivityService {
     action: 'ADD' | 'REMOVE',
     reason: string
   ): Promise<{ triggerXpSideEffects: boolean; appliedAmount: number }> {
-    const currentValue = pointType === 'XP' ? student.xp : pointType === 'HP' ? student.hp : student.gp;
+    // Valor fresco con la fila bloqueada: el `student` recibido pudo leerse antes y quedar
+    // desfasado; así otra escritura simultánea no se pierde y appliedAmount es exacto.
+    const [fresh] = await tx
+      .select({ xp: studentProfiles.xp, hp: studentProfiles.hp, gp: studentProfiles.gp })
+      .from(studentProfiles)
+      .where(eq(studentProfiles.id, student.id))
+      .for('update');
+    const source = fresh ?? student;
+    const currentValue = pointType === 'XP' ? source.xp : pointType === 'HP' ? source.hp : source.gp;
     const newValue = action === 'ADD' ? currentValue + amount : Math.max(0, currentValue - amount);
     const appliedAmount = Math.abs(newValue - currentValue);
 

@@ -14,6 +14,7 @@ import {
 import { eq, desc, and, inArray, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { teacherOwnsClassroom } from '../utils/access.js';
+import { affectedRows } from '../utils/points.js';
 
 export interface ActivityLogEntry {
   id: string;
@@ -598,22 +599,30 @@ class HistoryService {
 
     await db.transaction(async (tx) => {
       const updateData: Record<string, unknown> = { updatedAt: now };
-      let currentXp = student.xp;
-      let currentHp = student.hp;
-      let currentGp = student.gp;
+      // Valores frescos con la fila bloqueada: el cálculo no pisa escrituras simultáneas.
+      const [fresh] = await tx.select({ xp: studentProfiles.xp, hp: studentProfiles.hp, gp: studentProfiles.gp })
+        .from(studentProfiles).where(eq(studentProfiles.id, log.studentId)).for('update');
+      let currentXp = fresh?.xp ?? student.xp;
+      let currentHp = fresh?.hp ?? student.hp;
+      let currentGp = fresh?.gp ?? student.gp;
+      let revertedCount = 0;
 
       for (const entry of logsToRevert) {
         const inverseAction = entry.action === 'ADD' ? 'REMOVE' : 'ADD';
         const pointDelta = entry.action === 'ADD' ? -entry.amount : entry.amount;
         const fieldKey = entry.pointType.toLowerCase() as 'xp' | 'hp' | 'gp';
 
+        // 1. Marcar como revertido solo si no lo estaba: con dos reversiones simultáneas,
+        //    cada entrada se revierte (y descuenta) una sola vez.
+        const mark = await tx.update(pointLogs).set({ isReverted: true })
+          .where(and(eq(pointLogs.id, entry.id), eq(pointLogs.isReverted, false)));
+        if (affectedRows(mark) !== 1) continue;
+        revertedCount++;
+
         // Accumulate deltas
         if (fieldKey === 'xp') currentXp = Math.max(0, currentXp + pointDelta);
         else if (fieldKey === 'hp') currentHp = Math.max(0, currentHp + pointDelta);
         else if (fieldKey === 'gp') currentGp = Math.max(0, currentGp + pointDelta);
-
-        // 1. Mark original log as reverted
-        await tx.update(pointLogs).set({ isReverted: true }).where(eq(pointLogs.id, entry.id));
 
         // 2. Create inverse log
         await tx.insert(pointLogs).values({
@@ -630,6 +639,8 @@ class HistoryService {
           createdAt: now,
         });
       }
+
+      if (revertedCount === 0) throw new Error('Este registro ya fue revertido');
 
       // 3. Update student profile with all reverted values
       updateData.xp = currentXp;
@@ -673,16 +684,21 @@ class HistoryService {
     const now = new Date();
 
     await db.transaction(async (tx) => {
-      // 1. Eliminar el registro de student_badges
-      await tx.delete(studentBadges).where(eq(studentBadges.id, studentBadgeId));
+      // 1. Eliminar el registro de student_badges. Si no borra nada, otra reversión
+      //    simultánea ya lo hizo: no se vuelve a descontar la recompensa.
+      const removed = await tx.delete(studentBadges).where(eq(studentBadges.id, studentBadgeId));
+      if (affectedRows(removed) !== 1) throw new Error('Esta insignia ya fue revertida');
 
-      // 2. Si la insignia tenía recompensas, revertirlas
+      // 2. Si la insignia tenía recompensas, revertirlas (valores frescos con la fila bloqueada)
       if (rewardXp > 0 || rewardGp > 0) {
-        const newXp = Math.max(0, student.xp - rewardXp);
-        const newGp = Math.max(0, student.gp - rewardGp);
+        const [fresh] = await tx.select({ xp: studentProfiles.xp, gp: studentProfiles.gp, level: studentProfiles.level })
+          .from(studentProfiles).where(eq(studentProfiles.id, student.id)).for('update');
+        const base = fresh ?? student;
+        const newXp = Math.max(0, base.xp - rewardXp);
+        const newGp = Math.max(0, base.gp - rewardGp);
         const newLevel = rewardXp > 0
           ? Math.max(1, Math.floor((1 + Math.sqrt(1 + (8 * newXp) / xpPerLevel)) / 2))
-          : student.level;
+          : base.level;
 
         await tx.update(studentProfiles).set({
           xp: newXp,
@@ -758,11 +774,14 @@ class HistoryService {
 
     await db.transaction(async (tx) => {
       // 1. Marcar registro como revertido
-      await tx.update(attendanceRecords).set({ isReverted: true, updatedAt: now }).where(eq(attendanceRecords.id, attendanceId));
+      // Marcar solo si no estaba revertido: dos reversiones simultáneas no descuentan dos veces.
+      const mark = await tx.update(attendanceRecords).set({ isReverted: true, updatedAt: now })
+        .where(and(eq(attendanceRecords.id, attendanceId), eq(attendanceRecords.isReverted, false)));
+      if (affectedRows(mark) !== 1) throw new Error('Este registro ya fue revertido');
 
       // 2. Si hubo XP de asistencia, revertirlo
       if (xpToRevert > 0) {
-        const [student] = await tx.select().from(studentProfiles).where(eq(studentProfiles.id, record.studentProfileId));
+        const [student] = await tx.select().from(studentProfiles).where(eq(studentProfiles.id, record.studentProfileId)).for('update');
         if (student) {
           const [classroom] = await tx.select({ xpPerLevel: classrooms.xpPerLevel }).from(classrooms).where(eq(classrooms.id, student.classroomId));
           const xpPerLevel = classroom?.xpPerLevel || 100;

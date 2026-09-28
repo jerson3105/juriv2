@@ -435,7 +435,7 @@ class EventsService {
     }));
     const now = new Date();
     const pointLogsBatch: typeof pointLogs.$inferInsert[] = [];
-    const studentUpdates: { studentId: string; updates: Partial<Record<PointStatField, number>> }[] = [];
+    const studentUpdates: { studentId: string; updates: Partial<Record<PointStatField, number>>; effects: EventEffect[] }[] = [];
 
     for (const student of targetStudents) {
       const nextValues: Record<PointStatField, number> = {
@@ -469,7 +469,7 @@ class EventsService {
       if (nextValues.gp !== student.gp) updates.gp = nextValues.gp;
 
       if (Object.keys(updates).length > 0) {
-        studentUpdates.push({ studentId: student.id, updates });
+        studentUpdates.push({ studentId: student.id, updates, effects });
       }
     }
 
@@ -478,10 +478,7 @@ class EventsService {
 
     await db.transaction(async (tx) => {
       for (const update of studentUpdates) {
-        await tx
-          .update(studentProfiles)
-          .set(update.updates)
-          .where(eq(studentProfiles.id, update.studentId));
+        await this.applyEffectsAtomically(tx, update.studentId, update.effects);
       }
 
       if (pointLogsBatch.length > 0) {
@@ -586,7 +583,7 @@ class EventsService {
     const effects = this.parseEventEffects(eventData.effects);
     const affectedStudents: { id: string; name: string; changes: any }[] = [];
     const pointLogsBatch: typeof pointLogs.$inferInsert[] = [];
-    const studentUpdates: { studentId: string; updates: Partial<Record<PointStatField, number>> }[] = [];
+    const studentUpdates: { studentId: string; updates: Partial<Record<PointStatField, number>>; effects: EventEffect[] }[] = [];
 
     // Aplicar efectos a cada estudiante seleccionado
     for (const student of selectedStudents) {
@@ -630,7 +627,7 @@ class EventsService {
       if (nextValues.gp !== student.gp) updates.gp = nextValues.gp;
 
       if (Object.keys(updates).length > 0) {
-        studentUpdates.push({ studentId: student.id, updates });
+        studentUpdates.push({ studentId: student.id, updates, effects });
       }
 
       affectedStudents.push({
@@ -642,10 +639,7 @@ class EventsService {
 
     await db.transaction(async (tx) => {
       for (const update of studentUpdates) {
-        await tx
-          .update(studentProfiles)
-          .set(update.updates)
-          .where(eq(studentProfiles.id, update.studentId));
+        await this.applyEffectsAtomically(tx, update.studentId, update.effects);
       }
 
       if (pointLogsBatch.length > 0) {
@@ -817,7 +811,7 @@ class EventsService {
     const now = new Date();
     const affectedStudents: { id: string; name: string; changes?: any }[] = [];
     const pointLogsBatch: typeof pointLogs.$inferInsert[] = [];
-    const studentUpdates: { studentId: string; updates: Partial<Record<PointStatField, number>> }[] = [];
+    const studentUpdates: { studentId: string; updates: Partial<Record<PointStatField, number>>; effects: EventEffect[] }[] = [];
     const effectsToApply = effects.filter(
       (effect) =>
         (effect.action === 'REMOVE' && !completed) ||
@@ -881,7 +875,7 @@ class EventsService {
       if (nextValues.gp !== student.gp) updates.gp = nextValues.gp;
 
       if (Object.keys(updates).length > 0) {
-        studentUpdates.push({ studentId: student.id, updates });
+        studentUpdates.push({ studentId: student.id, updates, effects: effectsToApply });
       }
 
       affectedStudents.push({
@@ -893,10 +887,7 @@ class EventsService {
 
     await db.transaction(async (tx) => {
       for (const update of studentUpdates) {
-        await tx
-          .update(studentProfiles)
-          .set(update.updates)
-          .where(eq(studentProfiles.id, update.studentId));
+        await this.applyEffectsAtomically(tx, update.studentId, update.effects);
       }
 
       if (pointLogsBatch.length > 0) {
@@ -918,6 +909,24 @@ class EventsService {
   /**
    * Mezclar array aleatoriamente
    */
+  /**
+   * Aplica los efectos en orden, cada uno como sentencia atómica (ADD suma; REMOVE resta
+   * con mínimo 0), igual que el cálculo previo pero sin pisar escrituras simultáneas.
+   */
+  private async applyEffectsAtomically(tx: any, studentProfileId: string, effects: EventEffect[]) {
+    for (const effect of effects) {
+      const field = this.effectTypeToField(effect.type);
+      const column = studentProfiles[field];
+      const next = effect.action === 'ADD'
+        ? sql`${column} + ${effect.value}`
+        : sql`GREATEST(0, ${column} - ${effect.value})`;
+      await tx
+        .update(studentProfiles)
+        .set({ [field]: next, updatedAt: new Date() })
+        .where(eq(studentProfiles.id, studentProfileId));
+    }
+  }
+
   private effectTypeToField(effectType: EventEffect['type']): PointStatField {
     switch (effectType) {
       case 'XP':
