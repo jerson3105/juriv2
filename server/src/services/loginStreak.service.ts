@@ -4,6 +4,7 @@ import { eq, and, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { clanService } from './clan.service.js';
 import { createNotification } from '../utils/notificationEmitter.js';
+import { addXpGp, affectedRows } from '../utils/points.js';
 
 // Configuración por defecto para login streak
 const DEFAULT_LOGIN_STREAK_CONFIG = {
@@ -178,8 +179,9 @@ export const loginStreakService = {
     const newLongestStreak = Math.max(streakRecord.longestStreak, newStreak);
     const newTotalLogins = streakRecord.totalLogins + 1;
 
-    // Actualizar registro
-    await db
+    // Actualizar registro con concurrencia optimista: solo gana la petición que ve el mismo
+    // totalLogins que leímos. Con peticiones simultáneas el día se registra (y cobra) una vez.
+    const claim = await db
       .update(loginStreaks)
       .set({
         currentStreak: newStreak,
@@ -189,7 +191,27 @@ export const loginStreakService = {
         graceDaysUsed,
         updatedAt: now,
       })
-      .where(eq(loginStreaks.id, streakRecord.id));
+      .where(and(
+        eq(loginStreaks.id, streakRecord.id),
+        eq(loginStreaks.totalLogins, streakRecord.totalLogins)
+      ));
+
+    if (affectedRows(claim) !== 1) {
+      const [current] = await db.select().from(loginStreaks).where(eq(loginStreaks.id, streakRecord.id));
+      const claimed = parseClaimedMilestones(current?.claimedMilestones ?? streakRecord.claimedMilestones);
+      return {
+        streak: {
+          currentStreak: current?.currentStreak ?? streakRecord.currentStreak,
+          longestStreak: current?.longestStreak ?? streakRecord.longestStreak,
+          totalLogins: current?.totalLogins ?? streakRecord.totalLogins,
+          lastLoginDate: current?.lastLoginDate ?? streakRecord.lastLoginDate,
+          claimedMilestones: claimed,
+        },
+        rewards: null,
+        isNewLogin: false,
+        nextMilestone: this.getNextMilestone(current?.currentStreak ?? streakRecord.currentStreak, claimed, config),
+      };
+    }
 
     // Calcular recompensas
     let rewards: LoginStreakResult['rewards'] = {
@@ -278,18 +300,9 @@ export const loginStreakService = {
     
     // Actualizar XP, GP y nivel del estudiante
     if (totalXpToAdd > 0 || totalGpToAdd > 0) {
-      const newXp = student.xp + totalXpToAdd;
-      const newLevel = totalXpToAdd > 0 ? calculateLevel(newXp, xpPerLevel) : student.level;
-      const leveledUp = newLevel > student.level;
-      
-      await db.update(studentProfiles)
-        .set({
-          xp: newXp,
-          gp: student.gp + totalGpToAdd,
-          level: newLevel,
-          updatedAt: now,
-        })
-        .where(eq(studentProfiles.id, studentProfileId));
+      const updated = await addXpGp(db, studentProfileId, { xp: totalXpToAdd, gp: totalGpToAdd }, xpPerLevel);
+      const newLevel = updated?.level ?? student.level;
+      const leveledUp = !!updated && updated.level > updated.previousLevel;
       
       // Notificar subida de nivel si aplica
       if (leveledUp && student.userId) {
