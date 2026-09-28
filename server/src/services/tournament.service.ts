@@ -26,6 +26,7 @@ import {
   type TournamentParticipantType,
   type TournamentMatchStatus,
 } from '../db/schema.js';
+import { teacherOwnsClassroom } from '../utils/access.js';
 
 // ==================== INTERFACES ====================
 
@@ -358,15 +359,7 @@ class TournamentService {
   }
 
   async verifyTeacherOwnsClassroom(teacherId: string, classroomId: string): Promise<boolean> {
-    const [classroom] = await db
-      .select({ id: classrooms.id })
-      .from(classrooms)
-      .where(and(
-        eq(classrooms.id, classroomId),
-        eq(classrooms.teacherId, teacherId)
-      ));
-
-    return !!classroom;
+    return teacherOwnsClassroom(teacherId, classroomId);
   }
 
   // ==================== PARTICIPANTES ====================

@@ -1,26 +1,10 @@
 import { Request, Response } from 'express';
 import { eventsService } from '../services/events.service.js';
+import { requireClassroomTeacher } from '../utils/access.js';
 
-const ensureTeacherClassroomAccess = async (
-  req: Request,
-  res: Response,
-  classroomId: string
-): Promise<string | null> => {
-  const userId = req.user?.id;
-
-  if (!userId) {
-    res.status(401).json({ message: 'No autorizado' });
-    return null;
-  }
-
-  const isOwner = await eventsService.verifyTeacherOwnsClassroom(userId, classroomId);
-  if (!isOwner) {
-    res.status(403).json({ message: 'No tienes permiso para esta clase' });
-    return null;
-  }
-
-  return userId;
-};
+// Devuelve el id del usuario si puede operar sobre la clase (ver utils/access.ts), o null.
+const ensureTeacherClassroomAccess = async (req: Request, res: Response, classroomId: string): Promise<string | null> =>
+  (await requireClassroomTeacher(req, res, classroomId)) ? req.user!.id : null;
 
 class EventsController {
   /**

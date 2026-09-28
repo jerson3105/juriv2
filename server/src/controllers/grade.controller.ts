@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { gradeService } from '../services/grade.service.js';
 import { gradeExportService } from '../services/gradeExport.service.js';
+import { requireClassroomTeacher } from '../utils/access.js';
 
 type AuthRole = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'PARENT';
 
@@ -93,34 +94,8 @@ const handleControllerError = (res: Response, error: unknown, fallbackMessage: s
   });
 };
 
-const ensureTeacherClassroomAccess = async (
-  req: Request,
-  res: Response,
-  classroomId: string
-): Promise<boolean> => {
-  const user = req.user;
-  if (!user) {
-    res.status(401).json({ success: false, message: 'No autenticado' });
-    return false;
-  }
-
-  if (user.role === 'ADMIN') {
-    return true;
-  }
-
-  if (user.role !== 'TEACHER') {
-    res.status(403).json({ success: false, message: 'Sin acceso a este salon' });
-    return false;
-  }
-
-  const hasAccess = await gradeService.verifyTeacherOwnsClassroom(user.id, classroomId);
-  if (!hasAccess) {
-    res.status(403).json({ success: false, message: 'Sin acceso a este salon' });
-    return false;
-  }
-
-  return true;
-};
+// Acceso de profesor a la clase: ver utils/access.ts (requireClassroomTeacher).
+const ensureTeacherClassroomAccess = requireClassroomTeacher;
 
 const ensureTeacherStudentProfileAccess = async (
   req: Request,

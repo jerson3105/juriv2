@@ -28,6 +28,7 @@ import {
 } from '../db/schema.js';
 import { clanService } from './clan.service.js';
 import { storyService } from './story.service.js';
+import { teacherOwnsClassroom } from '../utils/access.js';
 
 // ==================== TIPOS ====================
 
@@ -224,14 +225,7 @@ export const jiroExpeditionService = {
   },
 
   async verifyTeacherOwnsClassroom(teacherId: string, classroomId: string): Promise<boolean> {
-    const [classroom] = await db.select({ id: classrooms.id })
-      .from(classrooms)
-      .where(and(
-        eq(classrooms.id, classroomId),
-        eq(classrooms.teacherId, teacherId)
-      ));
-
-    return !!classroom;
+    return teacherOwnsClassroom(teacherId, classroomId);
   },
 
   async verifyStudentBelongsToUser(studentProfileId: string, userId: string): Promise<boolean> {

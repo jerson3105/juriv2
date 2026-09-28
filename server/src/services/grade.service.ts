@@ -25,6 +25,7 @@ import {
 } from '../db/schema.js';
 import { eq, and, inArray, sql, gte, lte, asc } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
+import { teacherOwnsClassroom } from '../utils/access.js';
 
 type ClosedBimesterEntry = {
   period: string;
@@ -335,14 +336,7 @@ class GradeService {
   }
 
   async verifyTeacherOwnsClassroom(teacherId: string, classroomId: string): Promise<boolean> {
-    const [classroom] = await db.select({
-      id: classrooms.id,
-    }).from(classrooms).where(and(
-      eq(classrooms.id, classroomId),
-      eq(classrooms.teacherId, teacherId)
-    ));
-
-    return !!classroom;
+    return teacherOwnsClassroom(teacherId, classroomId);
   }
 
   async verifyStudentOwnsProfile(studentUserId: string, studentProfileId: string): Promise<boolean> {

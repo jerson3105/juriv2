@@ -11,6 +11,7 @@ import {
 } from '../db/schema.js';
 import { eq, and, asc, desc, sql, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
+import { teacherOwnsClassroom } from '../utils/access.js';
 
 // ==================== THEME PRESETS ====================
 
@@ -1071,14 +1072,7 @@ class StoryService {
   }
 
   async verifyTeacherOwnsClassroom(teacherId: string, classroomId: string): Promise<boolean> {
-    const [classroom] = await db.select({ id: classrooms.id })
-      .from(classrooms)
-      .where(and(
-        eq(classrooms.id, classroomId),
-        eq(classrooms.teacherId, teacherId)
-      ));
-
-    return !!classroom;
+    return teacherOwnsClassroom(teacherId, classroomId);
   }
 
   async verifyStudentBelongsToClassroom(userId: string, classroomId: string): Promise<boolean> {

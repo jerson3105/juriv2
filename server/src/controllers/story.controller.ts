@@ -3,6 +3,7 @@ import { storyService, THEME_PRESETS } from '../services/story.service.js';
 import { z } from 'zod';
 import { GoogleGenAI } from '@google/genai';
 import { requireClassroomMember } from '../utils/access.js';
+import { requireClassroomTeacher } from '../utils/access.js';
 
 // ==================== VALIDATION SCHEMAS ====================
 
@@ -98,26 +99,9 @@ const setDialoguesSchema = z.object({
   })),
 });
 
-const ensureTeacherClassroomAccess = async (
-  req: Request,
-  res: Response,
-  classroomId: string
-): Promise<string | null> => {
-  const userId = req.user?.id;
-
-  if (!userId) {
-    res.status(401).json({ success: false, message: 'No autorizado' });
-    return null;
-  }
-
-  const isOwner = await storyService.verifyTeacherOwnsClassroom(userId, classroomId);
-  if (!isOwner) {
-    res.status(403).json({ success: false, message: 'No tienes permiso para esta clase' });
-    return null;
-  }
-
-  return userId;
-};
+// Devuelve el id del usuario si puede operar sobre la clase (ver utils/access.ts), o null.
+const ensureTeacherClassroomAccess = async (req: Request, res: Response, classroomId: string): Promise<string | null> =>
+  (await requireClassroomTeacher(req, res, classroomId)) ? req.user!.id : null;
 
 const buildAIThemePrompt = (description: string) => `Eres un diseñador de temas visuales para una plataforma educativa gamificada. El profesor quiere un tema visual personalizado para su aula.
 

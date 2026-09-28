@@ -16,6 +16,7 @@ import {
   type PurchaseType,
   type ItemUsageStatus,
 } from '../db/schema.js';
+import { teacherOwnsClassroom } from '../utils/access.js';
 
 // Imágenes predeterminadas por categoría y rareza
 const DEFAULT_IMAGES: Record<string, Record<string, string>> = {
@@ -710,14 +711,7 @@ export class ShopService {
   // ==================== VALIDACIONES ====================
 
   async verifyTeacherOwnsClassroom(teacherId: string, classroomId: string): Promise<boolean> {
-    const [classroom] = await db
-      .select()
-      .from(classrooms)
-      .where(and(
-        eq(classrooms.id, classroomId),
-        eq(classrooms.teacherId, teacherId)
-      ));
-    return !!classroom;
+    return teacherOwnsClassroom(teacherId, classroomId);
   }
 
   async verifyStudentInClassroom(studentId: string, classroomId: string): Promise<boolean> {

@@ -227,8 +227,10 @@ export const userCanAccessClassroom = async (
 // Guards HTTP (emiten respuesta y devuelven boolean)
 // ─────────────────────────────────────────────────────────────
 
+// `error` duplica `message` por compatibilidad: parte del cliente aún lee `data.error`
+// (helpers antiguos respondían `{ error }`).
 const deny = (res: Response, status: number, message: string): false => {
-  res.status(status).json({ success: false, message });
+  res.status(status).json({ success: false, message, error: message });
   return false;
 };
 

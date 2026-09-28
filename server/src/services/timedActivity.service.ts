@@ -15,6 +15,7 @@ import { eq, and, desc, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { clanService } from './clan.service.js';
 import { storyService } from './story.service.js';
+import { teacherOwnsClassroom } from '../utils/access.js';
 
 // DTOs
 export interface CreateTimedActivityDto {
@@ -737,15 +738,7 @@ class TimedActivityService {
   }
 
   async verifyTeacherOwnsClassroom(teacherId: string, classroomId: string): Promise<boolean> {
-    const [classroom] = await db
-      .select({ id: classrooms.id })
-      .from(classrooms)
-      .where(and(
-        eq(classrooms.id, classroomId),
-        eq(classrooms.teacherId, teacherId)
-      ));
-
-    return !!classroom;
+    return teacherOwnsClassroom(teacherId, classroomId);
   }
 
   // Obtener actividad activa de una clase

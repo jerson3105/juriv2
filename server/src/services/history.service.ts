@@ -13,6 +13,7 @@ import {
 } from '../db/schema.js';
 import { eq, desc, and, inArray, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
+import { teacherOwnsClassroom } from '../utils/access.js';
 
 export interface ActivityLogEntry {
   id: string;
@@ -105,12 +106,7 @@ class HistoryService {
   }
 
   async verifyTeacherOwnsClassroom(teacherId: string, classroomId: string): Promise<boolean> {
-    const classroom = await db.query.classrooms.findFirst({
-      where: and(eq(classrooms.id, classroomId), eq(classrooms.teacherId, teacherId)),
-      columns: { id: true },
-    });
-
-    return Boolean(classroom);
+    return teacherOwnsClassroom(teacherId, classroomId);
   }
 
   async verifyStudentBelongsToClassroom(studentId: string, classroomId: string): Promise<boolean> {

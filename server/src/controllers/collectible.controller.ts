@@ -13,6 +13,7 @@ import {
   classroomIdOfAlbum,
   classroomIdOfCard,
   classroomIdOfStudentProfile,
+  badgeScopeAndClassroom,
   pickFields,
 } from '../utils/access.js';
 
@@ -23,6 +24,14 @@ const ALBUM_FIELDS = [
   'rewardXp', 'rewardHp', 'rewardGp', 'rewardBadgeId', 'allowTrades',
 ] as const;
 const ALBUM_UPDATE_FIELDS = [...ALBUM_FIELDS, 'isActive'] as const;
+// La insignia de premio debe ser del sistema o de la misma clase del álbum.
+const isValidRewardBadge = async (rewardBadgeId: unknown, classroomId: string): Promise<boolean> => {
+  if (rewardBadgeId === undefined || rewardBadgeId === null || rewardBadgeId === '') return true;
+  if (typeof rewardBadgeId !== 'string') return false;
+  const badge = await badgeScopeAndClassroom(rewardBadgeId);
+  return !!badge && (badge.scope === 'SYSTEM' || badge.classroomId === classroomId);
+};
+
 const CARD_FIELDS = ['name', 'description', 'imageUrl', 'rarity', 'slotNumber'] as const;
 
 export const collectibleController = {
@@ -33,6 +42,9 @@ export const collectibleController = {
       const { classroomId } = req.params;
       if (!(await requireClassroomTeacher(req, res, classroomId))) return;
       const data = pickFields(req.body, ALBUM_FIELDS);
+      if (!(await isValidRewardBadge(data.rewardBadgeId, classroomId))) {
+        return res.status(400).json({ message: 'La insignia de premio no pertenece a esta clase' });
+      }
 
       const album = await collectibleService.createAlbum({
         ...(data as any),
@@ -97,6 +109,9 @@ export const collectibleController = {
       const { albumId } = req.params;
       if (!(await requireResourceTeacher(req, res, classroomIdOfAlbum, albumId, 'Álbum no encontrado'))) return;
       const data = pickFields(req.body, ALBUM_UPDATE_FIELDS);
+      if (!(await isValidRewardBadge(data.rewardBadgeId, (await classroomIdOfAlbum(albumId))!))) {
+        return res.status(400).json({ message: 'La insignia de premio no pertenece a esta clase' });
+      }
 
       const album = await collectibleService.updateAlbum(albumId, data as any);
       res.json(album);

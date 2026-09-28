@@ -24,6 +24,7 @@ import { eq, and, desc, gte, lte, inArray, sql, count, sum } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcryptjs';
 import { gradeService } from './grade.service.js';
+import { teacherOwnsClassroom } from '../utils/access.js';
 
 interface ChildSummary {
   studentProfileId: string;
@@ -97,14 +98,7 @@ class ParentService {
   }
 
   async verifyTeacherOwnsClassroom(teacherId: string, classroomId: string): Promise<boolean> {
-    const [row] = await db.select({ id: classrooms.id })
-      .from(classrooms)
-      .where(and(
-        eq(classrooms.id, classroomId),
-        eq(classrooms.teacherId, teacherId)
-      ))
-      .limit(1);
-    return !!row;
+    return teacherOwnsClassroom(teacherId, classroomId);
   }
 
   // ==================== REGISTRATION ====================

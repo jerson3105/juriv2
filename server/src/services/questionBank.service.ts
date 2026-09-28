@@ -2,6 +2,7 @@ import { db } from '../db/index.js';
 import { classrooms, questionBanks, questions, type BankQuestionType, type QuestionDifficulty } from '../db/schema.js';
 import { eq, and, inArray, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
+import { teacherOwnsClassroom } from '../utils/access.js';
 
 // Interfaces
 interface CreateBankData {
@@ -217,17 +218,7 @@ class QuestionBankService {
   }
 
   async verifyTeacherOwnsClassroom(teacherId: string, classroomId: string): Promise<boolean> {
-    const [classroom] = await db
-      .select({ id: classrooms.id })
-      .from(classrooms)
-      .where(
-        and(
-          eq(classrooms.id, classroomId),
-          eq(classrooms.teacherId, teacherId)
-        )
-      );
-
-    return !!classroom;
+    return teacherOwnsClassroom(teacherId, classroomId);
   }
 
   private async getQuestionByIdRaw(questionId: string): Promise<QuestionRow | null> {
