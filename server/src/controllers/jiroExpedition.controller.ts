@@ -4,7 +4,21 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
-import { requireClassroomTeacher } from '../utils/access.js';
+import { requireClassroomTeacher, pickFields, questionBanksOwnedBy } from '../utils/access.js';
+
+// Campos configurables de una expedición (classroomId sale de la ruta).
+const EXPEDITION_FIELDS = [
+  'questionBankId', 'name', 'description', 'coverImageUrl', 'mode', 'timeLimitMinutes',
+  'initialEnergy', 'energyRegenMinutes', 'energyPurchasePrice', 'rewardXpPerCorrect',
+  'rewardGpPerCorrect', 'gradeWeight', 'competencyId', 'competencyIds',
+] as const;
+const STATION_FIELDS = ['name', 'description', 'instructions', 'orderIndex', 'allowedFileTypes', 'maxFileSizeMb'] as const;
+
+// El archivo de una entrega debe ser uno subido por /jiro-expeditions/upload (nada de URLs externas
+// ni esquemas como javascript:, que el profesor abriría al revisar la entrega).
+const DELIVERY_FILE_URL = /^\/api\/uploads\/jiro-deliveries\/[A-Za-z0-9-]+\.(pdf|jpe?g|png|gif|webp|docx?|xlsx?)$/i;
+
+const BANK_FORBIDDEN = { success: false, message: 'El banco de preguntas no pertenece a tus clases' };
 
 // Acceso de profesor a la clase: ver utils/access.ts (requireClassroomTeacher).
 const ensureTeacherClassroomAccess = requireClassroomTeacher;
@@ -213,9 +227,13 @@ export const jiroExpeditionController = {
       const hasAccess = await ensureTeacherClassroomAccess(req, res, classroomId);
       if (!hasAccess) return;
 
+      const fields = pickFields(data, EXPEDITION_FIELDS);
+      if (!(await questionBanksOwnedBy(req.user!, fields.questionBankId))) {
+        return res.status(403).json(BANK_FORBIDDEN);
+      }
       const expedition = await jiroExpeditionService.createExpedition({
+        ...(fields as any),
         classroomId,
-        ...data,
       });
 
       res.status(201).json({
@@ -278,6 +296,9 @@ export const jiroExpeditionController = {
       const hasAccess = await ensureTeacherExpeditionAccess(req, res, expeditionId);
       if (!hasAccess) return;
 
+      if (data?.questionBankId !== undefined && !(await questionBanksOwnedBy(req.user!, data.questionBankId))) {
+        return res.status(403).json(BANK_FORBIDDEN);
+      }
       const expedition = await jiroExpeditionService.updateExpedition(expeditionId, data);
 
       res.json({
@@ -318,8 +339,8 @@ export const jiroExpeditionController = {
       if (!hasAccess) return;
 
       const station = await jiroExpeditionService.createDeliveryStation({
+        ...(pickFields(data, STATION_FIELDS) as any),
         expeditionId,
-        ...data,
       });
 
       res.status(201).json({
@@ -623,6 +644,13 @@ export const jiroExpeditionController = {
     try {
       const { expeditionId, studentProfileId } = req.params;
       const { deliveryStationId, fileUrl, fileName, fileType, fileSizeBytes } = req.body;
+
+      if (typeof fileUrl !== 'string' || !DELIVERY_FILE_URL.test(fileUrl)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Archivo de entrega inválido',
+        });
+      }
 
       if (!studentProfileId) {
         return res.status(400).json({

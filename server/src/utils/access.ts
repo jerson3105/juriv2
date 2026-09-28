@@ -15,6 +15,7 @@ import {
   behaviors,
   classroomCharacterClasses,
   itemUsages,
+  questionBanks,
 } from '../db/schema.js';
 
 /**
@@ -170,6 +171,26 @@ export const studentsBelongToClassroom = async (
     .select({ id: studentProfiles.id })
     .from(studentProfiles)
     .where(and(eq(studentProfiles.classroomId, classroomId), inArray(studentProfiles.id, unique)));
+  return rows.length === unique.length;
+};
+
+/**
+ * ¿Todos los bancos de preguntas pertenecen a clases del usuario? (ADMIN: siempre).
+ * Permite reutilizar bancos entre clases del mismo profesor, no enlazar los de otros.
+ */
+export const questionBanksOwnedBy = async (
+  user: { id: string; role: string },
+  bankIds: unknown
+): Promise<boolean> => {
+  const ids = Array.isArray(bankIds) ? bankIds : [bankIds];
+  if (ids.length === 0 || ids.some((id) => typeof id !== 'string' || !id)) return false;
+  if (user.role === 'ADMIN') return true;
+  const unique = [...new Set(ids as string[])];
+  const rows = await db
+    .select({ id: questionBanks.id })
+    .from(questionBanks)
+    .innerJoin(classrooms, eq(questionBanks.classroomId, classrooms.id))
+    .where(and(inArray(questionBanks.id, unique), eq(classrooms.teacherId, user.id)));
   return rows.length === unique.length;
 };
 

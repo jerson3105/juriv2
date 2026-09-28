@@ -13,6 +13,7 @@ import { jiroExpeditionApi, type CreateExpeditionData } from '../../lib/jiroExpe
 import { questionBankApi } from '../../lib/questionBankApi';
 import toast from 'react-hot-toast';
 import { useClassroomCompetencies } from '../../hooks/useClassroomCompetencies';
+import { safeUrl } from '../../lib/safeHtml';
 
 // Imagen de Jiro - coloca la imagen en: public/jiro-mascot.png (tamaño recomendado: 128x128px o 256x256px)
 const JIRO_IMAGE = '/jiro-mascot.png';
@@ -1114,7 +1115,7 @@ const StudentAnswersView = ({ expeditionId, studentProfileId, studentName, onBac
 
                       <div className="flex items-center gap-2 mt-3">
                         <a
-                          href={delivery.fileUrl}
+                          href={safeUrl(delivery.fileUrl)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="px-3 py-1.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center gap-1"
@@ -1246,7 +1247,7 @@ const ExpeditionDeliveriesView = ({ expeditionId, onBack }: { expeditionId: stri
               <div className="flex items-start justify-between">
                 <div><p className="font-semibold text-gray-900 dark:text-white">{d.student.name}</p><p className="text-sm text-gray-500">{d.station.name}</p><p className="text-xs text-gray-400 mt-1">{d.fileName} • {(d.fileSizeBytes / 1024 / 1024).toFixed(2)}MB</p></div>
                 <div className="flex gap-2">
-                  <a href={d.fileUrl} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200"><Eye size={16} className="inline mr-1" />Ver</a>
+                  <a href={safeUrl(d.fileUrl)} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200"><Eye size={16} className="inline mr-1" />Ver</a>
                   <Button size="sm" variant="secondary" onClick={() => reviewMutation.mutate({ id: d.id, status: 'REJECTED' })} disabled={reviewMutation.isPending} className="text-red-500">Rechazar</Button>
                   <Button size="sm" onClick={() => reviewMutation.mutate({ id: d.id, status: 'APPROVED' })} disabled={reviewMutation.isPending}>Aprobar</Button>
                 </div>

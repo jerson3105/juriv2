@@ -29,6 +29,7 @@ import {
   type BugReportCategory,
 } from '../../lib/bugReportApi';
 import toast from 'react-hot-toast';
+import { safeUrl } from '../../lib/safeHtml';
 
 const STATUS_ICONS: Record<BugReportStatus, any> = {
   PENDING: Clock,
@@ -388,7 +389,7 @@ export const AdminBugReports = () => {
                           URL del problema
                         </h4>
                         <a
-                          href={selectedReport.currentUrl}
+                          href={safeUrl(selectedReport.currentUrl)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-sm text-blue-600 hover:underline flex items-center gap-1"

@@ -12,6 +12,14 @@ export const bugReportController = {
 
       const { title, description, category, priority, currentUrl, browserInfo, screenshotUrl } = req.body;
 
+      // Enlaces que el admin abrirá: solo http(s).
+      const isHttpUrl = (value: unknown) =>
+        value === undefined || value === null || value === '' ||
+        (typeof value === 'string' && value.length <= 2048 && /^https?:\/\//i.test(value));
+      if (!isHttpUrl(currentUrl) || !isHttpUrl(screenshotUrl)) {
+        return res.status(400).json({ success: false, message: 'URL inválida' });
+      }
+
       if (!title || !description) {
         return res.status(400).json({ 
           success: false, 
