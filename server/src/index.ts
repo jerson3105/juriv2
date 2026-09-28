@@ -120,7 +120,7 @@ io.use(async (socket, next) => {
     }
     
     // Verificar token JWT
-    const decoded = jwt.verify(token, config_app.jwt.secret) as {
+    const decoded = jwt.verify(token, config_app.jwt.secret, { algorithms: ['HS256'] }) as {
       userId: string;
       email: string;
       role: string;

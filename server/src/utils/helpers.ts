@@ -1,16 +1,23 @@
 import crypto from 'crypto';
 
 /**
- * Genera un código único para aulas (8 caracteres alfanuméricos)
+ * Código aleatorio legible (sin I, O, 0, 1 para evitar confusión) generado con un
+ * CSPRNG. Los códigos de clase y de vinculación actúan como secretos: con
+ * `Math.random` podrían predecirse a partir de otros códigos observados.
  */
-export const generateClassCode = (): string => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Sin I, O, 0, 1 para evitar confusión
+export const generateRandomCode = (length: number): string => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
-  for (let i = 0; i < 8; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  for (let i = 0; i < length; i++) {
+    code += chars.charAt(crypto.randomInt(chars.length));
   }
   return code;
 };
+
+/**
+ * Genera un código único para aulas (8 caracteres alfanuméricos)
+ */
+export const generateClassCode = (): string => generateRandomCode(8);
 
 /**
  * Calcula el nivel basado en XP (sistema progresivo)

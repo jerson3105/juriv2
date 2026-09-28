@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { studentController } from '../controllers/student.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { codeRedemptionLimiter } from '../middleware/security.js';
 
 const router = Router();
 
@@ -9,7 +10,7 @@ router.use(authenticate);
 
 // Rutas para estudiantes (solo rol STUDENT puede unirse)
 router.post('/verify-code', authorize('STUDENT'), studentController.verifyCode.bind(studentController));
-router.post('/join', authorize('STUDENT'), studentController.joinClass.bind(studentController));
+router.post('/join', authorize('STUDENT'), codeRedemptionLimiter, studentController.joinClass.bind(studentController));
 router.get('/my-classes', studentController.getMyClasses.bind(studentController));
 router.get('/profile/:classroomId', studentController.getMyProfile.bind(studentController));
 router.put('/profile/:classroomId', studentController.updateProfile.bind(studentController));
@@ -38,6 +39,6 @@ router.post('/placeholder/:classroomId/pdf', authorize('TEACHER'), studentContro
 router.get('/placeholder/:studentId/pdf/single', authorize('TEACHER'), studentController.generateSingleCardPDF.bind(studentController));
 
 // Vincular cuenta de estudiante con código
-router.post('/link-account', authorize('STUDENT'), studentController.linkAccount.bind(studentController));
+router.post('/link-account', authorize('STUDENT'), codeRedemptionLimiter, studentController.linkAccount.bind(studentController));
 
 export default router;

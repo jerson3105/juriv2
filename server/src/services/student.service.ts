@@ -15,6 +15,7 @@ import { clanService } from './clan.service.js';
 import { badgeService } from './badge.service.js';
 import { storyService } from './story.service.js';
 import { prepareForTx } from '../utils/notificationEmitter.js';
+import { generateRandomCode } from '../utils/helpers.js';
 
 type CharacterClass = 'GUARDIAN' | 'ARCANE' | 'EXPLORER' | 'ALCHEMIST';
 type PointType = 'XP' | 'HP' | 'GP';
@@ -881,12 +882,7 @@ export class StudentService {
 
   // Generar código de vinculación único
   private generateLinkCode(): string {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Sin I, O, 0, 1 para evitar confusión
-    let code = '';
-    for (let i = 0; i < 6; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return code;
+    return generateRandomCode(6);
   }
 
   // Crear estudiante placeholder (sin cuenta)
