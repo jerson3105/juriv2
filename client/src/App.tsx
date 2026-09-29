@@ -5,80 +5,83 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './lib/queryClient';
 import { TimerProvider } from './contexts/TimerContext';
 import { NotificationProvider } from './contexts/NotificationContext';
+import { lazyPage } from './lib/lazyPage';
 
-// Pages
+// Páginas del flujo de acceso: carga inmediata (primera pantalla de quien no ha iniciado sesión).
 import { LoginPage } from './pages/auth/LoginPage';
 import { RegisterPage } from './pages/auth/RegisterPage';
 import { StudentCodeRegistrationPage } from './pages/auth/StudentCodeRegistrationPage';
 import { GoogleCallbackPage } from './pages/auth/GoogleCallbackPage';
 import { SelectRolePage } from './pages/auth/SelectRolePage';
-import { AboutPage } from './pages/AboutPage';
-import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
-import { TeacherDashboard } from './pages/dashboard/TeacherDashboard';
-import { ClassroomsPage } from './pages/classrooms/ClassroomsPage';
-import { JoinClassPage } from './pages/student/JoinClassPage';
-import { StudentDashboard } from './pages/student/StudentDashboard';
-import { StudentOverviewPage } from './pages/student/StudentOverviewPage';
-import { StudentClassesOverviewPage } from './pages/student/StudentClassesOverviewPage';
-import { StudentSkillsOverviewPage } from './pages/student/StudentSkillsOverviewPage';
-import { MyClanPage } from './pages/student/MyClanPage';
-import { StudentAttendancePage } from './pages/student/StudentAttendancePage';
+
+// Resto de páginas: bajo demanda (code splitting por ruta). Cada usuario descarga solo lo que abre.
+const AboutPage = lazyPage(() => import('./pages/AboutPage').then((m) => ({ default: m.AboutPage })));
+const PrivacyPolicyPage = lazyPage(() => import('./pages/PrivacyPolicyPage').then((m) => ({ default: m.PrivacyPolicyPage })));
+const TeacherDashboard = lazyPage(() => import('./pages/dashboard/TeacherDashboard').then((m) => ({ default: m.TeacherDashboard })));
+const ClassroomsPage = lazyPage(() => import('./pages/classrooms/ClassroomsPage').then((m) => ({ default: m.ClassroomsPage })));
+const JoinClassPage = lazyPage(() => import('./pages/student/JoinClassPage').then((m) => ({ default: m.JoinClassPage })));
+const StudentDashboard = lazyPage(() => import('./pages/student/StudentDashboard').then((m) => ({ default: m.StudentDashboard })));
+const StudentOverviewPage = lazyPage(() => import('./pages/student/StudentOverviewPage').then((m) => ({ default: m.StudentOverviewPage })));
+const StudentClassesOverviewPage = lazyPage(() => import('./pages/student/StudentClassesOverviewPage').then((m) => ({ default: m.StudentClassesOverviewPage })));
+const StudentSkillsOverviewPage = lazyPage(() => import('./pages/student/StudentSkillsOverviewPage').then((m) => ({ default: m.StudentSkillsOverviewPage })));
+const MyClanPage = lazyPage(() => import('./pages/student/MyClanPage').then((m) => ({ default: m.MyClanPage })));
+const StudentAttendancePage = lazyPage(() => import('./pages/student/StudentAttendancePage').then((m) => ({ default: m.StudentAttendancePage })));
 
 // Classroom pages (teacher)
-import { StudentsPage } from './pages/classroom/StudentsPage';
-import { BehaviorsPage } from './pages/classroom/BehaviorsPage';
-import { ShopPage } from './pages/classroom/ShopPage';
-import { ActivitiesPage } from './pages/classroom/ActivitiesPage';
-import { ClassroomSettingsPage } from './pages/classroom/ClassroomSettingsPage';
-import { AttendancePage } from './pages/classroom/AttendancePage';
-import { StudentDetailPage } from './pages/classroom/StudentDetailPage';
-import { BadgesPage } from './pages/classroom/BadgesPage';
-import { ClansPage } from './pages/classroom/ClansPage';
-import { RankingsPage } from './pages/classroom/RankingsPage';
-import { QuestionBanksPage } from './pages/classroom/QuestionBanksPage';
-import { ExpeditionsPage } from './pages/classroom/ExpeditionsPage';
-import { CollectiblesPage } from './pages/classroom/CollectiblesPage';
-import { ReportsPage } from './pages/classroom/ReportsPage';
-import { HistoryPage } from './pages/classroom/HistoryPage';
-import { GradebookPage } from './pages/classroom/GradebookPage';
-import { GradebookStatsPage } from './pages/classroom/GradebookStatsPage';
-import { StorytellingPage } from './pages/classroom/StorytellingPage';
-import { AnnouncementsPage } from './pages/classroom/AnnouncementsPage';
-import { ClassroomChatPage } from './pages/classroom/ClassroomChatPage';
-import { StudentScrollsPage } from './pages/student/StudentScrollsPage';
-import { StudentGradesPage } from './pages/student/StudentGradesPage';
-import { StudentExpeditionsPage } from './pages/student/StudentExpeditionsPage';
-import { StudentCollectiblesPage } from './pages/student/StudentCollectiblesPage';
-import { StudentJiroExpeditionPage } from './pages/student/StudentJiroExpeditionPage';
-import { StudentJiroExpeditionsPage } from './pages/student/StudentJiroExpeditionsPage';
-import { StudentStoryPage } from './pages/student/StudentStoryPage';
-import { StudentProgressPage } from './pages/student/StudentProgressPage';
-import { StudentItemsShopPage } from './pages/student/StudentItemsShopPage';
-import { StudentBadgesPage } from './pages/student/StudentBadgesPage';
-import { StudentAvatarPage } from './pages/student/StudentAvatarPage';
+const StudentsPage = lazyPage(() => import('./pages/classroom/StudentsPage').then((m) => ({ default: m.StudentsPage })));
+const BehaviorsPage = lazyPage(() => import('./pages/classroom/BehaviorsPage').then((m) => ({ default: m.BehaviorsPage })));
+const ShopPage = lazyPage(() => import('./pages/classroom/ShopPage').then((m) => ({ default: m.ShopPage })));
+const ActivitiesPage = lazyPage(() => import('./pages/classroom/ActivitiesPage').then((m) => ({ default: m.ActivitiesPage })));
+const ClassroomSettingsPage = lazyPage(() => import('./pages/classroom/ClassroomSettingsPage').then((m) => ({ default: m.ClassroomSettingsPage })));
+const AttendancePage = lazyPage(() => import('./pages/classroom/AttendancePage').then((m) => ({ default: m.AttendancePage })));
+const StudentDetailPage = lazyPage(() => import('./pages/classroom/StudentDetailPage').then((m) => ({ default: m.StudentDetailPage })));
+const BadgesPage = lazyPage(() => import('./pages/classroom/BadgesPage').then((m) => ({ default: m.BadgesPage })));
+const ClansPage = lazyPage(() => import('./pages/classroom/ClansPage').then((m) => ({ default: m.ClansPage })));
+const RankingsPage = lazyPage(() => import('./pages/classroom/RankingsPage').then((m) => ({ default: m.RankingsPage })));
+const QuestionBanksPage = lazyPage(() => import('./pages/classroom/QuestionBanksPage').then((m) => ({ default: m.QuestionBanksPage })));
+const ExpeditionsPage = lazyPage(() => import('./pages/classroom/ExpeditionsPage').then((m) => ({ default: m.ExpeditionsPage })));
+const CollectiblesPage = lazyPage(() => import('./pages/classroom/CollectiblesPage').then((m) => ({ default: m.CollectiblesPage })));
+const ReportsPage = lazyPage(() => import('./pages/classroom/ReportsPage').then((m) => ({ default: m.ReportsPage })));
+const HistoryPage = lazyPage(() => import('./pages/classroom/HistoryPage').then((m) => ({ default: m.HistoryPage })));
+const GradebookPage = lazyPage(() => import('./pages/classroom/GradebookPage').then((m) => ({ default: m.GradebookPage })));
+const GradebookStatsPage = lazyPage(() => import('./pages/classroom/GradebookStatsPage').then((m) => ({ default: m.GradebookStatsPage })));
+const StorytellingPage = lazyPage(() => import('./pages/classroom/StorytellingPage').then((m) => ({ default: m.StorytellingPage })));
+const AnnouncementsPage = lazyPage(() => import('./pages/classroom/AnnouncementsPage').then((m) => ({ default: m.AnnouncementsPage })));
+const ClassroomChatPage = lazyPage(() => import('./pages/classroom/ClassroomChatPage').then((m) => ({ default: m.ClassroomChatPage })));
+const StudentScrollsPage = lazyPage(() => import('./pages/student/StudentScrollsPage').then((m) => ({ default: m.StudentScrollsPage })));
+const StudentGradesPage = lazyPage(() => import('./pages/student/StudentGradesPage').then((m) => ({ default: m.StudentGradesPage })));
+const StudentExpeditionsPage = lazyPage(() => import('./pages/student/StudentExpeditionsPage').then((m) => ({ default: m.StudentExpeditionsPage })));
+const StudentCollectiblesPage = lazyPage(() => import('./pages/student/StudentCollectiblesPage').then((m) => ({ default: m.StudentCollectiblesPage })));
+const StudentJiroExpeditionPage = lazyPage(() => import('./pages/student/StudentJiroExpeditionPage').then((m) => ({ default: m.StudentJiroExpeditionPage })));
+const StudentJiroExpeditionsPage = lazyPage(() => import('./pages/student/StudentJiroExpeditionsPage').then((m) => ({ default: m.StudentJiroExpeditionsPage })));
+const StudentStoryPage = lazyPage(() => import('./pages/student/StudentStoryPage').then((m) => ({ default: m.StudentStoryPage })));
+const StudentProgressPage = lazyPage(() => import('./pages/student/StudentProgressPage').then((m) => ({ default: m.StudentProgressPage })));
+const StudentItemsShopPage = lazyPage(() => import('./pages/student/StudentItemsShopPage').then((m) => ({ default: m.StudentItemsShopPage })));
+const StudentBadgesPage = lazyPage(() => import('./pages/student/StudentBadgesPage').then((m) => ({ default: m.StudentBadgesPage })));
+const StudentAvatarPage = lazyPage(() => import('./pages/student/StudentAvatarPage').then((m) => ({ default: m.StudentAvatarPage })));
 
 // Settings
-import { SettingsPage } from './pages/settings/SettingsPage';
+const SettingsPage = lazyPage(() => import('./pages/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 
 // Admin pages
-import AdminDashboard from './pages/admin/AdminDashboard';
-import AdminAvatarItems from './pages/admin/AdminAvatarItems';
-import AdminUsers from './pages/admin/AdminUsers';
-import AdminClassrooms from './pages/admin/AdminClassrooms';
-import AdminExpeditionMaps from './pages/admin/AdminExpeditionMaps';
-import { AdminBugReports } from './pages/admin/AdminBugReports';
-import AdminSchoolVerifications from './pages/admin/AdminSchoolVerifications';
+const AdminDashboard = lazyPage(() => import('./pages/admin/AdminDashboard'));
+const AdminAvatarItems = lazyPage(() => import('./pages/admin/AdminAvatarItems'));
+const AdminUsers = lazyPage(() => import('./pages/admin/AdminUsers'));
+const AdminClassrooms = lazyPage(() => import('./pages/admin/AdminClassrooms'));
+const AdminExpeditionMaps = lazyPage(() => import('./pages/admin/AdminExpeditionMaps'));
+const AdminBugReports = lazyPage(() => import('./pages/admin/AdminBugReports').then((m) => ({ default: m.AdminBugReports })));
+const AdminSchoolVerifications = lazyPage(() => import('./pages/admin/AdminSchoolVerifications'));
 
 // Schools
-import { SchoolsPage } from './pages/schools/SchoolsPage';
+const SchoolsPage = lazyPage(() => import('./pages/schools/SchoolsPage').then((m) => ({ default: m.SchoolsPage })));
 
 // Parent pages
-import ParentDashboard from './pages/parent/ParentDashboard';
-import ChildDetailPage from './pages/parent/ChildDetailPage';
-import ParentReportPage from './pages/parent/ParentReportPage';
-import ParentAIReportPage from './pages/parent/ParentAIReportPage';
-import ParentAnnouncementsPage from './pages/parent/ParentAnnouncementsPage';
-import ParentGroupChatPage from './pages/parent/ParentGroupChatPage';
+const ParentDashboard = lazyPage(() => import('./pages/parent/ParentDashboard'));
+const ChildDetailPage = lazyPage(() => import('./pages/parent/ChildDetailPage'));
+const ParentReportPage = lazyPage(() => import('./pages/parent/ParentReportPage'));
+const ParentAIReportPage = lazyPage(() => import('./pages/parent/ParentAIReportPage'));
+const ParentAnnouncementsPage = lazyPage(() => import('./pages/parent/ParentAnnouncementsPage'));
+const ParentGroupChatPage = lazyPage(() => import('./pages/parent/ParentGroupChatPage'));
 
 // Layout
 import { MainLayout } from './components/layout/MainLayout';
@@ -90,7 +93,7 @@ import { useAuthStore } from './store/authStore';
 
 // Onboarding
 import { TeacherOnboardingProvider, useTeacherOnboarding } from './contexts/TeacherOnboardingContext';
-import TeacherOnboardingFlow from './pages/onboarding/TeacherOnboardingFlow';
+const TeacherOnboardingFlow = lazyPage(() => import('./pages/onboarding/TeacherOnboardingFlow'));
 
 // Dashboard Router - redirige según el rol
 const DashboardRouter = () => {
