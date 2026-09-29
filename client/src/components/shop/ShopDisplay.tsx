@@ -31,7 +31,8 @@ export const ShopDisplay = ({ item, size = 'md', soldOut = false, animated = tru
   return (
     <div className={`relative flex items-end justify-center overflow-hidden rounded-xl bg-gradient-to-b ${style.window} ${dims.box}`} aria-hidden="true">
       {style.rays && live && (
-        <span className="shop-rays pointer-events-none absolute left-1/2 top-1/2 h-[220%] w-[220%] -translate-x-1/2 -translate-y-1/2" style={{ background: style.rays }} />
+        // Centrado con inset (no con translate): la animación de giro reemplaza `transform`.
+        <span className="shop-rays pointer-events-none absolute -inset-[60%]" style={{ background: style.rays }} />
       )}
       {style.sparkles && live && (
         <>
