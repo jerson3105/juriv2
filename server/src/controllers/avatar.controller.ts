@@ -1,6 +1,15 @@
 import { Request, Response } from 'express';
 import { avatarService } from '../services/avatar.service.js';
 import { z } from 'zod';
+import {
+  requireStudentProfileOwner,
+  requireStudentProfileReadAccess,
+  requireClassroomTeacher,
+  requireClassroomMember,
+  requireResourceMember,
+  classroomIdOfShopItem,
+  classroomIdOfStudentProfile,
+} from '../utils/access.js';
 
 const createAvatarItemSchema = z.object({
   name: z.string().min(1).max(100),
@@ -98,6 +107,7 @@ export const avatarController = {
   async addToClassroomShop(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
       const data = addToShopSchema.parse(req.body);
 
       const item = await avatarService.addItemToClassroomShop({
@@ -130,6 +140,7 @@ export const avatarController = {
   async getClassroomShopItems(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+      if (!(await requireClassroomMember(req, res, classroomId))) return;
       const gender = req.query.gender as 'MALE' | 'FEMALE' | undefined;
 
       const items = await avatarService.getClassroomShopItems(classroomId, gender);
@@ -150,6 +161,7 @@ export const avatarController = {
   async removeFromClassroomShop(req: Request, res: Response) {
     try {
       const { classroomId, avatarItemId } = req.params;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
 
       await avatarService.removeItemFromClassroomShop(classroomId, avatarItemId);
 
@@ -169,6 +181,9 @@ export const avatarController = {
   async removeShopItemById(req: Request, res: Response) {
     try {
       const { shopItemId } = req.params;
+      const classroomId = await classroomIdOfShopItem(shopItemId);
+      if (!classroomId) return res.status(404).json({ success: false, message: 'Ítem no encontrado' });
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
 
       await avatarService.removeShopItemById(shopItemId);
 
@@ -189,6 +204,9 @@ export const avatarController = {
     try {
       const { shopItemId } = req.params;
       const { price } = req.body;
+      const priceClassroomId = await classroomIdOfShopItem(shopItemId);
+      if (!priceClassroomId) return res.status(404).json({ success: false, message: 'Ítem no encontrado' });
+      if (!(await requireClassroomTeacher(req, res, priceClassroomId))) return;
 
       if (typeof price !== 'number' || price < 0) {
         return res.status(400).json({
@@ -218,6 +236,7 @@ export const avatarController = {
   async purchaseItem(req: Request, res: Response) {
     try {
       const { studentProfileId, classroomId, avatarItemId } = req.body;
+      if (!(await requireStudentProfileOwner(req, res, studentProfileId))) return;
 
       const result = await avatarService.purchaseAvatarItem(
         studentProfileId,
@@ -249,6 +268,7 @@ export const avatarController = {
     try {
       const { studentProfileId } = req.params;
 
+      if (!(await requireStudentProfileReadAccess(req, res, studentProfileId))) return;
       const purchases = await avatarService.getStudentPurchases(studentProfileId);
 
       res.json({
@@ -269,6 +289,7 @@ export const avatarController = {
   async equipItem(req: Request, res: Response) {
     try {
       const { studentProfileId, avatarItemId } = req.body;
+      if (!(await requireStudentProfileOwner(req, res, studentProfileId))) return;
 
       const equippedItems = await avatarService.equipItem(studentProfileId, avatarItemId);
 
@@ -295,6 +316,7 @@ export const avatarController = {
   async unequipItem(req: Request, res: Response) {
     try {
       const { studentProfileId, slot } = req.body;
+      if (!(await requireStudentProfileOwner(req, res, studentProfileId))) return;
 
       const equippedItems = await avatarService.unequipItem(studentProfileId, slot);
 
@@ -316,6 +338,7 @@ export const avatarController = {
     try {
       const { studentProfileId } = req.params;
 
+      if (!(await requireResourceMember(req, res, classroomIdOfStudentProfile, studentProfileId, 'Estudiante no encontrado'))) return;
       const items = await avatarService.getEquippedItems(studentProfileId);
 
       res.json({
@@ -335,6 +358,7 @@ export const avatarController = {
     try {
       const { studentProfileId } = req.params;
 
+      if (!(await requireResourceMember(req, res, classroomIdOfStudentProfile, studentProfileId, 'Estudiante no encontrado'))) return;
       const avatarData = await avatarService.getStudentAvatarData(studentProfileId);
 
       res.json({

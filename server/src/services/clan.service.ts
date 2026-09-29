@@ -2,6 +2,7 @@ import { db } from '../db/index.js';
 import { teams, clanLogs, studentProfiles, classrooms, users } from '../db/schema.js';
 import { eq, and, desc, sql, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
+import { teacherOwnsClassroom } from '../utils/access.js';
 
 // Emblemas disponibles para clanes
 export const CLAN_EMBLEMS = [
@@ -85,17 +86,7 @@ export class ClanService {
   }
 
   async verifyTeacherOwnsClassroom(teacherId: string, classroomId: string): Promise<boolean> {
-    const [classroom] = await db
-      .select({ id: classrooms.id })
-      .from(classrooms)
-      .where(
-        and(
-          eq(classrooms.id, classroomId),
-          eq(classrooms.teacherId, teacherId)
-        )
-      );
-
-    return !!classroom;
+    return teacherOwnsClassroom(teacherId, classroomId);
   }
 
   async verifyStudentBelongsToUser(studentProfileId: string, userId: string): Promise<boolean> {

@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, inArray } from 'drizzle-orm';
+import { eq, and, desc, sql, inArray, ne } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import { emitUnreadCount } from '../utils/notificationEmitter.js';
@@ -28,6 +28,8 @@ import {
 } from '../db/schema.js';
 import { clanService } from './clan.service.js';
 import { storyService } from './story.service.js';
+import { teacherOwnsClassroom } from '../utils/access.js';
+import { spendGp, addXpGp, affectedRows } from '../utils/points.js';
 
 // ==================== TIPOS ====================
 
@@ -224,14 +226,7 @@ export const jiroExpeditionService = {
   },
 
   async verifyTeacherOwnsClassroom(teacherId: string, classroomId: string): Promise<boolean> {
-    const [classroom] = await db.select({ id: classrooms.id })
-      .from(classrooms)
-      .where(and(
-        eq(classrooms.id, classroomId),
-        eq(classrooms.teacherId, teacherId)
-      ));
-
-    return !!classroom;
+    return teacherOwnsClassroom(teacherId, classroomId);
   },
 
   async verifyStudentBelongsToUser(studentProfileId: string, userId: string): Promise<boolean> {
@@ -1322,6 +1317,7 @@ export const jiroExpeditionService = {
 
       if (!expedition) throw new Error('Expedición no encontrada');
 
+      // FOR UPDATE: serializa compras simultáneas del mismo alumno sobre su energía.
       const [studentExpedition] = await tx
         .select()
         .from(jiroStudentExpeditions)
@@ -1330,7 +1326,8 @@ export const jiroExpeditionService = {
             eq(jiroStudentExpeditions.expeditionId, expeditionId),
             eq(jiroStudentExpeditions.studentProfileId, studentProfileId)
           )
-        );
+        )
+        .for('update');
 
       if (!studentExpedition) throw new Error('No has iniciado esta expedición');
       if (studentExpedition.status !== 'IN_PROGRESS') {
@@ -1350,15 +1347,14 @@ export const jiroExpeditionService = {
       const now = new Date();
       const energySnapshot = this.getCurrentEnergySnapshot(studentExpedition, expedition, now);
       const newEnergy = energySnapshot.currentEnergy + 1;
-      const remainingGp = student.gp - expedition.energyPurchasePrice;
-
-      await tx
-        .update(studentProfiles)
-        .set({
-          gp: remainingGp,
-          updatedAt: now,
-        })
+      if (!(await spendGp(tx, studentProfileId, expedition.energyPurchasePrice))) {
+        throw new Error('No tienes suficiente GP');
+      }
+      const [afterSpend] = await tx
+        .select({ gp: studentProfiles.gp })
+        .from(studentProfiles)
         .where(eq(studentProfiles.id, studentProfileId));
+      const remainingGp = afterSpend?.gp ?? 0;
 
       await tx
         .update(jiroStudentExpeditions)
@@ -1582,7 +1578,7 @@ export const jiroExpeditionService = {
         ? (studentExpedition.correctAnswers / totalQuestions) * 100
         : 0;
 
-      await tx
+      const completion = await tx
         .update(jiroStudentExpeditions)
         .set({
           status: 'COMPLETED',
@@ -1594,7 +1590,12 @@ export const jiroExpeditionService = {
           reviewedBy: reviewerId || null,
           updatedAt: now,
         })
-        .where(eq(jiroStudentExpeditions.id, studentExpeditionId));
+        // Solo una ejecución simultánea puede completar la expedición (y cobrar la recompensa).
+        .where(and(
+          eq(jiroStudentExpeditions.id, studentExpeditionId),
+          ne(jiroStudentExpeditions.status, 'COMPLETED')
+        ));
+      if (affectedRows(completion) !== 1) return null;
 
       const [student] = await tx
         .select()
@@ -1608,21 +1609,13 @@ export const jiroExpeditionService = {
         .from(classrooms)
         .where(eq(classrooms.id, student.classroomId));
 
-      const newXp = student.xp + earnedXp;
-      const newGp = student.gp + earnedGp;
       const xpPerLevel = classroom?.xpPerLevel || 100;
-      const newLevel = earnedXp > 0 ? this.calculateLevel(newXp, xpPerLevel) : student.level;
-      const leveledUp = newLevel > student.level;
-
-      await tx
-        .update(studentProfiles)
-        .set({
-          xp: newXp,
-          gp: newGp,
-          level: newLevel,
-          updatedAt: now,
-        })
-        .where(eq(studentProfiles.id, student.id));
+      const updated = await addXpGp(tx, student.id, { xp: earnedXp, gp: earnedGp }, xpPerLevel);
+      if (!updated) return null;
+      const newXp = updated.xp;
+      const newGp = updated.gp;
+      const newLevel = updated.level;
+      const leveledUp = newLevel > updated.previousLevel;
 
       const reason = `Expedición Jiro completada: ${expedition.name}`;
 
@@ -1802,7 +1795,7 @@ export const jiroExpeditionService = {
       const earnedGp = correctAnswers * expedition.rewardGpPerCorrect;
       let transactionSideEffects: XpSideEffectPayload | null = null;
 
-      await tx
+      const completion = await tx
         .update(jiroStudentExpeditions)
         .set({
           status: 'COMPLETED',
@@ -1812,7 +1805,14 @@ export const jiroExpeditionService = {
           completedAt: now,
           updatedAt: now,
         })
-        .where(eq(jiroStudentExpeditions.id, studentExpedition.id));
+        // Solo una llamada simultánea puede cerrar la expedición y cobrar la recompensa.
+        .where(and(
+          eq(jiroStudentExpeditions.id, studentExpedition.id),
+          ne(jiroStudentExpeditions.status, 'COMPLETED')
+        ));
+      if (affectedRows(completion) !== 1) {
+        return { result: { success: true, message: 'Ya completada' }, xpSideEffects: null };
+      }
 
       const [student] = await tx
         .select()
@@ -1825,21 +1825,12 @@ export const jiroExpeditionService = {
           .from(classrooms)
           .where(eq(classrooms.id, student.classroomId));
 
-        const newXp = student.xp + earnedXp;
-        const newGp = student.gp + earnedGp;
         const xpPerLevel = classroom?.xpPerLevel || 100;
-        const newLevel = earnedXp > 0 ? this.calculateLevel(newXp, xpPerLevel) : student.level;
-        const leveledUp = newLevel > student.level;
-
-        await tx
-          .update(studentProfiles)
-          .set({
-            xp: newXp,
-            gp: newGp,
-            level: newLevel,
-            updatedAt: now,
-          })
-          .where(eq(studentProfiles.id, student.id));
+        const updated = await addXpGp(tx, student.id, { xp: earnedXp, gp: earnedGp }, xpPerLevel);
+        const newXp = updated?.xp ?? student.xp;
+        const newGp = updated?.gp ?? student.gp;
+        const newLevel = updated?.level ?? student.level;
+        const leveledUp = !!updated && updated.level > updated.previousLevel;
 
         const reason = `Expedición Jiro finalizada por tiempo: ${expedition.name}`;
 

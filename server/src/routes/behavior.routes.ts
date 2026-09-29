@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { behaviorController } from '../controllers/behavior.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { aiGuard } from '../middleware/security.js';
 
 const router = Router();
 
@@ -23,6 +24,6 @@ router.post('/apply', behaviorController.apply.bind(behaviorController));
 router.post('/export', behaviorController.exportBehaviors.bind(behaviorController));
 
 // Generar comportamientos con IA
-router.post('/generate-ai', behaviorController.generateWithAI.bind(behaviorController));
+router.post('/generate-ai', ...aiGuard, behaviorController.generateWithAI.bind(behaviorController));
 
 export default router;

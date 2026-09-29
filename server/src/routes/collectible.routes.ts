@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { collectibleController } from '../controllers/collectible.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { aiGuard } from '../middleware/security.js';
 
 const router = Router();
 
@@ -135,6 +136,7 @@ router.get(
 router.post(
   '/classroom/:classroomId/generate-album',
   authorize('TEACHER'),
+  ...aiGuard,
   collectibleController.generateAlbumWithAI
 );
 
@@ -142,6 +144,7 @@ router.post(
 router.post(
   '/generate-card',
   authorize('TEACHER'),
+  ...aiGuard,
   collectibleController.generateCardWithAI
 );
 

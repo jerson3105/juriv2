@@ -6,7 +6,7 @@ import requestId from 'express-request-id';
 import timeout from 'connect-timeout';
 import compression from 'compression';
 import { config_app } from '../config/env.js';
-import type { Express } from 'express';
+import type { Express, Request, Response, NextFunction } from 'express';
 
 // Configurar CORS
 export const corsOptions = {
@@ -83,6 +83,47 @@ export const codeRedemptionLimiter = rateLimit({
   legacyHeaders: false,
   skipSuccessfulRequests: true,
 });
+
+// Rate limiter para funciones con IA (Gemini). Cualquiera puede registrarse como profesor:
+// sin este límite la app servía de proxy gratuito de Gemini. Cuenta por usuario (o IP).
+export const aiLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hora
+  max: config_app.isDev ? 500 : 60,
+  keyGenerator: (req) => (req as any).user?.id ?? req.ip ?? 'unknown',
+  message: {
+    success: false,
+    message: 'Has alcanzado el límite de generaciones con IA por hora. Intenta más tarde.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Cantidades que multiplican el coste de una generación (la UI no pide más de 25).
+const AI_COUNT_FIELDS = ['count', 'cardCount', 'questionCount', 'numQuestions'];
+const AI_MAX_COUNT = 30;
+// Tamaño máximo del body de una petición de IA (acota la longitud del prompt).
+const AI_MAX_BODY_CHARS = 20_000;
+
+export const aiInputGuard = (req: Request, res: Response, next: NextFunction): void => {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  for (const key of AI_COUNT_FIELDS) {
+    if (body[key] === undefined || body[key] === null) continue;
+    const value = Number(body[key]);
+    if (!Number.isInteger(value) || value < 1 || value > AI_MAX_COUNT) {
+      res.status(400).json({ success: false, message: `${key} debe ser un entero entre 1 y ${AI_MAX_COUNT}` });
+      return;
+    }
+    body[key] = value;
+  }
+  if (JSON.stringify(body).length > AI_MAX_BODY_CHARS) {
+    res.status(413).json({ success: false, message: 'La solicitud es demasiado larga para generar con IA' });
+    return;
+  }
+  next();
+};
+
+/** Guard común para rutas que llaman a la IA (después de authenticate). */
+export const aiGuard = [aiLimiter, aiInputGuard];
 
 // Aplicar middleware de seguridad
 export const applySecurityMiddleware = (app: Express): void => {

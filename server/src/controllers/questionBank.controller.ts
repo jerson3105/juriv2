@@ -3,6 +3,7 @@ import { questionBankService } from '../services/questionBank.service.js';
 import { z } from 'zod';
 import { GoogleGenAI } from '@google/genai';
 import { AppError, RateLimitError } from '../utils/errors.js';
+import { requireClassroomTeacher } from '../utils/access.js';
 
 const questionTypeSchema = z.enum(['TRUE_FALSE', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'MATCHING']);
 const questionDifficultySchema = z.enum(['EASY', 'MEDIUM', 'HARD']);
@@ -203,25 +204,8 @@ const handleControllerError = (res: Response, error: unknown, fallbackMessage: s
   });
 };
 
-const ensureTeacherClassroomAccess = async (
-  req: Request,
-  res: Response,
-  classroomId: string
-): Promise<boolean> => {
-  const teacherId = req.user?.id;
-  if (!teacherId) {
-    res.status(401).json({ success: false, message: 'No autenticado' });
-    return false;
-  }
-
-  const hasAccess = await questionBankService.verifyTeacherOwnsClassroom(teacherId, classroomId);
-  if (!hasAccess) {
-    res.status(403).json({ success: false, message: 'Sin acceso a este salon' });
-    return false;
-  }
-
-  return true;
-};
+// Acceso de profesor a la clase: ver utils/access.ts (requireClassroomTeacher).
+const ensureTeacherClassroomAccess = requireClassroomTeacher;
 
 const ensureTeacherBankAccess = async (
   req: Request,

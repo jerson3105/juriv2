@@ -1,36 +1,10 @@
 import { Request, Response } from 'express';
 import { scrollService } from '../services/scroll.service.js';
 import type { ScrollCategory, ScrollRecipientType } from '../db/schema.js';
+import { requireClassroomTeacher } from '../utils/access.js';
 
-const ensureTeacherClassroomAccess = async (
-  req: Request,
-  res: Response,
-  classroomId: string
-): Promise<boolean> => {
-  const user = req.user;
-
-  if (!user) {
-    res.status(401).json({ error: 'No autorizado' });
-    return false;
-  }
-
-  if (user.role === 'ADMIN') {
-    return true;
-  }
-
-  if (user.role !== 'TEACHER') {
-    res.status(403).json({ error: 'No tienes permisos para esta acción' });
-    return false;
-  }
-
-  const isOwner = await scrollService.verifyTeacherOwnsClassroom(user.id, classroomId);
-  if (!isOwner) {
-    res.status(403).json({ error: 'No tienes acceso a esta clase' });
-    return false;
-  }
-
-  return true;
-};
+// Acceso de profesor a la clase: ver utils/access.ts (requireClassroomTeacher).
+const ensureTeacherClassroomAccess = requireClassroomTeacher;
 
 const ensureScrollTeacherAccess = async (
   req: Request,

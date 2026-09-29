@@ -6,6 +6,7 @@ import { classrooms, studentProfiles } from '../db/schema.js';
 import { eq, and, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { config_app } from '../config/env.js';
+import { requireClassroomTeacher } from '../utils/access.js';
 
 const joinClassSchema = z.object({
   code: z.string().min(6, 'El código debe tener al menos 6 caracteres').max(8, 'El código no puede tener más de 8 caracteres'),
@@ -443,6 +444,7 @@ export class StudentController {
     try {
       const { classroomId } = req.params;
       
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
       const hasDemo = await studentService.hasDemoStudent(classroomId);
 
       res.json({

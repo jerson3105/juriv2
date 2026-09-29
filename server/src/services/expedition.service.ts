@@ -19,10 +19,12 @@ import {
   type ExpeditionPinType,
   type ExpeditionProgressStatus,
 } from '../db/schema.js';
-import { eq, and, desc, asc, sql, inArray } from 'drizzle-orm';
+import { eq, and, desc, asc, sql, inArray, notInArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { clanService } from './clan.service.js';
 import { storyService } from './story.service.js';
+import { teacherOwnsClassroom } from '../utils/access.js';
+import { addXpGp, affectedRows } from '../utils/points.js';
 
 // ==================== EXPEDITION CRUD ====================
 
@@ -130,14 +132,7 @@ export class ExpeditionService {
   }
 
   async verifyTeacherOwnsClassroom(teacherId: string, classroomId: string): Promise<boolean> {
-    const [classroom] = await db.select({ id: classrooms.id })
-      .from(classrooms)
-      .where(and(
-        eq(classrooms.id, classroomId),
-        eq(classrooms.teacherId, teacherId)
-      ));
-
-    return !!classroom;
+    return teacherOwnsClassroom(teacherId, classroomId);
   }
 
   async verifyStudentBelongsToUser(studentProfileId: string, userId: string): Promise<boolean> {
@@ -729,8 +724,9 @@ export class ExpeditionService {
 
     const now = new Date();
     
-    // Actualizar decisión
-    await db.update(expeditionPinProgress)
+    // Actualizar decisión. Al aprobar, solo pasa de "no aprobado" a PASSED una vez: con dos
+    // decisiones simultáneas la recompensa no se paga dos veces.
+    const decision = await db.update(expeditionPinProgress)
       .set({
         teacherDecision: passed,
         teacherDecisionAt: now,
@@ -740,11 +736,12 @@ export class ExpeditionService {
       })
       .where(and(
         eq(expeditionPinProgress.pinId, pinId),
-        eq(expeditionPinProgress.studentProfileId, studentProfileId)
+        eq(expeditionPinProgress.studentProfileId, studentProfileId),
+        ...(passed ? [notInArray(expeditionPinProgress.status, ['PASSED', 'COMPLETED'])] : [])
       ));
     
-    // Si aprobó, otorgar recompensas
-    if (passed) {
+    // Si aprobó (y fue esta petición la que lo marcó), otorgar recompensas
+    if (passed && affectedRows(decision) === 1) {
       await this.grantPinRewards(pinId, studentProfileId);
     }
     
@@ -793,20 +790,10 @@ export class ExpeditionService {
         .from(classrooms)
         .where(eq(classrooms.id, student.classroomId));
 
-      const newXp = student.xp + pin.rewardXp;
-      const newGp = student.gp + pin.rewardGp;
       const xpPerLevel = classroom?.xpPerLevel || 100;
-      const newLevel = pin.rewardXp > 0 ? this.calculateLevel(newXp, xpPerLevel) : student.level;
-      const leveledUp = newLevel > student.level;
-
-      await tx.update(studentProfiles)
-        .set({
-          xp: newXp,
-          gp: newGp,
-          level: newLevel,
-          updatedAt: now,
-        })
-        .where(eq(studentProfiles.id, studentProfileId));
+      const updated = await addXpGp(tx, studentProfileId, { xp: pin.rewardXp, gp: pin.rewardGp }, xpPerLevel);
+      const newLevel = updated?.level ?? student.level;
+      const leveledUp = !!updated && updated.level > updated.previousLevel;
 
       if (pin.rewardXp > 0) {
         await tx.insert(pointLogs).values({

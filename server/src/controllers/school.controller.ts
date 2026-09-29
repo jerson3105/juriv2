@@ -1,6 +1,13 @@
 import { Request, Response } from 'express';
 import { schoolService } from '../services/school.service.js';
 import { z } from 'zod';
+import {
+  requireSchoolOwner,
+  requireSchoolOwnerByMember,
+  requireClassroomTeacher,
+  schoolIdOfClassroom,
+  teacherOwnsClassroom,
+} from '../utils/access.js';
 
 const createSchoolSchema = z.object({
   name: z.string().min(2).max(255),
@@ -233,6 +240,8 @@ class SchoolController {
       const { memberId } = req.params;
       const data = reviewJoinSchema.parse(req.body);
 
+      if (!(await requireSchoolOwnerByMember(req, res, memberId))) return;
+
       await schoolService.reviewJoinRequest(memberId, data.approved, data.reason);
       res.json({ success: true, message: data.approved ? 'Solicitud aceptada' : 'Solicitud rechazada' });
     } catch (error: any) {
@@ -264,6 +273,9 @@ class SchoolController {
   async assignClassroom(req: Request, res: Response) {
     try {
       const { schoolId, classroomId } = req.params;
+      // Debe ser OWNER de la escuela y dueño de la clase que asigna.
+      if (!(await requireSchoolOwner(req, res, schoolId))) return;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
       await schoolService.assignClassroom(classroomId, schoolId);
       res.json({ success: true, message: 'Clase asignada a la escuela' });
     } catch (error) {
@@ -276,6 +288,16 @@ class SchoolController {
   async unassignClassroom(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+      // Puede desasignar el profesor dueño de la clase o el OWNER de su escuela.
+      const schoolId = await schoolIdOfClassroom(classroomId);
+      const user = req.user!;
+      const isClassTeacher = user.role === 'ADMIN' || await teacherOwnsClassroom(user.id, classroomId);
+      if (!isClassTeacher) {
+        if (!schoolId) {
+          return res.status(404).json({ success: false, message: 'La clase no está asignada a ninguna escuela' });
+        }
+        if (!(await requireSchoolOwner(req, res, schoolId))) return;
+      }
       await schoolService.unassignClassroom(classroomId);
       res.json({ success: true, message: 'Clase desasignada de la escuela' });
     } catch (error) {

@@ -1,31 +1,24 @@
 import { Request, Response } from 'express';
 import { tournamentService } from '../services/tournament.service.js';
 import { publicErrorMessage } from '../utils/errors.js';
+import { requireClassroomTeacher, pickFields, questionBanksOwnedBy } from '../utils/access.js';
 
-const ensureTeacherClassroomAccess = async (
-  req: Request,
-  res: Response,
-  classroomId: string
-): Promise<boolean> => {
-  const user = req.user;
+// Configuración editable de un torneo. classroomId sale de la ruta y no se puede mover;
+// bracket, rondas y ganadores solo los cambian las acciones de juego.
+const TOURNAMENT_FIELDS = [
+  'name', 'description', 'icon', 'type', 'participantType', 'questionBankIds',
+  'maxParticipants', 'timePerQuestion', 'questionsPerMatch', 'pointsPerCorrect', 'bonusTimePoints',
+  'rewardXpFirst', 'rewardXpSecond', 'rewardXpThird', 'rewardGpFirst', 'rewardGpSecond',
+  'rewardGpThird', 'rewardXpParticipation', 'competencyIds',
+] as const;
+// Bancos opcionales: se validan solo si se indican (lista vacía o ausente = sin bancos).
+const banksAllowed = async (user: { id: string; role: string }, banks: unknown) =>
+  banks === undefined || (Array.isArray(banks) && banks.length === 0) || questionBanksOwnedBy(user, banks);
 
-  if (!user) {
-    res.status(401).json({ error: 'No autorizado' });
-    return false;
-  }
+const TOURNAMENT_STATUSES = ['DRAFT', 'READY', 'ACTIVE', 'PAUSED', 'FINISHED'];
 
-  if (user.role === 'ADMIN') {
-    return true;
-  }
-
-  const isOwner = await tournamentService.verifyTeacherOwnsClassroom(user.id, classroomId);
-  if (!isOwner) {
-    res.status(403).json({ error: 'No tienes acceso a esta clase' });
-    return false;
-  }
-
-  return true;
-};
+// Acceso de profesor a la clase: ver utils/access.ts (requireClassroomTeacher).
+const ensureTeacherClassroomAccess = requireClassroomTeacher;
 
 const ensureTournamentAccess = async (
   req: Request,
@@ -79,7 +72,11 @@ export const createTournament = async (req: Request, res: Response) => {
     const hasAccess = await ensureTeacherClassroomAccess(req, res, classroomId);
     if (!hasAccess) return;
 
-    const tournament = await tournamentService.createTournament(classroomId, data);
+    const fields = pickFields(data, TOURNAMENT_FIELDS);
+    if (!(await banksAllowed(req.user!, fields.questionBankIds))) {
+      return res.status(403).json({ error: 'Los bancos de preguntas no pertenecen a tus clases' });
+    }
+    const tournament = await tournamentService.createTournament(classroomId, fields as any);
     res.status(201).json(tournament);
   } catch (error: any) {
     console.error('Error creating tournament:', error);
@@ -95,7 +92,17 @@ export const updateTournament = async (req: Request, res: Response) => {
     const hasAccess = await ensureTournamentAccess(req, res, tournamentId);
     if (!hasAccess) return;
 
-    const tournament = await tournamentService.updateTournament(tournamentId, data);
+    const fields: Record<string, unknown> = pickFields(data, TOURNAMENT_FIELDS);
+    if (data?.status !== undefined) {
+      if (!TOURNAMENT_STATUSES.includes(data.status)) {
+        return res.status(400).json({ error: 'Estado de torneo inválido' });
+      }
+      fields.status = data.status;
+    }
+    if (!(await banksAllowed(req.user!, fields.questionBankIds))) {
+      return res.status(403).json({ error: 'Los bancos de preguntas no pertenecen a tus clases' });
+    }
+    const tournament = await tournamentService.updateTournament(tournamentId, fields as any);
     res.json(tournament);
   } catch (error: any) {
     console.error('Error updating tournament:', error);

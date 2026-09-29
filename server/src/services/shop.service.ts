@@ -16,6 +16,11 @@ import {
   type PurchaseType,
   type ItemUsageStatus,
 } from '../db/schema.js';
+import { teacherOwnsClassroom } from '../utils/access.js';
+import { spendGp, affectedRows } from '../utils/points.js';
+
+/** Rechazo de negocio dentro de una transacción de compra (se devuelve como success:false). */
+class PurchaseRejected extends Error {}
 
 // Imágenes predeterminadas por categoría y rareza
 const DEFAULT_IMAGES: Record<string, Record<string, string>> = {
@@ -294,15 +299,13 @@ export class ShopService {
         purchasedAt: now,
       });
     } else {
+      try {
       await db.transaction(async (tx) => {
         if (payerId && payer) {
-          await tx
-            .update(studentProfiles)
-            .set({
-              gp: payer.gp - totalPrice,
-              updatedAt: now,
-            })
-            .where(eq(studentProfiles.id, payerId));
+          // Cobro atómico: con compras simultáneas no se puede gastar el mismo oro dos veces.
+          if (!(await spendGp(tx, payerId, totalPrice))) {
+            throw new PurchaseRejected('GP insuficiente');
+          }
 
           if (totalPrice > 0) {
             const reason = data.purchaseType === 'GIFT'
@@ -322,13 +325,17 @@ export class ShopService {
         }
 
         if (item.stock !== null) {
-          await tx
+          // Descuento atómico de stock: evita vender más unidades de las que hay.
+          const stockResult = await tx
             .update(shopItems)
             .set({
-              stock: item.stock - quantity,
+              stock: sql`${shopItems.stock} - ${quantity}`,
               updatedAt: now,
             })
-            .where(eq(shopItems.id, data.itemId));
+            .where(and(eq(shopItems.id, data.itemId), gte(shopItems.stock, quantity)));
+          if (affectedRows(stockResult) !== 1) {
+            throw new PurchaseRejected('Stock insuficiente');
+          }
         }
 
         if (data.purchaseType === 'SELF') {
@@ -346,8 +353,8 @@ export class ShopService {
             await tx
               .update(purchases)
               .set({
-                quantity: existingPurchase.quantity + quantity,
-                totalPrice: existingPurchase.totalPrice + totalPrice,
+                quantity: sql`${purchases.quantity} + ${quantity}`,
+                totalPrice: sql`${purchases.totalPrice} + ${totalPrice}`,
               })
               .where(eq(purchases.id, existingPurchase.id));
 
@@ -370,6 +377,12 @@ export class ShopService {
           purchasedAt: now,
         });
       });
+      } catch (error) {
+        if (error instanceof PurchaseRejected) {
+          return { success: false, message: error.message };
+        }
+        throw error;
+      }
     }
 
     if (!purchaseId) {
@@ -506,14 +519,20 @@ export class ShopService {
     const now = new Date();
     const purchaseLabel = item?.name || 'item';
 
+    try {
     await db.transaction(async (tx) => {
-      await tx
-        .update(studentProfiles)
-        .set({
-          gp: student.gp - purchase.totalPrice,
-          updatedAt: now,
-        })
-        .where(eq(studentProfiles.id, student.id));
+      // Reclamar la compra primero: solo una aprobación simultánea puede pasar de PENDING a APPROVED.
+      const claim = await tx
+        .update(purchases)
+        .set({ status: 'APPROVED' })
+        .where(and(eq(purchases.id, purchaseId), eq(purchases.status, 'PENDING')));
+      if (affectedRows(claim) !== 1) {
+        throw new PurchaseRejected('Esta compra ya fue procesada');
+      }
+
+      if (!(await spendGp(tx, student.id, purchase.totalPrice))) {
+        throw new PurchaseRejected('El estudiante ya no tiene suficiente GP');
+      }
 
       if (purchase.totalPrice > 0) {
         await tx.insert(pointLogs).values({
@@ -528,19 +547,17 @@ export class ShopService {
       }
 
       if (item && item.stock !== null) {
-        await tx
+        const stockResult = await tx
           .update(shopItems)
           .set({
-            stock: item.stock - purchase.quantity,
+            stock: sql`${shopItems.stock} - ${purchase.quantity}`,
             updatedAt: now,
           })
-          .where(eq(shopItems.id, purchase.itemId));
+          .where(and(eq(shopItems.id, purchase.itemId), gte(shopItems.stock, purchase.quantity)));
+        if (affectedRows(stockResult) !== 1) {
+          throw new PurchaseRejected('Stock insuficiente');
+        }
       }
-
-      await tx
-        .update(purchases)
-        .set({ status: 'APPROVED' })
-        .where(eq(purchases.id, purchaseId));
 
       if (student.userId) {
         await tx.insert(notifications).values({
@@ -554,6 +571,12 @@ export class ShopService {
         });
       }
     });
+    } catch (error) {
+      if (error instanceof PurchaseRejected) {
+        return { success: false, message: error.message };
+      }
+      throw error;
+    }
 
     // Emit after tx commit
     if (student.userId) {
@@ -601,11 +624,14 @@ export class ShopService {
       return { success: false, message: 'No tienes permiso para rechazar esta compra' };
     }
 
-    // Rechazar compra
-    await db
+    // Rechazar compra solo si sigue pendiente (no pisar una aprobación simultánea ya cobrada)
+    const rejectResult = await db
       .update(purchases)
       .set({ status: 'REJECTED' })
-      .where(eq(purchases.id, purchaseId));
+      .where(and(eq(purchases.id, purchaseId), eq(purchases.status, 'PENDING')));
+    if (affectedRows(rejectResult) !== 1) {
+      return { success: false, message: 'Esta compra ya fue procesada' };
+    }
 
     // Obtener item para el mensaje
     const item = await this.getItemById(purchase.itemId);
@@ -710,14 +736,7 @@ export class ShopService {
   // ==================== VALIDACIONES ====================
 
   async verifyTeacherOwnsClassroom(teacherId: string, classroomId: string): Promise<boolean> {
-    const [classroom] = await db
-      .select()
-      .from(classrooms)
-      .where(and(
-        eq(classrooms.id, classroomId),
-        eq(classrooms.teacherId, teacherId)
-      ));
-    return !!classroom;
+    return teacherOwnsClassroom(teacherId, classroomId);
   }
 
   async verifyStudentInClassroom(studentId: string, classroomId: string): Promise<boolean> {
@@ -804,22 +823,37 @@ export class ShopService {
       const usageId = uuidv4();
       const now = new Date();
       
-      await db.transaction(async (tx) => {
-        await tx.insert(itemUsages).values({
-          id: usageId,
-          purchaseId,
-          studentId,
-          itemId: purchase.itemId,
-          classroomId: student.classroomId,
-          status: 'PENDING',
-          usedAt: now,
-        });
+      try {
+        await db.transaction(async (tx) => {
+          // Consumir una unidad de forma atómica: con usos simultáneos no se puede
+          // canjear más unidades de las compradas.
+          const consumed = await tx
+            .update(purchases)
+            .set({ usedQuantity: sql`COALESCE(${purchases.usedQuantity}, 0) + 1` })
+            .where(and(
+              eq(purchases.id, purchaseId),
+              sql`COALESCE(${purchases.usedQuantity}, 0) < ${purchases.quantity}`
+            ));
+          if (affectedRows(consumed) !== 1) {
+            throw new PurchaseRejected('Ya usaste todos los items de esta compra');
+          }
 
-        await tx
-          .update(purchases)
-          .set({ usedQuantity: (purchase.usedQuantity || 0) + 1 })
-          .where(eq(purchases.id, purchaseId));
-      });
+          await tx.insert(itemUsages).values({
+            id: usageId,
+            purchaseId,
+            studentId,
+            itemId: purchase.itemId,
+            classroomId: student.classroomId,
+            status: 'PENDING',
+            usedAt: now,
+          });
+        });
+      } catch (error) {
+        if (error instanceof PurchaseRejected) {
+          return { success: false, message: error.message };
+        }
+        throw error;
+      }
 
       // Obtener el profesor de la clase
       const [classroom] = await db

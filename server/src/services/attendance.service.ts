@@ -46,38 +46,40 @@ export const attendanceService = {
       return { ...existing[0], status, notes, xpAwarded, updatedAt: now };
     }
 
-    // Crear nuevo registro
-    await db.insert(attendanceRecords).values({
-      id,
-      classroomId,
-      studentProfileId,
-      date: normalizedDate,
-      status,
-      notes,
-      xpAwarded,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    // Si el estudiante está presente, otorgar XP y registrar en pointLogs
-    if (status === 'PRESENT' && xpAwarded > 0) {
-      await db
-        .update(studentProfiles)
-        .set({
-          xp: sql`${studentProfiles.xp} + ${xpAwarded}`,
-        })
-        .where(eq(studentProfiles.id, studentProfileId));
-
-      await db.insert(pointLogs).values({
-        id: uuidv4(),
-        studentId: studentProfileId,
-        pointType: 'XP',
-        action: 'ADD',
-        amount: xpAwarded,
-        reason: 'Asistencia',
+    // Crear registro y otorgar XP de forma atómica: si algo falla, no queda un registro sin su XP.
+    await db.transaction(async (tx) => {
+      await tx.insert(attendanceRecords).values({
+        id,
+        classroomId,
+        studentProfileId,
+        date: normalizedDate,
+        status,
+        notes,
+        xpAwarded,
         createdAt: now,
+        updatedAt: now,
       });
-    }
+
+      // Si el estudiante está presente, otorgar XP y registrar en pointLogs
+      if (status === 'PRESENT' && xpAwarded > 0) {
+        await tx
+          .update(studentProfiles)
+          .set({
+            xp: sql`${studentProfiles.xp} + ${xpAwarded}`,
+          })
+          .where(eq(studentProfiles.id, studentProfileId));
+
+        await tx.insert(pointLogs).values({
+          id: uuidv4(),
+          studentId: studentProfileId,
+          pointType: 'XP',
+          action: 'ADD',
+          amount: xpAwarded,
+          reason: 'Asistencia',
+          createdAt: now,
+        });
+      }
+    });
 
     return { id, classroomId, studentProfileId, date: normalizedDate, status, notes, xpAwarded };
   },

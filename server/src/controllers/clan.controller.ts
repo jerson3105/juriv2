@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { clanService, CLAN_EMBLEMS, CLAN_COLORS } from '../services/clan.service.js';
 import { z } from 'zod';
+import { requireClassroomTeacher } from '../utils/access.js';
 
 const createClanSchema = z.object({
   name: z.string().min(2).max(50),
@@ -48,35 +49,8 @@ const handleControllerError = (res: Response, error: unknown, fallbackMessage: s
   });
 };
 
-const ensureTeacherClassroomAccess = async (
-  req: Request,
-  res: Response,
-  classroomId: string
-): Promise<boolean> => {
-  const user = req.user;
-
-  if (!user) {
-    res.status(401).json({ success: false, message: 'No autorizado' });
-    return false;
-  }
-
-  if (user.role === 'ADMIN') {
-    return true;
-  }
-
-  if (user.role !== 'TEACHER') {
-    res.status(403).json({ success: false, message: 'No tienes permisos para esta acción' });
-    return false;
-  }
-
-  const isOwner = await clanService.verifyTeacherOwnsClassroom(user.id, classroomId);
-  if (!isOwner) {
-    res.status(403).json({ success: false, message: 'No tienes acceso a esta clase' });
-    return false;
-  }
-
-  return true;
-};
+// Acceso de profesor a la clase: ver utils/access.ts (requireClassroomTeacher).
+const ensureTeacherClassroomAccess = requireClassroomTeacher;
 
 const ensureClassroomReadAccess = async (
   req: Request,
@@ -413,6 +387,7 @@ class ClanController {
   async getClassroomTopContributors(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
       const limit = historyLimitSchema.parse(req.query.limit ?? 20);
       const contributors = await clanService.getClassroomTopContributors(classroomId, limit);
       res.json({ success: true, data: contributors });
@@ -425,6 +400,7 @@ class ClanController {
   async getClassroomClanFeed(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
       const limit = historyLimitSchema.parse(req.query.limit ?? 15);
       const cursor = req.query.cursor ? String(req.query.cursor) : undefined;
       const result = await clanService.getClassroomClanFeed(classroomId, limit, cursor);

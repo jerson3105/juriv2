@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { announcementService } from '../services/announcement.service.js';
+import { requireClassroomTeacher, requireClassroomTeacherOrParent } from '../utils/access.js';
 
 class AnnouncementController {
 
@@ -25,6 +26,7 @@ class AnnouncementController {
   async list(req: Request, res: Response) {
     try {
       const classroomId = req.params.id;
+      if (!(await requireClassroomTeacherOrParent(req, res, classroomId))) return;
       const page = Math.max(1, parseInt(req.query.page as string) || 1);
       const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
 
@@ -38,6 +40,7 @@ class AnnouncementController {
   async parentStats(req: Request, res: Response) {
     try {
       const classroomId = req.params.id;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
       const stats = await announcementService.getParentStats(classroomId);
       res.json(stats);
     } catch (error) {
@@ -49,6 +52,7 @@ class AnnouncementController {
   async families(req: Request, res: Response) {
     try {
       const classroomId = req.params.id;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
       const result = await announcementService.getFamilies(classroomId);
       res.json(result);
     } catch (error) {
@@ -60,6 +64,7 @@ class AnnouncementController {
   async markRead(req: Request, res: Response) {
     try {
       const classroomId = req.params.id;
+      if (!(await requireClassroomTeacherOrParent(req, res, classroomId))) return;
       const userId = req.user!.id;
       await announcementService.markAnnouncementsAsRead(classroomId, userId);
       res.json({ success: true });

@@ -17,6 +17,7 @@ import { eq, and, sql, desc, asc, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { studentService } from './student.service.js';
 import { logger } from '../utils/logger.js';
+import { spendGp } from '../utils/points.js';
 
 // Probabilidades de rareza
 const RARITY_PROBABILITIES: Record<CardRarity, number> = {
@@ -594,20 +595,9 @@ class CollectibleService {
         ? album.fivePackPrice 
         : album.tenPackPrice;
 
-    // Verificar GP del estudiante
-    const [student] = await db
-      .select({ gp: studentProfiles.gp })
-      .from(studentProfiles)
-      .where(eq(studentProfiles.id, studentProfileId));
-
-    if (!student || student.gp < price) {
-      throw new Error('No tienes suficiente oro');
-    }
-
     // Seleccionar cartas aleatorias según rareza
     const obtainedCards = this.selectRandomCards(album.cards, packSize);
 
-    // Procesar cada carta obtenida
     const cardsObtained: Array<{
       cardId: string;
       cardName: string;
@@ -618,62 +608,6 @@ class CollectibleService {
     }> = [];
 
     const now = new Date();
-
-    for (const card of obtainedCards) {
-      // Determinar si es shiny
-      const isShiny = Math.random() * 100 < SHINY_PROBABILITY;
-
-      // Verificar si ya tiene esta carta
-      const [existing] = await db
-        .select()
-        .from(studentCollectibles)
-        .where(and(
-          eq(studentCollectibles.studentProfileId, studentProfileId),
-          eq(studentCollectibles.cardId, card.id),
-          eq(studentCollectibles.isShiny, isShiny)
-        ));
-
-      const isNew = !existing;
-
-      if (existing) {
-        // Incrementar cantidad
-        await db
-          .update(studentCollectibles)
-          .set({ 
-            quantity: existing.quantity + 1,
-            updatedAt: now 
-          })
-          .where(eq(studentCollectibles.id, existing.id));
-      } else {
-        // Crear nuevo registro
-        await db.insert(studentCollectibles).values({
-          id: uuidv4(),
-          studentProfileId,
-          cardId: card.id,
-          quantity: 1,
-          isShiny,
-          obtainedAt: now,
-          updatedAt: now,
-        });
-      }
-
-      cardsObtained.push({
-        cardId: card.id,
-        cardName: card.name,
-        rarity: card.rarity,
-        imageUrl: card.imageUrl,
-        isShiny,
-        isNew,
-      });
-    }
-
-    // Descontar GP
-    await db
-      .update(studentProfiles)
-      .set({ gp: student.gp - price })
-      .where(eq(studentProfiles.id, studentProfileId));
-
-    // Registrar compra
     const purchase = {
       id: uuidv4(),
       studentProfileId,
@@ -684,7 +618,65 @@ class CollectibleService {
       purchasedAt: now,
     };
 
-    await db.insert(collectiblePurchases).values(purchase);
+    // Cobro atómico primero y entrega en la misma transacción: con compras simultáneas
+    // no se puede abrir varios sobres pagando uno, y si algo falla no se cobra.
+    const newGpBalance = await db.transaction(async (tx) => {
+      if (!(await spendGp(tx, studentProfileId, price))) {
+        throw new Error('No tienes suficiente oro');
+      }
+
+      for (const card of obtainedCards) {
+        const isShiny = Math.random() * 100 < SHINY_PROBABILITY;
+
+        const [existing] = await tx
+          .select({ id: studentCollectibles.id })
+          .from(studentCollectibles)
+          .where(and(
+            eq(studentCollectibles.studentProfileId, studentProfileId),
+            eq(studentCollectibles.cardId, card.id),
+            eq(studentCollectibles.isShiny, isShiny)
+          ));
+
+        const isNew = !existing;
+
+        if (existing) {
+          await tx
+            .update(studentCollectibles)
+            .set({
+              quantity: sql`${studentCollectibles.quantity} + 1`,
+              updatedAt: now,
+            })
+            .where(eq(studentCollectibles.id, existing.id));
+        } else {
+          await tx.insert(studentCollectibles).values({
+            id: uuidv4(),
+            studentProfileId,
+            cardId: card.id,
+            quantity: 1,
+            isShiny,
+            obtainedAt: now,
+            updatedAt: now,
+          });
+        }
+
+        cardsObtained.push({
+          cardId: card.id,
+          cardName: card.name,
+          rarity: card.rarity,
+          imageUrl: card.imageUrl,
+          isShiny,
+          isNew,
+        });
+      }
+
+      await tx.insert(collectiblePurchases).values(purchase);
+
+      const [after] = await tx
+        .select({ gp: studentProfiles.gp })
+        .from(studentProfiles)
+        .where(eq(studentProfiles.id, studentProfileId));
+      return after?.gp ?? 0;
+    });
 
     // Verificar si completó el álbum
     await this.checkAlbumCompletion(studentProfileId, albumId);
@@ -692,7 +684,7 @@ class CollectibleService {
     return {
       purchase,
       cards: cardsObtained,
-      newGpBalance: student.gp - price,
+      newGpBalance,
     };
   }
 
@@ -838,14 +830,20 @@ class CollectibleService {
       
       const teacherId = classroom?.teacherId || '';
       
-      // Registrar completado
-      await db.insert(completedAlbums).values({
-        id: uuidv4(),
-        studentProfileId,
-        albumId,
-        rewardsGiven: false,
-        completedAt: now,
-      });
+      // Registrar completado. El índice único (alumno, álbum) hace que, con dos compras
+      // simultáneas que completan el álbum, solo una pase de aquí y cobre las recompensas.
+      try {
+        await db.insert(completedAlbums).values({
+          id: uuidv4(),
+          studentProfileId,
+          albumId,
+          rewardsGiven: false,
+          completedAt: now,
+        });
+      } catch (error: any) {
+        if (error?.code === 'ER_DUP_ENTRY' || error?.cause?.code === 'ER_DUP_ENTRY') return false;
+        throw error;
+      }
 
       // Dar recompensas
       const rewardReason = `Álbum completado: ${album.name}`;

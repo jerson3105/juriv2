@@ -1,27 +1,18 @@
 import { Request, Response } from 'express';
 import { timedActivityService } from '../services/timedActivity.service.js';
 import { publicErrorMessage } from '../utils/errors.js';
+import { requireClassroomTeacher, pickFields } from '../utils/access.js';
 
-const ensureTeacherClassroomAccess = async (
-  req: Request,
-  res: Response,
-  classroomId: string
-): Promise<boolean> => {
-  const userId = req.user?.id;
+// Campos configurables por el profesor. classroomId sale de la ruta; estado y tiempos
+// (status, startedAt, completedAt, elapsedSeconds...) solo los cambian las acciones de juego.
+const ACTIVITY_FIELDS = [
+  'name', 'description', 'mode', 'timeLimitSeconds', 'bombMinSeconds', 'bombMaxSeconds',
+  'behaviorId', 'basePoints', 'pointType', 'useMultipliers', 'multiplier50', 'multiplier75',
+  'negativeBehaviorId', 'bombPenaltyPoints', 'bombPenaltyType', 'competencyIds',
+] as const;
 
-  if (!userId) {
-    res.status(401).json({ error: 'No autorizado' });
-    return false;
-  }
-
-  const isOwner = await timedActivityService.verifyTeacherOwnsClassroom(userId, classroomId);
-  if (!isOwner) {
-    res.status(403).json({ error: 'No tienes acceso a esta clase' });
-    return false;
-  }
-
-  return true;
-};
+// Acceso de profesor a la clase: ver utils/access.ts (requireClassroomTeacher).
+const ensureTeacherClassroomAccess = requireClassroomTeacher;
 
 const ensureTeacherActivityAccess = async (
   req: Request,
@@ -46,8 +37,8 @@ export const timedActivityController = {
       if (!hasAccess) return;
 
       const activity = await timedActivityService.create({
+        ...(pickFields(req.body, ACTIVITY_FIELDS) as any),
         classroomId,
-        ...req.body,
       });
       res.status(201).json(activity);
     } catch (error) {
@@ -96,7 +87,7 @@ export const timedActivityController = {
       const hasAccess = await ensureTeacherActivityAccess(req, res, id);
       if (!hasAccess) return;
 
-      const activity = await timedActivityService.update(id, req.body);
+      const activity = await timedActivityService.update(id, pickFields(req.body, ACTIVITY_FIELDS) as any);
       if (!activity) {
         return res.status(404).json({ error: 'Actividad no encontrada' });
       }

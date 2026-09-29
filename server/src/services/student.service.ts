@@ -16,6 +16,7 @@ import { badgeService } from './badge.service.js';
 import { storyService } from './story.service.js';
 import { prepareForTx } from '../utils/notificationEmitter.js';
 import { generateRandomCode } from '../utils/helpers.js';
+import { applyPointDeltas } from '../utils/points.js';
 
 type CharacterClass = 'GUARDIAN' | 'ARCANE' | 'EXPLORER' | 'ALCHEMIST';
 type PointType = 'XP' | 'HP' | 'GP';
@@ -342,45 +343,18 @@ export class StudentService {
       data.competencyId = indicator.competencyId;
     }
 
-    // Calcular nuevo valor
-    let newValue: number;
-    const currentValue = profile[data.pointType.toLowerCase() as 'xp' | 'hp' | 'gp'];
+    // Los límites de PV se aplican en SQL sobre el valor real (sin leer antes el saldo),
+    // así un cambio simultáneo de otro origen no se pierde ni se pisa.
+    const deltaField = data.pointType.toLowerCase() as 'xp' | 'hp' | 'gp';
+    const rules = {
+      xpPerLevel: classroom.xpPerLevel || 100,
+      hpMin: classroom.allowNegativeHp ? null : 0,
+      hpMax: classroom.maxHp,
+    };
     let leveledUp = false;
     let newLevel = profile.level;
 
-    if (data.amount >= 0) {
-      newValue = currentValue + data.amount;
-    } else {
-      // Verificar si se permite HP negativo
-      if (data.pointType === 'HP' && !classroom.allowNegativeHp) {
-        newValue = Math.max(0, currentValue + data.amount);
-      } else {
-        newValue = currentValue + data.amount;
-      }
-    }
-
-    // Para HP, no puede exceder maxHp
-    if (data.pointType === 'HP' && data.amount > 0) {
-      newValue = Math.min(newValue, classroom.maxHp);
-    }
-
     const now = new Date();
-
-    // Actualizar perfil
-    const updateData: Record<string, unknown> = {
-      updatedAt: now,
-    };
-    updateData[data.pointType.toLowerCase()] = newValue;
-
-    // Si es XP, verificar si sube de nivel usando xpPerLevel de la clase
-    if (data.pointType === 'XP' && data.amount > 0) {
-      const xpPerLevel = classroom.xpPerLevel || 100;
-      newLevel = this.calculateLevel(newValue, xpPerLevel);
-      if (newLevel > profile.level) {
-        updateData.level = newLevel;
-        leveledUp = true;
-      }
-    }
 
     const pointLogEntry: typeof pointLogs.$inferInsert = {
       id: uuidv4(),
@@ -416,25 +390,29 @@ export class StudentService {
       });
     }
 
-    // Crear notificación de subida de nivel (solo si tiene cuenta vinculada)
-    if (leveledUp && profile.userId) {
-      notificationsBatch.push({
-        id: uuidv4(),
-        userId: profile.userId,
-        type: 'LEVEL_UP',
-        title: '🎉 ¡Subiste de nivel!',
-        message: `¡Felicidades! Has alcanzado el nivel ${newLevel}`,
-        isRead: false,
-        createdAt: now,
-      });
-    }
-
-    const notifTx = prepareForTx(notificationsBatch);
+    let notifTx = prepareForTx(notificationsBatch);
 
     await db.transaction(async (tx) => {
-      await tx.update(studentProfiles)
-        .set(updateData)
-        .where(eq(studentProfiles.id, data.studentId));
+      const updated = await applyPointDeltas(tx, data.studentId, { [deltaField]: data.amount }, rules);
+      if (!updated) throw new Error('Estudiante no encontrado');
+
+      // Subida de nivel decidida con el XP real resultante
+      if (updated.level > updated.previousLevel) {
+        leveledUp = true;
+        newLevel = updated.level;
+        if (profile.userId) {
+          notificationsBatch.push({
+            id: uuidv4(),
+            userId: profile.userId,
+            type: 'LEVEL_UP',
+            title: '🎉 ¡Subiste de nivel!',
+            message: `¡Felicidades! Has alcanzado el nivel ${newLevel}`,
+            isRead: false,
+            createdAt: now,
+          });
+          notifTx = prepareForTx(notificationsBatch);
+        }
+      }
 
       await tx.insert(pointLogs).values(pointLogEntry);
 

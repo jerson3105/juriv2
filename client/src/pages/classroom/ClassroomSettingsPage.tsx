@@ -62,6 +62,7 @@ import {
   isClassroomSettingsSection,
   type ClassroomSettingsSectionKey,
 } from './classroomSettingsSections';
+import { escapeHtml } from '../../lib/safeHtml';
 
 export const ClassroomSettingsPage = () => {
   const { section } = useParams<{ section?: string }>();
@@ -2749,7 +2750,7 @@ export const ClassroomSettingsPage = () => {
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Folletos para Padres - ${data.classroomName}</title>
+  <title>Folletos para Padres - ${escapeHtml(data.classroomName)}</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -2804,7 +2805,7 @@ export const ClassroomSettingsPage = () => {
 <body>
   <div class="no-print" style="background:#6366f1;color:white;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;">
     <div>
-      <strong>${data.classroomName}</strong> — ${data.students.length} folletos generados
+      <strong>${escapeHtml(data.classroomName)}</strong> — ${data.students.length} folletos generados
     </div>
     <button onclick="window.print()" style="background:white;color:#6366f1;border:none;padding:8px 20px;border-radius:8px;font-weight:600;cursor:pointer;font-size:14px;">
       \u{1F5A8} Imprimir folletos
@@ -2817,10 +2818,10 @@ ${(() => {
     const flyers = batch.map(s => `
       <div class="flyer">
         <div class="flyer-logo">Juried</div>
-        <div class="flyer-class">${data.classroomName}</div>
-        <div class="flyer-student">${s.name}</div>
+        <div class="flyer-class">${escapeHtml(data.classroomName)}</div>
+        <div class="flyer-student">${escapeHtml(s.name)}</div>
         <div class="flyer-label">Código de vinculación para padres</div>
-        <div class="flyer-code">${s.parentLinkCode}</div>
+        <div class="flyer-code">${escapeHtml(s.parentLinkCode)}</div>
         <div class="flyer-instructions">
           <ol>
             <li>Ingrese a <strong>www.plataformajuried.com</strong> y regístrese como <strong>Padre/Madre</strong></li>

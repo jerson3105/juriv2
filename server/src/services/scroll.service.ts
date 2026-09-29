@@ -18,6 +18,7 @@ import type {
   ScrollStatus, 
   ScrollRecipientType 
 } from '../db/schema.js';
+import { teacherOwnsClassroom } from '../utils/access.js';
 
 const ALLOWED_REACTION_TYPES = new Set(['heart', 'star', 'fire', 'clap', 'smile']);
 
@@ -82,14 +83,7 @@ class ScrollService {
   }
 
   async verifyTeacherOwnsClassroom(teacherId: string, classroomId: string): Promise<boolean> {
-    const [classroom] = await db.select({ id: classrooms.id })
-      .from(classrooms)
-      .where(and(
-        eq(classrooms.id, classroomId),
-        eq(classrooms.teacherId, teacherId)
-      ));
-
-    return !!classroom;
+    return teacherOwnsClassroom(teacherId, classroomId);
   }
 
   async verifyStudentBelongsToUser(studentProfileId: string, userId: string): Promise<boolean> {

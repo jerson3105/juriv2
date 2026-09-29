@@ -10,6 +10,7 @@ import {
 } from '../db/schema.js';
 import { eq, and, desc } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
+import { spendGp } from '../utils/points.js';
 
 interface CreateAvatarItemData {
   name: string;
@@ -291,31 +292,38 @@ class AvatarService {
       throw new Error('Ya tienes este item');
     }
 
-    // Descontar GP
-    await db
-      .update(studentProfiles)
-      .set({ 
-        gp: profile.gp - shopItem.price,
-        updatedAt: new Date()
-      })
-      .where(eq(studentProfiles.id, studentProfileId));
-
-    // Registrar compra
+    // Cobro atómico + registro en una transacción: con compras simultáneas el oro no se
+    // puede gastar dos veces, y si la compra ya existe (índice único) se deshace el cobro.
     const purchaseId = uuidv4();
-    await db.insert(studentAvatarPurchases).values({
-      id: purchaseId,
-      studentProfileId,
-      avatarItemId,
-      classroomId,
-      pricePaid: shopItem.price,
-      purchasedAt: new Date(),
+    const newBalance = await db.transaction(async (tx) => {
+      if (!(await spendGp(tx, studentProfileId, shopItem.price))) {
+        throw new Error('No tienes suficiente oro');
+      }
+      await tx.insert(studentAvatarPurchases).values({
+        id: purchaseId,
+        studentProfileId,
+        avatarItemId,
+        classroomId,
+        pricePaid: shopItem.price,
+        purchasedAt: new Date(),
+      });
+      const [after] = await tx
+        .select({ gp: studentProfiles.gp })
+        .from(studentProfiles)
+        .where(eq(studentProfiles.id, studentProfileId));
+      return after?.gp ?? profile.gp - shopItem.price;
+    }).catch((error: any) => {
+      if (error?.code === 'ER_DUP_ENTRY' || error?.cause?.code === 'ER_DUP_ENTRY') {
+        throw new Error('Ya tienes este item');
+      }
+      throw error;
     });
 
     return {
       purchaseId,
       item: shopItem.avatarItem,
       pricePaid: shopItem.price,
-      newBalance: profile.gp - shopItem.price,
+      newBalance,
     };
   }
 

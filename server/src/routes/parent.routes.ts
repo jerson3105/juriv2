@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { parentController } from '../controllers/parent.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { authLimiter, codeRedemptionLimiter } from '../middleware/security.js';
+import { aiGuard } from '../middleware/security.js';
 
 const router = Router();
 
@@ -16,8 +17,8 @@ router.get('/child/:studentId', authenticate, authorize('PARENT'), parentControl
 router.get('/child/:studentId/grades', authenticate, authorize('PARENT'), parentController.getChildGrades);
 router.get('/child/:studentId/activity', authenticate, authorize('PARENT'), parentController.getChildActivity);
 router.get('/child/:studentId/report', authenticate, authorize('PARENT'), parentController.getChildReport);
-router.get('/child/:studentId/ai-report', authenticate, authorize('PARENT'), parentController.getAIReport);
-router.post('/child/:studentId/ai-report/regenerate', authenticate, authorize('PARENT'), parentController.regenerateAIReport);
+router.get('/child/:studentId/ai-report', authenticate, authorize('PARENT'), ...aiGuard, parentController.getAIReport);
+router.post('/child/:studentId/ai-report/regenerate', authenticate, authorize('PARENT'), ...aiGuard, parentController.regenerateAIReport);
 router.delete('/child/:studentId', authenticate, authorize('PARENT'), parentController.unlinkChild);
 router.put('/preferences', authenticate, authorize('PARENT'), parentController.updatePreferences);
 

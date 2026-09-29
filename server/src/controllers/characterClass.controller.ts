@@ -1,6 +1,16 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { characterClassService } from '../services/characterClass.service.js';
+import {
+  requireClassroomTeacher,
+  requireClassroomMember,
+  studentsBelongToClassroom,
+  classroomIdOfCharacterClass,
+} from '../utils/access.js';
+
+// La clase de personaje debe pertenecer a la clase de la ruta (null = desasignar).
+const characterClassInClassroom = async (characterClassId: string | null, classroomId: string) =>
+  characterClassId === null || (await classroomIdOfCharacterClass(characterClassId)) === classroomId;
 
 const createSchema = z.object({
   name: z.string().min(1).max(50),
@@ -37,6 +47,7 @@ class CharacterClassController {
   async list(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+      if (!(await requireClassroomMember(req, res, classroomId))) return;
       const classes = await characterClassService.list(classroomId);
       res.json({ success: true, data: classes });
     } catch (error) {
@@ -47,6 +58,7 @@ class CharacterClassController {
   async listActive(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+      if (!(await requireClassroomMember(req, res, classroomId))) return;
       const classes = await characterClassService.listActive(classroomId);
       res.json({ success: true, data: classes });
     } catch (error) {
@@ -57,6 +69,7 @@ class CharacterClassController {
   async create(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
       const data = createSchema.parse(req.body);
       const newClass = await characterClassService.create(classroomId, data);
       res.status(201).json({ success: true, data: newClass });
@@ -73,7 +86,11 @@ class CharacterClassController {
 
   async update(req: Request, res: Response) {
     try {
-      const { id } = req.params;
+      const { id, classroomId } = req.params;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
+      if ((await classroomIdOfCharacterClass(id)) !== classroomId) {
+        return res.status(404).json({ success: false, message: 'Clase de personaje no encontrada' });
+      }
       const data = updateSchema.parse(req.body);
       const updated = await characterClassService.update(id, data);
       res.json({ success: true, data: updated });
@@ -88,6 +105,10 @@ class CharacterClassController {
   async remove(req: Request, res: Response) {
     try {
       const { classroomId, id } = req.params;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
+      if ((await classroomIdOfCharacterClass(id)) !== classroomId) {
+        return res.status(404).json({ success: false, message: 'Clase de personaje no encontrada' });
+      }
       await characterClassService.remove(id, classroomId);
       res.json({ success: true, message: 'Clase eliminada' });
     } catch (error) {
@@ -101,6 +122,7 @@ class CharacterClassController {
   async reorder(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
       const { orderedIds } = reorderSchema.parse(req.body);
       await characterClassService.reorder(classroomId, orderedIds);
       res.json({ success: true, message: 'Orden actualizado' });
@@ -112,6 +134,12 @@ class CharacterClassController {
   async assign(req: Request, res: Response) {
     try {
       const data = assignSchema.parse(req.body);
+      const { classroomId } = req.params;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
+      if (!(await studentsBelongToClassroom([data.studentId], classroomId))
+        || !(await characterClassInClassroom(data.characterClassId, classroomId))) {
+        return res.status(400).json({ success: false, message: 'El estudiante o la clase de personaje no pertenecen a esta clase' });
+      }
       await characterClassService.assignToStudent(data.studentId, data.characterClassId);
       res.json({ success: true, message: 'Clase asignada' });
     } catch (error) {
@@ -125,6 +153,12 @@ class CharacterClassController {
   async bulkAssign(req: Request, res: Response) {
     try {
       const data = bulkAssignSchema.parse(req.body);
+      const { classroomId } = req.params;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
+      if (!(await studentsBelongToClassroom(data.studentIds, classroomId))
+        || !(await characterClassInClassroom(data.characterClassId, classroomId))) {
+        return res.status(400).json({ success: false, message: 'Hay estudiantes o una clase de personaje que no pertenecen a esta clase' });
+      }
       await characterClassService.bulkAssignToStudents(data.studentIds, data.characterClassId);
       res.json({ success: true, message: `Clase asignada a ${data.studentIds.length} estudiante(s)` });
     } catch (error) {
@@ -138,6 +172,7 @@ class CharacterClassController {
   async seedDefaults(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
       await characterClassService.seedDefaults(classroomId);
       const classes = await characterClassService.list(classroomId);
       res.json({ success: true, data: classes });

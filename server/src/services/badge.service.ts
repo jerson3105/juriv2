@@ -20,6 +20,7 @@ import {
   type BadgeRarity,
   type BadgeAssignment,
 } from '../db/schema.js';
+import { addXpGp } from '../utils/points.js';
 
 // Tipos para condiciones
 export interface BadgeCondition {
@@ -1260,19 +1261,13 @@ class BadgeService {
       .where(eq(classrooms.id, current.classroomId));
 
     const xpPerLevel = classroom?.xpPerLevel || 100;
-    const newXp = current.xp + xp;
-    const newLevel = xp > 0 ? this.calculateLevel(newXp, xpPerLevel) : current.level;
-    const leveledUp = newLevel > current.level;
     const now = new Date();
 
-    await tx.update(studentProfiles)
-      .set({
-        xp: newXp,
-        gp: current.gp + gp,
-        level: newLevel,
-        updatedAt: now,
-      })
-      .where(eq(studentProfiles.id, studentProfileId));
+    // Suma atómica: no pisa otras escrituras simultáneas sobre el alumno.
+    const updated = await addXpGp(tx, studentProfileId, { xp, gp }, xpPerLevel);
+    if (!updated) return;
+    const newLevel = updated.level;
+    const leveledUp = updated.level > updated.previousLevel;
 
     const logsBatch: typeof pointLogs.$inferInsert[] = [];
     if (xp > 0) {
