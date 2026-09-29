@@ -1,0 +1,72 @@
+import { and, eq, gte, sql } from 'drizzle-orm';
+import { db } from '../db/index.js';
+import { clanLogs, pointLogs, studentProfiles, teams } from '../db/schema.js';
+
+export interface RankingDeltas {
+  since: string;
+  students: { id: string; xp: number; gp: number }[];
+  clans: { id: string; xp: number }[];
+  // XP neto por alumno y minuto desde `since` (para la "carrera" de la ceremonia).
+  timeline?: { id: string; m: number; xp: number }[];
+}
+
+// Tope de filas de la línea de tiempo: un día entero de una clase grande cabe de sobra.
+const TIMELINE_LIMIT = 20000;
+
+// Neto de un tipo de punto: ADD suma, REMOVE resta. Las reversiones se excluyen
+// (el original y su inverso quedan con is_reverted = 1).
+const netOf = (type: 'XP' | 'GP') =>
+  sql<string>`COALESCE(SUM(CASE WHEN ${pointLogs.pointType} = ${type} THEN IF(${pointLogs.action} = 'ADD', ${pointLogs.amount}, -${pointLogs.amount}) ELSE 0 END), 0)`;
+
+class RankingService {
+  // Lo ganado por cada alumno y clan de la clase desde `since`.
+  async getDeltas(classroomId: string, since: Date, withTimeline: boolean): Promise<RankingDeltas> {
+    const inPeriod = and(
+      eq(studentProfiles.classroomId, classroomId),
+      gte(pointLogs.createdAt, since),
+      eq(pointLogs.isReverted, false),
+    );
+
+    const studentRows = await db
+      .select({ id: pointLogs.studentId, xp: netOf('XP'), gp: netOf('GP') })
+      .from(pointLogs)
+      .innerJoin(studentProfiles, eq(pointLogs.studentId, studentProfiles.id))
+      .where(inPeriod)
+      .groupBy(pointLogs.studentId);
+
+    const clanRows = await db
+      .select({ id: clanLogs.clanId, xp: sql<string>`COALESCE(SUM(${clanLogs.xpAmount}), 0)` })
+      .from(clanLogs)
+      .innerJoin(teams, eq(clanLogs.clanId, teams.id))
+      .where(and(eq(teams.classroomId, classroomId), eq(clanLogs.action, 'XP_CONTRIBUTED'), gte(clanLogs.createdAt, since)))
+      .groupBy(clanLogs.clanId);
+
+    const result: RankingDeltas = {
+      since: since.toISOString(),
+      students: studentRows
+        .map((r) => ({ id: r.id, xp: Number(r.xp), gp: Number(r.gp) }))
+        .filter((r) => r.xp !== 0 || r.gp !== 0),
+      clans: clanRows.map((r) => ({ id: r.id, xp: Number(r.xp) })).filter((r) => r.xp !== 0),
+    };
+
+    if (withTimeline) {
+      // Minutos desde `since`: se calcula en la BD con el mismo reloj con el que se guardó created_at.
+      const minute = sql<string>`FLOOR(TIMESTAMPDIFF(SECOND, ${since}, ${pointLogs.createdAt}) / 60)`;
+      const rows = await db
+        .select({ id: pointLogs.studentId, m: minute, xp: netOf('XP') })
+        .from(pointLogs)
+        .innerJoin(studentProfiles, eq(pointLogs.studentId, studentProfiles.id))
+        .where(and(inPeriod, eq(pointLogs.pointType, 'XP')))
+        .groupBy(pointLogs.studentId, minute)
+        .orderBy(minute)
+        .limit(TIMELINE_LIMIT);
+      result.timeline = rows
+        .map((r) => ({ id: r.id, m: Number(r.m), xp: Number(r.xp) }))
+        .filter((r) => r.xp !== 0);
+    }
+
+    return result;
+  }
+}
+
+export const rankingService = new RankingService();

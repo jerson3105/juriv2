@@ -4,6 +4,7 @@ import { announcementController } from '../controllers/announcement.controller.j
 import { chatController } from '../controllers/chat.controller.js';
 import { classNoteController } from '../controllers/classNote.controller.js';
 import { characterClassController } from '../controllers/characterClass.controller.js';
+import { rankingController } from '../controllers/ranking.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { aiGuard } from '../middleware/security.js';
 
@@ -22,6 +23,7 @@ router.put('/:id', authorize('TEACHER'), classroomController.update.bind(classro
 router.delete('/:id', authorize('TEACHER'), classroomController.delete.bind(classroomController));
 router.post('/:id/reset-points', authorize('TEACHER'), classroomController.resetAllPoints.bind(classroomController));
 router.post('/:id/reset-selective', authorize('TEACHER'), classroomController.resetClassroomSelective.bind(classroomController));
+router.get('/:id/rankings', authorize('TEACHER', 'ADMIN'), rankingController.getDeltas.bind(rankingController));
 router.get('/:id/competencies', authorize('TEACHER', 'STUDENT'), classroomController.getCompetencies.bind(classroomController));
 router.post('/:id/competencies', authorize('TEACHER'), classroomController.addCompetencies.bind(classroomController));
 router.delete('/:id/competencies/:competencyId', authorize('TEACHER'), classroomController.removeCompetency.bind(classroomController));

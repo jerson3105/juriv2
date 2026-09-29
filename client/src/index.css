@@ -546,3 +546,39 @@
 .group:hover .cc-holo,
 .group:focus-within .cc-holo { opacity: 1; animation: cc-holo 2.4s linear infinite; }
 .cc-holo.cc-holo-on { opacity: 0.85; animation: cc-holo 4s linear infinite; }
+
+/* ── Rankings: gala de estadio (reflectores, luces del estadio y rayos del campeón) ── */
+@keyframes rk-sweep-left {
+  0%, 100% { transform: rotate(22deg); }
+  50% { transform: rotate(-8deg); }
+}
+@keyframes rk-sweep-right {
+  0%, 100% { transform: rotate(-22deg); }
+  50% { transform: rotate(8deg); }
+}
+@keyframes rk-twinkle {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+@keyframes rk-rays {
+  to { transform: rotate(360deg); }
+}
+.rk-beam {
+  position: absolute;
+  top: -8%;
+  width: 36vw;
+  height: 125%;
+  transform-origin: 50% 0;
+  clip-path: polygon(45% 0, 55% 0, 100% 100%, 0 100%);
+  background: linear-gradient(to bottom, rgba(254, 243, 199, 0.28), rgba(254, 243, 199, 0.06) 65%, transparent);
+  pointer-events: none;
+}
+.rk-beam-left { left: 2%; animation: rk-sweep-left 10s ease-in-out infinite; }
+.rk-beam-right { right: 2%; animation: rk-sweep-right 10s ease-in-out infinite; }
+.rk-lamp { animation: rk-twinkle 2.6s ease-in-out infinite; }
+.rk-rays {
+  border-radius: 9999px;
+  background: repeating-conic-gradient(from 0deg, rgba(253, 230, 138, 0.28) 0deg 9deg, transparent 9deg 24deg);
+  mask-image: radial-gradient(circle, #000 25%, transparent 70%);
+  animation: rk-rays 20s linear infinite;
+}
