@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { Outlet, useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -48,8 +48,12 @@ import { classroomApi } from '../../lib/classroomApi';
 import { NotificationsBell, NotificationsPanel } from '../NotificationsPanel';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { BugReportButton } from '../BugReportButton';
-import { ClassroomUtilities } from '../classroom/ClassroomUtilities';
 import { classNoteApi } from '../../lib/classNoteApi';
+
+// Las herramientas de clase se descargan solo al abrirlas (no pesan en la carga inicial de la app).
+const ClassroomUtilities = lazy(() =>
+  import('../classroom/ClassroomUtilities').then((module) => ({ default: module.ClassroomUtilities })),
+);
 import toast from 'react-hot-toast';
 import { ParticleLayer } from '../story/ParticleLayer';
 import { useTeacherOnboardingSafe } from '../../contexts/TeacherOnboardingContext';
@@ -831,7 +835,9 @@ export const ClassroomLayout = () => {
         </main>
       </div>
 
-      <ClassroomUtilities
+      {showTools && (
+        <Suspense fallback={null}>
+          <ClassroomUtilities
         isOpen={showTools}
         onClose={() => setShowTools(false)}
         students={classroom.students || []}
@@ -839,7 +845,9 @@ export const ClassroomLayout = () => {
         classroomId={classroom.id}
         xpPerLevel={classroom.xpPerLevel || 100}
         allowNegativePoints={classroom.allowNegativePoints !== false}
-      />
+          />
+        </Suspense>
+      )}
 
       {/* Panel de notificaciones */}
       <NotificationsPanel 
