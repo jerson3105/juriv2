@@ -330,7 +330,7 @@ export const AttendancePage = () => {
           <p className="text-gray-600 dark:text-gray-300">No hay estudiantes en esta clase</p>
         </div>
       ) : (
-        <ul className="grid grid-cols-1 xl:grid-cols-2 gap-2">
+        <ul className="grid grid-cols-1 2xl:grid-cols-2 gap-2">
           {students.map((student) => {
             const currentStatus = attendanceData[student.id];
             const classInfo = (student.characterClassId && classMap[student.characterClassId]) || classMap[student.characterClass];
@@ -345,7 +345,7 @@ export const AttendancePage = () => {
                 <span className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700 text-base" aria-hidden="true" title={classInfo?.name}>
                   {classInfo?.icon || '👤'}
                 </span>
-                <span className="flex-1 min-w-0 truncate font-medium text-gray-900 dark:text-white">{getDisplayName(student)}</span>
+                <span className="flex-1 min-w-[7rem] break-words leading-tight line-clamp-2 font-medium text-gray-900 dark:text-white" title={getDisplayName(student)}>{getDisplayName(student)}</span>
                 <div role="group" aria-label={`Asistencia de ${getDisplayName(student)}`} className="flex w-full sm:w-auto flex-shrink-0 overflow-hidden rounded-lg border border-gray-300 dark:border-gray-600">
                   {STATUSES.map((status, index) => {
                     const config = STATUS_CONFIG[status];
