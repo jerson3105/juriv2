@@ -8,7 +8,7 @@ import {
   AvatarGender,
   AvatarSlot 
 } from '../db/schema.js';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { spendGp } from '../utils/points.js';
 
@@ -465,6 +465,33 @@ class AvatarService {
       .from(studentEquippedItems)
       .innerJoin(avatarItems, eq(studentEquippedItems.avatarItemId, avatarItems.id))
       .where(eq(studentEquippedItems.studentProfileId, studentProfileId));
+  }
+
+  /**
+   * Items equipados de varios alumnos en una consulta (mismo formato que getEquippedItems).
+   * Todos los ids pedidos aparecen en el resultado; sin items → lista vacía.
+   */
+  async getEquippedItemsForStudents(studentProfileIds: string[]) {
+    const result: Record<string, Awaited<ReturnType<typeof this.getEquippedItems>>> = {};
+    for (const id of studentProfileIds) result[id] = [];
+    if (studentProfileIds.length === 0) return result;
+
+    const rows = await db
+      .select({
+        studentProfileId: studentEquippedItems.studentProfileId,
+        id: studentEquippedItems.id,
+        slot: studentEquippedItems.slot,
+        equippedAt: studentEquippedItems.equippedAt,
+        avatarItem: avatarItems,
+      })
+      .from(studentEquippedItems)
+      .innerJoin(avatarItems, eq(studentEquippedItems.avatarItemId, avatarItems.id))
+      .where(inArray(studentEquippedItems.studentProfileId, studentProfileIds));
+
+    for (const { studentProfileId, ...item } of rows) {
+      result[studentProfileId]?.push(item);
+    }
+    return result;
   }
 
   // ==================== UTILIDADES ====================

@@ -427,6 +427,31 @@ export const requireStudentProfileReadAccess = async (
   return deny(res, 403, 'No tienes acceso a este perfil');
 };
 
+/**
+ * Como `requireResourceMember` para varios alumnos: el usuario debe poder acceder a la clase de
+ * cada uno (misma regla que `userCanAccessClassroom`). Ids inexistentes se ignoran.
+ */
+export const requireStudentsMember = async (
+  req: Request,
+  res: Response,
+  studentProfileIds: string[]
+): Promise<boolean> => {
+  const user = req.user;
+  if (!user) return deny(res, 401, 'No autenticado');
+  if (studentProfileIds.length === 0) return true;
+  const rows = await db
+    .select({ classroomId: studentProfiles.classroomId })
+    .from(studentProfiles)
+    .where(inArray(studentProfiles.id, studentProfileIds));
+  const classroomIds = [...new Set(rows.map((r) => r.classroomId))];
+  for (const classroomId of classroomIds) {
+    if (!(await userCanAccessClassroom(user, classroomId))) {
+      return deny(res, 403, 'No tienes acceso a alguno de estos estudiantes');
+    }
+  }
+  return true;
+};
+
 /** Como `requireSchoolOwner` pero resolviendo la escuela a partir de una membresía. */
 export const requireSchoolOwnerByMember = async (
   req: Request,

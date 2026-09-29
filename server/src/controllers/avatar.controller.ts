@@ -7,6 +7,7 @@ import {
   requireClassroomTeacher,
   requireClassroomMember,
   requireResourceMember,
+  requireStudentsMember,
   classroomIdOfShopItem,
   classroomIdOfStudentProfile,
 } from '../utils/access.js';
@@ -331,6 +332,25 @@ export const avatarController = {
         success: false,
         message: 'Error al desequipar item',
       });
+    }
+  },
+
+  // Items equipados de varios alumnos en una petición (las listas renderizan un mini-avatar por
+  // alumno; antes era una petición por alumno).
+  async getEquippedItemsBatch(req: Request, res: Response) {
+    try {
+      const ids = req.body?.studentProfileIds;
+      const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100 || ids.some((id) => typeof id !== 'string' || !UUID.test(id))) {
+        return res.status(400).json({ success: false, message: 'studentProfileIds debe ser una lista de 1 a 100 ids' });
+      }
+      const uniqueIds = [...new Set(ids as string[])];
+      if (!(await requireStudentsMember(req, res, uniqueIds))) return;
+      const items = await avatarService.getEquippedItemsForStudents(uniqueIds);
+      res.json({ success: true, data: items });
+    } catch (error) {
+      console.error('Error getting equipped items batch:', error);
+      res.status(500).json({ success: false, message: 'Error al obtener items equipados' });
     }
   },
 

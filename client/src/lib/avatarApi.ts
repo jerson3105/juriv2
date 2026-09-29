@@ -58,6 +58,43 @@ export interface StudentAvatarData {
   }[];
 }
 
+// ==================== AGRUPADOR DE ITEMS EQUIPADOS ====================
+// Cada mini-avatar pide sus items; en una lista eran N peticiones. Se juntan las pedidas en la
+// misma ventana corta y se resuelven con POST /avatars/equipped/batch (máx. 100 por llamada).
+type EquippedWaiter = { resolve: (items: EquippedItem[]) => void; reject: (error: unknown) => void };
+const EQUIPPED_BATCH_WINDOW_MS = 10;
+const EQUIPPED_BATCH_MAX = 100;
+let pendingEquipped = new Map<string, EquippedWaiter[]>();
+let equippedTimer: ReturnType<typeof setTimeout> | null = null;
+
+const flushEquipped = () => {
+  const batch = pendingEquipped;
+  pendingEquipped = new Map();
+  equippedTimer = null;
+
+  const ids = [...batch.keys()];
+  for (let i = 0; i < ids.length; i += EQUIPPED_BATCH_MAX) {
+    const chunk = ids.slice(i, i + EQUIPPED_BATCH_MAX);
+    api
+      .post('/avatars/equipped/batch', { studentProfileIds: chunk })
+      .then((response) => {
+        const byStudent: Record<string, EquippedItem[]> = response.data.data || {};
+        for (const id of chunk) batch.get(id)?.forEach((w) => w.resolve(byStudent[id] || []));
+      })
+      .catch((error) => {
+        for (const id of chunk) batch.get(id)?.forEach((w) => w.reject(error));
+      });
+  }
+};
+
+const loadEquippedItems = (studentProfileId: string): Promise<EquippedItem[]> =>
+  new Promise((resolve, reject) => {
+    const waiters = pendingEquipped.get(studentProfileId) ?? [];
+    waiters.push({ resolve, reject });
+    pendingEquipped.set(studentProfileId, waiters);
+    if (!equippedTimer) equippedTimer = setTimeout(flushEquipped, EQUIPPED_BATCH_WINDOW_MS);
+  });
+
 export const avatarApi = {
   // ==================== ITEMS GLOBALES ====================
 
@@ -134,10 +171,9 @@ export const avatarApi = {
     return response.data.data;
   },
 
-  getEquippedItems: async (studentProfileId: string): Promise<EquippedItem[]> => {
-    const response = await api.get(`/avatars/student/${studentProfileId}/equipped`);
-    return response.data.data;
-  },
+  // Agrupa las peticiones hechas en el mismo instante (p. ej. una lista de mini-avatares) en
+  // una sola llamada al servidor. Misma firma y mismo resultado por alumno que antes.
+  getEquippedItems: (studentProfileId: string): Promise<EquippedItem[]> => loadEquippedItems(studentProfileId),
 
   getStudentAvatarData: async (studentProfileId: string): Promise<StudentAvatarData> => {
     const response = await api.get(`/avatars/student/${studentProfileId}/avatar`);

@@ -54,6 +54,9 @@ router.post('/unequip', authorize('STUDENT'), avatarController.unequipItem);
 // Obtener items equipados de un estudiante
 router.get('/student/:studentProfileId/equipped', avatarController.getEquippedItems);
 
+// Items equipados de varios alumnos en una sola petición (listas de mini-avatares)
+router.post('/equipped/batch', avatarController.getEquippedItemsBatch);
+
 // Obtener datos completos del avatar de un estudiante
 router.get('/student/:studentProfileId/avatar', avatarController.getStudentAvatarData);
 
