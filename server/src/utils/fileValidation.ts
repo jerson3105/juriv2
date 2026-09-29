@@ -113,19 +113,13 @@ export const verifyUploadedFile: RequestHandler = async (req: Request, res: Resp
 };
 
 /**
- * Sirve una carpeta de archivos subidos de forma segura. Rechaza (404) cualquier
- * extensión no permitida, incluso si ya existe en disco.
+ * Sirve una carpeta de archivos subidos de forma segura. Una extensión no permitida nunca
+ * llega a `express.static` (aunque el archivo exista en disco): la petición sigue su curso
+ * con `next()`. No se responde 404 aquí porque algunos prefijos se comparten con la API
+ * (p. ej. `/api/badges` sirve imágenes y también es la ruta de la API de insignias).
  */
-export const serveUploads = (dir: string): RequestHandler[] => [
-  (req, res, next) => {
-    const ext = path.extname(req.path).toLowerCase();
-    if (!SERVABLE_EXTENSIONS.has(ext) && ext !== '.jpeg') {
-      res.status(404).json({ success: false, message: 'Archivo no encontrado' });
-      return;
-    }
-    next();
-  },
-  express.static(dir, {
+export const serveUploads = (dir: string): RequestHandler[] => {
+  const serveStatic = express.static(dir, {
     dotfiles: 'deny',
     index: false,
     setHeaders: (res, filePath) => {
@@ -137,5 +131,16 @@ export const serveUploads = (dir: string): RequestHandler[] => [
         res.setHeader('Content-Disposition', 'attachment');
       }
     },
-  }),
-];
+  });
+
+  return [
+    (req, res, next) => {
+      const ext = path.extname(req.path).toLowerCase();
+      if (!SERVABLE_EXTENSIONS.has(ext) && ext !== '.jpeg') {
+        next();
+        return;
+      }
+      serveStatic(req, res, next);
+    },
+  ];
+};
