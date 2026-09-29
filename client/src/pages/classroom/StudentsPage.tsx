@@ -557,8 +557,8 @@ export const StudentsPage = () => {
   const getHpColor = (hp: number, maxHp: number) => {
     const pct = (hp / maxHp) * 100;
     if (pct < 30) return { bar: 'bg-red-500', text: 'text-red-600', warning: true };
-    if (pct <= 60) return { bar: 'bg-amber-500', text: 'text-amber-600', warning: false };
-    return { bar: 'bg-emerald-500', text: 'text-emerald-600', warning: false };
+    if (pct <= 60) return { bar: 'bg-amber-500', text: 'text-amber-700 dark:text-amber-400', warning: false };
+    return { bar: 'bg-emerald-500', text: 'text-emerald-700 dark:text-emerald-400', warning: false };
   };
 
   // Filtrar y ordenar estudiantes alfabéticamente
@@ -936,25 +936,25 @@ export const StudentsPage = () => {
   const roundSessionTone = {
     surface: 'border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-900/20',
     text: 'text-sky-700 dark:text-sky-300',
-    muted: 'text-sky-600 dark:text-sky-300',
+    muted: 'text-sky-700 dark:text-sky-300',
     iconAction: 'text-sky-700 hover:bg-sky-100 dark:text-sky-300 dark:hover:bg-sky-900/40',
     outline: 'bg-white dark:bg-gray-800 text-sky-700 dark:text-sky-200 border border-sky-200 dark:border-sky-800 hover:bg-sky-100 dark:hover:bg-sky-900/30',
     flash: 'ring-1 ring-sky-300 dark:ring-sky-700 bg-sky-50/40 dark:bg-sky-900/10',
   };
   const positiveRoundPillClasses = 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300';
   const negativeRoundPillClasses = 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300';
-  const positiveRoundButtonClasses = 'bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50';
-  const negativeRoundButtonClasses = 'bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50';
+  const positiveRoundButtonClasses = 'bg-emerald-700 text-white hover:bg-emerald-800 disabled:opacity-50';
+  const negativeRoundButtonClasses = 'bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50';
   const roundActiveSummary = activeRound ? (
     <div className="flex flex-wrap items-center gap-1.5">
       {activeRound.positiveBehavior && (
-        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ${positiveRoundPillClasses}`}>
+        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${positiveRoundPillClasses}`}>
           <span>{activeRound.positiveBehavior.behaviorIcon || '⭐'}</span>
           <span>+ {activeRound.positiveBehavior.behaviorName} ({activeRound.positiveBehavior.multiplier}x)</span>
         </span>
       )}
       {activeRound.negativeBehavior && (
-        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ${negativeRoundPillClasses}`}>
+        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${negativeRoundPillClasses}`}>
           <span>{activeRound.negativeBehavior.behaviorIcon || '💥'}</span>
           <span>- {activeRound.negativeBehavior.behaviorName} ({activeRound.negativeBehavior.multiplier}x)</span>
         </span>
@@ -965,7 +965,7 @@ export const StudentsPage = () => {
     <div className="space-y-3">
       {positiveBehaviors.length > 0 && (
         <div className="space-y-1">
-          <p className="px-2 text-[11px] font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-300">
+          <p className="px-2 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
             Comportamiento positivo
           </p>
           {positiveBehaviors.map((behavior) => (
@@ -976,18 +976,18 @@ export const StudentsPage = () => {
             >
               <div className="flex items-center justify-between gap-3">
                 <span className="truncate"><span className="mr-2">{behavior.icon || '⭐'}</span>{behavior.name}</span>
-                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${pendingRoundPositiveBehaviorId === behavior.id ? positiveRoundPillClasses : 'bg-white/80 dark:bg-gray-900/40 text-emerald-700 dark:text-emerald-300'}`}>
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${pendingRoundPositiveBehaviorId === behavior.id ? positiveRoundPillClasses : 'bg-white/80 dark:bg-gray-900/40 text-emerald-700 dark:text-emerald-300'}`}>
                   {pendingRoundPositiveBehaviorId === behavior.id ? 'Seleccionado' : 'Elegir'}
                 </span>
               </div>
-              {behavior.competencyIndicator && <p className="mt-1 truncate pl-6 text-[10px] text-sky-600 dark:text-sky-400">Destreza: {behavior.competencyIndicator.name}</p>}
+              {behavior.competencyIndicator && <p className="mt-1 truncate pl-6 text-xs text-sky-700 dark:text-sky-300">Destreza: {behavior.competencyIndicator.name}</p>}
             </button>
           ))}
         </div>
       )}
       {availableNegativeRoundBehaviors.length > 0 && (
         <div className="space-y-1">
-          <p className="px-2 text-[11px] font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-300">
+          <p className="px-2 text-xs font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-300">
             Comportamiento negativo
           </p>
           {availableNegativeRoundBehaviors.map((behavior) => (
@@ -998,11 +998,11 @@ export const StudentsPage = () => {
             >
               <div className="flex items-center justify-between gap-3">
                 <span className="truncate"><span className="mr-2">{behavior.icon || '💥'}</span>{behavior.name}</span>
-                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${pendingRoundNegativeBehaviorId === behavior.id ? negativeRoundPillClasses : 'bg-white/80 dark:bg-gray-900/40 text-rose-700 dark:text-rose-300'}`}>
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${pendingRoundNegativeBehaviorId === behavior.id ? negativeRoundPillClasses : 'bg-white/80 dark:bg-gray-900/40 text-rose-700 dark:text-rose-300'}`}>
                   {pendingRoundNegativeBehaviorId === behavior.id ? 'Seleccionado' : 'Elegir'}
                 </span>
               </div>
-              {behavior.competencyIndicator && <p className="mt-1 truncate pl-6 text-[10px] text-sky-600 dark:text-sky-400">Destreza: {behavior.competencyIndicator.name}</p>}
+              {behavior.competencyIndicator && <p className="mt-1 truncate pl-6 text-xs text-sky-700 dark:text-sky-300">Destreza: {behavior.competencyIndicator.name}</p>}
             </button>
           ))}
         </div>
@@ -1014,7 +1014,7 @@ export const StudentsPage = () => {
             <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 font-semibold ${positiveRoundPillClasses}`}>
               <span>{selectedRoundPositiveBehavior.icon || '⭐'}</span>
               <span>+ {selectedRoundPositiveBehavior.name}</span>
-              <select value={pendingRoundPositiveMultiplier} onChange={(event) => setPendingRoundPositiveMultiplier(Number(event.target.value))} className="bg-transparent text-[11px] font-semibold outline-none">
+              <select value={pendingRoundPositiveMultiplier} onChange={(event) => setPendingRoundPositiveMultiplier(Number(event.target.value))} className="bg-transparent text-xs font-semibold outline-none">
                 <option value={1}>1x</option><option value={0.5}>1/2</option><option value={0.25}>1/4</option><option value={0.125}>1/8</option>
               </select>
             </span>
@@ -1027,7 +1027,7 @@ export const StudentsPage = () => {
             <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 font-semibold ${negativeRoundPillClasses}`}>
               <span>{selectedRoundNegativeBehavior.icon || '💥'}</span>
               <span>- {selectedRoundNegativeBehavior.name}</span>
-              <select value={pendingRoundNegativeMultiplier} onChange={(event) => setPendingRoundNegativeMultiplier(Number(event.target.value))} className="bg-transparent text-[11px] font-semibold outline-none">
+              <select value={pendingRoundNegativeMultiplier} onChange={(event) => setPendingRoundNegativeMultiplier(Number(event.target.value))} className="bg-transparent text-xs font-semibold outline-none">
                 <option value={1}>1x</option><option value={0.5}>1/2</option><option value={0.25}>1/4</option><option value={0.125}>1/8</option>
               </select>
             </span>
@@ -1041,7 +1041,7 @@ export const StudentsPage = () => {
       <Button
         onClick={startRound}
         disabled={!selectedRoundPositiveBehavior && !selectedRoundNegativeBehavior}
-        className="w-full bg-gradient-to-r from-sky-500 to-indigo-500 hover:from-sky-600 hover:to-indigo-600 text-white"
+        className="w-full bg-gradient-to-r from-sky-500 to-primary-500 hover:from-sky-600 hover:to-primary-600 text-white"
       >
         Iniciar ronda
       </Button>
@@ -1111,7 +1111,7 @@ export const StudentsPage = () => {
                     variant="secondary"
                     size="sm"
                     onClick={() => setShowRoundBehaviorPicker((prev) => !prev)}
-                    className="!bg-blue-500 hover:!bg-blue-600 !text-white text-xs px-2.5 py-1.5"
+                    className="!bg-primary-600 hover:!bg-primary-700 !text-white text-sm px-3 py-2"
                   >
                     <PlayCircle size={14} />
                     <span className="ml-1">Iniciar ronda</span>
@@ -1120,7 +1120,7 @@ export const StudentsPage = () => {
                     <>
                       <div className="fixed inset-0 z-40" onClick={() => setShowRoundBehaviorPicker(false)} />
                       <div className="absolute top-full left-0 mt-1 w-72 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 z-50 p-2">
-                        <p className="px-2 py-1 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
+                        <p className="px-2 py-1 text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wide">
                           Elegir comportamiento de ronda
                         </p>
                         <p className="px-2 pb-2 text-xs text-gray-500 dark:text-gray-400">
@@ -1136,10 +1136,10 @@ export const StudentsPage = () => {
               ) : (
                 <div className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 max-w-full ${roundSessionTone.surface}`}>
                   <div className="min-w-0 flex-1">
-                    <p className={`text-[11px] font-semibold ${roundSessionTone.text}`}>Ronda activa</p>
+                    <p className={`text-xs font-semibold ${roundSessionTone.text}`}>Ronda activa</p>
                     {roundActiveSummary}
                   </div>
-                  <span className={`text-[10px] ${roundSessionTone.muted}`}>
+                  <span className={`text-xs font-medium ${roundSessionTone.muted}`}>
                     {roundScoredCount}/{allStudents.length}
                   </span>
                   <button
@@ -1202,18 +1202,20 @@ export const StudentsPage = () => {
               <Wrench size={16} />
               <span className="hidden sm:inline">Utilidades</span>
               {pendingNotesCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] rounded-full flex items-center justify-center animate-pulse">
+                <span className="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-xs font-bold min-w-[20px] h-5 px-1 rounded-full flex items-center justify-center motion-safe:animate-pulse">
                   {pendingNotesCount}
                 </span>
               )}
             </button>
 
             {/* Toggle de vista - Siempre visible, al final */}
-            <div className="flex items-center bg-indigo-100 dark:bg-indigo-900/30 rounded-lg p-0.5 border border-indigo-200 dark:border-indigo-800 flex-shrink-0">
+            <div className="flex items-center bg-primary-100 dark:bg-primary-900/30 rounded-lg p-0.5 border border-primary-200 dark:border-primary-800 flex-shrink-0">
               <button
                 onClick={() => setViewMode('cards')}
+                aria-label="Vista de tarjetas"
+                aria-pressed={viewMode === 'cards'}
                 className={`p-2 rounded-md transition-colors ${
-                  viewMode === 'cards' ? 'bg-white dark:bg-gray-700 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-indigo-400 dark:text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-300'
+                  viewMode === 'cards' ? 'bg-white dark:bg-gray-700 shadow-sm text-primary-700 dark:text-primary-300' : 'text-primary-600 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-200'
                 }`}
                 title="Vista de tarjetas"
               >
@@ -1221,8 +1223,10 @@ export const StudentsPage = () => {
               </button>
               <button
                 onClick={() => setViewMode('list')}
+                aria-label="Vista de lista"
+                aria-pressed={viewMode === 'list'}
                 className={`p-2 rounded-md transition-colors ${
-                  viewMode === 'list' ? 'bg-white dark:bg-gray-700 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-indigo-400 dark:text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-300'
+                  viewMode === 'list' ? 'bg-white dark:bg-gray-700 shadow-sm text-primary-700 dark:text-primary-300' : 'text-primary-600 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-200'
                 }`}
                 title="Vista de lista"
               >
@@ -1231,8 +1235,10 @@ export const StudentsPage = () => {
               {classroom.clansEnabled && (
                 <button
                   onClick={() => setViewMode('clans')}
+                  aria-label="Vista por clanes"
+                  aria-pressed={viewMode === 'clans'}
                   className={`p-2 rounded-md transition-colors ${
-                    viewMode === 'clans' ? 'bg-white dark:bg-gray-700 shadow-sm text-indigo-600 dark:text-indigo-400' : 'text-indigo-400 dark:text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-300'
+                    viewMode === 'clans' ? 'bg-white dark:bg-gray-700 shadow-sm text-primary-700 dark:text-primary-300' : 'text-primary-600 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-200'
                   }`}
                   title="Vista por clanes"
                 >
@@ -1255,7 +1261,7 @@ export const StudentsPage = () => {
                 {hasRoundBehaviors && (
                   <button
                     onClick={() => setShowRoundBehaviorPicker((prev) => !prev)}
-                    className="md:hidden inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600"
+                    className="md:hidden inline-flex items-center gap-1.5 min-h-[40px] px-3 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700"
                   >
                     <PlayCircle size={14} />
                     Iniciar ronda
@@ -1288,7 +1294,7 @@ export const StudentsPage = () => {
                 </button>
                 <button
                   onClick={finishRound}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-500 text-white text-sm font-medium hover:bg-sky-600"
+                  className="inline-flex items-center gap-1.5 min-h-[40px] px-3 rounded-lg bg-sky-700 text-white text-sm font-medium hover:bg-sky-800"
                 >
                   Finalizar
                 </button>
@@ -1301,7 +1307,7 @@ export const StudentsPage = () => {
       {/* Lista de estudiantes - Grid de Cards RPG */}
       {allStudents.length === 0 ? (
         <Card className="text-center py-12">
-          <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-2xl flex items-center justify-center">
+          <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-blue-100 to-primary-100 rounded-2xl flex items-center justify-center">
             <Users className="w-8 h-8 text-blue-500" />
           </div>
           <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-2">
@@ -1322,7 +1328,7 @@ export const StudentsPage = () => {
               Agregar estudiante
             </Button>
           </div>
-          <p className="text-xs text-gray-400 mt-4">
+          <p className="text-xs text-gray-600 dark:text-gray-400 mt-4">
             Los estudiantes también pueden unirse con el código de clase desde su cuenta
           </p>
         </Card>
@@ -1380,7 +1386,7 @@ export const StudentsPage = () => {
                       placeholder="Buscar estudiante..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-56 pl-9 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="w-56 pl-9 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-800 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
                     />
                   </div>
                   {/* Filtros */}
@@ -1389,7 +1395,7 @@ export const StudentsPage = () => {
                       onClick={() => { setListFilter('all'); setClanFilter(null); }}
                       className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                         listFilter === 'all' && !clanFilter
-                          ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-700'
+                          ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 border border-primary-300 dark:border-primary-700'
                           : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
                       }`}
                     >
@@ -1500,19 +1506,19 @@ export const StudentsPage = () => {
               {students.length > 0 && (
                 <div
                   onClick={selectAll}
-                  className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 cursor-pointer hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10 transition-colors"
+                  className="flex items-center gap-3 px-4 py-2.5 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 cursor-pointer hover:bg-primary-50/50 dark:hover:bg-primary-900/10 transition-colors"
                 >
                   <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors flex-shrink-0 ${
-                    selectedStudents.size === students.length && students.length > 0 ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300 dark:border-gray-500'
+                    selectedStudents.size === students.length && students.length > 0 ? 'bg-primary-600 border-primary-600' : 'border-gray-300 dark:border-gray-500'
                   }`}>
                     {selectedStudents.size === students.length && students.length > 0 && <Check size={12} className="text-white" />}
-                    {selectedStudents.size > 0 && selectedStudents.size < students.length && <div className="w-2 h-2 bg-indigo-600 rounded-sm" />}
+                    {selectedStudents.size > 0 && selectedStudents.size < students.length && <div className="w-2 h-2 bg-primary-600 rounded-sm" />}
                   </div>
                   <span className="text-sm text-gray-600 dark:text-gray-300">
                     Seleccionar todos los <span className="font-semibold">{students.length}</span> estudiantes
                   </span>
                   {selectedStudents.size > 0 && (
-                    <span className="text-xs bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-full font-medium">
+                    <span className="text-xs bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 px-2 py-0.5 rounded-full font-medium">
                       {selectedStudents.size} seleccionado{selectedStudents.size !== 1 ? 's' : ''}
                     </span>
                   )}
@@ -1560,14 +1566,14 @@ export const StudentsPage = () => {
                       <tr 
                         key={student.id}
                         onClick={() => toggleStudent(student.id)}
-                        className={`cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${isSelected ? 'bg-indigo-50 dark:bg-indigo-900/30' : ''} ${justAwarded ? roundSessionTone.flash : ''}`}
+                        className={`cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${isSelected ? 'bg-primary-50 dark:bg-primary-900/30' : ''} ${justAwarded ? roundSessionTone.flash : ''}`}
                       >
                         {/* Estudiante */}
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
                             {/* Checkbox inline */}
                             <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors flex-shrink-0 ${
-                              isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300 dark:border-gray-600'
+                              isSelected ? 'bg-primary-600 border-primary-600' : 'border-gray-300 dark:border-gray-600'
                             }`}>
                               {isSelected && <Check size={12} className="text-white" />}
                             </div>
@@ -1582,7 +1588,7 @@ export const StudentsPage = () => {
                                     <span className="text-gray-500 dark:text-gray-400">{getRealStudentName(student)}</span>
                                   )}
                                   {student.linkedEmail && (
-                                    <span className="text-gray-400 dark:text-gray-500">{student.linkedEmail}</span>
+                                    <span className="text-gray-500 dark:text-gray-400">{student.linkedEmail}</span>
                                   )}
                                 </div>
                               )}
@@ -1605,20 +1611,20 @@ export const StudentsPage = () => {
                                   const label = att
                                     ? att.status === 'PRESENT' ? 'Presente hoy' : att.status === 'LATE' ? 'Tarde hoy' : att.status === 'EXCUSED' ? 'Justificado' : 'Ausente hoy'
                                     : null;
-                                  return label ? <><span className="text-gray-300">·</span><span className="text-[10px]">{label}</span></> : null;
+                                  return label ? <><span className="text-gray-300">·</span><span className="text-xs">{label}</span></> : null;
                                 })()}
                                 {classroom.clansEnabled && (
                                   <>
                                     <span className="text-gray-300">•</span>
                                     {(student as any).clanName ? (
                                       <span 
-                                        className="px-1.5 py-0.5 rounded text-white text-[10px]"
-                                        style={{ backgroundColor: (student as any).clanColor || '#6366f1' }}
+                                        className="px-1.5 py-0.5 rounded text-xs font-medium text-gray-800 dark:text-gray-100"
+                                        style={{ backgroundColor: `${(student as any).clanColor || '#6366f1'}33` }}
                                       >
                                         {(student as any).clanName}
                                       </span>
                                     ) : (
-                                      <span className="text-gray-400 italic">Sin clan</span>
+                                      <span className="text-gray-500 dark:text-gray-400 italic">Sin clan</span>
                                     )}
                                   </>
                                 )}
@@ -1637,7 +1643,7 @@ export const StudentsPage = () => {
 
                         {/* XP */}
                         <td className="px-4 py-3 text-center">
-                          <div className="flex items-center justify-center gap-1 text-emerald-600 font-medium">
+                          <div className="flex items-center justify-center gap-1 text-emerald-700 dark:text-emerald-400 font-medium">
                             <Sparkles size={14} />
                             {student.xp}
                           </div>
@@ -1665,7 +1671,7 @@ export const StudentsPage = () => {
 
                         {/* GP */}
                         <td className="px-4 py-3 text-center">
-                          <div className="flex items-center justify-center gap-1 text-amber-600 font-medium">
+                          <div className="flex items-center justify-center gap-1 text-amber-700 dark:text-amber-400 font-medium">
                             <Coins size={14} />
                             {student.gp}
                           </div>
@@ -1699,7 +1705,7 @@ export const StudentsPage = () => {
                                     applyRoundAward(student.id, activeRound.positiveBehavior?.behaviorId);
                                   }}
                                   disabled={applyBehaviorMutation.isPending}
-                                  className={`px-2 py-1 rounded-lg text-xs font-semibold disabled:opacity-50 ${positiveRoundButtonClasses}`}
+                                  className={`min-h-[32px] min-w-[40px] px-2 rounded-lg text-sm font-bold disabled:opacity-50 ${positiveRoundButtonClasses}`}
                                   title={`Aplicar ${activeRound.positiveBehavior.behaviorName}`}
                                 >
                                   +1
@@ -1712,7 +1718,7 @@ export const StudentsPage = () => {
                                     applyRoundAward(student.id, activeRound.negativeBehavior?.behaviorId);
                                   }}
                                   disabled={applyBehaviorMutation.isPending}
-                                  className={`px-2 py-1 rounded-lg text-xs font-semibold disabled:opacity-50 ${negativeRoundButtonClasses}`}
+                                  className={`min-h-[32px] min-w-[40px] px-2 rounded-lg text-sm font-bold disabled:opacity-50 ${negativeRoundButtonClasses}`}
                                   title={`Aplicar ${activeRound.negativeBehavior.behaviorName}`}
                                 >
                                   -1
@@ -1864,21 +1870,21 @@ export const StudentsPage = () => {
                             <div 
                               key={student.id}
                               className={`p-4 flex items-center gap-4 cursor-pointer transition-colors ${
-                                isSelected ? 'bg-indigo-50 dark:bg-indigo-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                                isSelected ? 'bg-primary-50 dark:bg-primary-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
                               }`}
                               onClick={() => toggleStudent(student.id)}
                             >
                               {/* Checkbox */}
                               <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
                                 isSelected 
-                                  ? 'bg-indigo-600 border-indigo-600' 
-                                  : 'border-gray-300 dark:border-gray-600 hover:border-indigo-400'
+                                  ? 'bg-primary-600 border-primary-600' 
+                                  : 'border-gray-300 dark:border-gray-600 hover:border-primary-400'
                               }`}>
                                 {isSelected && <Check size={12} className="text-white" />}
                               </div>
 
                               {/* Avatar */}
-                              <div className="w-12 h-12 rounded-lg overflow-hidden bg-gradient-to-br from-indigo-100 to-purple-100 flex items-center justify-center flex-shrink-0">
+                              <div className="w-12 h-12 rounded-lg overflow-hidden bg-gradient-to-br from-primary-100 to-purple-100 flex items-center justify-center flex-shrink-0">
                                 <StudentAvatarMini
                                   studentProfileId={student.id}
                                   gender={student.avatarGender || 'MALE'}
@@ -1931,7 +1937,7 @@ export const StudentsPage = () => {
                                   e.stopPropagation();
                                   navigate(`/classroom/${classroom.id}/student/${student.id}`);
                                 }}
-                                className="text-indigo-600 hover:text-indigo-700 p-2"
+                                className="text-primary-600 hover:text-primary-700 p-2"
                               >
                                 <Eye size={18} />
                               </button>
@@ -2201,7 +2207,7 @@ const BadgeAwardModal = ({
                 <div className="text-center py-8">
                   <Medal className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                   <p className="text-gray-500">No hay insignias disponibles</p>
-                  <p className="text-sm text-gray-400 mt-1">
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                     Crea insignias en Gamificación → Insignias
                   </p>
                 </div>

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { QueryClientProvider } from '@tanstack/react-query';
+import { MotionConfig } from 'framer-motion';
 import { queryClient } from './lib/queryClient';
 import { TimerProvider } from './contexts/TimerContext';
 import { NotificationProvider } from './contexts/NotificationContext';
@@ -171,6 +172,8 @@ const PublicRoute = ({ children }: { children: React.ReactNode }) => {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      {/* framer-motion respeta "reducir movimiento" del sistema operativo */}
+      <MotionConfig reducedMotion="user">
       <NotificationProvider>
       <TimerProvider>
         <BrowserRouter>
@@ -397,6 +400,7 @@ function App() {
         />
       </TimerProvider>
       </NotificationProvider>
+      </MotionConfig>
     </QueryClientProvider>
   );
 }

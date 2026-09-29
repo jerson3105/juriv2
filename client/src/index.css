@@ -63,6 +63,24 @@
   #root {
     min-height: 100vh;
   }
+
+  /* Foco visible al navegar con teclado (no aparece al hacer clic con el ratón). */
+  :where(a, button, [role='button'], input, select, textarea, summary):focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+  }
+}
+
+/* Quien pidió menos movimiento en su sistema no ve animaciones ni transiciones largas. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 @layer components {

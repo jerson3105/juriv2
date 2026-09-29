@@ -269,7 +269,7 @@ export const StudentFocusView = ({
                     ))}
                   </select>
                   {classroom.clansEnabled && (
-                    <span className="rounded-full px-2 py-0.5 text-xs font-medium text-white" style={{ backgroundColor: student.clanColor || '#6b7280' }}>
+                    <span className="rounded-full px-2 py-0.5 text-xs font-medium text-gray-800 dark:text-gray-100" style={{ backgroundColor: `${student.clanColor || '#6b7280'}33` }}>
                       🛡️ {student.clanName || 'Sin clan'}
                     </span>
                   )}

@@ -421,7 +421,7 @@ export const AttendancePage = () => {
             type="button"
             onClick={() => saveMutation.mutate()}
             disabled={!hasChanges || saveMutation.isPending}
-            className="inline-flex items-center gap-2 min-h-[40px] px-4 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold disabled:bg-gray-200 disabled:text-gray-500 dark:disabled:bg-gray-700 dark:disabled:text-gray-400 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 min-h-[40px] px-4 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold disabled:bg-gray-100 disabled:text-gray-600 dark:disabled:bg-gray-700 dark:disabled:text-gray-300 disabled:cursor-not-allowed"
           >
             {saveMutation.isPending ? (
               <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden="true" />

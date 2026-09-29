@@ -166,7 +166,8 @@ export const ClassroomLayout = () => {
     { 
       label: 'Estudiantes', 
       icon: Users,
-      gradient: 'from-blue-500 to-indigo-500',
+      gradient: 'from-blue-600 to-indigo-600',
+      activeGradient: 'from-blue-600 to-indigo-600',
       menuKey: 'students',
       onboardingId: 'students-menu',
       featureKey: 'students',
@@ -179,7 +180,8 @@ export const ClassroomLayout = () => {
     { 
       label: 'Gamificación', 
       icon: Gamepad2,
-      gradient: 'from-amber-500 to-orange-500',
+      gradient: 'from-amber-600 to-orange-600',
+      activeGradient: 'from-amber-700 to-orange-700',
       menuKey: 'gamification',
       onboardingId: 'gamification-menu',
       featureKey: 'behaviors',
@@ -195,7 +197,8 @@ export const ClassroomLayout = () => {
     { 
       label: 'Clase', 
       icon: BookMarked,
-      gradient: 'from-emerald-500 to-teal-500',
+      gradient: 'from-emerald-600 to-teal-600',
+      activeGradient: 'from-emerald-700 to-teal-700',
       menuKey: 'clase',
       featureKey: 'activities',
       subItems: [
@@ -208,7 +211,8 @@ export const ClassroomLayout = () => {
     { 
       label: 'Comunicación', 
       icon: Megaphone,
-      gradient: 'from-cyan-500 to-blue-500',
+      gradient: 'from-cyan-600 to-blue-600',
+      activeGradient: 'from-cyan-700 to-blue-700',
       menuKey: 'comunicacion',
       subItems: [
         { path: `/classroom/${id}/announcements`, label: 'Avisos', icon: Megaphone },
@@ -239,7 +243,8 @@ export const ClassroomLayout = () => {
       path: `/classroom/${id}/reports`, 
       label: 'Estadísticas', 
       icon: BarChart3,
-      gradient: 'from-violet-500 to-purple-500',
+      gradient: 'from-violet-600 to-purple-600',
+      activeGradient: 'from-violet-600 to-purple-600',
       onboardingId: 'statistics-menu',
     },
   ];
@@ -396,6 +401,7 @@ export const ClassroomLayout = () => {
               onClick={() => navigate('/classrooms')}
               className={`p-2 rounded-xl transition-colors ${hasStoryTheme ? 'text-white/70 hover:text-white hover:bg-white/10' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
               title="Volver a mis clases"
+              aria-label="Volver a mis clases"
             >
               <ArrowLeft size={18} />
             </button>
@@ -406,9 +412,10 @@ export const ClassroomLayout = () => {
                 </h2>
                 <button
                   onClick={copyCode}
-                  className={`flex items-center gap-1 text-xs transition-colors ${hasStoryTheme ? 'text-white/60 hover:text-white/80' : 'text-blue-600 hover:text-blue-700'}`}
+                  className={`flex items-center gap-1 min-h-[28px] text-xs transition-colors ${hasStoryTheme ? 'text-white/80 hover:text-white' : 'text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200'}`}
+                  aria-label={`Copiar código de la clase ${classroom.code}`}
                 >
-                  <span className={`font-mono px-1.5 py-0.5 rounded ${hasStoryTheme ? 'bg-white/10' : 'bg-blue-50 dark:bg-blue-900/30'}`}>{classroom.code}</span>
+                  <span className={`font-mono px-1.5 py-0.5 rounded ${hasStoryTheme ? 'bg-white/10' : 'bg-primary-50 dark:bg-primary-900/40'}`}>{classroom.code}</span>
                   {copiedCode ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
                 </button>
               </div>
@@ -448,7 +455,7 @@ export const ClassroomLayout = () => {
                   className={`
                     w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all duration-200 group
                     ${isSubMenuActive
-                      ? hasStoryTheme ? 'text-white shadow-md' : 'bg-gradient-to-r ' + item.gradient + ' text-white shadow-md'
+                      ? hasStoryTheme ? 'text-white shadow-md' : 'bg-gradient-to-r ' + item.activeGradient + ' text-white shadow-md'
                       : hasStoryTheme ? 'text-white/80 hover:bg-white/10' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                     }
                   `}
@@ -471,7 +478,7 @@ export const ClassroomLayout = () => {
                       </span>
                       <ChevronDown 
                         size={14} 
-                        className={`transition-transform ${isMenuOpen ? 'rotate-180' : ''} ${isSubMenuActive ? 'text-white' : 'text-gray-400'}`} 
+                        className={`transition-transform ${isMenuOpen ? 'rotate-180' : ''} ${isSubMenuActive ? 'text-white' : 'text-gray-500 dark:text-gray-400'}`} 
                       />
                     </>
                   )}
@@ -491,11 +498,11 @@ export const ClassroomLayout = () => {
                           <button
                             key={subItem.label}
                             onClick={() => setShowExpeditionsModal(true)}
-                            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all duration-200 text-gray-400 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all duration-200 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
                           >
                             <SubIcon size={14} />
                             <span className="text-sm">{subItem.label}</span>
-                            <Lock size={12} className="ml-auto text-gray-400" />
+                            <Lock size={12} className="ml-auto text-gray-500 dark:text-gray-400" aria-label="Próximamente" />
                           </button>
                         );
                       }
@@ -511,7 +518,7 @@ export const ClassroomLayout = () => {
                           className={`
                             flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all duration-200
                             ${subActive
-                              ? hasStoryTheme ? 'text-white' : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'
+                              ? hasStoryTheme ? 'text-white' : 'bg-primary-50 dark:bg-primary-900/40 text-primary-700 dark:text-primary-200 font-medium'
                               : hasStoryTheme ? 'text-white/60 hover:bg-white/10 hover:text-white/90' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
                             }
                           `}
@@ -520,7 +527,7 @@ export const ClassroomLayout = () => {
                           <SubIcon size={14} />
                           <span className="text-sm">{subItem.label}</span>
                           {isNewFeature((subItem as any).featureKey) && (
-                            <span className="ml-auto px-1.5 py-0.5 text-[10px] font-bold bg-gradient-to-r from-amber-400 to-orange-500 text-white rounded-full leading-none">
+                            <span className="ml-auto px-1.5 py-0.5 text-xs font-bold bg-amber-300 text-amber-950 rounded-full leading-none">
                               Nuevo
                             </span>
                           )}
@@ -554,7 +561,7 @@ export const ClassroomLayout = () => {
                 className={`
                   flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all duration-200 group
                   ${bActive
-                    ? 'bg-gradient-to-r ' + bItem.gradient + ' text-white shadow-md'
+                    ? 'bg-gradient-to-r ' + bItem.activeGradient + ' text-white shadow-md'
                     : hasStoryTheme ? 'text-white/80 hover:bg-white/10' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                   }
                 `}
@@ -575,7 +582,7 @@ export const ClassroomLayout = () => {
                       {bItem.label}
                     </span>
                     {bIsNew && (
-                      <span className="px-1.5 py-0.5 text-[10px] font-bold bg-gradient-to-r from-amber-400 to-orange-500 text-white rounded-full leading-none">
+                      <span className="px-1.5 py-0.5 text-xs font-bold bg-amber-300 text-amber-950 rounded-full leading-none">
                         Nuevo
                       </span>
                     )}
@@ -599,7 +606,7 @@ export const ClassroomLayout = () => {
                 className={`
                   w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all duration-200 group
                   ${isSettingsSubMenuActive
-                    ? hasStoryTheme ? 'text-white shadow-md' : 'bg-gradient-to-r from-gray-500 to-slate-500 text-white shadow-md'
+                    ? hasStoryTheme ? 'text-white shadow-md' : 'bg-gradient-to-r from-gray-600 to-slate-600 text-white shadow-md'
                     : hasStoryTheme ? 'text-white/80 hover:bg-white/10' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                   }
                 `}
@@ -622,7 +629,7 @@ export const ClassroomLayout = () => {
                     </span>
                     <ChevronDown
                       size={14}
-                      className={`transition-transform ${isSettingsMenuOpen ? 'rotate-180' : ''} ${isSettingsSubMenuActive ? 'text-white' : 'text-gray-400'}`}
+                      className={`transition-transform ${isSettingsMenuOpen ? 'rotate-180' : ''} ${isSettingsSubMenuActive ? 'text-white' : 'text-gray-500 dark:text-gray-400'}`}
                     />
                   </>
                 )}
@@ -671,11 +678,11 @@ export const ClassroomLayout = () => {
                   <Sparkles size={12} className="text-white" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 truncate">
+                  <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 truncate">
                     ¡Nuevas funciones disponibles!
                   </p>
                 </div>
-                <span className="w-5 h-5 bg-amber-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center flex-shrink-0">
+                <span className="min-w-[20px] h-5 px-1 bg-amber-300 text-amber-950 text-xs font-bold rounded-full flex items-center justify-center flex-shrink-0">
                   {(onboarding.data?.pendingUnlocks ?? []).length}
                 </span>
               </button>
@@ -688,7 +695,7 @@ export const ClassroomLayout = () => {
                 className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
                   hasStoryTheme
                     ? 'text-white/40 hover:text-white/70 hover:bg-white/5'
-                    : 'text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-primary-700 dark:hover:text-primary-300 hover:bg-gray-50 dark:hover:bg-gray-700'
                 }`}
               >
                 <Lock size={12} />
@@ -698,9 +705,9 @@ export const ClassroomLayout = () => {
 
             {/* Level indicator */}
             {onboarding.data?.level && (
-              <div className={`flex items-center gap-2 px-2.5 py-1 ${hasStoryTheme ? 'text-white/30' : 'text-gray-400 dark:text-gray-500'}`}>
+              <div className={`flex items-center gap-2 px-2.5 py-1 ${hasStoryTheme ? 'text-white/60' : 'text-gray-600 dark:text-gray-400'}`}>
                 <Rocket size={12} />
-                <span className="text-[11px] font-medium">Nivel: {onboarding.data.level}</span>
+                <span className="text-xs font-medium">Nivel: {onboarding.data.level}</span>
               </div>
             )}
           </div>
@@ -710,7 +717,8 @@ export const ClassroomLayout = () => {
         <div className={`hidden lg:block p-2 ${hasStoryTheme ? 'border-t border-white/10' : 'border-t border-gray-100 dark:border-gray-700'}`}>
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className={`w-full flex items-center justify-center gap-2 px-2.5 py-2 rounded-xl transition-colors ${hasStoryTheme ? 'text-white/50 hover:text-white/80 hover:bg-white/10' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+            className={`w-full flex items-center justify-center gap-2 px-2.5 py-2 rounded-xl transition-colors ${hasStoryTheme ? 'text-white/50 hover:text-white/80 hover:bg-white/10' : 'text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+            aria-label={collapsed ? 'Expandir menú' : 'Colapsar menú'}
           >
             {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
             {!collapsed && <span className="text-xs font-medium">Colapsar</span>}
@@ -729,7 +737,8 @@ export const ClassroomLayout = () => {
             {/* Botón menú móvil */}
             <button
               onClick={() => setMobileMenuOpen(true)}
-              className="lg:hidden p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors"
+              className="lg:hidden p-2 text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors"
+              aria-label="Abrir menú"
             >
               <Menu size={20} />
             </button>
@@ -746,19 +755,19 @@ export const ClassroomLayout = () => {
             <div className="hidden xl:flex items-center justify-center gap-2 flex-1 px-4 min-w-0">
               <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300">
                 <Sparkles size={12} />
-                <span className="text-[11px] font-semibold">{headerTotalXP.toLocaleString()} XP</span>
+                <span className="text-xs font-semibold">{headerTotalXP.toLocaleString()} XP</span>
               </div>
               <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300">
                 <Coins size={12} />
-                <span className="text-[11px] font-semibold">{headerTotalGP.toLocaleString()} GP</span>
+                <span className="text-xs font-semibold">{headerTotalGP.toLocaleString()} GP</span>
               </div>
               <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300">
                 <TrendingUp size={12} />
-                <span className="text-[11px] font-semibold">{headerAvgLevel} Nv</span>
+                <span className="text-xs font-semibold">{headerAvgLevel} Nv</span>
               </div>
               <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-gray-50 dark:bg-gray-900/30 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 max-w-[220px] min-w-0">
                 <Crown size={12} className="text-amber-500 flex-shrink-0" />
-                <span className="text-[11px] font-semibold truncate">{getHeaderDisplayName(headerTopStudent)}</span>
+                <span className="text-xs font-semibold truncate">{getHeaderDisplayName(headerTopStudent)}</span>
               </div>
             </div>
           )}
@@ -779,8 +788,9 @@ export const ClassroomLayout = () => {
                 logout();
                 navigate('/login');
               }}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+              className="flex items-center gap-2 min-h-[36px] px-3 text-sm font-medium text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
               title="Cerrar sesión"
+              aria-label="Cerrar sesión"
             >
               <LogOut size={16} />
               <span className="hidden sm:inline">Salir</span>
