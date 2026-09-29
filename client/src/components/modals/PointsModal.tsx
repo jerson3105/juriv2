@@ -15,7 +15,7 @@ import { Input } from '../ui/Input';
 import { behaviorApi, type Behavior } from '../../lib/behaviorApi';
 import { type Classroom } from '../../lib/classroomApi';
 import { type PointType } from '../../lib/studentApi';
-import { getBehaviorRewards } from '../../lib/behaviorPoints';
+import { getBehaviorRewards, REWARD_PILL_CLASS } from '../../lib/behaviorPoints';
 import { useClassroomCompetencies } from '../../hooks/useClassroomCompetencies';
 
 export { behaviorApi, type Behavior };
@@ -36,12 +36,6 @@ interface PointsModalProps {
 }
 
 const MULTIPLIERS = [1, 0.5, 0.25, 0.125];
-
-const rewardPillClass: Record<'XP' | 'HP' | 'GP', string> = {
-  XP: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200',
-  HP: 'bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200',
-  GP: 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200',
-};
 
 // Un toque en un comportamiento lo aplica con el puntaje elegido arriba (antes: elegir + confirmar).
 // Si la lista trae positivos y negativos, se muestran en dos secciones; primero la del botón que abrió.
@@ -262,7 +256,7 @@ export const PointsModal = ({
                                     </span>
                                     <span className="flex flex-col items-end gap-1 flex-shrink-0">
                                       {rewards.length > 0 ? rewards.map((reward) => (
-                                        <span key={reward.type} className={`px-2 py-0.5 rounded-full text-xs font-bold ${rewardPillClass[reward.type]}`}>
+                                        <span key={reward.type} className={`px-2 py-0.5 rounded-full text-xs font-bold ${REWARD_PILL_CLASS[reward.type]}`}>
                                           {sign}{reward.amount} {reward.type}
                                         </span>
                                       )) : (

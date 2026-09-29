@@ -14,8 +14,10 @@ router.post('/', behaviorController.create.bind(behaviorController));
 router.get('/classroom/:classroomId', behaviorController.getByClassroom.bind(behaviorController));
 router.get('/classroom/:classroomId/positive', behaviorController.getPositive.bind(behaviorController));
 router.get('/classroom/:classroomId/negative', behaviorController.getNegative.bind(behaviorController));
+router.get('/classroom/:classroomId/usage', behaviorController.getUsage.bind(behaviorController));
 router.put('/:id', behaviorController.update.bind(behaviorController));
 router.delete('/:id', behaviorController.delete.bind(behaviorController));
+router.post('/:id/restore', behaviorController.restore.bind(behaviorController));
 
 // Aplicar comportamiento a estudiantes
 router.post('/apply', behaviorController.apply.bind(behaviorController));

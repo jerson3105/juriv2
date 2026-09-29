@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { behaviorApi, type ApplyResult, type Behavior } from '../lib/behaviorApi';
 import { historyApi } from '../lib/historyApi';
 import { formatBehaviorRewards } from '../lib/behaviorPoints';
-import { useBehaviorUsage } from './useBehaviorUsage';
+import { behaviorUsageKey, useBehaviorUsage } from './useBehaviorUsage';
 import { useSound } from './useSound';
 
 const errorMessage = (error: unknown, fallback: string) =>
@@ -34,6 +34,7 @@ export const useApplyWithUndo = (classroomId: string) => {
     const outcomes = await Promise.allSettled(ids.map((id) => historyApi.revertEntry('POINTS', id)));
     const failed = outcomes.filter((o) => o.status === 'rejected').length;
     refresh();
+    queryClient.invalidateQueries({ queryKey: behaviorUsageKey(classroomId) });
     if (failed === 0) toast.success(`Deshecho: ${result.behavior.name}`, { id: toastId });
     else toast.error(`No se pudo deshacer en ${failed} de ${ids.length} estudiante(s)`, { id: toastId });
   };

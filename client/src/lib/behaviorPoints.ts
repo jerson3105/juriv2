@@ -22,3 +22,10 @@ export const formatBehaviorRewards = (behavior: Behavior, multiplier = 1): strin
   const sign = behavior.isPositive ? '+' : '−';
   return getBehaviorRewards(behavior, multiplier).map((reward) => `${sign}${reward.amount} ${reward.type}`).join(' · ');
 };
+
+// Pastillas de recompensa con contraste AA en claro y oscuro (clases estáticas para Tailwind).
+export const REWARD_PILL_CLASS: Record<BehaviorReward['type'], string> = {
+  XP: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200',
+  HP: 'bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200',
+  GP: 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200',
+};

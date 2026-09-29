@@ -171,6 +171,45 @@ export class BehaviorController {
     }
   }
 
+  // Restaurar comportamiento eliminado ("Deshacer")
+  async restore(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      if (!(await requireResourceTeacher(req, res, classroomIdOfBehavior, id, 'Comportamiento no encontrado'))) return;
+      const behavior = await behaviorService.restore(id);
+
+      res.json({
+        success: true,
+        data: behavior,
+        message: 'Comportamiento restaurado',
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: 'Error al restaurar comportamiento',
+      });
+    }
+  }
+
+  // Uso de los comportamientos (últimos 30 días) para ordenar por "más usados"
+  async getUsage(req: Request, res: Response) {
+    try {
+      const { classroomId } = req.params;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
+      const usage = await behaviorService.getUsage(classroomId);
+
+      res.json({
+        success: true,
+        data: usage,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: 'Error al obtener el uso de comportamientos',
+      });
+    }
+  }
+
   // Aplicar comportamiento a estudiantes
   async apply(req: Request, res: Response) {
     try {

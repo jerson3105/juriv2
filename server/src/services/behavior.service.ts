@@ -1,6 +1,6 @@
 import { db } from '../db/index.js';
 import { behaviors, studentProfiles, pointLogs, classrooms, notifications, curriculumCompetencies, classroomCompetencies, classroomCompetencyIndicators } from '../db/schema.js';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray, gte, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { badgeService } from './badge.service.js';
 import { clanService } from './clan.service.js';
@@ -264,6 +264,42 @@ export class BehaviorService {
     await db.update(behaviors)
       .set({ isActive: false })
       .where(eq(behaviors.id, id));
+  }
+
+  // Restaurar un comportamiento eliminado ("Deshacer" del soft delete)
+  async restore(id: string) {
+    await db.update(behaviors)
+      .set({ isActive: true })
+      .where(eq(behaviors.id, id));
+    return this.getById(id);
+  }
+
+  // Uso de los comportamientos activos de una clase en los últimos N días.
+  // Una aplicación crea varios logs (alumno × XP/HP/GP) con el mismo created_at,
+  // por eso se cuentan instantes distintos y no filas.
+  async getUsage(classroomId: string, days = 30) {
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const rows = await db
+      .select({
+        behaviorId: pointLogs.behaviorId,
+        uses: sql<number>`count(distinct ${pointLogs.createdAt})`,
+        lastUsedAt: sql`max(${pointLogs.createdAt})`.mapWith(pointLogs.createdAt),
+      })
+      .from(pointLogs)
+      .innerJoin(behaviors, eq(behaviors.id, pointLogs.behaviorId))
+      .where(and(
+        eq(behaviors.classroomId, classroomId),
+        eq(behaviors.isActive, true),
+        eq(pointLogs.isReverted, false),
+        gte(pointLogs.createdAt, since),
+      ))
+      .groupBy(pointLogs.behaviorId);
+
+    return rows.map((row) => ({
+      behaviorId: row.behaviorId as string,
+      uses: Number(row.uses),
+      lastUsedAt: row.lastUsedAt,
+    }));
   }
 
   // Aplicar comportamiento a múltiples estudiantes

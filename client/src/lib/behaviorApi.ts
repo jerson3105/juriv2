@@ -65,6 +65,12 @@ export interface AwardedBadgeInfo {
   badges: string[];
 }
 
+export interface BehaviorUsage {
+  behaviorId: string;
+  uses: number;
+  lastUsedAt: string;
+}
+
 export interface ExportResult {
   exported: number;
   targetClassrooms: number;
@@ -125,6 +131,17 @@ export const behaviorApi = {
   // Eliminar comportamiento
   delete: async (id: string): Promise<void> => {
     await api.delete(`/behaviors/${id}`);
+  },
+
+  // Restaurar un comportamiento eliminado ("Deshacer")
+  restore: async (id: string): Promise<void> => {
+    await api.post(`/behaviors/${id}/restore`);
+  },
+
+  // Uso de cada comportamiento en los últimos 30 días
+  getUsage: async (classroomId: string): Promise<BehaviorUsage[]> => {
+    const response = await api.get(`/behaviors/classroom/${classroomId}/usage`);
+    return response.data.data;
   },
 
   // Aplicar comportamiento a estudiantes
