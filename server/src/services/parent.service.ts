@@ -24,6 +24,7 @@ import { eq, and, desc, gte, lte, inArray, sql, count, sum } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcryptjs';
 import { gradeService } from './grade.service.js';
+import { generateRandomCode } from '../utils/helpers.js';
 
 interface ChildSummary {
   studentProfileId: string;
@@ -1188,12 +1189,7 @@ class ParentService {
   
   // Helper: Generar código aleatorio
   private generateCode(): string {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let code = '';
-    for (let i = 0; i < 8; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return code;
+    return generateRandomCode(8);
   }
   
   // Helper: Convertir score a etiqueta de nota

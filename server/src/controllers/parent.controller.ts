@@ -1,12 +1,13 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { parentService } from '../services/parent.service.js';
+import { passwordSchema } from '../utils/passwordPolicy.js';
 
 // ==================== VALIDATION SCHEMAS ====================
 
 const registerSchema = z.object({
   email: z.string().trim().email('Email inválido'),
-  password: z.string().min(8, 'La contraseña debe tener al menos 8 caracteres'),
+  password: passwordSchema,
   firstName: z.string().trim().min(2, 'El nombre debe tener al menos 2 caracteres').max(100),
   lastName: z.string().trim().min(2, 'El apellido debe tener al menos 2 caracteres').max(100),
   phone: z.string().max(20).optional(),

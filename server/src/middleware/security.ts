@@ -68,6 +68,22 @@ export const authTokenLimiter = rateLimit({
   skipSuccessfulRequests: false,
 });
 
+// Rate limiter para canjear códigos (unirse a clase, vincular alumno o hijo).
+// Los códigos son secretos cortos: sin este límite se podían probar miles al día
+// con el limiter general. Cuenta por usuario (o IP sin sesión) y solo los fallos.
+export const codeRedemptionLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: config_app.isDev ? 100 : 10,
+  keyGenerator: (req) => (req as any).user?.id ?? req.ip ?? 'unknown',
+  message: {
+    success: false,
+    message: 'Demasiados intentos con códigos, intenta nuevamente en 15 minutos.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+});
+
 // Aplicar middleware de seguridad
 export const applySecurityMiddleware = (app: Express): void => {
   // Request ID para trazabilidad

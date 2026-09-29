@@ -63,6 +63,15 @@ export const configurePassport = () => {
             return done(new Error('No se pudo obtener el identificador de Google'), undefined);
           }
 
+          // Solo emails verificados por Google: la cuenta se vincula por email con cualquier
+          // cuenta local existente, así que un email no verificado permitiría suplantar a su dueño.
+          const emailVerified =
+            (profile.emails?.[0] as { verified?: boolean | string } | undefined)?.verified ??
+            (profile as any)._json?.email_verified;
+          if (emailVerified !== true && emailVerified !== 'true') {
+            return done(new Error('El email de Google no está verificado'), undefined);
+          }
+
           const normalizedEmail = normalizeEmail(email);
           const normalizedFirstName =
             normalizeName(profile.name?.givenName || profile.displayName?.split(' ')[0] || '') || 'Usuario';

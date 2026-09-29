@@ -5,14 +5,9 @@ import * as authService from '../services/auth.service.js';
 import { config_app } from '../config/env.js';
 import { cache } from '../utils/cache.js';
 import { OAUTH_STATE_COOKIE_NAME } from '../utils/oauth-state.js';
+import { passwordSchema } from '../utils/passwordPolicy.js';
 
 // Schema de validación de contraseña robusta
-const passwordSchema = z.string()
-  .min(8, 'La contraseña debe tener al menos 8 caracteres')
-  .regex(/[A-Z]/, 'Debe contener al menos una letra mayúscula')
-  .regex(/[a-z]/, 'Debe contener al menos una letra minúscula')
-  .regex(/[0-9]/, 'Debe contener al menos un número')
-  .regex(/[^A-Za-z0-9]/, 'Debe contener al menos un carácter especial (@$!%*?&#)');
 
 // Schemas de validación
 const registerSchema = z.object({
@@ -55,7 +50,10 @@ const changePasswordSchema = z.object({
 const updateProfileSchema = z.object({
   firstName: z.string().min(2, 'El nombre debe tener al menos 2 caracteres').optional(),
   lastName: z.string().min(2, 'El apellido debe tener al menos 2 caracteres').optional(),
-  avatarUrl: z.string().url('URL de avatar inválida').nullable().optional(),
+  // Solo http(s): z.url() acepta esquemas como `javascript:`.
+  avatarUrl: z.string().url('URL de avatar inválida')
+    .refine((url) => /^https?:\/\//i.test(url), 'URL de avatar inválida')
+    .nullable().optional(),
 });
 
 const googleCodeExchangeSchema = z.object({

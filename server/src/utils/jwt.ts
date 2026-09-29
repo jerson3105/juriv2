@@ -48,13 +48,18 @@ const findStoredRefreshToken = async (token: string, txOrDb: any = db) => {
 export const generateAccessToken = (payload: TokenPayload): string => {
   return jwt.sign(payload, config_app.jwt.secret, {
     expiresIn: config_app.jwt.expiresIn as jwt.SignOptions['expiresIn'],
+    algorithm: 'HS256',
   });
 };
 
 // Generar Refresh Token
 export const generateRefreshToken = (payload: TokenPayload): string => {
+  // jwtid único: dos tokens emitidos en el mismo segundo para el mismo usuario serían
+  // idénticos y chocarían con la restricción única de refresh_tokens.
   return jwt.sign(payload, config_app.jwt.refreshSecret, {
     expiresIn: config_app.jwt.refreshExpiresIn as jwt.SignOptions['expiresIn'],
+    algorithm: 'HS256',
+    jwtid: uuidv4(),
   });
 };
 
@@ -88,7 +93,7 @@ export const verifyRefreshToken = async (token: string): Promise<TokenPayload | 
 
   try {
     // Verificar firma del token
-    const decoded = jwt.verify(normalizedToken, config_app.jwt.refreshSecret) as TokenPayload;
+    const decoded = jwt.verify(normalizedToken, config_app.jwt.refreshSecret, { algorithms: ['HS256'] }) as TokenPayload;
     
     // Verificar que existe en la base de datos y no ha expirado
     const storedToken = await findStoredRefreshToken(normalizedToken);
@@ -119,7 +124,7 @@ export const consumeRefreshToken = async (token: string, tx: any = db): Promise<
 
   try {
     // 1. Verify JWT signature + expiry
-    const decoded = jwt.verify(normalizedToken, config_app.jwt.refreshSecret) as TokenPayload;
+    const decoded = jwt.verify(normalizedToken, config_app.jwt.refreshSecret, { algorithms: ['HS256'] }) as TokenPayload;
 
     // 2. Atomic delete by hash only — no date condition.
     //    jwt.verify() above already guarantees the token isn't expired.

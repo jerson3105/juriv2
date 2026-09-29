@@ -77,7 +77,7 @@ export const authenticate = async (
     }
 
     // Verificar token
-    const decoded = jwt.verify(token, config_app.jwt.secret) as JwtPayload;
+    const decoded = jwt.verify(token, config_app.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
 
     const user = await getUserFromCacheOrDb(decoded.userId);
     
@@ -160,7 +160,7 @@ export const optionalAuth = async (
       return;
     }
 
-    const decoded = jwt.verify(token, config_app.jwt.secret) as JwtPayload;
+    const decoded = jwt.verify(token, config_app.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
 
     const user = await getUserFromCacheOrDb(decoded.userId);
     
