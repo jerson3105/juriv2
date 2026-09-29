@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { shopController } from '../controllers/shop.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { aiGuard } from '../middleware/security.js';
 
 const router = Router();
 
@@ -122,7 +123,7 @@ router.put('/notifications/read-all', (req, res) =>
 // ==================== GENERACIÓN CON IA ====================
 
 // Generar items con IA (solo profesor)
-router.post('/generate-ai', authorize('TEACHER'), (req, res) => 
+router.post('/generate-ai', authorize('TEACHER'), ...aiGuard, (req, res) => 
   shopController.generateWithAI(req, res)
 );
 

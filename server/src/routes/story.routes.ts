@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { storyController } from '../controllers/story.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { aiGuard } from '../middleware/security.js';
 
 const router = Router();
 
@@ -13,9 +14,9 @@ router.get('/classroom/:classroomId/theme', storyController.getClassroomTheme.bi
 router.put('/classroom/:classroomId/theme', authorize('TEACHER'), storyController.updateClassroomTheme.bind(storyController));
 router.post('/classroom/:classroomId/theme/preset', authorize('TEACHER'), storyController.applyPreset.bind(storyController));
 router.delete('/classroom/:classroomId/theme', authorize('TEACHER'), storyController.resetTheme.bind(storyController));
-router.post('/theme/generate-ai-preview', authorize('TEACHER'), storyController.generateAIThemePreview.bind(storyController));
-router.post('/classroom/:classroomId/theme/generate-ai', authorize('TEACHER'), storyController.generateAITheme.bind(storyController));
-router.post('/scenes/generate-ai', authorize('TEACHER'), storyController.generateAIScene.bind(storyController));
+router.post('/theme/generate-ai-preview', authorize('TEACHER'), ...aiGuard, storyController.generateAIThemePreview.bind(storyController));
+router.post('/classroom/:classroomId/theme/generate-ai', authorize('TEACHER'), ...aiGuard, storyController.generateAITheme.bind(storyController));
+router.post('/scenes/generate-ai', authorize('TEACHER'), ...aiGuard, storyController.generateAIScene.bind(storyController));
 
 // ---- STORIES CRUD (Teacher) ----
 router.get('/classroom/:classroomId', storyController.getClassroomStories.bind(storyController));

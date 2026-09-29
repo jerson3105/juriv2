@@ -17,6 +17,7 @@ import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { GoogleGenAI } from '@google/genai';
+import { aiGuard } from '../middleware/security.js';
 
 const router = Router();
 
@@ -136,7 +137,7 @@ router.post('/upload-image', authenticate, upload.single('image'), async (req, r
 // Generación con IA
 // ═══════════════════════════════════════════════════════════
 
-router.post('/generate-ai', authenticate, async (req, res) => {
+router.post('/generate-ai', authenticate, ...aiGuard, async (req, res) => {
   try {
     if (!requireTeacherRole(req, res)) return;
     const { description, level, count = 8, assignmentMode = 'MANUAL', rarities = ['COMMON', 'RARE', 'EPIC'], includeSecret = false, classroomId, competencies } = req.body;

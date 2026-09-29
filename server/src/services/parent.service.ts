@@ -26,6 +26,9 @@ import bcrypt from 'bcryptjs';
 import { gradeService } from './grade.service.js';
 import { teacherOwnsClassroom } from '../utils/access.js';
 
+// Marcador que sustituye al nombre del menor en los prompts enviados a la IA (minimización de datos).
+const STUDENT_PLACEHOLDER = '[ESTUDIANTE]';
+
 interface ChildSummary {
   studentProfileId: string;
   studentName: string;
@@ -1371,7 +1374,7 @@ class ParentService {
 DATOS COMPLETOS DEL ESTUDIANTE (últimos 7 días de análisis):
 
 PERFIL:
-- Nombre: ${reportData.studentName}
+- Nombre: ${STUDENT_PLACEHOLDER}
 - Clase: ${reportData.classroomName}
 - Nivel: ${reportData.profile.level} | XP: ${reportData.profile.xp} | HP: ${reportData.profile.hp}/${reportData.profile.maxHp} | Monedas: ${reportData.profile.gp}
 - Clase de personaje: ${reportData.profile.characterClass || 'No asignada'}
@@ -1433,15 +1436,20 @@ Responde SOLO con JSON válido (sin markdown, sin backticks), con esta estructur
       
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
+        // El nombre real no se envía a la IA: se reemplaza el marcador en la respuesta.
+        const withName = (value: unknown): string =>
+          typeof value === 'string' ? value.split(STUDENT_PLACEHOLDER).join(reportData.studentName || 'el estudiante') : '';
+        const list = (value: unknown): string[] =>
+          Array.isArray(value) ? value.filter((v) => typeof v === 'string').map(withName) : [];
         return {
-          summary: parsed.summary || 'Análisis en progreso.',
-          behaviorAnalysis: parsed.behaviorAnalysis || '',
-          strengths: parsed.strengths || [],
-          areasToImprove: parsed.areasToImprove || [],
-          recommendations: parsed.recommendations || [],
-          predictions: parsed.predictions || '',
-          parentTips: parsed.parentTips || [],
-          weeklyHighlights: parsed.weeklyHighlights || [],
+          summary: withName(parsed.summary) || 'Análisis en progreso.',
+          behaviorAnalysis: withName(parsed.behaviorAnalysis),
+          strengths: list(parsed.strengths),
+          areasToImprove: list(parsed.areasToImprove),
+          recommendations: list(parsed.recommendations),
+          predictions: withName(parsed.predictions),
+          parentTips: list(parsed.parentTips),
+          weeklyHighlights: list(parsed.weeklyHighlights),
         };
       }
       

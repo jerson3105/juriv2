@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { gradeController } from '../controllers/grade.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { aiLimiter } from '../middleware/security.js';
 
 const router = Router();
 
@@ -29,7 +30,8 @@ router.delete('/:gradeId/manual', authorize('TEACHER'), gradeController.clearMan
 router.get('/export/pdf/:classroomId', authorize('TEACHER'), gradeController.exportPDF);
 
 // Exportar libro de calificaciones en Excel formato SIAGIE (solo profesor)
-router.get('/export/excel/:classroomId', authorize('TEACHER'), gradeController.exportExcel);
+// La exportación a Excel genera conclusiones con IA: cuenta para el límite de IA.
+router.get('/export/excel/:classroomId', authorize('TEACHER'), aiLimiter, gradeController.exportExcel);
 
 // ═══════════════════════════════════════════════════════════
 // GESTIÓN DE BIMESTRES

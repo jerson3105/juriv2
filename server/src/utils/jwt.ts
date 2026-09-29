@@ -4,6 +4,7 @@ import { eq, lt, or } from 'drizzle-orm';
 import { config_app } from '../config/env.js';
 import { db, refreshTokens } from '../db/index.js';
 import { v4 as uuidv4 } from 'uuid';
+import { getIO } from './notificationEmitter.js';
 
 type UserRole = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'PARENT';
 
@@ -167,6 +168,14 @@ export const revokeRefreshToken = async (token: string): Promise<void> => {
 // Revocar todos los tokens de un usuario
 export const revokeAllUserTokens = async (userId: string): Promise<void> => {
   await db.delete(refreshTokens).where(eq(refreshTokens.userId, userId));
+
+  // Cerrar también los sockets abiertos: se autentican solo al conectar y seguirían
+  // recibiendo eventos tras cerrar todas las sesiones o cambiar la contraseña.
+  try {
+    getIO()?.in(`user:${userId}`).disconnectSockets(true);
+  } catch {
+    // Socket.io aún no inicializado: no hay sockets que cerrar.
+  }
 };
 
 // Limpiar tokens expirados (para ejecutar periódicamente)
