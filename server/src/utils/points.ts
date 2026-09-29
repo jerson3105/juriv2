@@ -42,6 +42,8 @@ export interface PointRules {
   hpMax?: number | null;
   /** Mínimo de oro al restar (null = sin mínimo). */
   gpMin?: number | null;
+  /** Mínimo de XP al restar (p. ej. 0 al corregir asistencia; null = sin mínimo). */
+  xpMin?: number | null;
 }
 
 export interface PointResult {
@@ -74,7 +76,7 @@ export const applyPointDeltas = async (
   const gp = Math.trunc(deltas.gp ?? 0);
 
   const set: Record<string, unknown> = { updatedAt: new Date() };
-  if (xp !== 0) set.xp = sql`${studentProfiles.xp} + ${xp}`;
+  if (xp !== 0) set.xp = clampedDelta(studentProfiles.xp, xp, rules.xpMin, null);
   if (hp !== 0) set.hp = clampedDelta(studentProfiles.hp, hp, rules.hpMin, rules.hpMax);
   if (gp !== 0) set.gp = clampedDelta(studentProfiles.gp, gp, rules.gpMin, null);
 
@@ -118,7 +120,7 @@ export const applyPointDeltasBulk = async (
   const gp = Math.trunc(deltas.gp ?? 0);
 
   const set: Record<string, unknown> = { updatedAt: new Date() };
-  if (xp !== 0) set.xp = sql`${studentProfiles.xp} + ${xp}`;
+  if (xp !== 0) set.xp = clampedDelta(studentProfiles.xp, xp, rules.xpMin, null);
   if (hp !== 0) set.hp = clampedDelta(studentProfiles.hp, hp, rules.hpMin, rules.hpMax);
   if (gp !== 0) set.gp = clampedDelta(studentProfiles.gp, gp, rules.gpMin, null);
 

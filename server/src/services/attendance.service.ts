@@ -1,87 +1,91 @@
 import { db } from '../db/index.js';
-import { attendanceRecords, studentProfiles, pointLogs, type AttendanceStatus } from '../db/schema.js';
+import { attendanceRecords, classrooms, pointLogs, type AttendanceStatus } from '../db/schema.js';
+import { applyPointDeltas } from '../utils/points.js';
 import { eq, and, between, desc, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 
 export const attendanceService = {
-  // Registrar asistencia para un estudiante
+  // Registrar (o corregir) la asistencia de un estudiante en un día.
+  // xpAwarded del registro = XP realmente otorgado por esa asistencia. Si cambia el estado, el XP
+  // del alumno se ajusta por la diferencia (p. ej. Ausente → Presente suma, Presente → Tarde resta).
+  // Si el estado no cambia, no se toca el XP aunque cambie el valor de "XP por asistir".
   async recordAttendance(
     classroomId: string,
     studentProfileId: string,
     date: Date,
     status: AttendanceStatus,
     notes?: string,
-    xpAwarded: number = 0
+    xpForPresent: number = 0,
+    xpPerLevel?: number
   ) {
     const id = uuidv4();
     const now = new Date();
-    
+
     // Normalizar fecha a inicio del día
     const normalizedDate = new Date(date);
     normalizedDate.setHours(0, 0, 0, 0);
 
-    // Verificar si ya existe un registro para esta fecha
-    const existing = await db
-      .select()
-      .from(attendanceRecords)
-      .where(and(
-        eq(attendanceRecords.classroomId, classroomId),
-        eq(attendanceRecords.studentProfileId, studentProfileId),
-        eq(attendanceRecords.date, normalizedDate)
-      ))
-      .limit(1);
+    const levelStep = xpPerLevel ?? (await db
+      .select({ xpPerLevel: classrooms.xpPerLevel })
+      .from(classrooms)
+      .where(eq(classrooms.id, classroomId)))[0]?.xpPerLevel ?? 100;
 
-    if (existing.length > 0) {
-      // Actualizar registro existente
-      await db
-        .update(attendanceRecords)
-        .set({
+    return db.transaction(async (tx) => {
+      // Bloquea el registro del día: dos guardados simultáneos no duplican ni pierden el ajuste.
+      const [existing] = await tx
+        .select()
+        .from(attendanceRecords)
+        .where(and(
+          eq(attendanceRecords.classroomId, classroomId),
+          eq(attendanceRecords.studentProfileId, studentProfileId),
+          eq(attendanceRecords.date, normalizedDate)
+        ))
+        .limit(1)
+        .for('update');
+
+      const previousXp = existing?.xpAwarded ?? 0;
+      const statusChanged = !existing || existing.status !== status;
+      const xpAwarded = statusChanged
+        ? (status === 'PRESENT' ? Math.max(0, Math.trunc(xpForPresent)) : 0)
+        : previousXp;
+      const delta = xpAwarded - previousXp;
+
+      if (existing) {
+        await tx
+          .update(attendanceRecords)
+          .set({ status, notes, xpAwarded, updatedAt: now })
+          .where(eq(attendanceRecords.id, existing.id));
+      } else {
+        await tx.insert(attendanceRecords).values({
+          id,
+          classroomId,
+          studentProfileId,
+          date: normalizedDate,
           status,
           notes,
           xpAwarded,
+          createdAt: now,
           updatedAt: now,
-        })
-        .where(eq(attendanceRecords.id, existing[0].id));
-      
-      return { ...existing[0], status, notes, xpAwarded, updatedAt: now };
-    }
+        });
+      }
 
-    // Crear registro y otorgar XP de forma atómica: si algo falla, no queda un registro sin su XP.
-    await db.transaction(async (tx) => {
-      await tx.insert(attendanceRecords).values({
-        id,
-        classroomId,
-        studentProfileId,
-        date: normalizedDate,
-        status,
-        notes,
-        xpAwarded,
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      // Si el estudiante está presente, otorgar XP y registrar en pointLogs
-      if (status === 'PRESENT' && xpAwarded > 0) {
-        await tx
-          .update(studentProfiles)
-          .set({
-            xp: sql`${studentProfiles.xp} + ${xpAwarded}`,
-          })
-          .where(eq(studentProfiles.id, studentProfileId));
-
+      if (delta !== 0) {
+        await applyPointDeltas(tx, studentProfileId, { xp: delta }, { xpPerLevel: levelStep, xpMin: 0 });
         await tx.insert(pointLogs).values({
           id: uuidv4(),
           studentId: studentProfileId,
           pointType: 'XP',
-          action: 'ADD',
-          amount: xpAwarded,
-          reason: 'Asistencia',
+          action: delta > 0 ? 'ADD' : 'REMOVE',
+          amount: Math.abs(delta),
+          reason: existing ? 'Asistencia (corrección)' : 'Asistencia',
           createdAt: now,
         });
       }
-    });
 
-    return { id, classroomId, studentProfileId, date: normalizedDate, status, notes, xpAwarded };
+      return existing
+        ? { ...existing, status, notes, xpAwarded, updatedAt: now }
+        : { id, classroomId, studentProfileId, date: normalizedDate, status, notes, xpAwarded };
+    });
   },
 
   // Registrar asistencia masiva para toda la clase
@@ -95,17 +99,21 @@ export const attendanceService = {
     }>,
     xpForPresent: number = 5
   ) {
+    const [classroom] = await db
+      .select({ xpPerLevel: classrooms.xpPerLevel })
+      .from(classrooms)
+      .where(eq(classrooms.id, classroomId));
     const results = [];
-    
+
     for (const record of attendanceData) {
-      const xpAwarded = record.status === 'PRESENT' ? xpForPresent : 0;
       const result = await this.recordAttendance(
         classroomId,
         record.studentProfileId,
         date,
         record.status,
         record.notes,
-        xpAwarded
+        xpForPresent,
+        classroom?.xpPerLevel ?? 100
       );
       results.push(result);
     }

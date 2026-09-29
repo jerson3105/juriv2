@@ -4,6 +4,7 @@ import { pdfService } from '../services/pdf.service.js';
 import { db } from '../db/index.js';
 import { studentProfiles, classrooms } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
+import { z } from 'zod';
 import {
   requireClassroomTeacher,
   requireStudentProfileReadAccess,
@@ -17,13 +18,41 @@ const parseLocalDate = (dateStr: string): Date => {
   return new Date(`${dateStr}T12:00:00.000Z`);
 };
 
+const statusSchema = z.enum(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED']);
+const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida');
+// XP que recibe cada presente (se aplica solo cuando cambia el estado del registro).
+const xpForPresentSchema = z.coerce.number().int().min(0).max(100);
+
+const recordSchema = z.object({
+  studentProfileId: z.string().uuid(),
+  date: dateSchema,
+  status: statusSchema,
+  notes: z.string().max(500).optional(),
+  xpAwarded: xpForPresentSchema.optional(),
+});
+
+const bulkSchema = z.object({
+  date: dateSchema,
+  xpForPresent: xpForPresentSchema.optional(),
+  attendanceData: z.array(z.object({
+    studentProfileId: z.string().uuid(),
+    status: statusSchema,
+    notes: z.string().max(500).optional(),
+  })).min(1).max(200),
+});
+
+const invalid = (res: Response, error: z.ZodError) =>
+  res.status(400).json({ success: false, message: error.errors[0]?.message || 'Datos inválidos' });
+
 export const attendanceController = {
   // Registrar asistencia individual
   async recordAttendance(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
-      const { studentProfileId, date, status, notes, xpAwarded } = req.body;
       if (!(await requireClassroomTeacher(req, res, classroomId))) return;
+      const parsed = recordSchema.safeParse(req.body);
+      if (!parsed.success) return invalid(res, parsed.error);
+      const { studentProfileId, date, status, notes, xpAwarded } = parsed.data;
       if (!(await studentsBelongToClassroom([studentProfileId], classroomId))) {
         return res.status(400).json({ success: false, message: 'El estudiante no pertenece a esta clase' });
       }
@@ -52,9 +81,11 @@ export const attendanceController = {
   async recordBulkAttendance(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
-      const { date, attendanceData, xpForPresent } = req.body;
       if (!(await requireClassroomTeacher(req, res, classroomId))) return;
-      const bulkIds = Array.isArray(attendanceData) ? attendanceData.map((r: any) => r?.studentProfileId) : [];
+      const parsed = bulkSchema.safeParse(req.body);
+      if (!parsed.success) return invalid(res, parsed.error);
+      const { date, attendanceData, xpForPresent } = parsed.data;
+      const bulkIds = attendanceData.map((r) => r.studentProfileId);
       if (!(await studentsBelongToClassroom(bulkIds, classroomId))) {
         return res.status(400).json({ success: false, message: 'Hay estudiantes que no pertenecen a esta clase' });
       }
