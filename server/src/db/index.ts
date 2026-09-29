@@ -1,6 +1,7 @@
 import { drizzle } from 'drizzle-orm/mysql2';
 import mysql from 'mysql2/promise';
 import * as schema from './schema.js';
+import { PERF_TRACE, perfQueryLogger } from '../utils/perfTrace.js';
 
 // Pool de conexiones MySQL
 let pool: mysql.Pool | null = null;
@@ -28,7 +29,12 @@ export const getPool = () => {
 };
 
 // Instancia de Drizzle
-export const db = drizzle(getPool(), { schema, mode: 'default' });
+export const db = drizzle(getPool(), {
+  schema,
+  mode: 'default',
+  // Solo para medir en local (PERF_TRACE=1): cuenta consultas por petición.
+  ...(PERF_TRACE ? { logger: perfQueryLogger } : {}),
+});
 
 // Función para conectar a la base de datos
 export const connectDatabase = async (): Promise<void> => {

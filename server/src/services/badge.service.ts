@@ -1,5 +1,5 @@
 import { v4 as uuid } from 'uuid';
-import { eq, and, or, inArray, gte } from 'drizzle-orm';
+import { eq, and, or, inArray, gte, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { clanService } from './clan.service.js';
 import { storyService } from './story.service.js';
@@ -738,6 +738,29 @@ class BadgeService {
     }));
   }
   
+  /**
+   * Conteo de insignias (misma regla que getStudentBadges: filas de student_badges con insignia
+   * existente) para varios alumnos en una sola consulta: alumno → (insignia → veces).
+   */
+  async getBadgeCountsForStudents(studentProfileIds: string[]): Promise<Map<string, Map<string, number>>> {
+    const counts = new Map<string, Map<string, number>>();
+    if (studentProfileIds.length === 0) return counts;
+    const rows = await db.select({
+      studentProfileId: studentBadges.studentProfileId,
+      badgeId: studentBadges.badgeId,
+      total: sql<number>`COUNT(*)`,
+    })
+      .from(studentBadges)
+      .innerJoin(badges, eq(studentBadges.badgeId, badges.id))
+      .where(inArray(studentBadges.studentProfileId, studentProfileIds))
+      .groupBy(studentBadges.studentProfileId, studentBadges.badgeId);
+    for (const row of rows) {
+      if (!counts.has(row.studentProfileId)) counts.set(row.studentProfileId, new Map());
+      counts.get(row.studentProfileId)!.set(row.badgeId, Number(row.total));
+    }
+    return counts;
+  }
+
   async getStudentBadge(studentProfileId: string, badgeId: string): Promise<StudentBadge | null> {
     const result = await db.select().from(studentBadges).where(
       and(
@@ -1038,15 +1061,25 @@ class BadgeService {
   // Verificación Automática
   // ═══════════════════════════════════════════════════════════
   
-  async checkAndAwardBadges(event: BadgeEvent): Promise<Badge[]> {
+  /**
+   * @param preloadedClassroomBadges insignias de la clase ya cargadas (para evaluar varios alumnos
+   *        de la misma clase sin repetir la consulta).
+   * @param preloadedBadgeCounts conteo de insignias del alumno ya calculado (getBadgeCountsForStudents).
+   */
+  async checkAndAwardBadges(
+    event: BadgeEvent,
+    preloadedClassroomBadges?: Badge[],
+    preloadedBadgeCounts?: Map<string, number>
+  ): Promise<Badge[]> {
     const { studentProfileId, classroomId } = event.data;
     const unlockedBadges: Badge[] = [];
     
     // Obtener insignias automáticas no desbloqueadas
-    const allBadges = await this.getClassroomBadges(classroomId);
+    const allBadges = preloadedClassroomBadges ?? await this.getClassroomBadges(classroomId);
     
-    const studentBadgesList = await this.getStudentBadges(studentProfileId);
-    const badgeCountMap = new Map(studentBadgesList.map((studentBadge) => [studentBadge.badgeId, studentBadge.count]));
+    const badgeCountMap = preloadedBadgeCounts ?? new Map(
+      (await this.getStudentBadges(studentProfileId)).map((studentBadge) => [studentBadge.badgeId, studentBadge.count])
+    );
     
     const pendingBadges = allBadges.filter(b => 
       (b.assignmentMode === 'AUTOMATIC' || b.assignmentMode === 'BOTH') &&

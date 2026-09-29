@@ -1082,6 +1082,15 @@ class StoryService {
 
   // Called when XP is awarded to process donations for DONATION-type chapters
   async onXpAwarded(classroomId: string, studentProfileId: string, xpAmount: number) {
+    return this.onXpAwardedBatch(classroomId, [{ studentProfileId, xpAmount }]);
+  }
+
+  /**
+   * Procesa varias concesiones de XP de la misma clase consultando la historia y sus capítulos
+   * una sola vez. Donaciones por alumno; el progreso de XP_GOAL (un SUM) se recalcula una vez.
+   */
+  async onXpAwardedBatch(classroomId: string, awards: { studentProfileId: string; xpAmount: number }[]) {
+    if (awards.length === 0) return;
     const [activeStoryRow] = await db.select()
       .from(stories)
       .where(and(
@@ -1104,10 +1113,13 @@ class StoryService {
         const config = chapter.completionConfig as any;
         const percent = config?.donationPercent || 0;
         if (percent > 0) {
-          const donation = (xpAmount * percent) / 100;
-          await this.addDonation(chapter.id, studentProfileId, donation);
+          for (const { studentProfileId, xpAmount } of awards) {
+            const donation = (xpAmount * percent) / 100;
+            await this.addDonation(chapter.id, studentProfileId, donation);
+          }
         }
       } else if (chapter.completionType === 'XP_GOAL') {
+        // Recalcula el progreso desde los totales (idempotente): basta una vez por lote.
         await this.updateChapterProgress(chapter.id);
       }
     }

@@ -6,7 +6,7 @@ import { badgeService } from './badge.service.js';
 import { clanService } from './clan.service.js';
 import { storyService } from './story.service.js';
 import { prepareForTx } from '../utils/notificationEmitter.js';
-import { applyPointDeltas } from '../utils/points.js';
+import { applyPointDeltasBulk } from '../utils/points.js';
 
 type PointType = 'XP' | 'HP' | 'GP';
 
@@ -496,9 +496,8 @@ export class BehaviorService {
     const notifTx = prepareForTx(notificationsBatch);
 
     await db.transaction(async (tx) => {
-      for (const update of studentUpdates) {
-        await applyPointDeltas(tx, update.studentId, signedDeltas, pointRules);
-      }
+      // Mismos deltas para todos: una sentencia en vez de 2-3 idas y vueltas por alumno.
+      await applyPointDeltasBulk(tx, studentUpdates.map((u) => u.studentId), signedDeltas, pointRules);
 
       if (pointLogsBatch.length > 0) {
         await tx.insert(pointLogs).values(pointLogsBatch);
@@ -511,24 +510,40 @@ export class BehaviorService {
 
     await notifTx.emitAfterCommit();
 
-    // Side effects externos: ejecutar solo después de confirmar cambios de puntos
+    // Side effects externos: ejecutar solo después de confirmar cambios de puntos.
+    // Clan: solo alumnos con clan y si la clase tiene clanes (en otro caso la función no hace nada).
+    const teamByStudent = new Map(students.map((s) => [s.id, s.teamId]));
     for (const xpAward of xpAwardsForSideEffects) {
+      if (!classroom.clansEnabled || !teamByStudent.get(xpAward.studentId)) continue;
       try {
         await clanService.contributeXpToClan(xpAward.studentId, xpAward.xpAmount, behavior.name);
       } catch (error) {
         // Silently fail - don't break behavior application
       }
+    }
 
+    // Historia: la historia activa de la clase se consulta una vez para todos los alumnos.
+    if (xpAwardsForSideEffects.length > 0) {
       try {
-        await storyService.onXpAwarded(behavior.classroomId, xpAward.studentId, xpAward.xpAmount);
+        await storyService.onXpAwardedBatch(
+          behavior.classroomId,
+          xpAwardsForSideEffects.map((a) => ({ studentProfileId: a.studentId, xpAmount: a.xpAmount }))
+        );
       } catch (error) {
         // Silently fail - don't break behavior application
       }
     }
 
-    // Verificar insignias para cada estudiante
+    // Verificar insignias: las de la clase se cargan una vez; sin insignias automáticas no hay nada que comprobar.
     const awardedBadges: { studentId: string; badges: string[] }[] = [];
-    for (const student of students) {
+    const classroomBadges = await badgeService.getClassroomBadges(behavior.classroomId);
+    const hasAutomaticBadges = classroomBadges.some(
+      (b) => (b.assignmentMode === 'AUTOMATIC' || b.assignmentMode === 'BOTH') && b.unlockCondition !== null
+    );
+    const badgeCounts = hasAutomaticBadges
+      ? await badgeService.getBadgeCountsForStudents(students.map((s) => s.id))
+      : new Map<string, Map<string, number>>();
+    for (const student of hasAutomaticBadges ? students : []) {
       try {
         const earnedBadges = await badgeService.checkAndAwardBadges({
           type: 'BEHAVIOR_APPLIED',
@@ -538,7 +553,7 @@ export class BehaviorService {
             behaviorId: behavior.id,
             behaviorType: behavior.isPositive ? 'positive' : 'negative',
           },
-        });
+        }, classroomBadges, badgeCounts.get(student.id) ?? new Map());
         if (earnedBadges.length > 0) {
           awardedBadges.push({
             studentId: student.id,

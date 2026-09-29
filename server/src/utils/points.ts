@@ -1,4 +1,4 @@
-import { and, eq, gte, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, sql } from 'drizzle-orm';
 import { studentProfiles } from '../db/schema.js';
 import { calculateLevel } from './helpers.js';
 
@@ -96,6 +96,54 @@ export const applyPointDeltas = async (
     await exec.update(studentProfiles).set({ level }).where(eq(studentProfiles.id, studentProfileId));
   }
   return { xp: row.xp, hp: row.hp, gp: row.gp, level, previousLevel: row.level };
+};
+
+/**
+ * Igual que `applyPointDeltas`, pero con los mismos deltas para varios alumnos en una sola
+ * sentencia (los límites se evalúan fila a fila en SQL). Una ida y vuelta en vez de dos o tres
+ * por alumno. Devuelve el resultado por alumno (los que no existen no aparecen).
+ */
+export const applyPointDeltasBulk = async (
+  exec: Executor,
+  studentProfileIds: string[],
+  deltas: { xp?: number; hp?: number; gp?: number },
+  rules: PointRules = {}
+): Promise<Map<string, PointResult>> => {
+  const results = new Map<string, PointResult>();
+  const ids = [...new Set(studentProfileIds)];
+  if (ids.length === 0) return results;
+
+  const xp = Math.trunc(deltas.xp ?? 0);
+  const hp = Math.trunc(deltas.hp ?? 0);
+  const gp = Math.trunc(deltas.gp ?? 0);
+
+  const set: Record<string, unknown> = { updatedAt: new Date() };
+  if (xp !== 0) set.xp = sql`${studentProfiles.xp} + ${xp}`;
+  if (hp !== 0) set.hp = clampedDelta(studentProfiles.hp, hp, rules.hpMin, rules.hpMax);
+  if (gp !== 0) set.gp = clampedDelta(studentProfiles.gp, gp, rules.gpMin, null);
+
+  await exec.update(studentProfiles).set(set).where(inArray(studentProfiles.id, ids));
+
+  // Filas bloqueadas por el UPDATE dentro de la transacción: lectura consistente.
+  const rows = await exec
+    .select({
+      id: studentProfiles.id,
+      xp: studentProfiles.xp,
+      hp: studentProfiles.hp,
+      gp: studentProfiles.gp,
+      level: studentProfiles.level,
+    })
+    .from(studentProfiles)
+    .where(inArray(studentProfiles.id, ids));
+
+  for (const row of rows) {
+    const level = xp > 0 ? Math.max(row.level, calculateLevel(row.xp, rules.xpPerLevel || 100)) : row.level;
+    if (level !== row.level) {
+      await exec.update(studentProfiles).set({ level }).where(eq(studentProfiles.id, row.id));
+    }
+    results.set(row.id, { xp: row.xp, hp: row.hp, gp: row.gp, level, previousLevel: row.level });
+  }
+  return results;
 };
 
 /** Atajo para recompensas de XP/oro sin límites. */

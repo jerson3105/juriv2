@@ -14,6 +14,7 @@ import { logger, replaceConsole } from './utils/logger.js';
 import { AppError } from './utils/errors.js';
 import { setIO } from './utils/notificationEmitter.js';
 import { serveUploads } from './utils/fileValidation.js';
+import { PERF_TRACE, perfMiddleware } from './utils/perfTrace.js';
 import { userCanAccessClassroom } from './utils/access.js';
 import { eq } from 'drizzle-orm';
 import { announcementService } from './services/announcement.service.js';
@@ -33,6 +34,9 @@ const httpServer = createServer(app);
 const io = new SocketServer(httpServer, {
   cors: corsOptions,
 });
+
+// Traza de rendimiento (solo con PERF_TRACE=1, para medir en local)
+if (PERF_TRACE) app.use(perfMiddleware);
 
 // Middleware de parsing
 app.use(express.json());
