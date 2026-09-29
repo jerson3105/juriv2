@@ -16,7 +16,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
-import { GoogleGenAI } from '@google/genai';
+import { createGenAI } from '../utils/aiClient.js';
 import { createUploadFilter, safeUploadFilename, verifyUploadedFile, IMAGE_MIMES } from '../utils/fileValidation.js';
 import { publicErrorMessage } from '../utils/errors.js';
 import { aiGuard } from '../middleware/security.js';
@@ -142,7 +142,7 @@ router.post('/generate-ai', authenticate, ...aiGuard, async (req, res) => {
       return res.status(500).json({ message: 'API key de Gemini no configurada' });
     }
 
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = createGenAI(apiKey);
 
     // Obtener comportamientos del aula si se proporciona classroomId
     let behaviorsContext = '';

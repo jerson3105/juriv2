@@ -1,7 +1,8 @@
 // @ts-ignore - PDFKit types issue with ESM
 import PDFDocument from 'pdfkit';
 import ExcelJS from 'exceljs';
-import { GoogleGenAI } from '@google/genai';
+import type { GoogleGenAI } from '@google/genai';
+import { createGenAI } from '../utils/aiClient.js';
 import { db } from '../db/index.js';
 import { 
   studentProfiles, 
@@ -77,7 +78,7 @@ class GradeExportService {
       if (!apiKey) {
         throw new Error('GEMINI_API_KEY no configurada');
       }
-      this.ai = new GoogleGenAI({ apiKey });
+      this.ai = createGenAI(apiKey);
     }
     return this.ai;
   }

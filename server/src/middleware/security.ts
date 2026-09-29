@@ -6,6 +6,7 @@ import requestId from 'express-request-id';
 import timeout from 'connect-timeout';
 import compression from 'compression';
 import { config_app } from '../config/env.js';
+import { AI_REQUEST_TIMEOUT_MS } from '../utils/aiClient.js';
 import type { Express, Request, Response, NextFunction } from 'express';
 
 // Configurar CORS
@@ -123,7 +124,28 @@ export const aiInputGuard = (req: Request, res: Response, next: NextFunction): v
 };
 
 /** Guard común para rutas que llaman a la IA (después de authenticate). */
-export const aiGuard = [aiLimiter, aiInputGuard];
+// Amplía el corte global de 30 s (connect-timeout) en rutas lentas. Reutiliza el listener 'timeout'
+// que connect-timeout ya registró (responde 503 por la cadena global): solo cambia el temporizador.
+export const extendRequestTimeout = (ms: number) => (req: Request, res: Response, next: NextFunction): void => {
+  const r = req as Request & { clearTimeout?: () => void; timedout?: boolean };
+  if (r.timedout) return; // ya se respondió 503
+  if (!r.clearTimeout) return next();
+  r.clearTimeout();
+  const id = setTimeout(() => {
+    if (res.headersSent) return;
+    r.timedout = true;
+    req.emit('timeout', ms);
+  }, ms);
+  r.clearTimeout = () => clearTimeout(id);
+  res.on('finish', r.clearTimeout);
+  res.on('close', r.clearTimeout);
+  next();
+};
+
+// Las generaciones con IA pueden pasar de 30 s; Gemini se corta antes (GEMINI_TIMEOUT_MS).
+export const aiRequestTimeout = extendRequestTimeout(AI_REQUEST_TIMEOUT_MS);
+
+export const aiGuard = [aiLimiter, aiInputGuard, aiRequestTimeout];
 
 // Aplicar middleware de seguridad
 export const applySecurityMiddleware = (app: Express): void => {

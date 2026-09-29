@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { storyService, THEME_PRESETS } from '../services/story.service.js';
 import { z } from 'zod';
-import { GoogleGenAI } from '@google/genai';
+import { createGenAI } from '../utils/aiClient.js';
 import { publicErrorMessage } from '../utils/errors.js';
 import { requireClassroomMember, requireClassroomTeacher } from '../utils/access.js';
 
@@ -171,7 +171,7 @@ const generateThemeFromAI = async (description: string) => {
     throw new Error('API Key de Gemini no configurada');
   }
 
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = createGenAI(apiKey);
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash-lite',
     contents: buildAIThemePrompt(description),
@@ -736,7 +736,7 @@ class StoryController {
         return res.status(500).json({ success: false, message: 'API Key de Gemini no configurada' });
       }
 
-      const ai = new GoogleGenAI({ apiKey });
+      const ai = createGenAI(apiKey);
 
       if (mode === 'image_prompt') {
         // Generate an image generation prompt for external platforms (Midjourney, DALL-E, etc.)

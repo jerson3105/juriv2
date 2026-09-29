@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { questionBankService } from '../services/questionBank.service.js';
 import { z } from 'zod';
-import { GoogleGenAI } from '@google/genai';
+import { createGenAI } from '../utils/aiClient.js';
 import { AppError, RateLimitError } from '../utils/errors.js';
 import { requireClassroomTeacher } from '../utils/access.js';
 
@@ -583,7 +583,7 @@ Genera ${quantity} preguntas variadas y educativas:`;
         });
       }
 
-      const ai = new GoogleGenAI({ apiKey });
+      const ai = createGenAI(apiKey);
       
       const response = await generateContentWithRetry(() => ai.models.generateContent({
         model: QUESTION_BANK_AI_MODEL,
@@ -689,7 +689,7 @@ Genera ${quantity} preguntas variadas y educativas basadas en el documento:`;
         });
       }
 
-      const ai = new GoogleGenAI({ apiKey });
+      const ai = createGenAI(apiKey);
 
       // Convertir el buffer del PDF a base64 para enviar como inlineData
       const pdfBase64 = req.file.buffer.toString('base64');
