@@ -167,9 +167,21 @@ function playTurnChange() {
   tone(ctx, 880.00, 'sine', t + 0.12, 0.22, 0.12);  // A5
 }
 
+/** Fin del temporizador: tres pares de pitidos claros, audibles en un aula */
+function playTimerEnd() {
+  const ctx = getCtx();
+  const t = ctx.currentTime;
+  for (let i = 0; i < 3; i++) {
+    const start = t + i * 0.6;
+    tone(ctx, 988, 'square', start, 0.18, 0.12);        // B5
+    tone(ctx, 1318.51, 'square', start + 0.2, 0.22, 0.12); // E6
+  }
+}
+
 // ─── Public hook ─────────────────────────────────────────────────────
 
 const SOUNDS = {
+  timerEnd: playTimerEnd,
   pointsGain: playPointsGain,
   pointsLoss: playPointsLoss,
   levelUp: playLevelUp,

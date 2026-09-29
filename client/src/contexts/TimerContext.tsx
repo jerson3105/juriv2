@@ -26,7 +26,7 @@ interface TimerContextType {
   startTimer: () => void;
   stopTimer: () => void;
   cancelPending: () => void;
-  openFloatingTimer: (minutes?: number) => void;
+  openFloatingTimer: (minutes?: number, autoStart?: boolean) => void;
   openFloatingStopwatch: () => void;
   closeFloatingClock: () => void;
 }
@@ -34,6 +34,9 @@ interface TimerContextType {
 interface FloatingClockData {
   mode: FloatingClockMode;
   initialDurationSeconds?: number;
+  autoStart?: boolean;
+  // Cambia en cada apertura: el widget se vuelve a montar con el nuevo tiempo.
+  key: number;
 }
 
 const TimerContext = createContext<TimerContextType | null>(null);
@@ -87,16 +90,18 @@ export const TimerProvider = ({ children }: TimerProviderProps) => {
     setPendingTimer(null);
   };
 
-  const openFloatingTimer = (minutes = 5) => {
-    const safeMinutes = Number.isFinite(minutes) ? Math.max(1, Math.floor(minutes)) : 5;
+  const openFloatingTimer = (minutes = 5, autoStart = false) => {
+    const safeMinutes = Number.isFinite(minutes) ? Math.max(0.5, minutes) : 5;
     setFloatingClock({
       mode: 'timer',
-      initialDurationSeconds: safeMinutes * 60,
+      initialDurationSeconds: Math.round(safeMinutes * 60),
+      autoStart,
+      key: Date.now(),
     });
   };
 
   const openFloatingStopwatch = () => {
-    setFloatingClock({ mode: 'stopwatch' });
+    setFloatingClock({ mode: 'stopwatch', key: Date.now() });
   };
 
   const closeFloatingClock = () => {
@@ -247,8 +252,10 @@ export const TimerProvider = ({ children }: TimerProviderProps) => {
       <AnimatePresence>
         {floatingClock && (
           <FloatingClockWidget
+            key={floatingClock.key}
             mode={floatingClock.mode}
             initialDurationSeconds={floatingClock.initialDurationSeconds}
+            autoStart={floatingClock.autoStart}
             onClose={closeFloatingClock}
           />
         )}

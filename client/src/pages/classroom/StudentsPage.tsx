@@ -21,7 +21,6 @@ import {
   ChevronDown,
   PlayCircle,
   RotateCcw,
-  Wrench,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -39,7 +38,6 @@ import { LevelUpAnimation } from '../../components/effects/LevelUpAnimation';
 import { MultiPointsAnimation, useMultiPointsEffect } from '../../components/effects/PurchaseEffects';
 import { TeacherBadgeAwardedModal } from '../../components/badges/TeacherBadgeAwardedModal';
 import { AddPlaceholderStudentsModal } from '../../components/students/AddPlaceholderStudentsModal';
-import { ClassroomUtilities } from '../../components/classroom/ClassroomUtilities';
 import { PointsModal } from '../../components/modals/PointsModal';
 import { SelectionActionBar } from '../../components/students/SelectionActionBar';
 import { StudentFocusView } from '../../components/students/StudentFocusView';
@@ -47,7 +45,6 @@ import { useBehaviorUsage } from '../../hooks/useBehaviorUsage';
 import { QuickBehaviorPicker, QuickPointButtons } from '../../components/students/QuickPoints';
 import { useQuickBehaviors } from '../../hooks/useQuickBehaviors';
 import { useSound } from '../../hooks/useSound';
-import { classNoteApi } from '../../lib/classNoteApi';
 import toast from 'react-hot-toast';
 
 type ListFilter = 'all' | 'low_hp' | 'no_activity' | 'round_pending' | 'round_scored' | 'round_repeated';
@@ -124,7 +121,6 @@ export const StudentsPage = () => {
   const [isUndoingRound, setIsUndoingRound] = useState(false);
   const [roundQuickActivityCounts, setRoundQuickActivityCounts] = useState<Record<string, number>>({});
 
-  const [showUtilities, setShowUtilities] = useState(false);
 
   // Hook para animación de puntos
   const { effect: pointsEffect, showMultiPointsEffect, hideMultiPointsEffect } = useMultiPointsEffect();
@@ -137,11 +133,6 @@ export const StudentsPage = () => {
   const { data: behaviors } = useQuery({
     queryKey: ['behaviors', classroom.id],
     queryFn: () => behaviorApi.getByClassroom(classroom.id),
-  });
-
-  const { data: pendingNotesCount = 0 } = useQuery({
-    queryKey: ['class-notes-count', classroom.id],
-    queryFn: () => classNoteApi.pendingCount(classroom.id),
   });
 
   // Asistencia de hoy (usar fecha local, no UTC)
@@ -1193,21 +1184,6 @@ export const StudentsPage = () => {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3 ml-auto">
-            {/* Botón de Utilidades */}
-            <button
-              onClick={() => setShowUtilities(true)}
-              className="relative flex items-center gap-1.5 px-3 py-2 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 hover:bg-violet-200 dark:hover:bg-violet-900/50 border border-violet-200 dark:border-violet-800 transition-colors text-sm font-medium flex-shrink-0"
-              title="Utilidades"
-            >
-              <Wrench size={16} />
-              <span className="hidden sm:inline">Utilidades</span>
-              {pendingNotesCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-xs font-bold min-w-[20px] h-5 px-1 rounded-full flex items-center justify-center motion-safe:animate-pulse">
-                  {pendingNotesCount}
-                </span>
-              )}
-            </button>
-
             {/* Toggle de vista - Siempre visible, al final */}
             <div className="flex items-center bg-primary-100 dark:bg-primary-900/30 rounded-lg p-0.5 border border-primary-200 dark:border-primary-800 flex-shrink-0">
               <button
@@ -2058,14 +2034,6 @@ export const StudentsPage = () => {
         }}
       />
 
-      {/* Utilidades del aula */}
-      <ClassroomUtilities
-        isOpen={showUtilities}
-        onClose={() => setShowUtilities(false)}
-        students={allStudents}
-        showCharacterName={classroom.showCharacterName !== false}
-        classroomId={classroom.id}
-      />
     </div>
   );
 };

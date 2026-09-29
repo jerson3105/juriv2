@@ -40,6 +40,7 @@ import {
   Coins,
   TrendingUp,
   Crown,
+  Wrench,
 } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
@@ -47,6 +48,8 @@ import { classroomApi } from '../../lib/classroomApi';
 import { NotificationsBell, NotificationsPanel } from '../NotificationsPanel';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { BugReportButton } from '../BugReportButton';
+import { ClassroomUtilities } from '../classroom/ClassroomUtilities';
+import { classNoteApi } from '../../lib/classNoteApi';
 import toast from 'react-hot-toast';
 import { ParticleLayer } from '../story/ParticleLayer';
 import { useTeacherOnboardingSafe } from '../../contexts/TeacherOnboardingContext';
@@ -92,6 +95,7 @@ export const ClassroomLayout = () => {
   const [collapsed, setCollapsed] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showTools, setShowTools] = useState(false);
   const [studentsMenuOpen, setStudentsMenuOpen] = useState(true);
   const [gamificationMenuOpen, setGamificationMenuOpen] = useState(false);
   const [claseMenuOpen, setClaseMenuOpen] = useState(false);
@@ -107,6 +111,12 @@ export const ClassroomLayout = () => {
   const { data: classroom, isLoading, refetch } = useQuery({
     queryKey: ['classroom', id],
     queryFn: () => classroomApi.getById(id!),
+    enabled: !!id,
+  });
+
+  const { data: pendingNotesCount = 0 } = useQuery({
+    queryKey: ['class-notes-count', id],
+    queryFn: () => classNoteApi.pendingCount(id!),
     enabled: !!id,
   });
 
@@ -773,6 +783,23 @@ export const ClassroomLayout = () => {
           )}
 
           <div className="flex items-center gap-2 shrink-0">
+            {/* Herramientas de clase: disponibles en todas las páginas del aula */}
+            <button
+              type="button"
+              onClick={() => setShowTools(true)}
+              className="relative inline-flex items-center gap-2 min-h-[36px] px-3 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold"
+              aria-label={pendingNotesCount > 0 ? `Herramientas de clase (${pendingNotesCount} notas pendientes)` : 'Herramientas de clase'}
+              title="Herramientas de clase"
+            >
+              <Wrench size={16} aria-hidden="true" />
+              <span className="hidden md:inline">Herramientas</span>
+              {pendingNotesCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 flex items-center justify-center rounded-full bg-red-600 text-white text-xs font-bold ring-2 ring-white dark:ring-gray-800" aria-hidden="true">
+                  {pendingNotesCount}
+                </span>
+              )}
+            </button>
+
             {/* Botón de reportar bug */}
             <BugReportButton variant="icon" />
             
@@ -800,9 +827,19 @@ export const ClassroomLayout = () => {
         
         {/* Main content */}
         <main className="flex-1 overflow-auto p-4 md:p-6">
-          <Outlet context={{ classroom, refetch, storyTheme: hasStoryTheme ? tc : null, isThemeDark }} />
+          <Outlet context={{ classroom, refetch, storyTheme: hasStoryTheme ? tc : null, isThemeDark, openTools: () => setShowTools(true) }} />
         </main>
       </div>
+
+      <ClassroomUtilities
+        isOpen={showTools}
+        onClose={() => setShowTools(false)}
+        students={classroom.students || []}
+        showCharacterName={classroom.showCharacterName !== false}
+        classroomId={classroom.id}
+        xpPerLevel={classroom.xpPerLevel || 100}
+        allowNegativePoints={classroom.allowNegativePoints !== false}
+      />
 
       {/* Panel de notificaciones */}
       <NotificationsPanel 
