@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { storyService, THEME_PRESETS } from '../services/story.service.js';
 import { z } from 'zod';
 import { GoogleGenAI } from '@google/genai';
+import { publicErrorMessage } from '../utils/errors.js';
 
 // ==================== VALIDATION SCHEMAS ====================
 
@@ -301,7 +302,7 @@ class StoryController {
       res.json({ success: true, data: theme });
     } catch (error: any) {
       console.error('Error getting classroom theme:', error);
-      res.status(500).json({ success: false, message: error.message || 'Error al obtener tema' });
+      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al obtener tema' });
     }
   }
 
@@ -328,7 +329,7 @@ class StoryController {
         return res.status(400).json({ success: false, message: 'Datos inválidos', errors: error.errors });
       }
       console.error('Error updating theme:', error);
-      res.status(500).json({ success: false, message: error.message || 'Error al actualizar tema' });
+      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al actualizar tema' });
     }
   }
 
@@ -362,7 +363,7 @@ class StoryController {
       res.json({ success: true, message: 'Tema reseteado' });
     } catch (error: any) {
       console.error('Error resetting theme:', error);
-      res.status(500).json({ success: false, message: error.message || 'Error al resetear tema' });
+      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al resetear tema' });
     }
   }
 
@@ -378,7 +379,7 @@ class StoryController {
       res.json({ success: true, data });
     } catch (error: any) {
       console.error('Error getting stories:', error);
-      res.status(500).json({ success: false, message: error.message || 'Error al obtener historias' });
+      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al obtener historias' });
     }
   }
 
@@ -410,7 +411,7 @@ class StoryController {
         return res.status(400).json({ success: false, message: 'Datos inválidos', errors: error.errors });
       }
       console.error('Error creating story:', error);
-      res.status(500).json({ success: false, message: error.message || 'Error al crear historia' });
+      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al crear historia' });
     }
   }
 
@@ -428,7 +429,7 @@ class StoryController {
         return res.status(400).json({ success: false, message: 'Datos inválidos', errors: error.errors });
       }
       console.error('Error updating story:', error);
-      res.status(500).json({ success: false, message: error.message || 'Error al actualizar historia' });
+      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al actualizar historia' });
     }
   }
 
@@ -442,7 +443,7 @@ class StoryController {
       res.json({ success: true, data });
     } catch (error: any) {
       console.error('Error activating story:', error);
-      res.status(500).json({ success: false, message: error.message || 'Error al activar historia' });
+      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al activar historia' });
     }
   }
 
@@ -456,7 +457,7 @@ class StoryController {
       res.json({ success: true, message: 'Historia desactivada' });
     } catch (error: any) {
       console.error('Error deactivating story:', error);
-      res.status(500).json({ success: false, message: error.message || 'Error al desactivar historia' });
+      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al desactivar historia' });
     }
   }
 
@@ -470,7 +471,7 @@ class StoryController {
       res.json({ success: true, message: 'Historia eliminada' });
     } catch (error: any) {
       console.error('Error deleting story:', error);
-      res.status(500).json({ success: false, message: error.message || 'Error al eliminar historia' });
+      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al eliminar historia' });
     }
   }
 
@@ -490,7 +491,7 @@ class StoryController {
         return res.status(400).json({ success: false, message: 'Datos inválidos', errors: error.errors });
       }
       console.error('Error creating chapter:', error);
-      res.status(500).json({ success: false, message: error.message || 'Error al crear capítulo' });
+      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al crear capítulo' });
     }
   }
 
@@ -508,7 +509,7 @@ class StoryController {
         return res.status(400).json({ success: false, message: 'Datos inválidos', errors: error.errors });
       }
       console.error('Error updating chapter:', error);
-      res.status(500).json({ success: false, message: error.message || 'Error al actualizar capítulo' });
+      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al actualizar capítulo' });
     }
   }
 
@@ -522,7 +523,7 @@ class StoryController {
       res.json({ success: true, message: 'Capítulo eliminado' });
     } catch (error: any) {
       console.error('Error deleting chapter:', error);
-      res.status(500).json({ success: false, message: error.message || 'Error al eliminar capítulo' });
+      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al eliminar capítulo' });
     }
   }
 
@@ -536,7 +537,7 @@ class StoryController {
       res.json({ success: true, data });
     } catch (error: any) {
       console.error('Error completing chapter:', error);
-      res.status(500).json({ success: false, message: error.message || 'Error al completar capítulo' });
+      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al completar capítulo' });
     }
   }
 
@@ -556,7 +557,7 @@ class StoryController {
         return res.status(400).json({ success: false, message: 'Datos inválidos', errors: error.errors });
       }
       console.error('Error creating scene:', error);
-      res.status(500).json({ success: false, message: error.message || 'Error al crear escena' });
+      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al crear escena' });
     }
   }
 
@@ -580,7 +581,7 @@ class StoryController {
         return res.status(400).json({ success: false, message: 'Datos inválidos', errors: error.errors });
       }
       console.error('Error updating scene:', error);
-      res.status(500).json({ success: false, message: error.message || 'Error al actualizar escena' });
+      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al actualizar escena' });
     }
   }
 
@@ -594,7 +595,7 @@ class StoryController {
       res.json({ success: true, message: 'Escena eliminada' });
     } catch (error: any) {
       console.error('Error deleting scene:', error);
-      res.status(500).json({ success: false, message: error.message || 'Error al eliminar escena' });
+      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al eliminar escena' });
     }
   }
 
@@ -612,7 +613,7 @@ class StoryController {
         return res.status(400).json({ success: false, message: 'Datos inválidos', errors: error.errors });
       }
       console.error('Error setting dialogues:', error);
-      res.status(500).json({ success: false, message: error.message || 'Error al actualizar diálogos' });
+      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al actualizar diálogos' });
     }
   }
 
@@ -634,7 +635,7 @@ class StoryController {
       if (error.message?.includes('No autorizado')) {
         return res.status(403).json({ success: false, message: error.message });
       }
-      res.status(500).json({ success: false, message: error.message || 'Error al obtener datos de historia' });
+      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al obtener datos de historia' });
     }
   }
 
@@ -657,7 +658,7 @@ class StoryController {
       if (error.message?.includes('no encontrada')) {
         return res.status(404).json({ success: false, message: error.message });
       }
-      res.status(500).json({ success: false, message: error.message || 'Error al marcar escena' });
+      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al marcar escena' });
     }
   }
 
@@ -697,7 +698,7 @@ class StoryController {
       if (error.message?.includes('No autorizado')) {
         return res.status(403).json({ success: false, message: error.message });
       }
-      res.status(500).json({ success: false, message: error.message || 'Error al obtener escenas' });
+      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al obtener escenas' });
     }
   }
 
@@ -733,7 +734,7 @@ class StoryController {
       res.json({ success: true, data });
     } catch (error: any) {
       console.error('Error getting chapter leaderboard:', error);
-      res.status(500).json({ success: false, message: error.message || 'Error al obtener leaderboard' });
+      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al obtener leaderboard' });
     }
   }
 
@@ -922,7 +923,7 @@ Responde ÚNICAMENTE con un JSON válido:
 
     } catch (error: any) {
       console.error('Error generating AI theme:', error);
-      res.status(500).json({ success: false, message: error.message || 'Error al generar tema con IA' });
+      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al generar tema con IA' });
     }
   }
 
@@ -942,7 +943,7 @@ Responde ÚNICAMENTE con un JSON válido:
       });
     } catch (error: any) {
       console.error('Error generating AI theme preview:', error);
-      res.status(500).json({ success: false, message: error.message || 'Error al generar la vista previa del tema con IA' });
+      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al generar la vista previa del tema con IA' });
     }
   }
 }

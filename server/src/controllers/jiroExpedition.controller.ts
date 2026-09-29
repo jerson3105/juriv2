@@ -4,6 +4,14 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
+import {
+  createUploadFilter,
+  safeUploadFilename,
+  verifyUploadedFile,
+  IMAGE_MIMES,
+  PDF_MIMES,
+  OFFICE_MIMES,
+} from '../utils/fileValidation.js';
 
 const ensureTeacherClassroomAccess = async (
   req: Request,
@@ -174,39 +182,25 @@ const jiroStorage = multer.diskStorage({
     }
     cb(null, uploadDir);
   },
-  filename: (req, file, cb) => {
-    const uniqueName = `${uuidv4()}${path.extname(file.originalname)}`;
-    cb(null, uniqueName);
-  },
+  filename: safeUploadFilename,
 });
 
-const jiroFileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  const allowedTypes = [
-    'application/pdf',
-    'image/jpeg',
-    'image/png',
-    'image/gif',
-    'image/webp',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/vnd.ms-excel',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  ];
+// PDF, imágenes, Word y Excel; la extensión sale del MIME y el contenido se verifica tras guardar.
+const jiroFileFilter = createUploadFilter(
+  [...PDF_MIMES, ...IMAGE_MIMES, ...OFFICE_MIMES],
+  'Tipo de archivo no permitido. Solo PDF, imágenes, Word y Excel.'
+);
 
-  if (allowedTypes.includes(file.mimetype)) {
-    cb(null, true);
-  } else {
-    cb(new Error('Tipo de archivo no permitido. Solo PDF, imágenes, Word y Excel.'));
-  }
-};
-
-export const uploadJiroFile = multer({
-  storage: jiroStorage,
-  fileFilter: jiroFileFilter,
-  limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB máximo
-  },
-}).single('file');
+export const uploadJiroFile = [
+  multer({
+    storage: jiroStorage,
+    fileFilter: jiroFileFilter,
+    limits: {
+      fileSize: 10 * 1024 * 1024, // 10MB máximo
+    },
+  }).single('file'),
+  verifyUploadedFile,
+];
 
 export const handleJiroUpload = async (req: Request, res: Response) => {
   try {

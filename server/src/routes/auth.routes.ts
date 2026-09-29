@@ -7,6 +7,7 @@ import * as authController from '../controllers/auth.controller.js';
 import { authenticate } from '../middleware/auth.js';
 import { authLimiter, authTokenLimiter } from '../middleware/security.js';
 import { config_app } from '../config/env.js';
+import { createUploadFilter, safeUploadFilename, verifyUploadedFile, IMAGE_MIMES } from '../utils/fileValidation.js';
 import {
   generateOAuthState,
   OAUTH_STATE_COOKIE_NAME,
@@ -20,23 +21,13 @@ const avatarStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, 'uploads/avatars');
   },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `${uuidv4()}${ext}`);
-  },
+  filename: safeUploadFilename,
 });
 
 const avatarUpload = multer({
   storage: avatarStorage,
   limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    if (allowedTypes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Tipo de archivo no permitido. Solo PNG, JPG, GIF, WebP'));
-    }
-  },
+  fileFilter: createUploadFilter(IMAGE_MIMES, 'Tipo de archivo no permitido. Solo PNG, JPG, GIF, WebP'),
 });
 
 // Rutas públicas (con rate limiting estricto)
@@ -50,7 +41,7 @@ router.post('/logout', authTokenLimiter, authController.logout);
 // Rutas protegidas
 router.get('/me', authenticate, authController.getMe);
 router.put('/profile', authenticate, authController.updateProfile);
-router.post('/upload-avatar', authenticate, avatarUpload.single('avatar'), authController.uploadAvatar);
+router.post('/upload-avatar', authenticate, avatarUpload.single('avatar'), verifyUploadedFile, authController.uploadAvatar);
 router.put('/notifications', authenticate, authController.updateNotifications);
 router.post('/logout-all', authenticate, authController.logoutAll);
 router.put('/change-password', authenticate, authController.changePassword);
