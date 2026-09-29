@@ -9,7 +9,6 @@ import {
   Coins,
   Check,
   X,
-  Zap,
   Crown,
   Star,
   Search,
@@ -17,11 +16,7 @@ import {
   List,
   Eye,
   Medal,
-  Link2,
-  Copy,
-  ChevronLeft,
   Shield,
-  Award,
   AlertTriangle,
   ChevronDown,
   PlayCircle,
@@ -47,6 +42,8 @@ import { AddPlaceholderStudentsModal } from '../../components/students/AddPlaceh
 import { ClassroomUtilities } from '../../components/classroom/ClassroomUtilities';
 import { PointsModal } from '../../components/modals/PointsModal';
 import { SelectionActionBar } from '../../components/students/SelectionActionBar';
+import { StudentFocusView } from '../../components/students/StudentFocusView';
+import { useBehaviorUsage } from '../../hooks/useBehaviorUsage';
 import { QuickBehaviorPicker, QuickPointButtons } from '../../components/students/QuickPoints';
 import { useQuickBehaviors } from '../../hooks/useQuickBehaviors';
 import { useSound } from '../../hooks/useSound';
@@ -312,6 +309,7 @@ export const StudentsPage = () => {
       return { toastId: toast.loading(message) };
     },
     onSuccess: async (result, variables, context) => {
+      behaviorUsage.recordUse(result.behavior.id);
       const mode = variables.mode || 'default';
       const isRoundQuick = mode === 'round_quick';
       const roundStudentResult = result.results[0];
@@ -528,7 +526,7 @@ export const StudentsPage = () => {
   // Set de estudiantes con actividad de comportamiento hoy
   const studentsWithActivityToday = new Set<string>();
   if (todayHistory?.logs) {
-    const todayStart = new Date(todayStr).getTime();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     const todayEnd = todayStart + 86400000;
     todayHistory.logs.forEach(log => {
       const ts = new Date(log.timestamp).getTime();
@@ -650,6 +648,12 @@ export const StudentsPage = () => {
   const availableNegativeRoundBehaviors = classroom.allowNegativePoints === false ? [] : negativeBehaviors;
   const allowNegativePoints = classroom.allowNegativePoints !== false;
   const quickBehaviors = useQuickBehaviors(classroom.id, positiveBehaviors, negativeBehaviors);
+  const behaviorUsage = useBehaviorUsage(classroom.id);
+  // Vista de tarjetas: solo los más usados (4 positivos + 2 negativos); el resto, en "Ver todos".
+  const featuredBehaviors = [
+    ...behaviorUsage.mostUsed(positiveBehaviors, 4),
+    ...(allowNegativePoints ? behaviorUsage.mostUsed(negativeBehaviors, 2) : []),
+  ];
   const hasRoundBehaviors = positiveBehaviors.length > 0 || availableNegativeRoundBehaviors.length > 0;
   const roundStorageKey = `students-active-round:${classroom.id}`;
 
@@ -1159,38 +1163,32 @@ export const StudentsPage = () => {
 
           {/* Contexto de clase - Vista tarjetas */}
           {viewMode === 'cards' && (
-            <div className="hidden md:flex items-center gap-2 flex-wrap min-w-0">
-              <div className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300">
-                <Heart size={12} />
-                <span className="text-[11px] font-semibold">HP bajo {lowHpCount}</span>
-              </div>
-
-              <div className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300">
-                <Award size={12} />
-                <span className="text-[11px] font-semibold">Asistencia {attendanceMarkedCount}/{allStudents.length}</span>
-              </div>
-
+            <div className="flex items-center gap-2 flex-wrap min-w-0">
               <button
-                onClick={() => navigate(`/classroom/${classroom.id}/attendance`)}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-[11px] font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                type="button"
+                onClick={() => { setListFilter(listFilter === 'low_hp' ? 'all' : 'low_hp'); setClanFilter(null); }}
+                aria-pressed={listFilter === 'low_hp'}
+                title="Mostrar solo alumnos con HP bajo"
+                className={`inline-flex items-center gap-1.5 min-h-[36px] px-3 rounded-lg border text-sm font-semibold transition-colors ${
+                  listFilter === 'low_hp'
+                    ? 'bg-red-600 border-red-600 text-white'
+                    : 'bg-white dark:bg-gray-800 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20'
+                }`}
               >
-                <Users size={12} />
-                Tomar asistencia
+                <Heart size={14} aria-hidden="true" />
+                HP bajo ({lowHpCount})
               </button>
-
-              {hasRoundBehaviors && (
-                <button
-                  onClick={() => {
-                    setViewMode('list');
-                    setShowRoundBehaviorPicker(true);
-                  }}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-[11px] font-semibold text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40"
-                >
-                  <PlayCircle size={12} />
-                  Iniciar ronda
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => navigate(`/classroom/${classroom.id}/attendance`)}
+                title="Tomar asistencia"
+                className="inline-flex items-center gap-1.5 min-h-[36px] px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+              >
+                <Users size={14} aria-hidden="true" />
+                Asistencia {attendanceMarkedCount}/{allStudents.length}
+              </button>
             </div>
+
           )}
           </div>
 
@@ -1331,317 +1329,43 @@ export const StudentsPage = () => {
       ) : (
         <>
           {/* Vista de Cards - Layout Dividido */}
-          {viewMode === 'cards' && allStudents.length > 0 && (() => {
-            // Obtener estudiante seleccionado para el panel de detalle
-            const detailStudent = selectedStudentId 
-              ? students.find(s => s.id === selectedStudentId) || students[0]
-              : students[0];
-            const detailClassInfo = detailStudent?.characterClassId
-              ? characterClasses.find(c => c.id === detailStudent.characterClassId) || classMap[detailStudent.characterClass]
-              : detailStudent ? classMap[detailStudent.characterClass] : null;
-            const xpPerLevel = (classroom as any).xpPerLevel || 100;
-            const lvl = detailStudent?.level || 1;
-            const xpForCurrentLevel = (xpPerLevel * lvl * (lvl - 1)) / 2;
-            const xpForNextLevel = (xpPerLevel * (lvl + 1) * lvl) / 2;
-            const xpInLevel = (detailStudent?.xp || 0) - xpForCurrentLevel;
-            const xpNeeded = xpForNextLevel - xpForCurrentLevel;
-            const xpProgress = Math.min((xpInLevel / xpNeeded) * 100, 100);
-            const hpPercent = detailStudent ? Math.min((detailStudent.hp / (classroom.maxHp || 100)) * 100, 100) : 100;
-            const isTopStudent = topStudent?.id === detailStudent?.id;
-
-            return (
-              <div className="flex flex-col lg:flex-row gap-4 h-[calc(100vh-200px)] min-h-[400px] lg:min-h-[500px]">
-                {/* Sidebar izquierda - Lista compacta (oculta en móvil si hay estudiante seleccionado) */}
-                <div className={`${selectedStudentId ? 'hidden lg:flex' : 'flex'} w-full lg:w-64 flex-shrink-0 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex-col`}>
-                  {/* Búsqueda en sidebar */}
-                  <div className="p-2 border-b border-gray-200 dark:border-gray-700">
-                    <div className="relative">
-                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                      <input
-                        type="text"
-                        placeholder="Buscar..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-white rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex-1 overflow-y-auto">
-                    {students.length === 0 && searchQuery.trim() ? (
-                      <div className="text-center py-8 px-3">
-                        <Search className="w-8 h-8 mx-auto mb-2 text-gray-300 dark:text-gray-600" />
-                        <p className="text-xs text-gray-500 dark:text-gray-400">Sin resultados para "{searchQuery}"</p>
-                      </div>
-                    ) : students.map((student) => {
-                      const classInfo = (student.characterClassId && characterClasses.find(c => c.id === student.characterClassId)) || classMap[student.characterClass];
-                      const isActive = detailStudent?.id === student.id;
-                      
-                      return (
-                        <div
-                          key={student.id}
-                          onClick={() => setSelectedStudentId(student.id)}
-                          className={`flex items-center gap-2 px-3 py-2.5 cursor-pointer border-l-4 transition-all ${
-                            isActive 
-                              ? storyTheme ? '' : 'bg-indigo-50 dark:bg-indigo-900/30 border-l-indigo-500' 
-                              : storyTheme ? 'border-l-transparent hover:bg-white/10' : 'border-l-transparent hover:bg-gray-50 dark:hover:bg-gray-700/50'
-                          }`}
-                          style={isActive && storyTheme ? { 
-                            backgroundColor: isThemeDark ? `${storyTheme.colors?.primary}30` : `${storyTheme.colors?.primary}20`,
-                            borderLeftColor: storyTheme.colors?.primary || '#6366f1'
-                          } : undefined}
-                        >
-                          {/* Info del estudiante */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-sm">{classInfo?.icon}</span>
-                              <span 
-                                className={`text-sm font-medium truncate ${isActive && !storyTheme ? 'text-indigo-700 dark:text-indigo-300' : storyTheme && isThemeDark ? 'text-white' : 'text-gray-700 dark:text-gray-200'}`}
-                                style={isActive && storyTheme ? { color: isThemeDark ? '#fff' : storyTheme.colors?.primary } : undefined}
-                              >
-                                {getDisplayName(student)}
-                              </span>
-                              {topStudent?.id === student.id && <Crown size={12} className="text-amber-500 flex-shrink-0" />}
-                            </div>
-                            <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                              <span>Nv.{student.level}</span>
-                              <span>•</span>
-                              <span className="text-emerald-600">{student.xp} XP</span>
-                              {((student.hp / (classroom.maxHp || 100)) * 100) < 30 && (
-                                <span className="text-red-500 font-semibold">HP bajo</span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Panel central - Detalle del estudiante */}
-                {detailStudent && (
-                  <div className="flex-1 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex flex-col">
-                    {/* Header con info contextual */}
-                    <div className={`relative h-32 bg-gradient-to-br ${
-                      detailStudent.characterClass === 'GUARDIAN' ? 'from-blue-500 to-cyan-600' :
-                      detailStudent.characterClass === 'ARCANE' ? 'from-purple-500 to-pink-600' :
-                      detailStudent.characterClass === 'EXPLORER' ? 'from-green-500 to-emerald-600' :
-                      'from-amber-500 to-orange-600'
-                    }`}>
-                      {/* Botón volver en móvil */}
-                      <button
-                        onClick={() => setSelectedStudentId(null)}
-                        className="lg:hidden absolute top-3 left-3 flex items-center gap-1 bg-white/20 backdrop-blur text-white text-xs font-bold px-2 py-1 rounded-full hover:bg-white/30 transition-colors"
-                      >
-                        <ChevronLeft size={14} />
-                        <span>Lista</span>
-                      </button>
-                      {/* Parent code + leader badge in top-right */}
-                      <div className="absolute top-3 right-3 flex items-center gap-2">
-                        {isTopStudent && (
-                          <div className="flex items-center gap-1 bg-white/20 backdrop-blur text-white text-xs font-bold px-2 py-1 rounded-full">
-                            <Crown size={12} />
-                            <span>Líder en XP</span>
-                          </div>
-                        )}
-                        {getStudentLinkCode(detailStudent.id) && (
-                          <button
-                            onClick={() => copyLinkCode(getStudentLinkCode(detailStudent.id)!)}
-                            className="flex flex-col items-end bg-white/20 backdrop-blur text-white text-xs px-2.5 py-1.5 rounded-lg hover:bg-white/30 transition-colors"
-                            title="Clic para copiar código del estudiante"
-                          >
-                            <span className="text-[9px] text-white/70 leading-none">Código del estudiante</span>
-                            <span className="font-mono font-bold flex items-center gap-1">
-                              {getStudentLinkCode(detailStudent.id)}
-                              <Copy size={10} className="opacity-70" />
-                            </span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Contenido principal */}
-                    <div className="flex-1 p-4 lg:p-6 -mt-16 overflow-hidden">
-                      <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 h-full">
-                        {/* Avatar grande + código de vinculación - Responsive */}
-                        <div className="flex-shrink-0 flex flex-col items-center">
-                          <div className="relative w-[160px] h-[280px] 2xl:w-[220px] 2xl:h-[390px] rounded-xl overflow-hidden bg-gradient-to-br from-white to-gray-100 dark:from-gray-700 dark:to-gray-800 border-4 border-white dark:border-gray-700 shadow-xl">
-                            <StudentAvatarMini
-                              studentProfileId={detailStudent.id}
-                              gender={detailStudent.avatarGender || 'MALE'}
-                              size="xl"
-                              className="absolute top-0 left-1/2 -translate-x-1/2 scale-[0.62] 2xl:scale-[0.85] origin-top"
-                            />
-                            <div className="absolute bottom-2 left-1/2 -translate-x-1/2">
-                              <div className="flex items-center gap-1 bg-black/80 text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-lg whitespace-nowrap">
-                                <Star size={12} className="text-amber-400 fill-amber-400" />
-                                <span>Nv.{detailStudent.level}</span>
-                              </div>
-                            </div>
-                          </div>
-                          {/* Código de vinculación debajo del avatar */}
-                          {getStudentLinkCode(detailStudent.id) && (
-                            <button
-                              onClick={() => copyLinkCode(getStudentLinkCode(detailStudent.id)!)}
-                              className="mt-2 flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-lg text-xs font-mono font-bold hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
-                              title="Clic para copiar"
-                            >
-                              <Link2 size={12} />
-                              {getStudentLinkCode(detailStudent.id)}
-                              <Copy size={10} className="opacity-50" />
-                            </button>
-                          )}
-                        </div>
-
-                        {/* Info del estudiante */}
-                        <div className="flex-1 pt-4 lg:pt-16 overflow-y-auto">
-                          {/* Nombre y clase */}
-                          <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-1">
-                            {getDisplayName(detailStudent)}
-                          </h2>
-                          <div className="flex items-center gap-2 text-gray-600 dark:text-gray-300 mb-2">
-                            <span className="text-xl">{detailClassInfo?.icon || '👤'}</span>
-                            <select
-                              value={detailStudent.characterClassId || ''}
-                              onChange={(e) => {
-                                const selectedId = e.target.value;
-                                if (!selectedId) {
-                                  assignClassMutation.mutate({ studentId: detailStudent.id, characterClassId: null });
-                                  return;
-                                }
-                                assignClassMutation.mutate({ studentId: detailStudent.id, characterClassId: selectedId });
-                              }}
-                              className="font-medium bg-transparent border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-0.5 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
-                            >
-                              <option value="">Sin clase</option>
-                              {characterClasses.filter(c => c.isActive).map(c => (
-                                <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
-                              ))}
-                            </select>
-                            <span className="text-gray-300 dark:text-gray-600">•</span>
-                            <span className="text-sm">Nv. {detailStudent.level}</span>
-                          </div>
-                          {/* Context chips */}
-                          <div className="flex flex-wrap gap-1.5 mb-4">
-                            {classroom.clansEnabled && (
-                              <span 
-                                className="px-2 py-0.5 rounded-full text-white text-xs font-medium"
-                                style={{ backgroundColor: (detailStudent as any).clanColor || '#6b7280' }}
-                              >
-                                🛡️ {(detailStudent as any).clanName || 'Sin clan'}
-                              </span>
-                            )}
-                            {(() => {
-                              const streak = (detailStudent as any).loginStreak || 0;
-                              return streak > 0 ? (
-                                <span className="px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 text-xs font-medium">
-                                  🔥 {streak} días seguidos
-                                </span>
-                              ) : null;
-                            })()}
-                            {(detailStudent as any).badgeCount > 0 && (
-                              <span className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-xs font-medium">
-                                🏅 {(detailStudent as any).badgeCount} insignias
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Stats con barras */}
-                          <div className="space-y-4 mb-6">
-                            {/* HP */}
-                            <div>
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="flex items-center gap-2 text-red-600 font-semibold">
-                                  <Heart size={18} className="fill-red-500" />
-                                  HP
-                                </span>
-                                <span className="text-lg font-bold text-gray-700 dark:text-gray-200">
-                                  {detailStudent.hp} <span className="text-sm font-normal text-gray-400">/ {classroom.maxHp || 100}</span>
-                                </span>
-                              </div>
-                              <div className="h-3 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
-                                <motion.div
-                                  initial={{ width: 0 }}
-                                  animate={{ width: `${hpPercent}%` }}
-                                  className="h-full rounded-full bg-gradient-to-r from-red-400 to-red-600"
-                                />
-                              </div>
-                            </div>
-
-                            {/* XP */}
-                            <div>
-                              <div className="flex items-center justify-between mb-1">
-                                <span className="flex items-center gap-2 text-indigo-600 font-semibold">
-                                  <Sparkles size={18} />
-                                  XP
-                                </span>
-                                <span className="text-lg font-bold text-gray-700 dark:text-gray-200">
-                                  {Math.round(xpInLevel)} <span className="text-sm font-normal text-gray-400">/ {xpNeeded} para Nv. {lvl + 1}</span>
-                                </span>
-                              </div>
-                              <div className="h-3 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
-                                <motion.div
-                                  initial={{ width: 0 }}
-                                  animate={{ width: `${xpProgress}%` }}
-                                  className="h-full bg-gradient-to-r from-indigo-400 to-purple-500 rounded-full"
-                                />
-                              </div>
-                            </div>
-
-                            {/* GP */}
-                            <div className="flex items-center justify-between">
-                              <span className="flex items-center gap-2 text-amber-600 font-semibold">
-                                <Coins size={18} />
-                                GP
-                              </span>
-                              <span className="text-lg font-bold text-gray-700 dark:text-gray-200">
-                                {detailStudent.gp}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Botones de acción rápida */}
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => { setSelectedStudents(new Set([detailStudent.id])); setBehaviorType('positive'); setShowBehaviorModal(true); }}
-                              className="!bg-green-500 hover:!bg-green-600 !text-white"
-                            >
-                              <Zap size={14} className="mr-1" /> Dar puntos
-                            </Button>
-                            {classroom.allowNegativePoints !== false && (
-                              <Button
-                                size="sm"
-                                onClick={() => { setSelectedStudents(new Set([detailStudent.id])); setBehaviorType('negative'); setShowBehaviorModal(true); }}
-                                className="!bg-red-500 hover:!bg-red-600 !text-white"
-                              >
-                                <Zap size={14} className="mr-1" /> Quitar
-                              </Button>
-                            )}
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => { setSelectedStudents(new Set([detailStudent.id])); setShowBadgeModal(true); }}
-                              className="!bg-amber-500 hover:!bg-amber-600 !text-white"
-                            >
-                              <Medal size={14} className="mr-1" /> Insignia
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              onClick={() => navigate(`/classroom/${classroom.id}/student/${detailStudent.id}`)}
-                              className="!bg-white dark:!bg-gray-700 !text-gray-600 dark:!text-gray-300 !border !border-gray-300 dark:!border-gray-600 hover:!bg-gray-50 dark:hover:!bg-gray-600"
-                            >
-                              <Eye size={14} className="mr-1" /> Ver perfil
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
+          {viewMode === 'cards' && allStudents.length > 0 && (
+            <StudentFocusView
+              classroom={classroom}
+              students={students}
+              selectedStudentId={selectedStudentId}
+              onSelectStudent={setSelectedStudentId}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              characterClasses={characterClasses}
+              classMap={classMap}
+              topStudentId={topStudent?.id ?? null}
+              getDisplayName={getDisplayName}
+              getStudentLinkCode={getStudentLinkCode}
+              onCopyLinkCode={copyLinkCode}
+              featuredBehaviors={featuredBehaviors}
+              totalBehaviors={positiveBehaviors.length + (allowNegativePoints ? negativeBehaviors.length : 0)}
+              isApplying={applyBehaviorMutation.isPending}
+              onApplyBehavior={(behavior, studentId) => applyBehaviorMutation.mutate({
+                behaviorId: behavior.id,
+                studentIds: [studentId],
+                mode: 'row_quick',
+              })}
+              onOpenAllBehaviors={(studentId) => {
+                setSelectedStudents(new Set([studentId]));
+                setBehaviorType('positive');
+                setShowBehaviorModal(true);
+              }}
+              onAwardBadge={(studentId) => {
+                setSelectedStudents(new Set([studentId]));
+                setShowBadgeModal(true);
+              }}
+              onViewProfile={(studentId) => navigate(`/classroom/${classroom.id}/student/${studentId}`)}
+              onAssignClass={(studentId, characterClassId) => assignClassMutation.mutate({ studentId, characterClassId })}
+              storyTheme={storyTheme}
+              isThemeDark={isThemeDark}
+            />
+          )}
 
           {/* Vista de Lista */}
           {viewMode === 'list' && (
@@ -2241,7 +1965,10 @@ export const StudentsPage = () => {
       {/* Modal de puntos con tabs */}
       <PointsModal
         isOpen={showBehaviorModal}
-        onClose={() => setShowBehaviorModal(false)}
+        onClose={() => {
+          setShowBehaviorModal(false);
+          if (viewMode === 'cards') setSelectedStudents(new Set());
+        }}
         isPositive={behaviorType === 'positive'}
         selectedCount={selectedStudents.size}
         selectedStudentNames={Array.from(selectedStudents).map(id => {
