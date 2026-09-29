@@ -118,8 +118,9 @@ export const StudentFocusView = ({
       queryClient.invalidateQueries({ queryKey: ['classroom', classroom.id] });
       queryClient.invalidateQueries({ queryKey: ['history-today', classroom.id] });
       toast.success(`Deshecho: ${entry.details.reason || 'puntos'}`);
-    } catch (error: any) {
-      toast.error(error?.response?.data?.message || 'No se pudo deshacer');
+    } catch (error) {
+      const message = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(message || 'No se pudo deshacer');
     } finally {
       setUndoingId(null);
     }
@@ -171,13 +172,12 @@ export const StudentFocusView = ({
                   borderLeftColor: storyTheme.colors?.primary || '#3b82f6',
                 } : undefined}
               >
-                <span className="relative w-9 h-9 flex-shrink-0 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700">
-                  <StudentAvatarMini
-                    studentProfileId={s.id}
-                    gender={s.avatarGender || 'MALE'}
-                    size="xs"
-                    className="absolute left-1/2 top-0 -translate-x-1/2"
-                  />
+                <span
+                  className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700 text-lg"
+                  title={classInfoOf(s)?.name || 'Sin clase'}
+                  aria-hidden="true"
+                >
+                  {classInfoOf(s)?.icon || '👤'}
                 </span>
                 <span className="flex-1 min-w-0">
                   <span className="flex items-center gap-1">
@@ -280,21 +280,21 @@ export const StudentFocusView = ({
               <div className="grid grid-cols-3 gap-2">
                 <div className="rounded-xl bg-gray-50 dark:bg-gray-900/40 p-3">
                   <div className="flex items-center gap-1.5 text-sm font-semibold text-red-700 dark:text-red-300"><Heart size={16} className="fill-current" aria-hidden="true" />HP</div>
-                  <div className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{student.hp}<span className="text-sm font-normal text-gray-500 dark:text-gray-400"> / {maxHp}</span></div>
+                  <div className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tabular-nums whitespace-nowrap">{student.hp}<span className="text-xs sm:text-sm font-normal text-gray-500 dark:text-gray-400"> / {maxHp}</span></div>
                   <div className="mt-1 h-1.5 rounded-full bg-gray-200 dark:bg-gray-600 overflow-hidden">
                     <motion.div initial={false} animate={{ width: `${Math.min((student.hp / maxHp) * 100, 100)}%` }} className="h-full rounded-full bg-red-500" />
                   </div>
                 </div>
                 <div className="rounded-xl bg-gray-50 dark:bg-gray-900/40 p-3">
                   <div className="flex items-center gap-1.5 text-sm font-semibold text-primary-700 dark:text-primary-300"><Sparkles size={16} aria-hidden="true" />XP</div>
-                  <div className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{student.xp}</div>
+                  <div className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tabular-nums whitespace-nowrap">{student.xp}</div>
                   <div className="mt-1 h-1.5 rounded-full bg-gray-200 dark:bg-gray-600 overflow-hidden" title={`${levelProgress(student).inLevel} / ${levelProgress(student).needed} para el nivel ${student.level + 1}`}>
                     <motion.div initial={false} animate={{ width: `${levelProgress(student).percent}%` }} className="h-full rounded-full bg-primary-500" />
                   </div>
                 </div>
                 <div className="rounded-xl bg-gray-50 dark:bg-gray-900/40 p-3">
                   <div className="flex items-center gap-1.5 text-sm font-semibold text-amber-700 dark:text-amber-300"><Coins size={16} aria-hidden="true" />Oro</div>
-                  <div className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums">{student.gp}</div>
+                  <div className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tabular-nums whitespace-nowrap">{student.gp}</div>
                 </div>
               </div>
 
