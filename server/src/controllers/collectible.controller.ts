@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import { eq, and } from 'drizzle-orm';
 import { collectibleService } from '../services/collectible.service.js';
 import { db } from '../db/index.js';
@@ -32,7 +33,39 @@ const isValidRewardBadge = async (rewardBadgeId: unknown, classroomId: string): 
   return !!badge && (badge.scope === 'SYSTEM' || badge.classroomId === classroomId);
 };
 
-const CARD_FIELDS = ['name', 'description', 'imageUrl', 'rarity', 'slotNumber'] as const;
+const CARD_FIELDS = ['name', 'description', 'imageUrl', 'icon', 'rarity', 'slotNumber'] as const;
+
+// Imágenes solo subidas a la plataforma (POST /collectibles/upload-image): nada de URLs externas.
+const imageRef = z.string().regex(/^\/api\/uploads\/collectibles\/[\w.-]+$/, 'Imagen no válida');
+const gp = z.number().int().min(0, 'El precio no puede ser negativo').max(100000, 'El precio es demasiado alto');
+const reward = z.number().int().min(0, 'La recompensa no puede ser negativa').max(1000, 'La recompensa es demasiado alta');
+const albumSchema = z.object({
+  name: z.string().trim().min(1, 'Escribe un nombre').max(100, 'El nombre es demasiado largo'),
+  description: z.string().trim().max(500).nullable().optional(),
+  coverImage: imageRef.nullable().optional(),
+  theme: z.string().trim().max(255).nullable().optional(),
+  imageStyle: z.enum(['CARTOON', 'REALISTIC', 'PIXEL_ART', 'ANIME', 'WATERCOLOR', 'MINIMALIST']).optional(),
+  singlePackPrice: gp.optional(),
+  fivePackPrice: gp.optional(),
+  tenPackPrice: gp.optional(),
+  rewardXp: reward.optional(),
+  rewardHp: reward.optional(),
+  rewardGp: reward.optional(),
+  rewardBadgeId: z.string().uuid().nullable().optional(),
+  allowTrades: z.boolean().optional(),
+});
+const albumUpdateSchema = albumSchema.partial().extend({ isActive: z.boolean().optional() });
+const cardSchema = z.object({
+  name: z.string().trim().min(1, 'Escribe un nombre').max(100, 'El nombre es demasiado largo'),
+  description: z.string().trim().max(300).nullable().optional(),
+  imageUrl: imageRef.nullable().optional(),
+  icon: z.string().max(50).nullable().optional(),
+  rarity: z.enum(['COMMON', 'UNCOMMON', 'RARE', 'EPIC', 'LEGENDARY']).optional(),
+  slotNumber: z.number().int().min(1).max(1000).optional(),
+});
+const cardBatchSchema = z.object({ cards: z.array(cardSchema.omit({ slotNumber: true })).min(1).max(60) });
+const invalid = (res: Response, error: z.ZodError) =>
+  res.status(400).json({ message: error.errors[0]?.message || 'Datos inválidos', errors: error.errors });
 
 export const collectibleController = {
   // ==================== ÁLBUMES ====================
@@ -41,7 +74,9 @@ export const collectibleController = {
     try {
       const { classroomId } = req.params;
       if (!(await requireClassroomTeacher(req, res, classroomId))) return;
-      const data = pickFields(req.body, ALBUM_FIELDS);
+      const parsed = albumSchema.safeParse(req.body);
+      if (!parsed.success) return invalid(res, parsed.error);
+      const data = pickFields(parsed.data as Record<string, unknown>, ALBUM_FIELDS);
       if (!(await isValidRewardBadge(data.rewardBadgeId, classroomId))) {
         return res.status(400).json({ message: 'La insignia de premio no pertenece a esta clase' });
       }
@@ -108,7 +143,9 @@ export const collectibleController = {
     try {
       const { albumId } = req.params;
       if (!(await requireResourceTeacher(req, res, classroomIdOfAlbum, albumId, 'Álbum no encontrado'))) return;
-      const data = pickFields(req.body, ALBUM_UPDATE_FIELDS);
+      const parsed = albumUpdateSchema.safeParse(req.body);
+      if (!parsed.success) return invalid(res, parsed.error);
+      const data = pickFields(parsed.data as Record<string, unknown>, ALBUM_UPDATE_FIELDS);
       if (!(await isValidRewardBadge(data.rewardBadgeId, (await classroomIdOfAlbum(albumId))!))) {
         return res.status(400).json({ message: 'La insignia de premio no pertenece a esta clase' });
       }
@@ -175,7 +212,9 @@ export const collectibleController = {
     try {
       const { albumId } = req.params;
       if (!(await requireResourceTeacher(req, res, classroomIdOfAlbum, albumId, 'Álbum no encontrado'))) return;
-      const data = pickFields(req.body, CARD_FIELDS);
+      const parsed = cardSchema.safeParse(req.body);
+      if (!parsed.success) return invalid(res, parsed.error);
+      const data = pickFields(parsed.data as Record<string, unknown>, CARD_FIELDS);
 
       const card = await collectibleService.createCard({
         ...(data as any),
@@ -192,12 +231,13 @@ export const collectibleController = {
     try {
       const { albumId } = req.params;
       if (!(await requireResourceTeacher(req, res, classroomIdOfAlbum, albumId, 'Álbum no encontrado'))) return;
-      const { cards } = req.body;
-      if (!Array.isArray(cards)) {
-        return res.status(400).json({ message: 'Se requiere una lista de cartas' });
-      }
+      const parsed = cardBatchSchema.safeParse(req.body);
+      if (!parsed.success) return invalid(res, parsed.error);
 
-      const createdCards = await collectibleService.createManyCards(albumId, cards);
+      const createdCards = await collectibleService.createManyCards(
+        albumId,
+        parsed.data.cards.map((card) => ({ ...card, description: card.description ?? undefined, imageUrl: card.imageUrl ?? undefined, icon: card.icon ?? undefined })),
+      );
       res.status(201).json(createdCards);
     } catch (error) {
       next(error);
@@ -208,7 +248,9 @@ export const collectibleController = {
     try {
       const { cardId } = req.params;
       if (!(await requireResourceTeacher(req, res, classroomIdOfCard, cardId, 'Carta no encontrada'))) return;
-      const data = pickFields(req.body, CARD_FIELDS);
+      const parsed = cardSchema.partial().safeParse(req.body);
+      if (!parsed.success) return invalid(res, parsed.error);
+      const data = pickFields(parsed.data as Record<string, unknown>, CARD_FIELDS);
 
       const card = await collectibleService.updateCard(cardId, data as any);
       res.json(card);
@@ -263,7 +305,13 @@ export const collectibleController = {
     try {
       const { cardId } = req.params;
       if (!(await requireResourceTeacher(req, res, classroomIdOfCard, cardId, 'Carta no encontrada'))) return;
-      await collectibleService.deleteCard(cardId);
+      const result = await collectibleService.deleteCard(cardId);
+      if (!result.deleted && result.owners > 0) {
+        return res.status(409).json({
+          message: `${result.owners} ${result.owners === 1 ? 'estudiante ya tiene' : 'estudiantes ya tienen'} este cromo: no se puede borrar, pero sí editar`,
+          owners: result.owners,
+        });
+      }
       res.status(204).send();
     } catch (error) {
       next(error);
@@ -319,6 +367,7 @@ export const collectibleController = {
     } catch (error: any) {
       if (error.message === 'No tienes suficiente oro' || 
           error.message === 'Álbum no disponible' ||
+          error.message === 'La tienda está cerrada' ||
           error.message?.includes('necesita al menos')) {
         return res.status(400).json({ message: error.message });
       }
@@ -404,6 +453,17 @@ export const collectibleController = {
     }
   },
 
+  // Cuántos estudiantes tienen cada cromo de un álbum (profesor)
+  async getCardOwners(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { albumId } = req.params;
+      if (!(await requireResourceTeacher(req, res, classroomIdOfAlbum, albumId, 'Álbum no encontrado'))) return;
+      res.json(await collectibleService.getCardOwnerCounts(albumId));
+    } catch (error) {
+      next(error);
+    }
+  },
+
   // ==================== GENERACIÓN CON IA ====================
 
   async generateAlbumWithAI(req: Request, res: Response, next: NextFunction) {
@@ -411,11 +471,14 @@ export const collectibleController = {
       const { classroomId } = req.params;
       if (!(await requireClassroomTeacher(req, res, classroomId))) return;
       const { theme, cardCount, imageStyle, rarityDistribution } = req.body;
+      if (typeof theme !== 'string' || !theme.trim() || theme.length > 1000) {
+        return res.status(400).json({ message: 'Describe el tema del álbum' });
+      }
 
       const generated = await collectibleService.generateAlbumWithAI({
         classroomId,
         theme,
-        cardCount: cardCount || 10,
+        cardCount: Math.min(40, Math.max(3, Number(cardCount) || 10)),
         imageStyle: imageStyle || 'CARTOON',
         rarityDistribution: rarityDistribution || 'auto',
       });

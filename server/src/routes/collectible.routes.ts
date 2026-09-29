@@ -2,11 +2,48 @@ import { Router } from 'express';
 import { collectibleController } from '../controllers/collectible.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { aiGuard } from '../middleware/security.js';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import { createUploadFilter, safeUploadFilename, verifyUploadedFile, IMAGE_MIMES } from '../utils/fileValidation.js';
 
 const router = Router();
 
+// Imágenes de cromos y portadas: UPLOAD_DIR/collectibles, servidas por /api/uploads/collectibles (index.ts).
+const collectibleImagesDir = path.join(process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads'), 'collectibles');
+if (!fs.existsSync(collectibleImagesDir)) {
+  fs.mkdirSync(collectibleImagesDir, { recursive: true });
+}
+const uploadCollectibleImage = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, collectibleImagesDir),
+    filename: safeUploadFilename,
+  }),
+  fileFilter: createUploadFilter(IMAGE_MIMES, 'Solo se permiten imágenes (PNG, JPG, GIF, WEBP)'),
+  limits: { fileSize: 2 * 1024 * 1024 },
+}).single('image');
+
 // Todas las rutas requieren autenticación
 router.use(authenticate);
+
+// Subir imagen de cromo o portada (profesor)
+router.post('/upload-image', authorize('TEACHER'), (req, res, next) => {
+  uploadCollectibleImage(req, res, (error: unknown) => {
+    if (error) {
+      const message = (error as { code?: string }).code === 'LIMIT_FILE_SIZE'
+        ? 'La imagen debe pesar menos de 2 MB'
+        : (error as Error).message || 'No se pudo subir la imagen';
+      return res.status(400).json({ message });
+    }
+    next();
+  });
+}, verifyUploadedFile, (req, res) => {
+  if (!req.file) return res.status(400).json({ message: 'No se proporcionó imagen' });
+  res.json({ imageUrl: `/api/uploads/collectibles/${req.file.filename}` });
+});
+
+// Cuántos estudiantes tienen cada cromo de un álbum (profesor)
+router.get('/albums/:albumId/card-owners', authorize('TEACHER'), collectibleController.getCardOwners);
 
 // ==================== ÁLBUMES (PROFESOR) ====================
 

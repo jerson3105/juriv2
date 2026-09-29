@@ -19,6 +19,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { studentService } from './student.service.js';
 import { logger } from '../utils/logger.js';
 import { spendGp } from '../utils/points.js';
+import { badgeService } from './badge.service.js';
 
 // Probabilidades de rareza
 const RARITY_PROBABILITIES: Record<CardRarity, number> = {
@@ -56,6 +57,7 @@ export interface GenerateAlbumRequest {
 export interface GeneratedCard {
   name: string;
   description: string;
+  icon?: string;
   rarity: CardRarity;
 }
 
@@ -330,6 +332,7 @@ class CollectibleService {
               name: card.name,
               description: card.description,
               imageUrl: card.imageUrl,
+              icon: card.icon,
               rarity: card.rarity,
               slotNumber: card.slotNumber,
               isShiny: card.isShiny,
@@ -358,23 +361,13 @@ class CollectibleService {
     };
   }
 
+  // Archivar: deja de venderse y de mostrarse como activo; los estudiantes conservan sus cromos,
+  // compras y álbumes completados (antes se borraba todo). Se restaura con isActive = true.
   async deleteAlbum(albumId: string) {
-    // Eliminar en orden: purchases, student_collectibles, cards, completed_albums, album
-    await db.delete(collectiblePurchases).where(eq(collectiblePurchases.albumId, albumId));
-    
-    // Obtener IDs de cartas para eliminar student_collectibles
-    const cards = await db
-      .select({ id: collectibleCards.id })
-      .from(collectibleCards)
-      .where(eq(collectibleCards.albumId, albumId));
-    
-    for (const card of cards) {
-      await db.delete(studentCollectibles).where(eq(studentCollectibles.cardId, card.id));
-    }
-    
-    await db.delete(collectibleCards).where(eq(collectibleCards.albumId, albumId));
-    await db.delete(completedAlbums).where(eq(completedAlbums.albumId, albumId));
-    await db.delete(collectibleAlbums).where(eq(collectibleAlbums.id, albumId));
+    await db
+      .update(collectibleAlbums)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(eq(collectibleAlbums.id, albumId));
   }
 
   async moveCardsBetweenAlbums(
@@ -493,19 +486,10 @@ class CollectibleService {
     name: string;
     description?: string;
     imageUrl?: string;
+    icon?: string;
     rarity?: CardRarity;
     slotNumber?: number;
   }) {
-    // Si no se especifica slot, obtener el siguiente
-    let slotNumber = data.slotNumber;
-    if (slotNumber === undefined) {
-      const [maxSlot] = await db
-        .select({ max: sql<number>`COALESCE(MAX(slot_number), 0)` })
-        .from(collectibleCards)
-        .where(eq(collectibleCards.albumId, data.albumId));
-      slotNumber = (maxSlot?.max || 0) + 1;
-    }
-
     const now = new Date();
     const card = {
       id: uuidv4(),
@@ -513,14 +497,33 @@ class CollectibleService {
       name: data.name,
       description: data.description || null,
       imageUrl: data.imageUrl || null,
+      icon: data.icon || null,
       rarity: data.rarity || 'COMMON' as CardRarity,
-      slotNumber,
+      slotNumber: 0,
       isShiny: false,
       createdAt: now,
       updatedAt: now,
     };
 
-    await db.insert(collectibleCards).values(card);
+    await db.transaction(async (tx) => {
+      const [maxSlot] = await tx
+        .select({ max: sql<number>`COALESCE(MAX(slot_number), 0)` })
+        .from(collectibleCards)
+        .where(eq(collectibleCards.albumId, data.albumId));
+      const last = Number(maxSlot?.max || 0);
+      // Sin casilla: al final. Con casilla (p. ej. "Deshacer" de un borrado): se inserta ahí y
+      // las siguientes se corren una posición.
+      if (data.slotNumber === undefined || data.slotNumber > last) {
+        card.slotNumber = last + 1;
+      } else {
+        card.slotNumber = Math.max(1, data.slotNumber);
+        await tx
+          .update(collectibleCards)
+          .set({ slotNumber: sql`${collectibleCards.slotNumber} + 1` })
+          .where(and(eq(collectibleCards.albumId, data.albumId), sql`${collectibleCards.slotNumber} >= ${card.slotNumber}`));
+      }
+      await tx.insert(collectibleCards).values(card);
+    });
     return card;
   }
 
@@ -528,17 +531,25 @@ class CollectibleService {
     name: string;
     description?: string;
     imageUrl?: string;
+    icon?: string;
     rarity?: CardRarity;
   }>) {
     const now = new Date();
+    // Continúa la numeración: antes empezaba en 1 y duplicaba casillas al añadir a un álbum con cromos.
+    const [maxSlot] = await db
+      .select({ max: sql<number>`COALESCE(MAX(slot_number), 0)` })
+      .from(collectibleCards)
+      .where(eq(collectibleCards.albumId, albumId));
+    const start = Number(maxSlot?.max || 0);
     const cardsToInsert = cards.map((card, index) => ({
       id: uuidv4(),
       albumId,
       name: card.name,
       description: card.description || null,
       imageUrl: card.imageUrl || null,
+      icon: card.icon || null,
       rarity: card.rarity || 'COMMON' as CardRarity,
-      slotNumber: index + 1,
+      slotNumber: start + index + 1,
       isShiny: false,
       createdAt: now,
       updatedAt: now,
@@ -550,8 +561,9 @@ class CollectibleService {
 
   async updateCard(cardId: string, data: Partial<{
     name: string;
-    description: string;
-    imageUrl: string;
+    description: string | null;
+    imageUrl: string | null;
+    icon: string | null;
     rarity: CardRarity;
     slotNumber: number;
   }>) {
@@ -568,9 +580,38 @@ class CollectibleService {
     return card;
   }
 
-  async deleteCard(cardId: string) {
-    await db.delete(studentCollectibles).where(eq(studentCollectibles.cardId, cardId));
-    await db.delete(collectibleCards).where(eq(collectibleCards.id, cardId));
+  // Solo se borra si ningún estudiante lo tiene (no se quitan cromos ya pagados). Las casillas
+  // posteriores se corren para no dejar huecos.
+  async deleteCard(cardId: string): Promise<{ deleted: boolean; owners: number }> {
+    return db.transaction(async (tx) => {
+      const [card] = await tx.select().from(collectibleCards).where(eq(collectibleCards.id, cardId)).for('update');
+      if (!card) return { deleted: false, owners: 0 };
+      const [{ owners }] = await tx
+        .select({ owners: sql<number>`COUNT(DISTINCT ${studentCollectibles.studentProfileId})` })
+        .from(studentCollectibles)
+        .where(eq(studentCollectibles.cardId, cardId));
+      if (Number(owners) > 0) return { deleted: false, owners: Number(owners) };
+      await tx.delete(collectibleCards).where(eq(collectibleCards.id, cardId));
+      await tx
+        .update(collectibleCards)
+        .set({ slotNumber: sql`${collectibleCards.slotNumber} - 1` })
+        .where(and(eq(collectibleCards.albumId, card.albumId), sql`${collectibleCards.slotNumber} > ${card.slotNumber}`));
+      return { deleted: true, owners: 0 };
+    });
+  }
+
+  // Cuántos estudiantes tienen cada cromo del álbum (para avisar antes de borrar).
+  async getCardOwnerCounts(albumId: string) {
+    const rows = await db
+      .select({
+        cardId: studentCollectibles.cardId,
+        owners: sql<number>`COUNT(DISTINCT ${studentCollectibles.studentProfileId})`,
+      })
+      .from(studentCollectibles)
+      .innerJoin(collectibleCards, eq(studentCollectibles.cardId, collectibleCards.id))
+      .where(eq(collectibleCards.albumId, albumId))
+      .groupBy(studentCollectibles.cardId);
+    return rows.map((row) => ({ cardId: row.cardId, owners: Number(row.owners) }));
   }
 
   // ==================== COMPRA DE SOBRES ====================
@@ -580,6 +621,15 @@ class CollectibleService {
     const album = await this.getAlbumById(albumId);
     if (!album || !album.isActive) {
       throw new Error('Álbum no disponible');
+    }
+
+    // Los sobres se venden en la tienda: con la tienda cerrada no se pueden comprar.
+    const [albumClassroom] = await db
+      .select({ shopEnabled: classrooms.shopEnabled })
+      .from(classrooms)
+      .where(eq(classrooms.id, album.classroomId));
+    if (albumClassroom && !albumClassroom.shopEnabled) {
+      throw new Error('La tienda está cerrada');
     }
 
     const packSize = PACK_SIZES[packType];
@@ -875,6 +925,15 @@ class CollectibleService {
           reason: rewardReason,
           teacherId,
         });
+      }
+
+      // Insignia de premio (antes se guardaba pero nunca se entregaba)
+      if (album.rewardBadgeId) {
+        try {
+          await badgeService.awardBadgeAutomatic(studentProfileId, album.rewardBadgeId);
+        } catch (error) {
+          logger.warn('No se pudo otorgar la insignia del álbum', { albumId, error: (error as Error).message });
+        }
       }
 
       // Marcar recompensas como dadas
@@ -1215,6 +1274,7 @@ Responde ÚNICAMENTE con un JSON válido con esta estructura exacta:
     {
       "name": "Nombre del cromo",
       "description": "Descripción educativa breve (1 oración)",
+      "icon": "un solo emoji a color que represente al cromo (no símbolos de texto como ☿ o ♃)",
       "rarity": "COMMON|UNCOMMON|RARE|EPIC|LEGENDARY"
     }
   ]
@@ -1222,6 +1282,7 @@ Responde ÚNICAMENTE con un JSON válido con esta estructura exacta:
 
 Los cromos legendarios y épicos deben ser los más especiales/importantes del tema.
 Los nombres deben ser concisos (2-4 palabras máximo).
+Cada cromo debe tener en "icon" un emoji a color distinto y reconocible (por ejemplo 🪐 🌕 ☄️), nunca un símbolo de texto.
 Las descripciones deben ser educativas y apropiadas para estudiantes.`;
 
     try {
@@ -1256,6 +1317,7 @@ Responde ÚNICAMENTE con un JSON válido:
 {
   "name": "Nombre corto (2-4 palabras)",
   "description": "Descripción educativa breve (1 oración)",
+  "icon": "un solo emoji a color que represente al cromo (no símbolos de texto como ☿ o ♃)",
   "rarity": "${rarity}"
 }`;
 

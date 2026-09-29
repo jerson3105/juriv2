@@ -34,6 +34,7 @@ export interface CollectibleCard {
   name: string;
   description: string | null;
   imageUrl: string | null;
+  icon: string | null;
   rarity: CardRarity;
   slotNumber: number;
   isShiny: boolean;
@@ -125,6 +126,7 @@ export interface GeneratedCard {
   name: string;
   description: string;
   rarity: CardRarity;
+  icon?: string;
   imageUrl?: string;
 }
 
@@ -136,8 +138,8 @@ export interface GeneratedAlbum {
 
 export interface CreateAlbumData {
   name: string;
-  description?: string;
-  coverImage?: string;
+  description?: string | null;
+  coverImage?: string | null;
   theme?: string;
   imageStyle?: ImageStyle;
   singlePackPrice?: number;
@@ -152,11 +154,22 @@ export interface CreateAlbumData {
 
 export interface CreateCardData {
   name: string;
-  description?: string;
-  imageUrl?: string;
+  description?: string | null;
+  imageUrl?: string | null;
+  icon?: string | null;
   rarity?: CardRarity;
   slotNumber?: number;
 }
+
+export interface CardOwners {
+  cardId: string;
+  owners: number;
+}
+
+// URL de imágenes de cromos/portadas: las subidas viven en /api/uploads/collectibles (junto a la API);
+// las antiguas pueden ser URLs externas y se usan tal cual.
+const API_ORIGIN = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace(/\/api\/?$/, '');
+export const collectibleImageUrl = (path: string) => (path.startsWith('/api/') ? `${API_ORIGIN}${path}` : path);
 
 export interface ImportableAlbumSource {
   classroomId: string;
@@ -263,6 +276,20 @@ export const collectibleApi = {
 
   deleteCard: async (cardId: string): Promise<void> => {
     await api.delete(`/collectibles/cards/${cardId}`);
+  },
+
+  // Cuántos estudiantes tienen cada cromo (un cromo con dueños no se puede borrar)
+  getCardOwners: async (albumId: string): Promise<CardOwners[]> => {
+    const response = await api.get(`/collectibles/albums/${albumId}/card-owners`);
+    return response.data;
+  },
+
+  // Subir imagen de cromo o portada
+  uploadImage: async (file: File): Promise<string> => {
+    const formData = new FormData();
+    formData.append('image', file);
+    const response = await api.post('/collectibles/upload-image', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+    return response.data.imageUrl;
   },
 
   // ==================== COMPRAS (ESTUDIANTE) ====================

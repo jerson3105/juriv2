@@ -2266,6 +2266,7 @@ export const collectibleCards = mysqlTable('collectible_cards', {
   name: varchar('name', { length: 255 }).notNull(),
   description: text('description'),
   imageUrl: varchar('image_url', { length: 500 }),
+  icon: varchar('icon', { length: 50 }), // Emoji del cromo cuando no hay imagen (migrations/add_collectible_card_icon.sql)
   rarity: cardRarityEnum.notNull().default('COMMON'),
   slotNumber: int('slot_number').notNull(), // Posición en el álbum
   isShiny: boolean('is_shiny').notNull().default(false), // Versión brillante

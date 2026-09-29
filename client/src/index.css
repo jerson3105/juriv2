@@ -529,3 +529,20 @@
 .shop-shadow { animation: shop-shadow 3.2s ease-in-out infinite; }
 .shop-rays { animation: shop-rays 14s linear infinite; }
 .group:hover .shop-swing { animation: shop-swing 0.9s ease-in-out 1; transform-origin: 50% 0; }
+
+/* ── Coleccionables: carta con reflejo holográfico (épicos, legendarios y brillantes) ── */
+@keyframes cc-holo {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 250% 50%; }
+}
+.cc-holo {
+  background: linear-gradient(115deg, transparent 18%, rgba(255, 0, 170, 0.35) 30%, rgba(0, 240, 255, 0.35) 40%,
+    rgba(255, 240, 0, 0.35) 50%, rgba(0, 255, 150, 0.35) 60%, transparent 72%);
+  background-size: 250% 100%;
+  mix-blend-mode: overlay;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.group:hover .cc-holo,
+.group:focus-within .cc-holo { opacity: 1; animation: cc-holo 2.4s linear infinite; }
+.cc-holo.cc-holo-on { opacity: 0.85; animation: cc-holo 4s linear infinite; }
