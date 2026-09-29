@@ -27,7 +27,6 @@ import {
   PlayCircle,
   RotateCcw,
   Wrench,
-  Swords,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -47,6 +46,9 @@ import { TeacherBadgeAwardedModal } from '../../components/badges/TeacherBadgeAw
 import { AddPlaceholderStudentsModal } from '../../components/students/AddPlaceholderStudentsModal';
 import { ClassroomUtilities } from '../../components/classroom/ClassroomUtilities';
 import { PointsModal } from '../../components/modals/PointsModal';
+import { SelectionActionBar } from '../../components/students/SelectionActionBar';
+import { QuickBehaviorPicker, QuickPointButtons } from '../../components/students/QuickPoints';
+import { useQuickBehaviors } from '../../hooks/useQuickBehaviors';
 import { useSound } from '../../hooks/useSound';
 import { classNoteApi } from '../../lib/classNoteApi';
 import toast from 'react-hot-toast';
@@ -126,7 +128,6 @@ export const StudentsPage = () => {
   const [roundQuickActivityCounts, setRoundQuickActivityCounts] = useState<Record<string, number>>({});
 
   const [showUtilities, setShowUtilities] = useState(false);
-  const [showBulkClassMenu, setShowBulkClassMenu] = useState(false);
 
   // Hook para animación de puntos
   const { effect: pointsEffect, showMultiPointsEffect, hideMultiPointsEffect } = useMultiPointsEffect();
@@ -243,7 +244,7 @@ export const StudentsPage = () => {
     });
   };
 
-  type ApplyBehaviorMode = 'default' | 'round_quick' | 'apply_to_rest';
+  type ApplyBehaviorMode = 'default' | 'round_quick' | 'apply_to_rest' | 'row_quick';
   type ApplyBehaviorPayload = {
     behaviorId: string;
     studentIds: string[];
@@ -251,11 +252,55 @@ export const StudentsPage = () => {
     multiplier?: number;
   };
 
+  // Deshace una aplicación completa: revierte el registro de cada alumno (el servidor revierte
+  // juntos XP, HP y oro de ese registro).
+  const undoAppliedBehavior = async (result: ApplyResult) => {
+    const entryIds = result.results
+      .map((studentResult) => studentResult.pointLogEntryId)
+      .filter((id): id is string => Boolean(id));
+    if (entryIds.length === 0) {
+      toast.error('No se pudo identificar lo aplicado para deshacerlo');
+      return;
+    }
+
+    const toastId = toast.loading('Deshaciendo...');
+    const outcomes = await Promise.allSettled(entryIds.map((id) => historyApi.revertEntry('POINTS', id)));
+    const failed = outcomes.filter((outcome) => outcome.status === 'rejected').length;
+    queryClient.invalidateQueries({ queryKey: ['classroom', classroom.id] });
+    queryClient.invalidateQueries({ queryKey: ['history-today', classroom.id] });
+    if (failed === 0) {
+      toast.success(`Deshecho: ${result.behavior.name}`, { id: toastId });
+    } else {
+      toast.error(`No se pudo deshacer en ${failed} de ${entryIds.length} estudiante(s)`, { id: toastId });
+    }
+  };
+
+  const showUndoableToast = (message: string, result: ApplyResult, toastId?: string) => {
+    toast.success(
+      (t) => (
+        <span className="flex items-center gap-3">
+          <span>{message}</span>
+          <button
+            type="button"
+            onClick={() => {
+              toast.dismiss(t.id);
+              void undoAppliedBehavior(result);
+            }}
+            className="shrink-0 min-h-[36px] rounded-lg border border-white/40 px-3 text-sm font-semibold text-white hover:bg-white/15"
+          >
+            Deshacer
+          </button>
+        </span>
+      ),
+      { id: toastId, duration: 8000 },
+    );
+  };
+
   const applyBehaviorMutation = useMutation({
     mutationFn: ({ mode, ...payload }: ApplyBehaviorPayload) => behaviorApi.apply(payload),
     onMutate: (variables) => {
       const mode = variables.mode || 'default';
-      if (mode === 'round_quick') return {};
+      if (mode === 'round_quick' || mode === 'row_quick') return {};
 
       const behaviorName = behaviors?.find((behavior) => behavior.id === variables.behaviorId)?.name || 'comportamiento';
       const studentCount = variables.studentIds.length;
@@ -360,12 +405,10 @@ export const StudentsPage = () => {
           });
         }
       } else {
-        const successMessage = `${pointsSummary ? pointsSummary + ' aplicado' : 'Aplicado'} — ${beh.name}`;
-        if (context?.toastId) {
-          toast.success(successMessage, { id: context.toastId, duration: 2500 });
-        } else {
-          toast.success(successMessage, { duration: 2500 });
-        }
+        const who = mode === 'row_quick'
+          ? `${result.results[0]?.studentName || 'Estudiante'}: `
+          : result.studentsAffected > 1 ? `${result.studentsAffected} estudiantes: ` : '';
+        showUndoableToast(`${who}${pointsSummary || 'Aplicado'} — ${beh.name}`, result, context?.toastId);
       }
       
       if (!isRoundQuick) {
@@ -441,7 +484,6 @@ export const StudentsPage = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['classroom', classroom.id] });
       setSelectedStudents(new Set());
-      setShowBulkClassMenu(false);
       toast.success('Clase asignada correctamente');
     },
     onError: () => {
@@ -559,13 +601,15 @@ export const StudentsPage = () => {
   }).sort((a, b) => getDisplayName(a).localeCompare(getDisplayName(b), 'es'));
 
   const toggleStudent = (studentId: string) => {
-    const newSelected = new Set(selectedStudents);
-    if (newSelected.has(studentId)) {
-      newSelected.delete(studentId);
-    } else {
-      newSelected.add(studentId);
-    }
-    setSelectedStudents(newSelected);
+    setSelectedStudents((current) => {
+      const newSelected = new Set(current);
+      if (newSelected.has(studentId)) {
+        newSelected.delete(studentId);
+      } else {
+        newSelected.add(studentId);
+      }
+      return newSelected;
+    });
   };
 
   const selectAll = () => {
@@ -604,6 +648,8 @@ export const StudentsPage = () => {
   const positiveBehaviors = behaviors?.filter((b) => b.isPositive) || [];
   const negativeBehaviors = behaviors?.filter((b) => !b.isPositive) || [];
   const availableNegativeRoundBehaviors = classroom.allowNegativePoints === false ? [] : negativeBehaviors;
+  const allowNegativePoints = classroom.allowNegativePoints !== false;
+  const quickBehaviors = useQuickBehaviors(classroom.id, positiveBehaviors, negativeBehaviors);
   const hasRoundBehaviors = positiveBehaviors.length > 0 || availableNegativeRoundBehaviors.length > 0;
   const roundStorageKey = `students-active-round:${classroom.id}`;
 
@@ -1028,7 +1074,7 @@ export const StudentsPage = () => {
   }
 
   return (
-    <div className="space-y-5">
+    <div className={`space-y-5 ${(viewMode === 'list' || viewMode === 'clans') && selectedStudents.size > 0 ? 'pb-24' : ''}`}>
       {/* Animación de puntos */}
       <MultiPointsAnimation
         show={pointsEffect.show}
@@ -1052,98 +1098,6 @@ export const StudentsPage = () => {
       <div className="bg-white dark:bg-gray-800 rounded-xl px-3 sm:px-4 py-2.5 border border-gray-200 dark:border-gray-700 shadow-sm">
         <div className="flex flex-wrap items-center gap-2.5">
           <div className="flex flex-wrap items-center gap-2 min-w-0 xl:flex-1">
-          {/* Acciones masivas - En vista lista y clanes, ocultas en móvil */}
-          {(viewMode === 'list' || viewMode === 'clans') && students.length > 0 && (
-            <div className="hidden sm:flex items-center gap-2 flex-wrap">
-              {/* Seleccionar todos */}
-              <button
-                onClick={selectAll}
-                className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium flex items-center gap-1.5"
-              >
-                <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
-                  selectedStudents.size === students.length && students.length > 0 ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300 dark:border-gray-500'
-                }`}>
-                  {selectedStudents.size === students.length && students.length > 0 && <Check size={10} className="text-white" />}
-                </div>
-                <span className="hidden md:inline">{selectedStudents.size > 0 ? `${selectedStudents.size}` : 'Todos'}</span>
-              </button>
-
-              {/* Botones de acción - Solo iconos en pantallas pequeñas */}
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => openBehaviorModal('positive')}
-                disabled={selectedStudents.size === 0}
-                className="!bg-green-500 hover:!bg-green-600 !text-white text-xs px-2 py-1.5"
-              >
-                <Zap size={14} />
-                <span className="hidden lg:inline ml-1">Dar puntos</span>
-              </Button>
-              {classroom.allowNegativePoints !== false && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => openBehaviorModal('negative')}
-                  disabled={selectedStudents.size === 0}
-                  className="!bg-red-500 hover:!bg-red-600 !text-white text-xs px-2 py-1.5"
-                >
-                  <Zap size={14} />
-                  <span className="hidden lg:inline ml-1">Quitar</span>
-                </Button>
-              )}
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setShowBadgeModal(true)}
-                disabled={selectedStudents.size === 0}
-                className="!bg-amber-500 hover:!bg-amber-600 !text-white text-xs px-2 py-1.5"
-              >
-                <Medal size={14} />
-                <span className="hidden lg:inline ml-1">Insignia</span>
-              </Button>
-
-              {/* Botón de Clase masiva */}
-              <div className="relative">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setShowBulkClassMenu(!showBulkClassMenu)}
-                  disabled={selectedStudents.size === 0}
-                  className="!bg-purple-500 hover:!bg-purple-600 !text-white text-xs px-2 py-1.5"
-                >
-                  <Swords size={14} />
-                  <span className="hidden lg:inline ml-1">Clase</span>
-                  <ChevronDown size={12} className="ml-0.5" />
-                </Button>
-                {showBulkClassMenu && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setShowBulkClassMenu(false)} />
-                    <div className="absolute top-full left-0 mt-1 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50 py-1">
-                      <button
-                        onClick={() => bulkAssignClassMutation.mutate({ characterClassId: null })}
-                        className="w-full text-left px-3 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
-                      >
-                        <X size={14} />
-                        Sin clase
-                      </button>
-                      <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
-                      {characterClasses.filter(c => c.isActive !== false).map(cc => (
-                        <button
-                          key={cc.id}
-                          onClick={() => bulkAssignClassMutation.mutate({ characterClassId: cc.id! })}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
-                        >
-                          <span>{cc.icon}</span>
-                          <span className="dark:text-gray-200">{cc.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-
           {/* Controles de ronda rápida */}
           {viewMode === 'list' && hasRoundBehaviors && (
             <div className="hidden md:flex items-center min-w-0">
@@ -1161,7 +1115,7 @@ export const StudentsPage = () => {
                   {showRoundBehaviorPicker && (
                     <>
                       <div className="fixed inset-0 z-40" onClick={() => setShowRoundBehaviorPicker(false)} />
-                      <div className="absolute top-full right-0 mt-1 w-72 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 z-50 p-2">
+                      <div className="absolute top-full left-0 mt-1 w-72 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 z-50 p-2">
                         <p className="px-2 py-1 text-[11px] font-semibold text-gray-500 uppercase tracking-wide">
                           Elegir comportamiento de ronda
                         </p>
@@ -1802,6 +1756,19 @@ export const StudentsPage = () => {
                       </div>
                     )}
                   </div>
+                  {!activeRound && (
+                    <div className="ml-auto">
+                      <QuickBehaviorPicker
+                        positives={positiveBehaviors}
+                        negatives={negativeBehaviors}
+                        positive={quickBehaviors.positive}
+                        negative={quickBehaviors.negative}
+                        allowNegative={allowNegativePoints}
+                        onPositiveChange={quickBehaviors.setPositiveId}
+                        onNegativeChange={quickBehaviors.setNegativeId}
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -2031,18 +1998,34 @@ export const StudentsPage = () => {
                           </td>
                         )}
 
-                        {/* Acciones */}
+                        {/* Acciones: +/− rápidos (fuera de ronda) y perfil */}
                         <td className="px-4 py-3 text-center">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              navigate(`/classroom/${classroom.id}/student/${student.id}`);
-                            }}
-                            className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-700 text-sm font-medium"
-                          >
-                            <Eye size={14} />
-                            Ver perfil
-                          </button>
+                          <div className="inline-flex items-center gap-2">
+                            {!activeRound && (
+                              <QuickPointButtons
+                                studentName={getDisplayName(student)}
+                                positive={quickBehaviors.positive}
+                                negative={quickBehaviors.negative}
+                                allowNegative={allowNegativePoints}
+                                disabled={applyBehaviorMutation.isPending}
+                                onApply={(behavior) => applyBehaviorMutation.mutate({
+                                  behaviorId: behavior.id,
+                                  studentIds: [student.id],
+                                  mode: 'row_quick',
+                                })}
+                              />
+                            )}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/classroom/${classroom.id}/student/${student.id}`);
+                              }}
+                              className="inline-flex items-center gap-1 min-h-[36px] px-2 rounded-lg text-primary-700 dark:text-primary-300 hover:bg-primary-50 dark:hover:bg-primary-900/30 text-sm font-medium"
+                            >
+                              <Eye size={14} aria-hidden="true" />
+                              Perfil
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -2241,6 +2224,20 @@ export const StudentsPage = () => {
         </>
       )}
 
+      {/* Acciones para la selección: fijas al pie mientras haya alumnos seleccionados */}
+      {(viewMode === 'list' || viewMode === 'clans') && (
+        <SelectionActionBar
+          count={selectedStudents.size}
+          allowNegative={allowNegativePoints}
+          characterClasses={characterClasses}
+          onGive={() => openBehaviorModal('positive')}
+          onRemove={() => openBehaviorModal('negative')}
+          onBadge={() => setShowBadgeModal(true)}
+          onAssignClass={(characterClassId) => bulkAssignClassMutation.mutate({ characterClassId })}
+          onClear={() => setSelectedStudents(new Set())}
+        />
+      )}
+
       {/* Modal de puntos con tabs */}
       <PointsModal
         isOpen={showBehaviorModal}
@@ -2251,7 +2248,7 @@ export const StudentsPage = () => {
           const s = allStudents.find(st => st.id === id);
           return s ? getDisplayName(s) : 'Estudiante';
         })}
-        behaviors={behaviorType === 'positive' ? positiveBehaviors : negativeBehaviors}
+        behaviors={allowNegativePoints ? (behaviors || []) : positiveBehaviors}
         onApplyBehavior={applyBehavior}
         classroom={classroom}
         onApplyManual={async (pointType, amount, reason, competencyId) => {

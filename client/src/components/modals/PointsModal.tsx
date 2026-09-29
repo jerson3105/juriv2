@@ -6,8 +6,6 @@ import {
   Heart,
   Coins,
   X,
-  Zap,
-  Users,
   Award,
   Settings,
   Target,
@@ -17,6 +15,7 @@ import { Input } from '../ui/Input';
 import { behaviorApi, type Behavior } from '../../lib/behaviorApi';
 import { type Classroom } from '../../lib/classroomApi';
 import { type PointType } from '../../lib/studentApi';
+import { getBehaviorRewards } from '../../lib/behaviorPoints';
 import { useClassroomCompetencies } from '../../hooks/useClassroomCompetencies';
 
 export { behaviorApi, type Behavior };
@@ -36,6 +35,16 @@ interface PointsModalProps {
   classroom: Classroom;
 }
 
+const MULTIPLIERS = [1, 0.5, 0.25, 0.125];
+
+const rewardPillClass: Record<'XP' | 'HP' | 'GP', string> = {
+  XP: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200',
+  HP: 'bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-200',
+  GP: 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200',
+};
+
+// Un toque en un comportamiento lo aplica con el puntaje elegido arriba (antes: elegir + confirmar).
+// Si la lista trae positivos y negativos, se muestran en dos secciones; primero la del botón que abrió.
 export const PointsModal = ({
   isOpen,
   onClose,
@@ -56,7 +65,6 @@ export const PointsModal = ({
   const [manualReason, setManualReason] = useState('');
   const [manualCompetencyId, setManualCompetencyId] = useState<string>('');
   const [manualCompetencyIndicatorId, setManualCompetencyIndicatorId] = useState<string>('');
-  const [selectedBehavior, setSelectedBehavior] = useState<Behavior | null>(null);
   const [behaviorMultiplier, setBehaviorMultiplier] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -66,11 +74,14 @@ export const PointsModal = ({
   );
 
   useEffect(() => {
-    if (!isOpen || (selectedBehavior && !behaviors.some((behavior) => behavior.id === selectedBehavior.id))) {
-      setSelectedBehavior(null);
-      setBehaviorMultiplier(1);
-    }
-  }, [isOpen, behaviors, selectedBehavior]);
+    if (!isOpen) return;
+    setBehaviorMultiplier(1);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, onClose]);
 
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,6 +99,25 @@ export const PointsModal = ({
 
   if (!isOpen) return null;
 
+  const positives = behaviors.filter((behavior) => behavior.isPositive);
+  const negatives = behaviors.filter((behavior) => !behavior.isPositive);
+  const sections = [
+    { key: 'positive', title: 'Positivos', items: positives },
+    { key: 'negative', title: 'Negativos', items: negatives },
+  ].filter((section) => section.items.length > 0);
+  if (!isPositive) sections.reverse();
+
+  const recipients = selectedCount <= 3 && selectedStudentNames.length > 0
+    ? selectedStudentNames.join(', ')
+    : `${selectedCount} estudiantes`;
+
+  const tabClass = (tab: 'behaviors' | 'manual') =>
+    `flex-1 min-h-[44px] text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
+      activeTab === tab
+        ? 'text-primary-700 dark:text-primary-300 border-b-2 border-primary-600 bg-primary-50 dark:bg-primary-900/20'
+        : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+    }`;
+
   return (
     <AnimatePresence>
       <motion.div
@@ -102,81 +132,43 @@ export const PointsModal = ({
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
           onClick={(e) => e.stopPropagation()}
-          className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col md:flex-row"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="points-modal-title"
+          className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col"
         >
-          {/* Panel izquierdo - Jiro */}
-          <div className="hidden md:block md:w-72 flex-shrink-0 relative overflow-hidden">
-            <motion.img
-              src={isPositive ? '/assets/mascot/jiro-puntosfavor.jpg' : '/assets/mascot/jiro-puntoscontra.jpg'}
-              alt="Jiro"
-              className="absolute inset-0 w-full h-full object-cover"
-              initial={{ scale: 1.1, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ duration: 0.4 }}
-            />
-          </div>
-
-          {/* Panel derecho - Contenido */}
-          <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                {isPositive ? <Sparkles className="text-emerald-500" size={24} /> : <Zap className="text-red-500" size={24} />}
+          {/* Header */}
+          <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+            <div className="min-w-0">
+              <h2 id="points-modal-title" className="text-lg font-bold text-gray-900 dark:text-white">
                 {isPositive ? 'Dar puntos' : 'Quitar puntos'}
               </h2>
-              <button
-                onClick={onClose}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500"
-              >
-                <X size={20} />
-              </button>
+              <p className="text-sm text-gray-600 dark:text-gray-300 truncate">
+                Para <span className="font-semibold text-primary-700 dark:text-primary-300">{recipients}</span>
+              </p>
             </div>
+            <button
+              onClick={onClose}
+              aria-label="Cerrar"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500"
+            >
+              <X size={20} aria-hidden="true" />
+            </button>
+          </div>
 
-            {/* Tabs */}
-            <div className="flex border-b border-gray-200 dark:border-gray-700">
-              <button
-                onClick={() => setActiveTab('behaviors')}
-                className={`flex-1 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
-                  activeTab === 'behaviors'
-                    ? isPositive
-                      ? 'text-emerald-600 border-b-2 border-emerald-600 bg-emerald-50 dark:bg-emerald-900/20'
-                      : 'text-red-600 border-b-2 border-red-600 bg-red-50 dark:bg-red-900/20'
-                    : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'
-                }`}
-              >
-                <Award size={16} />
-                Comportamientos
-              </button>
-              <button
-                onClick={() => setActiveTab('manual')}
-                className={`flex-1 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 ${
-                  activeTab === 'manual'
-                    ? isPositive
-                      ? 'text-emerald-600 border-b-2 border-emerald-600 bg-emerald-50 dark:bg-emerald-900/20'
-                      : 'text-red-600 border-b-2 border-red-600 bg-red-50 dark:bg-red-900/20'
-                    : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'
-                }`}
-              >
-                <Settings size={16} />
-                Manual
-              </button>
-            </div>
+          {/* Tabs */}
+          <div className="flex border-b border-gray-200 dark:border-gray-700">
+            <button onClick={() => setActiveTab('behaviors')} className={tabClass('behaviors')}>
+              <Award size={16} aria-hidden="true" />
+              Comportamientos
+            </button>
+            <button onClick={() => setActiveTab('manual')} className={tabClass('manual')}>
+              <Settings size={16} aria-hidden="true" />
+              Manual
+            </button>
+          </div>
 
-            <div className="flex-1 p-5 overflow-y-auto">
-              {/* Destinatario */}
-              <div className="mb-4 p-3 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 rounded-xl">
-                <p className="text-sm font-medium text-violet-700 dark:text-violet-300 flex items-center gap-2">
-                  <Users size={14} />
-                  Aplicar a <span className="font-bold">{selectedCount}</span> estudiante{selectedCount !== 1 ? 's' : ''}
-                  {selectedCount <= 3 && selectedStudentNames.length > 0 && (
-                    <span className="text-violet-500 dark:text-violet-400">— {selectedStudentNames.join(', ')}</span>
-                  )}
-                  {selectedCount > 3 && (
-                    <span className="text-violet-500 dark:text-violet-400">— {selectedCount} seleccionados</span>
-                  )}
-                </p>
-              </div>
-
+          <div className="flex-1 p-5 overflow-y-auto">
               {/* Tab: Comportamientos */}
               {activeTab === 'behaviors' && (
                 <>
@@ -194,76 +186,97 @@ export const PointsModal = ({
                       </Button>
                     </div>
                   ) : (
-                    <div className="space-y-2">
-                      {behaviors.map((behavior) => (
-                        <button
-                          key={behavior.id}
-                          onClick={() => {
-                            setSelectedBehavior(behavior);
-                            setBehaviorMultiplier(1);
-                          }}
-                          disabled={isLoading}
-                          className={`w-full flex items-center justify-between p-4 rounded-xl border-2 transition-all hover:scale-[1.02] active:scale-[0.98] ${selectedBehavior?.id === behavior.id ? (isPositive ? 'border-green-500 bg-green-50 dark:bg-green-900/30' : 'border-red-500 bg-red-50 dark:bg-red-900/30') : 
-                            isPositive
-                              ? 'border-green-200 dark:border-green-800 hover:border-green-400 hover:bg-green-50 dark:hover:bg-green-900/20'
-                              : 'border-red-200 dark:border-red-800 hover:border-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3 flex-1 min-w-0">
-                            <span className="text-2xl flex-shrink-0">{behavior.icon || (isPositive ? '⭐' : '💔')}</span>
-                            <div className="text-left min-w-0 flex-1">
-                              <p className="font-medium text-gray-900 dark:text-white">{behavior.name}</p>
-                              {behavior.description && (
-                                <p className="text-sm text-gray-500 dark:text-gray-400">
-                                  {behavior.description.length > 120 ? behavior.description.slice(0, 120) + '...' : behavior.description}
-                                </p>
-                              )}
-                              {behavior.competency && (
-                                <div className="mt-1 flex items-center gap-1">
-                                  <Award size={11} className="text-violet-500 flex-shrink-0" />
-                                  <span className="text-[10px] text-violet-600 dark:text-violet-400 font-medium truncate">{behavior.competency.name}</span>
-                                </div>
-                              )}
-                              {behavior.competencyIndicator && (
-                                <div className="mt-1 flex items-center gap-1">
-                                  <Target size={11} className="text-sky-500 flex-shrink-0" />
-                                  <span className="text-[10px] text-sky-600 dark:text-sky-400 font-medium truncate">{behavior.competencyIndicator.name}</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            {(() => {
-                              const xp = behavior.xpValue ?? (behavior.pointType === 'XP' ? behavior.pointValue : 0);
-                              const hp = behavior.hpValue ?? (behavior.pointType === 'HP' ? behavior.pointValue : 0);
-                              const gp = behavior.gpValue ?? (behavior.pointType === 'GP' ? behavior.pointValue : 0);
-                              const sign = isPositive ? '+' : '-';
-                              const rewards = [];
-                              if (xp > 0) rewards.push(<span key="xp" className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300">{sign}{xp} XP</span>);
-                              if (hp > 0) rewards.push(<span key="hp" className="px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">{sign}{hp} HP</span>);
-                              if (gp > 0) rewards.push(<span key="gp" className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">{sign}{gp} GP</span>);
-                              return rewards.length > 0 ? rewards : <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-500">0</span>;
-                            })()}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {selectedBehavior && (
-                    <div className="mt-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-3">
-                      <p className="text-sm font-semibold text-gray-800 dark:text-white">Puntaje a otorgar</p>
-                      <div className="mt-2 grid grid-cols-5 gap-2">
-                        {[1, 0.5, 0.25, 0.125].map((multiplier) => (
-                          <button key={multiplier} type="button" onClick={() => setBehaviorMultiplier(multiplier)} className={`min-h-10 rounded-lg text-xs font-semibold ${behaviorMultiplier === multiplier ? (isPositive ? 'bg-green-500 text-white' : 'bg-red-500 text-white') : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700'}`}>
+                    <>
+                      <div className="mb-4 flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Puntaje</span>
+                        {MULTIPLIERS.map((multiplier) => (
+                          <button
+                            key={multiplier}
+                            type="button"
+                            onClick={() => setBehaviorMultiplier(multiplier)}
+                            aria-pressed={behaviorMultiplier === multiplier}
+                            className={`min-h-[36px] min-w-[48px] px-2 rounded-lg text-sm font-semibold ${
+                              behaviorMultiplier === multiplier
+                                ? 'bg-primary-600 text-white'
+                                : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
+                            }`}
+                          >
                             {multiplier === 1 ? '1x' : `1/${1 / multiplier}`}
                           </button>
                         ))}
-                        <input type="number" min="0.01" max="10" step="0.01" value={behaviorMultiplier} onChange={(event) => setBehaviorMultiplier(Math.max(0.01, Number(event.target.value) || 1))} aria-label="Multiplicador personalizado" className="min-w-0 rounded-lg border border-gray-200 bg-white px-2 text-center text-xs font-semibold text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200" />
+                        <input
+                          type="number"
+                          min="0.01"
+                          max="10"
+                          step="0.01"
+                          value={behaviorMultiplier}
+                          onChange={(event) => setBehaviorMultiplier(Math.min(10, Math.max(0.01, Number(event.target.value) || 1)))}
+                          aria-label="Multiplicador personalizado"
+                          title="Multiplicador personalizado"
+                          className="min-h-[36px] w-20 rounded-lg border border-gray-300 bg-white px-2 text-center text-sm font-semibold text-gray-700 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+                        />
+                        <span className="w-full text-xs text-gray-600 dark:text-gray-400">Toca un comportamiento para aplicarlo.</span>
                       </div>
-                      <Button type="button" onClick={() => onApplyBehavior(selectedBehavior, behaviorMultiplier)} disabled={isLoading} className={`mt-3 w-full ${isPositive ? '!bg-green-500 hover:!bg-green-600' : '!bg-red-500 hover:!bg-red-600'}`}>
-                        {isPositive ? 'Aplicar' : 'Quitar'} {Math.max(1, Math.round((selectedBehavior.xpValue || selectedBehavior.hpValue || selectedBehavior.gpValue || selectedBehavior.pointValue) * behaviorMultiplier))} puntos
-                      </Button>
-                    </div>
+
+                      <div className="space-y-5">
+                        {sections.map((section) => (
+                          <section key={section.key} aria-label={section.title}>
+                            {sections.length > 1 && (
+                              <h3 className={`mb-2 text-xs font-bold uppercase tracking-wide ${section.key === 'positive' ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
+                                {section.title}
+                              </h3>
+                            )}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {section.items.map((behavior) => {
+                                const rewards = getBehaviorRewards(behavior, behaviorMultiplier);
+                                const sign = behavior.isPositive ? '+' : '−';
+                                return (
+                                  <button
+                                    key={behavior.id}
+                                    type="button"
+                                    onClick={() => onApplyBehavior(behavior, behaviorMultiplier)}
+                                    disabled={isLoading}
+                                    className={`w-full min-h-[56px] flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border-2 text-left transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
+                                      behavior.isPositive
+                                        ? 'border-emerald-200 dark:border-emerald-800 hover:border-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'
+                                        : 'border-red-200 dark:border-red-800 hover:border-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'
+                                    }`}
+                                  >
+                                    <span className="flex items-center gap-2.5 min-w-0">
+                                      <span className="text-2xl flex-shrink-0" aria-hidden="true">{behavior.icon || (behavior.isPositive ? '⭐' : '💔')}</span>
+                                      <span className="min-w-0">
+                                        <span className="block font-medium text-gray-900 dark:text-white truncate">{behavior.name}</span>
+                                        {behavior.competency && (
+                                          <span className="mt-0.5 flex items-center gap-1 text-xs text-violet-700 dark:text-violet-300 truncate">
+                                            <Award size={11} className="flex-shrink-0" aria-hidden="true" />
+                                            {behavior.competency.name}
+                                          </span>
+                                        )}
+                                        {behavior.competencyIndicator && (
+                                          <span className="mt-0.5 flex items-center gap-1 text-xs text-sky-700 dark:text-sky-300 truncate">
+                                            <Target size={11} className="flex-shrink-0" aria-hidden="true" />
+                                            {behavior.competencyIndicator.name}
+                                          </span>
+                                        )}
+                                      </span>
+                                    </span>
+                                    <span className="flex flex-col items-end gap-1 flex-shrink-0">
+                                      {rewards.length > 0 ? rewards.map((reward) => (
+                                        <span key={reward.type} className={`px-2 py-0.5 rounded-full text-xs font-bold ${rewardPillClass[reward.type]}`}>
+                                          {sign}{reward.amount} {reward.type}
+                                        </span>
+                                      )) : (
+                                        <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-600">0</span>
+                                      )}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </section>
+                        ))}
+                      </div>
+                    </>
                   )}
                 </>
               )}
@@ -398,7 +411,6 @@ export const PointsModal = ({
                   </form>
                 </div>
               )}
-            </div>
           </div>
         </motion.div>
       </motion.div>
