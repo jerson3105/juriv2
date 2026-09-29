@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { behaviorService } from '../services/behavior.service.js';
 import { z } from 'zod';
-import { GoogleGenAI } from '@google/genai';
+import { createGenAI } from '../utils/aiClient.js';
 import { requireClassroomTeacher, requireResourceTeacher, classroomIdOfBehavior } from '../utils/access.js';
 
 const createBehaviorSchema = z.object({
@@ -351,7 +351,7 @@ Genera comportamientos variados y útiles:`;
         });
       }
 
-      const ai = new GoogleGenAI({ apiKey });
+      const ai = createGenAI(apiKey);
 
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-lite',

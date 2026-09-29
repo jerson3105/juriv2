@@ -26,6 +26,7 @@ import bcrypt from 'bcryptjs';
 import { gradeService } from './grade.service.js';
 import { generateRandomCode } from '../utils/helpers.js';
 import { teacherOwnsClassroom } from '../utils/access.js';
+import { createGenAI } from '../utils/aiClient.js';
 
 // Marcador que sustituye al nombre del menor en los prompts enviados a la IA (minimización de datos).
 const STUDENT_PLACEHOLDER = '[ESTUDIANTE]';
@@ -1338,14 +1339,13 @@ class ParentService {
     weeklyHighlights: string[];
   }> {
     try {
-      const { GoogleGenAI } = await import('@google/genai');
       const apiKey = process.env.GEMINI_API_KEY;
       
       if (!apiKey) {
         return this.generateFallbackReport(reportData, usesCompetencies);
       }
 
-      const ai = new GoogleGenAI({ apiKey });
+      const ai = createGenAI(apiKey);
 
       // Construir contexto rico
       const gradeInfo = usesCompetencies && reportData.grades.list.length > 0

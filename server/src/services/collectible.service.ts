@@ -1,4 +1,5 @@
-import { GoogleGenAI } from '@google/genai';
+import type { GoogleGenAI } from '@google/genai';
+import { createGenAI } from '../utils/aiClient.js';
 import { db } from '../db/index.js';
 import { 
   collectibleAlbums, 
@@ -82,7 +83,7 @@ class CollectibleService {
       if (!apiKey) {
         throw new Error('GEMINI_API_KEY no configurada');
       }
-      this.ai = new GoogleGenAI({ apiKey });
+      this.ai = createGenAI(apiKey);
     }
     return this.ai;
   }

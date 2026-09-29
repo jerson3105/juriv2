@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { shopService } from '../services/shop.service.js';
 import { requireResourceTeacher, classroomIdOfItemUsage } from '../utils/access.js';
-import { GoogleGenAI } from '@google/genai';
+import { createGenAI } from '../utils/aiClient.js';
 
 // Schemas de validación
 const createItemSchema = z.object({
@@ -627,7 +627,7 @@ Genera items variados y atractivos:`;
         });
       }
 
-      const ai = new GoogleGenAI({ apiKey });
+      const ai = createGenAI(apiKey);
 
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-lite',

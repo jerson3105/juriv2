@@ -5,7 +5,7 @@ import { db } from '../db/index.js';
 import { curriculumAreas, curriculumCompetencies, studentProfiles } from '../db/schema.js';
 import { eq, and, or, isNull } from 'drizzle-orm';
 import { z } from 'zod';
-import { GoogleGenAI } from '@google/genai';
+import { createGenAI } from '../utils/aiClient.js';
 
 const AI_CLASSROOM_SUBJECTS = [
   'matematicas',
@@ -421,7 +421,7 @@ export class ClassroomController {
         : [...(onboardingRecord.unlockedFeatures || [])];
       const lockedFeatures = onboardingService.getLockedFeatures(unlockedFeatures);
 
-      const ai = new GoogleGenAI({ apiKey });
+      const ai = createGenAI(apiKey);
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-lite',
         contents: `Eres Jiro, la mascota y guía pedagógica de Juried. Tu trabajo es acompañar a un profesor a crear su clase con una propuesta inicial clara, accionable y cálida.
@@ -1705,7 +1705,7 @@ REGLAS:
           });
       }
 
-      const ai = new GoogleGenAI({ apiKey });
+      const ai = createGenAI(apiKey);
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-lite',
         contents: prompt,
