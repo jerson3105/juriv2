@@ -103,7 +103,8 @@ export class ShopService {
       icon,
       effectType: data.effectType || null,
       effectValue: data.effectValue || null,
-      stock: data.stock || null,
+      // 0 es "agotado", no "ilimitado".
+      stock: data.stock ?? null,
       isActive: true,
       createdAt: now,
       updatedAt: now,
@@ -121,15 +122,15 @@ export class ShopService {
     itemId: string,
     data: Partial<{
       name: string;
-      description: string;
+      description: string | null;
       category: 'AVATAR' | 'ACCESSORY' | 'CONSUMABLE' | 'SPECIAL';
       rarity: ItemRarity;
       price: number;
-      imageUrl: string;
+      imageUrl: string | null;
       icon: string;
       effectType: string;
       effectValue: number;
-      stock: number;
+      stock: number | null;
       isActive: boolean;
     }>
   ): Promise<ShopItem> {
@@ -205,8 +206,8 @@ export class ShopService {
       return { success: false, message: 'Clase no encontrada' };
     }
 
-    // Verificar si la tienda está habilitada
-    if (!classroom.shopEnabled) {
+    // Verificar si la tienda está habilitada (el profesor puede dar artículos aunque esté cerrada)
+    if (!classroom.shopEnabled && data.purchaseType !== 'TEACHER') {
       return { success: false, message: 'La tienda no está habilitada para esta clase' };
     }
 
@@ -298,6 +299,20 @@ export class ShopService {
         giftMessage: data.giftMessage || null,
         purchasedAt: now,
       });
+
+      // Aviso al profesor: si no, solo se entera entrando a la tienda.
+      try {
+        await createNotification({
+          userId: classroom.teacherId,
+          classroomId: classroom.id,
+          type: 'ANNOUNCEMENT',
+          title: '🛒 Compra por aprobar',
+          message: `${student.characterName || 'Un estudiante'} quiere comprar "${item.name}" (${totalPrice} GP)`,
+          data: { purchaseId, studentId: data.studentId, itemId: item.id, kind: 'PURCHASE_PENDING' },
+        });
+      } catch (notifError) {
+        console.error('Error creating purchase notification:', notifError);
+      }
     } else {
       try {
       await db.transaction(async (tx) => {
@@ -454,11 +469,14 @@ export class ShopService {
         student: {
           id: studentProfiles.id,
           characterName: studentProfiles.characterName,
+          gp: studentProfiles.gp,
         },
         item: {
           id: shopItems.id,
           name: shopItems.name,
           icon: shopItems.icon,
+          imageUrl: shopItems.imageUrl,
+          rarity: shopItems.rarity,
           price: shopItems.price,
         },
       })
@@ -944,19 +962,155 @@ export class ShopService {
       return { success: false, message: 'Este uso ya fue revisado' };
     }
 
-    await db
-      .update(itemUsages)
-      .set({
-        status,
-        reviewedAt: new Date(),
-        reviewedBy: teacherId,
-      })
-      .where(eq(itemUsages.id, usageId));
+    try {
+      await db.transaction(async (tx) => {
+        // Solo una revisión puede pasar de PENDING (evita doble aprobación/rechazo simultáneo).
+        const claim = await tx
+          .update(itemUsages)
+          .set({ status, reviewedAt: new Date(), reviewedBy: teacherId })
+          .where(and(eq(itemUsages.id, usageId), eq(itemUsages.status, 'PENDING')));
+        if (affectedRows(claim) !== 1) {
+          throw new PurchaseRejected('Este uso ya fue revisado');
+        }
 
-    return { 
-      success: true, 
-      message: status === 'APPROVED' ? 'Uso aprobado' : 'Uso rechazado' 
+        // Rechazado: la unidad se descontó al pedir el uso; se le devuelve al estudiante.
+        if (status === 'REJECTED') {
+          await tx
+            .update(purchases)
+            .set({ usedQuantity: sql`GREATEST(COALESCE(${purchases.usedQuantity}, 0) - 1, 0)` })
+            .where(eq(purchases.id, usage.purchaseId));
+        }
+      });
+    } catch (error) {
+      if (error instanceof PurchaseRejected) {
+        return { success: false, message: error.message };
+      }
+      throw error;
+    }
+
+    // Avisar al estudiante del resultado
+    try {
+      const [student] = await db.select({ userId: studentProfiles.userId }).from(studentProfiles).where(eq(studentProfiles.id, usage.studentId));
+      const item = await this.getItemById(usage.itemId);
+      if (student?.userId) {
+        await createNotification({
+          userId: student.userId,
+          classroomId: usage.classroomId,
+          type: status === 'APPROVED' ? 'PURCHASE_APPROVED' : 'PURCHASE_REJECTED',
+          title: status === 'APPROVED' ? '✅ Uso aprobado' : 'Uso no aprobado',
+          message: status === 'APPROVED'
+            ? `Tu profesor aprobó el uso de "${item?.name ?? 'tu artículo'}"`
+            : `Tu profesor no aprobó el uso de "${item?.name ?? 'tu artículo'}". Lo conservas para otra ocasión.`,
+        });
+      }
+    } catch (notifError) {
+      console.error('Error notifying usage review:', notifError);
+    }
+
+    return {
+      success: true,
+      message: status === 'APPROVED' ? 'Uso aprobado' : 'Uso rechazado: se le devolvió el artículo'
     };
+  }
+
+  // ==================== PROFESOR: DAR, DESHACER E INVENTARIO ====================
+
+  // Da un artículo a varios estudiantes (gratis); cada uno queda en su propia compra para poder deshacerla.
+  async giveToStudents(itemId: string, studentIds: string[], quantity = 1): Promise<{
+    given: { studentId: string; purchaseId: string }[];
+    failed: { studentId: string; message: string }[];
+  }> {
+    const given: { studentId: string; purchaseId: string }[] = [];
+    const failed: { studentId: string; message: string }[] = [];
+    for (const studentId of studentIds) {
+      try {
+        const result = await this.teacherPurchaseForStudent({ studentId, itemId, quantity });
+        if (result.success && result.purchase?.id) given.push({ studentId, purchaseId: result.purchase.id });
+        else failed.push({ studentId, message: result.message });
+      } catch {
+        failed.push({ studentId, message: 'No se pudo dar el artículo' });
+      }
+    }
+    return { given, failed };
+  }
+
+  // Deshace un artículo dado por el profesor mientras no se haya usado (devuelve el stock).
+  async undoTeacherGift(purchaseId: string, teacherId: string): Promise<{ success: boolean; message: string }> {
+    try {
+      await db.transaction(async (tx) => {
+        const [purchase] = await tx.select().from(purchases).where(eq(purchases.id, purchaseId)).for('update');
+        if (!purchase || purchase.purchaseType !== 'TEACHER') throw new PurchaseRejected('Entrega no encontrada');
+        const [student] = await tx.select({ classroomId: studentProfiles.classroomId }).from(studentProfiles).where(eq(studentProfiles.id, purchase.studentId));
+        if (!student || !(await teacherOwnsClassroom(teacherId, student.classroomId))) throw new PurchaseRejected('Entrega no encontrada');
+        if ((purchase.usedQuantity || 0) > 0) throw new PurchaseRejected('El estudiante ya usó este artículo');
+
+        await tx.delete(purchases).where(eq(purchases.id, purchaseId));
+        await tx
+          .update(shopItems)
+          .set({ stock: sql`${shopItems.stock} + ${purchase.quantity}`, updatedAt: new Date() })
+          .where(and(eq(shopItems.id, purchase.itemId), sql`${shopItems.stock} IS NOT NULL`));
+      });
+    } catch (error) {
+      if (error instanceof PurchaseRejected) return { success: false, message: error.message };
+      throw error;
+    }
+    return { success: true, message: 'Entrega deshecha' };
+  }
+
+  // Quién tiene qué (compras aprobadas) y el historial reciente de usos de la clase.
+  async getClassroomInventory(classroomId: string) {
+    const owned = await db
+      .select({
+        purchaseId: purchases.id,
+        quantity: purchases.quantity,
+        usedQuantity: purchases.usedQuantity,
+        purchaseType: purchases.purchaseType,
+        purchasedAt: purchases.purchasedAt,
+        student: {
+          id: studentProfiles.id,
+          characterName: studentProfiles.characterName,
+        },
+        item: {
+          id: shopItems.id,
+          name: shopItems.name,
+          icon: shopItems.icon,
+          imageUrl: shopItems.imageUrl,
+          rarity: shopItems.rarity,
+          category: shopItems.category,
+        },
+      })
+      .from(purchases)
+      .innerJoin(studentProfiles, eq(purchases.studentId, studentProfiles.id))
+      .innerJoin(shopItems, eq(purchases.itemId, shopItems.id))
+      .where(and(eq(studentProfiles.classroomId, classroomId), eq(purchases.status, 'APPROVED')))
+      .orderBy(desc(purchases.purchasedAt));
+
+    const usages = await db
+      .select({
+        id: itemUsages.id,
+        status: itemUsages.status,
+        usedAt: itemUsages.usedAt,
+        reviewedAt: itemUsages.reviewedAt,
+        student: {
+          id: studentProfiles.id,
+          characterName: studentProfiles.characterName,
+        },
+        item: {
+          id: shopItems.id,
+          name: shopItems.name,
+          icon: shopItems.icon,
+          imageUrl: shopItems.imageUrl,
+          rarity: shopItems.rarity,
+        },
+      })
+      .from(itemUsages)
+      .innerJoin(studentProfiles, eq(itemUsages.studentId, studentProfiles.id))
+      .innerJoin(shopItems, eq(itemUsages.itemId, shopItems.id))
+      .where(eq(itemUsages.classroomId, classroomId))
+      .orderBy(desc(itemUsages.usedAt))
+      .limit(100);
+
+    return { owned, usages };
   }
 
   // ==================== NOTIFICACIONES ====================

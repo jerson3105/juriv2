@@ -507,3 +507,25 @@
 .badge-shine-auto .badge-shine-band { animation: badge-shine 3.8s ease-in-out infinite; }
 .group:hover .badge-shine-band { animation: badge-shine 1.1s ease-out 1; }
 .badge-twinkle { animation: badge-twinkle 2.4s ease-in-out infinite; }
+
+/* ── Tienda: vitrina (el artículo flota sobre un pedestal, etiqueta de precio que se balancea) ── */
+@keyframes shop-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+@keyframes shop-shadow {
+  0%, 100% { transform: scaleX(1); opacity: 0.35; }
+  50% { transform: scaleX(0.8); opacity: 0.2; }
+}
+@keyframes shop-swing {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-6deg); }
+  75% { transform: rotate(5deg); }
+}
+@keyframes shop-rays {
+  to { transform: rotate(360deg); }
+}
+.shop-bob { animation: shop-bob 3.2s ease-in-out infinite; }
+.shop-shadow { animation: shop-shadow 3.2s ease-in-out infinite; }
+.shop-rays { animation: shop-rays 14s linear infinite; }
+.group:hover .shop-swing { animation: shop-swing 0.9s ease-in-out 1; transform-origin: 50% 0; }

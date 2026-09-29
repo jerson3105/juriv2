@@ -5,33 +5,46 @@ import { requireResourceTeacher, classroomIdOfItemUsage } from '../utils/access.
 import { createGenAI } from '../utils/aiClient.js';
 
 // Schemas de validación
+// Solo imágenes subidas a la plataforma (POST /shop/upload-image): nada de URLs externas ni base64.
+const itemImageSchema = z.string().regex(/^\/api\/uploads\/shop-items\/[\w.-]+$/, 'Imagen no válida');
+const priceSchema = z.number().int().min(0, 'El precio no puede ser negativo').max(100000, 'El precio es demasiado alto');
+const stockSchema = z.number().int().min(0, 'El stock no puede ser negativo').max(100000);
+
 const createItemSchema = z.object({
   classroomId: z.string().uuid(),
-  name: z.string().min(1).max(255),
-  description: z.string().optional(),
+  name: z.string().trim().min(1, 'Escribe un nombre').max(100, 'El nombre es demasiado largo'),
+  description: z.string().trim().max(500).optional(),
   category: z.enum(['AVATAR', 'ACCESSORY', 'CONSUMABLE', 'SPECIAL']),
   rarity: z.enum(['COMMON', 'RARE', 'LEGENDARY']),
-  price: z.number().int().min(0),
-  imageUrl: z.string().url().optional(),
-  icon: z.string().optional(),
-  effectType: z.string().optional(),
+  price: priceSchema,
+  imageUrl: itemImageSchema.optional(),
+  icon: z.string().max(50).optional(),
+  effectType: z.string().max(50).optional(),
   effectValue: z.number().int().optional(),
-  stock: z.number().int().min(0).optional(),
+  stock: stockSchema.optional(),
 });
 
 const updateItemSchema = z.object({
-  name: z.string().min(1).max(255).optional(),
-  description: z.string().optional(),
+  name: z.string().trim().min(1, 'Escribe un nombre').max(100, 'El nombre es demasiado largo').optional(),
+  description: z.string().trim().max(500).nullable().optional(),
   category: z.enum(['AVATAR', 'ACCESSORY', 'CONSUMABLE', 'SPECIAL']).optional(),
   rarity: z.enum(['COMMON', 'RARE', 'LEGENDARY']).optional(),
-  price: z.number().int().min(0).optional(),
-  imageUrl: z.string().url().optional(),
-  icon: z.string().optional(),
-  effectType: z.string().optional(),
+  price: priceSchema.optional(),
+  imageUrl: itemImageSchema.nullable().optional(),
+  icon: z.string().max(50).optional(),
+  effectType: z.string().max(50).optional(),
   effectValue: z.number().int().optional(),
-  stock: z.number().int().min(0).optional(),
+  stock: stockSchema.nullable().optional(),
   isActive: z.boolean().optional(),
 });
+
+const giveBulkSchema = z.object({
+  itemId: z.string().uuid(),
+  studentIds: z.array(z.string().uuid()).min(1).max(200),
+  quantity: z.number().int().min(1).max(20).default(1),
+});
+
+const firstZodMessage = (error: z.ZodError) => error.errors[0]?.message || 'Datos inválidos';
 
 const purchaseSchema = z.object({
   itemId: z.string().uuid(),
@@ -126,7 +139,7 @@ export class ShopController {
       res.status(201).json(item);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: 'Datos inválidos', errors: error.errors });
+        return res.status(400).json({ message: firstZodMessage(error), errors: error.errors });
       }
       console.error('Error creating item:', error);
       res.status(500).json({ message: 'Error al crear el artículo' });
@@ -154,7 +167,7 @@ export class ShopController {
       res.json(item);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: 'Datos inválidos', errors: error.errors });
+        return res.status(400).json({ message: firstZodMessage(error), errors: error.errors });
       }
       console.error('Error updating item:', error);
       res.status(500).json({ message: 'Error al actualizar el artículo' });
@@ -223,7 +236,7 @@ export class ShopController {
       res.json(result);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: 'Datos inválidos', errors: error.errors });
+        return res.status(400).json({ message: firstZodMessage(error), errors: error.errors });
       }
       console.error('Error purchasing item:', error);
       res.status(500).json({ message: 'Error al realizar la compra' });
@@ -274,7 +287,7 @@ export class ShopController {
       res.json(result);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: 'Datos inválidos', errors: error.errors });
+        return res.status(400).json({ message: firstZodMessage(error), errors: error.errors });
       }
       console.error('Error gifting item:', error);
       res.status(500).json({ message: 'Error al enviar el regalo' });
@@ -318,10 +331,64 @@ export class ShopController {
       res.json(result);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: 'Datos inválidos', errors: error.errors });
+        return res.status(400).json({ message: firstZodMessage(error), errors: error.errors });
       }
       console.error('Error teacher purchase:', error);
       res.status(500).json({ message: 'Error al realizar la compra' });
+    }
+  }
+
+  // Dar un artículo a varios estudiantes de una vez
+  async giveBulk(req: Request, res: Response) {
+    try {
+      const data = giveBulkSchema.parse(req.body);
+      const item = await shopService.getItemById(data.itemId);
+      if (!item || !item.isActive) {
+        return res.status(404).json({ message: 'Artículo no encontrado' });
+      }
+      if (!(await shopService.verifyTeacherOwnsClassroom(req.user!.id, item.classroomId))) {
+        return res.status(403).json({ message: 'No tienes permiso para esta clase' });
+      }
+      const ids = [...new Set(data.studentIds)];
+      for (const studentId of ids) {
+        if (!(await shopService.verifyStudentInClassroom(studentId, item.classroomId))) {
+          return res.status(400).json({ message: 'Hay estudiantes que no son de esta clase' });
+        }
+      }
+      const result = await shopService.giveToStudents(item.id, ids, data.quantity);
+      res.status(result.given.length > 0 ? 201 : 400).json(result);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: firstZodMessage(error), errors: error.errors });
+      }
+      console.error('Error giving items:', error);
+      res.status(500).json({ message: 'Error al dar el artículo' });
+    }
+  }
+
+  // Deshacer un artículo dado por el profesor (si no se usó)
+  async undoGive(req: Request, res: Response) {
+    try {
+      const result = await shopService.undoTeacherGift(req.params.purchaseId, req.user!.id);
+      if (!result.success) return res.status(400).json({ message: result.message });
+      res.json(result);
+    } catch (error) {
+      console.error('Error undoing give:', error);
+      res.status(500).json({ message: 'Error al deshacer la entrega' });
+    }
+  }
+
+  // Inventario de la clase: quién tiene qué y usos recientes
+  async getInventory(req: Request, res: Response) {
+    try {
+      const { classroomId } = req.params;
+      if (!(await shopService.verifyTeacherOwnsClassroom(req.user!.id, classroomId))) {
+        return res.status(403).json({ message: 'No tienes permiso para esta clase' });
+      }
+      res.json(await shopService.getClassroomInventory(classroomId));
+    } catch (error) {
+      console.error('Error getting inventory:', error);
+      res.status(500).json({ message: 'Error al obtener el inventario' });
     }
   }
 

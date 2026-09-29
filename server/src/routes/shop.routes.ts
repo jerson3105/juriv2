@@ -2,11 +2,52 @@ import { Router } from 'express';
 import { shopController } from '../controllers/shop.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { aiGuard } from '../middleware/security.js';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import { createUploadFilter, safeUploadFilename, verifyUploadedFile, IMAGE_MIMES } from '../utils/fileValidation.js';
 
 const router = Router();
 
+// Imágenes de artículos: fuera de la web pública, servidas por /api/uploads/shop-items (index.ts).
+const shopImagesDir = path.join(process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads'), 'shop-items');
+if (!fs.existsSync(shopImagesDir)) {
+  fs.mkdirSync(shopImagesDir, { recursive: true });
+}
+const uploadItemImage = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, shopImagesDir),
+    filename: safeUploadFilename,
+  }),
+  fileFilter: createUploadFilter(IMAGE_MIMES, 'Solo se permiten imágenes (PNG, JPG, GIF, WEBP)'),
+  limits: { fileSize: 2 * 1024 * 1024 },
+}).single('image');
+
 // Todas las rutas requieren autenticación
 router.use(authenticate);
+
+// Subir imagen de artículo (solo profesor)
+router.post('/upload-image', authorize('TEACHER'), (req, res, next) => {
+  uploadItemImage(req, res, (error: unknown) => {
+    if (error) {
+      const message = (error as { code?: string }).code === 'LIMIT_FILE_SIZE'
+        ? 'La imagen debe pesar menos de 2 MB'
+        : (error as Error).message || 'No se pudo subir la imagen';
+      return res.status(400).json({ message });
+    }
+    next();
+  });
+}, verifyUploadedFile, (req, res) => {
+  if (!req.file) return res.status(400).json({ message: 'No se proporcionó imagen' });
+  res.json({ imageUrl: `/api/uploads/shop-items/${req.file.filename}` });
+});
+
+// Dar un artículo a varios estudiantes y deshacer una entrega (profesor)
+router.post('/teacher/give-bulk', authorize('TEACHER'), (req, res) => shopController.giveBulk(req, res));
+router.delete('/teacher/purchases/:purchaseId', authorize('TEACHER'), (req, res) => shopController.undoGive(req, res));
+
+// Inventario de la clase (profesor)
+router.get('/classroom/:classroomId/inventory', authorize('TEACHER'), (req, res) => shopController.getInventory(req, res));
 
 // ==================== RUTAS DE ITEMS (PROFESOR) ====================
 

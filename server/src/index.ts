@@ -62,6 +62,7 @@ app.use('/api/static/avatars', cors(corsOptions), ...serveUploads(path.join(uplo
 app.use('/api/uploads/expeditions', cors(corsOptions), ...serveUploads(path.join(uploadsBaseDir, 'expeditions')));
 app.use('/api/uploads/maps', cors(corsOptions), ...serveUploads(path.join(uploadsBaseDir, 'maps')));
 app.use('/api/uploads/collectibles', cors(corsOptions), ...serveUploads(path.join(uploadsBaseDir, 'collectibles')));
+app.use('/api/uploads/shop-items', cors(corsOptions), ...serveUploads(path.join(uploadsBaseDir, 'shop-items')));
 app.use('/api/uploads/jiro-deliveries', cors(corsOptions), ...serveUploads(path.join(uploadsBaseDir, 'jiro-deliveries')));
 // También mantener rutas sin /api para desarrollo local
 app.use('/badges', cors(corsOptions), ...serveUploads(path.join(process.cwd(), 'public', 'badges')));

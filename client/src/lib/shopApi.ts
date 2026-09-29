@@ -81,14 +81,51 @@ export interface PendingPurchase {
   student: {
     id: string;
     characterName: string | null;
+    gp?: number;
   };
   item: {
     id: string;
     name: string;
     icon: string | null;
+    imageUrl?: string | null;
+    rarity?: ItemRarity;
     price: number;
   };
 }
+
+export interface InventoryStudentRef {
+  id: string;
+  characterName: string | null;
+}
+
+export interface ClassroomInventory {
+  owned: {
+    purchaseId: string;
+    quantity: number;
+    usedQuantity: number;
+    purchaseType: PurchaseType;
+    purchasedAt: string;
+    student: InventoryStudentRef;
+    item: { id: string; name: string; icon: string | null; imageUrl: string | null; rarity: ItemRarity; category: ItemCategory };
+  }[];
+  usages: {
+    id: string;
+    status: 'PENDING' | 'APPROVED' | 'REJECTED';
+    usedAt: string;
+    reviewedAt: string | null;
+    student: InventoryStudentRef;
+    item: { id: string; name: string; icon: string | null; imageUrl: string | null; rarity: ItemRarity };
+  }[];
+}
+
+export interface GiveBulkResult {
+  given: { studentId: string; purchaseId: string }[];
+  failed: { studentId: string; message: string }[];
+}
+
+// URL de la imagen de un artículo: las subidas viven en /api/uploads/shop-items (junto a la API).
+const API_ORIGIN = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace(/\/api\/?$/, '');
+export const shopImageUrl = (path: string) => (path.startsWith('/api/') ? `${API_ORIGIN}${path}` : path);
 
 export interface Notification {
   id: string;
@@ -155,12 +192,12 @@ export const CATEGORY_CONFIG: Record<ItemCategory, {
   CONSUMABLE: { 
     label: 'Consumible', 
     icon: '🧪',
-    description: 'Se usa X veces y desaparece (ej: pociones)',
+    description: 'Se gasta al usarlo; tú apruebas cada uso (ej: elegir asiento)',
   },
   SPECIAL: { 
-    label: 'Especial', 
+    label: 'Permanente',
     icon: '⭐',
-    description: 'Beneficio permanente pasivo (ej: amuletos)',
+    description: 'No se gasta; el beneficio lo aplicas tú (ej: amuleto, título)',
   },
 };
 
@@ -191,15 +228,15 @@ export const shopApi = {
 
   updateItem: async (itemId: string, itemData: Partial<{
     name: string;
-    description: string;
+    description: string | null;
     category: ItemCategory;
     rarity: ItemRarity;
     price: number;
-    imageUrl: string;
+    imageUrl: string | null;
     icon: string;
     effectType: string;
     effectValue: number;
-    stock: number;
+    stock: number | null;
     isActive: boolean;
   }>): Promise<ShopItem> => {
     const { data } = await api.put(`/shop/items/${itemId}`, itemData);
@@ -208,6 +245,39 @@ export const shopApi = {
 
   deleteItem: async (itemId: string): Promise<void> => {
     await api.delete(`/shop/items/${itemId}`);
+  },
+
+  restoreItem: async (itemId: string): Promise<void> => {
+    await api.put(`/shop/items/${itemId}`, { isActive: true });
+  },
+
+  uploadImage: async (file: File): Promise<string> => {
+    const formData = new FormData();
+    formData.append('image', file);
+    const { data } = await api.post('/shop/upload-image', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+    return data.imageUrl;
+  },
+
+  // Dar un artículo a varios estudiantes (gratis)
+  giveBulk: async (itemId: string, studentIds: string[]): Promise<GiveBulkResult> => {
+    try {
+      const { data } = await api.post('/shop/teacher/give-bulk', { itemId, studentIds });
+      return data;
+    } catch (error) {
+      const data = (error as { response?: { data?: GiveBulkResult } }).response?.data;
+      if (data && Array.isArray(data.failed)) return data;
+      throw error;
+    }
+  },
+
+  // Deshacer una entrega del profesor (si no se usó)
+  undoGive: async (purchaseId: string): Promise<void> => {
+    await api.delete(`/shop/teacher/purchases/${purchaseId}`);
+  },
+
+  getInventory: async (classroomId: string): Promise<ClassroomInventory> => {
+    const { data } = await api.get(`/shop/classroom/${classroomId}/inventory`);
+    return data;
   },
 
   // ==================== COMPRAS ====================

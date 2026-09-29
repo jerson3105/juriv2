@@ -49,6 +49,7 @@ import { NotificationsBell, NotificationsPanel } from '../NotificationsPanel';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { BugReportButton } from '../BugReportButton';
 import { classNoteApi } from '../../lib/classNoteApi';
+import { shopApi } from '../../lib/shopApi';
 
 // Las herramientas de clase se descargan solo al abrirlas (no pesan en la carga inicial de la app).
 const ClassroomUtilities = lazy(() =>
@@ -123,6 +124,21 @@ export const ClassroomLayout = () => {
     queryFn: () => classNoteApi.pendingCount(id!),
     enabled: !!id,
   });
+
+  // Compras y usos de la tienda esperando al profesor (mismas claves que la Tienda: comparten caché).
+  const { data: pendingShopPurchases = [] } = useQuery({
+    queryKey: ['pending-purchases', id],
+    queryFn: () => shopApi.getPendingPurchases(id!),
+    enabled: !!id,
+    staleTime: 60_000,
+  });
+  const { data: pendingShopUsages = [] } = useQuery({
+    queryKey: ['pending-usages', id],
+    queryFn: () => shopApi.getPendingUsages(id!),
+    enabled: !!id,
+    staleTime: 60_000,
+  });
+  const pendingShopCount = pendingShopPurchases.length + pendingShopUsages.length;
 
   // Parse storytelling theme from classroom
   const tc = (() => {
@@ -490,7 +506,16 @@ export const ClassroomLayout = () => {
                       <span className={`text-sm font-medium truncate flex-1 text-left ${isSubMenuActive ? '' : hasStoryTheme ? 'text-white/90' : 'text-gray-700 dark:text-gray-300'}`}>
                         {item.label}
                       </span>
-                      <ChevronDown 
+                      {/* Plegado: el contador de la tienda sigue visible en la cabecera del grupo */}
+                      {!isMenuOpen && pendingShopCount > 0 && item.subItems?.some((sub) => sub.path.endsWith('/shop')) && (
+                        <span
+                          className="min-w-[20px] rounded-full bg-red-600 px-1.5 py-0.5 text-center text-xs font-bold leading-none text-white"
+                          aria-label={`${pendingShopCount} por atender en la tienda`}
+                        >
+                          {pendingShopCount}
+                        </span>
+                      )}
+                      <ChevronDown
                         size={14} 
                         className={`transition-transform ${isMenuOpen ? 'rotate-180' : ''} ${isSubMenuActive ? 'text-white' : 'text-gray-500 dark:text-gray-400'}`} 
                       />
@@ -540,6 +565,14 @@ export const ClassroomLayout = () => {
                         >
                           <SubIcon size={14} />
                           <span className="text-sm">{subItem.label}</span>
+                          {subItem.path.endsWith('/shop') && pendingShopCount > 0 && (
+                            <span
+                              className="ml-auto min-w-[20px] rounded-full bg-red-600 px-1.5 py-0.5 text-center text-xs font-bold leading-none text-white"
+                              aria-label={`${pendingShopCount} por atender en la tienda`}
+                            >
+                              {pendingShopCount}
+                            </span>
+                          )}
                           {isNewFeature((subItem as any).featureKey) && (
                             <span className="ml-auto px-1.5 py-0.5 text-xs font-bold bg-amber-300 text-amber-950 rounded-full leading-none">
                               Nuevo

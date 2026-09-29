@@ -13,6 +13,7 @@ import { Button } from '../../components/ui/Button';
 import { Card, CardContent } from '../../components/ui/Card';
 import { 
   shopApi, 
+  shopImageUrl,
   type ShopItem, 
   type ItemRarity,
   RARITY_CONFIG,
@@ -267,7 +268,7 @@ export const StudentShopPage = ({ studentProfile, classmates: propClassmates }: 
                   <CardContent className="p-4 flex items-center gap-4">
                     {purchase.item.imageUrl ? (
                       <img 
-                        src={purchase.item.imageUrl} 
+                        src={shopImageUrl(purchase.item.imageUrl)} 
                         alt={purchase.item.name}
                         className={`w-14 h-14 rounded-xl object-cover border-2 ${RARITY_CONFIG[purchase.item.rarity].borderColor}`}
                       />
@@ -439,7 +440,7 @@ const ShopItemCard = ({
           <div className="flex items-start gap-4">
             {item.imageUrl ? (
               <img 
-                src={item.imageUrl} 
+                src={shopImageUrl(item.imageUrl)} 
                 alt={item.name}
                 className={`w-16 h-16 rounded-xl object-cover shadow-lg border-2 ${rarityConfig.borderColor}`}
               />
