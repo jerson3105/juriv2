@@ -20,8 +20,73 @@ import { createGenAI } from '../utils/aiClient.js';
 import { createUploadFilter, safeUploadFilename, verifyUploadedFile, IMAGE_MIMES } from '../utils/fileValidation.js';
 import { publicErrorMessage } from '../utils/errors.js';
 import { aiGuard } from '../middleware/security.js';
+import { z } from 'zod';
 
 const router = Router();
+
+// ═══════════════════════════════════════════════════════════
+// Validación
+// ═══════════════════════════════════════════════════════════
+
+const count = z.number().int().min(1).max(10000);
+const simpleConditionSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('BEHAVIOR_COUNT'), behaviorId: z.string().uuid(), count }),
+  z.object({ type: z.literal('BEHAVIOR_CATEGORY'), category: z.enum(['positive', 'negative']), count }),
+  z.object({ type: z.literal('ANY_BEHAVIOR'), count }),
+  z.object({ type: z.literal('XP_TOTAL'), value: z.number().int().min(1).max(10_000_000) }),
+  z.object({ type: z.literal('LEVEL'), value: z.number().int().min(1).max(1000) }),
+  z.object({ type: z.literal('PURCHASES'), value: z.number().int().min(1).max(10000) }),
+]);
+const conditionSchema = z.union([
+  simpleConditionSchema,
+  z.object({ type: z.literal('COMPOUND'), operator: z.enum(['AND', 'OR']).optional(), conditions: z.array(simpleConditionSchema).min(1).max(5) }),
+]);
+
+const rewardMessage = 'La recompensa debe estar entre 0 y 1000';
+const badgeFieldsSchema = z.object({
+  name: z.string().trim().min(1, 'Escribe un nombre').max(100, 'El nombre es demasiado largo'),
+  description: z.string().trim().max(255).default(''),
+  icon: z.string().min(1).max(50),
+  // Solo imágenes subidas por /upload-image (evita URLs arbitrarias).
+  customImage: z.string().regex(/^\/badges\/[\w.-]+$/, 'Imagen no válida').nullable().optional(),
+  category: z.enum(['PROGRESS', 'PARTICIPATION', 'SOCIAL', 'SHOP', 'SPECIAL', 'SECRET', 'CUSTOM']).optional(),
+  rarity: z.enum(['COMMON', 'RARE', 'EPIC', 'LEGENDARY']).optional(),
+  assignmentMode: z.enum(['AUTOMATIC', 'MANUAL', 'BOTH']),
+  unlockCondition: conditionSchema.nullable().optional(),
+  rewardXp: z.number().int().min(0, rewardMessage).max(1000, rewardMessage).optional(),
+  rewardGp: z.number().int().min(0, rewardMessage).max(1000, rewardMessage).optional(),
+  isSecret: z.boolean().optional(),
+  competencyId: z.string().max(36).nullable().optional(),
+});
+
+// Una insignia automática sin condición nunca se otorgaría: se rechaza.
+const requireConditionWhenAutomatic = (data: { assignmentMode?: string; unlockCondition?: unknown }) =>
+  data.assignmentMode === undefined || data.assignmentMode === 'MANUAL' || !!data.unlockCondition;
+const conditionMessage = { message: 'Una insignia automática necesita una condición completa', path: ['unlockCondition'] };
+
+const createBadgeSchema = badgeFieldsSchema.refine(requireConditionWhenAutomatic, conditionMessage);
+const updateBadgeSchema = badgeFieldsSchema.partial().refine(requireConditionWhenAutomatic, conditionMessage);
+
+const awardBulkSchema = z.object({
+  badgeId: z.string().uuid(),
+  studentProfileIds: z.array(z.string().uuid()).min(1).max(200),
+  reason: z.string().trim().max(255).optional(),
+});
+
+const sendValidationError = (res: any, error: z.ZodError) =>
+  res.status(400).json({ message: error.issues[0]?.message || 'Datos inválidos', errors: error.issues });
+
+// Los comportamientos citados en la condición deben ser de la misma clase.
+const conditionBehaviorsBelongTo = async (condition: unknown, classroomId: string): Promise<boolean> => {
+  if (!condition || typeof condition !== 'object') return true;
+  const parsed = condition as { type: string; behaviorId?: string; conditions?: { behaviorId?: string }[] };
+  const ids = [parsed.behaviorId, ...(parsed.conditions || []).map((c) => c.behaviorId)].filter((id): id is string => !!id);
+  for (const id of ids) {
+    const behavior = await behaviorService.getById(id);
+    if (!behavior || behavior.classroomId !== classroomId) return false;
+  }
+  return true;
+};
 
 // Configurar directorio de uploads para insignias
 const BADGES_DIR = path.join(process.cwd(), 'public', 'badges');
@@ -95,6 +160,18 @@ router.get('/classroom/:classroomId/awards-breakdown', authenticate, async (req,
   }
 });
 
+// Cuántas veces tiene cada alumno cada insignia (para "ya la tiene" y "N alumnos")
+router.get('/classroom/:classroomId/award-counts', authenticate, async (req, res) => {
+  try {
+    const { classroomId } = req.params;
+    if (!(await requireClassroomTeacher(req, res, classroomId))) return;
+    res.json(await badgeService.getClassroomAwardCounts(classroomId));
+  } catch (error: any) {
+    console.error('Error getting award counts:', error);
+    res.status(500).json({ message: publicErrorMessage(error) });
+  }
+});
+
 // Obtener insignias de una clase (sistema + personalizadas)
 router.get('/classroom/:classroomId', authenticate, async (req, res) => {
   try {
@@ -136,6 +213,8 @@ router.post('/generate-ai', authenticate, ...aiGuard, async (req, res) => {
     if (!description || !level) {
       return res.status(400).json({ message: 'Se requiere descripción y nivel educativo' });
     }
+    // La clase indicada debe ser del profesor: sus comportamientos van al prompt y a la respuesta.
+    if (classroomId && !(await requireClassroomTeacher(req, res, String(classroomId)))) return;
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
@@ -286,22 +365,30 @@ router.post('/classroom/:classroomId', authenticate, async (req, res) => {
     if (!(await requireClassroomTeacher(req, res, classroomId))) return;
     const userId = (req as any).user.id;
 
+    const parsed = createBadgeSchema.safeParse(req.body);
+    if (!parsed.success) return sendValidationError(res, parsed.error);
+    const body = parsed.data;
+    const unlockCondition = body.assignmentMode === 'MANUAL' ? null : body.unlockCondition ?? null;
+    if (!(await conditionBehaviorsBelongTo(unlockCondition, classroomId))) {
+      return res.status(400).json({ message: 'El comportamiento de la condición no pertenece a esta clase' });
+    }
+
     const data: CreateBadgeDto = {
       classroomId,
-      name: req.body.name,
-      description: req.body.description,
-      icon: req.body.icon,
-      customImage: req.body.customImage,
-      category: req.body.category,
-      rarity: req.body.rarity,
-      assignmentMode: req.body.assignmentMode,
-      unlockCondition: req.body.unlockCondition,
-      rewardXp: req.body.rewardXp,
-      rewardGp: req.body.rewardGp,
-      isSecret: req.body.isSecret,
-      competencyId: req.body.competencyId,
+      name: body.name,
+      description: body.description,
+      icon: body.icon,
+      customImage: body.customImage ?? undefined,
+      category: body.category,
+      rarity: body.rarity,
+      assignmentMode: body.assignmentMode,
+      unlockCondition: unlockCondition as CreateBadgeDto['unlockCondition'],
+      rewardXp: body.rewardXp,
+      rewardGp: body.rewardGp,
+      isSecret: body.isSecret,
+      competencyId: body.competencyId ?? undefined,
     };
-    
+
     const badge = await badgeService.createBadge(data, userId);
     res.status(201).json(badge);
   } catch (error: any) {
@@ -345,7 +432,15 @@ router.put('/:badgeId', authenticate, async (req, res) => {
   try {
     const { badgeId } = req.params;
     if (!(await ensureBadgeMutable(req, res, badgeId))) return;
-    await badgeService.updateBadge(badgeId, pickBadgeFields(req.body));
+    const parsed = updateBadgeSchema.safeParse(req.body);
+    if (!parsed.success) return sendValidationError(res, parsed.error);
+    const changes = pickBadgeFields(parsed.data as Record<string, unknown>);
+    if (parsed.data.assignmentMode === 'MANUAL') changes.unlockCondition = null as unknown as CreateBadgeDto['unlockCondition'];
+    const info = await badgeScopeAndClassroom(badgeId);
+    if (info?.classroomId && !(await conditionBehaviorsBelongTo(changes.unlockCondition, info.classroomId))) {
+      return res.status(400).json({ message: 'El comportamiento de la condición no pertenece a esta clase' });
+    }
+    await badgeService.updateBadge(badgeId, changes);
     res.json({ message: 'Insignia actualizada' });
   } catch (error: any) {
     console.error('Error updating badge:', error);
@@ -353,15 +448,28 @@ router.put('/:badgeId', authenticate, async (req, res) => {
   }
 });
 
-// Eliminar insignia
+// Archivar insignia (deja de otorgarse; los alumnos conservan las que ganaron)
 router.delete('/:badgeId', authenticate, async (req, res) => {
   try {
     const { badgeId } = req.params;
     if (!(await ensureBadgeMutable(req, res, badgeId))) return;
-    await badgeService.deleteBadge(badgeId);
-    res.json({ message: 'Insignia eliminada' });
+    await badgeService.archiveBadge(badgeId);
+    res.json({ message: 'Insignia archivada' });
   } catch (error: any) {
-    console.error('Error deleting badge:', error);
+    console.error('Error archiving badge:', error);
+    res.status(500).json({ message: publicErrorMessage(error) });
+  }
+});
+
+// Restaurar insignia archivada ("Deshacer")
+router.post('/:badgeId/restore', authenticate, async (req, res) => {
+  try {
+    const { badgeId } = req.params;
+    if (!(await ensureBadgeMutable(req, res, badgeId))) return;
+    await badgeService.restoreBadge(badgeId);
+    res.json({ message: 'Insignia restaurada' });
+  } catch (error: any) {
+    console.error('Error restoring badge:', error);
     res.status(500).json({ message: publicErrorMessage(error) });
   }
 });
@@ -441,13 +549,46 @@ router.post('/award', authenticate, async (req, res) => {
       studentProfileId,
       badgeId,
       userId,
-      reason
+      typeof reason === 'string' ? reason.slice(0, 255) : undefined,
+      awardClassroomId
     );
-    
+
     res.status(201).json(awarded);
   } catch (error: any) {
     console.error('Error awarding badge:', error);
     res.status(400).json({ message: error.message });
+  }
+});
+
+// Otorgar una insignia a varios alumnos de una clase (profesor)
+router.post('/award-bulk', authenticate, async (req, res) => {
+  try {
+    const parsed = awardBulkSchema.safeParse(req.body);
+    if (!parsed.success) return sendValidationError(res, parsed.error);
+    const { badgeId, studentProfileIds, reason } = parsed.data;
+
+    // Todos los alumnos deben ser de una misma clase del profesor.
+    const classroomIds = new Set<string>();
+    for (const id of new Set(studentProfileIds)) {
+      const classroomId = await classroomIdOfStudentProfile(id);
+      if (!classroomId) return res.status(404).json({ message: 'Estudiante no encontrado' });
+      classroomIds.add(classroomId);
+    }
+    if (classroomIds.size !== 1) return res.status(400).json({ message: 'Los estudiantes deben ser de una misma clase' });
+    const [classroomId] = [...classroomIds];
+    if (!(await requireClassroomTeacher(req, res, classroomId))) return;
+
+    const result = await badgeService.awardBadgeToStudents(
+      [...new Set(studentProfileIds)],
+      badgeId,
+      (req as any).user.id,
+      classroomId,
+      reason || undefined,
+    );
+    res.status(result.awarded.length > 0 ? 201 : 400).json(result);
+  } catch (error: any) {
+    console.error('Error awarding badge in bulk:', error);
+    res.status(500).json({ message: publicErrorMessage(error) });
   }
 });
 

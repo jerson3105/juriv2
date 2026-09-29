@@ -34,6 +34,7 @@ export interface Badge {
   rewardGp: number;
   maxAwards: number | null;
   schoolBadgeId: string | null;
+  competencyId?: string | null;
   isSecret: boolean;
   isActive: boolean;
   createdAt: string;
@@ -148,39 +149,56 @@ export interface ClassroomAwardsBreakdown {
   }>;
 }
 
+// URL de una imagen propia de insignia (se sirve junto a la API, p. ej. /api/badges/x.png).
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+export const badgeImageUrl = (path: string) => (/^https?:\/\//.test(path) ? path : `${API_URL}${path}`);
+
+export interface BadgeAwardCount {
+  studentProfileId: string;
+  badgeId: string;
+  count: number;
+  lastStudentBadgeId: string;
+  lastAwardedAt: string;
+}
+
+export interface BulkAwardResult {
+  awarded: { studentProfileId: string; studentBadgeId: string }[];
+  failed: { studentProfileId: string; message: string }[];
+}
+
 // Colores por rareza
 export const RARITY_COLORS = {
   COMMON: {
     bg: 'bg-gray-100 dark:bg-gray-700',
     border: 'border-gray-300 dark:border-gray-600',
-    text: 'text-gray-600 dark:text-gray-300',
+    text: 'text-gray-700 dark:text-gray-200',
     gradient: 'from-gray-400 to-gray-500',
   },
   RARE: {
     bg: 'bg-blue-100 dark:bg-blue-900/30',
     border: 'border-blue-300 dark:border-blue-700',
-    text: 'text-blue-600 dark:text-blue-400',
+    text: 'text-blue-800 dark:text-blue-200',
     gradient: 'from-blue-400 to-blue-600',
   },
   EPIC: {
     bg: 'bg-purple-100 dark:bg-purple-900/30',
     border: 'border-purple-300 dark:border-purple-700',
-    text: 'text-purple-600 dark:text-purple-400',
+    text: 'text-purple-800 dark:text-purple-200',
     gradient: 'from-purple-400 to-purple-600',
   },
   LEGENDARY: {
     bg: 'bg-amber-100 dark:bg-amber-900/30',
     border: 'border-amber-300 dark:border-amber-700',
-    text: 'text-amber-600 dark:text-amber-400',
+    text: 'text-amber-800 dark:text-amber-200',
     gradient: 'from-amber-400 to-yellow-500',
   },
 };
 
 export const RARITY_LABELS = {
   COMMON: 'Común',
-  RARE: 'Raro',
-  EPIC: 'Épico',
-  LEGENDARY: 'Legendario',
+  RARE: 'Rara',
+  EPIC: 'Épica',
+  LEGENDARY: 'Legendaria',
 };
 
 export const CATEGORY_LABELS = {
@@ -212,9 +230,33 @@ export const badgeApi = {
     await api.put(`/badges/${badgeId}`, data);
   },
 
-  // Eliminar insignia
+  // Archivar insignia (los alumnos conservan las que ganaron)
   deleteBadge: async (badgeId: string): Promise<void> => {
     await api.delete(`/badges/${badgeId}`);
+  },
+
+  // Restaurar insignia archivada
+  restoreBadge: async (badgeId: string): Promise<void> => {
+    await api.post(`/badges/${badgeId}/restore`);
+  },
+
+  // Veces que cada alumno tiene cada insignia
+  getAwardCounts: async (classroomId: string): Promise<BadgeAwardCount[]> => {
+    const response = await api.get(`/badges/classroom/${classroomId}/award-counts`);
+    return response.data;
+  },
+
+  // Otorgar a varios alumnos a la vez (devuelve lo otorgado y lo que falló)
+  awardBulk: async (badgeId: string, studentProfileIds: string[], reason?: string): Promise<BulkAwardResult> => {
+    try {
+      const response = await api.post('/badges/award-bulk', { badgeId, studentProfileIds, reason: reason || undefined });
+      return response.data;
+    } catch (error) {
+      // 400 con cuerpo de resultado: nadie la recibió, pero se sabe por qué.
+      const data = (error as { response?: { data?: BulkAwardResult } }).response?.data;
+      if (data && Array.isArray(data.failed)) return data;
+      throw error;
+    }
   },
 
   // Obtener insignias de un estudiante

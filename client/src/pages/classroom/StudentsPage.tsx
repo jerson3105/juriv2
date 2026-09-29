@@ -1,21 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useOutletContext, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users,
   Sparkles,
   Heart,
   Coins,
   Check,
-  X,
   Crown,
   Star,
   Search,
   LayoutGrid,
   List,
   Eye,
-  Medal,
   Shield,
   AlertTriangle,
   ChevronDown,
@@ -30,13 +27,14 @@ import { behaviorApi, type ApplyResult, type Behavior } from '../../lib/behavior
 import { studentApi } from '../../lib/studentApi';
 import { useCharacterClasses } from '../../hooks/useCharacterClasses';
 import { characterClassApi } from '../../lib/characterClassApi';
-import { badgeApi, type Badge, RARITY_COLORS, RARITY_LABELS } from '../../lib/badgeApi';
+import { badgeApi, type Badge } from '../../lib/badgeApi';
 import { CLAN_EMBLEMS } from '../../lib/clanApi';
 import { attendanceApi, type AttendanceRecord } from '../../lib/attendanceApi';
 import { historyApi, type ActivityLogEntry, type HistoryResponse } from '../../lib/historyApi';
 import { LevelUpAnimation } from '../../components/effects/LevelUpAnimation';
 import { MultiPointsAnimation, useMultiPointsEffect } from '../../components/effects/PurchaseEffects';
 import { TeacherBadgeAwardedModal } from '../../components/badges/TeacherBadgeAwardedModal';
+import { GiveBadgeModal } from '../../components/badges/GiveBadgeModal';
 import { AddPlaceholderStudentsModal } from '../../components/students/AddPlaceholderStudentsModal';
 import { PointsModal } from '../../components/modals/PointsModal';
 import { SelectionActionBar } from '../../components/students/SelectionActionBar';
@@ -1997,7 +1995,7 @@ export const StudentsPage = () => {
       />
 
       {/* Modal de insignias */}
-      <BadgeAwardModal
+      <GiveBadgeModal
         isOpen={showBadgeModal}
         onClose={() => setShowBadgeModal(false)}
         classroomId={classroom.id}
@@ -2037,221 +2035,3 @@ export const StudentsPage = () => {
     </div>
   );
 };
-
-// Modal para otorgar insignias desde lista de estudiantes
-const BadgeAwardModal = ({
-  isOpen,
-  onClose,
-  classroomId,
-  selectedStudentIds,
-  studentNames,
-  onSuccess,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  classroomId: string;
-  selectedStudentIds: string[];
-  studentNames: string[];
-  onSuccess: (badge: Badge, studentNames: string[]) => void;
-}) => {
-  const [selectedBadge, setSelectedBadge] = useState<Badge | null>(null);
-  const [reason, setReason] = useState('');
-  const queryClient = useQueryClient();
-
-  // Obtener insignias de la clase
-  const { data: badges = [], isLoading: loadingBadges } = useQuery({
-    queryKey: ['badges', classroomId],
-    queryFn: () => badgeApi.getClassroomBadges(classroomId),
-    enabled: isOpen,
-  });
-
-  // Mostrar todas las insignias
-  const manualBadges = badges;
-
-  const awardMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedBadge) return;
-      for (const studentId of selectedStudentIds) {
-        await badgeApi.awardBadge(studentId, selectedBadge.id, reason);
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['badges'] });
-      toast.success(`Insignia "${selectedBadge?.name}" otorgada a ${selectedStudentIds.length} estudiante(s)`);
-      if (selectedBadge) {
-        onSuccess(selectedBadge, studentNames);
-      }
-      setSelectedBadge(null);
-      setReason('');
-    },
-    onError: () => {
-      toast.error('Error al otorgar insignia');
-    },
-  });
-
-  if (!isOpen) return null;
-
-  return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-        onClick={onClose}
-      >
-        <motion.div
-          initial={{ scale: 0.95, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          exit={{ scale: 0.95, opacity: 0 }}
-          onClick={(e) => e.stopPropagation()}
-          className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col md:flex-row"
-        >
-          {/* Panel izquierdo - Jiro */}
-          <div className="hidden md:block md:w-64 flex-shrink-0 relative overflow-hidden">
-            <motion.img
-              src="/assets/mascot/jiro-insignias.jpg"
-              alt="Jiro"
-              className="absolute inset-0 w-full h-full object-cover"
-              initial={{ scale: 1.1, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ duration: 0.4 }}
-            />
-          </div>
-
-          {/* Panel derecho - Contenido */}
-          <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <Medal className="text-amber-500" size={24} />
-                Dar Insignia
-              </h2>
-              <button
-                onClick={onClose}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-500"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* Info bar */}
-            <div className="px-5 py-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-100 dark:border-amber-800">
-              <p className="text-sm text-amber-700 dark:text-amber-300 flex items-center gap-2">
-                <Users size={14} />
-                {selectedStudentIds.length} estudiante(s) seleccionado(s)
-              </p>
-            </div>
-
-            {/* Lista de insignias */}
-            <div className="flex-1 overflow-y-auto p-5">
-              {/* Tips para docentes */}
-              <div className="mb-4 p-4 rounded-xl border bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800">
-                <h4 className="font-semibold text-sm mb-2 flex items-center gap-2 text-amber-700 dark:text-amber-300">
-                  💡 Consejos para otorgar insignias
-                </h4>
-                <ul className="space-y-1.5 text-xs text-gray-600 dark:text-gray-400">
-                  <li className="flex items-start gap-2">
-                    <span className="text-amber-500">✓</span>
-                    <span><strong>Reconocimiento:</strong> Las insignias son logros permanentes que motivan a los estudiantes.</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-amber-500">✓</span>
-                    <span><strong>Rarezas:</strong> Reserva las insignias épicas y legendarias para logros excepcionales.</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <span className="text-amber-500">✓</span>
-                    <span><strong>Personaliza:</strong> Añade una razón para que el estudiante recuerde por qué la recibió.</span>
-                  </li>
-                </ul>
-              </div>
-
-              {loadingBadges ? (
-                <div className="text-center py-8">
-                  <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-                  <p className="text-gray-500">Cargando insignias...</p>
-                </div>
-              ) : manualBadges.length === 0 ? (
-                <div className="text-center py-8">
-                  <Medal className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                  <p className="text-gray-500">No hay insignias disponibles</p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                    Crea insignias en Gamificación → Insignias
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {manualBadges.map((badge: Badge) => {
-                    const colors = RARITY_COLORS[badge.rarity];
-                    return (
-                      <button
-                        key={badge.id}
-                        onClick={() => setSelectedBadge(badge)}
-                        className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-left hover:scale-[1.01] active:scale-[0.99] ${
-                          selectedBadge?.id === badge.id
-                            ? `${colors.bg} ${colors.border} shadow-md`
-                            : 'border-gray-200 dark:border-gray-600 hover:border-amber-300 hover:bg-amber-50/50 dark:hover:bg-amber-900/10'
-                        }`}
-                      >
-                        <div className={`w-14 h-14 rounded-full flex items-center justify-center bg-gradient-to-br ${colors.gradient} shadow-lg`}>
-                          <span className="text-2xl">{badge.icon}</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="font-semibold text-gray-800 dark:text-white">{badge.name}</p>
-                            {badge.assignmentMode === 'AUTOMATIC' && (
-                              <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-full font-medium">Auto</span>
-                            )}
-                          </div>
-                          <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-1 mt-0.5">{badge.description}</p>
-                          <span className={`text-xs font-bold ${colors.text} mt-1 inline-block`}>
-                            {RARITY_LABELS[badge.rarity]}
-                          </span>
-                        </div>
-                        {selectedBadge?.id === badge.id && (
-                          <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
-                            <Check className="w-5 h-5 text-white" />
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Razón y botón */}
-            {selectedBadge && (
-              <div className="p-5 border-t border-gray-200 dark:border-gray-700 space-y-3 bg-gray-50 dark:bg-gray-800/50">
-                <div className="flex items-center gap-3 p-3 bg-white dark:bg-gray-700 rounded-xl border border-gray-200 dark:border-gray-600">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center bg-gradient-to-br ${RARITY_COLORS[selectedBadge.rarity].gradient}`}>
-                    <span className="text-lg">{selectedBadge.icon}</span>
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-800 dark:text-white text-sm">{selectedBadge.name}</p>
-                    <p className={`text-xs font-medium ${RARITY_COLORS[selectedBadge.rarity].text}`}>{RARITY_LABELS[selectedBadge.rarity]}</p>
-                  </div>
-                </div>
-                <input
-                  type="text"
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  placeholder="Razón del reconocimiento (opcional)"
-                  className="w-full px-4 py-3 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all"
-                />
-                <Button
-                  onClick={() => awardMutation.mutate()}
-                  disabled={awardMutation.isPending}
-                  className="w-full !py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-semibold"
-                >
-                  {awardMutation.isPending ? 'Otorgando...' : `🏆 Dar "${selectedBadge.name}"`}
-                </Button>
-              </div>
-          )}
-          </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
-  );
-};
-

@@ -709,8 +709,16 @@ class HistoryService {
 
         // Marcar los pointLogs de recompensa relacionados como revertidos
         // (los que tienen reason = "Insignia: <name>" y fueron creados alrededor del mismo tiempo)
+        // Desde 2026-09 la recompensa se registra con el mismo instante que el student_badge: se
+        // marcan solo esos. Registros antiguos (instante distinto) caen al criterio anterior por motivo.
         const badgeReason = `Insignia: ${badgeName}`;
-        const relatedLogs = await tx.select({ id: pointLogs.id }).from(pointLogs).where(and(
+        const sameMoment = await tx.select({ id: pointLogs.id }).from(pointLogs).where(and(
+          eq(pointLogs.studentId, student.id),
+          eq(pointLogs.reason, badgeReason),
+          eq(pointLogs.isReverted, false),
+          eq(pointLogs.createdAt, sb.unlockedAt),
+        ));
+        const relatedLogs = sameMoment.length > 0 ? sameMoment : await tx.select({ id: pointLogs.id }).from(pointLogs).where(and(
           eq(pointLogs.studentId, student.id),
           eq(pointLogs.reason, badgeReason),
           eq(pointLogs.isReverted, false),

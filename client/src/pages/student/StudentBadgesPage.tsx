@@ -4,7 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Medal, Sparkles, Target } from 'lucide-react';
 import { studentApi } from '../../lib/studentApi';
-import { badgeApi, type Badge, RARITY_COLORS, RARITY_LABELS } from '../../lib/badgeApi';
+import { badgeApi, badgeImageUrl, type Badge, RARITY_COLORS, RARITY_LABELS } from '../../lib/badgeApi';
+import { BadgeMedallion } from '../../components/badges/BadgeMedallion';
 
 export const StudentBadgesPage = () => {
   const navigate = useNavigate();
@@ -82,23 +83,15 @@ export const StudentBadgesPage = () => {
                         x{studentBadge.count}
                       </div>
                     )}
-                    <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center overflow-hidden bg-gradient-to-br ${colors.gradient} shadow-lg mb-3`}>
-                      {badge.customImage ? (
-                        <img
-                          src={`http://localhost:3001${badge.customImage}`}
-                          alt={badge.name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-3xl">{badge.icon}</span>
-                      )}
+                    <div className="mb-3 flex justify-center">
+                      <BadgeMedallion badge={badge} size="md" />
                     </div>
                     <h4 className="font-bold text-gray-800 dark:text-white text-center text-sm">{badge.name}</h4>
                     <p className={`text-xs text-center font-medium mt-1 ${colors.text}`}>
                       {RARITY_LABELS[badge.rarity]}
                     </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 text-center mt-2 line-clamp-2">{badge.description}</p>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 text-center mt-2">
+                    <p className="text-xs text-gray-700 dark:text-gray-300 text-center mt-2 line-clamp-2">{badge.description}</p>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 text-center mt-2">
                       {new Date(studentBadge.unlockedAt).toLocaleDateString('es', { day: 'numeric', month: 'short' })}
                     </p>
                   </motion.div>
@@ -129,7 +122,7 @@ export const StudentBadgesPage = () => {
                     <div className="w-16 h-16 mx-auto rounded-full flex items-center justify-center overflow-hidden bg-gradient-to-br from-gray-400 to-gray-500 shadow-lg mb-3 grayscale">
                       {badge.customImage ? (
                         <img
-                          src={`http://localhost:3001${badge.customImage}`}
+                          src={badgeImageUrl(badge.customImage)}
                           alt={badge.name}
                           className="w-full h-full object-cover opacity-50"
                         />

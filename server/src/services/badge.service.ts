@@ -74,6 +74,17 @@ class BadgeService {
     if (limit == null) return true;
     return currentCount < limit;
   }
+
+  // Manual: las insignias de la clase son acumulables (×2, ×3…); las del sistema respetan su límite.
+  private canAwardManually(badge: Pick<Badge, 'maxAwards' | 'scope'>, currentCount: number): boolean {
+    return badge.scope === 'CLASSROOM' ? true : this.canAwardBadge(badge, currentCount);
+  }
+
+  // Automática: una sola vez salvo que el límite diga otra cosa; si no, se volvería a otorgar
+  // en cada evento mientras la condición siga cumpliéndose.
+  private canAwardAutomatically(badge: Pick<Badge, 'maxAwards'>, currentCount: number): boolean {
+    return currentCount < (this.getBadgeAwardLimit(badge) ?? 1);
+  }
   
   // ═══════════════════════════════════════════════════════════
   // CRUD de Insignias
@@ -117,11 +128,54 @@ class BadgeService {
       .where(eq(badges.id, badgeId));
   }
   
-  async deleteBadge(badgeId: string): Promise<void> {
-    // Eliminar progreso y badges de estudiantes primero
-    await db.delete(badgeProgress).where(eq(badgeProgress.badgeId, badgeId));
-    await db.delete(studentBadges).where(eq(studentBadges.badgeId, badgeId));
-    await db.delete(badges).where(eq(badges.id, badgeId));
+  // Archivar: deja de mostrarse y de otorgarse, pero los alumnos conservan lo que ganaron.
+  async archiveBadge(badgeId: string): Promise<void> {
+    await db.update(badges)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(eq(badges.id, badgeId));
+  }
+
+  async restoreBadge(badgeId: string): Promise<void> {
+    await db.update(badges)
+      .set({ isActive: true, updatedAt: new Date() })
+      .where(eq(badges.id, badgeId));
+  }
+
+  // Veces que cada alumno de la clase tiene cada insignia, con el último otorgamiento
+  // (su id sirve para revertirlo desde Ganadores).
+  async getClassroomAwardCounts(classroomId: string): Promise<{
+    studentProfileId: string;
+    badgeId: string;
+    count: number;
+    lastStudentBadgeId: string;
+    lastAwardedAt: Date;
+  }[]> {
+    const rows = await db.select({
+      id: studentBadges.id,
+      studentProfileId: studentBadges.studentProfileId,
+      badgeId: studentBadges.badgeId,
+      unlockedAt: studentBadges.unlockedAt,
+    })
+      .from(studentBadges)
+      .innerJoin(studentProfiles, eq(studentBadges.studentProfileId, studentProfiles.id))
+      .where(eq(studentProfiles.classroomId, classroomId));
+
+    const grouped = new Map<string, { studentProfileId: string; badgeId: string; count: number; lastStudentBadgeId: string; lastAwardedAt: Date }>();
+    for (const row of rows) {
+      const key = `${row.studentProfileId}:${row.badgeId}`;
+      const unlockedAt = new Date(row.unlockedAt);
+      const current = grouped.get(key);
+      if (!current) {
+        grouped.set(key, { studentProfileId: row.studentProfileId, badgeId: row.badgeId, count: 1, lastStudentBadgeId: row.id, lastAwardedAt: unlockedAt });
+      } else {
+        current.count++;
+        if (unlockedAt > current.lastAwardedAt) {
+          current.lastAwardedAt = unlockedAt;
+          current.lastStudentBadgeId = row.id;
+        }
+      }
+    }
+    return Array.from(grouped.values());
   }
   
   async getBadgeById(badgeId: string): Promise<Badge | null> {
@@ -829,24 +883,26 @@ class BadgeService {
     studentProfileId: string, 
     badgeId: string, 
     teacherId: string,
-    reason?: string
+    reason?: string,
+    classroomId?: string
   ): Promise<StudentBadge> {
     const badge = await this.getBadgeById(badgeId);
-    if (!badge) {
+    // Solo insignias activas del sistema o de la misma clase del alumno.
+    if (!badge || !badge.isActive || (classroomId && badge.scope !== 'SYSTEM' && badge.classroomId !== classroomId)) {
       throw new Error('Insignia no encontrada');
     }
-    
+
     // Verificar que permite asignación manual
     if (badge.assignmentMode === 'AUTOMATIC') {
       throw new Error('Esta insignia solo se puede obtener automáticamente');
     }
-    
-    // Las insignias manuales son acumulables - contar cuántas tiene
+
+    // Las insignias manuales de la clase son acumulables - contar cuántas tiene
     const existingCount = await this.countStudentBadge(studentProfileId, badgeId);
-    if (!this.canAwardBadge(badge, existingCount)) {
+    if (!this.canAwardManually(badge, existingCount)) {
       throw new Error('Se alcanzó el límite de otorgamientos de esta insignia');
     }
-    
+
     // Otorgar
     const newStudentBadge = {
       id: uuid(),
@@ -870,7 +926,8 @@ class BadgeService {
           badge.rewardGp,
           `Insignia: ${badge.name}`,
           tx,
-          notifiedUserIds
+          notifiedUserIds,
+          newStudentBadge.unlockedAt
         );
       }
 
@@ -931,17 +988,42 @@ class BadgeService {
     return newStudentBadge as StudentBadge;
   }
   
+  // Otorga a varios alumnos de la misma clase; cada uno en su propia transacción para que un
+  // fallo no deje a los demás sin su insignia. Devuelve qué se otorgó (con id para deshacer) y qué no.
+  async awardBadgeToStudents(
+    studentProfileIds: string[],
+    badgeId: string,
+    teacherId: string,
+    classroomId: string,
+    reason?: string
+  ): Promise<{
+    awarded: { studentProfileId: string; studentBadgeId: string }[];
+    failed: { studentProfileId: string; message: string }[];
+  }> {
+    const awarded: { studentProfileId: string; studentBadgeId: string }[] = [];
+    const failed: { studentProfileId: string; message: string }[] = [];
+    for (const studentProfileId of studentProfileIds) {
+      try {
+        const studentBadge = await this.awardBadgeManually(studentProfileId, badgeId, teacherId, reason, classroomId);
+        awarded.push({ studentProfileId, studentBadgeId: studentBadge.id });
+      } catch (error) {
+        failed.push({ studentProfileId, message: error instanceof Error ? error.message : 'No se pudo otorgar' });
+      }
+    }
+    return { awarded, failed };
+  }
+
   async awardBadgeAutomatic(studentProfileId: string, badgeId: string): Promise<StudentBadge> {
     const badge = await this.getBadgeById(badgeId);
     if (!badge) {
       throw new Error('Insignia no encontrada');
     }
     
-    const existingCount = await this.countStudentBadge(studentProfileId, badgeId);
-    if (!this.canAwardBadge(badge, existingCount)) {
+    let existingCount = await this.countStudentBadge(studentProfileId, badgeId);
+    if (!this.canAwardAutomatically(badge, existingCount)) {
       throw new Error('El estudiante ya alcanzó el límite de esta insignia');
     }
-    
+
     const newStudentBadge = {
       id: uuid(),
       studentProfileId,
@@ -955,6 +1037,18 @@ class BadgeService {
     const notifiedUserIds: string[] = [];
 
     await db.transaction(async (tx) => {
+      // Bloquea al alumno y vuelve a contar: dos eventos simultáneos no otorgan la insignia dos veces.
+      await tx.select({ id: studentProfiles.id }).from(studentProfiles)
+        .where(eq(studentProfiles.id, studentProfileId)).for('update');
+      const [{ total }] = await tx.select({ total: sql<number>`COUNT(*)` }).from(studentBadges).where(and(
+        eq(studentBadges.studentProfileId, studentProfileId),
+        eq(studentBadges.badgeId, badgeId),
+      ));
+      existingCount = Number(total);
+      if (!this.canAwardAutomatically(badge, existingCount)) {
+        throw new Error('El estudiante ya alcanzó el límite de esta insignia');
+      }
+
       await tx.insert(studentBadges).values(newStudentBadge);
 
       if (badge.rewardXp > 0 || badge.rewardGp > 0) {
@@ -964,7 +1058,8 @@ class BadgeService {
           badge.rewardGp,
           `Insignia: ${badge.name}`,
           tx,
-          notifiedUserIds
+          notifiedUserIds,
+          newStudentBadge.unlockedAt
         );
       }
 
@@ -1084,7 +1179,7 @@ class BadgeService {
     const pendingBadges = allBadges.filter(b => 
       (b.assignmentMode === 'AUTOMATIC' || b.assignmentMode === 'BOTH') &&
       b.unlockCondition !== null &&
-      this.canAwardBadge(b, badgeCountMap.get(b.id) || 0)
+      this.canAwardAutomatically(b, badgeCountMap.get(b.id) || 0)
     );
     
     
@@ -1281,7 +1376,9 @@ class BadgeService {
     gp: number,
     reason: string,
     tx: any = db,
-    notifiedUserIds: string[] = []
+    notifiedUserIds: string[] = [],
+    // Mismo instante que el student_badge: así la reversión encuentra exactamente estos registros.
+    createdAt: Date = new Date()
   ): Promise<void> {
     if (xp === 0 && gp === 0) return;
 
@@ -1294,7 +1391,7 @@ class BadgeService {
       .where(eq(classrooms.id, current.classroomId));
 
     const xpPerLevel = classroom?.xpPerLevel || 100;
-    const now = new Date();
+    const now = createdAt;
 
     // Suma atómica: no pisa otras escrituras simultáneas sobre el alumno.
     const updated = await addXpGp(tx, studentProfileId, { xp, gp }, xpPerLevel);
