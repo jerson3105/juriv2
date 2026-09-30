@@ -427,7 +427,7 @@ export const ClassroomLayout = () => {
                 </h2>
                 <button
                   onClick={copyCode}
-                  className={`flex items-center gap-1 min-h-[28px] text-xs transition-colors ${hasStoryTheme ? 'text-white/80 hover:text-white' : 'text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200'}`}
+                  className={`flex items-center gap-1 min-h-[28px] text-xs transition-colors ${hasStoryTheme ? 'text-white hover:text-white' : 'text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200'}`}
                   aria-label={`Copiar código de la clase ${classroom.code}`}
                 >
                   <span className={`font-mono px-1.5 py-0.5 rounded ${hasStoryTheme ? 'bg-white/10' : 'bg-primary-50 dark:bg-primary-900/40'}`}>{classroom.code}</span>
