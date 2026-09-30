@@ -1138,7 +1138,9 @@ class GradeService {
       const indicatorActivities = hasConfiguredIndicators
         ? this.buildIndicatorActivitiesForCompetency(studentProfileId, comp.competencyId, indicatorContext)
         : [];
-      const activities = hasConfiguredIndicators
+      // Con destrezas, la evidencia por destreza reemplaza al agregado de comportamientos. Mientras el alumno
+      // no tenga evidencia por destreza, sigue contando la general (agregar una destreza no borra su nota).
+      const activities = hasConfiguredIndicators && indicatorActivities.length > 0
         ? [
             ...baseActivities.filter((activity) => activity.type !== 'BEHAVIOR'),
             ...indicatorActivities,
@@ -2140,7 +2142,13 @@ class GradeService {
     gradeScaleType?: GradeScaleType;
     customRanges?: Array<{ label: string; minPercent: number }>;
     evaluationWeight?: number;
+    competencyWeights?: Array<{ competencyId: string; weight: number }>;
   }) {
+    for (const item of settings.competencyWeights ?? []) {
+      await db.update(classroomCompetencies)
+        .set({ weight: Math.max(50, Math.min(300, Math.round(item.weight))) })
+        .where(and(eq(classroomCompetencies.classroomId, classroomId), eq(classroomCompetencies.competencyId, item.competencyId)));
+    }
     const patch: Partial<typeof classrooms.$inferInsert> = {};
     if (settings.gradeScaleType) patch.gradeScaleType = settings.gradeScaleType;
     if (settings.gradeScaleType === 'CUSTOM') {
@@ -2153,6 +2161,10 @@ class GradeService {
     if (settings.evaluationWeight !== undefined) patch.gradeEvaluationWeight = Math.round(settings.evaluationWeight);
     if (Object.keys(patch).length === 0) return { success: true };
     await db.update(classrooms).set({ ...patch, updatedAt: new Date() }).where(eq(classrooms.id, classroomId));
+    // Cambió la escala o el peso de las evaluaciones: el bimestre abierto se recalcula en la próxima consulta.
+    const current = await this.resolveClassroomPeriod(classroomId, 'CURRENT');
+    await db.update(studentGrades).set({ calculatedAt: new Date(0) })
+      .where(and(eq(studentGrades.classroomId, classroomId), eq(studentGrades.period, current)));
     return { success: true };
   }
 

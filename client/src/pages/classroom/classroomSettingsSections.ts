@@ -22,7 +22,7 @@ export const CLASSROOM_SETTINGS_SECTIONS = [
     label: 'Clase',
     title: 'Configuracion academica',
     description: 'Competencias, destrezas y notas',
-    showsSaveAction: true,
+    showsSaveAction: false,
   },
   {
     key: 'personas',

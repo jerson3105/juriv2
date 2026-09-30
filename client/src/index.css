@@ -333,3 +333,13 @@
   mask-image: radial-gradient(circle, #000 25%, transparent 70%);
   animation: rk-rays 20s linear infinite;
 }
+
+/* Panel lateral / hoja inferior (Calificaciones) */
+@keyframes slideUp {
+  from { transform: translateY(24px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes slideIn {
+  from { transform: translateX(24px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}

@@ -99,6 +99,7 @@ interface CreateClassroomCompetencyIndicatorData {
 interface UpdateClassroomCompetencyIndicatorData {
   name?: string;
   description?: string | null;
+  weight?: number;
 }
 
 interface TransferCompetencyIndicatorsData {
@@ -664,6 +665,7 @@ export class ClassroomService {
             name: classroomCompetencyIndicators.name,
             description: classroomCompetencyIndicators.description,
             displayOrder: classroomCompetencyIndicators.displayOrder,
+            weight: classroomCompetencyIndicators.weight,
             isActive: classroomCompetencyIndicators.isActive,
             createdAt: classroomCompetencyIndicators.createdAt,
             updatedAt: classroomCompetencyIndicators.updatedAt,
@@ -692,6 +694,7 @@ export class ClassroomService {
       name: string;
       description: string | null;
       displayOrder: number;
+      weight: number;
       isActive: boolean;
       createdAt: Date;
       updatedAt: Date;
@@ -1246,6 +1249,10 @@ export class ClassroomService {
 
     if (data.description !== undefined) {
       payload.description = this.normalizeOptionalCompetencyText(data.description);
+    }
+
+    if (data.weight !== undefined) {
+      payload.weight = Math.max(1, Math.min(5, Math.round(data.weight)));
     }
 
     if (Object.keys(payload).length === 1) {

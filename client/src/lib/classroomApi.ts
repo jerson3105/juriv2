@@ -280,6 +280,7 @@ export interface ClassroomCompetencyIndicator {
   name: string;
   description: string | null;
   displayOrder: number;
+  weight?: number;
   isActive: boolean;
   canDelete: boolean;
   createdAt: string;
@@ -306,6 +307,8 @@ export interface CreateClassroomCompetencyIndicatorData {
 export interface UpdateClassroomCompetencyIndicatorData {
   name?: string;
   description?: string | null;
+  /** Peso dentro de la competencia (1 = normal). */
+  weight?: number;
 }
 
 export interface TransferCompetencyIndicatorsData {

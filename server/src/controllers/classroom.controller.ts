@@ -374,6 +374,7 @@ const createCompetencyIndicatorSchema = z.object({
 const updateCompetencyIndicatorSchema = z.object({
   name: z.string().min(2).max(255).optional(),
   description: z.string().max(1000).optional().nullable(),
+  weight: z.number().int().min(1).max(5).optional(),
 }).refine((data) => Object.keys(data).length > 0, {
   message: 'Debes enviar al menos un campo para actualizar',
 });

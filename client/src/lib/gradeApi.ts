@@ -45,14 +45,44 @@ export interface StudentGrade {
     activities: ActivityScore[];
     totalWeight: number;
     rawScore: number;
-  };
+    evaluationScore?: number | null;
+    evidenceScore?: number | null;
+    evaluationWeight?: number;
+  } | null;
   indicatorBreakdownStatus: 'AVAILABLE' | 'HISTORICAL_NO_BREAKDOWN' | 'NOT_CONFIGURED';
   indicatorStartPeriod: string | null;
   indicatorBreakdown: CompetencyIndicatorBreakdown[];
   isManualOverride: boolean;
   manualScore?: number | null;
+  manualLabel?: string | null;
+  /** Nota que calcula el sistema aunque haya ajuste manual. */
+  calculatedScore?: number | null;
+  calculatedLabel?: string | null;
+  /** Hay ajuste manual y la calculada ya no coincide. */
+  calculatedChanged?: boolean;
+  /** Comentario visible para el alumno. */
   manualNote?: string | null;
+  /** Nota privada (solo docente). */
+  privateNote?: string | null;
+  /** Conclusión descriptiva (libreta / SIAGIE). */
+  conclusion?: string | null;
   calculatedAt: string;
+}
+
+export type GradeScaleType = 'PERU_LETTERS' | 'PERU_VIGESIMAL' | 'CENTESIMAL' | 'USA_LETTERS' | 'CUSTOM';
+
+export type GradeScaleOptions =
+  | { kind: 'letters'; values: Array<{ label: string; minPercent: number }> }
+  | { kind: 'number'; min: number; max: number; step: number };
+
+export interface GradebookCompetencyColumn {
+  id: string;
+  code: string;
+  name: string | null;
+  shortName: string | null;
+  weight: number;
+  isCustom: boolean;
+  indicatorCount: number;
 }
 
 export interface StudentGradebookResponse {
@@ -72,6 +102,7 @@ export interface ClassroomGrade extends StudentGrade {
 export interface ClassroomGradeStudent {
   studentProfileId: string;
   studentName: string;
+  characterName?: string | null;
   average: GradeAverageSummary;
   grades: ClassroomGrade[];
 }
@@ -79,7 +110,12 @@ export interface ClassroomGradeStudent {
 export interface ClassroomGradebookResponse {
   classroomId: string;
   period: string;
-  gradeScaleType: 'PERU_LETTERS' | 'PERU_VIGESIMAL' | 'CENTESIMAL' | 'USA_LETTERS' | 'CUSTOM' | null;
+  gradeScaleType: GradeScaleType | null;
+  scale: GradeScaleOptions;
+  competencies: GradebookCompetencyColumn[];
+  isClosed: boolean;
+  evaluationWeight: number;
+  lastCalculatedAt: string | null;
   students: ClassroomGradeStudent[];
   summary: {
     studentCount: number;
@@ -109,8 +145,101 @@ export interface BimesterInfo {
   label: string;
   isCurrent: boolean;
   isClosed: boolean;
+  isFuture?: boolean;
   closedAt?: string;
+  /** Rango efectivo (ISO); end null = abierto sin fecha fija. */
+  start?: string | null;
+  end?: string | null;
+  datesConfigured?: boolean;
 }
+
+export const EVALUATION_KINDS = ['EXAM', 'TASK', 'PROJECT', 'ORAL', 'PRACTICE', 'OTHER'] as const;
+export type EvaluationKind = typeof EVALUATION_KINDS[number];
+
+export interface GradeEvaluationSummary {
+  id: string;
+  title: string;
+  kind: EvaluationKind;
+  competencyId: string;
+  competencyName: string | null;
+  competencyShortName: string | null;
+  indicatorId: string | null;
+  indicatorName: string | null;
+  evaluatedOn: string | null;
+  weight: number;
+  scored: number;
+  average: number | null;
+}
+
+export interface GradeEvaluationDetail {
+  id: string;
+  classroomId: string;
+  period: string;
+  title: string;
+  kind: EvaluationKind;
+  competencyId: string;
+  competencyName: string | null;
+  competencyShortName: string | null;
+  indicatorId: string | null;
+  evaluatedOn: string | null;
+  weight: number;
+  isClosed: boolean;
+  students: Array<{
+    studentProfileId: string;
+    studentName: string;
+    characterName: string | null;
+    label: string | null;
+    score: number | null;
+    note: string | null;
+  }>;
+}
+
+export interface EvaluationInput {
+  competencyId: string;
+  indicatorId?: string | null;
+  title: string;
+  kind: EvaluationKind;
+  evaluatedOn?: string | null;
+  weight?: number;
+}
+
+export type ImportRowStatus = 'OK' | 'EMPTY' | 'UNKNOWN_STUDENT' | 'INVALID_VALUE' | 'DUPLICATE';
+export interface ImportPreviewRow {
+  line: number;
+  name: string;
+  value: string;
+  note: string | null;
+  studentProfileId: string | null;
+  studentName: string | null;
+  label: string | null;
+  status: ImportRowStatus;
+  message: string | null;
+}
+
+export interface ConclusionProposal {
+  gradeId: string;
+  studentProfileId: string;
+  studentName: string;
+  gradeLabel: string;
+  current: string | null;
+  proposal: string;
+}
+
+export interface CopyConfigResult {
+  targets: Array<{ classroomId: string; classroomName: string; ok: boolean; message: string; addedCompetencies: number; createdCustomCompetencies: number; createdIndicators: number }>;
+}
+
+// Descarga de un archivo recibido como blob.
+const saveBlob = (data: BlobPart, type: string, filename: string) => {
+  const url = window.URL.createObjectURL(new Blob([data], { type }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};
 
 export interface BimesterStatus {
   currentBimester: string;
@@ -125,6 +254,78 @@ export interface BimesterStatus {
 }
 
 export const gradeApi = {
+  // Comentario para el alumno, nota privada y conclusión
+  updateGradeNotes: async (gradeId: string, notes: { manualNote?: string | null; privateNote?: string | null; conclusion?: string | null }) => {
+    const response = await api.patch(`/grades/${gradeId}/notes`, notes);
+    return response.data as { success: boolean };
+  },
+
+  // Escala, escala personalizada, peso de evaluaciones y peso por competencia
+  updateGradeSettings: async (classroomId: string, settings: {
+    gradeScaleType?: GradeScaleType;
+    customRanges?: Array<{ label: string; minPercent: number }>;
+    evaluationWeight?: number;
+    competencyWeights?: Array<{ competencyId: string; weight: number }>;
+  }) => {
+    const response = await api.put(`/grades/settings/${classroomId}`, settings);
+    return response.data as { success: boolean };
+  },
+
+  setBimesterDates: async (classroomId: string, period: string, start: string, end: string) => {
+    const response = await api.put(`/grades/bimesters/${classroomId}/dates`, { period, start, end });
+    return response.data as { success: boolean };
+  },
+
+  // Evaluaciones propias
+  listEvaluations: async (classroomId: string, period = 'CURRENT'): Promise<{ period: string; evaluations: GradeEvaluationSummary[] }> => {
+    const response = await api.get(`/grades/evaluations/${classroomId}`, { params: { period } });
+    return response.data.data;
+  },
+  createEvaluation: async (classroomId: string, data: EvaluationInput & { period?: string }): Promise<GradeEvaluationDetail> => {
+    const response = await api.post(`/grades/evaluations/${classroomId}`, data);
+    return response.data.data;
+  },
+  getEvaluation: async (evaluationId: string): Promise<GradeEvaluationDetail> => {
+    const response = await api.get(`/grades/evaluations/item/${evaluationId}`);
+    return response.data.data;
+  },
+  updateEvaluation: async (evaluationId: string, data: Partial<EvaluationInput>): Promise<GradeEvaluationDetail> => {
+    const response = await api.patch(`/grades/evaluations/item/${evaluationId}`, data);
+    return response.data.data;
+  },
+  deleteEvaluation: async (evaluationId: string) => {
+    await api.delete(`/grades/evaluations/item/${evaluationId}`);
+  },
+  saveEvaluationScores: async (evaluationId: string, scores: Array<{ studentProfileId: string; value: string | null; note?: string | null }>): Promise<GradeEvaluationDetail> => {
+    const response = await api.put(`/grades/evaluations/item/${evaluationId}/scores`, { scores });
+    return response.data.data;
+  },
+  downloadEvaluationTemplate: async (evaluationId: string, title: string) => {
+    const response = await api.get(`/grades/evaluations/item/${evaluationId}/template`, { responseType: 'blob' });
+    const safe = title.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'evaluacion';
+    saveBlob(response.data, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', `notas-${safe}.xlsx`);
+  },
+  previewImport: async (evaluationId: string, input: { fileBase64?: string; text?: string }): Promise<{ rows: ImportPreviewRow[]; ready: number }> => {
+    const response = await api.post(`/grades/evaluations/item/${evaluationId}/import-preview`, input);
+    return response.data.data;
+  },
+
+  // Conclusiones descriptivas
+  proposeConclusions: async (classroomId: string, competencyId: string, period = 'CURRENT', studentProfileIds?: string[]): Promise<{ competencyId: string; proposals: ConclusionProposal[] }> => {
+    const response = await api.post(`/grades/conclusions/${classroomId}/propose`, { competencyId, period, studentProfileIds });
+    return response.data.data;
+  },
+  saveConclusions: async (classroomId: string, items: Array<{ gradeId: string; conclusion: string | null }>) => {
+    const response = await api.put(`/grades/conclusions/${classroomId}`, { items });
+    return response.data.data as { saved: number };
+  },
+
+  // Copiar configuración a otras clases
+  copyConfig: async (classroomId: string, data: { targetClassroomIds: string[]; scale: boolean; dates: boolean }): Promise<CopyConfigResult> => {
+    const response = await api.post(`/grades/copy-config/${classroomId}`, data);
+    return response.data.data;
+  },
+
   // Obtener calificaciones de un estudiante
   getStudentGrades: async (studentProfileId: string, period: string = 'CURRENT'): Promise<StudentGradebookResponse> => {
     const response = await api.get(`/grades/student/${studentProfileId}`, {
@@ -159,10 +360,10 @@ export const gradeApi = {
   },
 
   // Establecer calificación manual
-  setManualGrade: async (gradeId: string, manualScore: number, manualNote?: string): Promise<{ success: boolean }> => {
+  setManualGrade: async (gradeId: string, value: string, manualNote?: string | null): Promise<{ success: boolean; score: number; label: string }> => {
     const response = await api.put(`/grades/${gradeId}/manual`, {
-      manualScore,
-      manualNote,
+      value,
+      ...(manualNote !== undefined ? { manualNote } : {}),
     });
     return response.data;
   },

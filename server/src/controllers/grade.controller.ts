@@ -61,6 +61,8 @@ const gradeSettingsBodySchema = z.object({
     minPercent: z.number().int().min(0).max(100),
   })).min(2).max(10).optional(),
   evaluationWeight: z.number().int().min(0).max(100).optional(),
+  // Peso relativo de cada competencia en el promedio (100 = normal).
+  competencyWeights: z.array(z.object({ competencyId: z.string().trim().min(1).max(36), weight: z.number().int().min(50).max(300) })).max(30).optional(),
 }).refine((b) => b.gradeScaleType !== 'CUSTOM' || !!b.customRanges, { message: 'La escala personalizada necesita sus niveles', path: ['customRanges'] });
 
 const bimesterDatesBodySchema = z.object({
