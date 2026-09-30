@@ -213,7 +213,7 @@ export const StorytellingPage = () => {
           type: draft.type,
           mediaType: draft.mediaType ?? undefined,
           mediaUrl: draft.mediaUrl ?? undefined,
-          triggerConfig: draft.triggerConfig,
+          triggerConfig: draft.triggerConfig ?? undefined,
           dialogues: draft.dialogues,
         });
       }

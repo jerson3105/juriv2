@@ -119,7 +119,7 @@ const createSceneSchema = z.object({
   backgroundColor: sceneBackground.optional(),
   triggerConfig: z.object({
     percentage: z.number().int().min(1).max(100),
-  }).optional(),
+  }).nullable().optional(), // null = escena sin umbral (no es hito)
   dialogues: z.array(dialogueSchema).max(50).optional(),
 });
 
