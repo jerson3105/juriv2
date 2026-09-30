@@ -239,7 +239,7 @@ export const GradesTab = ({ book, onOpenDetail }: GradesTabProps) => {
         ) : (
           <>
             {/* Escritorio: tabla alumno × competencia */}
-            <div className="hidden max-h-[70vh] overflow-auto rounded-xl border border-gray-200 dark:border-gray-700 md:block">
+            <div className="hidden overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700 md:block">
               <table ref={gridRef} onKeyDown={onGridKey} className="w-full border-separate border-spacing-0 text-sm">
                 <thead>
                   <tr>
