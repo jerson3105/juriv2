@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { gradeController } from '../controllers/grade.controller.js';
+import { aiGuard } from '../middleware/security.js';
 import { gradeEvaluationController } from '../controllers/gradeEvaluation.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { aiLimiter, aiRequestTimeout } from '../middleware/security.js';
 
 const router = Router();
 
@@ -37,6 +37,15 @@ router.get('/evaluations/item/:evaluationId', authorize('TEACHER'), gradeEvaluat
 router.patch('/evaluations/item/:evaluationId', authorize('TEACHER'), gradeEvaluationController.update);
 router.delete('/evaluations/item/:evaluationId', authorize('TEACHER'), gradeEvaluationController.remove);
 router.put('/evaluations/item/:evaluationId/scores', authorize('TEACHER'), gradeEvaluationController.saveScores);
+router.get('/evaluations/item/:evaluationId/template', authorize('TEACHER'), gradeEvaluationController.template);
+router.post('/evaluations/item/:evaluationId/import-preview', authorize('TEACHER'), gradeEvaluationController.importPreview);
+
+// Conclusiones descriptivas: la IA propone por alumno, el docente edita y guarda
+router.post('/conclusions/:classroomId/propose', authorize('TEACHER'), ...aiGuard, gradeEvaluationController.proposeConclusions);
+router.put('/conclusions/:classroomId', authorize('TEACHER'), gradeEvaluationController.saveConclusions);
+
+// Copiar competencias, destrezas, escala y fechas a otras clases
+router.post('/copy-config/:classroomId', authorize('TEACHER'), gradeEvaluationController.copyConfig);
 
 // Escala y peso de evaluaciones de la clase
 router.put('/settings/:classroomId', authorize('TEACHER'), gradeController.updateGradeSettings);
@@ -46,7 +55,7 @@ router.get('/export/pdf/:classroomId', authorize('TEACHER'), gradeController.exp
 
 // Exportar libro de calificaciones en Excel formato SIAGIE (solo profesor)
 // La exportación a Excel genera conclusiones con IA: cuenta para el límite de IA.
-router.get('/export/excel/:classroomId', authorize('TEACHER'), aiLimiter, aiRequestTimeout, gradeController.exportExcel);
+router.get('/export/excel/:classroomId', authorize('TEACHER'), gradeController.exportExcel);
 
 // ═══════════════════════════════════════════════════════════
 // GESTIÓN DE BIMESTRES

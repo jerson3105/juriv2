@@ -2,6 +2,9 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { gradeEvaluationKinds } from '../db/schema.js';
 import { gradeEvaluationService } from '../services/gradeEvaluation.service.js';
+import { gradeImportService } from '../services/gradeImport.service.js';
+import { gradeConfigCopyService } from '../services/gradeConfigCopy.service.js';
+import { gradeConclusionService } from '../services/gradeConclusion.service.js';
 import { requireClassroomTeacher } from '../utils/access.js';
 import { AppError, publicErrorMessage } from '../utils/errors.js';
 
@@ -25,6 +28,30 @@ const scoresBody = z.object({
     value: z.string().trim().max(10).nullable(),
     note: z.string().trim().max(500).nullable().optional(),
   })).min(1).max(200),
+});
+
+const importBody = z.object({
+  fileBase64: z.string().max(100_000).optional(),
+  text: z.string().max(70_000).optional(),
+}).refine((b) => !!b.fileBase64 || !!b.text?.trim(), 'Sube un archivo o pega las notas');
+
+const copyConfigBody = z.object({
+  targetClassroomIds: z.array(z.string().uuid()).min(1, 'Elige al menos una clase').max(20),
+  scale: z.boolean().default(true),
+  dates: z.boolean().default(true),
+});
+
+const proposeBody = z.object({
+  competencyId: z.string().trim().min(1).max(36),
+  period: periodSchema.optional(),
+  studentProfileIds: z.array(z.string().uuid()).max(40).optional(),
+});
+
+const conclusionsBody = z.object({
+  items: z.array(z.object({
+    gradeId: z.string().uuid(),
+    conclusion: z.string().trim().max(2000).nullable(),
+  })).min(1).max(60),
 });
 
 // AppError lleva su código; los mensajes del servicio de notas (bimestre cerrado, periodo inválido) son 400.
@@ -113,6 +140,67 @@ class GradeEvaluationController {
       res.json({ success: true, data: await gradeEvaluationService.saveScores(evaluationId, scores) });
     } catch (error) {
       sendError(res, error, 'Error al guardar las notas');
+    }
+  }
+
+  /** Plantilla Excel con los alumnos de la clase para llenar la evaluación. */
+  async template(req: Request, res: Response) {
+    try {
+      const { evaluationId } = evaluationParams.parse(req.params);
+      if (!(await ensureEvaluationAccess(req, res, evaluationId))) return;
+      const { buffer, filename } = await gradeImportService.template(evaluationId);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(buffer);
+    } catch (error) {
+      sendError(res, error, 'Error al generar la plantilla');
+    }
+  }
+
+  /** Vista previa de una importación (Excel o texto pegado). No guarda nada. */
+  async importPreview(req: Request, res: Response) {
+    try {
+      const { evaluationId } = evaluationParams.parse(req.params);
+      const body = importBody.parse(req.body);
+      if (!(await ensureEvaluationAccess(req, res, evaluationId))) return;
+      res.json({ success: true, data: await gradeImportService.preview(evaluationId, body) });
+    } catch (error) {
+      sendError(res, error, 'Error al leer las notas');
+    }
+  }
+
+  /** La IA propone conclusiones descriptivas por alumno (no guarda). */
+  async proposeConclusions(req: Request, res: Response) {
+    try {
+      const { classroomId } = classroomParams.parse(req.params);
+      const body = proposeBody.parse(req.body);
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
+      res.json({ success: true, data: await gradeConclusionService.propose(classroomId, body.competencyId, body.period ?? 'CURRENT', body.studentProfileIds) });
+    } catch (error) {
+      sendError(res, error, 'Error al proponer conclusiones');
+    }
+  }
+
+  async saveConclusions(req: Request, res: Response) {
+    try {
+      const { classroomId } = classroomParams.parse(req.params);
+      const { items } = conclusionsBody.parse(req.body);
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
+      res.json({ success: true, data: await gradeConclusionService.saveMany(classroomId, items) });
+    } catch (error) {
+      sendError(res, error, 'Error al guardar las conclusiones');
+    }
+  }
+
+  /** Copiar competencias, destrezas, escala y fechas a otras clases del docente. */
+  async copyConfig(req: Request, res: Response) {
+    try {
+      const { classroomId } = classroomParams.parse(req.params);
+      const body = copyConfigBody.parse(req.body);
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
+      res.json({ success: true, data: await gradeConfigCopyService.copy(classroomId, req.user!.id, body) });
+    } catch (error) {
+      sendError(res, error, 'Error al copiar la configuración');
     }
   }
 }

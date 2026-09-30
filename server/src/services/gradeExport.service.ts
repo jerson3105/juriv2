@@ -1,8 +1,6 @@
 // @ts-ignore - PDFKit types issue with ESM
 import PDFDocument from 'pdfkit';
 import ExcelJS from 'exceljs';
-import type { GoogleGenAI } from '@google/genai';
-import { createGenAI } from '../utils/aiClient.js';
 import { db } from '../db/index.js';
 import { 
   studentProfiles, 
@@ -25,6 +23,7 @@ interface StudentGradeData {
     score: number;
     gradeLabel: string;
     bucket: keyof GradeStats;
+    conclusion: string | null;
   }[];
   average: number;
   averageLabel: string;
@@ -40,7 +39,6 @@ interface GradeStats {
 }
 
 class GradeExportService {
-  private ai: GoogleGenAI | null = null;
 
   private normalizePeriod(period?: string): string {
     const normalized = (period ?? 'CURRENT').trim().toUpperCase();
@@ -72,53 +70,6 @@ class GradeExportService {
       : `${new Date().getFullYear()}-B1`;
   }
 
-  private getAI(): GoogleGenAI {
-    if (!this.ai) {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        throw new Error('GEMINI_API_KEY no configurada');
-      }
-      this.ai = createGenAI(apiKey);
-    }
-    return this.ai;
-  }
-
-  /**
-   * Genera una conclusión descriptiva para estudiantes con nota C en una competencia
-   * usando IA. La conclusión es genérica (no personalizada por estudiante).
-   */
-  private async generateConclusionForC(competencyName: string): Promise<string> {
-    try {
-      if (!process.env.GEMINI_API_KEY?.trim()) {
-        return `Requiere apoyo adicional para desarrollar la competencia ${competencyName}.`;
-      }
-
-      const ai = this.getAI();
-      
-      const prompt = `Eres un experto en educación peruana. Genera UNA SOLA oración breve (máximo 25 palabras) que explique por qué un estudiante está "En inicio" (nota C) en la competencia "${competencyName}".
-
-La oración debe:
-- Ser genérica (aplicable a cualquier estudiante con C)
-- Indicar que el estudiante está en proceso de desarrollar la competencia
-- Ser constructiva y profesional
-- NO mencionar el nombre del estudiante
-- Estar en tercera persona
-
-Responde SOLO con la oración, sin comillas ni explicaciones adicionales.`;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-lite',
-        contents: prompt,
-      });
-
-      const text = response.text?.trim() || '';
-      // Limpiar posibles comillas
-      return text.replace(/^["']|["']$/g, '').trim();
-    } catch (error) {
-      console.error('Error generating conclusion with AI:', error);
-      return `Requiere apoyo adicional para desarrollar la competencia ${competencyName}.`;
-    }
-  }
 
   async generateGradebookPDF(classroomId: string, period: string = 'CURRENT'): Promise<Buffer> {
     const classroom = await db.select()
@@ -150,6 +101,7 @@ Responde SOLO con la oración, sin comillas ni explicaciones adicionales.`;
         score: grade.score,
         gradeLabel: grade.gradeLabel,
         bucket: grade.bucket,
+        conclusion: grade.conclusion,
       })),
       average: student.average.score,
       averageLabel: student.average.label,
@@ -536,31 +488,7 @@ Responde SOLO con la oración, sin comillas ni explicaciones adicionales.`;
     const studentsData = this.mapGradebookStudents(gradebook);
     const competencies = await this.getClassroomCompetenciesOrdered(classroomId);
 
-    // Identificar competencias que tienen al menos un estudiante con C
-    const competenciesWithC = new Set<string>();
-    for (const student of studentsData) {
-      for (const grade of student.grades) {
-        if (grade.gradeLabel === 'C') {
-          competenciesWithC.add(grade.competencyId);
-        }
-      }
-    }
-
-    // Generar conclusiones con IA solo para competencias con notas C
-    const conclusionEntries = await Promise.all(Array.from(competenciesWithC).map(async (compId) => {
-      const comp = competencies.find(c => c.id === compId);
-      if (comp) {
-        const conclusion = await this.generateConclusionForC(comp.name);
-        return [compId, conclusion] as const;
-      }
-      return null;
-    }));
-
-    const conclusionsMap = new Map<string, string>(
-      conclusionEntries.filter((entry): entry is readonly [string, string] => !!entry)
-    );
-
-    return this.createExcel(classroom, studentsData, competencies, conclusionsMap);
+    return this.createExcel(classroom, studentsData, competencies);
   }
 
   /**
@@ -590,7 +518,6 @@ Responde SOLO con la oración, sin comillas ni explicaciones adicionales.`;
     classroom: any,
     students: StudentGradeData[],
     competencies: { id: string; name: string; index: number }[],
-    conclusionsMap: Map<string, string> = new Map()
   ): Promise<Buffer> {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Juried';
@@ -680,13 +607,8 @@ Responde SOLO con la oración, sin comillas ni explicaciones adicionales.`;
         const grade = student.grades.find(g => g.competencyId === comp.id);
         const gradeLabel = grade?.gradeLabel || '';
         rowData.push(gradeLabel); // NL
-        
-        // Si la nota es C, agregar la conclusión descriptiva generada por IA
-        if (gradeLabel === 'C' && conclusionsMap.has(comp.id)) {
-          rowData.push(conclusionsMap.get(comp.id) || '');
-        } else {
-          rowData.push(''); // Vacío para otras notas
-        }
+        // Conclusión descriptiva que escribió (o aceptó de la IA) el docente para este alumno.
+        rowData.push(grade?.conclusion || '');
       });
 
       const dataRow = worksheet.addRow(rowData);
