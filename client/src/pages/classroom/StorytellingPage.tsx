@@ -16,6 +16,8 @@ import { ChapterFormModal, StoryFormModal } from '../../components/storytelling/
 import { SceneEditorModal, type SceneDraft } from '../../components/storytelling/SceneEditorModal';
 import { StoryConfirmModal } from '../../components/storytelling/StoryConfirmModal';
 import { ThemePanel } from '../../components/storytelling/ThemePanel';
+import { DecisionResultsModal } from '../../components/storytelling/DecisionResultsModal';
+import { AiCoauthorModal } from '../../components/storytelling/AiCoauthorModal';
 import { showUndoToast } from '../../components/storytelling/undoToast';
 import { chapterProgress, chapterReward, classroomKey, errorMessage, plural, storiesKey, storyDetailKey } from '../../components/storytelling/storyEditorHelpers';
 
@@ -27,7 +29,9 @@ type Modal =
   | { kind: 'scene-form'; chapter: StoryChapter; scene?: StoryScene }
   | { kind: 'scene-delete'; chapter: StoryChapter; scene: StoryScene }
   | { kind: 'reveal'; chapter: StoryChapter; position: number }
-  | { kind: 'theme' };
+  | { kind: 'theme' }
+  | { kind: 'decision'; sceneId: string }
+  | { kind: 'ai' };
 
 interface PlayerState {
   items: PlayerItem[];
@@ -207,7 +211,14 @@ export const StorytellingPage = () => {
     const { chapter, scene } = modal;
     return run('scene-form', async () => {
       if (scene) {
-        await storyApi.updateScene(scene.id, { type: draft.type, mediaType: draft.mediaType, mediaUrl: draft.mediaUrl, triggerConfig: draft.triggerConfig });
+        await storyApi.updateScene(scene.id, {
+          type: draft.type,
+          mediaType: draft.mediaType,
+          mediaUrl: draft.mediaUrl,
+          triggerConfig: draft.triggerConfig,
+          // Decisión: se envía si lo es; si dejó de serlo, se borra.
+          decision: draft.type === 'DECISION' ? draft.decision : scene.type === 'DECISION' ? null : undefined,
+        });
         await storyApi.setDialogues(scene.id, draft.dialogues);
       } else {
         await storyApi.createScene(chapter.id, {
@@ -216,6 +227,7 @@ export const StorytellingPage = () => {
           mediaUrl: draft.mediaUrl ?? undefined,
           triggerConfig: draft.triggerConfig ?? undefined,
           dialogues: draft.dialogues,
+          decision: draft.decision ?? undefined,
         });
       }
       await refresh(detail.id);
@@ -285,6 +297,7 @@ export const StorytellingPage = () => {
                 onBack={() => setShowDetailOnMobile(false)}
                 onEditStory={() => setModal({ kind: 'story-form', story: detail })}
                 onDeleteStory={() => setModal({ kind: 'story-delete', story: detail })}
+                onAiCoauthor={() => setModal({ kind: 'ai' })}
                 onToggleActive={() => toggleActive(detail)}
                 onAddChapter={() => setModal({ kind: 'chapter-form', position: detail.chapters.length + 1 })}
                 onEditChapter={(chapter) => setModal({ kind: 'chapter-form', chapter, position: detail.chapters.indexOf(chapter) + 1 })}
@@ -296,6 +309,7 @@ export const StorytellingPage = () => {
                 onEditScene={(chapter, scene) => setModal({ kind: 'scene-form', chapter, scene })}
                 onDeleteScene={(chapter, scene) => setModal({ kind: 'scene-delete', chapter, scene })}
                 onPreviewScene={(_, scene) => setPlayer({ items: [sceneItem(scene)], projector: false, label: 'Vista previa de la escena' })}
+                onDecisionResults={(scene) => setModal({ kind: 'decision', sceneId: scene.id })}
               />
             ) : (
               <div className="flex justify-center py-16"><Loader2 className="h-8 w-8 animate-spin text-primary-600" aria-label="Cargando historia" /></div>
@@ -343,6 +357,12 @@ export const StorytellingPage = () => {
             onClose={() => setModal(null)}
           />
         )}
+        {modal?.kind === 'ai' && detail && (
+          <AiCoauthorModal key="ai" story={detail} onClose={() => setModal(null)} onApplied={() => refresh(detail.id)} />
+        )}
+        {modal?.kind === 'decision' && detail && (
+          <DecisionResultsModal key="decision" sceneId={modal.sceneId} storyId={detail.id} onClose={() => setModal(null)} />
+        )}
         {modal?.kind === 'theme' && (
           <ThemePanel key="theme" classroom={classroom} presets={presets} activeStoryTitle={activeStory?.title ?? null} onClose={() => setModal(null)} />
         )}
@@ -350,7 +370,7 @@ export const StorytellingPage = () => {
 
       <AnimatePresence>
         {player && (
-          <StoryPlayer key={player.label} items={player.items} accent={accent} projector={player.projector} label={player.label} onClose={() => setPlayer(null)} />
+          <StoryPlayer key={player.label} items={player.items} accent={accent} projector={player.projector} liveVotes={player.projector} label={player.label} onClose={() => setPlayer(null)} />
         )}
       </AnimatePresence>
     </div>

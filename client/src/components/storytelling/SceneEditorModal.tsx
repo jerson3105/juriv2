@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import { ArrowDown, ArrowUp, Copy, Eye, Image as ImageIcon, Loader2, MessageSquarePlus, Trash2, Video, Wand2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Copy, Eye, Image as ImageIcon, Loader2, MessageSquarePlus, Plus, Trash2, Video, Wand2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { storyApi, type StoryScene } from '../../lib/storyApi';
+import { storyApi, type DecisionInput, type StoryDecision, type StoryScene } from '../../lib/storyApi';
 import type { StoryAccent } from '../../lib/storyTheme';
 import { HomeModal } from '../home/HomeModal';
 import { cancelButton, inputClass, labelClass, primaryButton } from '../home/homeHelpers';
 import { StoryPlayer } from '../story/StoryPlayer';
 import { EMOTIONS, sceneItem, youTubeId } from '../story/storyPlayerHelpers';
-import { SCENE_ORDER, SCENE_TYPES, errorMessage, sceneTrigger, type SceneType } from './storyEditorHelpers';
+import { SCENE_ORDER, SCENE_TYPES, dialoguesToLines, errorMessage, linesToDialogues, sceneTrigger, type SceneType } from './storyEditorHelpers';
 
 interface DraftDialogue {
   key: string;
@@ -23,7 +23,18 @@ export interface SceneDraft {
   mediaUrl: string | null;
   triggerConfig: { percentage: number } | null;
   dialogues: Array<{ speaker?: string; text: string; emotion: string }>;
+  decision: DecisionInput | null;
 }
+
+interface DraftOption { key: string; id?: string; label: string; outcome: string }
+
+const parseDecision = (raw: unknown): StoryDecision | null => {
+  if (!raw) return null;
+  if (typeof raw === 'string') {
+    try { return JSON.parse(raw) as StoryDecision; } catch { return null; }
+  }
+  return 'outcome' in (raw as object) ? null : (raw as StoryDecision);
+};
 
 interface SceneEditorModalProps {
   scene?: StoryScene | null;
@@ -60,6 +71,17 @@ export const SceneEditorModal = ({ scene, chapterTitle, storyContext, accent, sa
   const [aiBusy, setAiBusy] = useState<'dialogues' | 'image' | 'full' | null>(null);
   const [imagePrompt, setImagePrompt] = useState('');
   const [previewing, setPreviewing] = useState(false);
+  const existingDecision = parseDecision(scene?.decision);
+  const [question, setQuestion] = useState(existingDecision?.question ?? '');
+  const [options, setOptions] = useState<DraftOption[]>(() => existingDecision?.options.length
+    ? existingDecision.options.map((o) => ({ key: newKey(), id: o.id, label: o.label, outcome: dialoguesToLines(o.outcome) }))
+    : [{ key: newKey(), label: '', outcome: '' }, { key: newKey(), label: '', outcome: '' }]);
+  const decisionInput: DecisionInput = {
+    question: question.trim(),
+    options: options.map((o) => ({ id: o.id, label: o.label.trim(), outcome: linesToDialogues(o.outcome) })),
+  };
+  const decisionError = type === 'DECISION' && (!decisionInput.question || decisionInput.options.some((o) => !o.label))
+    ? 'Escribe la pregunta y el nombre de cada opción.' : null;
 
   const percentNumber = parseInt(percent, 10);
   const percentError = type === 'MILESTONE' && !(percentNumber >= 1 && percentNumber <= 100) ? 'Indica un porcentaje entre 1 y 100.' : null;
@@ -67,7 +89,7 @@ export const SceneEditorModal = ({ scene, chapterTitle, storyContext, accent, sa
   const urlError = mediaType && url && !isHttp(url) ? 'La URL debe empezar con http:// o https://' : null;
   const videoError = mediaType === 'VIDEO' && url && !youTubeId(url) ? 'No reconozco el enlace de YouTube.' : null;
   const filled = dialogues.filter((d) => d.text.trim());
-  const valid = !percentError && !urlError && !videoError && (filled.length > 0 || (!!mediaType && !!url));
+  const valid = !percentError && !urlError && !videoError && !decisionError && (filled.length > 0 || (!!mediaType && !!url) || type === 'DECISION');
 
   const draft = (): SceneDraft => ({
     type,
@@ -75,6 +97,7 @@ export const SceneEditorModal = ({ scene, chapterTitle, storyContext, accent, sa
     mediaUrl: mediaType && url ? url : null,
     triggerConfig: type === 'MILESTONE' ? { percentage: percentNumber } : null,
     dialogues: filled.map((d) => ({ speaker: d.speaker.trim() || undefined, text: d.text.trim(), emotion: d.emotion })),
+    decision: type === 'DECISION' ? decisionInput : null,
   });
 
   const previewScene: StoryScene = {
@@ -88,6 +111,9 @@ export const SceneEditorModal = ({ scene, chapterTitle, storyContext, accent, sa
     triggerConfig: null,
     createdAt: '',
     dialogues: filled.map((d, i) => ({ id: d.key, sceneId: 'preview', orderIndex: i, text: d.text.trim(), speaker: d.speaker.trim() || null, emotion: d.emotion })),
+    decision: type === 'DECISION'
+      ? { question: decisionInput.question, status: 'OPEN', winnerOptionId: null, options: decisionInput.options.map((o, i) => ({ id: o.id ?? `preview-${i}`, label: o.label, outcome: o.outcome })) }
+      : null,
   };
 
   const update = (key: string, patch: Partial<DraftDialogue>) =>
@@ -175,6 +201,42 @@ export const SceneEditorModal = ({ scene, chapterTitle, storyContext, accent, sa
           )}
           {percentError && <p id="scene-percent-error" className="mt-1 text-sm text-red-700 dark:text-red-300">{percentError}</p>}
         </fieldset>
+
+        {/* Votación */}
+        {type === 'DECISION' && (
+          <fieldset className="space-y-3 rounded-xl border border-rose-200 p-3 dark:border-rose-800">
+            <legend className={`${labelClass} px-1`}>Votación de la clase</legend>
+            {existingDecision?.status === 'CLOSED' && (
+              <p className="rounded-lg bg-gray-100 p-2 text-sm text-gray-800 dark:bg-gray-700 dark:text-gray-100">
+                Votación cerrada: ganó «{existingDecision.options.find((o) => o.id === existingDecision.winnerOptionId)?.label}». Puedes corregir textos; el resultado no cambia.
+              </p>
+            )}
+            <div>
+              <label htmlFor="decision-question" className={labelClass}>Pregunta</label>
+              <input id="decision-question" value={question} onChange={(e) => setQuestion(e.target.value)} maxLength={300} placeholder="¿Qué debería hacer el grupo?" className={`${inputClass} mt-1`} />
+            </div>
+            <ol className="space-y-2">
+              {options.map((o, i) => (
+                <li key={o.key} className="rounded-xl bg-gray-50 p-3 dark:bg-gray-900/40">
+                  <div className="flex items-center gap-2">
+                    <label htmlFor={`option-${o.key}`} className="sr-only">Opción {i + 1}</label>
+                    <input id={`option-${o.key}`} value={o.label} onChange={(e) => setOptions((list) => list.map((x) => (x.key === o.key ? { ...x, label: e.target.value } : x)))} maxLength={120} placeholder={`Opción ${i + 1}`} className={`${inlineField} min-w-0 flex-1`} />
+                    <button type="button" onClick={() => setOptions((list) => list.filter((x) => x.key !== o.key))} disabled={options.length <= 2} className="flex h-10 w-10 items-center justify-center rounded-lg text-red-700 hover:bg-red-50 disabled:opacity-40 dark:text-red-300 dark:hover:bg-red-900/30" aria-label={`Quitar opción ${i + 1}`}>
+                      <Trash2 size={16} aria-hidden="true" />
+                    </button>
+                  </div>
+                  <label htmlFor={`outcome-${o.key}`} className="mt-2 block text-sm font-semibold text-gray-800 dark:text-gray-100">Desenlace si gana</label>
+                  <textarea id={`outcome-${o.key}`} value={o.outcome} onChange={(e) => setOptions((list) => list.map((x) => (x.key === o.key ? { ...x, outcome: e.target.value } : x)))} rows={2} placeholder={'Narrador: El puente cruje, pero resiste.\nUna línea por diálogo.'} className={`${inputClass} mt-1 resize-y`} />
+                </li>
+              ))}
+            </ol>
+            <button type="button" onClick={() => setOptions((list) => [...list, { key: newKey(), label: '', outcome: '' }])} disabled={options.length >= 3} className="inline-flex min-h-[40px] items-center gap-2 rounded-xl px-3 text-sm font-semibold text-primary-700 hover:bg-primary-50 disabled:opacity-40 dark:text-primary-300 dark:hover:bg-primary-900/30">
+              <Plus size={16} aria-hidden="true" /> Añadir opción
+            </button>
+            {decisionError && <p className="text-sm text-red-700 dark:text-red-300">{decisionError}</p>}
+            <p className="text-sm text-gray-700 dark:text-gray-300">Los desenlaces quedan en secreto hasta que cierres la votación.</p>
+          </fieldset>
+        )}
 
         {/* Medio */}
         <fieldset>

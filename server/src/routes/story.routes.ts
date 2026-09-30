@@ -42,6 +42,12 @@ router.put('/scenes/:sceneId', authorize('TEACHER'), storyController.updateScene
 router.delete('/scenes/:sceneId', authorize('TEACHER'), storyController.deleteScene.bind(storyController));
 router.put('/scenes/:sceneId/dialogues', authorize('TEACHER'), storyController.setDialogues.bind(storyController));
 
+// ---- DECISIONES E IA COAUTORA ----
+router.post('/scenes/:sceneId/vote', authorize('STUDENT'), storyController.voteDecision.bind(storyController));
+router.get('/scenes/:sceneId/results', authorize('TEACHER'), storyController.decisionResults.bind(storyController));
+router.post('/scenes/:sceneId/close-vote', authorize('TEACHER'), storyController.closeDecision.bind(storyController));
+router.post('/:storyId/ai/draft', authorize('TEACHER'), ...aiGuard, storyController.aiDraft.bind(storyController));
+
 // ---- STUDENT ENDPOINTS ----
 router.get('/classroom/:classroomId/student/:studentProfileId', authorize('STUDENT'), storyController.getStudentStoryData.bind(storyController));
 router.get('/chapters/:chapterId/scenes/student', authorize('STUDENT'), storyController.getChapterScenesForStudent.bind(storyController));

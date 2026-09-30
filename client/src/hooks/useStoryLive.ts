@@ -4,8 +4,9 @@ import { getSocket } from '../lib/socket';
 
 export interface StoryUpdateEvent {
   classroomId: string;
-  chapterId: string;
-  kind: 'goal' | 'revealed';
+  chapterId: string | null;
+  sceneId?: string;
+  kind: 'goal' | 'revealed' | 'decided';
 }
 
 // Evento de ventana para que las páginas reaccionen (p. ej. reproducir el final recién revelado).
@@ -30,8 +31,11 @@ export const useStoryLive = (classroomId: string | null | undefined) => {
       queryClient.invalidateQueries({ queryKey: ['stories', classroomId] });
       queryClient.invalidateQueries({ queryKey: ['story-detail'] });
       queryClient.invalidateQueries({ queryKey: ['student-story'] });
-      queryClient.invalidateQueries({ queryKey: ['chapter-factions', event.chapterId] });
-      queryClient.invalidateQueries({ queryKey: ['story-recap', event.chapterId] });
+      if (event.chapterId) {
+        queryClient.invalidateQueries({ queryKey: ['chapter-factions', event.chapterId] });
+        queryClient.invalidateQueries({ queryKey: ['story-recap', event.chapterId] });
+      }
+      if (event.sceneId) queryClient.invalidateQueries({ queryKey: ['decision-results', event.sceneId] });
       window.dispatchEvent(new CustomEvent<StoryUpdateEvent>(STORY_UPDATED_EVENT, { detail: event }));
     };
 

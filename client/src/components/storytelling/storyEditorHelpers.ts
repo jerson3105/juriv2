@@ -12,9 +12,10 @@ export const SCENE_TYPES: Record<SceneType, { label: string; emoji: string; hint
   DESARROLLO: { label: 'Desarrollo', emoji: '📖', hint: 'El alumno la abre cuando quiere desde Mi Historia.', chip: 'bg-violet-100 text-violet-800 dark:bg-violet-900/40 dark:text-violet-200' },
   MILESTONE: { label: 'Hito', emoji: '⭐', hint: 'Se desbloquea al llegar a un porcentaje de la meta.', chip: 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200' },
   OUTRO: { label: 'Cierre', emoji: '🏁', hint: 'Secreto hasta que reveles el final del capítulo.', chip: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200' },
+  DECISION: { label: 'Decisión', emoji: '🗳️', hint: 'La clase vota qué hacer; al cerrar la votación se muestra el desenlace ganador.', chip: 'bg-rose-100 text-rose-900 dark:bg-rose-900/40 dark:text-rose-100' },
 };
 
-export const SCENE_ORDER: SceneType[] = ['INTRO', 'DESARROLLO', 'MILESTONE', 'OUTRO'];
+export const SCENE_ORDER: SceneType[] = ['INTRO', 'DESARROLLO', 'MILESTONE', 'DECISION', 'OUTRO'];
 
 export const COMPLETION_TYPES: Record<CompletionType, { label: string; emoji: string; hint: string }> = {
   XP_GOAL: { label: 'Meta de XP', emoji: '🎯', hint: 'La clase suma el XP que gana desde que empieza el capítulo. Al llegar a la meta queda listo para que reveles el final.' },
@@ -55,6 +56,16 @@ export const sceneSnippet = (scene: StoryScene) => {
   if (!first) return 'Sin diálogos';
   return `${first.speaker ? `${first.speaker}: ` : ''}${first.text}`;
 };
+
+// Diálogos como texto: una línea por diálogo; "Personaje: texto" marca quién habla.
+export const linesToDialogues = (text: string) =>
+  text.split(/\n+/).map((line) => line.trim()).filter(Boolean).map((line) => {
+    const match = /^([^:]{1,40}):\s*(.+)$/.exec(line);
+    return match ? { speaker: match[1].trim(), text: match[2].trim(), emotion: 'neutral' } : { text: line, emotion: 'neutral' };
+  });
+
+export const dialoguesToLines = (dialogues: { speaker?: string | null; text: string }[]) =>
+  dialogues.map((d) => (d.speaker ? `${d.speaker}: ${d.text}` : d.text)).join('\n');
 
 export const errorMessage = (error: unknown, fallback: string) =>
   (error as { response?: { data?: { message?: string } } })?.response?.data?.message || fallback;

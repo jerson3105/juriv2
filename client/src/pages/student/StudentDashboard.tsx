@@ -109,7 +109,8 @@ export const StudentDashboard = () => {
   // Final revelado en vivo: vuelve a reproducir lo nuevo aunque ya se hubiera cerrado la historia.
   useEffect(() => {
     const onUpdate = (event: Event) => {
-      if ((event as CustomEvent<StoryUpdateEvent>).detail?.kind === 'revealed') setStoryDismissed(false);
+      const kind = (event as CustomEvent<StoryUpdateEvent>).detail?.kind;
+      if (kind === 'revealed' || kind === 'decided') setStoryDismissed(false);
     };
     window.addEventListener(STORY_UPDATED_EVENT, onUpdate);
     return () => window.removeEventListener(STORY_UPDATED_EVENT, onUpdate);
@@ -673,6 +674,7 @@ export const StudentDashboard = () => {
             accent={storyAccent ?? null}
             label={storyData?.title ? `Historia: ${storyData.title}` : 'Historia de la clase'}
             onSceneSeen={(sceneId) => { void storyApi.markSceneViewed(sceneId).catch(() => undefined); }}
+            onVote={async (sceneId, optionId) => (await storyApi.voteDecision(sceneId, optionId)).myVote}
             onClose={() => {
               setStoryDismissed(true);
               queryClient.invalidateQueries({ queryKey: ['student-story'] });

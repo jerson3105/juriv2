@@ -15,6 +15,8 @@ import {
   studentCollectibles,
   clanLogs,
   teams,
+  storyVotes,
+  type StoryDecision,
   type StoryRewardConfig,
   type StoryRewardResult,
 } from '../db/schema.js';
@@ -63,7 +65,7 @@ const chapterPercent = (chapter: ChapterLike): number => {
 export const isSceneUnlocked = (scene: SceneLike, chapter: ChapterLike): boolean => {
   if (chapter.status === 'COMPLETED') return true;
   if (chapter.status !== 'ACTIVE') return false;
-  if (scene.type === 'INTRO' || scene.type === 'DESARROLLO') return true;
+  if (scene.type === 'INTRO' || scene.type === 'DESARROLLO' || scene.type === 'DECISION') return true;
   if (scene.type === 'MILESTONE') {
     if (chapter.goalReachedAt) return true;
     const threshold = parseJson<{ percentage?: number }>(scene.triggerConfig)?.percentage || 0;
@@ -73,6 +75,45 @@ export const isSceneUnlocked = (scene: SceneLike, chapter: ChapterLike): boolean
 };
 
 const STATUS_RANK: Record<string, number> = { COMPLETED: 0, ACTIVE: 1, LOCKED: 2 };
+
+export interface DecisionInput {
+  question: string;
+  options: { id?: string; label: string; outcome: { speaker?: string; text: string; emotion?: string }[] }[];
+}
+
+/** Decisión nueva o editada: conserva estado, ganador e ids de las opciones existentes. */
+export const buildDecision = (input: DecisionInput, previous: StoryDecision | null): StoryDecision => {
+  const known = new Set((previous?.options ?? []).map((o) => o.id));
+  return {
+    question: input.question,
+    options: input.options.map((o) => ({
+      id: o.id && known.has(o.id) ? o.id : uuidv4(),
+      label: o.label,
+      outcome: o.outcome.map((d) => ({ speaker: d.speaker, text: d.text, emotion: d.emotion ?? 'neutral' })),
+    })),
+    status: previous?.status ?? 'OPEN',
+    winnerOptionId: previous?.winnerOptionId ?? null,
+    closedAt: previous?.closedAt ?? null,
+  };
+};
+
+/**
+ * Decisión vista por el alumno: mientras está abierta, sin desenlaces (no hay spoiler);
+ * cerrada, solo el desenlace de la opción ganadora.
+ */
+export const decisionForStudent = (raw: unknown, myVote: string | null) => {
+  const decision = parseJson<StoryDecision>(raw);
+  if (!decision) return null;
+  const closed = decision.status === 'CLOSED';
+  return {
+    question: decision.question,
+    status: decision.status,
+    options: decision.options.map((o) => ({ id: o.id, label: o.label })),
+    winnerOptionId: closed ? decision.winnerOptionId ?? null : null,
+    outcome: closed ? decision.options.find((o) => o.id === decision.winnerOptionId)?.outcome ?? [] : [],
+    myVote,
+  };
+};
 
 // ==================== THEME PRESETS ====================
 
@@ -272,7 +313,14 @@ class StoryService {
       return { ...chapter, scenes: scenesWithDialogues };
     }));
 
-    return { ...story, chapters: chaptersWithScenes };
+    const decisionIds = chaptersWithScenes.flatMap((c) => c.scenes.filter((sc) => sc.type === 'DECISION').map((sc) => sc.id));
+    const counts = await this.voteCounts(decisionIds);
+    const withVotes = chaptersWithScenes.map((c) => ({
+      ...c,
+      scenes: c.scenes.map((sc) => (sc.type === 'DECISION' ? { ...sc, votes: counts.get(sc.id) ?? {} } : sc)),
+    }));
+
+    return { ...story, chapters: withVotes };
   }
 
   async getActiveStory(classroomId: string) {
@@ -287,7 +335,7 @@ class StoryService {
     return this.getStory(story.id);
   }
 
-  async createStory(classroomId: string, data: { title: string; description?: string; themeConfig?: any }) {
+  async createStory(classroomId: string, data: { title: string; description?: string; aiBible?: string; themeConfig?: any }) {
     const id = uuidv4();
     const now = new Date();
 
@@ -296,6 +344,7 @@ class StoryService {
       classroomId,
       title: data.title,
       description: data.description || null,
+      aiBible: data.aiBible || null,
       themeConfig: data.themeConfig || null,
       isActive: false,
       createdAt: now,
@@ -305,11 +354,12 @@ class StoryService {
     return this.getStory(id);
   }
 
-  async updateStory(storyId: string, data: { title?: string; description?: string; themeConfig?: any }) {
+  async updateStory(storyId: string, data: { title?: string; description?: string; aiBible?: string; themeConfig?: any }) {
     const now = new Date();
     const updateData: any = { updatedAt: now };
     if (data.title !== undefined) updateData.title = data.title;
     if (data.description !== undefined) updateData.description = data.description || null;
+    if (data.aiBible !== undefined) updateData.aiBible = data.aiBible || null;
     if (data.themeConfig !== undefined) updateData.themeConfig = data.themeConfig;
 
     await db.transaction(async (tx) => {
@@ -444,6 +494,7 @@ class StoryService {
         if (sceneIds.length > 0) {
           await tx.delete(sceneDialogues).where(inArray(sceneDialogues.sceneId, sceneIds));
           await tx.delete(studentSceneViews).where(inArray(studentSceneViews.sceneId, sceneIds));
+          await tx.delete(storyVotes).where(inArray(storyVotes.sceneId, sceneIds));
           await tx.delete(storyScenes).where(inArray(storyScenes.id, sceneIds));
         }
 
@@ -618,6 +669,7 @@ class StoryService {
       if (sceneIds.length > 0) {
         await tx.delete(sceneDialogues).where(inArray(sceneDialogues.sceneId, sceneIds));
         await tx.delete(studentSceneViews).where(inArray(studentSceneViews.sceneId, sceneIds));
+        await tx.delete(storyVotes).where(inArray(storyVotes.sceneId, sceneIds));
         await tx.delete(storyScenes).where(inArray(storyScenes.id, sceneIds));
       }
 
@@ -928,6 +980,7 @@ class StoryService {
     backgroundColor?: string;
     triggerConfig?: any;
     dialogues?: Array<{ text: string; speaker?: string; emotion?: string }>;
+    decision?: DecisionInput | null;
   }) {
     const sceneId = uuidv4();
     const now = new Date();
@@ -951,6 +1004,7 @@ class StoryService {
         mediaUrl: data.mediaUrl || null,
         backgroundColor: data.backgroundColor || null,
         triggerConfig: data.triggerConfig || null,
+        decision: data.type === 'DECISION' && data.decision ? buildDecision(data.decision, null) : null,
         createdAt: now,
       });
 
@@ -993,8 +1047,20 @@ class StoryService {
     mediaUrl?: string | null;
     backgroundColor?: string | null;
     triggerConfig?: any;
+    decision?: DecisionInput | null;
   }) {
     const updateData: any = {};
+    if (data.decision !== undefined) {
+      const [current] = await db.select({ decision: storyScenes.decision }).from(storyScenes).where(eq(storyScenes.id, sceneId));
+      const previous = parseJson<StoryDecision>(current?.decision);
+      const next = data.decision ? buildDecision(data.decision, previous) : null;
+      updateData.decision = next;
+      // Votos de opciones que ya no existen: se descartan.
+      const keep = new Set((next?.options ?? []).map((o) => o.id));
+      const votes = await db.select({ id: storyVotes.id, optionId: storyVotes.optionId }).from(storyVotes).where(eq(storyVotes.sceneId, sceneId));
+      const stale = votes.filter((v) => !keep.has(v.optionId)).map((v) => v.id);
+      if (stale.length > 0) await db.delete(storyVotes).where(inArray(storyVotes.id, stale));
+    }
     if (data.type !== undefined) updateData.type = data.type;
     if (data.mediaType !== undefined) updateData.mediaType = data.mediaType;
     if (data.mediaUrl !== undefined) updateData.mediaUrl = data.mediaUrl;
@@ -1009,6 +1075,7 @@ class StoryService {
     await db.transaction(async (tx) => {
       await tx.delete(sceneDialogues).where(eq(sceneDialogues.sceneId, sceneId));
       await tx.delete(studentSceneViews).where(eq(studentSceneViews.sceneId, sceneId));
+      await tx.delete(storyVotes).where(eq(storyVotes.sceneId, sceneId));
       await tx.delete(storyScenes).where(eq(storyScenes.id, sceneId));
     });
   }
@@ -1036,6 +1103,39 @@ class StoryService {
     });
 
     return this.getScene(sceneId);
+  }
+
+  // ---- DECISIONES (votación de la clase) ----
+
+  /** Voto del alumno en cada escena de decisión. */
+  private async studentVotes(studentProfileId: string, sceneIds: string[]) {
+    if (sceneIds.length === 0) return new Map<string, string>();
+    const rows = await db.select({ sceneId: storyVotes.sceneId, optionId: storyVotes.optionId }).from(storyVotes)
+      .where(and(eq(storyVotes.studentProfileId, studentProfileId), inArray(storyVotes.sceneId, sceneIds)));
+    return new Map(rows.map((r) => [r.sceneId, r.optionId]));
+  }
+
+  /** Escenas para el alumno: las decisiones sin desenlaces hasta que se cierra la votación. */
+  private async scenesForStudent<T extends { id: string; type: string; decision?: unknown }>(scenes: T[], studentProfileId: string) {
+    const decisionIds = scenes.filter((sc) => sc.type === 'DECISION').map((sc) => sc.id);
+    const votes = await this.studentVotes(studentProfileId, decisionIds);
+    return scenes.map((sc) => (sc.type === 'DECISION'
+      ? { ...sc, decision: decisionForStudent(sc.decision, votes.get(sc.id) ?? null) }
+      : { ...sc, decision: null }));
+  }
+
+  /** Recuento de votos por escena de decisión (vista del profesor). */
+  async voteCounts(sceneIds: string[]) {
+    if (sceneIds.length === 0) return new Map<string, Record<string, number>>();
+    const rows = await db.select({ sceneId: storyVotes.sceneId, optionId: storyVotes.optionId, total: sql<string>`COUNT(*)` })
+      .from(storyVotes).where(inArray(storyVotes.sceneId, sceneIds)).groupBy(storyVotes.sceneId, storyVotes.optionId);
+    const out = new Map<string, Record<string, number>>();
+    for (const row of rows) {
+      const counts = out.get(row.sceneId) ?? {};
+      counts[row.optionId] = Number(row.total);
+      out.set(row.sceneId, counts);
+    }
+    return out;
   }
 
   // ---- STUDENT EXPERIENCE ----
@@ -1134,6 +1234,7 @@ class StoryService {
           dialogueCount: s.dialogues?.length || 0,
           viewed: viewedSceneIds.has(s.id),
           triggerConfig: parseJson(s.triggerConfig),
+          decisionStatus: s.type === 'DECISION' ? parseJson<StoryDecision>(s.decision)?.status ?? 'OPEN' : null,
         })),
       };
     });
@@ -1148,7 +1249,7 @@ class StoryService {
       description: activeStory.description,
       themeConfig: activeStory.themeConfig,
       chapters: chaptersInfo,
-      unseenScenes,
+      unseenScenes: await this.scenesForStudent(unseenScenes, studentProfileId),
       rewardPreview,
     };
   }
@@ -1205,8 +1306,14 @@ class StoryService {
   }
 
   async getSceneForViewingForUser(sceneId: string, userId: string) {
-    await this.requireVisibleScene(sceneId, userId);
-    return this.getSceneForViewing(sceneId);
+    const profile = await this.requireVisibleScene(sceneId, userId);
+    const [scene] = await this.scenesForStudent([await this.getSceneForViewing(sceneId)], profile.id);
+    return scene;
+  }
+
+  /** Perfil del alumno que puede ver la escena (para votar). */
+  async requireVisibleSceneForUser(sceneId: string, userId: string) {
+    return this.requireVisibleScene(sceneId, userId);
   }
 
   async getChapterScenesForStudentUser(chapterId: string, userId: string) {
@@ -1249,10 +1356,10 @@ class StoryService {
       else dialoguesByScene.set(dialogue.sceneId, [dialogue]);
     }
 
-    return scenes.map((scene) => ({
+    return this.scenesForStudent(scenes.map((scene) => ({
       ...scene,
       dialogues: dialoguesByScene.get(scene.id) ?? [],
-    }));
+    })), profile.id);
   }
 
   // ---- CHAPTER PROGRESS ----

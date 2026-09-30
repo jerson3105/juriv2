@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, Maximize2, Minimize2, SkipForward, Volume2, VolumeX, X, Trophy, CalendarDays, Sparkles, Heart, Loader2 } from 'lucide-react';
-import { storyApi, type ChapterRecap, type StoryRewardResult, type StoryScene } from '../../lib/storyApi';
+import { Check, ChevronLeft, ChevronRight, Maximize2, Minimize2, SkipForward, Volume2, VolumeX, Vote, X, Trophy, CalendarDays, Sparkles, Heart, Loader2 } from 'lucide-react';
+import { storyApi, type ChapterRecap, type SceneDialogue, type StoryRewardResult, type StoryScene } from '../../lib/storyApi';
 import { CLAN_EMBLEMS } from '../../lib/clanApi';
 import type { StoryAccent } from '../../lib/storyTheme';
 import { createCeremonySound, readMuted, saveMuted, type CeremonySound } from '../rankings/ceremony/ceremonySound';
-import { emotionOf, youTubeId, type PlayerItem } from './storyPlayerHelpers';
+import { emotionOf, playableDecision, youTubeId, type PlayableDecision, type PlayerItem } from './storyPlayerHelpers';
 
 interface StoryPlayerProps {
   items: PlayerItem[];
@@ -16,6 +16,10 @@ interface StoryPlayerProps {
   projector?: boolean;
   label?: string;
   onSceneSeen?: (sceneId: string) => void;
+  // Alumno: vota en las escenas de decisión (devuelve su voto guardado).
+  onVote?: (sceneId: string, optionId: string) => Promise<string | null>;
+  // Profesor en el proyector: votos en vivo de las decisiones abiertas.
+  liveVotes?: boolean;
   onClose: () => void;
 }
 
@@ -23,7 +27,7 @@ const FALLBACK_BG = 'linear-gradient(135deg, #1e1b4b, #312e81)';
 
 // Novela visual: ilustración a pantalla completa, diálogo abajo con la placa del personaje.
 // Teclado: → / Espacio / Enter avanza, ← retrocede, Esc cierra.
-export const StoryPlayer = ({ items, accent, projector = false, label, onSceneSeen, onClose }: StoryPlayerProps) => {
+export const StoryPlayer = ({ items, accent, projector = false, label, onSceneSeen, onVote, liveVotes = false, onClose }: StoryPlayerProps) => {
   const reduceMotion = useReducedMotion();
   const containerRef = useRef<HTMLDivElement>(null);
   const seen = useRef(new Set<string>());
@@ -34,9 +38,23 @@ export const StoryPlayer = ({ items, accent, projector = false, label, onSceneSe
   const [muted, setMuted] = useState(readMuted);
   const sound = useRef<CeremonySound | null>(null);
 
+  const [choosing, setChoosing] = useState(false);
+  const [votes, setVotes] = useState<Record<string, string | null>>({});
+
   const current = items[index];
   const scene = current?.kind === 'scene' ? current.scene : null;
-  const dialogues = scene?.dialogues ?? [];
+  const decision = useMemo(() => (scene?.type === 'DECISION' ? playableDecision(scene.decision) : null), [scene]);
+  // Decisión cerrada: tras la escena, lo que eligió la clase y su desenlace.
+  const dialogues = useMemo<SceneDialogue[]>(() => {
+    const base = scene?.dialogues ?? [];
+    if (!scene || !decision || decision.status !== 'CLOSED') return base;
+    const winner = decision.options.find((o) => o.id === decision.winnerOptionId);
+    return [
+      ...base,
+      { id: 'decision-result', sceneId: scene.id, orderIndex: base.length, speaker: null, text: `La clase eligió: «${winner?.label ?? ''}»`, emotion: 'excited' },
+      ...decision.outcome.map((d, i) => ({ id: `outcome-${i}`, sceneId: scene.id, orderIndex: base.length + 1 + i, speaker: d.speaker ?? null, text: d.text, emotion: d.emotion ?? 'neutral' })),
+    ];
+  }, [scene, decision]);
   const dialogue = dialogues[line];
   const text = dialogue?.text ?? '';
   const done = reduceMotion || typed >= text.length;
@@ -111,6 +129,7 @@ export const StoryPlayer = ({ items, accent, projector = false, label, onSceneSe
     setIndex(Math.max(0, next));
     setLine(0);
     setTyped(0);
+    setChoosing(false);
   }, [items.length, onClose]);
 
   const next = useCallback(() => {
@@ -124,19 +143,28 @@ export const StoryPlayer = ({ items, accent, projector = false, label, onSceneSe
         setTyped(0);
         return;
       }
+      // Decisión abierta: antes de seguir, el panel para votar (o ver los votos).
+      if (decision?.status === 'OPEN' && !choosing) {
+        setChoosing(true);
+        return;
+      }
       markSeen(current);
     }
     goTo(index + 1);
-  }, [scene, done, line, dialogues.length, markSeen, current, goTo, index]);
+  }, [scene, done, line, dialogues.length, decision, choosing, markSeen, current, goTo, index]);
 
   const previous = useCallback(() => {
+    if (choosing) {
+      setChoosing(false);
+      return;
+    }
     if (scene && line > 0) {
       setLine(line - 1);
       setTyped(Number.MAX_SAFE_INTEGER);
       return;
     }
     if (index > 0) goTo(index - 1);
-  }, [scene, line, index, goTo]);
+  }, [scene, line, index, goTo, choosing]);
 
   const skipScene = useCallback(() => {
     markSeen(current);
@@ -239,7 +267,8 @@ export const StoryPlayer = ({ items, accent, projector = false, label, onSceneSe
       {scene && (
         <SceneView
           key={current.key}
-          scene={scene}
+          scene={{ ...scene, dialogues }}
+          hideDialogue={choosing}
           backdrop={backdrop}
           emoji={accent?.emoji ?? '📖'}
           projector={projector}
@@ -254,8 +283,105 @@ export const StoryPlayer = ({ items, accent, projector = false, label, onSceneSe
           isLastItem={index === items.length - 1}
         />
       )}
+      {scene && decision && choosing && (
+        <DecisionPanel
+          sceneId={scene.id}
+          decision={decision}
+          myVote={votes[scene.id] !== undefined ? votes[scene.id] : decision.myVote}
+          projector={projector}
+          liveVotes={liveVotes && !scene.id.startsWith('preview')}
+          onVote={onVote ? async (optionId) => {
+            const saved = await onVote(scene.id, optionId);
+            setVotes((prev) => ({ ...prev, [scene.id]: saved }));
+          } : undefined}
+          onContinue={next}
+        />
+      )}
     </motion.div>,
     document.body,
+  );
+};
+
+// ---------- Decisión: votar o ver los votos ----------
+
+const DecisionPanel = ({ sceneId, decision, myVote, projector, liveVotes, onVote, onContinue }: {
+  sceneId: string;
+  decision: PlayableDecision;
+  myVote: string | null;
+  projector: boolean;
+  liveVotes: boolean;
+  onVote?: (optionId: string) => Promise<void>;
+  onContinue: () => void;
+}) => {
+  const [sending, setSending] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const { data: results } = useQuery({
+    queryKey: ['decision-results', sceneId],
+    queryFn: () => storyApi.getDecisionResults(sceneId),
+    enabled: liveVotes,
+    refetchInterval: liveVotes ? 4000 : false,
+  });
+  const votesOf = (id: string) => results?.options.find((o) => o.id === id)?.votes ?? 0;
+  const top = Math.max(1, ...(results?.options.map((o) => o.votes) ?? [1]));
+
+  const choose = async (optionId: string) => {
+    if (!onVote || sending) return;
+    setSending(optionId);
+    setError(null);
+    try {
+      await onVote(optionId);
+    } catch {
+      setError('No se pudo guardar tu voto. Intenta de nuevo.');
+    } finally {
+      setSending(null);
+    }
+  };
+
+  return (
+    <div className="absolute inset-x-0 bottom-0 z-10 px-3 pb-3 sm:px-6 sm:pb-6">
+      <motion.section
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        aria-labelledby="decision-question"
+        className={`mx-auto w-full rounded-2xl border border-white/15 bg-gray-950/90 p-4 shadow-2xl backdrop-blur-md sm:p-6 ${projector ? 'max-w-5xl' : 'max-w-3xl'}`}
+      >
+        <p className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-amber-200"><Vote size={16} aria-hidden="true" /> La clase decide</p>
+        <h2 id="decision-question" className={`mt-1 font-black text-white ${projector ? 'text-3xl' : 'text-xl'}`}>{decision.question}</h2>
+        <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+          {decision.options.map((option) => {
+            const chosen = myVote === option.id;
+            const votes = votesOf(option.id);
+            return (
+              <li key={option.id}>
+                <button
+                  type="button"
+                  onClick={() => choose(option.id)}
+                  disabled={!onVote || !!sending}
+                  aria-pressed={onVote ? chosen : undefined}
+                  className={`relative flex min-h-[56px] w-full items-center gap-3 overflow-hidden rounded-xl border-2 px-4 text-left font-semibold text-white ${chosen ? 'border-amber-300 bg-amber-300/15' : 'border-white/25 bg-white/5'} ${onVote ? 'hover:border-white/60' : 'cursor-default'} ${projector ? 'text-xl' : 'text-base'}`}
+                >
+                  {liveVotes && <span className="absolute inset-y-0 left-0 bg-white/15" style={{ width: `${(votes / top) * 100}%` }} aria-hidden="true" />}
+                  <span className="relative flex-1">{option.label}</span>
+                  {sending === option.id && <Loader2 size={18} className="relative animate-spin" aria-hidden="true" />}
+                  {chosen && <Check size={20} className="relative text-amber-300" aria-label="Tu voto" />}
+                  {liveVotes && <span className="relative tabular-nums">{votes}</span>}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        <p className={`mt-3 text-white/90 ${projector ? 'text-lg' : 'text-sm'}`} aria-live="polite">
+          {error ?? (onVote
+            ? myVote ? 'Voto guardado. Puedes cambiarlo hasta que tu profe cierre la votación.' : 'Elige una opción: gana la más votada por la clase.'
+            : liveVotes ? `${results?.total ?? 0} de ${results?.eligible ?? 0} alumnos ya votaron.` : 'Los alumnos votan desde Mi Historia; tú cierras la votación en el editor.')}
+        </p>
+        <div className="mt-3 flex justify-end">
+          <button type="button" onClick={onContinue} className="inline-flex min-h-[44px] items-center gap-1.5 rounded-full bg-white px-5 text-sm font-bold text-gray-900 hover:bg-gray-100">
+            Continuar <ChevronRight size={16} aria-hidden="true" />
+          </button>
+        </div>
+      </motion.section>
+    </div>
   );
 };
 
@@ -308,6 +434,7 @@ const CoverView = ({ item, backdrop, emoji, projector, onStart }: {
 
 interface SceneViewProps {
   scene: StoryScene;
+  hideDialogue?: boolean;
   backdrop: string;
   emoji: string;
   projector: boolean;
@@ -322,7 +449,7 @@ interface SceneViewProps {
   isLastItem: boolean;
 }
 
-const SceneView = ({ scene, backdrop, emoji, projector, line, text, typed, done, onNext, onPrevious, canGoBack, isLastLine, isLastItem }: SceneViewProps) => {
+const SceneView = ({ scene, hideDialogue, backdrop, emoji, projector, line, text, typed, done, onNext, onPrevious, canGoBack, isLastLine, isLastItem }: SceneViewProps) => {
   const dialogues = scene.dialogues ?? [];
   const dialogue = dialogues[line];
   const emotion = emotionOf(dialogue?.emotion);
@@ -359,7 +486,7 @@ const SceneView = ({ scene, backdrop, emoji, projector, line, text, typed, done,
       </div>
 
       {/* Caja de diálogo */}
-      <div className="relative px-3 pb-3 sm:px-6 sm:pb-6">
+      <div className={`relative px-3 pb-3 sm:px-6 sm:pb-6 ${hideDialogue ? 'invisible' : ''}`} aria-hidden={hideDialogue || undefined}>
         <div className={`mx-auto w-full ${projector ? 'max-w-5xl' : 'max-w-3xl'}`}>
           {dialogues.length > 0 ? (
             <div

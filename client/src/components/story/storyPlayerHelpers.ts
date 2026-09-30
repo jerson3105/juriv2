@@ -69,3 +69,44 @@ export const EMOTIONS: Record<string, { label: string; emoji: string; color: str
 };
 
 export const emotionOf = (emotion: string | null | undefined) => EMOTIONS[emotion ?? 'neutral'] ?? EMOTIONS.neutral;
+
+// ---------- Decisiones ----------
+
+export interface PlayableDecision {
+  question: string;
+  status: 'OPEN' | 'CLOSED';
+  options: { id: string; label: string }[];
+  winnerOptionId: string | null;
+  outcome: { speaker?: string | null; text: string; emotion?: string }[];
+  myVote: string | null;
+}
+
+type RawOption = { id: string; label: string; outcome?: { speaker?: string; text: string; emotion?: string }[] };
+type RawDecision = {
+  question: string;
+  status: 'OPEN' | 'CLOSED';
+  options: RawOption[];
+  winnerOptionId?: string | null;
+  outcome?: { speaker?: string; text: string; emotion?: string }[];
+  myVote?: string | null;
+};
+
+/** Decisión reproducible: la completa del profesor o la saneada del alumno (sin desenlaces si está abierta). */
+export const playableDecision = (raw: unknown): PlayableDecision | null => {
+  let decision: RawDecision | null = null;
+  if (typeof raw === 'string') {
+    try { decision = JSON.parse(raw) as RawDecision; } catch { decision = null; }
+  } else if (raw && typeof raw === 'object') {
+    decision = raw as RawDecision;
+  }
+  if (!decision?.options?.length) return null;
+  const winner = decision.options.find((o) => o.id === decision!.winnerOptionId);
+  return {
+    question: decision.question,
+    status: decision.status,
+    options: decision.options.map((o) => ({ id: o.id, label: o.label })),
+    winnerOptionId: decision.winnerOptionId ?? null,
+    outcome: decision.status === 'CLOSED' ? decision.outcome ?? winner?.outcome ?? [] : [],
+    myVote: decision.myVote ?? null,
+  };
+};

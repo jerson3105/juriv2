@@ -36,6 +36,55 @@ export interface ThemePreset {
   banner: ThemeConfig['banner'];
 }
 
+export type SceneKind = 'INTRO' | 'DESARROLLO' | 'MILESTONE' | 'OUTRO' | 'DECISION';
+
+export interface DecisionLine { speaker?: string; text: string; emotion?: string }
+
+// Decisión completa (profesor).
+export interface StoryDecision {
+  question: string;
+  options: { id: string; label: string; outcome: DecisionLine[] }[];
+  status: 'OPEN' | 'CLOSED';
+  winnerOptionId?: string | null;
+  closedAt?: string | null;
+}
+
+// Decisión vista por el alumno: sin desenlaces hasta que se cierra la votación.
+export interface StudentDecision {
+  question: string;
+  status: 'OPEN' | 'CLOSED';
+  options: { id: string; label: string }[];
+  winnerOptionId: string | null;
+  outcome: DecisionLine[];
+  myVote: string | null;
+}
+
+export interface DecisionResults {
+  question: string;
+  status: 'OPEN' | 'CLOSED';
+  winnerOptionId: string | null;
+  options: { id: string; label: string; votes: number }[];
+  total: number;
+  eligible: number;
+}
+
+export interface DecisionInput {
+  question: string;
+  options: { id?: string; label: string; outcome: DecisionLine[] }[];
+}
+
+export interface StoryDraftScene {
+  type: SceneKind;
+  triggerPercent?: number;
+  dialogues: DecisionLine[];
+  decision?: { question: string; options: { label: string; outcome: DecisionLine[] }[] };
+}
+
+export interface StoryDraft {
+  chapter?: { title: string; description: string; targetXp?: number };
+  scenes: StoryDraftScene[];
+}
+
 export interface SceneDialogue {
   id: string;
   sceneId: string;
@@ -49,13 +98,16 @@ export interface StoryScene {
   id: string;
   chapterId: string;
   orderIndex: number;
-  type: 'INTRO' | 'DESARROLLO' | 'MILESTONE' | 'OUTRO';
+  type: SceneKind;
   mediaType: 'VIDEO' | 'IMAGE' | null;
   mediaUrl: string | null;
   backgroundColor: string | null;
   triggerConfig: { percentage?: number } | null;
   createdAt: string;
   dialogues: SceneDialogue[];
+  // Profesor: decisión completa (con desenlaces) y votos por opción. Alumno: decisión saneada.
+  decision?: StoryDecision | StudentDecision | string | null;
+  votes?: Record<string, number>;
 }
 
 // Recompensa al revelar el capítulo (la reciben quienes aportaron XP durante el capítulo).
@@ -121,6 +173,7 @@ export interface Story {
   classroomId: string;
   title: string;
   description: string | null;
+  aiBible?: string | null;
   isActive: boolean;
   themeConfig: ThemeConfig | null;
   createdAt: string;
@@ -137,7 +190,8 @@ export interface StoryListItem extends Story {
 
 export interface StudentSceneSummary {
   id: string;
-  type: 'INTRO' | 'DESARROLLO' | 'MILESTONE' | 'OUTRO';
+  type: SceneKind;
+  decisionStatus?: 'OPEN' | 'CLOSED' | null;
   orderIndex: number;
   hasMedia: boolean;
   dialogueCount: number;
@@ -254,12 +308,12 @@ export const storyApi = {
     return res.data.data;
   },
 
-  createStory: async (classroomId: string, data: { title: string; description?: string; themeConfig?: ThemeConfig }): Promise<Story> => {
+  createStory: async (classroomId: string, data: { title: string; description?: string; aiBible?: string; themeConfig?: ThemeConfig }): Promise<Story> => {
     const res = await api.post(`/stories/classroom/${classroomId}`, data);
     return res.data.data;
   },
 
-  updateStory: async (storyId: string, data: { title?: string; description?: string; themeConfig?: ThemeConfig | null }): Promise<Story> => {
+  updateStory: async (storyId: string, data: { title?: string; description?: string; aiBible?: string; themeConfig?: ThemeConfig | null }): Promise<Story> => {
     const res = await api.put(`/stories/${storyId}`, data);
     return res.data.data;
   },
@@ -335,6 +389,7 @@ export const storyApi = {
     backgroundColor?: string;
     triggerConfig?: { percentage?: number } | null;
     dialogues?: Array<{ text: string; speaker?: string; emotion?: string }>;
+    decision?: DecisionInput | null;
   }): Promise<StoryScene> => {
     const res = await api.post(`/stories/chapters/${chapterId}/scenes`, data);
     return res.data.data;
@@ -346,6 +401,7 @@ export const storyApi = {
     mediaUrl?: string | null;
     backgroundColor?: string | null;
     triggerConfig?: { percentage?: number } | null;
+    decision?: DecisionInput | null;
   }): Promise<StoryScene> => {
     const res = await api.put(`/stories/scenes/${sceneId}`, data);
     return res.data.data;
@@ -357,6 +413,28 @@ export const storyApi = {
 
   setDialogues: async (sceneId: string, dialogues: Array<{ text: string; speaker?: string; emotion?: string }>): Promise<StoryScene> => {
     const res = await api.put(`/stories/scenes/${sceneId}/dialogues`, { dialogues });
+    return res.data.data;
+  },
+
+  // ---- Decisiones ----
+  voteDecision: async (sceneId: string, optionId: string): Promise<StudentDecision> => {
+    const res = await api.post(`/stories/scenes/${sceneId}/vote`, { optionId });
+    return res.data.data;
+  },
+
+  getDecisionResults: async (sceneId: string): Promise<DecisionResults> => {
+    const res = await api.get(`/stories/scenes/${sceneId}/results`);
+    return res.data.data;
+  },
+
+  closeDecision: async (sceneId: string, winnerOptionId?: string | null): Promise<DecisionResults> => {
+    const res = await api.post(`/stories/scenes/${sceneId}/close-vote`, { winnerOptionId });
+    return res.data.data;
+  },
+
+  // ---- IA coautora (solo propone: nada se guarda hasta aceptar) ----
+  getAiDraft: async (storyId: string, data: { kind: 'chapter' | 'scenes'; chapterId?: string; idea?: string }): Promise<StoryDraft> => {
+    const res = await api.post(`/stories/${storyId}/ai/draft`, data);
     return res.data.data;
   },
 

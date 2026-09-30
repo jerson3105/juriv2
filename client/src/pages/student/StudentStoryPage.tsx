@@ -19,6 +19,7 @@ const SCENE_LABEL: Record<StudentSceneSummary['type'], string> = {
   DESARROLLO: 'Desarrollo',
   MILESTONE: 'Hito',
   OUTRO: 'Final',
+  DECISION: 'Decisión',
 };
 const MEDALS = ['🥇', '🥈', '🥉', '4.º', '5.º'];
 
@@ -50,7 +51,8 @@ export const StudentStoryPage = () => {
   // Final revelado en vivo por el profe: se vuelve a reproducir lo nuevo (cierre y resumen).
   useEffect(() => {
     const onUpdate = (event: Event) => {
-      if ((event as CustomEvent<StoryUpdateEvent>).detail?.kind === 'revealed') setAutoplayDismissed(false);
+      const kind = (event as CustomEvent<StoryUpdateEvent>).detail?.kind;
+      if (kind === 'revealed' || kind === 'decided') setAutoplayDismissed(false);
     };
     window.addEventListener(STORY_UPDATED_EVENT, onUpdate);
     return () => window.removeEventListener(STORY_UPDATED_EVENT, onUpdate);
@@ -66,6 +68,13 @@ export const StudentStoryPage = () => {
 
   const markSeen = (sceneId: string) => {
     void storyApi.markSceneViewed(sceneId).catch(() => undefined);
+  };
+
+  // Voto en una decisión: se guarda en el servidor y se refleja en la lista.
+  const vote = async (sceneId: string, optionId: string) => {
+    const decision = await storyApi.voteDecision(sceneId, optionId);
+    queryClient.invalidateQueries({ queryKey: ['student-story'] });
+    return decision.myVote;
   };
 
   // Repetición individual: una escena o el capítulo entero (portada, escenas desbloqueadas y, si terminó, el cierre).
@@ -164,7 +173,7 @@ export const StudentStoryPage = () => {
 
       <AnimatePresence>
         {shown && (
-          <StoryPlayer key={shown.label} items={shown.items} accent={accent} label={shown.label} onSceneSeen={markSeen} onClose={closePlayer} />
+          <StoryPlayer key={shown.label} items={shown.items} accent={accent} label={shown.label} onSceneSeen={markSeen} onVote={vote} onClose={closePlayer} />
         )}
       </AnimatePresence>
     </div>
@@ -313,6 +322,8 @@ const ChapterNode = ({ chapter, index, accent, loading, onPlayChapter, onPlaySce
                     <span className="block text-sm font-semibold text-gray-900 dark:text-white">{SCENE_LABEL[scene.type]}</span>
                     <span className="block text-xs text-gray-700 dark:text-gray-300">{scene.dialogueCount} {scene.dialogueCount === 1 ? 'diálogo' : 'diálogos'}</span>
                   </span>
+                  {scene.decisionStatus === 'OPEN' && <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-100">Vota</span>}
+                  {scene.decisionStatus === 'CLOSED' && <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-bold text-gray-900 dark:bg-gray-700 dark:text-gray-100">Decidido</span>}
                   {!scene.viewed && <span className="rounded-full bg-amber-300 px-2 py-0.5 text-xs font-bold text-amber-950">Nueva</span>}
                 </button>
               </li>

@@ -2814,6 +2814,8 @@ export const stories = mysqlTable('stories', {
   classroomId: varchar('classroom_id', { length: 36 }).notNull(),
   title: varchar('title', { length: 255 }).notNull(),
   description: text('description'),
+  // Biblia de la historia: personajes, tono y reglas que la IA coautora usa como memoria.
+  aiBible: text('ai_bible'),
   isActive: boolean('is_active').notNull().default(false),
   themeConfig: json('theme_config').$type<{
     colors?: {
@@ -2936,6 +2938,27 @@ export const storyChaptersRelations = relations(storyChapters, ({ one, many }) =
   donations: many(storyDonations),
 }));
 
+export interface StoryDecisionDialogue { speaker?: string; text: string; emotion?: string }
+export interface StoryDecision {
+  question: string;
+  options: { id: string; label: string; outcome: StoryDecisionDialogue[] }[];
+  status: 'OPEN' | 'CLOSED';
+  winnerOptionId?: string | null;
+  closedAt?: string | null;
+}
+
+export const storyVotes = mysqlTable('story_votes', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  sceneId: varchar('scene_id', { length: 36 }).notNull(),
+  optionId: varchar('option_id', { length: 36 }).notNull(),
+  studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  sceneIdx: index('idx_story_votes_scene').on(table.sceneId),
+  uniqueVote: unique('uniq_story_votes_scene_student').on(table.sceneId, table.studentProfileId),
+}));
+
 export const storyScenes = mysqlTable('story_scenes', {
   id: varchar('id', { length: 36 }).primaryKey(),
   chapterId: varchar('chapter_id', { length: 36 }).notNull(),
@@ -2945,6 +2968,8 @@ export const storyScenes = mysqlTable('story_scenes', {
   mediaUrl: varchar('media_url', { length: 500 }),
   backgroundColor: varchar('background_color', { length: 7 }),
   triggerConfig: json('trigger_config'),
+  // Escena de decisión: la clase vota una opción y el profesor cierra la votación.
+  decision: json('decision').$type<StoryDecision>(),
   createdAt: datetime('created_at').notNull(),
 }, (table) => ({
   chapterIdx: index('idx_story_scenes_chapter').on(table.chapterId),

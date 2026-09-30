@@ -23,13 +23,14 @@ interface StoryFormModalProps {
   story?: Story | null;
   presets: ThemePreset[];
   saving: boolean;
-  onSubmit: (data: { title: string; description?: string; themeConfig?: ThemeConfig | null }) => void;
+  onSubmit: (data: { title: string; description?: string; aiBible?: string; themeConfig?: ThemeConfig | null }) => void;
   onClose: () => void;
 }
 
 export const StoryFormModal = ({ story, presets, saving, onSubmit, onClose }: StoryFormModalProps) => {
   const [title, setTitle] = useState(story?.title ?? '');
   const [description, setDescription] = useState(story?.description ?? '');
+  const [aiBible, setAiBible] = useState(story?.aiBible ?? '');
   const initialTheme = story?.themeConfig ?? null;
   const [theme, setTheme] = useState<ThemeConfig | null>(initialTheme);
   // Un tema propio (p. ej. de IA) que no es ningún preset se conserva como opción "Tema actual".
@@ -44,6 +45,7 @@ export const StoryFormModal = ({ story, presets, saving, onSubmit, onClose }: St
     onSubmit({
       title: title.trim(),
       description: description.trim() || undefined,
+      aiBible: aiBible.trim() || (story ? '' : undefined),
       // Al editar, "Sin tema" se envía como null para quitarlo.
       themeConfig: theme ?? (story ? null : undefined),
     });
@@ -72,6 +74,10 @@ export const StoryFormModal = ({ story, presets, saving, onSubmit, onClose }: St
       <div>
         <label htmlFor="story-description" className={labelClass}>Premisa <span className="font-normal text-gray-700 dark:text-gray-300">(opcional)</span></label>
         <textarea id="story-description" value={description} onChange={(e) => setDescription(e.target.value)} maxLength={2000} rows={3} placeholder="¿De qué trata la aventura? Los alumnos la verán al inicio." className={`${inputClass} mt-1 resize-none`} />
+      </div>
+      <div>
+        <label htmlFor="story-bible" className={labelClass}>Biblia para la IA <span className="font-normal text-gray-700 dark:text-gray-300">(opcional)</span></label>
+        <textarea id="story-bible" value={aiBible} onChange={(e) => setAiBible(e.target.value)} maxLength={4000} rows={3} placeholder="Personajes, lugares, tono y reglas del mundo. La IA coautora lo usa para mantener la historia coherente." className={`${inputClass} mt-1 resize-y`} />
       </div>
       <fieldset>
         <legend className={labelClass}>Tema visual</legend>

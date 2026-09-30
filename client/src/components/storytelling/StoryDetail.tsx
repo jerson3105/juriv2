@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   ArrowDown, ArrowLeft, ArrowUp, CheckCircle2, ChevronDown, Edit2, Eye, Image as ImageIcon, Lock, MonitorPlay,
-  Pause, Play, Plus, Sparkles, Trash2, Video, PartyPopper,
+  Pause, Play, Plus, Sparkles, Trash2, Video, PartyPopper, Vote, Wand2,
 } from 'lucide-react';
 import type { Story, StoryChapter, StoryScene } from '../../lib/storyApi';
 import { accentGradient, type StoryAccent } from '../../lib/storyTheme';
@@ -11,11 +11,13 @@ import {
   COMPLETION_TYPES, SCENE_TYPES, STATUS_LABEL, chapterProgress, plural, sceneSnippet, sceneTrigger,
 } from './storyEditorHelpers';
 import { ChapterRewardChips, FactionStandings } from './ChapterRewards';
+import { playableDecision } from '../story/storyPlayerHelpers';
 
 export interface StoryDetailActions {
   onBack: () => void;
   onEditStory: () => void;
   onDeleteStory: () => void;
+  onAiCoauthor: () => void;
   onToggleActive: () => void;
   onAddChapter: () => void;
   onEditChapter: (chapter: StoryChapter) => void;
@@ -26,6 +28,7 @@ export interface StoryDetailActions {
   onAddScene: (chapter: StoryChapter) => void;
   onEditScene: (chapter: StoryChapter, scene: StoryScene) => void;
   onDeleteScene: (chapter: StoryChapter, scene: StoryScene) => void;
+  onDecisionResults: (scene: StoryScene) => void;
   onPreviewScene: (chapter: StoryChapter, scene: StoryScene) => void;
 }
 
@@ -39,7 +42,7 @@ interface StoryDetailProps extends StoryDetailActions {
 const HERO_FALLBACK = 'linear-gradient(135deg, #4338ca, #6d28d9)';
 
 export const StoryDetail = (props: StoryDetailProps) => {
-  const { story, accent, toggling, onBack, onEditStory, onDeleteStory, onToggleActive, onAddChapter, onReveal, onPresentChapter } = props;
+  const { story, accent, toggling, onBack, onEditStory, onDeleteStory, onAiCoauthor, onToggleActive, onAddChapter, onReveal, onPresentChapter } = props;
   const chapters = story.chapters;
   const active = chapters.find((c) => c.status === 'ACTIVE') ?? null;
   const completed = chapters.filter((c) => c.status === 'COMPLETED').length;
@@ -67,8 +70,8 @@ export const StoryDetail = (props: StoryDetailProps) => {
         style={{ background: accent ? accentGradient(accent) : HERO_FALLBACK }}
       >
         <span className="pointer-events-none absolute -right-6 -top-10 select-none text-[9rem] leading-none opacity-15" aria-hidden="true">{accent?.emoji ?? '📖'}</span>
-        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
+        <div className="relative flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1 basis-72">
             <div className="flex flex-wrap items-center gap-2">
               <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold ${story.isActive ? 'bg-white text-gray-900' : 'bg-black/30 text-white'}`}>
                 {story.isActive ? <><span className="h-2 w-2 rounded-full bg-emerald-500 motion-safe:animate-pulse" aria-hidden="true" /> En curso para la clase</> : 'Borrador: los alumnos aún no la ven'}
@@ -87,6 +90,9 @@ export const StoryDetail = (props: StoryDetailProps) => {
                 <MonitorPlay size={16} aria-hidden="true" /> Presentar
               </button>
             )}
+            <button type="button" onClick={onAiCoauthor} className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-black/30 px-4 text-sm font-bold text-white hover:bg-black/40">
+              <Wand2 size={16} aria-hidden="true" /> Coautor IA
+            </button>
             <button type="button" onClick={onEditStory} className="flex h-11 w-11 items-center justify-center rounded-xl bg-black/30 text-white hover:bg-black/40" aria-label="Editar historia">
               <Edit2 size={18} aria-hidden="true" />
             </button>
@@ -162,7 +168,7 @@ interface ChapterItemProps extends StoryDetailProps {
 
 const ChapterItem = ({
   chapter, position, canMoveUp, canMoveDown, isOpen, onToggle, accent, story, moving,
-  onEditChapter, onDeleteChapter, onMoveChapter, onReveal, onPresentChapter, onAddScene, onEditScene, onDeleteScene, onPreviewScene,
+  onEditChapter, onDeleteChapter, onMoveChapter, onReveal, onPresentChapter, onAddScene, onEditScene, onDeleteScene, onPreviewScene, onDecisionResults,
 }: ChapterItemProps) => {
   const isActive = chapter.status === 'ACTIVE';
   const isDone = chapter.status === 'COMPLETED';
@@ -240,6 +246,7 @@ const ChapterItem = ({
                   key={scene.id}
                   scene={scene}
                   secret={scene.type === 'OUTRO' && !isDone}
+                  onVotes={scene.type === 'DECISION' ? () => onDecisionResults(scene) : undefined}
                   onPreview={() => onPreviewScene(chapter, scene)}
                   onEdit={() => onEditScene(chapter, scene)}
                   onDelete={() => onDeleteScene(chapter, scene)}
@@ -283,9 +290,10 @@ const ChapterItem = ({
 
 // ---------- Escena (guion gráfico) ----------
 
-const SceneCard = ({ scene, secret, onPreview, onEdit, onDelete }: {
+const SceneCard = ({ scene, secret, onVotes, onPreview, onEdit, onDelete }: {
   scene: StoryScene;
   secret: boolean;
+  onVotes?: () => void;
   onPreview: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -293,12 +301,20 @@ const SceneCard = ({ scene, secret, onPreview, onEdit, onDelete }: {
   const meta = SCENE_TYPES[scene.type];
   const trigger = sceneTrigger(scene);
   const lines = scene.dialogues?.length ?? 0;
+  const decision = scene.type === 'DECISION' ? playableDecision(scene.decision) : null;
+  const totalVotes = Object.values(scene.votes ?? {}).reduce((sum, n) => sum + n, 0);
+  const winner = decision?.options.find((o) => o.id === decision.winnerOptionId);
   return (
     <li className="flex flex-col rounded-xl border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40">
       <button type="button" onClick={onPreview} className="flex min-h-[88px] flex-1 flex-col gap-1.5 rounded-t-xl p-3 text-left hover:bg-gray-100 dark:hover:bg-gray-800" aria-label={`Ver escena: ${meta.label}`}>
         <span className="flex flex-wrap items-center gap-1.5">
           <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${meta.chip}`}><span aria-hidden="true">{meta.emoji}</span> {meta.label}{trigger ? ` · ${trigger} %` : ''}</span>
           {secret && <span className="rounded-full bg-gray-800 px-2 py-0.5 text-xs font-semibold text-white dark:bg-gray-200 dark:text-gray-900">Secreta</span>}
+          {decision && (
+            <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${decision.status === 'OPEN' ? 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-100' : 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-gray-100'}`}>
+              {decision.status === 'OPEN' ? `Votación abierta · ${plural(totalVotes, 'voto', 'votos')}` : `Ganó «${winner?.label ?? ''}»`}
+            </span>
+          )}
         </span>
         <span className="line-clamp-2 text-sm text-gray-800 dark:text-gray-100">{sceneSnippet(scene)}</span>
         <span className="mt-auto flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
@@ -309,6 +325,11 @@ const SceneCard = ({ scene, secret, onPreview, onEdit, onDelete }: {
         </span>
       </button>
       <div className="flex justify-end gap-1 border-t border-gray-200 p-1 dark:border-gray-700">
+        {onVotes && (
+          <button type="button" onClick={onVotes} className="mr-auto inline-flex min-h-[40px] items-center gap-1.5 rounded-lg px-2 text-sm font-semibold text-primary-700 hover:bg-primary-50 dark:text-primary-300 dark:hover:bg-primary-900/30">
+            <Vote size={16} aria-hidden="true" /> Votos
+          </button>
+        )}
         <button type="button" onClick={onEdit} className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-700 hover:bg-gray-200 dark:text-gray-200 dark:hover:bg-gray-700" aria-label={`Editar escena: ${meta.label}`}>
           <Edit2 size={16} aria-hidden="true" />
         </button>

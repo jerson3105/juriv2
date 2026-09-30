@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import { storyService, THEME_PRESETS, PARTICLE_TYPES } from '../services/story.service.js';
+import { storyDecisionService } from '../services/storyDecision.service.js';
+import { storyAiService } from '../services/storyAi.service.js';
 import { z } from 'zod';
 import { createGenAI } from '../utils/aiClient.js';
 import { AppError, publicErrorMessage } from '../utils/errors.js';
@@ -36,6 +38,14 @@ const themeConfigSchema = z.object({
   }).optional(),
 }).optional();
 
+const voteSchema = z.object({ optionId: z.string().uuid() });
+const closeVoteSchema = z.object({ winnerOptionId: z.string().uuid().nullable().optional() });
+const aiDraftSchema = z.object({
+  kind: z.enum(['chapter', 'scenes']),
+  chapterId: z.string().uuid().optional(),
+  idea: z.string().trim().max(1000).optional(),
+});
+
 const reorderChaptersSchema = z.object({
   chapterIds: z.array(z.string().uuid()).min(1).max(200),
 });
@@ -69,12 +79,14 @@ const sendError = (res: Response, error: unknown, fallback: string) => {
 const createStorySchema = z.object({
   title: z.string().min(1).max(255),
   description: z.string().max(2000).optional(),
+  aiBible: z.string().max(4000).optional(),
   themeConfig: themeConfigSchema,
 });
 
 const updateStorySchema = z.object({
   title: z.string().min(1).max(255).optional(),
   description: z.string().max(2000).optional(),
+  aiBible: z.string().max(4000).optional(),
   themeConfig: themeConfigSchema.nullable(), // null = quitar el tema
 });
 
@@ -126,8 +138,18 @@ const updateChapterSchema = z.object({
   rewardConfig: rewardConfigSchema,
 });
 
+// Decisión: pregunta y 2 o 3 opciones, cada una con su desenlace (se revela al cerrar la votación).
+const decisionSchema = z.object({
+  question: z.string().trim().min(1).max(300),
+  options: z.array(z.object({
+    id: z.string().uuid().optional(),
+    label: z.string().trim().min(1).max(120),
+    outcome: z.array(dialogueSchema).max(10),
+  })).min(2).max(3),
+});
+
 const createSceneSchema = z.object({
-  type: z.enum(['INTRO', 'DESARROLLO', 'OUTRO', 'MILESTONE']),
+  type: z.enum(['INTRO', 'DESARROLLO', 'OUTRO', 'MILESTONE', 'DECISION']),
   mediaType: z.enum(['VIDEO', 'IMAGE']).optional(),
   mediaUrl: mediaUrl.optional(),
   backgroundColor: sceneBackground.optional(),
@@ -135,10 +157,12 @@ const createSceneSchema = z.object({
     percentage: z.number().int().min(1).max(100),
   }).nullable().optional(), // null = escena sin umbral (no es hito)
   dialogues: z.array(dialogueSchema).max(50).optional(),
-});
+  decision: decisionSchema.nullable().optional(),
+}).refine((data) => data.type !== 'DECISION' || !!data.decision, { message: 'Una escena de decisión necesita su pregunta y opciones', path: ['decision'] });
 
 const updateSceneSchema = z.object({
-  type: z.enum(['INTRO', 'DESARROLLO', 'OUTRO', 'MILESTONE']).optional(),
+  type: z.enum(['INTRO', 'DESARROLLO', 'OUTRO', 'MILESTONE', 'DECISION']).optional(),
+  decision: decisionSchema.nullable().optional(),
   mediaType: z.enum(['VIDEO', 'IMAGE']).nullable().optional(),
   mediaUrl: mediaUrl.nullable().optional(),
   backgroundColor: sceneBackground.nullable().optional(),
@@ -684,6 +708,55 @@ class StoryController {
       res.json({ success: true, data });
     } catch (error) {
       sendError(res, error, 'Error al actualizar diálogos');
+    }
+  }
+
+  // ---- DECISIONES ----
+
+  async voteDecision(req: Request, res: Response) {
+    try {
+      const { optionId } = voteSchema.parse(req.body);
+      const data = await storyDecisionService.vote(req.user!.id, req.params.sceneId, optionId);
+      res.json({ success: true, data });
+    } catch (error) {
+      sendError(res, error, 'Error al votar');
+    }
+  }
+
+  async decisionResults(req: Request, res: Response) {
+    try {
+      const access = await ensureTeacherSceneAccess(req, res, req.params.sceneId);
+      if (!access) return;
+      const data = await storyDecisionService.results(req.params.sceneId);
+      res.json({ success: true, data });
+    } catch (error) {
+      sendError(res, error, 'Error al obtener los votos');
+    }
+  }
+
+  async closeDecision(req: Request, res: Response) {
+    try {
+      const access = await ensureTeacherSceneAccess(req, res, req.params.sceneId);
+      if (!access) return;
+      const { winnerOptionId } = closeVoteSchema.parse(req.body ?? {});
+      const data = await storyDecisionService.close(req.params.sceneId, winnerOptionId);
+      res.json({ success: true, data });
+    } catch (error) {
+      sendError(res, error, 'Error al cerrar la votación');
+    }
+  }
+
+  // ---- IA COAUTORA ----
+
+  async aiDraft(req: Request, res: Response) {
+    try {
+      const access = await ensureTeacherStoryAccess(req, res, req.params.storyId);
+      if (!access) return;
+      const input = aiDraftSchema.parse(req.body);
+      const data = await storyAiService.draft(req.params.storyId, input);
+      res.json({ success: true, data });
+    } catch (error) {
+      sendError(res, error, 'La IA no pudo proponer un borrador');
     }
   }
 
