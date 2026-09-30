@@ -343,6 +343,22 @@ class GradeService {
     return result;
   }
 
+  /** CURRENT → bimestre actual de la clase (YYYY-B#). */
+  async resolvePeriod(classroomId: string, period: string = 'CURRENT'): Promise<string> {
+    return this.resolveClassroomPeriod(classroomId, period);
+  }
+
+  /** Se puede registrar notas: ni cerrado ni futuro. */
+  async assertPeriodEditable(classroomId: string, period: string): Promise<void> {
+    await this.ensurePeriodIsOpen(classroomId, period);
+    if (await this.isFuturePeriod(classroomId, period)) throw new Error('Periodo invalido: el bimestre aún no empieza');
+  }
+
+  async getScaleSettings(classroomId: string) {
+    const { gradeScaleType, gradeScaleConfig } = await this.getClassroomScaleSettings(classroomId);
+    return { gradeScaleType, parsedScaleConfig: this.parseGradeScaleConfig(gradeScaleConfig) };
+  }
+
   async isPeriodClosed(classroomId: string, period: string): Promise<boolean> {
     const [classroom] = await db.select({ closedBimesters: classrooms.closedBimesters })
       .from(classrooms).where(eq(classrooms.id, classroomId));

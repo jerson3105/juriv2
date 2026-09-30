@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { gradeController } from '../controllers/grade.controller.js';
+import { gradeEvaluationController } from '../controllers/gradeEvaluation.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { aiLimiter, aiRequestTimeout } from '../middleware/security.js';
 
@@ -28,6 +29,14 @@ router.delete('/:gradeId/manual', authorize('TEACHER'), gradeController.clearMan
 
 // Comentario para el alumno, nota privada y conclusión descriptiva
 router.patch('/:gradeId/notes', authorize('TEACHER'), gradeController.updateGradeNotes);
+
+// Evaluaciones propias (examen, tarea…) con nota directa por alumno
+router.get('/evaluations/:classroomId', authorize('TEACHER'), gradeEvaluationController.list);
+router.post('/evaluations/:classroomId', authorize('TEACHER'), gradeEvaluationController.create);
+router.get('/evaluations/item/:evaluationId', authorize('TEACHER'), gradeEvaluationController.get);
+router.patch('/evaluations/item/:evaluationId', authorize('TEACHER'), gradeEvaluationController.update);
+router.delete('/evaluations/item/:evaluationId', authorize('TEACHER'), gradeEvaluationController.remove);
+router.put('/evaluations/item/:evaluationId/scores', authorize('TEACHER'), gradeEvaluationController.saveScores);
 
 // Escala y peso de evaluaciones de la clase
 router.put('/settings/:classroomId', authorize('TEACHER'), gradeController.updateGradeSettings);
