@@ -408,6 +408,19 @@ const joinClassroomSchema = z.object({
   characterClass: z.enum(['GUARDIAN', 'ARCANE', 'EXPLORER', 'ALCHEMIST']),
 });
 
+// Reseteo selectivo: solo categorías conocidas, booleanas y al menos una.
+const resetOptionsSchema = z.object({
+  points: z.boolean().optional(),
+  history: z.boolean().optional(),
+  purchases: z.boolean().optional(),
+  badges: z.boolean().optional(),
+  attendance: z.boolean().optional(),
+  streaks: z.boolean().optional(),
+  clans: z.boolean().optional(),
+  scrolls: z.boolean().optional(),
+  powerUsages: z.boolean().optional(),
+}).strict().refine((o) => Object.values(o).some(Boolean), 'Elige al menos una categoría');
+
 export class ClassroomController {
   async generateAIClassroomBlueprint(req: Request, res: Response) {
     try {
@@ -1323,8 +1336,11 @@ REGLAS:
   async resetClassroomSelective(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const options = req.body || {};
-      const result = await classroomService.resetClassroomSelective(id, req.user!.id, options);
+      const parsed = resetOptionsSchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return res.status(400).json({ success: false, message: parsed.error.errors[0]?.message ?? 'Datos inválidos' });
+      }
+      const result = await classroomService.resetClassroomSelective(id, req.user!.id, parsed.data);
 
       res.json({
         success: true,

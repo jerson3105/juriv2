@@ -53,17 +53,14 @@ export const ActivityTab = ({ classroomId, studentId }: { classroomId: string; s
   const [filter, setFilter] = useState<Filter>('ALL');
   const [undoing, setUndoing] = useState<string | null>(null);
 
+  // Paginación por cursor: sin tope de profundidad (el total por desplazamiento no era real).
   const query = useInfiniteQuery({
     queryKey: activityKey(classroomId, studentId, filter),
-    queryFn: ({ pageParam }) => historyApi.getClassroomHistory(classroomId, { studentId, type: filter, limit: PAGE, offset: pageParam }),
-    initialPageParam: 0,
-    getNextPageParam: (last, pages) => {
-      const loaded = pages.reduce((sum, p) => sum + p.logs.length, 0);
-      return last.logs.length === PAGE && loaded < last.total ? loaded : undefined;
-    },
+    queryFn: ({ pageParam }) => historyApi.getFeed(classroomId, { studentId, type: filter, limit: PAGE, cursor: pageParam }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => (last.hasMore ? last.nextCursor : undefined),
   });
-  const entries = query.data?.pages.flatMap((p) => p.logs) ?? [];
-  const total = query.data?.pages[0]?.total ?? 0;
+  const entries = query.data?.pages.flatMap((p) => p.entries) ?? [];
 
   const undo = async (entry: ActivityLogEntry & { type: 'POINTS' | 'BADGE' | 'ATTENDANCE' }, title: string) => {
     setUndoing(entry.id);
@@ -85,7 +82,7 @@ export const ActivityTab = ({ classroomId, studentId }: { classroomId: string; s
     <section aria-labelledby="activity-title" className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 id="activity-title" className="text-base font-bold text-gray-900 dark:text-white">
-          Registro de actividad {total > 0 && <span className="font-normal text-gray-700 dark:text-gray-300">({total})</span>}
+          Registro de actividad
         </h2>
         <div role="radiogroup" aria-label="Filtrar registro" className="flex flex-wrap gap-1.5">
           {FILTERS.map((f) => (
@@ -109,7 +106,7 @@ export const ActivityTab = ({ classroomId, studentId }: { classroomId: string; s
             {entries.map((entry) => {
               const info = describe(entry);
               return (
-                <li key={`${entry.type}-${entry.id}`} className={`flex items-center gap-3 py-2.5 ${entry.isReverted ? 'opacity-70' : ''}`}>
+                <li key={`${entry.type}-${entry.id}-${entry.key}`} className={`flex items-center gap-3 py-2.5 ${entry.isReverted ? 'opacity-70' : ''}`}>
                   <span className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${info.positive ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200' : 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200'}`}>
                     {iconOf(entry, info.positive)}
                   </span>
@@ -135,7 +132,7 @@ export const ActivityTab = ({ classroomId, studentId }: { classroomId: string; s
             })}
           </ul>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3 dark:border-gray-700">
-            <p className="text-sm text-gray-700 dark:text-gray-300">Mostrando {entries.length} de {total}</p>
+            <p className="text-sm text-gray-700 dark:text-gray-300">{query.hasNextPage ? `Mostrando ${entries.length}` : `${entries.length} en total`}</p>
             {query.hasNextPage && (
               <button type="button" onClick={() => query.fetchNextPage()} disabled={query.isFetchingNextPage}
                 className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-gray-300 px-4 text-sm font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-60 dark:border-gray-600 dark:text-gray-100 dark:hover:bg-gray-700">

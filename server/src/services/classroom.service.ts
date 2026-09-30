@@ -2013,115 +2013,119 @@ export class ClassroomService {
       throw new Error('No autorizado');
     }
 
-    const students = await db.query.studentProfiles.findMany({
-      where: eq(studentProfiles.classroomId, classroomId),
-      columns: { id: true }
-    });
-    const studentIds = students.map(s => s.id);
-
-    const now = new Date();
+    // Todo o nada: si una categoría falla, no queda la clase medio reseteada.
     const cleaned: string[] = [];
-
-    // 1. Historial de puntos
-    if (options.history && studentIds.length > 0) {
-      await db.delete(pointLogs).where(inArray(pointLogs.studentId, studentIds));
-      cleaned.push('history');
-    }
-
-    // 2. Compras e items usados
-    if (options.purchases && studentIds.length > 0) {
-      const items = await db.query.shopItems.findMany({
-        where: eq(shopItems.classroomId, classroomId),
+    await db.transaction(async (tx) => {
+      const students = await tx.query.studentProfiles.findMany({
+        where: eq(studentProfiles.classroomId, classroomId),
         columns: { id: true }
       });
-      const itemIds = items.map(i => i.id);
+      const studentIds = students.map(s => s.id);
 
-      if (itemIds.length > 0) {
-        const itemPurchases = await db.query.purchases.findMany({
-          where: inArray(purchases.itemId, itemIds),
+      const now = new Date();
+
+      // 1. Historial de puntos
+      if (options.history && studentIds.length > 0) {
+        await tx.delete(pointLogs).where(inArray(pointLogs.studentId, studentIds));
+        cleaned.push('history');
+      }
+
+      // 2. Compras e items usados
+      if (options.purchases && studentIds.length > 0) {
+        const items = await tx.query.shopItems.findMany({
+          where: eq(shopItems.classroomId, classroomId),
           columns: { id: true }
         });
-        const purchaseIds = itemPurchases.map(p => p.id);
-        if (purchaseIds.length > 0) {
-          await db.delete(itemUsages).where(inArray(itemUsages.purchaseId, purchaseIds));
+        const itemIds = items.map(i => i.id);
+
+        if (itemIds.length > 0) {
+          const itemPurchases = await tx.query.purchases.findMany({
+            where: inArray(purchases.itemId, itemIds),
+            columns: { id: true }
+          });
+          const purchaseIds = itemPurchases.map(p => p.id);
+          if (purchaseIds.length > 0) {
+            await tx.delete(itemUsages).where(inArray(itemUsages.purchaseId, purchaseIds));
+          }
+          await tx.delete(purchases).where(inArray(purchases.itemId, itemIds));
         }
-        await db.delete(purchases).where(inArray(purchases.itemId, itemIds));
+        cleaned.push('purchases');
       }
-      cleaned.push('purchases');
-    }
 
-    // 3. Insignias ganadas + progreso
-    if (options.badges && studentIds.length > 0) {
-      await db.delete(badgeProgress).where(inArray(badgeProgress.studentProfileId, studentIds));
-      await db.delete(studentBadges).where(inArray(studentBadges.studentProfileId, studentIds));
-      cleaned.push('badges');
-    }
+      // 3. Insignias ganadas + progreso
+      if (options.badges && studentIds.length > 0) {
+        await tx.delete(badgeProgress).where(inArray(badgeProgress.studentProfileId, studentIds));
+        await tx.delete(studentBadges).where(inArray(studentBadges.studentProfileId, studentIds));
+        cleaned.push('badges');
+      }
 
-    // 4. Asistencia
-    if (options.attendance) {
-      await db.delete(attendanceRecords).where(eq(attendanceRecords.classroomId, classroomId));
-      cleaned.push('attendance');
-    }
+      // 4. Asistencia
+      if (options.attendance) {
+        await tx.delete(attendanceRecords).where(eq(attendanceRecords.classroomId, classroomId));
+        cleaned.push('attendance');
+      }
 
-    // 5. Rachas (login streaks + student streaks)
-    if (options.streaks) {
-      await db.delete(loginStreaks).where(eq(loginStreaks.classroomId, classroomId));
-      await db.delete(studentStreaks).where(eq(studentStreaks.classroomId, classroomId));
-      cleaned.push('streaks');
-    }
+      // 5. Rachas (login streaks + student streaks)
+      if (options.streaks) {
+        await tx.delete(loginStreaks).where(eq(loginStreaks.classroomId, classroomId));
+        await tx.delete(studentStreaks).where(eq(studentStreaks.classroomId, classroomId));
+        cleaned.push('streaks');
+      }
 
-    // 6. Clanes — resetear stats, no eliminar
-    if (options.clans) {
-      const classTeams = await db.query.teams.findMany({
-        where: eq(teams.classroomId, classroomId),
-        columns: { id: true }
-      });
-      const teamIds = classTeams.map(t => t.id);
+      // 6. Clanes — resetear stats, no eliminar
+      if (options.clans) {
+        const classTeams = await tx.query.teams.findMany({
+          where: eq(teams.classroomId, classroomId),
+          columns: { id: true }
+        });
+        const teamIds = classTeams.map(t => t.id);
 
-      if (teamIds.length > 0) {
-        await db.delete(clanLogs).where(inArray(clanLogs.clanId, teamIds));
-        await db.update(teams).set({
-          totalXp: 0,
-          totalGp: 0,
-          wins: 0,
-          losses: 0,
+        if (teamIds.length > 0) {
+          await tx.delete(clanLogs).where(inArray(clanLogs.clanId, teamIds));
+          await tx.update(teams).set({
+            totalXp: 0,
+            totalGp: 0,
+            wins: 0,
+            losses: 0,
+            updatedAt: now,
+          }).where(eq(teams.classroomId, classroomId));
+        }
+        cleaned.push('clans');
+      }
+
+      // 7. Pergaminos
+      if (options.scrolls) {
+        const classScrolls = await tx.query.scrolls.findMany({
+          where: eq(scrolls.classroomId, classroomId),
+          columns: { id: true }
+        });
+        const scrollIds = classScrolls.map(s => s.id);
+        if (scrollIds.length > 0) {
+          await tx.delete(scrollReactions).where(inArray(scrollReactions.scrollId, scrollIds));
+          await tx.delete(scrolls).where(inArray(scrolls.id, scrollIds));
+        }
+        cleaned.push('scrolls');
+      }
+
+      // 8. Uso de poderes
+      if (options.powerUsages && studentIds.length > 0) {
+        await tx.delete(powerUsages).where(inArray(powerUsages.studentId, studentIds));
+        cleaned.push('powerUsages');
+      }
+
+      // 9. Puntos — siempre al final para que el historial ya esté limpio
+      if (options.points) {
+        await tx.update(studentProfiles).set({
+          xp: classroom.defaultXp,
+          hp: classroom.defaultHp,
+          gp: classroom.defaultGp,
+          level: 1,
           updatedAt: now,
-        }).where(eq(teams.classroomId, classroomId));
+        }).where(eq(studentProfiles.classroomId, classroomId));
+        cleaned.push('points');
       }
-      cleaned.push('clans');
-    }
 
-    // 7. Pergaminos
-    if (options.scrolls) {
-      const classScrolls = await db.query.scrolls.findMany({
-        where: eq(scrolls.classroomId, classroomId),
-        columns: { id: true }
-      });
-      const scrollIds = classScrolls.map(s => s.id);
-      if (scrollIds.length > 0) {
-        await db.delete(scrollReactions).where(inArray(scrollReactions.scrollId, scrollIds));
-        await db.delete(scrolls).where(inArray(scrolls.id, scrollIds));
-      }
-      cleaned.push('scrolls');
-    }
-
-    // 8. Uso de poderes
-    if (options.powerUsages && studentIds.length > 0) {
-      await db.delete(powerUsages).where(inArray(powerUsages.studentId, studentIds));
-      cleaned.push('powerUsages');
-    }
-
-    // 9. Puntos — siempre al final para que el historial ya esté limpio
-    if (options.points) {
-      await db.update(studentProfiles).set({
-        xp: classroom.defaultXp,
-        hp: classroom.defaultHp,
-        gp: classroom.defaultGp,
-        level: 1,
-        updatedAt: now,
-      }).where(eq(studentProfiles.classroomId, classroomId));
-      cleaned.push('points');
-    }
+    });
 
     return { success: true, cleaned };
   }

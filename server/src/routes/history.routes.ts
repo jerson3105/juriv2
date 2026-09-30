@@ -13,6 +13,11 @@ router.get('/classroom/:classroomId', authorize('TEACHER', 'ADMIN'), historyCont
 // Obtener estadísticas de una clase
 router.get('/classroom/:classroomId/stats', authorize('TEACHER', 'ADMIN'), historyController.getClassroomStats);
 
+// Registro por cursor, resumen del periodo y reversión de un lote
+router.get('/classroom/:classroomId/feed', authorize('TEACHER', 'ADMIN'), historyController.getFeed);
+router.get('/classroom/:classroomId/summary', authorize('TEACHER', 'ADMIN'), historyController.getSummary);
+router.post('/classroom/:classroomId/revert-batch', authorize('TEACHER', 'ADMIN'), historyController.revertBatch);
+
 // Revertir una entrada del historial
 router.post('/revert/:entryType/:entryId', authorize('TEACHER', 'ADMIN'), historyController.revertEntry);
 

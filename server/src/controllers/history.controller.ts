@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import { historyService } from '../services/history.service.js';
+import { historyFeedService } from '../services/historyFeed.service.js';
+import { gradeService } from '../services/grade.service.js';
 import { z } from 'zod';
 
 const classroomParamsSchema = z.object({
@@ -12,6 +14,34 @@ const historyQuerySchema = z.object({
   type: z.enum(['POINTS', 'PURCHASE', 'ITEM_USED', 'BADGE', 'ATTENDANCE', 'ALL']).optional(),
   studentId: z.string().uuid().optional(),
 });
+
+const feedTypeSchema = z.enum(['POINTS', 'PURCHASE', 'ITEM_USED', 'BADGE', 'ATTENDANCE', 'ALL']);
+
+// Periodo: "bimester" lo resuelve el servidor; si no, [from, to) en instantes ISO calculados por el cliente en su zona.
+const periodSchema = z.object({
+  studentId: z.string().uuid().optional(),
+  period: z.enum(['bimester']).optional(),
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+}).refine((q) => !q.from || !q.to || new Date(q.from) < new Date(q.to), { message: 'El inicio debe ser anterior al fin', path: ['from'] });
+
+const feedQuerySchema = periodSchema.and(z.object({
+  type: feedTypeSchema.optional().default('ALL'),
+  cursor: z.string().max(2000).optional(),
+  limit: z.coerce.number().int().min(5).max(50).optional().default(25),
+}));
+
+const revertBatchSchema = z.object({
+  entryIds: z.array(z.string().uuid()).min(1).max(60).refine((ids) => new Set(ids).size === ids.length, 'IDs repetidos'),
+});
+
+const resolvePeriod = async (classroomId: string, q: z.infer<typeof periodSchema>) => {
+  if (q.period === 'bimester') {
+    const { startDate } = await gradeService.getBimesterDateRange(classroomId, 'CURRENT');
+    return { from: startDate, to: null };
+  }
+  return { from: q.from ? new Date(q.from) : null, to: q.to ? new Date(q.to) : null };
+};
 
 const handleValidationError = (res: Response, error: z.ZodError) => {
   return res.status(400).json({
@@ -31,7 +61,9 @@ const handleControllerError = (res: Response, error: unknown, fallbackMessage: s
     .replace(/[\u0300-\u036f]/g, '');
 
   let statusCode = 500;
-  if (normalizedMessage.includes('no encontrado')) {
+  if (normalizedMessage.includes('ya fue revertid') || normalizedMessage.includes('ya estaba revertid')) {
+    statusCode = 409;
+  } else if (normalizedMessage.includes('no encontrado')) {
     statusCode = 404;
   } else if (normalizedMessage.includes('sin acceso') || normalizedMessage.includes('no autorizado')) {
     statusCode = 403;
@@ -147,6 +179,69 @@ class HistoryController {
       });
     } catch (error) {
       handleControllerError(res, error, 'Error al obtener estadísticas');
+    }
+  }
+
+  /** Registro paginado por cursor, con filtros de tipo, alumno y periodo. */
+  async getFeed(req: Request, res: Response) {
+    try {
+      const params = classroomParamsSchema.safeParse(req.params);
+      if (!params.success) return handleValidationError(res, params.error);
+      const query = feedQuerySchema.safeParse(req.query);
+      if (!query.success) return handleValidationError(res, query.error);
+
+      const { classroomId } = params.data;
+      if (!(await ensureHistoryClassroomAccess(req, res, classroomId))) return;
+
+      const { from, to } = await resolvePeriod(classroomId, query.data);
+      const data = await historyFeedService.getFeed(classroomId, {
+        type: query.data.type,
+        studentId: query.data.studentId,
+        from,
+        to,
+        cursor: query.data.cursor ?? null,
+        limit: query.data.limit,
+      });
+      res.json({ success: true, data });
+    } catch (error) {
+      handleControllerError(res, error, 'Error al obtener el registro');
+    }
+  }
+
+  /** Resumen del periodo filtrado. */
+  async getSummary(req: Request, res: Response) {
+    try {
+      const params = classroomParamsSchema.safeParse(req.params);
+      if (!params.success) return handleValidationError(res, params.error);
+      const query = periodSchema.safeParse(req.query);
+      if (!query.success) return handleValidationError(res, query.error);
+
+      const { classroomId } = params.data;
+      if (!(await ensureHistoryClassroomAccess(req, res, classroomId))) return;
+
+      const { from, to } = await resolvePeriod(classroomId, query.data);
+      const data = await historyFeedService.getSummary(classroomId, { studentId: query.data.studentId, from, to });
+      res.json({ success: true, data });
+    } catch (error) {
+      handleControllerError(res, error, 'Error al obtener el resumen');
+    }
+  }
+
+  /** Revertir un lote de puntos (la misma acción a varios alumnos). */
+  async revertBatch(req: Request, res: Response) {
+    try {
+      const params = classroomParamsSchema.safeParse(req.params);
+      if (!params.success) return handleValidationError(res, params.error);
+      const body = revertBatchSchema.safeParse(req.body);
+      if (!body.success) return handleValidationError(res, body.error);
+
+      const { classroomId } = params.data;
+      if (!(await ensureHistoryClassroomAccess(req, res, classroomId))) return;
+
+      const result = await historyService.revertPointBatch(classroomId, body.data.entryIds, req.user!.id);
+      res.json({ success: true, data: { reverted: result.reverted, skipped: result.skipped }, message: result.message });
+    } catch (error) {
+      handleControllerError(res, error, 'Error al revertir el lote');
     }
   }
 

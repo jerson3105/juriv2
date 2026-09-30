@@ -45,7 +45,64 @@ export interface HistoryResponse {
   total: number;
 }
 
+export type FeedType = 'ALL' | 'POINTS' | 'PURCHASE' | 'ITEM_USED' | 'BADGE' | 'ATTENDANCE';
+
+/** Entrada del registro por cursor: clave estable, lote (misma acción a varios alumnos) y autor. */
+export interface FeedEntry extends ActivityLogEntry {
+  key: string;
+  batchKey?: string;
+  behaviorIcon?: string | null;
+  /** null = automático; ausente = no aplica (compras, asistencia). */
+  actor?: { id: string; name: string } | null;
+}
+
+export interface FeedPage {
+  entries: FeedEntry[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+/** Periodo: "bimester" lo resuelve el servidor; si no, [from, to) en ISO. */
+export interface PeriodParams {
+  studentId?: string;
+  period?: 'bimester';
+  from?: string;
+  to?: string;
+}
+
+export interface HistorySummary {
+  xpGiven: number;
+  xpRemoved: number;
+  purchases: number;
+  badges: number;
+  itemsUsed: number;
+}
+
+const periodQuery = (params: PeriodParams & Record<string, string | number | undefined>) => {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') query.append(key, String(value));
+  });
+  return query.toString();
+};
+
 export const historyApi = {
+  getFeed: async (classroomId: string, params: PeriodParams & { type?: FeedType; cursor?: string | null; limit?: number }): Promise<FeedPage> => {
+    const { cursor, ...rest } = params;
+    const response = await api.get(`/history/classroom/${classroomId}/feed?${periodQuery({ ...rest, cursor: cursor ?? undefined })}`);
+    return response.data.data;
+  },
+
+  getSummary: async (classroomId: string, params: PeriodParams): Promise<HistorySummary> => {
+    const response = await api.get(`/history/classroom/${classroomId}/summary?${periodQuery({ ...params })}`);
+    return response.data.data;
+  },
+
+  revertBatch: async (classroomId: string, entryIds: string[]): Promise<{ message: string; reverted: number; skipped: number }> => {
+    const response = await api.post(`/history/classroom/${classroomId}/revert-batch`, { entryIds });
+    return { message: response.data.message, ...response.data.data };
+  },
+
   getClassroomHistory: async (
     classroomId: string,
     options?: {

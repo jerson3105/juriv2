@@ -534,6 +534,9 @@ export const pointLogs = mysqlTable('point_logs', {
 }, (table) => ({
   studentIdx: index('idx_point_logs_student').on(table.studentId),
   studentDateIdx: index('idx_point_logs_student_date').on(table.studentId, table.createdAt),
+  dateIdx: index('idx_point_logs_date').on(table.createdAt),
+  // Resumen del registro de actividad (migración add_history_indexes.sql).
+  studentTypeDateIdx: index('idx_point_logs_student_type_date').on(table.studentId, table.pointType, table.createdAt, table.action, table.amount, table.isReverted),
   behaviorIdx: index('idx_point_logs_behavior').on(table.behaviorId),
   competencyIdx: index('idx_point_logs_competency').on(table.competencyId),
   competencyIndicatorIdx: index('idx_point_logs_competency_indicator').on(table.competencyIndicatorId),
@@ -708,6 +711,7 @@ export const purchases = mysqlTable('purchases', {
   purchasedAt: datetime('purchased_at').notNull(),
 }, (table) => ({
   studentIdx: index('idx_purchases_student').on(table.studentId),
+  studentDateIdx: index('idx_purchases_student_date').on(table.studentId, table.purchasedAt),
   itemIdx: index('idx_purchases_item').on(table.itemId),
   buyerIdx: index('idx_purchases_buyer').on(table.buyerId),
   statusIdx: index('idx_purchases_status').on(table.status),

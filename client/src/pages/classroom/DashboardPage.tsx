@@ -75,6 +75,7 @@ export const DashboardPage = () => {
     queryKey: ['history-stats', classroom.id],
     queryFn: () => historyApi.getClassroomStats(classroom.id),
     enabled: !!classroom.id,
+    staleTime: 60_000, // agrega todo el historial de la clase: no se repite en cada visita
   });
 
   // Obtener estadísticas de insignias

@@ -153,10 +153,11 @@ class HistoryService {
     }
 
     const logs: ActivityLogEntry[] = [];
+    const wants = (kind: HistoryFilterType) => filterType === 'ALL' || filterType === kind;
 
-    // 1. Obtener logs de puntos
-    if (filterType === 'ALL' || filterType === 'POINTS') {
-      const pointLogsData = await db
+    // Las cinco fuentes son independientes: se piden en paralelo.
+    const [pointLogsData, purchasesData, usagesData, badgesData, attendanceData] = await Promise.all([
+      wants('POINTS') ? db
         .select({
           id: pointLogs.id,
           studentId: pointLogs.studentId,
@@ -178,7 +179,72 @@ class HistoryService {
             : inArray(pointLogs.studentId, studentIds)
         )
         .orderBy(desc(pointLogs.createdAt))
-        .limit(pointsFetchLimit); // Obtener más para agrupar
+        .limit(pointsFetchLimit) : Promise.resolve([]), // Obtener más para agrupar
+      wants('PURCHASE') ? db
+        .select({
+          id: purchases.id,
+          studentId: purchases.studentId,
+          purchasedAt: purchases.purchasedAt,
+          quantity: purchases.quantity,
+          totalPrice: purchases.totalPrice,
+          purchaseType: purchases.purchaseType,
+          itemName: shopItems.name,
+          itemIcon: shopItems.icon,
+        })
+        .from(purchases)
+        .innerJoin(shopItems, eq(purchases.itemId, shopItems.id))
+        .where(studentId ? eq(purchases.studentId, studentId) : inArray(purchases.studentId, studentIds))
+        .orderBy(desc(purchases.purchasedAt))
+        .limit(secondaryFetchLimit) : Promise.resolve([]),
+      wants('ITEM_USED') ? db
+        .select({
+          id: itemUsages.id,
+          studentId: itemUsages.studentId,
+          usedAt: itemUsages.usedAt,
+          status: itemUsages.status,
+          itemName: shopItems.name,
+          itemIcon: shopItems.icon,
+        })
+        .from(itemUsages)
+        .innerJoin(shopItems, eq(itemUsages.itemId, shopItems.id))
+        .where(studentId
+          ? and(eq(itemUsages.studentId, studentId), eq(itemUsages.classroomId, classroomId))
+          : eq(itemUsages.classroomId, classroomId))
+        .orderBy(desc(itemUsages.usedAt))
+        .limit(secondaryFetchLimit) : Promise.resolve([]),
+      wants('BADGE') ? db
+        .select({
+          id: studentBadges.id,
+          studentId: studentBadges.studentProfileId,
+          unlockedAt: studentBadges.unlockedAt,
+          badgeName: badges.name,
+          badgeIcon: badges.icon,
+        })
+        .from(studentBadges)
+        .innerJoin(badges, eq(studentBadges.badgeId, badges.id))
+        .where(studentId ? eq(studentBadges.studentProfileId, studentId) : inArray(studentBadges.studentProfileId, studentIds))
+        .orderBy(desc(studentBadges.unlockedAt))
+        .limit(secondaryFetchLimit) : Promise.resolve([]),
+      wants('ATTENDANCE') ? db
+        .select({
+          id: attendanceRecords.id,
+          studentId: attendanceRecords.studentProfileId,
+          date: attendanceRecords.date,
+          status: attendanceRecords.status,
+          xpAwarded: attendanceRecords.xpAwarded,
+          createdAt: attendanceRecords.createdAt,
+          isReverted: attendanceRecords.isReverted,
+        })
+        .from(attendanceRecords)
+        .where(studentId
+          ? and(eq(attendanceRecords.studentProfileId, studentId), eq(attendanceRecords.classroomId, classroomId))
+          : eq(attendanceRecords.classroomId, classroomId))
+        .orderBy(desc(attendanceRecords.createdAt))
+        .limit(secondaryFetchLimit) : Promise.resolve([]),
+    ]);
+
+    // 1. Logs de puntos
+    if (wants('POINTS')) {
 
       // Agrupar logs del mismo comportamiento aplicado al mismo estudiante en el mismo momento
       // Un comportamiento con XP+HP+GP genera 3 logs, pero deben mostrarse como 1 entrada
@@ -270,29 +336,8 @@ class HistoryService {
       }
     }
 
-    // 2. Obtener compras
-    if (filterType === 'ALL' || filterType === 'PURCHASE') {
-      const purchasesData = await db
-        .select({
-          id: purchases.id,
-          studentId: purchases.studentId,
-          purchasedAt: purchases.purchasedAt,
-          quantity: purchases.quantity,
-          totalPrice: purchases.totalPrice,
-          purchaseType: purchases.purchaseType,
-          itemName: shopItems.name,
-          itemIcon: shopItems.icon,
-        })
-        .from(purchases)
-        .innerJoin(shopItems, eq(purchases.itemId, shopItems.id))
-        .where(
-          studentId
-            ? eq(purchases.studentId, studentId)
-            : inArray(purchases.studentId, studentIds)
-        )
-        .orderBy(desc(purchases.purchasedAt))
-        .limit(secondaryFetchLimit);
-
+    // 2. Compras
+    if (wants('PURCHASE')) {
       for (const purchase of purchasesData) {
         const student = studentMap.get(purchase.studentId);
         logs.push({
@@ -312,30 +357,8 @@ class HistoryService {
       }
     }
 
-    // 3. Obtener usos de items
-    if (filterType === 'ALL' || filterType === 'ITEM_USED') {
-      const usagesData = await db
-        .select({
-          id: itemUsages.id,
-          studentId: itemUsages.studentId,
-          usedAt: itemUsages.usedAt,
-          status: itemUsages.status,
-          itemName: shopItems.name,
-          itemIcon: shopItems.icon,
-        })
-        .from(itemUsages)
-        .innerJoin(shopItems, eq(itemUsages.itemId, shopItems.id))
-        .where(
-          studentId
-            ? and(
-              eq(itemUsages.studentId, studentId),
-              eq(itemUsages.classroomId, classroomId)
-            )
-            : eq(itemUsages.classroomId, classroomId)
-        )
-        .orderBy(desc(itemUsages.usedAt))
-        .limit(secondaryFetchLimit);
-
+    // 3. Usos de items
+    if (wants('ITEM_USED')) {
       for (const usage of usagesData) {
         const student = studentMap.get(usage.studentId);
         logs.push({
@@ -354,26 +377,8 @@ class HistoryService {
       }
     }
 
-    // 4. Obtener insignias otorgadas
-    if (filterType === 'ALL' || filterType === 'BADGE') {
-      const badgesData = await db
-        .select({
-          id: studentBadges.id,
-          studentId: studentBadges.studentProfileId,
-          unlockedAt: studentBadges.unlockedAt,
-          badgeName: badges.name,
-          badgeIcon: badges.icon,
-        })
-        .from(studentBadges)
-        .innerJoin(badges, eq(studentBadges.badgeId, badges.id))
-        .where(
-          studentId
-            ? eq(studentBadges.studentProfileId, studentId)
-            : inArray(studentBadges.studentProfileId, studentIds)
-        )
-        .orderBy(desc(studentBadges.unlockedAt))
-        .limit(secondaryFetchLimit);
-
+    // 4. Insignias otorgadas
+    if (wants('BADGE')) {
       for (const badge of badgesData) {
         const student = studentMap.get(badge.studentId);
         logs.push({
@@ -391,30 +396,8 @@ class HistoryService {
       }
     }
 
-    // 5. Obtener registros de asistencia
-    if (filterType === 'ALL' || filterType === 'ATTENDANCE') {
-      const attendanceData = await db
-        .select({
-          id: attendanceRecords.id,
-          studentId: attendanceRecords.studentProfileId,
-          date: attendanceRecords.date,
-          status: attendanceRecords.status,
-          xpAwarded: attendanceRecords.xpAwarded,
-          createdAt: attendanceRecords.createdAt,
-          isReverted: attendanceRecords.isReverted,
-        })
-        .from(attendanceRecords)
-        .where(
-          studentId
-            ? and(
-              eq(attendanceRecords.studentProfileId, studentId),
-              eq(attendanceRecords.classroomId, classroomId)
-            )
-            : eq(attendanceRecords.classroomId, classroomId)
-        )
-        .orderBy(desc(attendanceRecords.createdAt))
-        .limit(secondaryFetchLimit);
-
+    // 5. Asistencia
+    if (wants('ATTENDANCE')) {
       for (const att of attendanceData) {
         const student = studentMap.get(att.studentId);
         logs.push({
@@ -475,8 +458,10 @@ class HistoryService {
       };
     }
 
+    // Consultas independientes: en paralelo.
+    const [topStudentsData, xpLogs, [purchaseCount], [usageCount], behaviorCounts] = await Promise.all([
     // Top 5 estudiantes para el leaderboard
-    const topStudentsData = await db
+    db
       .select({
         id: studentProfiles.id,
         characterName: studentProfiles.characterName,
@@ -485,10 +470,10 @@ class HistoryService {
       .from(studentProfiles)
       .where(eq(studentProfiles.classroomId, classroomId))
       .orderBy(desc(studentProfiles.xp))
-      .limit(5);
+      .limit(5),
 
     // Calcular XP dado/quitado usando TODOS los estudiantes
-    const xpLogs = await db
+    db
       .select({
         action: pointLogs.action,
         total: sql<number>`SUM(${pointLogs.amount})`,
@@ -500,25 +485,22 @@ class HistoryService {
           eq(pointLogs.pointType, 'XP')
         )
       )
-      .groupBy(pointLogs.action);
-
-    const xpGiven = xpLogs.find((l: { action: string; total: number }) => l.action === 'ADD')?.total || 0;
-    const xpRemoved = xpLogs.find((l: { action: string; total: number }) => l.action === 'REMOVE')?.total || 0;
+      .groupBy(pointLogs.action),
 
     // Contar compras
-    const [purchaseCount] = await db
+    db
       .select({ count: sql<number>`COUNT(*)` })
       .from(purchases)
-      .where(inArray(purchases.studentId, allStudentIds));
+      .where(inArray(purchases.studentId, allStudentIds)),
 
     // Contar items usados
-    const [usageCount] = await db
+    db
       .select({ count: sql<number>`COUNT(*)` })
       .from(itemUsages)
-      .where(eq(itemUsages.classroomId, classroomId));
+      .where(eq(itemUsages.classroomId, classroomId)),
 
     // Top comportamientos positivos y negativos
-    const behaviorCounts = await db
+    db
       .select({
         behaviorId: pointLogs.behaviorId,
         name: behaviors.name,
@@ -533,7 +515,11 @@ class HistoryService {
       )
       .groupBy(pointLogs.behaviorId, behaviors.name, behaviors.icon, behaviors.isPositive)
       .orderBy(sql`5 DESC`)
-      .limit(20);
+      .limit(20),
+    ]);
+
+    const xpGiven = xpLogs.find((l: { action: string; total: number }) => l.action === 'ADD')?.total || 0;
+    const xpRemoved = xpLogs.find((l: { action: string; total: number }) => l.action === 'REMOVE')?.total || 0;
 
     const topPositiveBehaviors = behaviorCounts
       .filter(b => b.isPositive)
@@ -658,6 +644,36 @@ class HistoryService {
       parts.push(`${sign}${entry.amount} ${entry.pointType}`);
     }
     return { message: `Revertido: ${parts.join(', ')}` };
+  }
+
+  /**
+   * Revertir un lote: la misma acción aplicada a varios alumnos. Todas las entradas deben ser de
+   * alumnos de la clase. Cada alumno se revierte en su propia transacción; las ya revertidas se omiten.
+   */
+  async revertPointBatch(classroomId: string, entryIds: string[], teacherId: string): Promise<{ reverted: number; skipped: number; message: string }> {
+    const rows = await db.select({ id: pointLogs.id, classroomId: studentProfiles.classroomId })
+      .from(pointLogs)
+      .innerJoin(studentProfiles, eq(pointLogs.studentId, studentProfiles.id))
+      .where(inArray(pointLogs.id, entryIds));
+    if (rows.length !== entryIds.length || rows.some((r) => r.classroomId !== classroomId)) {
+      throw new Error('Registro de puntos no encontrado');
+    }
+
+    let reverted = 0;
+    let skipped = 0;
+    for (const id of entryIds) {
+      try {
+        await this.revertPointLog(id, teacherId);
+        reverted++;
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('ya fue revertido')) skipped++;
+        else throw error;
+      }
+    }
+    const message = reverted === 0
+      ? 'Ese lote ya estaba revertido'
+      : `Revertido para ${reverted} alumno${reverted === 1 ? '' : 's'}${skipped ? ` (${skipped} ya lo estaban)` : ''}`;
+    return { reverted, skipped, message };
   }
 
   /**
