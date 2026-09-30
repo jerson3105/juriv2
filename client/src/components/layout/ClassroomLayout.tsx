@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { Outlet, useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -57,6 +57,9 @@ const ClassroomUtilities = lazy(() =>
 );
 import toast from 'react-hot-toast';
 import { ParticleLayer } from '../story/ParticleLayer';
+import { deriveStoryAccent, storyAccentVars, accentGradient } from '../../lib/storyTheme';
+import { storyApi } from '../../lib/storyApi';
+import { useStoryParticles } from '../../hooks/useStoryParticles';
 import { useTeacherOnboardingSafe } from '../../contexts/TeacherOnboardingContext';
 import {
   CLASSROOM_SETTINGS_SECTIONS,
@@ -140,29 +143,20 @@ export const ClassroomLayout = () => {
   });
   const pendingShopCount = pendingShopPurchases.length + pendingShopUsages.length;
 
-  // Parse storytelling theme from classroom
-  const tc = (() => {
-    const raw = classroom?.themeConfig;
-    if (!raw) return null;
-    if (typeof raw === 'string') {
-      try { return JSON.parse(raw); } catch { return null; }
-    }
-    return raw;
-  })();
-  const hasStoryTheme = !!(tc?.colors?.background && tc?.colors?.sidebar);
+  // Tema de historia: solo acentos (barra lateral, cabecera, chips) derivados para cumplir AA.
+  // El contenido conserva sus superficies neutras del modo claro/oscuro.
+  const storyAccent = useMemo(() => deriveStoryAccent(classroom?.themeConfig), [classroom?.themeConfig]);
+  const hasStoryTheme = !!storyAccent;
+  const [teacherParticles] = useStoryParticles('teacher');
 
-  // Calculate if theme is light or dark based on background luminosity
-  const isThemeDark = (() => {
-    if (!hasStoryTheme || !tc?.colors?.background) return false;
-    const hex = tc.colors.background.replace('#', '');
-    const r = parseInt(hex.substring(0, 2), 16);
-    const g = parseInt(hex.substring(2, 4), 16);
-    const b = parseInt(hex.substring(4, 6), 16);
-    // Calculate relative luminance (ITU-R BT.709)
-    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-    return luminance < 0.5; // Dark if luminance < 50%
-  })();
-  const storyThemeClass = hasStoryTheme ? (isThemeDark ? 'story-theme-dark' : 'story-theme-light') : '';
+  // Capítulos listos para revelar: aviso en el menú (misma caché que la página de Historia).
+  const { data: classroomStories = [] } = useQuery({
+    queryKey: ['stories', id],
+    queryFn: () => storyApi.getClassroomStories(id!),
+    enabled: !!id,
+    staleTime: 60_000,
+  });
+  const readyToReveal = classroomStories.reduce((sum, story) => sum + (story.isActive ? story.readyToReveal ?? 0 : 0), 0);
 
   const classroomStudents = classroom?.students || [];
   const headerTotalXP = classroomStudents.reduce((sum, student) => sum + (student.xp || 0), 0);
@@ -350,33 +344,24 @@ export const ClassroomLayout = () => {
 
   return (
     <div
-      className={hasStoryTheme ? `fixed inset-0 z-[100] flex transition-colors duration-500 ${storyThemeClass}` : 'fixed inset-0 z-[100] flex bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800'}
-      style={hasStoryTheme ? {
-        backgroundColor: tc.colors.background,
-        '--story-bg': tc.colors.background,
-        '--story-sidebar': tc.colors.sidebar,
-        '--story-primary': tc.colors.primary,
-        '--story-secondary': tc.colors.secondary,
-        '--story-accent': tc.colors.accent || tc.colors.primary,
-        '--story-primary-rgb': (() => {
-          const hex = (tc.colors.primary || '#6366f1').replace('#', '');
-          const r = parseInt(hex.substring(0, 2), 16);
-          const g = parseInt(hex.substring(2, 4), 16);
-          const b = parseInt(hex.substring(4, 6), 16);
-          return `${r}, ${g}, ${b}`;
-        })(),
-      } as React.CSSProperties : undefined}
+      className="fixed inset-0 z-[100] flex bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800"
+      style={storyAccentVars(storyAccent)}
     >
-      {/* Storytelling particles */}
-      {hasStoryTheme && tc.particles && (
-        <ParticleLayer particles={tc.particles} />
+      {/* Partículas del tema: apagadas por defecto en vistas del profesor (interruptor en Historia de clase) */}
+      {storyAccent?.particles && teacherParticles && (
+        <ParticleLayer particles={storyAccent.particles} accentColor={storyAccent.primary} />
       )}
 
-      {/* Decorative elements */}
-      {!hasStoryTheme && (
+      {/* Brillos de fondo: con tema toman su color y derivan despacio (sustituyen a las partículas) */}
+      {hasStoryTheme ? (
         <>
-          <div className="absolute top-20 right-10 w-64 h-64 bg-blue-200 dark:bg-blue-900 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse pointer-events-none" />
-          <div className="absolute bottom-20 left-1/3 w-64 h-64 bg-purple-200 dark:bg-purple-900 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse pointer-events-none" style={{ animationDelay: '1s' }} />
+          <div className="story-glow story-glow-a pointer-events-none absolute top-16 right-8 h-72 w-72 rounded-full" aria-hidden="true" />
+          <div className="story-glow story-glow-b pointer-events-none absolute bottom-16 left-1/3 h-80 w-80 rounded-full" aria-hidden="true" />
+        </>
+      ) : (
+        <>
+          <div className="absolute top-20 right-10 w-64 h-64 bg-blue-200 dark:bg-blue-900 rounded-full mix-blend-multiply filter blur-3xl opacity-20 motion-safe:animate-pulse pointer-events-none" />
+          <div className="absolute bottom-20 left-1/3 w-64 h-64 bg-purple-200 dark:bg-purple-900 rounded-full mix-blend-multiply filter blur-3xl opacity-20 motion-safe:animate-pulse pointer-events-none" style={{ animationDelay: '1s' }} />
         </>
       )}
 
@@ -404,7 +389,7 @@ export const ClassroomLayout = () => {
           transform transition-transform duration-300 lg:transform-none
           ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
         `}
-        style={hasStoryTheme ? { backgroundColor: tc.colors.sidebar } : undefined}
+        style={storyAccent ? { backgroundColor: storyAccent.sidebar } : undefined}
       >
         {/* Logo */}
         <div className={`p-3 flex items-center justify-between ${hasStoryTheme ? 'border-b border-white/10' : 'border-b border-gray-100 dark:border-gray-700'}`}>
@@ -418,7 +403,7 @@ export const ClassroomLayout = () => {
           {/* Botón cerrar en móvil */}
           <button
             onClick={() => setMobileMenuOpen(false)}
-            className={`lg:hidden p-1.5 rounded-lg transition-colors ${hasStoryTheme ? 'text-white/60 hover:text-white hover:bg-white/10' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+            className={`lg:hidden p-1.5 rounded-lg transition-colors ${hasStoryTheme ? 'text-white/85 hover:text-white hover:bg-white/10' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
           >
             <X size={20} />
           </button>
@@ -429,7 +414,7 @@ export const ClassroomLayout = () => {
           <div className="flex items-center gap-2">
             <button
               onClick={() => navigate('/dashboard')}
-              className={`p-2 rounded-xl transition-colors ${hasStoryTheme ? 'text-white/70 hover:text-white hover:bg-white/10' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+              className={`p-2 rounded-xl transition-colors ${hasStoryTheme ? 'text-white/85 hover:text-white hover:bg-white/10' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
               title="Volver a mis clases"
               aria-label="Volver a mis clases"
             >
@@ -489,7 +474,7 @@ export const ClassroomLayout = () => {
                       : hasStoryTheme ? 'text-white/80 hover:bg-white/10' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                     }
                   `}
-                  style={isSubMenuActive && hasStoryTheme ? { background: `linear-gradient(to right, ${tc?.colors?.primary || '#6366f1'}, ${tc?.colors?.secondary || '#8b5cf6'})` } : undefined}
+                  style={isSubMenuActive && storyAccent ? { background: accentGradient(storyAccent, 90) } : undefined}
                   title={collapsed ? item.label : undefined}
                 >
                   <div className={`
@@ -558,13 +543,21 @@ export const ClassroomLayout = () => {
                             flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all duration-200
                             ${subActive
                               ? hasStoryTheme ? 'text-white' : 'bg-primary-50 dark:bg-primary-900/40 text-primary-700 dark:text-primary-200 font-medium'
-                              : hasStoryTheme ? 'text-white/60 hover:bg-white/10 hover:text-white/90' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
+                              : hasStoryTheme ? 'text-white/85 hover:bg-white/10 hover:text-white' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
                             }
                           `}
-                          style={subActive && hasStoryTheme ? { backgroundColor: `${tc?.colors?.primary || '#6366f1'}40` } : undefined}
+                          style={subActive && storyAccent ? { backgroundColor: `${storyAccent.primary}66` } : undefined}
                         >
                           <SubIcon size={14} />
                           <span className="text-sm">{subItem.label}</span>
+                          {subItem.path.endsWith('/storytelling') && readyToReveal > 0 && (
+                            <span
+                              className="ml-auto rounded-full bg-amber-300 px-1.5 py-0.5 text-xs font-bold leading-none text-amber-950"
+                              aria-label="Hay un final listo para revelar"
+                            >
+                              Revelar
+                            </span>
+                          )}
                           {subItem.path.endsWith('/shop') && pendingShopCount > 0 && (
                             <span
                               className="ml-auto min-w-[20px] rounded-full bg-red-600 px-1.5 py-0.5 text-center text-xs font-bold leading-none text-white"
@@ -657,7 +650,7 @@ export const ClassroomLayout = () => {
                     : hasStoryTheme ? 'text-white/80 hover:bg-white/10' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                   }
                 `}
-                style={isSettingsSubMenuActive && hasStoryTheme ? { background: `linear-gradient(to right, ${tc?.colors?.primary || '#6b7280'}, ${tc?.colors?.secondary || '#475569'})` } : undefined}
+                style={isSettingsSubMenuActive && storyAccent ? { background: accentGradient(storyAccent, 90) } : undefined}
                 title={collapsed ? 'Configuración' : undefined}
               >
                 <div className={`
@@ -696,10 +689,10 @@ export const ClassroomLayout = () => {
                           flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all duration-200
                           ${subActive
                             ? hasStoryTheme ? 'text-white' : 'bg-slate-50 dark:bg-slate-900/30 text-slate-600 dark:text-slate-300'
-                            : hasStoryTheme ? 'text-white/60 hover:bg-white/10 hover:text-white/90' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
+                            : hasStoryTheme ? 'text-white/85 hover:bg-white/10 hover:text-white' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
                           }
                         `}
-                        style={subActive && hasStoryTheme ? { backgroundColor: `${tc?.colors?.primary || '#6366f1'}40` } : undefined}
+                        style={subActive && storyAccent ? { backgroundColor: `${storyAccent.primary}66` } : undefined}
                       >
                         <SubIcon size={14} />
                         <span className="text-sm">{subItem.label}</span>
@@ -741,7 +734,7 @@ export const ClassroomLayout = () => {
                 onClick={() => setShowUnlockModal(true)}
                 className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
                   hasStoryTheme
-                    ? 'text-white/40 hover:text-white/70 hover:bg-white/5'
+                    ? 'text-white/85 hover:text-white hover:bg-white/10'
                     : 'text-gray-600 dark:text-gray-400 hover:text-primary-700 dark:hover:text-primary-300 hover:bg-gray-50 dark:hover:bg-gray-700'
                 }`}
               >
@@ -752,7 +745,7 @@ export const ClassroomLayout = () => {
 
             {/* Level indicator */}
             {onboarding.data?.level && (
-              <div className={`flex items-center gap-2 px-2.5 py-1 ${hasStoryTheme ? 'text-white/60' : 'text-gray-600 dark:text-gray-400'}`}>
+              <div className={`flex items-center gap-2 px-2.5 py-1 ${hasStoryTheme ? 'text-white/85' : 'text-gray-600 dark:text-gray-400'}`}>
                 <Rocket size={12} />
                 <span className="text-xs font-medium">Nivel: {onboarding.data.level}</span>
               </div>
@@ -764,7 +757,7 @@ export const ClassroomLayout = () => {
         <div className={`hidden lg:block p-2 ${hasStoryTheme ? 'border-t border-white/10' : 'border-t border-gray-100 dark:border-gray-700'}`}>
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className={`w-full flex items-center justify-center gap-2 px-2.5 py-2 rounded-xl transition-colors ${hasStoryTheme ? 'text-white/50 hover:text-white/80 hover:bg-white/10' : 'text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+            className={`w-full flex items-center justify-center gap-2 px-2.5 py-2 rounded-xl transition-colors ${hasStoryTheme ? 'text-white/85 hover:text-white hover:bg-white/10' : 'text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700'}`}
             aria-label={collapsed ? 'Expandir menú' : 'Colapsar menú'}
           >
             {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
@@ -777,9 +770,11 @@ export const ClassroomLayout = () => {
       <div className="flex-1 flex flex-col overflow-hidden relative z-10">
         {/* Header */}
         <header
-          className={`h-14 backdrop-blur-lg shadow-sm flex items-center justify-between px-4 ${hasStoryTheme ? 'border-b border-white/10' : 'bg-white/80 dark:bg-gray-800/80 border-b border-white/50 dark:border-gray-700/50'}`}
-          style={hasStoryTheme ? { backgroundColor: `${tc.colors.background}ee` } : undefined}
+          className="relative h-14 backdrop-blur-lg shadow-sm flex items-center justify-between px-4 bg-white/80 dark:bg-gray-800/80 border-b border-white/50 dark:border-gray-700/50"
         >
+          {storyAccent && (
+            <span className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5" style={{ background: accentGradient(storyAccent, 90) }} aria-hidden="true" />
+          )}
           <div className="flex items-center gap-3 min-w-0">
             {/* Botón menú móvil */}
             <button
@@ -789,9 +784,20 @@ export const ClassroomLayout = () => {
             >
               <Menu size={20} />
             </button>
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-md">
-              <GraduationCap size={16} className="text-white" />
-            </div>
+            {storyAccent ? (
+              <div
+                className="w-8 h-8 rounded-xl flex items-center justify-center shadow-md text-base"
+                style={{ background: accentGradient(storyAccent) }}
+                title={storyAccent.title ?? 'Tema de la clase'}
+                aria-hidden="true"
+              >
+                {storyAccent.emoji}
+              </div>
+            ) : (
+              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-md">
+                <GraduationCap size={16} className="text-white" />
+              </div>
+            )}
             <div className="hidden sm:block min-w-0">
               <h1 className="text-sm font-bold text-gray-800 dark:text-white">{classroom.name}</h1>
               <p className="text-xs text-gray-500 dark:text-gray-400">{classroom.students?.length || 0} estudiantes</p>
@@ -864,7 +870,7 @@ export const ClassroomLayout = () => {
         
         {/* Main content */}
         <main className="flex-1 overflow-auto p-4 md:p-6">
-          <Outlet context={{ classroom, refetch, storyTheme: hasStoryTheme ? tc : null, isThemeDark, openTools: () => setShowTools(true) }} />
+          <Outlet context={{ classroom, refetch, storyTheme: null, isThemeDark: false, storyAccent, openTools: () => setShowTools(true) }} />
         </main>
       </div>
 

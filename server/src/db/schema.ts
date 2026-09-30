@@ -2867,6 +2867,11 @@ export const storyChapters = mysqlTable('story_chapters', {
     donationPercent?: number;
   }>(),
   currentProgress: decimal('current_progress', { precision: 12, scale: 2 }).notNull().default('0'),
+  // XP de la clase al activarse el capítulo (meta relativa). NULL = capítulo anterior a la migración (cuenta desde 0).
+  progressBaseline: decimal('progress_baseline', { precision: 12, scale: 2 }),
+  activatedAt: datetime('activated_at'),
+  // Meta alcanzada: el capítulo sigue ACTIVE hasta que el profesor revela el final.
+  goalReachedAt: datetime('goal_reached_at'),
   themeOverride: json('theme_override').$type<{
     colors?: {
       primary?: string;

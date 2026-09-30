@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useOutletContext } from 'react-router-dom';
@@ -27,8 +27,10 @@ import { badgeApi, type Badge } from '../../lib/badgeApi';
 import { BadgeUnlockModal } from '../../components/badges/BadgeUnlockModal';
 import { LevelUpAnimation } from '../../components/effects/LevelUpAnimation';
 import { LoginStreakWidget } from '../../components/student/LoginStreakWidget';
-import { storyApi, type StoryScene } from '../../lib/storyApi';
-import { SceneCinematic } from '../../components/story/SceneCinematic';
+import { storyApi } from '../../lib/storyApi';
+import { StoryPlayer } from '../../components/story/StoryPlayer';
+import { buildAutoplayItems } from '../../components/story/storyPlayerHelpers';
+import { accentGradient, type StoryAccent } from '../../lib/storyTheme';
 import { classNoteApi } from '../../lib/classNoteApi';
 import { clanApi, CLAN_EMBLEMS } from '../../lib/clanApi';
 
@@ -36,7 +38,7 @@ export const StudentDashboard = () => {
   const { user } = useAuthStore();
   const { selectedClassIndex } = useStudentStore();
   const navigate = useNavigate();
-  const { storyTheme, isThemeDark } = useOutletContext<{ storyTheme?: any; isThemeDark?: boolean; hasStoryTheme?: boolean }>();
+  const { storyTheme, isThemeDark, storyAccent } = useOutletContext<{ storyTheme?: any; isThemeDark?: boolean; hasStoryTheme?: boolean; storyAccent?: StoryAccent | null }>();
   const hasTheme = !!storyTheme;
   
   // Estado para animación de subida de nivel
@@ -79,10 +81,8 @@ export const StudentDashboard = () => {
   // Estado para animación de insignia desbloqueada
   const [unlockedBadge, setUnlockedBadge] = useState<Badge | null>(null);
 
-  // Cinematic auto-trigger state
-  const [cinematicScene, setCinematicScene] = useState<StoryScene | null>(null);
-  const [cinematicQueue, setCinematicQueue] = useState<StoryScene[]>([]);
-  const cinematicTriggered = useRef(false);
+  // Escenas nuevas de la historia: se reproducen una vez al entrar (hasta que el alumno cierra).
+  const [storyDismissed, setStoryDismissed] = useState(false);
 
   // Fetch student story data for auto-cinematic
   const { data: storyData } = useQuery({
@@ -105,17 +105,10 @@ export const StudentDashboard = () => {
     enabled: !!currentProfile?.id,
   });
 
-  // Auto-trigger cinematic for unseen scenes (only once per session)
-  useEffect(() => {
-    if (cinematicTriggered.current) return;
-    if (!storyData?.unseenScenes?.length) return;
-    if (!currentProfile) return;
-
-    cinematicTriggered.current = true;
-    const scenes = storyData.unseenScenes;
-    setCinematicScene(scenes[0]);
-    setCinematicQueue(scenes.slice(1));
-  }, [storyData, currentProfile]);
+  const storyItems = useMemo(
+    () => (storyData && currentProfile && !storyDismissed ? buildAutoplayItems(storyData) : []),
+    [storyData, currentProfile, storyDismissed],
+  );
 
   // Formatear items equipados para el renderer
   const equippedForRenderer = equippedItems.map((item: any) => ({
@@ -332,13 +325,13 @@ export const StudentDashboard = () => {
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className={`rounded-2xl p-4 shadow-lg ${hasTheme ? 'shadow-black/20' : 'bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 shadow-purple-500/20'}`}
-          style={hasTheme ? { background: `linear-gradient(135deg, ${storyTheme.colors?.primary || '#6366f1'}, ${storyTheme.colors?.secondary || '#9333ea'})` } : undefined}
+          className={`rounded-2xl p-4 shadow-lg ${storyAccent ? 'shadow-black/20' : 'bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 shadow-purple-500/20'}`}
+          style={storyAccent ? { background: accentGradient(storyAccent) } : undefined}
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center">
-                <span className="text-xl">📚</span>
+                <span className="text-xl">{storyAccent?.emoji ?? '📚'}</span>
               </div>
               <div>
                 <h2 className="text-white font-bold text-lg leading-tight">
@@ -662,32 +655,17 @@ export const StudentDashboard = () => {
         onClose={() => setUnlockedBadge(null)}
       />
 
-      {/* Auto-cinematic for unseen story scenes */}
+      {/* Novela visual: escenas nuevas de la historia (portada al empezar capítulo, cierre al terminarlo) */}
       <AnimatePresence>
-        {cinematicScene && (
-          <SceneCinematic
-            key={cinematicScene.id}
-            scene={cinematicScene}
-            onComplete={() => {
-              // Mark scene as viewed
-              storyApi.markSceneViewed(cinematicScene.id);
-              // Play next in queue or close
-              if (cinematicQueue.length > 0) {
-                const [next, ...rest] = cinematicQueue;
-                setCinematicScene(next);
-                setCinematicQueue(rest);
-              } else {
-                setCinematicScene(null);
-                setCinematicQueue([]);
-              }
-            }}
+        {storyItems.length > 0 && (
+          <StoryPlayer
+            items={storyItems}
+            accent={storyAccent ?? null}
+            label={storyData?.title ? `Historia: ${storyData.title}` : 'Historia de la clase'}
+            onSceneSeen={(sceneId) => { void storyApi.markSceneViewed(sceneId).catch(() => undefined); }}
             onClose={() => {
-              // Mark current as viewed even if skipped
-              if (cinematicScene) {
-                storyApi.markSceneViewed(cinematicScene.id);
-              }
-              setCinematicScene(null);
-              setCinematicQueue([]);
+              setStoryDismissed(true);
+              queryClient.invalidateQueries({ queryKey: ['student-story'] });
             }}
           />
         )}

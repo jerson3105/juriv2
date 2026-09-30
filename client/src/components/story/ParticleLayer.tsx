@@ -1,10 +1,16 @@
 import { useMemo, useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useReducedMotion } from 'framer-motion';
 import type { ThemeConfig } from '../../lib/storyApi';
+import { contrastRatio } from '../../lib/storyTheme';
 
 interface ParticleLayerProps {
   particles: ThemeConfig['particles'];
+  // Color de respaldo cuando el de la partícula no se ve sobre el fondo claro (p. ej. nieve blanca).
+  accentColor?: string;
 }
+
+// Partículas suaves: pocas, tenues y DETRÁS del contenido (el contenedor del layout crea el contexto
+// de apilamiento), así nunca tapan modales ni texto. Sin animación si el usuario pidió reducir movimiento.
 
 const SPEED_MAP: Record<string, number> = {
   slow: 14,
@@ -13,38 +19,37 @@ const SPEED_MAP: Record<string, number> = {
 };
 
 const DENSITY_MAP: Record<string, number> = {
-  low: 20,
-  medium: 35,
-  high: 50,
+  low: 8,
+  medium: 12,
+  high: 16,
 };
 
-// Floating emojis per particle type for extra flair
-const EMOJI_MAP: Record<string, string[]> = {
-  petals: ['🌸', '🌺', '💮', '🌷'],
-  snow: ['❄️', '❅', '❆', '✦'],
-  sparkles: ['✨', '💫', '⭐', '✦'],
-  stars: ['⭐', '✨', '💫', '🌟'],
-  fireflies: ['✨', '🌿', '🍃', '🌲'],
-  bubbles: ['🫧', '💧', '🌊', '🐚'],
-  leaves: ['🍂', '🍁', '🌿', '🍃'],
-  smoke: ['💨', '🌫️', '☁️'],
-  embers: ['🔥', '✨', '💥'],
-  ash: ['🌑', '💨', '🌫️'],
-  dust: ['💨', '✦', '☁️'],
-  lava: ['🔥', '🌋', '💥', '🧡'],
-  hearts: ['❤️', '💕', '💖', '💗'],
-  confetti: ['🎉', '🎊', '✨', '🎈'],
-  rain: ['💧', '🌧️'],
-  swords: ['⚔️', '🗡️', '🛡️', '🏰'],
-  math: ['➕', '➗', '🔢', '📐', '📏'],
-  computing: ['💻', '🤖', '⚙️', '🔌'],
-  science: ['🔬', '🧪', '⚗️', '🧬'],
-  religion: ['✝️', '🕊️', '⛪', '📖'],
+
+// Pseudoaleatorio con semilla: mismas partículas en cada render (render puro).
+const seeded = (seed: number) => () => {
+  seed = (seed + 0x6d2b79f5) | 0;
+  let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 };
 
-export const ParticleLayer = ({ particles }: ParticleLayerProps) => {
+const hash = (text: string) => Array.from(text).reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) | 0, 7);
+
+const useDarkMode = () => {
+  const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'));
+  useEffect(() => {
+    const observer = new MutationObserver(() => setDark(document.documentElement.classList.contains('dark')));
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+  return dark;
+};
+
+export const ParticleLayer = ({ particles, accentColor }: ParticleLayerProps) => {
   const [isVisible, setIsVisible] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  const reduceMotion = useReducedMotion();
+  const dark = useDarkMode();
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
@@ -60,55 +65,42 @@ export const ParticleLayer = ({ particles }: ParticleLayerProps) => {
     };
   }, []);
 
-  const { particleElements, emojiElements } = useMemo(() => {
-    if (!particles?.type) return { particleElements: [], emojiElements: [] };
+  const { particleElements } = useMemo(() => {
+    if (!particles?.type) return { particleElements: [] };
 
     const count = isMobile
-      ? Math.min(DENSITY_MAP[particles.density || 'low'] || 20, 15)
-      : DENSITY_MAP[particles.density || 'low'] || 20;
+      ? Math.min(DENSITY_MAP[particles.density || 'low'] || 8, 6)
+      : DENSITY_MAP[particles.density || 'low'] || 8;
 
     const duration = SPEED_MAP[particles.speed || 'slow'] || 14;
-    const color = particles.color || '#FFFFFF';
+    const own = particles.color || '#FFFFFF';
+    const surface = dark ? '#111827' : '#f1f5f9';
+    const color = accentColor && contrastRatio(own, surface) < 1.8 ? accentColor : own;
     const type = particles.type;
 
+    const rand = seeded(hash(`${type}:${count}`));
+    const spins = type === 'leaves' || type === 'petals' || type === 'confetti' || type === 'ash' || type === 'swords';
+    const tilts = type === 'math' || type === 'computing' || type === 'science' || type === 'religion';
     const pElements = Array.from({ length: count }, (_, i) => ({
       id: i,
-      left: Math.random() * 100,
-      delay: Math.random() * duration,
-      duration: duration + Math.random() * 6,
-      size: 8 + Math.random() * 14,
-      opacity: 0.5 + Math.random() * 0.4,
-      drift: -30 + Math.random() * 60,
+      left: rand() * 100,
+      delay: rand() * duration,
+      duration: duration + rand() * 6,
+      size: 8 + rand() * 14,
+      opacity: 0.2 + rand() * 0.25,
+      drift: -30 + rand() * 60,
+      rotation: spins ? `${180 + rand() * 360}deg` : tilts ? `${-15 + rand() * 30}deg` : '0deg',
       color,
       type,
     }));
 
-    // Floating emoji decorations (fewer, bigger, slower)
-    const emojis = EMOJI_MAP[type] || [];
-    const emojiCount = isMobile ? 4 : 8;
-    const eElements = emojis.length > 0
-      ? Array.from({ length: emojiCount }, (_, i) => ({
-          id: i,
-          emoji: emojis[i % emojis.length],
-          left: 5 + Math.random() * 90,
-          delay: Math.random() * 20,
-          duration: 18 + Math.random() * 12,
-          size: 16 + Math.random() * 14,
-          opacity: 0.15 + Math.random() * 0.2,
-        }))
-      : [];
+    return { particleElements: pElements };
+  }, [particles, isMobile, dark, accentColor]);
 
-    return { particleElements: pElements, emojiElements: eElements };
-  }, [particles, isMobile]);
+  if (!particles?.type || !isVisible || reduceMotion || particleElements.length === 0) return null;
 
-  if (!particles?.type || !isVisible || particleElements.length === 0) return null;
-
-  return createPortal(
-    <div
-      className="fixed inset-0 pointer-events-none overflow-hidden"
-      style={{ zIndex: 100000 }}
-      aria-hidden="true"
-    >
+  return (
+    <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden="true">
       <style>{`
         @keyframes particle-fall {
           0% { transform: translateY(-30px) translateX(0px) rotate(0deg); opacity: 0; }
@@ -134,19 +126,6 @@ export const ParticleLayer = ({ particles }: ParticleLayerProps) => {
           95% { opacity: var(--p-opacity); }
           100% { transform: translateY(calc(100vh + 20px)); opacity: 0; }
         }
-        @keyframes emoji-drift {
-          0% { transform: translateY(0px) translateX(0px) rotate(0deg) scale(1); opacity: 0; }
-          10% { opacity: var(--e-opacity); }
-          50% { transform: translateY(calc(-50vh)) translateX(var(--e-drift)) rotate(180deg) scale(1.1); opacity: var(--e-opacity); }
-          90% { opacity: var(--e-opacity); }
-          100% { transform: translateY(calc(-100vh)) translateX(calc(var(--e-drift) * 2)) rotate(360deg) scale(0.8); opacity: 0; }
-        }
-        @keyframes emoji-fall {
-          0% { transform: translateY(-40px) rotate(0deg); opacity: 0; }
-          10% { opacity: var(--e-opacity); }
-          90% { opacity: var(--e-opacity); }
-          100% { transform: translateY(calc(100vh + 40px)) rotate(360deg); opacity: 0; }
-        }
         @keyframes glow-pulse {
           0%, 100% { opacity: 0.3; transform: scale(1); }
           50% { opacity: 0.6; transform: scale(1.05); }
@@ -154,11 +133,6 @@ export const ParticleLayer = ({ particles }: ParticleLayerProps) => {
         .particle {
           position: absolute;
           will-change: transform, opacity;
-        }
-        .emoji-particle {
-          position: absolute;
-          will-change: transform, opacity;
-          filter: drop-shadow(0 0 4px rgba(255,255,255,0.3));
         }
       `}</style>
 
@@ -171,7 +145,7 @@ export const ParticleLayer = ({ particles }: ParticleLayerProps) => {
           width: '200px',
           height: '200px',
           borderRadius: '50%',
-          background: `radial-gradient(circle, ${particles.color}30, transparent 70%)`,
+          background: `radial-gradient(circle, ${particles.color}18, transparent 70%)`,
           animation: 'glow-pulse 6s ease-in-out infinite',
           filter: 'blur(40px)',
         }}
@@ -184,7 +158,7 @@ export const ParticleLayer = ({ particles }: ParticleLayerProps) => {
           width: '250px',
           height: '250px',
           borderRadius: '50%',
-          background: `radial-gradient(circle, ${particles.color}25, transparent 70%)`,
+          background: `radial-gradient(circle, ${particles.color}14, transparent 70%)`,
           animation: 'glow-pulse 8s ease-in-out infinite 3s',
           filter: 'blur(50px)',
         }}
@@ -199,10 +173,7 @@ export const ParticleLayer = ({ particles }: ParticleLayerProps) => {
           p.type === 'rain' ? 'particle-rain' :
           'particle-fall';
 
-        const rotation = p.type === 'leaves' || p.type === 'petals' || p.type === 'confetti' || p.type === 'ash' || p.type === 'swords'
-          ? `${180 + Math.random() * 360}deg`
-          : p.type === 'math' || p.type === 'computing' || p.type === 'science' || p.type === 'religion'
-          ? `${-15 + Math.random() * 30}deg` : '0deg';
+        const rotation = p.rotation;
 
         return (
           <div
@@ -215,43 +186,21 @@ export const ParticleLayer = ({ particles }: ParticleLayerProps) => {
               width: p.type === 'rain' ? '2px' : `${p.size}px`,
               height: p.type === 'rain' ? `${p.size * 3}px` : `${p.size}px`,
               animation: `${animName} ${p.duration}s ${p.delay}s infinite ease-in-out`,
-              ['--p-opacity' as any]: p.opacity,
-              ['--p-drift' as any]: `${p.drift}px`,
-              ['--p-rotation' as any]: rotation,
+              ['--p-opacity' as string]: p.opacity,
+              ['--p-drift' as string]: `${p.drift}px`,
+              ['--p-rotation' as string]: rotation,
             }}
           >
-            {renderParticleShape(p.type, p.color, p.size)}
+            {renderParticleShape(p.type, p.color, p.size, p.id)}
           </div>
         );
       })}
 
-      {/* Floating emoji decorations */}
-      {emojiElements.map((e) => {
-        const useFall = particles?.type === 'snow' || particles?.type === 'petals' || particles?.type === 'leaves' || particles?.type === 'ash' || particles?.type === 'dust' || particles?.type === 'confetti' || particles?.type === 'rain';
-        return (
-          <div
-            key={`emoji-${e.id}`}
-            className="emoji-particle"
-            style={{
-              left: `${e.left}%`,
-              bottom: useFall ? 'auto' : '-40px',
-              top: useFall ? '-40px' : 'auto',
-              fontSize: `${e.size}px`,
-              animation: `${useFall ? 'emoji-fall' : 'emoji-drift'} ${e.duration}s ${e.delay}s infinite ease-in-out`,
-              ['--e-opacity' as any]: e.opacity,
-              ['--e-drift' as any]: `${-30 + Math.random() * 60}px`,
-            }}
-          >
-            {e.emoji}
-          </div>
-        );
-      })}
-    </div>,
-    document.body
+    </div>
   );
 };
 
-function renderParticleShape(type: string, color: string, size: number) {
+function renderParticleShape(type: string, color: string, size: number, id: number) {
   switch (type) {
     case 'snow':
       return (
@@ -418,7 +367,7 @@ function renderParticleShape(type: string, color: string, size: number) {
       );
     case 'math': {
       const symbols = ['+', '−', '×', '÷', '=', 'π', '∑', '√', 'Δ', '∞'];
-      const sym = symbols[Math.floor(Math.random() * symbols.length)];
+      const sym = symbols[id % symbols.length];
       return (
         <svg viewBox="0 0 20 20" width="100%" height="100%">
           <text x="10" y="15" textAnchor="middle" fill={color} fontSize="14" fontWeight="bold" opacity="0.85">{sym}</text>
@@ -427,7 +376,7 @@ function renderParticleShape(type: string, color: string, size: number) {
     }
     case 'computing': {
       const bits = ['0', '1', '</', '{}', '#'];
-      const bit = bits[Math.floor(Math.random() * bits.length)];
+      const bit = bits[id % bits.length];
       return (
         <svg viewBox="0 0 20 20" width="100%" height="100%">
           <text x="10" y="15" textAnchor="middle" fill={color} fontSize="12" fontFamily="monospace" fontWeight="bold" opacity="0.85">{bit}</text>

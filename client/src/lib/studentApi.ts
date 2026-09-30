@@ -159,7 +159,7 @@ export const studentApi = {
   },
 
   // Obtener mis clases como estudiante
-  getMyClasses: async (): Promise<(StudentProfile & { classroom: { id: string; name: string; code: string; clansEnabled?: boolean; scrollsEnabled?: boolean; scrollsOpen?: boolean; scrollsRequireApproval?: boolean; useCompetencies?: boolean; themeConfig?: { colors?: { primary?: string; secondary?: string; accent?: string; background?: string; sidebar?: string }; particles?: { type?: string; color?: string; speed?: string; density?: string }; decorations?: Array<{ type: string; position: string; asset: string }>; banner?: { emoji?: string; title?: string } } | null } })[]> => {
+  getMyClasses: async (): Promise<(StudentProfile & { classroom: { id: string; name: string; code: string; clansEnabled?: boolean; scrollsEnabled?: boolean; scrollsOpen?: boolean; scrollsRequireApproval?: boolean; useCompetencies?: boolean; hasActiveStory?: boolean; themeConfig?: { colors?: { primary?: string; secondary?: string; accent?: string; background?: string; sidebar?: string }; particles?: { type?: string; color?: string; speed?: string; density?: string }; decorations?: Array<{ type: string; position: string; asset: string }>; banner?: { emoji?: string; title?: string } } | null } })[]> => {
     const response = await api.get('/students/my-classes');
     return response.data.data;
   },

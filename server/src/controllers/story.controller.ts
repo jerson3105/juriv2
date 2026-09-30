@@ -1,36 +1,70 @@
 import { Request, Response } from 'express';
-import { storyService, THEME_PRESETS } from '../services/story.service.js';
+import { storyService, THEME_PRESETS, PARTICLE_TYPES } from '../services/story.service.js';
 import { z } from 'zod';
 import { createGenAI } from '../utils/aiClient.js';
-import { publicErrorMessage } from '../utils/errors.js';
+import { AppError, publicErrorMessage } from '../utils/errors.js';
 import { requireClassroomMember, requireClassroomTeacher } from '../utils/access.js';
 
 // ==================== VALIDATION SCHEMAS ====================
 
+// Colores en hex de 6 dígitos: el cliente deriva de ellos los tonos accesibles.
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+const hexColor = z.string().regex(HEX_COLOR, 'Color inválido (usa #RRGGBB)');
+
 const themeConfigSchema = z.object({
   colors: z.object({
-    primary: z.string().optional(),
-    secondary: z.string().optional(),
-    accent: z.string().optional(),
-    background: z.string().optional(),
-    sidebar: z.string().optional(),
+    primary: hexColor.optional(),
+    secondary: hexColor.optional(),
+    accent: hexColor.optional(),
+    background: hexColor.optional(),
+    sidebar: hexColor.optional(),
   }).optional(),
   particles: z.object({
-    type: z.string().optional(),
-    color: z.string().optional(),
+    type: z.enum(PARTICLE_TYPES).optional(),
+    color: hexColor.optional(),
     speed: z.enum(['slow', 'medium', 'fast']).optional(),
     density: z.enum(['low', 'medium', 'high']).optional(),
   }).optional(),
   decorations: z.array(z.object({
-    type: z.string(),
-    position: z.string(),
-    asset: z.string(),
+    type: z.string().max(30),
+    position: z.string().max(30),
+    asset: z.string().max(30),
   })).max(3).optional(),
   banner: z.object({
-    emoji: z.string().optional(),
+    emoji: z.string().max(16).optional(),
     title: z.string().max(100).optional(),
   }).optional(),
 }).optional();
+
+const reorderChaptersSchema = z.object({
+  chapterIds: z.array(z.string().uuid()).min(1).max(200),
+});
+
+const aiSceneSchema = z.object({
+  description: z.string().trim().min(1, 'Se requiere una descripción de la escena').max(1000),
+  sceneType: z.enum(['INTRO', 'DESARROLLO', 'OUTRO', 'MILESTONE']).optional(),
+  storyContext: z.string().max(2000).optional(),
+  mode: z.enum(['image_prompt', 'dialogues', 'full_scene']),
+});
+
+const aiThemeSchema = z.object({
+  description: z.string().trim().min(1, 'Se requiere una descripción del tema').max(500),
+});
+
+// Respuesta de error: los AppError llevan su código (404, 409, 400); "No autorizado" es 403.
+const sendError = (res: Response, error: unknown, fallback: string) => {
+  if (error instanceof z.ZodError) {
+    return res.status(400).json({ success: false, message: error.errors[0]?.message || 'Datos inválidos', errors: error.errors });
+  }
+  if (error instanceof AppError) {
+    return res.status(error.statusCode).json({ success: false, message: error.message });
+  }
+  if (error instanceof Error && error.message.includes('No autorizado')) {
+    return res.status(403).json({ success: false, message: error.message });
+  }
+  console.error(fallback, error);
+  return res.status(500).json({ success: false, message: publicErrorMessage(error) || fallback });
+};
 
 const createStorySchema = z.object({
   title: z.string().min(1).max(255),
@@ -41,7 +75,19 @@ const createStorySchema = z.object({
 const updateStorySchema = z.object({
   title: z.string().min(1).max(255).optional(),
   description: z.string().max(2000).optional(),
-  themeConfig: themeConfigSchema,
+  themeConfig: themeConfigSchema.nullable(), // null = quitar el tema
+});
+
+// Medios de escena: solo http(s) o rutas propias (/uploads/...). Fondo en hex.
+const mediaUrl = z.string().trim().max(500).refine(
+  (value) => value === '' || /^https?:\/\//i.test(value) || value.startsWith('/'),
+  'La URL debe empezar con http:// o https://',
+);
+const sceneBackground = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Color inválido (usa #RRGGBB)');
+const dialogueSchema = z.object({
+  text: z.string().trim().min(1).max(2000),
+  speaker: z.string().trim().max(100).optional(),
+  emotion: z.enum(['neutral', 'excited', 'sad', 'angry', 'happy', 'mysterious']).optional(),
 });
 
 const createChapterSchema = z.object({
@@ -69,34 +115,26 @@ const updateChapterSchema = z.object({
 const createSceneSchema = z.object({
   type: z.enum(['INTRO', 'DESARROLLO', 'OUTRO', 'MILESTONE']),
   mediaType: z.enum(['VIDEO', 'IMAGE']).optional(),
-  mediaUrl: z.string().max(500).optional(),
-  backgroundColor: z.string().max(7).optional(),
+  mediaUrl: mediaUrl.optional(),
+  backgroundColor: sceneBackground.optional(),
   triggerConfig: z.object({
-    percentage: z.number().min(1).max(100),
+    percentage: z.number().int().min(1).max(100),
   }).optional(),
-  dialogues: z.array(z.object({
-    text: z.string().min(1).max(2000),
-    speaker: z.string().max(100).optional(),
-    emotion: z.enum(['neutral', 'excited', 'sad', 'angry', 'happy', 'mysterious']).optional(),
-  })).optional(),
+  dialogues: z.array(dialogueSchema).max(50).optional(),
 });
 
 const updateSceneSchema = z.object({
   type: z.enum(['INTRO', 'DESARROLLO', 'OUTRO', 'MILESTONE']).optional(),
   mediaType: z.enum(['VIDEO', 'IMAGE']).nullable().optional(),
-  mediaUrl: z.string().max(500).nullable().optional(),
-  backgroundColor: z.string().max(7).nullable().optional(),
+  mediaUrl: mediaUrl.nullable().optional(),
+  backgroundColor: sceneBackground.nullable().optional(),
   triggerConfig: z.object({
-    percentage: z.number().min(1).max(100),
+    percentage: z.number().int().min(1).max(100),
   }).nullable().optional(),
 });
 
 const setDialoguesSchema = z.object({
-  dialogues: z.array(z.object({
-    text: z.string().min(1).max(2000),
-    speaker: z.string().max(100).optional(),
-    emotion: z.enum(['neutral', 'excited', 'sad', 'angry', 'happy', 'mysterious']).optional(),
-  })),
+  dialogues: z.array(dialogueSchema).max(50),
 });
 
 // Devuelve el id del usuario si puede operar sobre la clase (ver utils/access.ts), o null.
@@ -196,15 +234,35 @@ const generateThemeFromAI = async (description: string) => {
     throw new Error('Error al procesar la respuesta de la IA');
   }
 
-  const themeConfig = {
-    colors: parsedData.colors,
-    particles: parsedData.particles,
-    decorations: [] as any[],
-    banner: parsedData.banner,
-  };
+  const color = (value: unknown, fallback: string) =>
+    typeof value === 'string' && HEX_COLOR.test(value.trim()) ? value.trim() : fallback;
+  const pick = <T extends string>(value: unknown, allowed: readonly T[], fallback: T): T =>
+    allowed.includes(value as T) ? (value as T) : fallback;
+  const text = (value: unknown, max: number) => (typeof value === 'string' ? value.trim().slice(0, max) : undefined);
+
+  const themeConfig = themeConfigSchema.parse({
+    colors: {
+      primary: color(parsedData.colors?.primary, '#6366F1'),
+      secondary: color(parsedData.colors?.secondary, '#8B5CF6'),
+      accent: color(parsedData.colors?.accent, '#F59E0B'),
+      background: color(parsedData.colors?.background, '#F8FAFC'),
+      sidebar: color(parsedData.colors?.sidebar, '#1E1B4B'),
+    },
+    particles: {
+      type: pick(parsedData.particles?.type, PARTICLE_TYPES, 'sparkles'),
+      color: color(parsedData.particles?.color, '#FFFFFF'),
+      speed: pick(parsedData.particles?.speed, ['slow', 'medium', 'fast'] as const, 'slow'),
+      density: pick(parsedData.particles?.density, ['low', 'medium', 'high'] as const, 'low'),
+    },
+    decorations: [],
+    banner: {
+      emoji: text(parsedData.banner?.emoji, 16) || '✨',
+      title: text(parsedData.banner?.title, 100),
+    },
+  });
 
   return {
-    name: parsedData.name,
+    name: text(parsedData.name, 40) || 'Tema personalizado',
     themeConfig,
   };
 };
@@ -285,9 +343,8 @@ class StoryController {
       if (!(await requireClassroomMember(req, res, classroomId))) return;
       const theme = await storyService.getClassroomTheme(classroomId);
       res.json({ success: true, data: theme });
-    } catch (error: any) {
-      console.error('Error getting classroom theme:', error);
-      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al obtener tema' });
+    } catch (error) {
+      sendError(res, error, 'Error al obtener tema');
     }
   }
 
@@ -309,12 +366,8 @@ class StoryController {
       );
 
       res.json({ success: true, message: 'Tema actualizado' });
-    } catch (error: any) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ success: false, message: 'Datos inválidos', errors: error.errors });
-      }
-      console.error('Error updating theme:', error);
-      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al actualizar tema' });
+    } catch (error) {
+      sendError(res, error, 'Error al actualizar tema');
     }
   }
 
@@ -346,9 +399,8 @@ class StoryController {
 
       await storyService.resetTheme(classroomId);
       res.json({ success: true, message: 'Tema reseteado' });
-    } catch (error: any) {
-      console.error('Error resetting theme:', error);
-      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al resetear tema' });
+    } catch (error) {
+      sendError(res, error, 'Error al resetear tema');
     }
   }
 
@@ -362,9 +414,8 @@ class StoryController {
 
       const data = await storyService.getClassroomStories(classroomId);
       res.json({ success: true, data });
-    } catch (error: any) {
-      console.error('Error getting stories:', error);
-      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al obtener historias' });
+    } catch (error) {
+      sendError(res, error, 'Error al obtener historias');
     }
   }
 
@@ -391,12 +442,8 @@ class StoryController {
       const parsed = createStorySchema.parse(req.body);
       const data = await storyService.createStory(classroomId, parsed);
       res.status(201).json({ success: true, data });
-    } catch (error: any) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ success: false, message: 'Datos inválidos', errors: error.errors });
-      }
-      console.error('Error creating story:', error);
-      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al crear historia' });
+    } catch (error) {
+      sendError(res, error, 'Error al crear historia');
     }
   }
 
@@ -409,12 +456,8 @@ class StoryController {
       const parsed = updateStorySchema.parse(req.body);
       const data = await storyService.updateStory(storyId, parsed);
       res.json({ success: true, data });
-    } catch (error: any) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ success: false, message: 'Datos inválidos', errors: error.errors });
-      }
-      console.error('Error updating story:', error);
-      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al actualizar historia' });
+    } catch (error) {
+      sendError(res, error, 'Error al actualizar historia');
     }
   }
 
@@ -426,9 +469,8 @@ class StoryController {
 
       const data = await storyService.activateStory(storyId, access.classroomId);
       res.json({ success: true, data });
-    } catch (error: any) {
-      console.error('Error activating story:', error);
-      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al activar historia' });
+    } catch (error) {
+      sendError(res, error, 'Error al activar historia');
     }
   }
 
@@ -440,9 +482,8 @@ class StoryController {
 
       await storyService.deactivateStory(storyId, access.classroomId);
       res.json({ success: true, message: 'Historia desactivada' });
-    } catch (error: any) {
-      console.error('Error deactivating story:', error);
-      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al desactivar historia' });
+    } catch (error) {
+      sendError(res, error, 'Error al desactivar historia');
     }
   }
 
@@ -454,9 +495,8 @@ class StoryController {
 
       await storyService.deleteStory(storyId);
       res.json({ success: true, message: 'Historia eliminada' });
-    } catch (error: any) {
-      console.error('Error deleting story:', error);
-      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al eliminar historia' });
+    } catch (error) {
+      sendError(res, error, 'Error al eliminar historia');
     }
   }
 
@@ -471,12 +511,8 @@ class StoryController {
       const parsed = createChapterSchema.parse(req.body);
       const data = await storyService.createChapter(storyId, parsed);
       res.status(201).json({ success: true, data });
-    } catch (error: any) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ success: false, message: 'Datos inválidos', errors: error.errors });
-      }
-      console.error('Error creating chapter:', error);
-      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al crear capítulo' });
+    } catch (error) {
+      sendError(res, error, 'Error al crear capítulo');
     }
   }
 
@@ -489,12 +525,22 @@ class StoryController {
       const parsed = updateChapterSchema.parse(req.body);
       const data = await storyService.updateChapter(chapterId, parsed);
       res.json({ success: true, data });
-    } catch (error: any) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ success: false, message: 'Datos inválidos', errors: error.errors });
-      }
-      console.error('Error updating chapter:', error);
-      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al actualizar capítulo' });
+    } catch (error) {
+      sendError(res, error, 'Error al actualizar capítulo');
+    }
+  }
+
+  async reorderChapters(req: Request, res: Response) {
+    try {
+      const { storyId } = req.params;
+      const access = await ensureTeacherStoryAccess(req, res, storyId);
+      if (!access) return;
+
+      const { chapterIds } = reorderChaptersSchema.parse(req.body);
+      const data = await storyService.reorderChapters(storyId, chapterIds);
+      res.json({ success: true, data });
+    } catch (error) {
+      sendError(res, error, 'Error al reordenar capítulos');
     }
   }
 
@@ -506,9 +552,8 @@ class StoryController {
 
       await storyService.deleteChapter(chapterId);
       res.json({ success: true, message: 'Capítulo eliminado' });
-    } catch (error: any) {
-      console.error('Error deleting chapter:', error);
-      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al eliminar capítulo' });
+    } catch (error) {
+      sendError(res, error, 'Error al eliminar capítulo');
     }
   }
 
@@ -520,9 +565,31 @@ class StoryController {
 
       const data = await storyService.completeChapter(chapterId);
       res.json({ success: true, data });
-    } catch (error: any) {
-      console.error('Error completing chapter:', error);
-      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al completar capítulo' });
+    } catch (error) {
+      sendError(res, error, 'Error al revelar el capítulo');
+    }
+  }
+
+  // Resumen del cierre: el profesor lo ve siempre (vista previa); el alumno, de capítulos completados.
+  async getChapterRecap(req: Request, res: Response) {
+    try {
+      const { chapterId } = req.params;
+      const user = req.user!;
+      const classroomId = await storyService.getClassroomIdByChapter(chapterId);
+      if (!classroomId) return res.status(404).json({ success: false, message: 'Capítulo no encontrado' });
+
+      if (user.role === 'STUDENT') {
+        if (!(await storyService.verifyStudentBelongsToClassroom(user.id, classroomId))) {
+          return res.status(403).json({ success: false, message: 'No autorizado para ver este capítulo' });
+        }
+      } else if (!(await requireClassroomTeacher(req, res, classroomId))) {
+        return;
+      }
+
+      const data = await storyService.getChapterRecap(chapterId, user.role === 'STUDENT');
+      res.json({ success: true, data });
+    } catch (error) {
+      sendError(res, error, 'Error al obtener el resumen del capítulo');
     }
   }
 
@@ -537,12 +604,8 @@ class StoryController {
       const parsed = createSceneSchema.parse(req.body);
       const data = await storyService.createScene(chapterId, parsed);
       res.status(201).json({ success: true, data });
-    } catch (error: any) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ success: false, message: 'Datos inválidos', errors: error.errors });
-      }
-      console.error('Error creating scene:', error);
-      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al crear escena' });
+    } catch (error) {
+      sendError(res, error, 'Error al crear escena');
     }
   }
 
@@ -553,20 +616,11 @@ class StoryController {
       if (!access) return;
 
       const parsed = updateSceneSchema.parse(req.body);
-      const data = await storyService.updateScene(sceneId, {
-        type: parsed.type,
-        mediaType: parsed.mediaType ?? undefined,
-        mediaUrl: parsed.mediaUrl ?? undefined,
-        backgroundColor: parsed.backgroundColor ?? undefined,
-        triggerConfig: parsed.triggerConfig ?? undefined,
-      });
+      // null quita el medio, el color o el umbral del hito; undefined deja el valor como está.
+      const data = await storyService.updateScene(sceneId, parsed);
       res.json({ success: true, data });
-    } catch (error: any) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ success: false, message: 'Datos inválidos', errors: error.errors });
-      }
-      console.error('Error updating scene:', error);
-      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al actualizar escena' });
+    } catch (error) {
+      sendError(res, error, 'Error al actualizar escena');
     }
   }
 
@@ -578,9 +632,8 @@ class StoryController {
 
       await storyService.deleteScene(sceneId);
       res.json({ success: true, message: 'Escena eliminada' });
-    } catch (error: any) {
-      console.error('Error deleting scene:', error);
-      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al eliminar escena' });
+    } catch (error) {
+      sendError(res, error, 'Error al eliminar escena');
     }
   }
 
@@ -593,12 +646,8 @@ class StoryController {
       const parsed = setDialoguesSchema.parse(req.body);
       const data = await storyService.setDialogues(sceneId, parsed.dialogues);
       res.json({ success: true, data });
-    } catch (error: any) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ success: false, message: 'Datos inválidos', errors: error.errors });
-      }
-      console.error('Error setting dialogues:', error);
-      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al actualizar diálogos' });
+    } catch (error) {
+      sendError(res, error, 'Error al actualizar diálogos');
     }
   }
 
@@ -615,12 +664,8 @@ class StoryController {
 
       const data = await storyService.getStudentStoryDataForUser(classroomId, userId);
       res.json({ success: true, data });
-    } catch (error: any) {
-      console.error('Error getting student story data:', error);
-      if (error.message?.includes('No autorizado')) {
-        return res.status(403).json({ success: false, message: error.message });
-      }
-      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al obtener datos de historia' });
+    } catch (error) {
+      sendError(res, error, 'Error al obtener datos de historia');
     }
   }
 
@@ -635,15 +680,8 @@ class StoryController {
 
       await storyService.markSceneViewedForUser(userId, sceneId);
       res.json({ success: true, message: 'Escena marcada como vista' });
-    } catch (error: any) {
-      console.error('Error marking scene viewed:', error);
-      if (error.message?.includes('No autorizado')) {
-        return res.status(403).json({ success: false, message: error.message });
-      }
-      if (error.message?.includes('no encontrada')) {
-        return res.status(404).json({ success: false, message: error.message });
-      }
-      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al marcar escena' });
+    } catch (error) {
+      sendError(res, error, 'Error al marcar escena');
     }
   }
 
@@ -658,12 +696,8 @@ class StoryController {
 
       const data = await storyService.getSceneForViewingForUser(sceneId, userId);
       res.json({ success: true, data });
-    } catch (error: any) {
-      console.error('Error getting scene:', error);
-      if (error.message?.includes('No autorizado')) {
-        return res.status(403).json({ success: false, message: error.message });
-      }
-      res.status(404).json({ success: false, message: error.message || 'Escena no encontrada' });
+    } catch (error) {
+      sendError(res, error, 'Error al obtener la escena');
     }
   }
 
@@ -678,12 +712,8 @@ class StoryController {
 
       const data = await storyService.getChapterScenesForStudentUser(chapterId, userId);
       res.json({ success: true, data });
-    } catch (error: any) {
-      console.error('Error getting chapter scenes:', error);
-      if (error.message?.includes('No autorizado')) {
-        return res.status(403).json({ success: false, message: error.message });
-      }
-      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al obtener escenas' });
+    } catch (error) {
+      sendError(res, error, 'Error al obtener escenas');
     }
   }
 
@@ -717,19 +747,18 @@ class StoryController {
 
       const data = await storyService.getChapterLeaderboard(chapterId);
       res.json({ success: true, data });
-    } catch (error: any) {
-      console.error('Error getting chapter leaderboard:', error);
-      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al obtener leaderboard' });
+    } catch (error) {
+      sendError(res, error, 'Error al obtener leaderboard');
     }
   }
 
   async generateAIScene(req: Request, res: Response) {
     try {
-      const { description, sceneType, storyContext, mode } = req.body;
-
-      if (!description || typeof description !== 'string' || description.trim().length === 0) {
-        return res.status(400).json({ success: false, message: 'Se requiere una descripción de la escena' });
+      const parsedInput = aiSceneSchema.safeParse(req.body);
+      if (!parsedInput.success) {
+        return res.status(400).json({ success: false, message: parsedInput.error.errors[0]?.message || 'Datos inválidos' });
       }
+      const { description, sceneType, storyContext, mode } = parsedInput.data;
 
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
@@ -891,12 +920,11 @@ Responde ÚNICAMENTE con un JSON válido:
       const userId = await ensureTeacherClassroomAccess(req, res, classroomId);
       if (!userId) return;
 
-      const { description } = req.body;
-
-      if (!description || typeof description !== 'string' || description.trim().length === 0) {
-        return res.status(400).json({ success: false, message: 'Se requiere una descripción del tema' });
+      const parsedInput = aiThemeSchema.safeParse(req.body);
+      if (!parsedInput.success) {
+        return res.status(400).json({ success: false, message: parsedInput.error.errors[0]?.message || 'Datos inválidos' });
       }
-      const generatedTheme = await generateThemeFromAI(description);
+      const generatedTheme = await generateThemeFromAI(parsedInput.data.description);
 
       // Apply the theme to the classroom
       await storyService.updateClassroomTheme(classroomId, generatedTheme.themeConfig, 'AI');
@@ -906,29 +934,26 @@ Responde ÚNICAMENTE con un JSON válido:
         data: generatedTheme,
       });
 
-    } catch (error: any) {
-      console.error('Error generating AI theme:', error);
-      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al generar tema con IA' });
+    } catch (error) {
+      sendError(res, error, 'Error al generar tema con IA');
     }
   }
 
   async generateAIThemePreview(req: Request, res: Response) {
     try {
-      const { description } = req.body;
-
-      if (!description || typeof description !== 'string' || description.trim().length === 0) {
-        return res.status(400).json({ success: false, message: 'Se requiere una descripción del tema' });
+      const parsedInput = aiThemeSchema.safeParse(req.body);
+      if (!parsedInput.success) {
+        return res.status(400).json({ success: false, message: parsedInput.error.errors[0]?.message || 'Datos inválidos' });
       }
 
-      const generatedTheme = await generateThemeFromAI(description);
+      const generatedTheme = await generateThemeFromAI(parsedInput.data.description);
 
       res.json({
         success: true,
         data: generatedTheme,
       });
-    } catch (error: any) {
-      console.error('Error generating AI theme preview:', error);
-      res.status(500).json({ success: false, message: publicErrorMessage(error) || 'Error al generar la vista previa del tema con IA' });
+    } catch (error) {
+      sendError(res, error, 'Error al generar la vista previa del tema con IA');
     }
   }
 }

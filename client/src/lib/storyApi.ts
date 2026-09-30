@@ -71,6 +71,10 @@ export interface StoryChapter {
     donationPercent?: number;
   } | null;
   currentProgress: string;
+  progressBaseline: string | null;
+  activatedAt: string | null;
+  // Meta alcanzada: el capítulo sigue en curso hasta que el profesor revela el final.
+  goalReachedAt: string | null;
   themeOverride: ThemeConfig | null;
   completedAt: string | null;
   createdAt: string;
@@ -94,6 +98,7 @@ export interface StoryListItem extends Story {
   chapterCount: number;
   activeChapters: number;
   completedChapters: number;
+  readyToReveal: number;
 }
 
 export interface StudentSceneSummary {
@@ -106,18 +111,22 @@ export interface StudentSceneSummary {
   triggerConfig: { percentage?: number } | null;
 }
 
-// Student-facing chapter info (no spoilers)
+// Capítulo visto por el alumno: solo las escenas desbloqueadas (sin spoilers)
 export interface StudentChapterInfo {
   id: string;
   title: string;
   description: string | null;
   orderIndex: number;
+  position: number;
   status: 'LOCKED' | 'ACTIVE' | 'COMPLETED';
   completionType: 'BIMESTER' | 'XP_GOAL' | 'DONATION';
   completionConfig: { targetXp?: number; donationPercent?: number } | null;
   currentProgress: number;
+  goalReached: boolean;
+  activatedAt: string | null;
   completedAt: string | null;
   scenesCount: number;
+  lockedScenes: number;
   scenes: StudentSceneSummary[];
 }
 
@@ -138,6 +147,22 @@ export interface LeaderboardEntry {
   level: number;
   xp?: number;
   donated?: number;
+}
+
+export interface ChapterRecap {
+  chapterId: string;
+  title: string;
+  storyTitle: string;
+  position: number;
+  totalChapters: number;
+  completionType: 'BIMESTER' | 'XP_GOAL' | 'DONATION';
+  target: number;
+  progress: number;
+  days: number | null;
+  completedAt: string | null;
+  heroes: LeaderboardEntry[];
+  nextChapterTitle: string | null;
+  isLast: boolean;
 }
 
 export interface ChapterLeaderboard {
@@ -198,7 +223,7 @@ export const storyApi = {
     return res.data.data;
   },
 
-  updateStory: async (storyId: string, data: { title?: string; description?: string; themeConfig?: ThemeConfig }): Promise<Story> => {
+  updateStory: async (storyId: string, data: { title?: string; description?: string; themeConfig?: ThemeConfig | null }): Promise<Story> => {
     const res = await api.put(`/stories/${storyId}`, data);
     return res.data.data;
   },
@@ -243,8 +268,19 @@ export const storyApi = {
     await api.delete(`/stories/chapters/${chapterId}`);
   },
 
+  // Revela el final: completa el capítulo en curso y abre el siguiente.
   completeChapter: async (chapterId: string): Promise<StoryChapter> => {
     const res = await api.post(`/stories/chapters/${chapterId}/complete`);
+    return res.data.data;
+  },
+
+  reorderChapters: async (storyId: string, chapterIds: string[]): Promise<Story> => {
+    const res = await api.put(`/stories/${storyId}/chapters/order`, { chapterIds });
+    return res.data.data;
+  },
+
+  getChapterRecap: async (chapterId: string): Promise<ChapterRecap> => {
+    const res = await api.get(`/stories/chapters/${chapterId}/recap`);
     return res.data.data;
   },
 

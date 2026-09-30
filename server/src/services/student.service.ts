@@ -7,6 +7,7 @@ import {
   jiroStudentExpeditions, jiroQuestionAnswers, jiroDeliveries,
   tournamentParticipants, studentCollectibles, scrolls, scrollReactions,
   collectibleCards, collectibleAlbums, classroomCharacterClasses,
+  stories,
 } from '../db/schema.js';
 import { eq, and, desc, sql, gte, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
@@ -216,8 +217,14 @@ export class StudentService {
       });
     }
 
+    // Clases con historia en curso (el menú "Mi Historia" no depende de que la historia tenga tema).
+    const storyRows = await db.select({ classroomId: stories.classroomId })
+      .from(stories)
+      .where(and(inArray(stories.classroomId, classroomIds), eq(stories.isActive, true)));
+    const withStory = new Set(storyRows.map((row) => row.classroomId));
+
     // Crear mapa de clases
-    const classroomMap = new Map(classroomsData.map(c => [c.id, c]));
+    const classroomMap = new Map(classroomsData.map(c => [c.id, { ...c, hasActiveStory: withStory.has(c.id) }]));
 
     // Combinar perfiles con clases y limpiar huérfanos
     const results = [];

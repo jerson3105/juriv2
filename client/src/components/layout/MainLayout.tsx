@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -39,6 +39,8 @@ import { ThemeToggle } from '../ui/ThemeToggle';
 import { NotificationsBell, NotificationsPanel } from '../NotificationsPanel';
 import { BugReportButton } from '../BugReportButton';
 import { ParticleLayer } from '../story/ParticleLayer';
+import { deriveStoryAccent, storyAccentVars, accentGradient } from '../../lib/storyTheme';
+import { useStoryParticles } from '../../hooks/useStoryParticles';
 
 type StudentMenuKey = 'space' | 'rewards' | 'adventures' | 'community';
 
@@ -134,43 +136,10 @@ export const MainLayout = () => {
   ].some((route) => matchesPath(route.path, route.mode));
 
   // El tema de clase solo debe afectar rutas dentro del aula del estudiante.
-  const activeStoryTheme = (() => {
-    if (isTeacher || !isStudentClassThemeRoute) return null;
-    const raw = currentProfile?.classroom?.themeConfig;
-    if (!raw) return null;
-    if (typeof raw === 'string') {
-      try { return JSON.parse(raw); } catch { return null; }
-    }
-    return raw;
-  })();
-  const hasStoryTheme = !!(activeStoryTheme?.colors?.background && activeStoryTheme?.colors?.sidebar);
-
-  const isThemeDark = (() => {
-    if (!hasStoryTheme || !activeStoryTheme?.colors?.background) return false;
-    const hex = activeStoryTheme.colors.background.replace('#', '');
-    const r = parseInt(hex.substring(0, 2), 16);
-    const g = parseInt(hex.substring(2, 4), 16);
-    const b = parseInt(hex.substring(4, 6), 16);
-    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-    return luminance < 0.5;
-  })();
-  const storyThemeClass = hasStoryTheme ? (isThemeDark ? 'story-theme-dark' : 'story-theme-light') : '';
-
-  const storyThemeStyle = hasStoryTheme ? {
-    backgroundColor: activeStoryTheme.colors.background,
-    '--story-bg': activeStoryTheme.colors.background,
-    '--story-sidebar': activeStoryTheme.colors.sidebar,
-    '--story-primary': activeStoryTheme.colors.primary,
-    '--story-secondary': activeStoryTheme.colors.secondary,
-    '--story-accent': activeStoryTheme.colors.accent || activeStoryTheme.colors.primary,
-    '--story-primary-rgb': (() => {
-      const hex = (activeStoryTheme.colors.primary || '#6366f1').replace('#', '');
-      const r = parseInt(hex.substring(0, 2), 16);
-      const g = parseInt(hex.substring(2, 4), 16);
-      const b = parseInt(hex.substring(4, 6), 16);
-      return `${r}, ${g}, ${b}`;
-    })(),
-  } as React.CSSProperties : undefined;
+  const themeSource = !isTeacher && isStudentClassThemeRoute ? currentProfile?.classroom?.themeConfig : null;
+  const storyAccent = useMemo(() => deriveStoryAccent(themeSource), [themeSource]);
+  const hasStoryTheme = !!storyAccent;
+  const [studentParticles] = useStoryParticles('student');
 
   const handleLogout = async () => {
     await logout();
@@ -304,7 +273,7 @@ export const MainLayout = () => {
           isActive: matchesPath('/scrolls'),
           showPing: !!currentProfile.classroom?.scrollsOpen && !matchesPath('/scrolls'),
         }] : []),
-        ...(hasStoryTheme ? [{
+        ...(currentProfile?.classroom?.hasActiveStory || hasStoryTheme ? [{
           path: '/my-story',
           label: 'Mi Historia',
           icon: <BookMarked size={14} />,
@@ -337,32 +306,25 @@ export const MainLayout = () => {
     }));
   };
 
-  const themedActiveGradientStyle = hasStoryTheme
-    ? {
-        background: `linear-gradient(to right, ${activeStoryTheme?.colors?.primary || '#6366f1'}, ${activeStoryTheme?.colors?.secondary || activeStoryTheme?.colors?.primary || '#8b5cf6'})`,
-      }
-    : undefined;
+  const themedActiveGradientStyle = storyAccent ? { background: accentGradient(storyAccent, 90) } : undefined;
 
   useEffect(() => {
     if (typeof document === 'undefined' || isTeacher) {
       return;
     }
 
-    document.documentElement.classList.toggle('dark', hasStoryTheme ? false : resolvedTheme === 'dark');
-
-    return () => {
-      document.documentElement.classList.toggle('dark', resolvedTheme === 'dark');
-    };
-  }, [hasStoryTheme, isTeacher, resolvedTheme]);
+    // El tema de la historia ya no fuerza el modo claro: cada alumno conserva su preferencia.
+    document.documentElement.classList.toggle('dark', resolvedTheme === 'dark');
+  }, [isTeacher, resolvedTheme]);
 
   return (
     <div
-      className={`min-h-screen ${hasStoryTheme ? storyThemeClass : 'bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800'}`}
-      style={storyThemeStyle}
+      className="relative isolate min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800"
+      style={storyAccentVars(storyAccent)}
     >
-      {/* Storytelling particles */}
-      {hasStoryTheme && activeStoryTheme?.particles && (
-        <ParticleLayer particles={activeStoryTheme.particles} />
+      {/* Partículas suaves del tema, detrás del contenido (el alumno puede apagarlas en Mi Historia) */}
+      {storyAccent?.particles && studentParticles && (
+        <ParticleLayer particles={storyAccent.particles} accentColor={storyAccent.primary} />
       )}
 
       {/* Sidebar Mobile Overlay */}
@@ -390,7 +352,7 @@ export const MainLayout = () => {
           lg:translate-x-0
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
-        style={hasStoryTheme ? { backgroundColor: activeStoryTheme?.colors?.sidebar } : undefined}
+        style={storyAccent ? { backgroundColor: storyAccent.sidebar } : undefined}
       >
         {/* Logo */}
         <div className={`flex items-center justify-between h-14 px-4 ${hasStoryTheme ? 'border-b border-white/10' : 'border-b border-gray-100 dark:border-gray-700'}`}>
@@ -403,7 +365,7 @@ export const MainLayout = () => {
           </Link>
           <button
             onClick={() => setSidebarOpen(false)}
-            className={`lg:hidden p-1.5 rounded-lg transition-colors ${hasStoryTheme ? 'text-white/60 hover:text-white hover:bg-white/10' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+            className={`lg:hidden p-1.5 rounded-lg transition-colors ${hasStoryTheme ? 'text-white/85 hover:text-white hover:bg-white/10' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
           >
             <X size={20} />
           </button>
@@ -425,7 +387,7 @@ export const MainLayout = () => {
                       {currentProfile.classroom?.name}
                     </span>
                   </div>
-                  <ChevronDown size={14} className={`transition-transform ${hasStoryTheme ? 'text-white/60' : 'text-gray-500'} ${showClassSelector ? 'rotate-180' : ''}`} />
+                  <ChevronDown size={14} className={`transition-transform ${hasStoryTheme ? 'text-white/85' : 'text-gray-500'} ${showClassSelector ? 'rotate-180' : ''}`} />
                 </button>
                 
                 {showClassSelector && (
@@ -447,7 +409,7 @@ export const MainLayout = () => {
                           <span className="text-lg">{classInfo?.icon}</span>
                           <div className="flex-1 text-left">
                             <p className={`text-sm font-medium truncate ${hasStoryTheme ? 'text-white' : 'text-gray-800 dark:text-white'}`}>{profile.classroom?.name}</p>
-                            <p className={`text-xs ${hasStoryTheme ? 'text-white/60' : 'text-gray-500 dark:text-gray-400'}`}>Nivel {profile.level}</p>
+                            <p className={`text-xs ${hasStoryTheme ? 'text-white/85' : 'text-gray-500 dark:text-gray-400'}`}>Nivel {profile.level}</p>
                           </div>
                           {index === selectedClassIndex && <Check size={14} className={hasStoryTheme ? 'text-white' : 'text-indigo-600 dark:text-indigo-400'} />}
                         </button>
@@ -478,7 +440,7 @@ export const MainLayout = () => {
                     transition-all duration-200 group
                     ${isActivePath
                       ? 'bg-primary-600 text-white shadow-md'
-                      : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      : hasStoryTheme ? 'text-white/85 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                     }
                   `}
                   aria-current={isActivePath ? 'page' : undefined}
@@ -511,7 +473,7 @@ export const MainLayout = () => {
                     transition-all duration-200 group
                     ${item.isActive
                       ? `${hasStoryTheme ? '' : `bg-gradient-to-r ${item.gradient}`} text-white shadow-md`
-                      : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      : hasStoryTheme ? 'text-white/85 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                     }
                   `}
                   style={item.isActive && hasStoryTheme ? themedActiveGradientStyle : undefined}
@@ -558,7 +520,7 @@ export const MainLayout = () => {
                         transition-all duration-200 group
                         ${groupHasActiveItem
                           ? `${hasStoryTheme ? '' : `bg-gradient-to-r ${group.gradient}`} text-white shadow-md`
-                          : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                          : hasStoryTheme ? 'text-white/85 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                         }
                       `}
                       style={groupHasActiveItem && hasStoryTheme ? themedActiveGradientStyle : undefined}
@@ -599,16 +561,16 @@ export const MainLayout = () => {
                               transition-all duration-200 group relative
                               ${subItem.isActive
                                 ? hasStoryTheme ? 'text-white' : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'
-                                : hasStoryTheme ? 'text-white/60 hover:bg-white/10 hover:text-white/90' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
+                                : hasStoryTheme ? 'text-white/85 hover:bg-white/10 hover:text-white/90' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
                               }
                             `}
-                            style={subItem.isActive && hasStoryTheme ? { backgroundColor: `${activeStoryTheme?.colors?.primary || '#6366f1'}40` } : undefined}
+                            style={subItem.isActive && storyAccent ? { backgroundColor: `${storyAccent.primary}66` } : undefined}
                           >
                             <span className={`
                               flex h-4 w-4 items-center justify-center flex-shrink-0
                               ${subItem.isActive
                                 ? hasStoryTheme ? 'text-white' : 'text-indigo-500 dark:text-indigo-400'
-                                : hasStoryTheme ? 'text-white/60' : 'text-gray-400 dark:text-gray-500'
+                                : hasStoryTheme ? 'text-white/85' : 'text-gray-400 dark:text-gray-500'
                               }
                             `}>
                               {subItem.icon}
@@ -687,7 +649,7 @@ export const MainLayout = () => {
           <div className={`hidden lg:block p-2 ${hasStoryTheme ? 'border-t border-white/10' : 'border-t border-gray-100 dark:border-gray-700'}`}>
             <button
               onClick={() => setCollapsed(!collapsed)}
-              className={`w-full flex items-center justify-center gap-2 px-2.5 py-2 rounded-xl transition-colors ${hasStoryTheme ? 'text-white/50 hover:text-white/80 hover:bg-white/10' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+              className={`w-full flex items-center justify-center gap-2 px-2.5 py-2 rounded-xl transition-colors ${hasStoryTheme ? 'text-white/85 hover:text-white/80 hover:bg-white/10' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
             >
               {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
               {!collapsed && <span className="text-xs font-medium">Colapsar</span>}
@@ -700,15 +662,17 @@ export const MainLayout = () => {
       <div className={`transition-all duration-300 ${!isTeacher && collapsed ? 'lg:pl-[72px]' : 'lg:pl-60'}`}>
         {/* Top Bar */}
         <header
-          className={`sticky top-0 z-30 h-14 backdrop-blur-lg shadow-sm ${hasStoryTheme ? 'border-b border-white/10' : 'bg-white/80 dark:bg-gray-800/80 border-b border-white/50 dark:border-gray-700/50'}`}
-          style={hasStoryTheme ? { backgroundColor: `${activeStoryTheme?.colors?.background || '#111827'}cc` } : undefined}
+          className="sticky top-0 z-30 h-14 backdrop-blur-lg shadow-sm bg-white/80 dark:bg-gray-800/80 border-b border-white/50 dark:border-gray-700/50"
         >
+          {storyAccent && (
+            <span className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5" style={{ background: accentGradient(storyAccent, 90) }} aria-hidden="true" />
+          )}
           <div className="flex h-full items-center px-4">
             <div className="flex min-w-0 flex-1 items-center">
               {/* Mobile Menu Button */}
               <button
                 onClick={() => setSidebarOpen(true)}
-                className={`lg:hidden p-2 rounded-xl transition-colors ${hasStoryTheme ? 'text-white/70 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700'}`}
+                className={`lg:hidden p-2 rounded-xl transition-colors text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700`}
               >
                 <Menu size={20} />
               </button>
@@ -717,21 +681,21 @@ export const MainLayout = () => {
               {!isTeacher && currentProfile && !isStudentOverviewZone && (
                 <div className="flex items-center gap-2 md:gap-3 flex-1 justify-center md:justify-start md:ml-2">
                   {/* Nivel + XP */}
-                  <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${hasStoryTheme && isThemeDark ? 'bg-white/10 text-white' : hasStoryTheme ? 'bg-white/40 text-gray-800' : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300'}`}>
-                    <Zap size={13} className={hasStoryTheme ? 'text-amber-400' : 'text-amber-500'} />
+                  <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300`}>
+                    <Zap size={13} className='text-amber-500' />
                     <span>Nv.{currentProfile.level}</span>
-                    <span className={`${hasStoryTheme && isThemeDark ? 'text-white/50' : hasStoryTheme ? 'text-gray-500' : 'text-indigo-400 dark:text-indigo-500'}`}>•</span>
+                    <span className="text-indigo-600 dark:text-indigo-300" aria-hidden="true">•</span>
                     <span>{currentProfile.xp} XP</span>
                   </div>
 
                   {/* HP */}
-                  <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${hasStoryTheme && isThemeDark ? 'bg-white/10 text-white' : hasStoryTheme ? 'bg-white/40 text-gray-800' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'}`}>
+                  <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300`}>
                     <Heart size={13} className="text-red-500" />
                     <span>{currentProfile.hp}/100</span>
                   </div>
 
                   {/* Oro */}
-                  <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${hasStoryTheme && isThemeDark ? 'bg-white/10 text-white' : hasStoryTheme ? 'bg-white/40 text-gray-800' : 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400'}`}>
+                  <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300`}>
                     <Coins size={13} className="text-amber-500" />
                     <span>{currentProfile.gp}</span>
                   </div>
@@ -754,7 +718,7 @@ export const MainLayout = () => {
               <div className="relative">
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
-                className={`flex items-center gap-2 rounded-xl px-2 py-1.5 transition-colors ${hasStoryTheme ? 'hover:bg-white/10' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                className={`flex items-center gap-2 rounded-xl px-2 py-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-gray-700`}
               >
                 {user?.avatarUrl ? (
                   <img 
@@ -770,11 +734,11 @@ export const MainLayout = () => {
                   </div>
                 )}
                 <div className="hidden md:block text-left">
-                  <p className={`text-sm font-medium ${hasStoryTheme && isThemeDark ? 'text-white' : 'text-gray-800 dark:text-white'}`}>
+                  <p className={`text-sm font-medium text-gray-800 dark:text-white`}>
                     {user?.firstName}
                   </p>
                 </div>
-                <ChevronDown size={14} className={hasStoryTheme && isThemeDark ? 'text-white/50' : 'text-gray-400'} />
+                <ChevronDown size={14} className='text-gray-400' />
               </button>
 
               <AnimatePresence>
@@ -820,7 +784,7 @@ export const MainLayout = () => {
 
         {/* Page Content */}
         <main className="p-4 md:p-6 lg:p-8">
-          <Outlet context={{ storyTheme: hasStoryTheme ? activeStoryTheme : null, isThemeDark, hasStoryTheme }} />
+          <Outlet context={{ storyTheme: null, isThemeDark: false, hasStoryTheme: false, storyAccent }} />
         </main>
       </div>
 

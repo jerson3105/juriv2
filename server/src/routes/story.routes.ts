@@ -29,9 +29,11 @@ router.post('/:storyId/deactivate', authorize('TEACHER'), storyController.deacti
 
 // ---- CHAPTERS CRUD (Teacher) ----
 router.post('/:storyId/chapters', authorize('TEACHER'), storyController.createChapter.bind(storyController));
+router.put('/:storyId/chapters/order', authorize('TEACHER'), storyController.reorderChapters.bind(storyController));
 router.put('/chapters/:chapterId', authorize('TEACHER'), storyController.updateChapter.bind(storyController));
 router.delete('/chapters/:chapterId', authorize('TEACHER'), storyController.deleteChapter.bind(storyController));
 router.post('/chapters/:chapterId/complete', authorize('TEACHER'), storyController.completeChapter.bind(storyController));
+router.get('/chapters/:chapterId/recap', storyController.getChapterRecap.bind(storyController));
 
 // ---- SCENES CRUD (Teacher) ----
 router.post('/chapters/:chapterId/scenes', authorize('TEACHER'), storyController.createScene.bind(storyController));
