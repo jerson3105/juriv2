@@ -86,6 +86,19 @@ export const verifiedSchoolRole = async (
   return row.role;
 };
 
+/**
+ * ¿Puede el profesor poner sus clases en esa escuela? Miembro VERIFIED (dueño o profesor),
+ * o el dueño que la registró y espera la aprobación del administrador (PENDING_ADMIN).
+ */
+export const canAttachClassroomsToSchool = async (userId: string, schoolId: string): Promise<boolean> => {
+  const [row] = await db
+    .select({ role: schoolMembers.role, status: schoolMembers.status })
+    .from(schoolMembers)
+    .where(and(eq(schoolMembers.schoolId, schoolId), eq(schoolMembers.userId, userId)));
+  if (!row) return false;
+  return row.status === 'VERIFIED' || (row.role === 'OWNER' && row.status === 'PENDING_ADMIN');
+};
+
 /** ¿El usuario (PADRE) tiene un hijo con vínculo ACTIVE en esa clase? */
 export const parentHasClassroomAccess = async (
   parentUserId: string,
@@ -308,6 +321,24 @@ export const requireSchoolOwner = async (
   if (!schoolId) return deny(res, 400, 'Falta el identificador de la escuela');
   const role = await verifiedSchoolRole(user.id, schoolId);
   if (role !== 'OWNER') return deny(res, 403, 'Solo el responsable de la escuela puede realizar esta acción');
+  return true;
+};
+
+/**
+ * Asignar clases a una escuela: ADMIN, o profesor que pertenece a ella (ver canAttachClassroomsToSchool).
+ */
+export const requireSchoolClassroomMember = async (
+  req: Request,
+  res: Response,
+  schoolId: string
+): Promise<boolean> => {
+  const user = req.user;
+  if (!user) return deny(res, 401, 'No autenticado');
+  if (user.role === 'ADMIN') return true;
+  if (!schoolId) return deny(res, 400, 'Falta el identificador de la escuela');
+  if (!(await canAttachClassroomsToSchool(user.id, schoolId))) {
+    return deny(res, 403, 'No perteneces a esa escuela');
+  }
   return true;
 };
 

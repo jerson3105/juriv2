@@ -338,7 +338,7 @@ export const ClassroomLayout = () => {
           </div>
           <p className="text-gray-600 dark:text-gray-400 mb-4">Clase no encontrada</p>
           <button
-            onClick={() => navigate('/classrooms')}
+            onClick={() => navigate('/dashboard')}
             className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl font-medium hover:shadow-lg transition-all"
           >
             Volver a mis clases
@@ -428,7 +428,7 @@ export const ClassroomLayout = () => {
         <div className={`p-3 ${hasStoryTheme ? 'border-b border-white/10' : 'border-b border-gray-100 dark:border-gray-700'}`}>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => navigate('/classrooms')}
+              onClick={() => navigate('/dashboard')}
               className={`p-2 rounded-xl transition-colors ${hasStoryTheme ? 'text-white/70 hover:text-white hover:bg-white/10' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
               title="Volver a mis clases"
               aria-label="Volver a mis clases"

@@ -61,8 +61,7 @@ type StudentMenuGroup = {
 };
 
 const teacherNavItems = [
-  { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, gradient: 'from-blue-500 to-indigo-500' },
-  { path: '/classrooms', label: 'Mis Clases', icon: Users, gradient: 'from-emerald-500 to-teal-500' },
+  { path: '/dashboard', label: 'Inicio', icon: LayoutDashboard, gradient: 'from-blue-500 to-indigo-500' },
   { path: '/schools', label: 'Mi Escuela', icon: School, gradient: 'from-blue-500 to-indigo-600' },
   { path: '/settings', label: 'Configuración', icon: Settings, gradient: 'from-gray-500 to-slate-500' },
 ];
@@ -467,7 +466,7 @@ export const MainLayout = () => {
           {isTeacher ? (
             teacherNavItems.map((item) => {
               const isActivePath = location.pathname === item.path ||
-                (item.path === '/classrooms' && location.pathname.startsWith('/classroom'));
+                (item.path === '/dashboard' && location.pathname.startsWith('/classroom'));
 
               return (
                 <Link
@@ -478,10 +477,11 @@ export const MainLayout = () => {
                     flex items-center gap-3 px-3 py-2.5 rounded-xl
                     transition-all duration-200 group
                     ${isActivePath
-                      ? 'bg-gradient-to-r ' + item.gradient + ' text-white shadow-md'
+                      ? 'bg-primary-600 text-white shadow-md'
                       : hasStoryTheme ? 'text-white/70 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                     }
                   `}
+                  aria-current={isActivePath ? 'page' : undefined}
                 >
                   <div className={`
                     w-8 h-8 rounded-lg flex items-center justify-center transition-all
@@ -490,7 +490,7 @@ export const MainLayout = () => {
                       : 'bg-gradient-to-br ' + item.gradient + ' text-white shadow-sm group-hover:scale-105'
                     }
                   `}>
-                    <item.icon size={16} />
+                    <item.icon size={16} aria-hidden="true" />
                   </div>
                   <span className={`text-sm font-medium ${isActivePath ? '' : hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
                     {item.label}
@@ -658,7 +658,7 @@ export const MainLayout = () => {
                   className="w-9 h-9 rounded-xl object-cover shadow-md"
                 />
               ) : (
-                <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-md">
+                <div className="w-9 h-9 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl flex items-center justify-center shadow-md">
                   <span className="text-white text-sm font-bold">
                     {user?.firstName?.[0]}{user?.lastName?.[0]}
                   </span>
@@ -668,14 +668,14 @@ export const MainLayout = () => {
                 <p className={`text-sm font-semibold truncate ${hasStoryTheme ? 'text-white' : 'text-gray-800 dark:text-white'}`}>
                   {user?.firstName} {user?.lastName}
                 </p>
-                <p className={`text-xs ${hasStoryTheme ? 'text-white/60' : 'text-gray-500'}`}>
+                <p className={`text-xs ${hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
                   Docente
                 </p>
               </div>
             </div>
             <button
               onClick={handleLogout}
-              className={`flex items-center gap-2 px-3 py-2 w-full rounded-xl transition-colors text-sm font-medium ${hasStoryTheme ? 'text-red-400 hover:bg-red-500/20' : 'text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'}`}
+              className={`flex items-center gap-2 px-3 py-2 w-full rounded-xl transition-colors text-sm font-medium ${hasStoryTheme ? 'text-red-300 hover:bg-red-500/20' : 'text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-900/20'}`}
             >
               <LogOut size={16} />
               Cerrar sesión
@@ -763,7 +763,7 @@ export const MainLayout = () => {
                     className="w-8 h-8 rounded-xl object-cover shadow-sm"
                   />
                 ) : (
-                  <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-sm">
+                  <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl flex items-center justify-center shadow-sm">
                     <span className="text-white text-xs font-bold">
                       {user?.firstName?.[0]}{user?.lastName?.[0]}
                     </span>

@@ -18,8 +18,7 @@ import { SelectRolePage } from './pages/auth/SelectRolePage';
 // Resto de páginas: bajo demanda (code splitting por ruta). Cada usuario descarga solo lo que abre.
 const AboutPage = lazyPage(() => import('./pages/AboutPage').then((m) => ({ default: m.AboutPage })));
 const PrivacyPolicyPage = lazyPage(() => import('./pages/PrivacyPolicyPage').then((m) => ({ default: m.PrivacyPolicyPage })));
-const TeacherDashboard = lazyPage(() => import('./pages/dashboard/TeacherDashboard').then((m) => ({ default: m.TeacherDashboard })));
-const ClassroomsPage = lazyPage(() => import('./pages/classrooms/ClassroomsPage').then((m) => ({ default: m.ClassroomsPage })));
+const TeacherHome = lazyPage(() => import('./pages/dashboard/TeacherHome').then((m) => ({ default: m.TeacherHome })));
 const JoinClassPage = lazyPage(() => import('./pages/student/JoinClassPage').then((m) => ({ default: m.JoinClassPage })));
 const StudentDashboard = lazyPage(() => import('./pages/student/StudentDashboard').then((m) => ({ default: m.StudentDashboard })));
 const StudentOverviewPage = lazyPage(() => import('./pages/student/StudentOverviewPage').then((m) => ({ default: m.StudentOverviewPage })));
@@ -112,7 +111,7 @@ const DashboardRouter = () => {
     return <StudentOverviewPage />;
   }
   
-  return <TeacherDashboard />;
+  return <TeacherHome />;
 };
 
 // Inner component that checks onboarding status
@@ -222,7 +221,8 @@ function App() {
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<DashboardRouter />} />
             {/* Rutas de profesor - lista de clases */}
-            <Route path="classrooms" element={<ClassroomsPage />} />
+            {/* "Mis clases" ahora vive en Inicio */}
+            <Route path="classrooms" element={<Navigate to="/dashboard" replace />} />
             <Route path="settings" element={<SettingsPage />} />
             
             {/* Rutas de clase específica con su propio layout */}

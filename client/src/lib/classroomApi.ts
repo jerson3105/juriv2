@@ -114,6 +114,16 @@ export interface Student {
   clanMotto?: string | null;
 }
 
+export interface ClassroomOverview {
+  id: string;
+  lastActivityAt: string | null;
+  xpToday: number;
+  scorersToday: number;
+  pendingPurchases: number;
+  pendingUsages: number;
+  attendanceToday: number;
+}
+
 export interface CreateClassroomData {
   name: string;
   description?: string;
@@ -456,9 +466,24 @@ export const classroomApi = {
     return response.data.data;
   },
 
-  // Eliminar clase
+  // Eliminar clase definitivamente (solo si ya está archivada)
   delete: async (id: string): Promise<void> => {
     await api.delete(`/classrooms/${id}`);
+  },
+
+  // Archivar / restaurar clase (la oculta de la lista del profesor)
+  archive: async (id: string): Promise<void> => {
+    await api.post(`/classrooms/${id}/archive`);
+  },
+
+  restore: async (id: string): Promise<void> => {
+    await api.post(`/classrooms/${id}/restore`);
+  },
+
+  // "Hoy" de cada clase del profesor: XP, pendientes, asistencia y última actividad
+  getOverview: async (since: string, date: string): Promise<ClassroomOverview[]> => {
+    const response = await api.get('/classrooms/my/overview', { params: { since, date } });
+    return response.data.data;
   },
 
   // Resetear puntos de todos los estudiantes

@@ -7,6 +7,7 @@ import {
   requireClassroomTeacher,
   schoolIdOfClassroom,
   teacherOwnsClassroom,
+  requireSchoolClassroomMember,
 } from '../utils/access.js';
 
 const createSchoolSchema = z.object({
@@ -273,8 +274,8 @@ class SchoolController {
   async assignClassroom(req: Request, res: Response) {
     try {
       const { schoolId, classroomId } = req.params;
-      // Debe ser OWNER de la escuela y dueño de la clase que asigna.
-      if (!(await requireSchoolOwner(req, res, schoolId))) return;
+      // Debe pertenecer a la escuela (dueño o profesor verificado) y ser dueño de la clase que asigna.
+      if (!(await requireSchoolClassroomMember(req, res, schoolId))) return;
       if (!(await requireClassroomTeacher(req, res, classroomId))) return;
       await schoolService.assignClassroom(classroomId, schoolId);
       res.json({ success: true, message: 'Clase asignada a la escuela' });

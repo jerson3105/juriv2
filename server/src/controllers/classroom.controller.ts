@@ -6,6 +6,7 @@ import { curriculumAreas, curriculumCompetencies, studentProfiles } from '../db/
 import { eq, and, or, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { createGenAI } from '../utils/aiClient.js';
+import { canAttachClassroomsToSchool, requireClassroomTeacher } from '../utils/access.js';
 
 const AI_CLASSROOM_SUBJECTS = [
   'matematicas',
@@ -276,6 +277,16 @@ const createClassroomSchema = z.object({
   useCompetencies: z.boolean().optional().default(false),
   curriculumAreaId: z.string().max(36).optional().nullable(),
   gradeScaleType: z.enum(['PERU_LETTERS', 'PERU_VIGESIMAL', 'CENTESIMAL', 'USA_LETTERS', 'CUSTOM']).optional().nullable(),
+  schoolId: z.string().max(36).optional().nullable(),
+});
+
+const cloneClassroomSchema = z.object({
+  name: z.string().trim().min(2).max(255),
+  description: z.string().max(1000).optional().nullable(),
+  copyBehaviors: z.boolean().optional(),
+  copyBadges: z.boolean().optional(),
+  copyShopItems: z.boolean().optional(),
+  copyQuestionBanks: z.boolean().optional(),
   schoolId: z.string().max(36).optional().nullable(),
 });
 
@@ -624,6 +635,9 @@ REGLAS:
   async create(req: Request, res: Response) {
     try {
       const data = createClassroomSchema.parse(req.body);
+      if (data.schoolId && !(await canAttachClassroomsToSchool(req.user!.id, data.schoolId))) {
+        return res.status(403).json({ success: false, message: 'No perteneces a esa escuela' });
+      }
       const classroom = await classroomService.create({
         ...data,
         teacherId: req.user!.id,
@@ -1267,6 +1281,12 @@ REGLAS:
           message: 'No tienes permiso para eliminar esta clase',
         });
       }
+      if (error instanceof Error && error.message === 'ARCHIVE_FIRST') {
+        return res.status(409).json({
+          success: false,
+          message: 'Archiva la clase antes de eliminarla definitivamente',
+        });
+      }
       console.error('Error deleting classroom:', error);
       res.status(500).json({
         success: false,
@@ -1760,6 +1780,7 @@ REGLAS:
       }
 
       const { classroomId } = req.params;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
       const counts = await classroomService.getCloneableCounts(classroomId);
 
       res.json({
@@ -1784,13 +1805,16 @@ REGLAS:
       }
 
       const { classroomId } = req.params;
-      const { name, description, copyBehaviors, copyBadges, copyShopItems, copyQuestionBanks, schoolId } = req.body;
-
-      if (!name || name.trim().length < 2) {
-        return res.status(400).json({ 
-          success: false, 
-          message: 'El nombre del aula es requerido (mínimo 2 caracteres)' 
+      const parsed = cloneClassroomSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({
+          success: false,
+          message: 'El nombre del aula es requerido (entre 2 y 255 caracteres)',
         });
+      }
+      const { name, description, copyBehaviors, copyBadges, copyShopItems, copyQuestionBanks, schoolId } = parsed.data;
+      if (schoolId && !(await canAttachClassroomsToSchool(user.id, schoolId))) {
+        return res.status(403).json({ success: false, message: 'No perteneces a esa escuela' });
       }
 
       const result = await classroomService.cloneClassroom(classroomId, user.id, {

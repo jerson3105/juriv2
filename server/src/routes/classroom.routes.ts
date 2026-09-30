@@ -5,6 +5,7 @@ import { chatController } from '../controllers/chat.controller.js';
 import { classNoteController } from '../controllers/classNote.controller.js';
 import { characterClassController } from '../controllers/characterClass.controller.js';
 import { rankingController } from '../controllers/ranking.controller.js';
+import { classroomOverviewController } from '../controllers/classroomOverview.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { aiGuard } from '../middleware/security.js';
 
@@ -19,7 +20,10 @@ router.post('/generate-ai-blueprint', authorize('TEACHER'), ...aiGuard, classroo
 router.post('/generate-ai-content', authorize('TEACHER'), ...aiGuard, classroomController.generateAIContent.bind(classroomController));
 router.post('/', authorize('TEACHER'), classroomController.create.bind(classroomController));
 router.get('/my', authorize('TEACHER'), classroomController.getMyClassrooms.bind(classroomController));
+router.get('/my/overview', authorize('TEACHER'), classroomOverviewController.getOverview.bind(classroomOverviewController));
 router.put('/:id', authorize('TEACHER'), classroomController.update.bind(classroomController));
+router.post('/:id/archive', authorize('TEACHER', 'ADMIN'), classroomOverviewController.archive.bind(classroomOverviewController));
+router.post('/:id/restore', authorize('TEACHER', 'ADMIN'), classroomOverviewController.restore.bind(classroomOverviewController));
 router.delete('/:id', authorize('TEACHER'), classroomController.delete.bind(classroomController));
 router.post('/:id/reset-points', authorize('TEACHER'), classroomController.resetAllPoints.bind(classroomController));
 router.post('/:id/reset-selective', authorize('TEACHER'), classroomController.resetClassroomSelective.bind(classroomController));
