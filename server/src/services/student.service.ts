@@ -1143,87 +1143,90 @@ export class StudentService {
 
     const classroomId = profile.classroomId;
 
-    // 1. Point logs
-    await db.delete(pointLogs).where(eq(pointLogs.studentId, studentId));
+    // Todo o nada: si un borrado falla, el alumno no queda a medio retirar.
+    await db.transaction(async (tx) => {
+      // 1. Point logs
+      await tx.delete(pointLogs).where(eq(pointLogs.studentId, studentId));
 
-    // 2. Avatar purchases & equipped items
-    await db.delete(studentAvatarPurchases).where(eq(studentAvatarPurchases.studentProfileId, studentId));
-    await db.delete(studentEquippedItems).where(eq(studentEquippedItems.studentProfileId, studentId));
+      // 2. Avatar purchases & equipped items
+      await tx.delete(studentAvatarPurchases).where(eq(studentAvatarPurchases.studentProfileId, studentId));
+      await tx.delete(studentEquippedItems).where(eq(studentEquippedItems.studentProfileId, studentId));
 
-    // 3. Grades & activity scores
-    await db.delete(studentGrades).where(eq(studentGrades.studentProfileId, studentId));
-    await db.delete(studentActivityScores).where(eq(studentActivityScores.studentProfileId, studentId));
+      // 3. Grades & activity scores
+      await tx.delete(studentGrades).where(eq(studentGrades.studentProfileId, studentId));
+      await tx.delete(studentActivityScores).where(eq(studentActivityScores.studentProfileId, studentId));
 
-    // 4. Badges
-    await db.delete(badgeProgress).where(eq(badgeProgress.studentProfileId, studentId));
-    await db.delete(studentBadges).where(eq(studentBadges.studentProfileId, studentId));
+      // 4. Badges
+      await tx.delete(badgeProgress).where(eq(badgeProgress.studentProfileId, studentId));
+      await tx.delete(studentBadges).where(eq(studentBadges.studentProfileId, studentId));
 
-    // 5. Login streaks & student streaks
-    await db.delete(loginStreaks).where(eq(loginStreaks.studentProfileId, studentId));
-    await db.delete(studentStreaks).where(eq(studentStreaks.studentProfileId, studentId));
+      // 5. Login streaks & student streaks
+      await tx.delete(loginStreaks).where(eq(loginStreaks.studentProfileId, studentId));
+      await tx.delete(studentStreaks).where(eq(studentStreaks.studentProfileId, studentId));
 
-    // 6. Attendance
-    await db.delete(attendanceRecords).where(eq(attendanceRecords.studentProfileId, studentId));
+      // 6. Attendance
+      await tx.delete(attendanceRecords).where(eq(attendanceRecords.studentProfileId, studentId));
 
-    // 7. Purchases & item usages
-    const studentPurchases = await db.query.purchases.findMany({
-      where: eq(purchases.studentId, studentId),
-      columns: { id: true },
+      // 7. Purchases & item usages
+      const studentPurchases = await tx.query.purchases.findMany({
+        where: eq(purchases.studentId, studentId),
+        columns: { id: true },
+      });
+      const purchaseIds = studentPurchases.map(p => p.id);
+      if (purchaseIds.length > 0) {
+        await tx.delete(itemUsages).where(inArray(itemUsages.purchaseId, purchaseIds));
+      }
+      await tx.delete(purchases).where(eq(purchases.studentId, studentId));
+
+      // 8. Power usages
+      await tx.delete(powerUsages).where(eq(powerUsages.studentId, studentId));
+
+      // 9. Expeditions
+      await tx.delete(expeditionSubmissions).where(eq(expeditionSubmissions.studentProfileId, studentId));
+      await tx.delete(expeditionStudentProgress).where(eq(expeditionStudentProgress.studentProfileId, studentId));
+
+      // 10. Jiro expeditions
+      const jiroStudentExps = await tx.query.jiroStudentExpeditions.findMany({
+        where: eq(jiroStudentExpeditions.studentProfileId, studentId),
+        columns: { id: true },
+      });
+      const jiroStudentExpIds = jiroStudentExps.map(e => e.id);
+      if (jiroStudentExpIds.length > 0) {
+        await tx.delete(jiroQuestionAnswers).where(inArray(jiroQuestionAnswers.studentExpeditionId, jiroStudentExpIds));
+        await tx.delete(jiroDeliveries).where(inArray(jiroDeliveries.studentExpeditionId, jiroStudentExpIds));
+      }
+      await tx.delete(jiroStudentExpeditions).where(eq(jiroStudentExpeditions.studentProfileId, studentId));
+
+      // 11. Tournaments
+      await tx.delete(tournamentParticipants).where(eq(tournamentParticipants.studentProfileId, studentId));
+
+      // 12. Collectibles
+      await tx.delete(studentCollectibles).where(eq(studentCollectibles.studentProfileId, studentId));
+
+      // 13. Scrolls
+      const studentScrolls = await tx.query.scrolls.findMany({
+        where: eq(scrolls.authorId, studentId),
+        columns: { id: true },
+      });
+      const scrollIds = studentScrolls.map(s => s.id);
+      if (scrollIds.length > 0) {
+        await tx.delete(scrollReactions).where(inArray(scrollReactions.scrollId, scrollIds));
+        await tx.delete(scrolls).where(inArray(scrolls.id, scrollIds));
+      }
+
+      // 14. Notifications (if user linked)
+      if (profile.userId) {
+        await tx.delete(notifications).where(
+          and(
+            eq(notifications.userId, profile.userId),
+            eq(notifications.classroomId, classroomId),
+          )
+        );
+      }
+
+      // 15. Finally delete the student profile
+      await tx.delete(studentProfiles).where(eq(studentProfiles.id, studentId));
     });
-    const purchaseIds = studentPurchases.map(p => p.id);
-    if (purchaseIds.length > 0) {
-      await db.delete(itemUsages).where(inArray(itemUsages.purchaseId, purchaseIds));
-    }
-    await db.delete(purchases).where(eq(purchases.studentId, studentId));
-
-    // 8. Power usages
-    await db.delete(powerUsages).where(eq(powerUsages.studentId, studentId));
-
-    // 9. Expeditions
-    await db.delete(expeditionSubmissions).where(eq(expeditionSubmissions.studentProfileId, studentId));
-    await db.delete(expeditionStudentProgress).where(eq(expeditionStudentProgress.studentProfileId, studentId));
-
-    // 10. Jiro expeditions
-    const jiroStudentExps = await db.query.jiroStudentExpeditions.findMany({
-      where: eq(jiroStudentExpeditions.studentProfileId, studentId),
-      columns: { id: true },
-    });
-    const jiroStudentExpIds = jiroStudentExps.map(e => e.id);
-    if (jiroStudentExpIds.length > 0) {
-      await db.delete(jiroQuestionAnswers).where(inArray(jiroQuestionAnswers.studentExpeditionId, jiroStudentExpIds));
-      await db.delete(jiroDeliveries).where(inArray(jiroDeliveries.studentExpeditionId, jiroStudentExpIds));
-    }
-    await db.delete(jiroStudentExpeditions).where(eq(jiroStudentExpeditions.studentProfileId, studentId));
-
-    // 11. Tournaments
-    await db.delete(tournamentParticipants).where(eq(tournamentParticipants.studentProfileId, studentId));
-
-    // 12. Collectibles
-    await db.delete(studentCollectibles).where(eq(studentCollectibles.studentProfileId, studentId));
-
-    // 13. Scrolls
-    const studentScrolls = await db.query.scrolls.findMany({
-      where: eq(scrolls.authorId, studentId),
-      columns: { id: true },
-    });
-    const scrollIds = studentScrolls.map(s => s.id);
-    if (scrollIds.length > 0) {
-      await db.delete(scrollReactions).where(inArray(scrollReactions.scrollId, scrollIds));
-      await db.delete(scrolls).where(inArray(scrolls.id, scrollIds));
-    }
-
-    // 14. Notifications (if user linked)
-    if (profile.userId) {
-      await db.delete(notifications).where(
-        and(
-          eq(notifications.userId, profile.userId),
-          eq(notifications.classroomId, classroomId),
-        )
-      );
-    }
-
-    // 15. Finally delete the student profile
-    await db.delete(studentProfiles).where(eq(studentProfiles.id, studentId));
 
     return {
       success: true,

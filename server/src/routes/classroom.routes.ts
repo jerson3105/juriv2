@@ -6,6 +6,7 @@ import { classNoteController } from '../controllers/classNote.controller.js';
 import { characterClassController } from '../controllers/characterClass.controller.js';
 import { rankingController } from '../controllers/ranking.controller.js';
 import { classroomOverviewController } from '../controllers/classroomOverview.controller.js';
+import { studentSummaryController } from '../controllers/studentSummary.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { aiGuard } from '../middleware/security.js';
 
@@ -24,6 +25,7 @@ router.get('/my/overview', authorize('TEACHER'), classroomOverviewController.get
 router.put('/:id', authorize('TEACHER'), classroomController.update.bind(classroomController));
 router.post('/:id/archive', authorize('TEACHER', 'ADMIN'), classroomOverviewController.archive.bind(classroomOverviewController));
 router.post('/:id/restore', authorize('TEACHER', 'ADMIN'), classroomOverviewController.restore.bind(classroomOverviewController));
+router.get('/:id/students/:studentId/summary', authorize('TEACHER', 'ADMIN'), studentSummaryController.getSummary.bind(studentSummaryController));
 router.delete('/:id', authorize('TEACHER'), classroomController.delete.bind(classroomController));
 router.post('/:id/reset-points', authorize('TEACHER'), classroomController.resetAllPoints.bind(classroomController));
 router.post('/:id/reset-selective', authorize('TEACHER'), classroomController.resetClassroomSelective.bind(classroomController));

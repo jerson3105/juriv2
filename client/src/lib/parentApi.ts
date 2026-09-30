@@ -270,7 +270,7 @@ export const parentApi = {
   // Generar código de vinculación (para profesor)
   generateParentLinkCode: async (studentId: string): Promise<{ code: string }> => {
     const response = await api.post(`/parent/generate-code/${studentId}`);
-    return response.data;
+    return response.data.data;
   },
 
   // Generar códigos de vinculación masivos para folletos de padres (para profesor)

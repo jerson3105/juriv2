@@ -22,6 +22,9 @@ export const useApplyWithUndo = (classroomId: string) => {
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['classroom', classroomId] });
     queryClient.invalidateQueries({ queryKey: ['history-today', classroomId] });
+    // Perfil del alumno: resumen y registro.
+    queryClient.invalidateQueries({ queryKey: ['student-summary', classroomId] });
+    queryClient.invalidateQueries({ queryKey: ['student-activity', classroomId] });
   };
 
   const undo = async (result: ApplyResult) => {
@@ -39,11 +42,12 @@ export const useApplyWithUndo = (classroomId: string) => {
     else toast.error(`No se pudo deshacer en ${failed} de ${ids.length} estudiante(s)`, { id: toastId });
   };
 
-  const apply = async (behavior: Behavior, studentIds: string[], who: string) => {
+  // multiplier: fracción del puntaje (1 = completo, 0.5 = la mitad…), como en la Lista.
+  const apply = async (behavior: Behavior, studentIds: string[], who: string, multiplier?: number) => {
     if (studentIds.length === 0 || isApplying) return null;
     setIsApplying(true);
     try {
-      const result = await behaviorApi.apply({ behaviorId: behavior.id, studentIds });
+      const result = await behaviorApi.apply({ behaviorId: behavior.id, studentIds, ...(multiplier !== undefined && multiplier !== 1 ? { multiplier } : {}) });
       usage.recordUse(behavior.id);
       play(behavior.isPositive ? 'pointsGain' : 'pointsLoss');
       refresh();

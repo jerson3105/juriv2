@@ -138,6 +138,25 @@ export const CHARACTER_CLASSES = {
   },
 };
 
+export type SummaryPeriod = 'bimester' | 'all';
+
+// Resumen del alumno para el perfil del profesor (agregado en el servidor por periodo).
+export interface StudentSummary {
+  period: { kind: SummaryPeriod; label: string; from: string | null };
+  points: { xpGained: number; xpLost: number; hpGained: number; hpLost: number; gpGained: number; gpLost: number };
+  events: { positive: number; negative: number };
+  topBehaviors: { name: string; positive: boolean; times: number }[];
+  timeline: { bucket: 'day' | 'week'; points: { date: string; xp: number; hp: number; gp: number }[] };
+  attendance: { present: number; late: number; absent: number; excused: number; total: number; consecutiveAbsences: number };
+  badges: number;
+  purchases: { count: number; spent: number };
+  rank: { position: number; total: number };
+  clan: { id: string; name: string; emblem: string; contributedXp: number } | null;
+  collectibles: { owned: number; total: number };
+  lastActivityAt: string | null;
+  maxHp: number;
+}
+
 export const studentApi = {
   // Verificar código (detecta si es clase o estudiante)
   verifyCode: async (code: string): Promise<{
@@ -226,6 +245,14 @@ export const studentApi = {
   // Retirar estudiante de la clase
   removeFromClass: async (studentId: string): Promise<{ success: boolean; studentName: string }> => {
     const response = await api.delete(`/students/${studentId}/remove-from-class`);
+    return response.data.data;
+  },
+
+  // tz: desfase del navegador para agrupar la actividad por día local.
+  getSummary: async (classroomId: string, studentId: string, period: SummaryPeriod): Promise<StudentSummary> => {
+    const response = await api.get(`/classrooms/${classroomId}/students/${studentId}/summary`, {
+      params: { period, tz: new Date().getTimezoneOffset() },
+    });
     return response.data.data;
   },
 

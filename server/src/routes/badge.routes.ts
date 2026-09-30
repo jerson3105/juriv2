@@ -523,6 +523,10 @@ router.get('/student/:studentProfileId/progress/:classroomId', authenticate, asy
   try {
     const { studentProfileId, classroomId } = req.params;
     if (!(await requireStudentProfileReadAccess(req, res, studentProfileId))) return;
+    // La clase debe ser la del perfil: si no, se listarían las insignias de otra clase.
+    if ((await classroomIdOfStudentProfile(studentProfileId)) !== classroomId) {
+      return res.status(404).json({ message: 'Estudiante no encontrado en esta clase' });
+    }
     const progress = await badgeService.getStudentProgress(studentProfileId, classroomId);
     res.json(progress);
   } catch (error: any) {

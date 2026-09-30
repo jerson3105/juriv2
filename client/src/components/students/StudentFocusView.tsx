@@ -8,6 +8,7 @@ import { historyApi, type ActivityLogEntry } from '../../lib/historyApi';
 import type { Behavior } from '../../lib/behaviorApi';
 import type { Classroom, Student } from '../../lib/classroomApi';
 import { getBehaviorRewards } from '../../lib/behaviorPoints';
+import { levelProgress as levelProgressOf } from './profile/profileHelpers';
 
 type CharacterClassOption = { id?: string; key?: string; name: string; icon?: string | null; isActive?: boolean };
 type ClassInfo = { name: string; icon: string };
@@ -102,14 +103,7 @@ export const StudentFocusView = ({
   const classInfoOf = (s: Student): ClassInfo | undefined =>
     (s.characterClassId && classMap[s.characterClassId]) || classMap[s.characterClass];
 
-  const levelProgress = (s: Student) => {
-    const lvl = s.level || 1;
-    const xpForCurrent = (xpPerLevel * lvl * (lvl - 1)) / 2;
-    const xpForNext = (xpPerLevel * (lvl + 1) * lvl) / 2;
-    const inLevel = Math.max(0, s.xp - xpForCurrent);
-    const needed = xpForNext - xpForCurrent;
-    return { inLevel: Math.round(inLevel), needed, percent: Math.min((inLevel / needed) * 100, 100) };
-  };
+  const levelProgress = (s: Student) => levelProgressOf(s.xp, s.level, xpPerLevel);
 
   const undoEntry = async (entry: ActivityLogEntry) => {
     setUndoingId(entry.id);
