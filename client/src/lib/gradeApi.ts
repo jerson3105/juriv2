@@ -83,6 +83,8 @@ export interface GradebookCompetencyColumn {
   weight: number;
   isCustom: boolean;
   indicatorCount: number;
+  /** Destrezas de la competencia (columnas desplegables del libro). */
+  indicators: Array<{ id: string; code: string; name: string; weight: number }>;
 }
 
 export interface StudentGradebookResponse {

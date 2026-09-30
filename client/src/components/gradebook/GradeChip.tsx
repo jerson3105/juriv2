@@ -1,6 +1,6 @@
 import { forwardRef } from 'react';
 import { Pencil } from 'lucide-react';
-import type { StudentGrade } from '../../lib/gradeApi';
+import type { CompetencyIndicatorBreakdown, StudentGrade } from '../../lib/gradeApi';
 import { BUCKET_LABEL, BUCKET_STYLE, hasGrade } from './gradebookHelpers';
 
 interface GradeChipProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -31,3 +31,30 @@ export const GradeChip = forwardRef<HTMLButtonElement, GradeChipProps>(({ grade,
   );
 });
 GradeChip.displayName = 'GradeChip';
+
+interface SkillChipProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  skill?: CompetencyIndicatorBreakdown | null;
+  /** Bimestre anterior a que existieran las destrezas: no hay desglose. */
+  historical?: boolean;
+  context: string;
+}
+
+// Nota de una destreza (sale de los comportamientos vinculados a ella). Solo lectura: abre el detalle.
+export const SkillChip = forwardRef<HTMLButtonElement, SkillChipProps>(({ skill, historical, context, className = '', ...props }, ref) => {
+  const graded = !!skill?.hasEvidence && !!skill.gradeLabel && !!skill.bucket;
+  const description = historical
+    ? 'sin desglose en este bimestre'
+    : graded && skill ? `${skill.gradeLabel}, ${BUCKET_LABEL[skill.bucket!].toLowerCase()}, ${skill.observations} observaciones` : 'sin evidencia';
+  return (
+    <button
+      ref={ref}
+      type="button"
+      aria-label={`${context}: ${description}`}
+      className={`inline-flex h-10 min-w-[44px] items-center justify-center rounded-lg px-2 text-sm font-bold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600 ${graded && skill ? `${BUCKET_STYLE[skill.bucket!]} hover:brightness-95` : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'} ${className}`}
+      {...props}
+    >
+      {graded && skill ? skill.gradeLabel : '—'}
+    </button>
+  );
+});
+SkillChip.displayName = 'SkillChip';

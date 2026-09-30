@@ -1,12 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Loader2, Search, SlidersHorizontal } from 'lucide-react';
+import { ChevronRight, Layers, Loader2, Search, SlidersHorizontal } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { gradeApi, type ClassroomGradebookResponse, type GradebookCompetencyColumn, type PerformanceBucket, type StudentGrade } from '../../lib/gradeApi';
 import { inputClass } from '../home/homeHelpers';
 import { BUCKET_LABEL, BUCKET_STYLE, card, chip, competencyTitle, errorMessage, hasGrade } from './gradebookHelpers';
-import { GradeChip } from './GradeChip';
+import { GradeChip, SkillChip } from './GradeChip';
 import { ScaleValuePicker } from './ScaleValuePicker';
 
 export interface CellRef {
@@ -169,6 +169,24 @@ export const GradesTab = ({ book, onOpenDetail }: GradesTabProps) => {
 
   const mobileColumn = book.competencies.find((c) => c.id === mobileCompetency);
 
+  // Destrezas desplegadas por competencia (subcolumnas grises junto a su competencia).
+  const [openSkills, setOpenSkills] = useState<Set<string>>(new Set());
+  const withSkills = book.competencies.filter((c) => c.indicators.length > 0);
+  const allOpen = withSkills.length > 0 && withSkills.every((c) => openSkills.has(c.id));
+  const toggleSkills = (competencyId: string) => setOpenSkills((prev) => {
+    const next = new Set(prev);
+    if (next.has(competencyId)) next.delete(competencyId);
+    else next.add(competencyId);
+    return next;
+  });
+  const columns: Array<
+    | { kind: 'competency'; competency: GradebookCompetencyColumn }
+    | { kind: 'skill'; competency: GradebookCompetencyColumn; skill: GradebookCompetencyColumn['indicators'][number] }
+  > = book.competencies.flatMap((competency) => [
+    { kind: 'competency' as const, competency },
+    ...(openSkills.has(competency.id) ? competency.indicators.map((skill) => ({ kind: 'skill' as const, competency, skill })) : []),
+  ]);
+
   return (
     <div className="space-y-4">
       {/* Resumen */}
@@ -195,10 +213,19 @@ export const GradesTab = ({ book, onOpenDetail }: GradesTabProps) => {
       <section aria-labelledby="grades-table-title" className={card}>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h2 id="grades-table-title" className="text-base font-bold text-gray-900 dark:text-white">Notas por competencia</h2>
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          {withSkills.length > 0 && (
+            <button type="button" aria-pressed={allOpen}
+              onClick={() => setOpenSkills(allOpen ? new Set() : new Set(withSkills.map((c) => c.id)))}
+              className={`hidden min-h-[44px] items-center gap-2 rounded-xl border px-3 text-sm font-semibold md:inline-flex ${allOpen ? 'border-primary-600 bg-primary-50 text-primary-900 dark:border-primary-400 dark:bg-primary-900/30 dark:text-primary-100' : 'border-gray-300 text-gray-800 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-100 dark:hover:bg-gray-700'}`}>
+              <Layers size={16} aria-hidden="true" /> {allOpen ? 'Ocultar destrezas' : 'Ver destrezas'}
+            </button>
+          )}
           <div className="relative w-full sm:w-72">
             <label htmlFor="grades-search" className="sr-only">Buscar alumno</label>
             <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 dark:text-gray-300" aria-hidden="true" />
             <input id="grades-search" type="search" placeholder="Buscar alumno" value={search} onChange={(e) => setSearch(e.target.value)} className={`${inputClass} pl-9`} />
+          </div>
           </div>
         </div>
         <p className="mb-3 text-sm text-gray-700 dark:text-gray-300">
@@ -217,11 +244,24 @@ export const GradesTab = ({ book, onOpenDetail }: GradesTabProps) => {
                 <thead>
                   <tr>
                     <th scope="col" className="sticky left-0 top-0 z-20 min-w-[200px] border-b border-gray-200 bg-gray-50 px-3 py-2 text-left font-bold text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white">Alumno</th>
-                    {book.competencies.map((competency) => (
-                      <th key={competency.id} scope="col" title={competency.name ?? undefined} className="sticky top-0 z-10 min-w-[112px] border-b border-gray-200 bg-gray-50 px-2 py-2 text-center align-bottom font-semibold text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white">
-                        <span className="block text-xs font-bold text-gray-700 dark:text-gray-300">{competency.code}</span>
-                        <span className="line-clamp-2 text-sm">{competencyTitle(competency)}</span>
-                        <span className="sr-only">{competency.name}</span>
+                    {columns.map((column) => column.kind === 'competency' ? (
+                      <th key={column.competency.id} scope="col" title={column.competency.name ?? undefined} className="sticky top-0 z-10 min-w-[120px] border-b border-l border-gray-200 bg-primary-50 px-2 py-2 text-center align-bottom font-semibold text-primary-950 dark:border-gray-700 dark:bg-primary-950 dark:text-primary-50">
+                        <span className="block text-xs font-bold">{column.competency.code}</span>
+                        <span className="line-clamp-2 text-sm">{competencyTitle(column.competency)}</span>
+                        <span className="sr-only">{column.competency.name}</span>
+                        {column.competency.indicators.length > 0 && (
+                          <button type="button" onClick={() => toggleSkills(column.competency.id)} aria-expanded={openSkills.has(column.competency.id)}
+                            aria-label={`${openSkills.has(column.competency.id) ? 'Ocultar' : 'Ver'} destrezas de ${competencyTitle(column.competency)}`}
+                            className="mt-1 inline-flex min-h-[32px] items-center gap-1 rounded-lg px-2 text-xs font-bold text-primary-900 hover:bg-primary-100 dark:text-primary-100 dark:hover:bg-primary-900">
+                            {column.competency.indicators.length} {column.competency.indicators.length === 1 ? 'destreza' : 'destrezas'}
+                            <ChevronRight size={14} className={`transition-transform ${openSkills.has(column.competency.id) ? 'rotate-180' : ''}`} aria-hidden="true" />
+                          </button>
+                        )}
+                      </th>
+                    ) : (
+                      <th key={column.skill.id} scope="col" title={column.skill.name} className="sticky top-0 z-10 min-w-[104px] max-w-[140px] border-b border-gray-200 bg-gray-100 px-2 py-2 text-center align-bottom font-semibold text-gray-900 dark:border-gray-700 dark:bg-gray-700 dark:text-white">
+                        <span className="block text-xs font-bold text-gray-700 dark:text-gray-200">{column.skill.code}</span>
+                        <span className="line-clamp-2 text-sm">{column.skill.name}</span>
                       </th>
                     ))}
                   </tr>
@@ -235,17 +275,34 @@ export const GradesTab = ({ book, onOpenDetail }: GradesTabProps) => {
                           <span className="block text-sm text-gray-700 dark:text-gray-300">{student.characterName}</span>
                         )}
                       </th>
-                      {book.competencies.map((competency, colIndex) => (
-                        <td key={competency.id} className="border-b border-gray-100 px-2 py-1.5 text-center group-hover:bg-gray-50 dark:border-gray-700 dark:group-hover:bg-gray-700/60">
-                          <GradeChip
-                            grade={student.grades.find((g) => g.competencyId === competency.id)}
-                            context={`${student.studentName}, ${competencyTitle(competency)}`}
-                            data-row={rowIndex}
-                            data-col={colIndex}
-                            onClick={(event) => openQuick(event, student.studentProfileId, competency, student.studentName)}
-                          />
-                        </td>
-                      ))}
+                      {columns.map((column, colIndex) => {
+                        const grade = student.grades.find((g) => g.competencyId === column.competency.id);
+                        if (column.kind === 'competency') {
+                          return (
+                            <td key={column.competency.id} className="border-b border-l border-gray-100 px-2 py-1.5 text-center group-hover:bg-gray-50 dark:border-gray-700 dark:group-hover:bg-gray-700/60">
+                              <GradeChip
+                                grade={grade}
+                                context={`${student.studentName}, ${competencyTitle(column.competency)}`}
+                                data-row={rowIndex}
+                                data-col={colIndex}
+                                onClick={(event) => openQuick(event, student.studentProfileId, column.competency, student.studentName)}
+                              />
+                            </td>
+                          );
+                        }
+                        return (
+                          <td key={column.skill.id} className="border-b border-gray-100 bg-gray-50/60 px-2 py-1.5 text-center group-hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-900/30 dark:group-hover:bg-gray-700/60">
+                            <SkillChip
+                              skill={grade?.indicatorBreakdown.find((i) => i.id === column.skill.id)}
+                              historical={grade?.indicatorBreakdownStatus === 'HISTORICAL_NO_BREAKDOWN'}
+                              context={`${student.studentName}, ${column.skill.name}`}
+                              data-row={rowIndex}
+                              data-col={colIndex}
+                              onClick={() => onOpenDetail({ studentProfileId: student.studentProfileId, competencyId: column.competency.id })}
+                            />
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))}
                 </tbody>
@@ -262,10 +319,17 @@ export const GradesTab = ({ book, onOpenDetail }: GradesTabProps) => {
                   </button>
                 ))}
               </div>
+              {mobileColumn && mobileColumn.indicators.length > 0 && (
+                <p className="text-sm text-gray-700 dark:text-gray-300">
+                  Destrezas: {mobileColumn.indicators.map((skill) => `${skill.code} ${skill.name}`).join(' · ')}
+                </p>
+              )}
               {mobileColumn && (
                 <ul className="divide-y divide-gray-100 dark:divide-gray-700">
-                  {students.map((student) => (
-                    <li key={student.studentProfileId} className="flex items-center gap-3 py-2">
+                  {students.map((student) => {
+                    const grade = student.grades.find((g) => g.competencyId === mobileColumn.id);
+                    return (
+                    <li key={student.studentProfileId} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-semibold text-gray-900 dark:text-white">{student.studentName}</span>
                         {student.characterName && student.characterName !== student.studentName && (
@@ -282,8 +346,24 @@ export const GradesTab = ({ book, onOpenDetail }: GradesTabProps) => {
                         aria-label={`Detalle de ${student.studentName}`}>
                         <SlidersHorizontal size={18} aria-hidden="true" />
                       </button>
+                      {mobileColumn.indicators.length > 0 && (
+                        <span className="flex w-full flex-wrap gap-1.5 pl-1">
+                          {mobileColumn.indicators.map((skill) => (
+                            <span key={skill.id} className="inline-flex items-center gap-1 text-sm text-gray-700 dark:text-gray-300">
+                              {skill.code}
+                              <SkillChip
+                                skill={grade?.indicatorBreakdown.find((i) => i.id === skill.id)}
+                                historical={grade?.indicatorBreakdownStatus === 'HISTORICAL_NO_BREAKDOWN'}
+                                context={`${student.studentName}, ${skill.name}`}
+                                onClick={() => onOpenDetail({ studentProfileId: student.studentProfileId, competencyId: mobileColumn.id })}
+                              />
+                            </span>
+                          ))}
+                        </span>
+                      )}
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               )}
             </div>

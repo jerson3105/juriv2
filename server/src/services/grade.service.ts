@@ -153,6 +153,7 @@ export interface GradebookCompetencyColumn {
   weight: number;
   isCustom: boolean;
   indicatorCount: number;
+  indicators: Array<{ id: string; code: string; name: string; weight: number }>;
 }
 
 export interface StudentGradebookResponse {
@@ -1865,23 +1866,32 @@ class GradeService {
       .innerJoin(curriculumCompetencies, eq(classroomCompetencies.competencyId, curriculumCompetencies.id))
       .where(and(eq(classroomCompetencies.classroomId, classroomId), eq(classroomCompetencies.isActive, true)))
       .orderBy(asc(curriculumCompetencies.displayOrder), asc(curriculumCompetencies.name));
-    const indicatorCounts = await db.select({
+    // Destrezas de cada competencia (columnas del libro), en su orden.
+    const indicatorRows = await db.select({
+      id: classroomCompetencyIndicators.id,
       competencyId: classroomCompetencyIndicators.competencyId,
-      total: sql<number>`COUNT(*)`,
+      name: classroomCompetencyIndicators.name,
+      weight: classroomCompetencyIndicators.weight,
     })
       .from(classroomCompetencyIndicators)
       .where(and(eq(classroomCompetencyIndicators.classroomId, classroomId), eq(classroomCompetencyIndicators.isActive, true)))
-      .groupBy(classroomCompetencyIndicators.competencyId);
-    const countOf = new Map(indicatorCounts.map((r) => [r.competencyId, Number(r.total)]));
-    return rows.map((r, index) => ({
-      id: r.id,
-      code: `C${index + 1}`,
-      name: r.name,
-      shortName: r.shortName,
-      weight: r.weight,
-      isCustom: Boolean(Number(r.isCustom)),
-      indicatorCount: countOf.get(r.id) ?? 0,
-    }));
+      .orderBy(asc(classroomCompetencyIndicators.displayOrder), asc(classroomCompetencyIndicators.createdAt));
+    return rows.map((r, index) => {
+      const code = `C${index + 1}`;
+      const indicators = indicatorRows
+        .filter((i) => i.competencyId === r.id)
+        .map((i, j) => ({ id: i.id, code: `${code}.${j + 1}`, name: i.name, weight: i.weight }));
+      return {
+        id: r.id,
+        code,
+        name: r.name,
+        shortName: r.shortName,
+        weight: r.weight,
+        isCustom: Boolean(Number(r.isCustom)),
+        indicatorCount: indicators.length,
+        indicators,
+      };
+    });
   }
 
   private async buildGradeEntries(

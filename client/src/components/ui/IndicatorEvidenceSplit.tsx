@@ -27,38 +27,24 @@ export const IndicatorEvidenceSplit = ({
     ? (negativePoints / totalPoints) * 100
     : (negativeObservations / totalObservations) * 100;
 
+  // Texto AA (14 px, tonos -800/-300); la barra es decorativa y el texto la describe.
   return (
-    <div className="mt-3 space-y-2">
-      <div className="flex items-center justify-between gap-3 text-[11px]">
-        <span className="flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">
-          <TrendingUp className="h-3.5 w-3.5" />
-          <span>Positivos: {positiveObservations}</span>
-          {positivePoints > 0 && (
-            <span className="text-[10px] text-emerald-500/80 dark:text-emerald-300/80">
-              (+{positivePoints} pts)
-            </span>
-          )}
+    <div className="mt-2 space-y-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm">
+        <span className="flex items-center gap-1 font-semibold text-emerald-800 dark:text-emerald-300">
+          <TrendingUp className="h-4 w-4" aria-hidden="true" />
+          <span>{positiveObservations} {positiveObservations === 1 ? 'positiva' : 'positivas'}</span>
+          {positivePoints > 0 && <span className="font-normal">(+{positivePoints} pts)</span>}
         </span>
-        <span className="flex items-center gap-1 font-medium text-red-500 dark:text-red-400">
-          <span>Negativos: {negativeObservations}</span>
-          {negativePoints > 0 && (
-            <span className="text-[10px] text-red-400/80 dark:text-red-300/80">
-              (-{negativePoints} pts)
-            </span>
-          )}
-          <TrendingDown className="h-3.5 w-3.5" />
+        <span className="flex items-center gap-1 font-semibold text-red-800 dark:text-red-300">
+          <span>{negativeObservations} {negativeObservations === 1 ? 'negativa' : 'negativas'}</span>
+          {negativePoints > 0 && <span className="font-normal">(−{negativePoints} pts)</span>}
+          <TrendingDown className="h-4 w-4" aria-hidden="true" />
         </span>
       </div>
-
-      <div className="flex h-2.5 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-800">
-        <div
-          className="bg-emerald-400 transition-all"
-          style={{ width: `${positiveWidth}%` }}
-        />
-        <div
-          className="bg-red-400 transition-all"
-          style={{ width: `${negativeWidth}%` }}
-        />
+      <div className="flex h-2.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700" aria-hidden="true">
+        <div className="bg-emerald-600 dark:bg-emerald-400" style={{ width: `${positiveWidth}%` }} />
+        <div className="bg-red-600 dark:bg-red-400" style={{ width: `${negativeWidth}%` }} />
       </div>
     </div>
   );

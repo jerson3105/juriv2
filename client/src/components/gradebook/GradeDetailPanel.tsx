@@ -8,6 +8,7 @@ import {
   BUCKET_LABEL, BUCKET_STYLE, competencyTitle, errorMessage, hasGrade, percentToLabel, periodLabel, secondaryButton, SOURCE_LABEL,
 } from './gradebookHelpers';
 import { ScaleValuePicker } from './ScaleValuePicker';
+import { IndicatorEvidenceSplit } from '../ui/IndicatorEvidenceSplit';
 import { SidePanel } from './SidePanel';
 
 interface GradeDetailPanelProps {
@@ -102,6 +103,50 @@ export const GradeDetailPanel = ({ book, studentName, competency, grade, onClose
         </section>
       )}
 
+      {/* Destrezas: cada una con su nota, que sale de los comportamientos vinculados a ella */}
+      {competency.indicators.length > 0 && (
+        <section aria-labelledby="grade-skills" className="space-y-2">
+          <h3 id="grade-skills" className="text-base font-bold text-gray-900 dark:text-white">Destrezas</h3>
+          {grade.indicatorBreakdownStatus === 'HISTORICAL_NO_BREAKDOWN' ? (
+            <p className="text-sm text-gray-800 dark:text-gray-100">
+              Este bimestre es anterior al desglose por destrezas{grade.indicatorStartPeriod ? ` (empezó en ${periodLabel(grade.indicatorStartPeriod)})` : ''}: su nota se calculó con la competencia completa.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {competency.indicators.map((indicator) => {
+                const skill = grade.indicatorBreakdown.find((i) => i.id === indicator.id);
+                const graded = !!skill?.hasEvidence && !!skill.bucket && !!skill.gradeLabel;
+                return (
+                  <li key={indicator.id} className="rounded-xl border border-gray-200 p-3 dark:border-gray-700">
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                        <span className="text-gray-700 dark:text-gray-300">{indicator.code}</span> {indicator.name}
+                        {indicator.weight > 1 && <span className="font-normal text-gray-700 dark:text-gray-300"> · pesa ×{indicator.weight}</span>}
+                      </span>
+                      {graded && skill ? (
+                        <span className={`rounded-lg px-2 py-0.5 text-sm font-black ${BUCKET_STYLE[skill.bucket!]}`}>{skill.gradeLabel}</span>
+                      ) : (
+                        <span className="text-sm text-gray-700 dark:text-gray-300">Sin evidencia</span>
+                      )}
+                    </div>
+                    {skill && skill.observations > 0 ? (
+                      <IndicatorEvidenceSplit
+                        positiveObservations={skill.positiveObservations}
+                        negativeObservations={skill.negativeObservations}
+                        positivePoints={skill.positivePoints}
+                        negativePoints={skill.negativePoints}
+                      />
+                    ) : (
+                      <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">Aún no hay comportamientos vinculados a esta destreza en el bimestre.</p>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      )}
+
       {/* Comentarios */}
       <section aria-labelledby="grade-notes" className="space-y-3">
         <h3 id="grade-notes" className="sr-only">Comentarios</h3>
@@ -148,23 +193,6 @@ export const GradeDetailPanel = ({ book, studentName, competency, grade, onClose
                     <span className="block text-sm text-gray-700 dark:text-gray-300">{source.name}</span>
                   </span>
                   <span className="text-sm font-bold tabular-nums text-gray-900 dark:text-white">{labelOf(source.score)}</span>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-        {grade.indicatorBreakdownStatus === 'AVAILABLE' && grade.indicatorBreakdown.length > 0 && (
-          <>
-            <h4 className="pt-2 text-sm font-bold text-gray-900 dark:text-white">Por destreza</h4>
-            <ul className="space-y-1.5">
-              {grade.indicatorBreakdown.map((skill) => (
-                <li key={skill.id} className="flex items-center justify-between gap-3 text-sm">
-                  <span className="text-gray-900 dark:text-white">{skill.name}</span>
-                  {skill.hasEvidence && skill.bucket && skill.gradeLabel ? (
-                    <span className={`rounded-lg px-2 py-0.5 font-bold ${BUCKET_STYLE[skill.bucket]}`}>{skill.gradeLabel}</span>
-                  ) : (
-                    <span className="text-gray-700 dark:text-gray-300">Sin evidencia</span>
-                  )}
                 </li>
               ))}
             </ul>
