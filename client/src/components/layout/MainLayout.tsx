@@ -41,6 +41,7 @@ import { BugReportButton } from '../BugReportButton';
 import { ParticleLayer } from '../story/ParticleLayer';
 import { deriveStoryAccent, storyAccentVars, accentGradient } from '../../lib/storyTheme';
 import { useStoryParticles } from '../../hooks/useStoryParticles';
+import { useStoryLive } from '../../hooks/useStoryLive';
 
 type StudentMenuKey = 'space' | 'rewards' | 'adventures' | 'community';
 
@@ -140,6 +141,8 @@ export const MainLayout = () => {
   const storyAccent = useMemo(() => deriveStoryAccent(themeSource), [themeSource]);
   const hasStoryTheme = !!storyAccent;
   const [studentParticles] = useStoryParticles('student');
+  // El alumno recibe en vivo los finales que revela su profe.
+  useStoryLive(!isTeacher ? currentProfile?.classroomId : null);
 
   const handleLogout = async () => {
     await logout();

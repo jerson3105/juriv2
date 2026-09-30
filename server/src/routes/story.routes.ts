@@ -34,6 +34,7 @@ router.put('/chapters/:chapterId', authorize('TEACHER'), storyController.updateC
 router.delete('/chapters/:chapterId', authorize('TEACHER'), storyController.deleteChapter.bind(storyController));
 router.post('/chapters/:chapterId/complete', authorize('TEACHER'), storyController.completeChapter.bind(storyController));
 router.get('/chapters/:chapterId/recap', storyController.getChapterRecap.bind(storyController));
+router.get('/chapters/:chapterId/factions', storyController.getChapterFactions.bind(storyController));
 
 // ---- SCENES CRUD (Teacher) ----
 router.post('/chapters/:chapterId/scenes', authorize('TEACHER'), storyController.createScene.bind(storyController));

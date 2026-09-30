@@ -1,11 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useOutletContext } from 'react-router-dom';
 import { BookOpen, CheckCircle2, Film, Lock, MessageSquare, PartyPopper, Play, Sparkles, Trophy } from 'lucide-react';
 import { useStudentStore } from '../../store/studentStore';
 import { studentApi } from '../../lib/studentApi';
-import { storyApi, type StudentChapterInfo, type StudentSceneSummary } from '../../lib/storyApi';
+import { storyApi, type StoryRewardPreview, type StudentChapterInfo, type StudentSceneSummary } from '../../lib/storyApi';
+import { STORY_UPDATED_EVENT, type StoryUpdateEvent } from '../../hooks/useStoryLive';
+import { FactionStandings } from '../../components/storytelling/ChapterRewards';
 import { accentGradient, type StoryAccent } from '../../lib/storyTheme';
 import { useStoryParticles } from '../../hooks/useStoryParticles';
 import { StoryPlayer } from '../../components/story/StoryPlayer';
@@ -44,6 +46,15 @@ export const StudentStoryPage = () => {
   });
 
   const accent = storyAccent ?? null;
+
+  // Final revelado en vivo por el profe: se vuelve a reproducir lo nuevo (cierre y resumen).
+  useEffect(() => {
+    const onUpdate = (event: Event) => {
+      if ((event as CustomEvent<StoryUpdateEvent>).detail?.kind === 'revealed') setAutoplayDismissed(false);
+    };
+    window.addEventListener(STORY_UPDATED_EVENT, onUpdate);
+    return () => window.removeEventListener(STORY_UPDATED_EVENT, onUpdate);
+  }, []);
   const autoplay = useMemo(() => (story && !autoplayDismissed ? buildAutoplayItems(story) : []), [story, autoplayDismissed]);
   const shown = player ?? (autoplay.length > 0 ? { items: autoplay, label: `Historia: ${story?.title ?? ''}` } : null);
 
@@ -129,7 +140,7 @@ export const StudentStoryPage = () => {
 
       {/* Capítulo en curso */}
       {active && (
-        <ActiveChapterCard chapter={active} accent={accent} loading={loadingChapter === active.id} onPlay={() => playChapter(active)} />
+        <ActiveChapterCard chapter={active} accent={accent} reward={story.rewardPreview} loading={loadingChapter === active.id} onPlay={() => playChapter(active)} />
       )}
 
       {/* Línea de tiempo */}
@@ -162,7 +173,13 @@ export const StudentStoryPage = () => {
 
 // ---------- Capítulo en curso ----------
 
-const ActiveChapterCard = ({ chapter, accent, loading, onPlay }: { chapter: StudentChapterInfo; accent: StoryAccent | null; loading: boolean; onPlay: () => void }) => {
+const ActiveChapterCard = ({ chapter, accent, reward, loading, onPlay }: { chapter: StudentChapterInfo; accent: StoryAccent | null; reward: StoryRewardPreview | null; loading: boolean; onPlay: () => void }) => {
+  const gifts = reward ? [
+    reward.badge ? `${reward.badge.icon} ${reward.badge.name}` : null,
+    reward.xp ? `+${reward.xp} XP` : null,
+    reward.gp ? `+${reward.gp} de oro` : null,
+    reward.card ? `🃏 ${reward.card.name}` : null,
+  ].filter(Boolean) : [];
   const target = chapter.completionConfig?.targetXp ?? 0;
   const percent = target > 0 ? Math.min(100, (chapter.currentProgress / target) * 100) : 0;
   const { data: board } = useQuery({
@@ -214,6 +231,18 @@ const ActiveChapterCard = ({ chapter, accent, loading, onPlay }: { chapter: Stud
       ) : (
         <p className="mt-3 text-sm text-gray-700 dark:text-gray-300">Este capítulo termina al cerrar el bimestre. ¡Sigue participando!</p>
       )}
+
+      {gifts.length > 0 && (
+        <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50 p-3 dark:border-violet-800 dark:bg-violet-900/25">
+          <p className="text-sm font-bold text-violet-950 dark:text-violet-50">🎁 Al revelar el final, quienes aporten XP ganan:</p>
+          <p className="mt-1 text-sm text-violet-900 dark:text-violet-100">{gifts.join(' · ')}</p>
+          {reward?.clanPrize.mode === 'GP' && (
+            <p className="mt-1 text-sm text-violet-900 dark:text-violet-100">Y el clan que más aporte: +{reward.clanPrize.gp ?? 0} de oro para cada miembro.</p>
+          )}
+        </div>
+      )}
+
+      <div className="mt-4"><FactionStandings chapterId={chapter.id} /></div>
 
       {board && board.leaderboard.length > 0 && (
         <div className="mt-4">

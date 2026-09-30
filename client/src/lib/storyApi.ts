@@ -58,6 +58,38 @@ export interface StoryScene {
   dialogues: SceneDialogue[];
 }
 
+// Recompensa al revelar el capítulo (la reciben quienes aportaron XP durante el capítulo).
+export interface StoryRewardConfig {
+  badgeId?: string | null;
+  xp?: number;
+  gp?: number;
+  cardId?: string | null;
+  clanPrize?: { mode: 'NONE' | 'MENTION' | 'GP'; gp?: number };
+}
+
+export interface StoryRewardResult {
+  participants: number;
+  badge?: { id: string; name: string; icon: string; awarded: number };
+  xp?: number;
+  gp?: number;
+  card?: { id: string; name: string; granted: number };
+  winningClan?: { id: string; name: string; emblem: string; xp: number; prizeGp: number; members: number } | null;
+  errors?: string[];
+}
+
+export interface StoryRewardPreview {
+  badge: { name: string; icon: string } | null;
+  xp: number;
+  gp: number;
+  card: { name: string } | null;
+  clanPrize: { mode: 'NONE' | 'MENTION' | 'GP'; gp?: number };
+}
+
+export interface ChapterFactions {
+  participants: number;
+  clans: { id: string; name: string; emblem: string; color: string; xp: number }[];
+}
+
 export interface StoryChapter {
   id: string;
   storyId: string;
@@ -70,6 +102,8 @@ export interface StoryChapter {
     targetXp?: number;
     donationPercent?: number;
   } | null;
+  rewardConfig: StoryRewardConfig | string | null;
+  rewardResult: StoryRewardResult | string | null;
   currentProgress: string;
   progressBaseline: string | null;
   activatedAt: string | null;
@@ -137,6 +171,7 @@ export interface StudentStoryData {
   themeConfig: ThemeConfig | null;
   chapters: StudentChapterInfo[];
   unseenScenes: StoryScene[];
+  rewardPreview: StoryRewardPreview | null;
 }
 
 export interface LeaderboardEntry {
@@ -163,6 +198,7 @@ export interface ChapterRecap {
   heroes: LeaderboardEntry[];
   nextChapterTitle: string | null;
   isLast: boolean;
+  rewardResult: StoryRewardResult | null;
 }
 
 export interface ChapterLeaderboard {
@@ -248,6 +284,7 @@ export const storyApi = {
     completionType: string;
     completionConfig?: { targetXp?: number; donationPercent?: number };
     themeOverride?: ThemeConfig;
+    rewardConfig?: StoryRewardConfig | null;
   }): Promise<StoryChapter> => {
     const res = await api.post(`/stories/${storyId}/chapters`, data);
     return res.data.data;
@@ -259,6 +296,7 @@ export const storyApi = {
     completionType?: string;
     completionConfig?: { targetXp?: number; donationPercent?: number };
     themeOverride?: ThemeConfig;
+    rewardConfig?: StoryRewardConfig | null;
   }): Promise<StoryChapter> => {
     const res = await api.put(`/stories/chapters/${chapterId}`, data);
     return res.data.data;
@@ -276,6 +314,11 @@ export const storyApi = {
 
   reorderChapters: async (storyId: string, chapterIds: string[]): Promise<Story> => {
     const res = await api.put(`/stories/${storyId}/chapters/order`, { chapterIds });
+    return res.data.data;
+  },
+
+  getChapterFactions: async (chapterId: string): Promise<ChapterFactions> => {
+    const res = await api.get(`/stories/chapters/${chapterId}/factions`);
     return res.data.data;
   },
 

@@ -10,6 +10,7 @@ import { ActionMenu } from '../home/ActionMenu';
 import {
   COMPLETION_TYPES, SCENE_TYPES, STATUS_LABEL, chapterProgress, plural, sceneSnippet, sceneTrigger,
 } from './storyEditorHelpers';
+import { ChapterRewardChips, FactionStandings } from './ChapterRewards';
 
 export interface StoryDetailActions {
   onBack: () => void;
@@ -230,6 +231,8 @@ const ChapterItem = ({
         {isOpen && (
           <div id={panelId} className="space-y-3 border-t border-gray-100 p-3 dark:border-gray-700 sm:p-4">
             {chapter.description && <p className="text-sm italic text-gray-700 dark:text-gray-300">«{chapter.description}»</p>}
+            <ChapterRewardChips chapter={chapter} />
+            {isActive && <FactionStandings chapterId={chapter.id} />}
 
             <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3" aria-label={`Escenas de «${chapter.title}»`}>
               {chapter.scenes.map((scene) => (

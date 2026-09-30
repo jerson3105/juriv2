@@ -2854,6 +2854,25 @@ export const storiesRelations = relations(stories, ({ one, many }) => ({
   chapters: many(storyChapters),
 }));
 
+export interface StoryRewardConfig {
+  badgeId?: string | null;
+  xp?: number;
+  gp?: number;
+  cardId?: string | null;
+  // Premio al clan que más aportó: lo decide el profesor en cada capítulo.
+  clanPrize?: { mode: 'NONE' | 'MENTION' | 'GP'; gp?: number };
+}
+
+export interface StoryRewardResult {
+  participants: number;
+  badge?: { id: string; name: string; icon: string; awarded: number };
+  xp?: number;
+  gp?: number;
+  card?: { id: string; name: string; granted: number };
+  winningClan?: { id: string; name: string; emblem: string; xp: number; prizeGp: number; members: number } | null;
+  errors?: string[];
+}
+
 export const storyChapters = mysqlTable('story_chapters', {
   id: varchar('id', { length: 36 }).primaryKey(),
   storyId: varchar('story_id', { length: 36 }).notNull(),
@@ -2866,6 +2885,10 @@ export const storyChapters = mysqlTable('story_chapters', {
     targetXp?: number;
     donationPercent?: number;
   }>(),
+  // Recompensa al revelar: la reciben quienes ganaron XP durante el capítulo.
+  rewardConfig: json('reward_config').$type<StoryRewardConfig>(),
+  // Lo entregado al revelar (cierre celebrado y auditoría).
+  rewardResult: json('reward_result').$type<StoryRewardResult>(),
   currentProgress: decimal('current_progress', { precision: 12, scale: 2 }).notNull().default('0'),
   // XP de la clase al activarse el capítulo (meta relativa). NULL = capítulo anterior a la migración (cuenta desde 0).
   progressBaseline: decimal('progress_baseline', { precision: 12, scale: 2 }),

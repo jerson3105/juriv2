@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { CLAN_EMBLEMS } from '../../lib/clanApi';
 import { AnimatePresence } from 'framer-motion';
 import { BookOpen, Loader2, Palette, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -16,7 +17,7 @@ import { SceneEditorModal, type SceneDraft } from '../../components/storytelling
 import { StoryConfirmModal } from '../../components/storytelling/StoryConfirmModal';
 import { ThemePanel } from '../../components/storytelling/ThemePanel';
 import { showUndoToast } from '../../components/storytelling/undoToast';
-import { chapterProgress, classroomKey, errorMessage, plural, storiesKey, storyDetailKey } from '../../components/storytelling/storyEditorHelpers';
+import { chapterProgress, chapterReward, classroomKey, errorMessage, plural, storiesKey, storyDetailKey } from '../../components/storytelling/storyEditorHelpers';
 
 type Modal =
   | { kind: 'story-form'; story?: Story }
@@ -314,7 +315,7 @@ export const StorytellingPage = () => {
           </StoryConfirmModal>
         )}
         {modal?.kind === 'chapter-form' && (
-          <ChapterFormModal key="chapter-form" chapter={modal.chapter} position={modal.position} saving={busy === 'chapter-form'} onSubmit={saveChapter} onClose={() => setModal(null)} />
+          <ChapterFormModal key="chapter-form" chapter={modal.chapter} position={modal.position} classroomId={classroom.id} clansEnabled={!!classroom.clansEnabled} saving={busy === 'chapter-form'} onSubmit={saveChapter} onClose={() => setModal(null)} />
         )}
         {modal?.kind === 'chapter-delete' && (
           <StoryConfirmModal key="chapter-delete" title={`Eliminar el capítulo ${modal.position}`} confirmLabel="Eliminar capítulo" busy={busy === 'chapter-delete'} onConfirm={() => deleteChapter(modal.chapter)} onClose={() => setModal(null)}>
@@ -369,6 +370,18 @@ const RevealModal = ({ chapter, position, next, busy, onPresent, onRevealOnly, o
 }) => {
   const progress = chapterProgress(chapter);
   const outros = chapter.scenes.filter((s) => s.type === 'OUTRO').length;
+  const reward = chapterReward(chapter);
+  const { data: factions } = useQuery({
+    queryKey: ['chapter-factions', chapter.id],
+    queryFn: () => storyApi.getChapterFactions(chapter.id),
+  });
+  const leader = factions?.clans.find((c) => c.xp > 0);
+  const gifts = [
+    reward?.badgeId ? 'una insignia' : null,
+    reward?.xp ? `${reward.xp} XP` : null,
+    reward?.gp ? `${reward.gp} de oro` : null,
+    reward?.cardId ? 'un cromo' : null,
+  ].filter(Boolean);
   return (
     <StoryConfirmModal
       title={`Revelar el final del capítulo ${position}`}
@@ -382,6 +395,17 @@ const RevealModal = ({ chapter, position, next, busy, onPresent, onRevealOnly, o
       <p>«{chapter.title}» termina ahora: los alumnos podrán ver {outros > 0 ? plural(outros, 'escena de cierre', 'escenas de cierre') : 'el resumen del capítulo'} y {next ? <>empezará «{next.title}»</> : 'la historia llegará a su final'}.</p>
       {!chapter.goalReachedAt && progress.target > 0 && (
         <p className="font-semibold text-amber-900 dark:text-amber-200">La meta aún no se alcanzó ({Math.round(progress.percent)} %). Puedes revelarlo igualmente.</p>
+      )}
+      {gifts.length > 0 && (
+        <p>
+          Recompensa: {gifts.length > 1 ? `${gifts.slice(0, -1).join(', ')} y ${gifts[gifts.length - 1]}` : gifts[0]} para {factions ? plural(factions.participants, 'alumno que aportó', 'alumnos que aportaron') : 'quienes aportaron'} XP en el capítulo.
+        </p>
+      )}
+      {leader && reward?.clanPrize?.mode !== 'NONE' && (
+        <p>
+          Clan que más aportó: <strong>{CLAN_EMBLEMS[leader.emblem] || '🛡️'} {leader.name}</strong> ({leader.xp} XP)
+          {reward?.clanPrize?.mode === 'GP' ? ` — cada miembro recibe ${reward.clanPrize.gp ?? 0} de oro.` : '.'}
+        </p>
       )}
       {outros === 0 && <p>Consejo: añade una escena de cierre para que el final tenga su momento.</p>}
       <p>«Revelar y presentar» lo muestra en pantalla completa para el proyector. No se puede deshacer.</p>

@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight, Maximize2, Minimize2, SkipForward, Volume2, VolumeX, X, Trophy, CalendarDays, Sparkles, Heart, Loader2 } from 'lucide-react';
-import { storyApi, type ChapterRecap, type StoryScene } from '../../lib/storyApi';
+import { storyApi, type ChapterRecap, type StoryRewardResult, type StoryScene } from '../../lib/storyApi';
+import { CLAN_EMBLEMS } from '../../lib/clanApi';
 import type { StoryAccent } from '../../lib/storyTheme';
 import { createCeremonySound, readMuted, saveMuted, type CeremonySound } from '../rankings/ceremony/ceremonySound';
 import { emotionOf, youTubeId, type PlayerItem } from './storyPlayerHelpers';
@@ -421,6 +422,14 @@ const SceneView = ({ scene, backdrop, emoji, projector, line, text, typed, done,
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
+// Resumen de lo entregado al revelar (insignia, XP, oro, cromo).
+const rewardLine = (r: StoryRewardResult) => [
+  r.badge && r.badge.awarded > 0 ? `${r.badge.icon} ${r.badge.name}` : null,
+  r.xp ? `+${r.xp} XP` : null,
+  r.gp ? `+${r.gp} de oro` : null,
+  r.card ? `🃏 ${r.card.name}` : null,
+].filter(Boolean).join(' · ');
+
 const RecapView = ({ chapterId, backdrop, projector, reduceMotion, onDone, isLast }: {
   chapterId: string;
   backdrop: string;
@@ -500,6 +509,21 @@ const RecapContent = ({ recap, projector }: { recap: ChapterRecap; projector: bo
             ))}
           </ol>
         </div>
+      )}
+
+      {recap.rewardResult?.winningClan && (
+        <motion.p initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 1.2 }} className={`mt-6 font-bold text-amber-200 ${projector ? 'text-2xl' : 'text-lg'}`}>
+          <span aria-hidden="true">{CLAN_EMBLEMS[recap.rewardResult.winningClan.emblem] || '🛡️'}</span> El clan {recap.rewardResult.winningClan.name} fue el que más aportó ({recap.rewardResult.winningClan.xp} XP)
+          {recap.rewardResult.winningClan.prizeGp > 0 && ` · +${recap.rewardResult.winningClan.prizeGp} de oro para cada miembro`}
+        </motion.p>
+      )}
+
+      {recap.rewardResult && rewardLine(recap.rewardResult) && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1.5 }} className="mx-auto mt-4 max-w-2xl rounded-2xl bg-black/50 px-5 py-3">
+          <p className="text-sm font-bold uppercase tracking-widest text-white/90">Recompensa</p>
+          <p className={`mt-1 font-semibold text-white ${projector ? 'text-xl' : 'text-base'}`}>{rewardLine(recap.rewardResult)}</p>
+          <p className="text-sm text-white/90">Para {recap.rewardResult.participants} {recap.rewardResult.participants === 1 ? 'aventurero que aportó' : 'aventureros que aportaron'} en el capítulo</p>
+        </motion.div>
       )}
 
       <p className={`mt-6 font-semibold text-white ${projector ? 'text-2xl' : 'text-lg'}`}>

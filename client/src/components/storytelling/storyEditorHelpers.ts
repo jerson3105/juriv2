@@ -1,4 +1,4 @@
-import type { StoryChapter, StoryScene } from '../../lib/storyApi';
+import type { StoryChapter, StoryRewardConfig, StoryRewardResult, StoryScene } from '../../lib/storyApi';
 
 export const storiesKey = (classroomId: string) => ['stories', classroomId] as const;
 export const storyDetailKey = (storyId: string) => ['story-detail', storyId] as const;
@@ -38,6 +38,9 @@ const parse = <T>(raw: unknown): T | null => {
 
 export const chapterConfig = (chapter: StoryChapter) =>
   parse<{ targetXp?: number; donationPercent?: number }>(chapter.completionConfig) ?? {};
+
+export const chapterReward = (chapter?: StoryChapter | null) => (chapter ? parse<StoryRewardConfig>(chapter.rewardConfig) : null);
+export const chapterRewardResult = (chapter: StoryChapter) => parse<StoryRewardResult>(chapter.rewardResult);
 
 export const chapterProgress = (chapter: StoryChapter) => {
   const target = chapterConfig(chapter).targetXp ?? 0;

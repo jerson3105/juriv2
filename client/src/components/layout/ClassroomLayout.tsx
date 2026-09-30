@@ -60,6 +60,7 @@ import { ParticleLayer } from '../story/ParticleLayer';
 import { deriveStoryAccent, storyAccentVars, accentGradient } from '../../lib/storyTheme';
 import { storyApi } from '../../lib/storyApi';
 import { useStoryParticles } from '../../hooks/useStoryParticles';
+import { useStoryLive } from '../../hooks/useStoryLive';
 import { useTeacherOnboardingSafe } from '../../contexts/TeacherOnboardingContext';
 import {
   CLASSROOM_SETTINGS_SECTIONS,
@@ -148,6 +149,8 @@ export const ClassroomLayout = () => {
   const storyAccent = useMemo(() => deriveStoryAccent(classroom?.themeConfig), [classroom?.themeConfig]);
   const hasStoryTheme = !!storyAccent;
   const [teacherParticles] = useStoryParticles('teacher');
+  // Revelaciones y metas alcanzadas en vivo (sala de la clase).
+  useStoryLive(id);
 
   // Capítulos listos para revelar: aviso en el menú (misma caché que la página de Historia).
   const { data: classroomStories = [] } = useQuery({

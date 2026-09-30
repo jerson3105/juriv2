@@ -30,6 +30,7 @@ import { LoginStreakWidget } from '../../components/student/LoginStreakWidget';
 import { storyApi } from '../../lib/storyApi';
 import { StoryPlayer } from '../../components/story/StoryPlayer';
 import { buildAutoplayItems } from '../../components/story/storyPlayerHelpers';
+import { STORY_UPDATED_EVENT, type StoryUpdateEvent } from '../../hooks/useStoryLive';
 import { accentGradient, type StoryAccent } from '../../lib/storyTheme';
 import { classNoteApi } from '../../lib/classNoteApi';
 import { clanApi, CLAN_EMBLEMS } from '../../lib/clanApi';
@@ -104,6 +105,15 @@ export const StudentDashboard = () => {
     queryFn: () => clanApi.getStudentClanInfo(currentProfile!.id),
     enabled: !!currentProfile?.id,
   });
+
+  // Final revelado en vivo: vuelve a reproducir lo nuevo aunque ya se hubiera cerrado la historia.
+  useEffect(() => {
+    const onUpdate = (event: Event) => {
+      if ((event as CustomEvent<StoryUpdateEvent>).detail?.kind === 'revealed') setStoryDismissed(false);
+    };
+    window.addEventListener(STORY_UPDATED_EVENT, onUpdate);
+    return () => window.removeEventListener(STORY_UPDATED_EVENT, onUpdate);
+  }, []);
 
   const storyItems = useMemo(
     () => (storyData && currentProfile && !storyDismissed ? buildAutoplayItems(storyData) : []),

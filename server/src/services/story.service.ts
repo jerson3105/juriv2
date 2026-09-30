@@ -9,11 +9,20 @@ import {
   classrooms,
   studentProfiles,
   pointLogs,
+  badges,
+  collectibleCards,
+  collectibleAlbums,
+  studentCollectibles,
+  clanLogs,
+  teams,
+  type StoryRewardConfig,
+  type StoryRewardResult,
 } from '../db/schema.js';
-import { eq, and, asc, desc, sql, inArray, gte, lte } from 'drizzle-orm';
+import { eq, and, asc, desc, sql, inArray, gte, lt, isNull } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { teacherOwnsClassroom } from '../utils/access.js';
-import { affectedRows } from '../utils/points.js';
+import { affectedRows, applyPointDeltasBulk } from '../utils/points.js';
+import { getIO } from '../utils/notificationEmitter.js';
 import { ConflictError, NotFoundError, ValidationError } from '../utils/errors.js';
 
 type Executor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -466,6 +475,7 @@ class StoryService {
     completionType: string;
     completionConfig?: any;
     themeOverride?: any;
+    rewardConfig?: StoryRewardConfig | null;
   }) {
     const id = uuidv4();
     const now = new Date();
@@ -493,6 +503,7 @@ class StoryService {
         status: 'LOCKED',
         completionType: data.completionType,
         completionConfig: data.completionConfig || null,
+        rewardConfig: data.rewardConfig || null,
         currentProgress: '0',
         themeOverride: data.themeOverride || null,
         createdAt: now,
@@ -537,6 +548,7 @@ class StoryService {
     completionType?: string;
     completionConfig?: any;
     themeOverride?: any;
+    rewardConfig?: StoryRewardConfig | null;
   }) {
     const now = new Date();
     await db.transaction(async (tx) => {
@@ -553,6 +565,9 @@ class StoryService {
       if (chapter.status === 'COMPLETED' && (data.completionType !== undefined || data.completionConfig !== undefined)) {
         throw new ConflictError('Un capítulo completado no puede cambiar su condición de cierre');
       }
+      if (chapter.status === 'COMPLETED' && data.rewardConfig !== undefined) {
+        throw new ConflictError('La recompensa de un capítulo completado ya se entregó');
+      }
 
       const updateData: Partial<typeof storyChapters.$inferInsert> = { updatedAt: now };
       if (data.title !== undefined) updateData.title = data.title;
@@ -560,6 +575,7 @@ class StoryService {
       if (data.completionType !== undefined) updateData.completionType = data.completionType;
       if (data.completionConfig !== undefined) updateData.completionConfig = data.completionConfig;
       if (data.themeOverride !== undefined) updateData.themeOverride = data.themeOverride;
+      if (data.rewardConfig !== undefined) updateData.rewardConfig = data.rewardConfig;
 
       // Un capítulo en curso que pasa a Meta XP empieza a contar desde ahora.
       const switchesToXpGoal = chapter.status === 'ACTIVE'
@@ -616,36 +632,256 @@ class StoryService {
     });
   }
 
+  /** Nombres de la insignia y el cromo configurados (para mostrarlos al alumno y en el editor). */
+  async rewardPreview(config: StoryRewardConfig | null) {
+    if (!config) return null;
+    const [badge] = config.badgeId
+      ? await db.select({ name: badges.name, icon: badges.icon }).from(badges).where(eq(badges.id, config.badgeId))
+      : [];
+    const [card] = config.cardId
+      ? await db.select({ name: collectibleCards.name }).from(collectibleCards).where(eq(collectibleCards.id, config.cardId))
+      : [];
+    const preview = {
+      badge: badge ?? null,
+      xp: config.xp ?? 0,
+      gp: config.gp ?? 0,
+      card: card ?? null,
+      clanPrize: config.clanPrize ?? { mode: 'MENTION' as const },
+    };
+    return preview.badge || preview.xp || preview.gp || preview.card || preview.clanPrize.mode !== 'NONE' ? preview : null;
+  }
+
+  /** La insignia y el cromo de la recompensa deben ser de esta clase. */
+  async validateRewardConfig(classroomId: string, config: StoryRewardConfig | null | undefined) {
+    if (!config) return;
+    if (config.badgeId) {
+      const [badge] = await db.select({ id: badges.id, mode: badges.assignmentMode, isActive: badges.isActive }).from(badges)
+        .where(and(eq(badges.id, config.badgeId), eq(badges.classroomId, classroomId)));
+      if (!badge || !badge.isActive) throw new ValidationError('La insignia no pertenece a esta clase');
+      if (badge.mode === 'AUTOMATIC') throw new ValidationError('Esa insignia solo se gana automáticamente: elige una que se pueda otorgar a mano');
+    }
+    if (config.cardId) {
+      const [card] = await db.select({ id: collectibleCards.id }).from(collectibleCards)
+        .innerJoin(collectibleAlbums, eq(collectibleCards.albumId, collectibleAlbums.id))
+        .where(and(eq(collectibleCards.id, config.cardId), eq(collectibleAlbums.classroomId, classroomId)));
+      if (!card) throw new ValidationError('El cromo no pertenece a esta clase');
+    }
+  }
+
+  /** Alumnos activos que ganaron XP neto durante el capítulo (reciben la recompensa). */
+  private async chapterParticipants(classroomId: string, from: Date, to: Date) {
+    const xpNet = sql<string>`COALESCE(SUM(CASE WHEN ${pointLogs.pointType} = 'XP' THEN IF(${pointLogs.action} = 'ADD', ${pointLogs.amount}, -${pointLogs.amount}) ELSE 0 END), 0)`;
+    const rows = await db.select({ id: studentProfiles.id, xp: xpNet })
+      .from(pointLogs)
+      .innerJoin(studentProfiles, eq(pointLogs.studentId, studentProfiles.id))
+      .where(and(
+        eq(studentProfiles.classroomId, classroomId),
+        eq(studentProfiles.isActive, true),
+        eq(studentProfiles.isDemo, false),
+        eq(pointLogs.isReverted, false),
+        gte(pointLogs.createdAt, from),
+        lt(pointLogs.createdAt, to),
+      ))
+      .groupBy(studentProfiles.id);
+    return rows.filter((r) => Number(r.xp) > 0).map((r) => r.id);
+  }
+
+  /** Aporte de cada clan durante el capítulo (clanes como facciones). Vacío si la clase no usa clanes. */
+  private async clanStandings(classroomId: string, from: Date, to: Date) {
+    const [classroom] = await db.select({ clansEnabled: classrooms.clansEnabled }).from(classrooms).where(eq(classrooms.id, classroomId));
+    if (!classroom?.clansEnabled) return [];
+    const xp = sql<string>`COALESCE(SUM(${clanLogs.xpAmount}), 0)`;
+    const rows = await db.select({ id: teams.id, name: teams.name, emblem: teams.emblem, color: teams.color, xp })
+      .from(teams)
+      .leftJoin(clanLogs, and(
+        eq(clanLogs.clanId, teams.id),
+        eq(clanLogs.action, 'XP_CONTRIBUTED'),
+        gte(clanLogs.createdAt, from),
+        lt(clanLogs.createdAt, to),
+      ))
+      .where(eq(teams.classroomId, classroomId))
+      .groupBy(teams.id, teams.name, teams.emblem, teams.color)
+      .orderBy(desc(xp));
+    return rows.map((r) => ({ ...r, xp: Number(r.xp) }));
+  }
+
+  private chapterWindow(chapter: { activatedAt: Date | null; createdAt: Date; completedAt: Date | null }) {
+    return { from: chapter.activatedAt ?? chapter.createdAt, to: chapter.completedAt ?? new Date() };
+  }
+
+  /** Facciones y participantes del capítulo (vista previa del profesor y del alumno). */
+  async getChapterFactions(chapterId: string) {
+    const [chapter] = await db.select({
+      activatedAt: storyChapters.activatedAt,
+      createdAt: storyChapters.createdAt,
+      completedAt: storyChapters.completedAt,
+      status: storyChapters.status,
+      classroomId: stories.classroomId,
+    })
+      .from(storyChapters)
+      .innerJoin(stories, eq(storyChapters.storyId, stories.id))
+      .where(eq(storyChapters.id, chapterId));
+    if (!chapter) throw new NotFoundError('Capítulo no encontrado');
+    if (chapter.status === 'LOCKED') return { participants: 0, clans: [] };
+    const { from, to } = this.chapterWindow(chapter);
+    const [participants, clans] = await Promise.all([
+      this.chapterParticipants(chapter.classroomId, from, to),
+      this.clanStandings(chapter.classroomId, from, to),
+    ]);
+    return { participants: participants.length, clans };
+  }
+
+  /** Aviso en vivo a la sala de la clase (profesor y alumnos conectados). */
+  private emitStoryUpdate(classroomId: string, payload: { chapterId: string; kind: 'goal' | 'revealed' }) {
+    try {
+      getIO()?.to(`classroom:${classroomId}`).emit('story:updated', { classroomId, ...payload });
+    } catch (error) {
+      console.error('No se pudo avisar la actualización de la historia:', error);
+    }
+  }
+
+  /** XP/oro de recompensa: registros de puntos (reversibles desde el historial) y saldos en una transacción. */
+  private async grantPoints(classroomId: string, studentIds: string[], deltas: { xp: number; gp: number }, reason: string, teacherId: string) {
+    if (studentIds.length === 0 || (deltas.xp <= 0 && deltas.gp <= 0)) return;
+    const [classroom] = await db.select({ xpPerLevel: classrooms.xpPerLevel }).from(classrooms).where(eq(classrooms.id, classroomId));
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      const rows = studentIds.flatMap((studentId) => [
+        ...(deltas.xp > 0 ? [{ id: uuidv4(), studentId, pointType: 'XP' as const, action: 'ADD' as const, amount: deltas.xp, reason, givenBy: teacherId, createdAt: now }] : []),
+        ...(deltas.gp > 0 ? [{ id: uuidv4(), studentId, pointType: 'GP' as const, action: 'ADD' as const, amount: deltas.gp, reason, givenBy: teacherId, createdAt: now }] : []),
+      ]);
+      await tx.insert(pointLogs).values(rows);
+      await applyPointDeltasBulk(tx, studentIds, { xp: deltas.xp, gp: deltas.gp }, { xpPerLevel: classroom?.xpPerLevel ?? 100 });
+    });
+  }
+
+  /** Un cromo para cada alumno (suma uno si ya lo tenía). */
+  private async grantCard(cardId: string, studentIds: string[]) {
+    if (studentIds.length === 0) return;
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      for (const studentProfileId of studentIds) {
+        await tx.insert(studentCollectibles)
+          .values({ id: uuidv4(), studentProfileId, cardId, quantity: 1, isShiny: false, obtainedAt: now, updatedAt: now })
+          .onDuplicateKeyUpdate({ set: { quantity: sql`${studentCollectibles.quantity} + 1`, updatedAt: now } });
+      }
+    });
+  }
+
   /**
-   * Revela el final: completa el capítulo en curso y abre el siguiente por orden.
-   * Solo desde ACTIVE y con actualización condicional, así un doble clic no salta dos capítulos.
+   * Revela el final: completa el capítulo en curso, entrega la recompensa a quienes aportaron XP
+   * (y el premio al clan que más aportó, si el profesor lo eligió) y abre el siguiente capítulo.
+   * Solo desde ACTIVE y con actualización condicional, así un doble clic no revela dos veces.
+   * La recompensa se entrega antes de abrir el siguiente capítulo: ese XP no cuenta para la nueva meta.
    */
-  async completeChapter(chapterId: string) {
+  async completeChapter(chapterId: string, teacherId: string) {
     const now = new Date();
 
+    const [chapter] = await db.select({
+      id: storyChapters.id,
+      storyId: storyChapters.storyId,
+      title: storyChapters.title,
+      status: storyChapters.status,
+      rewardConfig: storyChapters.rewardConfig,
+      activatedAt: storyChapters.activatedAt,
+      createdAt: storyChapters.createdAt,
+      classroomId: stories.classroomId,
+    })
+      .from(storyChapters)
+      .innerJoin(stories, eq(storyChapters.storyId, stories.id))
+      .where(eq(storyChapters.id, chapterId));
+
+    if (!chapter) throw new NotFoundError('Capítulo no encontrado');
+    if (chapter.status !== 'ACTIVE') throw new ConflictError('Este capítulo no está en curso');
+
+    const closed = await db.update(storyChapters)
+      .set({ status: 'COMPLETED', completedAt: now, goalReachedAt: sql`COALESCE(${storyChapters.goalReachedAt}, ${sql.param(now, storyChapters.goalReachedAt)})`, updatedAt: now })
+      .where(and(eq(storyChapters.id, chapterId), eq(storyChapters.status, 'ACTIVE')));
+    if (affectedRows(closed) === 0) throw new ConflictError('Este capítulo ya fue revelado');
+
+    // Recompensas: cada parte por separado; si una falla, las demás se entregan y queda anotado.
+    const config = parseJson<StoryRewardConfig>(chapter.rewardConfig) ?? {};
+    const from = chapter.activatedAt ?? chapter.createdAt;
+    const participants = await this.chapterParticipants(chapter.classroomId, from, now);
+    const result: StoryRewardResult = { participants: participants.length, errors: [] };
+    const reason = `Historia: ${chapter.title}`;
+    const prize = config.clanPrize?.mode ?? 'MENTION';
+    const [topClan] = prize !== 'NONE' ? await this.clanStandings(chapter.classroomId, from, now) : [];
+
+    if (config.badgeId && participants.length > 0) {
+      try {
+        const { badgeService } = await import('./badge.service.js');
+        const badge = await badgeService.getBadgeById(config.badgeId);
+        const awarded = await badgeService.awardBadgeToStudents(participants, config.badgeId, teacherId, chapter.classroomId, reason);
+        result.badge = { id: config.badgeId, name: badge?.name ?? 'Insignia', icon: badge?.icon ?? '🏅', awarded: awarded.awarded.length };
+        // Quien ya la tenía (o llegó al límite de otorgamientos) no la recibe de nuevo: se anota el motivo.
+        const reasons = [...new Set(awarded.failed.map((f) => f.message))];
+        if (reasons.length > 0) result.errors!.push(...reasons.map((m) => `insignia: ${m}`));
+      } catch (error) {
+        result.errors!.push('insignia');
+        console.error('Recompensa de historia (insignia):', error);
+      }
+    }
+    const xp = Math.max(0, Math.trunc(config.xp ?? 0));
+    const gp = Math.max(0, Math.trunc(config.gp ?? 0));
+    if ((xp > 0 || gp > 0) && participants.length > 0) {
+      try {
+        await this.grantPoints(chapter.classroomId, participants, { xp, gp }, reason, teacherId);
+        if (xp > 0) result.xp = xp;
+        if (gp > 0) result.gp = gp;
+      } catch (error) {
+        result.errors!.push('puntos');
+        console.error('Recompensa de historia (puntos):', error);
+      }
+    }
+    if (config.cardId && participants.length > 0) {
+      try {
+        const [card] = await db.select({ name: collectibleCards.name }).from(collectibleCards).where(eq(collectibleCards.id, config.cardId));
+        await this.grantCard(config.cardId, participants);
+        result.card = { id: config.cardId, name: card?.name ?? 'Cromo', granted: participants.length };
+      } catch (error) {
+        result.errors!.push('cromo');
+        console.error('Recompensa de historia (cromo):', error);
+      }
+    }
+
+    // Facciones: el clan que más aportó durante el capítulo (calculado antes de las recompensas).
+    if (prize !== 'NONE') {
+      const top = topClan;
+      if (top && top.xp > 0) {
+        const members = (await db.select({ id: studentProfiles.id }).from(studentProfiles).where(and(
+          eq(studentProfiles.teamId, top.id),
+          eq(studentProfiles.isActive, true),
+          eq(studentProfiles.isDemo, false),
+        ))).map((m) => m.id);
+        const prizeGp = prize === 'GP' ? Math.max(0, Math.trunc(config.clanPrize?.gp ?? 0)) : 0;
+        if (prizeGp > 0) {
+          try {
+            await this.grantPoints(chapter.classroomId, members, { xp: 0, gp: prizeGp }, `Historia: premio a ${top.name}`, teacherId);
+          } catch (error) {
+            result.errors!.push('premio del clan');
+            console.error('Recompensa de historia (clan):', error);
+          }
+        }
+        result.winningClan = { id: top.id, name: top.name, emblem: top.emblem, xp: top.xp, prizeGp, members: members.length };
+      } else {
+        result.winningClan = null;
+      }
+    }
+    if (result.errors!.length === 0) delete result.errors;
+
     await db.transaction(async (tx) => {
-      const [chapter] = await tx.select({
-        id: storyChapters.id,
-        storyId: storyChapters.storyId,
-        status: storyChapters.status,
-        classroomId: stories.classroomId,
-      })
-        .from(storyChapters)
-        .innerJoin(stories, eq(storyChapters.storyId, stories.id))
-        .where(eq(storyChapters.id, chapterId));
-
-      if (!chapter) throw new NotFoundError('Capítulo no encontrado');
-      if (chapter.status !== 'ACTIVE') throw new ConflictError('Este capítulo no está en curso');
-
-      const result = await tx.update(storyChapters)
-        .set({ status: 'COMPLETED', completedAt: now, goalReachedAt: sql`COALESCE(${storyChapters.goalReachedAt}, ${sql.param(now, storyChapters.goalReachedAt)})`, updatedAt: now })
-        .where(and(eq(storyChapters.id, chapterId), eq(storyChapters.status, 'ACTIVE')));
-      if (affectedRows(result) === 0) throw new ConflictError('Este capítulo ya fue revelado');
-
-      const next = await this.nextLockedChapter(tx, chapter.storyId);
-      if (next) await this.startChapter(tx, next, chapter.classroomId, now);
+      await tx.update(storyChapters).set({ rewardResult: result }).where(eq(storyChapters.id, chapterId));
+      // Sigue el próximo capítulo (si no hay otro en curso).
+      const [running] = await tx.select({ id: storyChapters.id }).from(storyChapters)
+        .where(and(eq(storyChapters.storyId, chapter.storyId), eq(storyChapters.status, 'ACTIVE'))).limit(1);
+      if (!running) {
+        const next = await this.nextLockedChapter(tx, chapter.storyId);
+        if (next) await this.startChapter(tx, next, chapter.classroomId, new Date());
+      }
     });
 
+    this.emitStoryUpdate(chapter.classroomId, { chapterId, kind: 'revealed' });
     return this.getChapter(chapterId);
   }
 
@@ -902,6 +1138,10 @@ class StoryService {
       };
     });
 
+    // Recompensa visible del capítulo en curso: motiva sin revelar la trama.
+    const active = activeStory.chapters.find((c: any) => c.status === 'ACTIVE');
+    const rewardPreview = active ? await this.rewardPreview(parseJson<StoryRewardConfig>(active.rewardConfig)) : null;
+
     return {
       id: activeStory.id,
       title: activeStory.title,
@@ -909,6 +1149,7 @@ class StoryService {
       themeConfig: activeStory.themeConfig,
       chapters: chaptersInfo,
       unseenScenes,
+      rewardPreview,
     };
   }
 
@@ -1066,14 +1307,16 @@ class StoryService {
     const target = parseJson<{ targetXp?: number }>(chapter.completionConfig)?.targetXp || 0;
     const now = new Date();
     await db.update(storyChapters)
-      .set({
-        currentProgress: progress.toFixed(2),
-        updatedAt: now,
-        ...(target > 0 && progress >= target
-          ? { goalReachedAt: sql`COALESCE(${storyChapters.goalReachedAt}, ${sql.param(now, storyChapters.goalReachedAt)})` }
-          : {}),
-      })
+      .set({ currentProgress: progress.toFixed(2), updatedAt: now })
       .where(and(eq(storyChapters.id, chapterId), eq(storyChapters.status, 'ACTIVE')));
+
+    // Meta alcanzada por primera vez (update condicional): queda lista para revelar y se avisa en vivo.
+    if (target > 0 && progress >= target) {
+      const reached = await db.update(storyChapters)
+        .set({ goalReachedAt: now })
+        .where(and(eq(storyChapters.id, chapterId), eq(storyChapters.status, 'ACTIVE'), isNull(storyChapters.goalReachedAt)));
+      if (affectedRows(reached) > 0) this.emitStoryUpdate(chapter.classroomId, { chapterId, kind: 'goal' });
+    }
   }
 
   // Al cerrar el bimestre, el capítulo por bimestre en curso queda listo para revelar.
@@ -1084,13 +1327,17 @@ class StoryService {
     if (!activeStory) return;
 
     const now = new Date();
+    const ready = await db.select({ id: storyChapters.id }).from(storyChapters).where(and(
+      eq(storyChapters.storyId, activeStory.id),
+      eq(storyChapters.status, 'ACTIVE'),
+      eq(storyChapters.completionType, 'BIMESTER'),
+      isNull(storyChapters.goalReachedAt),
+    ));
+    if (ready.length === 0) return;
     await db.update(storyChapters)
-      .set({ goalReachedAt: sql`COALESCE(${storyChapters.goalReachedAt}, ${sql.param(now, storyChapters.goalReachedAt)})`, updatedAt: now })
-      .where(and(
-        eq(storyChapters.storyId, activeStory.id),
-        eq(storyChapters.status, 'ACTIVE'),
-        eq(storyChapters.completionType, 'BIMESTER')
-      ));
+      .set({ goalReachedAt: now, updatedAt: now })
+      .where(inArray(storyChapters.id, ready.map((c) => c.id)));
+    for (const chapter of ready) this.emitStoryUpdate(classroomId, { chapterId: chapter.id, kind: 'goal' });
   }
 
   // Alumnos con más XP de la clase (capítulos antiguos sin fecha de inicio).
@@ -1139,7 +1386,7 @@ class StoryService {
         eq(studentProfiles.isDemo, false),
         eq(pointLogs.isReverted, false),
         gte(pointLogs.createdAt, from),
-        ...(to ? [lte(pointLogs.createdAt, to)] : [])
+        ...(to ? [lt(pointLogs.createdAt, to)] : [])
       ))
       .groupBy(studentProfiles.id)
       .orderBy(desc(xpNet))
@@ -1244,6 +1491,7 @@ class StoryService {
       completedAt: storyChapters.completedAt,
       classroomId: stories.classroomId,
       storyTitle: stories.title,
+      rewardResult: storyChapters.rewardResult,
     })
       .from(storyChapters)
       .innerJoin(stories, eq(storyChapters.storyId, stories.id))
@@ -1284,6 +1532,7 @@ class StoryService {
       heroes,
       nextChapterTitle: next && next.status !== 'LOCKED' ? next.title : null,
       isLast: position === siblings.length,
+      rewardResult: parseJson<StoryRewardResult>(chapter.rewardResult),
     };
   }
 

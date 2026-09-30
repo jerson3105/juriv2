@@ -90,6 +90,18 @@ const dialogueSchema = z.object({
   emotion: z.enum(['neutral', 'excited', 'sad', 'angry', 'happy', 'mysterious']).optional(),
 });
 
+// Recompensa al revelar el capítulo (la reciben quienes aportaron XP durante el capítulo).
+const rewardConfigSchema = z.object({
+  badgeId: z.string().uuid().nullable().optional(),
+  xp: z.number().int().min(0).max(1000).optional(),
+  gp: z.number().int().min(0).max(1000).optional(),
+  cardId: z.string().uuid().nullable().optional(),
+  clanPrize: z.object({
+    mode: z.enum(['NONE', 'MENTION', 'GP']),
+    gp: z.number().int().min(0).max(1000).optional(),
+  }).optional(),
+}).nullable().optional();
+
 const createChapterSchema = z.object({
   title: z.string().min(1).max(255),
   description: z.string().max(2000).optional(),
@@ -99,6 +111,7 @@ const createChapterSchema = z.object({
     donationPercent: z.number().min(1).max(100).optional(),
   }).optional(),
   themeOverride: themeConfigSchema,
+  rewardConfig: rewardConfigSchema,
 });
 
 const updateChapterSchema = z.object({
@@ -110,6 +123,7 @@ const updateChapterSchema = z.object({
     donationPercent: z.number().min(1).max(100).optional(),
   }).optional(),
   themeOverride: themeConfigSchema,
+  rewardConfig: rewardConfigSchema,
 });
 
 const createSceneSchema = z.object({
@@ -509,6 +523,7 @@ class StoryController {
       if (!access) return;
 
       const parsed = createChapterSchema.parse(req.body);
+      await storyService.validateRewardConfig(access.classroomId, parsed.rewardConfig);
       const data = await storyService.createChapter(storyId, parsed);
       res.status(201).json({ success: true, data });
     } catch (error) {
@@ -523,6 +538,7 @@ class StoryController {
       if (!access) return;
 
       const parsed = updateChapterSchema.parse(req.body);
+      await storyService.validateRewardConfig(access.classroomId, parsed.rewardConfig);
       const data = await storyService.updateChapter(chapterId, parsed);
       res.json({ success: true, data });
     } catch (error) {
@@ -563,10 +579,30 @@ class StoryController {
       const access = await ensureTeacherChapterAccess(req, res, chapterId);
       if (!access) return;
 
-      const data = await storyService.completeChapter(chapterId);
+      const data = await storyService.completeChapter(chapterId, access.userId);
       res.json({ success: true, data });
     } catch (error) {
       sendError(res, error, 'Error al revelar el capítulo');
+    }
+  }
+
+  async getChapterFactions(req: Request, res: Response) {
+    try {
+      const { chapterId } = req.params;
+      const user = req.user!;
+      const classroomId = await storyService.getClassroomIdByChapter(chapterId);
+      if (!classroomId) return res.status(404).json({ success: false, message: 'Capítulo no encontrado' });
+      if (user.role === 'STUDENT') {
+        if (!(await storyService.verifyStudentBelongsToClassroom(user.id, classroomId))) {
+          return res.status(403).json({ success: false, message: 'No autorizado para ver este capítulo' });
+        }
+      } else if (!(await requireClassroomTeacher(req, res, classroomId))) {
+        return;
+      }
+      const data = await storyService.getChapterFactions(chapterId);
+      res.json({ success: true, data });
+    } catch (error) {
+      sendError(res, error, 'Error al obtener las facciones del capítulo');
     }
   }
 

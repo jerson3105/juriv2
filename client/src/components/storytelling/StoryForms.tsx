@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import type { Story, StoryChapter, ThemeConfig, ThemePreset } from '../../lib/storyApi';
+import type { Story, StoryChapter, StoryRewardConfig, ThemeConfig, ThemePreset } from '../../lib/storyApi';
 import { HomeModal } from '../home/HomeModal';
 import { cancelButton, inputClass, labelClass, primaryButton } from '../home/homeHelpers';
 import { ThemePreview, ThemeSwatch } from './ThemeSwatch';
-import { COMPLETION_TYPES, chapterConfig, type CompletionType } from './storyEditorHelpers';
+import { RewardFields } from './RewardFields';
+import { COMPLETION_TYPES, chapterConfig, chapterReward, type CompletionType } from './storyEditorHelpers';
 
 const presetTheme = (preset: ThemePreset): ThemeConfig => ({
   colors: preset.colors,
@@ -96,23 +97,27 @@ export const StoryFormModal = ({ story, presets, saving, onSubmit, onClose }: St
 interface ChapterFormModalProps {
   chapter?: StoryChapter | null;
   position: number;
+  classroomId: string;
+  clansEnabled: boolean;
   saving: boolean;
   onSubmit: (data: {
     title: string;
     description?: string;
     completionType?: CompletionType;
     completionConfig?: { targetXp?: number; donationPercent?: number };
+    rewardConfig?: StoryRewardConfig | null;
   }) => void;
   onClose: () => void;
 }
 
-export const ChapterFormModal = ({ chapter, position, saving, onSubmit, onClose }: ChapterFormModalProps) => {
+export const ChapterFormModal = ({ chapter, position, classroomId, clansEnabled, saving, onSubmit, onClose }: ChapterFormModalProps) => {
   const config = chapter ? chapterConfig(chapter) : {};
   const [title, setTitle] = useState(chapter?.title ?? '');
   const [description, setDescription] = useState(chapter?.description ?? '');
   const [type, setType] = useState<CompletionType>(chapter?.completionType ?? 'XP_GOAL');
   const [target, setTarget] = useState(config.targetXp ? String(config.targetXp) : '');
   const [percent, setPercent] = useState(config.donationPercent ? String(config.donationPercent) : '10');
+  const [reward, setReward] = useState<StoryRewardConfig>(() => chapterReward(chapter) ?? { clanPrize: { mode: 'MENTION' } });
   const locked = chapter?.status === 'COMPLETED';
 
   const needsTarget = type !== 'BIMESTER';
@@ -137,6 +142,7 @@ export const ChapterFormModal = ({ chapter, position, saving, onSubmit, onClose 
         : type === 'DONATION'
           ? { targetXp: targetNumber, donationPercent: percentNumber }
           : undefined,
+      rewardConfig: reward,
     });
   };
 
@@ -201,6 +207,7 @@ export const ChapterFormModal = ({ chapter, position, saving, onSubmit, onClose 
           </div>
         )}
       </fieldset>
+      <RewardFields classroomId={classroomId} clansEnabled={clansEnabled} value={reward} disabled={locked} onChange={setReward} />
     </HomeModal>
   );
 };
