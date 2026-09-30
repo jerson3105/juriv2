@@ -21,11 +21,16 @@ import {
   jiroExpeditions,
   jiroExpeditionCompetencies,
   users,
+  gradeEvaluations,
+  gradeEvaluationScores,
+  type BimesterDates,
   type GradeScaleType,
 } from '../db/schema.js';
 import { eq, and, inArray, sql, gte, lte, asc } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { teacherOwnsClassroom } from '../utils/access.js';
+import { affectedRows } from '../utils/points.js';
+import { performanceBucket, scaleOptions, scaleValueToScore, scoreToLabel } from '../utils/gradeScale.js';
 
 type ClosedBimesterEntry = {
   period: string;
@@ -34,35 +39,11 @@ type ClosedBimesterEntry = {
 };
 
 const BIMESTER_PERIOD_REGEX = /^\d{4}-B[1-4]$/;
-
-// Escalas de calificación predefinidas
-// Rangos Perú: AD (90-100), A (70-89), B (50-69), C (0-49)
-const GRADE_SCALES: Record<string, Array<{ label: string; minPercent: number }>> = {
-  PERU_LETTERS: [
-    { label: 'AD', minPercent: 90 },
-    { label: 'A', minPercent: 70 },
-    { label: 'B', minPercent: 50 },
-    { label: 'C', minPercent: 0 },
-  ],
-  PERU_VIGESIMAL: [
-    { label: '20', minPercent: 95 },
-    { label: '18', minPercent: 85 },
-    { label: '16', minPercent: 75 },
-    { label: '14', minPercent: 65 },
-    { label: '12', minPercent: 55 },
-    { label: '10', minPercent: 45 },
-    { label: '08', minPercent: 35 },
-    { label: '05', minPercent: 20 },
-    { label: '00', minPercent: 0 },
-  ],
-  USA_LETTERS: [
-    { label: 'A', minPercent: 90 },
-    { label: 'B', minPercent: 80 },
-    { label: 'C', minPercent: 70 },
-    { label: 'D', minPercent: 60 },
-    { label: 'F', minPercent: 0 },
-  ],
-};
+// Con esta cantidad de observaciones la evidencia cuenta completa (con menos, la nota se acerca a 50).
+const FULL_CONFIDENCE_OBSERVATIONS = 3;
+// Recálculo automático al abrir el libro: como mucho una vez por este intervalo y clase/bimestre.
+const AUTO_RECALC_MS = 2 * 60 * 1000;
+const recalcInFlight = new Map<string, Promise<unknown>>();
 
 interface ActivityScoreData {
   type: string;
@@ -109,6 +90,9 @@ export interface GradebookGradeEntry {
     }>;
     totalWeight: number;
     rawScore: number;
+    evaluationScore?: number | null;
+    evidenceScore?: number | null;
+    evaluationWeight?: number;
   } | null;
   indicatorBreakdownStatus: 'AVAILABLE' | 'HISTORICAL_NO_BREAKDOWN' | 'NOT_CONFIGURED';
   indicatorStartPeriod: string | null;
@@ -129,8 +113,46 @@ export interface GradebookGradeEntry {
   }>;
   isManualOverride: boolean;
   manualScore: number | null;
+  manualLabel: string | null;
+  /** Nota calculada por el sistema (aunque haya ajuste manual). */
+  calculatedScore: number | null;
+  calculatedLabel: string | null;
+  /** Hay ajuste manual y la calculada ya no coincide con él. */
+  calculatedChanged: boolean;
   manualNote: string | null;
+  privateNote?: string | null;
+  conclusion: string | null;
   calculatedAt: Date;
+}
+
+type GradeRow = {
+  id: string;
+  studentProfileId: string;
+  competencyId: string;
+  competencyName: string | null;
+  score: unknown;
+  gradeLabel: string | null;
+  calculatedScore: unknown;
+  calculatedLabel: string | null;
+  activitiesCount: number;
+  calculationDetails: GradebookGradeEntry['calculationDetails'] | string | null;
+  isManualOverride: boolean;
+  manualScore: unknown;
+  manualLabel: string | null;
+  manualNote: string | null;
+  privateNote: string | null;
+  conclusion: string | null;
+  calculatedAt: Date;
+};
+
+export interface GradebookCompetencyColumn {
+  id: string;
+  code: string;
+  name: string | null;
+  shortName: string | null;
+  weight: number;
+  isCustom: boolean;
+  indicatorCount: number;
 }
 
 export interface StudentGradebookResponse {
@@ -145,6 +167,7 @@ export interface StudentGradebookResponse {
 export interface ClassroomGradebookStudent {
   studentProfileId: string;
   studentName: string;
+  characterName?: string | null;
   average: GradeAverageSummary;
   grades: GradebookGradeEntry[];
 }
@@ -153,6 +176,11 @@ export interface ClassroomGradebookResponse {
   classroomId: string;
   period: string;
   gradeScaleType: GradeScaleType | null;
+  scale: ReturnType<typeof scaleOptions>;
+  competencies: GradebookCompetencyColumn[];
+  isClosed: boolean;
+  evaluationWeight: number;
+  lastCalculatedAt: Date | null;
   students: ClassroomGradebookStudent[];
   summary: {
     studentCount: number;
@@ -168,6 +196,7 @@ type IndicatorDefinition = {
   name: string;
   description: string | null;
   displayOrder: number;
+  weight: number;
 };
 
 type IndicatorStat = {
@@ -296,6 +325,30 @@ class GradeService {
       : `${new Date().getFullYear()}-B1`;
   }
 
+  private parseBimesterDates(raw: unknown): Record<string, BimesterDates> {
+    let parsed: unknown = raw;
+    if (typeof raw === 'string') {
+      try { parsed = JSON.parse(raw); } catch { return {}; }
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const result: Record<string, BimesterDates> = {};
+    for (const [period, value] of Object.entries(parsed as Record<string, unknown>)) {
+      const entry = value as Partial<BimesterDates> | null;
+      if (!BIMESTER_PERIOD_REGEX.test(period) || !entry) continue;
+      const start = new Date(String(entry.start));
+      const end = new Date(String(entry.end));
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start >= end) continue;
+      result[period] = { start: start.toISOString(), end: end.toISOString() };
+    }
+    return result;
+  }
+
+  async isPeriodClosed(classroomId: string, period: string): Promise<boolean> {
+    const [classroom] = await db.select({ closedBimesters: classrooms.closedBimesters })
+      .from(classrooms).where(eq(classrooms.id, classroomId));
+    return this.parseClosedBimesters(classroom?.closedBimesters).some((entry) => entry.period === period);
+  }
+
   private async ensurePeriodIsOpen(classroomId: string, period: string): Promise<void> {
     const [classroom] = await db.select({
       closedBimesters: classrooms.closedBimesters,
@@ -372,11 +425,19 @@ class GradeService {
 
     const [classroom] = await db.select({
       closedBimesters: classrooms.closedBimesters,
+      bimesterDates: classrooms.bimesterDates,
       createdAt: classrooms.createdAt,
     }).from(classrooms).where(eq(classrooms.id, classroomId));
 
     if (!classroom) {
       throw new Error('Clase no encontrada');
+    }
+
+    // Fechas configuradas por el docente (o fijadas al cerrar): mandan sobre la lógica de cierres.
+    const dates = this.parseBimesterDates(classroom.bimesterDates);
+    const configured = dates[resolvedPeriod];
+    if (configured) {
+      return { startDate: new Date(configured.start), endDate: new Date(configured.end) };
     }
 
     const closedBimesters = this.parseClosedBimesters(classroom.closedBimesters);
@@ -394,16 +455,10 @@ class GradeService {
     }
 
     // Fecha de inicio: es la fecha de cierre del bimestre anterior, o la fecha de creación de la clase
-    let startDate: Date;
-    if (bimNum === 1) {
-      // Para B1, buscar si existe B4 del año anterior cerrado
-      const prevBim = closedBimesters.find(cb => cb.period === `${year - 1}-B4`);
-      startDate = prevBim ? new Date(prevBim.closedAt) : new Date(classroom?.createdAt || '2020-01-01');
-    } else {
-      // Para B2, B3, B4, buscar el bimestre anterior del mismo año
-      const prevBim = closedBimesters.find(cb => cb.period === `${year}-B${bimNum - 1}`);
-      startDate = prevBim ? new Date(prevBim.closedAt) : new Date(classroom?.createdAt || '2020-01-01');
-    }
+    // Bimestre anterior: su fin configurado, o su cierre, o la creación de la clase.
+    const previousPeriod = bimNum === 1 ? `${year - 1}-B4` : `${year}-B${bimNum - 1}`;
+    const previousEnd = dates[previousPeriod]?.end ?? closedBimesters.find((cb) => cb.period === previousPeriod)?.closedAt;
+    const startDate = new Date(previousEnd ?? classroom?.createdAt ?? '2020-01-01');
 
     // Fecha de fin: es la fecha de cierre de este bimestre, o la fecha actual si está abierto
     const thisBim = closedBimesters.find(cb => cb.period === resolvedPeriod);
@@ -466,7 +521,7 @@ class GradeService {
 
   private getEvidenceConfidence(observationCount: number): number {
     if (observationCount <= 0) return 0;
-    return Math.min(1, observationCount / 6);
+    return Math.min(1, observationCount / FULL_CONFIDENCE_OBSERVATIONS);
   }
 
   private getEvidenceWeight(observationCount: number): number {
@@ -508,26 +563,14 @@ class GradeService {
     gradeScaleType: GradeScaleType | null,
     gradeLabel?: string,
   ): PerformanceBucket {
-    if (gradeScaleType === 'PERU_VIGESIMAL') {
-      const numericGrade = Number.parseInt(gradeLabel ?? '', 10);
-      if (Number.isFinite(numericGrade)) {
-        if (numericGrade >= 18) return 'AD';
-        if (numericGrade >= 14) return 'A';
-        if (numericGrade >= 11) return 'B';
-        return 'C';
-      }
-    }
-
-    if (score >= 90) return 'AD';
-    if (score >= 70) return 'A';
-    if (score >= 50) return 'B';
-    return 'C';
+    return performanceBucket(score, gradeScaleType, gradeLabel);
   }
 
   private buildAverageSummary(
     grades: GradebookGradeEntry[],
     gradeScaleType: GradeScaleType | null,
     parsedScaleConfig: unknown,
+    weights: Map<string, number> = new Map(),
   ): GradeAverageSummary {
     const countableGrades = grades.filter((grade) =>
       Number.isFinite(grade.score) && (grade.activitiesCount > 0 || grade.isManualOverride)
@@ -542,7 +585,9 @@ class GradeService {
       };
     }
 
-    const averageScore = countableGrades.reduce((sum, grade) => sum + grade.score, 0) / countableGrades.length;
+    const weightOf = (grade: GradebookGradeEntry) => Math.max(1, weights.get(grade.competencyId) ?? 100);
+    const totalWeight = countableGrades.reduce((sum, grade) => sum + weightOf(grade), 0);
+    const averageScore = countableGrades.reduce((sum, grade) => sum + grade.score * weightOf(grade), 0) / totalWeight;
 
     const averageLabel = this.convertToGradeLabel(averageScore, gradeScaleType, parsedScaleConfig);
 
@@ -620,6 +665,7 @@ class GradeService {
       name: classroomCompetencyIndicators.name,
       description: classroomCompetencyIndicators.description,
       displayOrder: classroomCompetencyIndicators.displayOrder,
+      weight: classroomCompetencyIndicators.weight,
     })
       .from(classroomCompetencyIndicators)
       .where(and(
@@ -847,6 +893,7 @@ class GradeService {
       return [];
     }
 
+    const weightOf = new Map((context.indicatorsByCompetency.get(competencyId) || []).map((d) => [d.id, Math.max(1, d.weight || 1)]));
     return this.buildIndicatorAssessmentsForCompetency(studentProfileId, competencyId, context)
       .filter((indicator) => indicator.hasEvidence && indicator.score !== null && indicator.evidenceWeight > 0)
       .map((indicator) => ({
@@ -854,26 +901,17 @@ class GradeService {
         id: indicator.id,
         name: indicator.name,
         score: indicator.score as number,
-        weight: indicator.evidenceWeight,
+        // La evidencia de cada destreza pesa según el peso que le dio el docente.
+        weight: indicator.evidenceWeight * (weightOf.get(indicator.id) ?? 1),
         competencyId,
       }));
   }
 
   private normalizeGradebookEntry(
-    rawGrade: {
-      id: string;
-      competencyId: string;
-      competencyName: string | null;
-      score: unknown;
-      activitiesCount: number;
-      calculationDetails: GradebookGradeEntry['calculationDetails'] | string | null;
-      isManualOverride: boolean;
-      manualScore: unknown;
-      manualNote: string | null;
-      calculatedAt: Date;
-    },
+    rawGrade: GradeRow,
     gradeScaleType: GradeScaleType | null,
     parsedScaleConfig: unknown,
+    options: { isClosed: boolean; includePrivate: boolean },
   ): GradebookGradeEntry {
     const hasManualScore = rawGrade.manualScore !== null && rawGrade.manualScore !== undefined;
     const effectiveScore = rawGrade.isManualOverride && hasManualScore
@@ -889,7 +927,19 @@ class GradeService {
         })()
       : rawGrade.calculationDetails;
 
-    const gradeLabel = this.convertToGradeLabel(effectiveScore, gradeScaleType, parsedScaleConfig);
+    // Bimestre cerrado: vale la etiqueta guardada (un cambio de escala posterior no la reescribe).
+    const gradeLabel = options.isClosed && rawGrade.gradeLabel
+      ? rawGrade.gradeLabel
+      : rawGrade.isManualOverride && rawGrade.manualLabel
+        ? rawGrade.manualLabel
+        : this.convertToGradeLabel(effectiveScore, gradeScaleType, parsedScaleConfig);
+    const hasCalculated = rawGrade.calculatedScore !== null && rawGrade.calculatedScore !== undefined;
+    const calculatedScore = hasCalculated ? Number(this.toNumericScore(rawGrade.calculatedScore).toFixed(2)) : null;
+    const calculatedLabel = calculatedScore === null
+      ? null
+      : options.isClosed && rawGrade.calculatedLabel
+        ? rawGrade.calculatedLabel
+        : this.convertToGradeLabel(calculatedScore, gradeScaleType, parsedScaleConfig);
 
     return {
       id: rawGrade.id,
@@ -905,11 +955,17 @@ class GradeService {
       indicatorBreakdown: [],
       isManualOverride: rawGrade.isManualOverride,
       manualScore: hasManualScore ? Number(this.toNumericScore(rawGrade.manualScore).toFixed(2)) : null,
+      manualLabel: rawGrade.isManualOverride ? rawGrade.manualLabel ?? gradeLabel : null,
+      calculatedScore,
+      calculatedLabel,
+      calculatedChanged: rawGrade.isManualOverride && rawGrade.activitiesCount > 0 && calculatedLabel !== null && calculatedLabel !== gradeLabel,
       manualNote: rawGrade.manualNote || null,
+      ...(options.includePrivate ? { privateNote: rawGrade.privateNote || null } : {}),
+      conclusion: rawGrade.conclusion || null,
       calculatedAt: rawGrade.calculatedAt,
     };
   }
-  
+
   /**
    * Calcula y guarda las calificaciones de un estudiante para todas sus competencias
    */
@@ -927,6 +983,7 @@ class GradeService {
       gradeScaleType: classrooms.gradeScaleType,
       gradeScaleConfig: classrooms.gradeScaleConfig,
       competencyIndicatorStartPeriod: classrooms.competencyIndicatorStartPeriod,
+      gradeEvaluationWeight: classrooms.gradeEvaluationWeight,
     }).from(classrooms).where(eq(classrooms.id, classroomId));
     if (!classroom) {
       throw new Error('Clase no encontrada');
@@ -952,6 +1009,8 @@ class GradeService {
     if (await this.isFuturePeriod(classroomId, resolvedPeriod)) {
       throw new Error('No se pueden calcular calificaciones de un bimestre futuro');
     }
+    // Un bimestre cerrado queda congelado: no se recalcula (hay que reabrirlo para cambiar notas).
+    await this.ensurePeriodIsOpen(classroomId, resolvedPeriod);
 
     // 1.6. Obtener el rango de fechas del bimestre
     const dateRange = await this.getBimesterDateRange(classroomId, resolvedPeriod);
@@ -975,6 +1034,23 @@ class GradeService {
     }
 
     const competencyIds = classCompetencies.map((comp) => comp.competencyId);
+    // Evaluaciones propias del docente en este bimestre (nota directa por competencia).
+    const evaluationRows = await db.select({
+      competencyId: gradeEvaluations.competencyId,
+      id: gradeEvaluations.id,
+      title: gradeEvaluations.title,
+      weight: gradeEvaluations.weight,
+      score: gradeEvaluationScores.score,
+    })
+      .from(gradeEvaluationScores)
+      .innerJoin(gradeEvaluations, eq(gradeEvaluationScores.evaluationId, gradeEvaluations.id))
+      .where(and(
+        eq(gradeEvaluationScores.studentProfileId, studentProfileId),
+        eq(gradeEvaluations.classroomId, classroomId),
+        eq(gradeEvaluations.period, resolvedPeriod),
+      ));
+    const evaluationWeight = Math.min(100, Math.max(0, classroom.gradeEvaluationWeight ?? 100)) / 100;
+
     const existingGrades = await db.select({
       id: studentGrades.id,
       competencyId: studentGrades.competencyId,
@@ -1011,6 +1087,8 @@ class GradeService {
         period: string;
         score: string;
         gradeLabel: string;
+        calculatedScore: string;
+        calculatedLabel: string;
         calculationDetails: {
           activities: Array<{
             type: string;
@@ -1021,6 +1099,9 @@ class GradeService {
           }>;
           totalWeight: number;
           rawScore: number;
+          evaluationScore: number | null;
+          evidenceScore: number | null;
+          evaluationWeight: number;
         };
         activitiesCount: number;
         calculatedAt: Date;
@@ -1048,7 +1129,7 @@ class GradeService {
           ]
         : baseActivities;
 
-      // Calcular promedio ponderado
+      // Evidencia gamificada: promedio ponderado de actividades, comportamientos, insignias…
       let totalWeightedScore = 0;
       let totalWeight = 0;
 
@@ -1057,11 +1138,33 @@ class GradeService {
         totalWeight += activity.weight;
       }
 
-      const rawScore = totalWeight > 0 ? totalWeightedScore / totalWeight : 0;
+      const evidenceScore = totalWeight > 0 ? totalWeightedScore / totalWeight : null;
+
+      // Evaluaciones propias: promedio ponderado por el peso de cada evaluación.
+      const evaluations = evaluationRows
+        .filter((row) => row.competencyId === comp.competencyId)
+        .map((row) => ({
+          type: 'EVALUATION',
+          id: row.id,
+          name: row.title,
+          score: this.toNumericScore(row.score),
+          weight: Math.max(1, row.weight || 1),
+          competencyId: comp.competencyId,
+        }));
+      const evaluationTotal = evaluations.reduce((sum, e) => sum + e.weight, 0);
+      const evaluationScore = evaluationTotal > 0
+        ? evaluations.reduce((sum, e) => sum + e.score * e.weight, 0) / evaluationTotal
+        : null;
+
+      // Mezcla: con ambas, el peso de las evaluaciones lo decide el docente; si solo hay una, esa manda.
+      const rawScore = evaluationScore !== null && evidenceScore !== null
+        ? evaluationWeight * evaluationScore + (1 - evaluationWeight) * evidenceScore
+        : evaluationScore ?? evidenceScore ?? 0;
       const gradeLabel = this.convertToGradeLabel(rawScore, classroom.gradeScaleType, parsedScaleConfig);
+      const allSources = [...evaluations, ...activities];
 
       const calculationDetails = {
-        activities: activities.map(a => ({
+        activities: allSources.map(a => ({
           type: a.type,
           id: a.id,
           name: a.name,
@@ -1070,6 +1173,9 @@ class GradeService {
         })),
         totalWeight,
         rawScore,
+        evaluationScore: evaluationScore === null ? null : Number(evaluationScore.toFixed(2)),
+        evidenceScore: evidenceScore === null ? null : Number(evidenceScore.toFixed(2)),
+        evaluationWeight: Math.round(evaluationWeight * 100),
       };
 
       const gradeData = {
@@ -1079,27 +1185,28 @@ class GradeService {
         period: resolvedPeriod,
         score: rawScore.toFixed(2),
         gradeLabel,
+        calculatedScore: rawScore.toFixed(2),
+        calculatedLabel: gradeLabel,
         calculationDetails,
-        activitiesCount: activities.length,
+        activitiesCount: allSources.length,
         calculatedAt: now,
         updatedAt: now,
       };
 
+      // Se guarda siempre la calculada; la efectiva solo cambia si no hay ajuste manual.
       const existingGrade = existingGradesByCompetency.get(comp.competencyId);
-      if (!existingGrade || !existingGrade.isManualOverride) {
-        gradesToPersist.push({
-          existingGradeId: existingGrade?.id,
-          data: gradeData,
-        });
-      }
+      gradesToPersist.push({
+        existingGradeId: existingGrade?.id,
+        data: gradeData,
+      });
 
       results.push({
         competencyId: comp.competencyId,
         competencyName: comp.competencyName || '',
         score: rawScore,
         gradeLabel,
-        activitiesCount: activities.length,
-        activities,
+        activitiesCount: allSources.length,
+        activities: allSources,
       });
     }
 
@@ -1107,9 +1214,14 @@ class GradeService {
       await db.transaction(async (tx) => {
         for (const gradeToPersist of gradesToPersist) {
           if (gradeToPersist.existingGradeId) {
+            const { score, gradeLabel, ...calculated } = gradeToPersist.data;
             await tx.update(studentGrades)
-              .set(gradeToPersist.data)
+              .set(calculated)
               .where(eq(studentGrades.id, gradeToPersist.existingGradeId));
+            // Condicional: un ajuste manual simultáneo no queda pisado por el cálculo.
+            await tx.update(studentGrades)
+              .set({ score, gradeLabel })
+              .where(and(eq(studentGrades.id, gradeToPersist.existingGradeId), eq(studentGrades.isManualOverride, false)));
           } else {
             await tx.insert(studentGrades).values({
               id: uuidv4(),
@@ -1648,222 +1760,242 @@ class GradeService {
     return scores;
   }
 
-  private convertToGradeLabel(score: number, scaleType: GradeScaleType | null, customConfig: any): string {
-    if (!scaleType) return score.toFixed(0);
-
-    if (scaleType === 'CENTESIMAL') {
-      return Math.round(score).toString();
-    }
-
-    if (
-      scaleType === 'CUSTOM' &&
-      customConfig &&
-      typeof customConfig === 'object' &&
-      Array.isArray((customConfig as { ranges?: unknown }).ranges)
-    ) {
-      const ranges = (customConfig as { ranges: Array<{ label?: unknown; minPercent?: unknown }> }).ranges
-        .map((range) => ({
-          label: typeof range.label === 'string' ? range.label : '',
-          minPercent: Number(range.minPercent),
-        }))
-        .filter((range) => range.label && Number.isFinite(range.minPercent))
-        .sort((a, b) => b.minPercent - a.minPercent);
-
-      if (ranges.length === 0) {
-        return score.toFixed(0);
-      }
-
-      for (const range of ranges) {
-        if (score >= range.minPercent) {
-          return range.label;
-        }
-      }
-      return ranges[ranges.length - 1]?.label || 'N/A';
-    }
-
-    const scale = GRADE_SCALES[scaleType];
-    if (scale && scale.length > 0) {
-      for (const range of scale) {
-        if (score >= range.minPercent) {
-          return range.label;
-        }
-      }
-      return scale[scale.length - 1]?.label || 'N/A';
-    }
-
-    return score.toFixed(0);
+  private convertToGradeLabel(score: number, scaleType: GradeScaleType | null, customConfig: unknown): string {
+    return scoreToLabel(score, scaleType, customConfig);
   }
 
   // ═══════════════════════════════════════════════════════════
   // CONSULTAS
   // ═══════════════════════════════════════════════════════════
 
-  async getStudentGrades(studentProfileId: string, period: string = 'CURRENT'): Promise<StudentGradebookResponse> {
+  /** Nombre real del alumno (libreta y exportación); el personaje va aparte. */
+  private resolveRealName(row: { firstName?: string | null; lastName?: string | null; displayName?: string | null; characterName?: string | null }): string {
+    const real = `${row.firstName || ''} ${row.lastName || ''}`.trim();
+    return real || row.displayName?.trim() || row.characterName || 'Estudiante';
+  }
+
+  /** Cálculo más antiguo del grupo: con que una nota esté vieja, toca recalcular. */
+  private async lastCalculatedAt(classroomId: string, period: string, studentProfileId?: string): Promise<Date | null> {
+    const [row] = await db.select({ last: sql<Date | null>`MIN(${studentGrades.calculatedAt})`.mapWith(studentGrades.calculatedAt) })
+      .from(studentGrades)
+      .where(and(
+        eq(studentGrades.classroomId, classroomId),
+        eq(studentGrades.period, period),
+        studentProfileId ? eq(studentGrades.studentProfileId, studentProfileId) : undefined,
+      ));
+    // mapWith: la fecha se lee como la columna (hora UTC guardada), no como hora local del servidor.
+    return row?.last ?? null;
+  }
+
+  /**
+   * Recálculo automático del bimestre abierto al consultar: como mucho una vez cada AUTO_RECALC_MS.
+   * Las consultas simultáneas comparten el mismo recálculo en curso.
+   */
+  private async autoRecalculate(classroomId: string, period: string, studentProfileId?: string): Promise<void> {
+    if (await this.isPeriodClosed(classroomId, period) || await this.isFuturePeriod(classroomId, period)) return;
+    const last = await this.lastCalculatedAt(classroomId, period, studentProfileId);
+    if (last && Date.now() - last.getTime() < AUTO_RECALC_MS) return;
+    const key = `${classroomId}|${period}|${studentProfileId ?? '*'}`;
+    let running = recalcInFlight.get(key);
+    if (!running) {
+      running = (studentProfileId
+        ? this.calculateStudentGrades(classroomId, studentProfileId, period)
+        : this.recalculateClassroomGrades(classroomId, period)
+      ).finally(() => recalcInFlight.delete(key));
+      recalcInFlight.set(key, running);
+    }
+    try {
+      await running;
+    } catch (error) {
+      console.error('Recálculo automático de notas falló:', error);
+    }
+  }
+
+  private gradeRowColumns() {
+    return {
+      id: studentGrades.id,
+      studentProfileId: studentGrades.studentProfileId,
+      competencyId: studentGrades.competencyId,
+      competencyName: curriculumCompetencies.name,
+      score: studentGrades.score,
+      gradeLabel: studentGrades.gradeLabel,
+      calculatedScore: studentGrades.calculatedScore,
+      calculatedLabel: studentGrades.calculatedLabel,
+      activitiesCount: studentGrades.activitiesCount,
+      calculationDetails: studentGrades.calculationDetails,
+      isManualOverride: studentGrades.isManualOverride,
+      manualScore: studentGrades.manualScore,
+      manualLabel: studentGrades.manualLabel,
+      manualNote: studentGrades.manualNote,
+      privateNote: studentGrades.privateNote,
+      conclusion: studentGrades.conclusion,
+      calculatedAt: studentGrades.calculatedAt,
+    };
+  }
+
+  /** Competencias activas de la clase, en orden, con nombre corto, peso y cantidad de destrezas. */
+  async getClassroomCompetencyColumns(classroomId: string) {
+    const rows = await db.select({
+      id: classroomCompetencies.competencyId,
+      name: curriculumCompetencies.name,
+      shortName: curriculumCompetencies.shortName,
+      displayOrder: curriculumCompetencies.displayOrder,
+      weight: classroomCompetencies.weight,
+      isCustom: sql<number>`${curriculumCompetencies.sourceType} <> 'OFFICIAL'`,
+    })
+      .from(classroomCompetencies)
+      .innerJoin(curriculumCompetencies, eq(classroomCompetencies.competencyId, curriculumCompetencies.id))
+      .where(and(eq(classroomCompetencies.classroomId, classroomId), eq(classroomCompetencies.isActive, true)))
+      .orderBy(asc(curriculumCompetencies.displayOrder), asc(curriculumCompetencies.name));
+    const indicatorCounts = await db.select({
+      competencyId: classroomCompetencyIndicators.competencyId,
+      total: sql<number>`COUNT(*)`,
+    })
+      .from(classroomCompetencyIndicators)
+      .where(and(eq(classroomCompetencyIndicators.classroomId, classroomId), eq(classroomCompetencyIndicators.isActive, true)))
+      .groupBy(classroomCompetencyIndicators.competencyId);
+    const countOf = new Map(indicatorCounts.map((r) => [r.competencyId, Number(r.total)]));
+    return rows.map((r, index) => ({
+      id: r.id,
+      code: `C${index + 1}`,
+      name: r.name,
+      shortName: r.shortName,
+      weight: r.weight,
+      isCustom: Boolean(Number(r.isCustom)),
+      indicatorCount: countOf.get(r.id) ?? 0,
+    }));
+  }
+
+  private async buildGradeEntries(
+    classroomId: string,
+    period: string,
+    rows: GradeRow[],
+    options: { includePrivate: boolean },
+  ) {
+    const { gradeScaleType, gradeScaleConfig, competencyIndicatorStartPeriod } = await this.getClassroomScaleSettings(classroomId);
+    const parsedScaleConfig = this.parseGradeScaleConfig(gradeScaleConfig);
+    const isClosed = await this.isPeriodClosed(classroomId, period);
+    const indicatorContext = rows.length > 0
+      ? await this.buildIndicatorBreakdownContext(
+          classroomId,
+          [...new Set(rows.map((row) => row.studentProfileId))],
+          [...new Set(rows.map((row) => row.competencyId))],
+          await this.getBimesterDateRange(classroomId, period),
+          period,
+          competencyIndicatorStartPeriod,
+        )
+      : {
+          indicatorStartPeriod: competencyIndicatorStartPeriod,
+          isHistoricalWithoutBreakdown: false,
+          indicatorsByCompetency: new Map(),
+          statsByStudentIndicator: new Map(),
+        };
+    const entries = rows.map((row) => ({
+      studentProfileId: row.studentProfileId,
+      entry: {
+        ...this.normalizeGradebookEntry(row, gradeScaleType, parsedScaleConfig, { isClosed, includePrivate: options.includePrivate }),
+        ...this.buildIndicatorBreakdownForGrade(row.studentProfileId, row.competencyId, indicatorContext, gradeScaleType, parsedScaleConfig),
+      },
+    }));
+    return { entries, gradeScaleType, parsedScaleConfig, isClosed };
+  }
+
+  async getStudentGrades(studentProfileId: string, period: string = 'CURRENT', options: { includePrivate?: boolean } = {}): Promise<StudentGradebookResponse> {
     const classroomId = await this.getClassroomIdByStudentProfile(studentProfileId);
     if (!classroomId) {
       throw new Error('Estudiante no encontrado');
     }
 
     const resolvedPeriod = await this.resolveClassroomPeriod(classroomId, period);
-
-    const { gradeScaleType, gradeScaleConfig, competencyIndicatorStartPeriod } = await this.getClassroomScaleSettings(classroomId);
-    const parsedScaleConfig = this.parseGradeScaleConfig(gradeScaleConfig);
+    await this.autoRecalculate(classroomId, resolvedPeriod, studentProfileId);
 
     const rows = await db.select({
-      id: studentGrades.id,
-      competencyId: studentGrades.competencyId,
-      competencyName: curriculumCompetencies.name,
-      score: studentGrades.score,
-      activitiesCount: studentGrades.activitiesCount,
-      calculationDetails: studentGrades.calculationDetails,
-      isManualOverride: studentGrades.isManualOverride,
-      manualScore: studentGrades.manualScore,
-      manualNote: studentGrades.manualNote,
-      calculatedAt: studentGrades.calculatedAt,
+      ...this.gradeRowColumns(),
       characterName: studentProfiles.characterName,
+      displayName: studentProfiles.displayName,
       firstName: users.firstName,
       lastName: users.lastName,
     })
-    .from(studentGrades)
-    .leftJoin(studentProfiles, eq(studentGrades.studentProfileId, studentProfiles.id))
-    .leftJoin(users, eq(studentProfiles.userId, users.id))
-    .leftJoin(curriculumCompetencies, eq(studentGrades.competencyId, curriculumCompetencies.id))
-    .where(and(
-      eq(studentGrades.studentProfileId, studentProfileId),
-      eq(studentGrades.period, resolvedPeriod)
-    ));
+      .from(studentGrades)
+      .leftJoin(studentProfiles, eq(studentGrades.studentProfileId, studentProfiles.id))
+      .leftJoin(users, eq(studentProfiles.userId, users.id))
+      .leftJoin(curriculumCompetencies, eq(studentGrades.competencyId, curriculumCompetencies.id))
+      .where(and(
+        eq(studentGrades.studentProfileId, studentProfileId),
+        eq(studentGrades.period, resolvedPeriod)
+      ));
 
-    const baseGrades = rows.map((row) => this.normalizeGradebookEntry(row, gradeScaleType, parsedScaleConfig));
-    const indicatorContext = baseGrades.length > 0
-      ? await this.buildIndicatorBreakdownContext(
-          classroomId,
-          [studentProfileId],
-          [...new Set(baseGrades.map((grade) => grade.competencyId))],
-          await this.getBimesterDateRange(classroomId, resolvedPeriod),
-          resolvedPeriod,
-          competencyIndicatorStartPeriod,
-        )
-      : {
-          indicatorStartPeriod: competencyIndicatorStartPeriod,
-          isHistoricalWithoutBreakdown: false,
-          indicatorsByCompetency: new Map(),
-          statsByStudentIndicator: new Map(),
-        };
-    const grades = baseGrades.map((grade) => ({
-      ...grade,
-      ...this.buildIndicatorBreakdownForGrade(
-        studentProfileId,
-        grade.competencyId,
-        indicatorContext,
-        gradeScaleType,
-        parsedScaleConfig,
-      ),
-    }));
-    const studentName = rows.length > 0
-      ? this.resolveStudentDisplayName(rows[0])
-      : 'Estudiante';
+    const { entries, gradeScaleType, parsedScaleConfig } = await this.buildGradeEntries(classroomId, resolvedPeriod, rows, { includePrivate: !!options.includePrivate });
+    const grades = entries.map((e) => e.entry);
+    const weights = new Map((await this.getClassroomCompetencyColumns(classroomId)).map((c) => [c.id, c.weight]));
 
     return {
       studentProfileId,
-      studentName,
+      studentName: rows.length > 0 ? this.resolveRealName(rows[0]) : 'Estudiante',
       period: resolvedPeriod,
       gradeScaleType,
-      average: this.buildAverageSummary(grades, gradeScaleType, parsedScaleConfig),
+      average: this.buildAverageSummary(grades, gradeScaleType, parsedScaleConfig, weights),
       grades,
     };
   }
 
   async getClassroomGrades(classroomId: string, period: string = 'CURRENT'): Promise<ClassroomGradebookResponse> {
     const resolvedPeriod = await this.resolveClassroomPeriod(classroomId, period);
+    await this.autoRecalculate(classroomId, resolvedPeriod);
 
-    const { gradeScaleType, gradeScaleConfig, competencyIndicatorStartPeriod } = await this.getClassroomScaleSettings(classroomId);
-    const parsedScaleConfig = this.parseGradeScaleConfig(gradeScaleConfig);
+    const [competencies, studentRows, rows, [settings]] = await Promise.all([
+      this.getClassroomCompetencyColumns(classroomId),
+      db.select({
+        id: studentProfiles.id,
+        characterName: studentProfiles.characterName,
+        displayName: studentProfiles.displayName,
+        firstName: users.firstName,
+        lastName: users.lastName,
+      })
+        .from(studentProfiles)
+        .leftJoin(users, eq(studentProfiles.userId, users.id))
+        .where(and(eq(studentProfiles.classroomId, classroomId), eq(studentProfiles.isActive, true), eq(studentProfiles.isDemo, false))),
+      db.select(this.gradeRowColumns())
+        .from(studentGrades)
+        .leftJoin(curriculumCompetencies, eq(studentGrades.competencyId, curriculumCompetencies.id))
+        .where(and(eq(studentGrades.classroomId, classroomId), eq(studentGrades.period, resolvedPeriod))),
+      db.select({ gradeEvaluationWeight: classrooms.gradeEvaluationWeight }).from(classrooms).where(eq(classrooms.id, classroomId)),
+    ]);
 
-    const rows = await db.select({
-      id: studentGrades.id,
-      studentProfileId: studentGrades.studentProfileId,
-      competencyId: studentGrades.competencyId,
-      competencyName: curriculumCompetencies.name,
-      score: studentGrades.score,
-      activitiesCount: studentGrades.activitiesCount,
-      calculationDetails: studentGrades.calculationDetails,
-      isManualOverride: studentGrades.isManualOverride,
-      manualScore: studentGrades.manualScore,
-      manualNote: studentGrades.manualNote,
-      calculatedAt: studentGrades.calculatedAt,
-      characterName: studentProfiles.characterName,
-      firstName: users.firstName,
-      lastName: users.lastName,
-    })
-    .from(studentGrades)
-    .leftJoin(studentProfiles, eq(studentGrades.studentProfileId, studentProfiles.id))
-    .leftJoin(users, eq(studentProfiles.userId, users.id))
-    .leftJoin(curriculumCompetencies, eq(studentGrades.competencyId, curriculumCompetencies.id))
-    .where(and(
-      eq(studentGrades.classroomId, classroomId),
-      eq(studentGrades.period, resolvedPeriod)
-    ));
-
-    const indicatorContext = rows.length > 0
-      ? await this.buildIndicatorBreakdownContext(
-          classroomId,
-          [...new Set(rows.map((row) => row.studentProfileId))],
-          [...new Set(rows.map((row) => row.competencyId))],
-          await this.getBimesterDateRange(classroomId, resolvedPeriod),
-          resolvedPeriod,
-          competencyIndicatorStartPeriod,
-        )
-      : {
-          indicatorStartPeriod: competencyIndicatorStartPeriod,
-          isHistoricalWithoutBreakdown: false,
-          indicatorsByCompetency: new Map(),
-          statsByStudentIndicator: new Map(),
-        };
-
-    const groupedStudents = new Map<string, ClassroomGradebookStudent>();
-
-    for (const row of rows) {
-      const gradeEntry = {
-        ...this.normalizeGradebookEntry(row, gradeScaleType, parsedScaleConfig),
-        ...this.buildIndicatorBreakdownForGrade(
-          row.studentProfileId,
-          row.competencyId,
-          indicatorContext,
-          gradeScaleType,
-          parsedScaleConfig,
-        ),
-      };
-      const existingStudent = groupedStudents.get(row.studentProfileId);
-
-      if (existingStudent) {
-        existingStudent.grades.push(gradeEntry);
-        continue;
-      }
-
-      groupedStudents.set(row.studentProfileId, {
-        studentProfileId: row.studentProfileId,
-        studentName: this.resolveStudentDisplayName(row),
-        average: {
-          score: 0,
-          label: '-',
-          bucket: 'C',
-          evaluatedCompetencies: 0,
-        },
-        grades: [gradeEntry],
-      });
+    const activeCompetencies = new Set(competencies.map((c) => c.id));
+    const visibleRows = rows.filter((row) => activeCompetencies.has(row.competencyId));
+    const { entries, gradeScaleType, parsedScaleConfig, isClosed } = await this.buildGradeEntries(classroomId, resolvedPeriod, visibleRows, { includePrivate: true });
+    const gradesByStudent = new Map<string, GradebookGradeEntry[]>();
+    for (const { studentProfileId, entry } of entries) {
+      const list = gradesByStudent.get(studentProfileId) ?? [];
+      list.push(entry);
+      gradesByStudent.set(studentProfileId, list);
     }
+    const weights = new Map(competencies.map((c) => [c.id, c.weight]));
 
-    const students = Array.from(groupedStudents.values())
-      .map((student) => ({
-        ...student,
-        average: this.buildAverageSummary(student.grades, gradeScaleType, parsedScaleConfig),
-      }))
+    // Todos los alumnos activos (aunque aún no tengan notas) y todas las competencias.
+    const students = studentRows
+      .map((student) => {
+        const grades = gradesByStudent.get(student.id) ?? [];
+        return {
+          studentProfileId: student.id,
+          studentName: this.resolveRealName(student),
+          characterName: student.characterName ?? null,
+          average: this.buildAverageSummary(grades, gradeScaleType, parsedScaleConfig, weights),
+          grades,
+        };
+      })
       .sort((a, b) => a.studentName.localeCompare(b.studentName, 'es'));
 
     return {
       classroomId,
       period: resolvedPeriod,
       gradeScaleType,
+      scale: scaleOptions(gradeScaleType, parsedScaleConfig),
+      competencies,
+      isClosed,
+      evaluationWeight: settings?.gradeEvaluationWeight ?? 100,
+      lastCalculatedAt: await this.lastCalculatedAt(classroomId, resolvedPeriod),
       students,
       summary: this.buildClassroomSummary(students),
     };
@@ -1871,6 +2003,7 @@ class GradeService {
 
   async recalculateClassroomGrades(classroomId: string, period: string = 'CURRENT') {
     const resolvedPeriod = await this.resolveClassroomPeriod(classroomId, period);
+    await this.ensurePeriodIsOpen(classroomId, resolvedPeriod);
 
     const students = await db.select({ id: studentProfiles.id })
       .from(studentProfiles)
@@ -1879,22 +2012,35 @@ class GradeService {
         eq(studentProfiles.isActive, true)
       ));
 
-    const results = [];
-    for (const student of students) {
-      const grades = await this.calculateStudentGrades(classroomId, student.id, resolvedPeriod);
-      results.push({ studentId: student.id, grades });
+    // De a pocos en paralelo: cada alumno son varias consultas por competencia.
+    const results: Array<{ studentId: string; grades: GradeCalculationResult[] }> = [];
+    const CONCURRENCY = 4;
+    for (let i = 0; i < students.length; i += CONCURRENCY) {
+      const chunk = students.slice(i, i + CONCURRENCY);
+      const done = await Promise.all(chunk.map(async (student) => ({
+        studentId: student.id,
+        grades: await this.calculateStudentGrades(classroomId, student.id, resolvedPeriod),
+      })));
+      results.push(...done);
     }
 
     return results;
   }
 
-  async setManualGrade(gradeId: string, manualScore: number, manualNote?: string) {
-    if (!Number.isFinite(manualScore) || manualScore < 0 || manualScore > 100) {
-      throw new Error('manualScore debe estar entre 0 y 100');
+  /** Recalcula a unos alumnos concretos (p. ej., tras guardar una evaluación). */
+  async recalculateStudents(classroomId: string, period: string, studentProfileIds: string[]) {
+    if (studentProfileIds.length === 0 || await this.isPeriodClosed(classroomId, period)) return;
+    const CONCURRENCY = 4;
+    for (let i = 0; i < studentProfileIds.length; i += CONCURRENCY) {
+      await Promise.all(studentProfileIds.slice(i, i + CONCURRENCY).map((id) => this.calculateStudentGrades(classroomId, id, period)));
     }
+  }
 
-    const now = new Date();
-    
+  /**
+   * Nota manual con un valor de la escala de la clase (AD, 17, 85…). La calculada se conserva
+   * para poder volver a ella y para avisar si cambia.
+   */
+  async setManualGrade(gradeId: string, value: string, manualNote?: string | null) {
     const [grade] = await db.select({
       classroomId: studentGrades.classroomId,
       period: studentGrades.period,
@@ -1909,28 +2055,31 @@ class GradeService {
       gradeScaleConfig: classrooms.gradeScaleConfig,
     }).from(classrooms).where(eq(classrooms.id, grade.classroomId));
     const parsedScaleConfig = this.parseGradeScaleConfig(classroom?.gradeScaleConfig);
-    const gradeLabel = this.convertToGradeLabel(manualScore, classroom?.gradeScaleType || null, parsedScaleConfig);
-    const normalizedManualNote = manualNote?.trim() || null;
+    const { score, label } = scaleValueToScore(value, classroom?.gradeScaleType || null, parsedScaleConfig);
 
     await db.update(studentGrades)
       .set({
         isManualOverride: true,
-        score: manualScore.toFixed(2),
-        manualScore: manualScore.toFixed(2),
-        manualNote: normalizedManualNote,
-        gradeLabel,
-        updatedAt: now,
+        score: score.toFixed(2),
+        gradeLabel: label,
+        manualScore: score.toFixed(2),
+        manualLabel: label,
+        ...(manualNote !== undefined ? { manualNote: manualNote?.trim() || null } : {}),
+        updatedAt: new Date(),
       })
       .where(eq(studentGrades.id, gradeId));
 
-    return { success: true };
+    return { success: true, score, label };
   }
 
+  /** Vuelve a la nota calculada (conserva los comentarios). */
   async clearManualGrade(gradeId: string) {
     const [grade] = await db.select({
       classroomId: studentGrades.classroomId,
       studentProfileId: studentGrades.studentProfileId,
       period: studentGrades.period,
+      calculatedScore: studentGrades.calculatedScore,
+      calculatedLabel: studentGrades.calculatedLabel,
     }).from(studentGrades).where(eq(studentGrades.id, gradeId));
 
     if (!grade) throw new Error('Calificación no encontrada');
@@ -1941,13 +2090,53 @@ class GradeService {
       .set({
         isManualOverride: false,
         manualScore: null,
-        manualNote: null,
+        manualLabel: null,
+        ...(grade.calculatedScore !== null ? { score: String(grade.calculatedScore), gradeLabel: grade.calculatedLabel } : {}),
         updatedAt: new Date(),
       })
       .where(eq(studentGrades.id, gradeId));
 
     await this.calculateStudentGrades(grade.classroomId, grade.studentProfileId, grade.period);
-    
+
+    return { success: true };
+  }
+
+  /**
+   * Comentario para el alumno, nota privada y conclusión descriptiva. Se pueden editar aunque el
+   * bimestre esté cerrado (la conclusión se suele escribir al cerrar, para la libreta).
+   */
+  async updateGradeNotes(gradeId: string, notes: { manualNote?: string | null; privateNote?: string | null; conclusion?: string | null }) {
+    const [grade] = await db.select({ id: studentGrades.id }).from(studentGrades).where(eq(studentGrades.id, gradeId));
+    if (!grade) throw new Error('Calificación no encontrada');
+    const clean = (value: string | null | undefined) => (value === undefined ? undefined : value?.trim() || null);
+    const patch = Object.fromEntries(Object.entries({
+      manualNote: clean(notes.manualNote),
+      privateNote: clean(notes.privateNote),
+      conclusion: clean(notes.conclusion),
+    }).filter(([, value]) => value !== undefined));
+    if (Object.keys(patch).length === 0) return { success: true };
+    await db.update(studentGrades).set({ ...patch, updatedAt: new Date() }).where(eq(studentGrades.id, gradeId));
+    return { success: true };
+  }
+
+  /** Ajustes de calificación de la clase: escala y peso de las evaluaciones propias. */
+  async updateGradeSettings(classroomId: string, settings: {
+    gradeScaleType?: GradeScaleType;
+    customRanges?: Array<{ label: string; minPercent: number }>;
+    evaluationWeight?: number;
+  }) {
+    const patch: Partial<typeof classrooms.$inferInsert> = {};
+    if (settings.gradeScaleType) patch.gradeScaleType = settings.gradeScaleType;
+    if (settings.gradeScaleType === 'CUSTOM') {
+      const ranges = (settings.customRanges ?? []).map((r) => ({ label: r.label.trim(), minPercent: r.minPercent, maxPercent: 100, xpReward: 0, gpReward: 0 }));
+      if (ranges.length < 2) throw new Error('La escala personalizada debe tener al menos 2 niveles');
+      if (!ranges.some((r) => r.minPercent === 0)) throw new Error('La escala personalizada debe tener un nivel que empiece en 0 %');
+      if (new Set(ranges.map((r) => r.label.toUpperCase())).size !== ranges.length) throw new Error('Los niveles de la escala no pueden repetirse');
+      patch.gradeScaleConfig = { ranges };
+    }
+    if (settings.evaluationWeight !== undefined) patch.gradeEvaluationWeight = Math.round(settings.evaluationWeight);
+    if (Object.keys(patch).length === 0) return { success: true };
+    await db.update(classrooms).set({ ...patch, updatedAt: new Date() }).where(eq(classrooms.id, classroomId));
     return { success: true };
   }
 
@@ -1962,15 +2151,17 @@ class GradeService {
     const [classroom] = await db.select({
       currentBimester: classrooms.currentBimester,
       closedBimesters: classrooms.closedBimesters,
+      bimesterDates: classrooms.bimesterDates,
       createdAt: classrooms.createdAt,
     }).from(classrooms).where(eq(classrooms.id, classroomId));
 
     if (!classroom) throw new Error('Clase no encontrada');
 
     const closedBimesters = this.parseClosedBimesters(classroom.closedBimesters);
+    const configuredDates = this.parseBimesterDates(classroom.bimesterDates);
     const currentYear = new Date().getFullYear();
     const selectedYear = Number.isInteger(year) ? Number(year) : currentYear;
-    
+
     // El bimestre actual por defecto usa el año actual
     const defaultBimester = `${currentYear}-B1`;
     const normalizedCurrent = classroom.currentBimester?.trim().toUpperCase();
@@ -1992,20 +2183,49 @@ class GradeService {
     for (let y = classroomYear; y <= currentYear; y++) {
       availableYears.push(y);
     }
-    
+
+    const bimesters = await Promise.all(allBimesters.map(async (b) => {
+      const isFuture = await this.isFuturePeriod(classroomId, b);
+      const range = isFuture && !configuredDates[b] ? null : await this.getBimesterDateRange(classroomId, b).catch(() => null);
+      return {
+        period: b,
+        label: `Bimestre ${b.split('-B')[1]}`,
+        isCurrent: b === currentBimester,
+        isClosed: closedBimesters.some((cb) => cb.period === b),
+        isFuture,
+        closedAt: closedBimesters.find((cb) => cb.period === b)?.closedAt,
+        // Rango efectivo; datesConfigured = el docente (o el cierre) fijó las fechas.
+        start: range?.startDate.toISOString() ?? null,
+        end: configuredDates[b]?.end ?? null,
+        datesConfigured: !!configuredDates[b],
+      };
+    }));
+
     return {
       currentBimester,
       closedBimesters,
       selectedYear,
       availableYears,
-      allBimesters: allBimesters.map(b => ({
-        period: b,
-        label: `Bimestre ${b.split('-B')[1]}`,
-        isCurrent: b === currentBimester,
-        isClosed: closedBimesters.some((cb) => cb.period === b),
-        closedAt: closedBimesters.find((cb) => cb.period === b)?.closedAt,
-      })),
+      allBimesters: bimesters,
     };
+  }
+
+  /** Fija las fechas de un bimestre (no se puede si está cerrado; no pueden solaparse con otro). */
+  async setBimesterDates(classroomId: string, period: string, start: Date, end: Date) {
+    const normalizedPeriod = this.normalizePeriod(period);
+    if (normalizedPeriod === 'CURRENT') throw new Error('Periodo invalido. Usa el formato YYYY-B1..B4');
+    if (!(start < end)) throw new Error('La fecha de inicio debe ser anterior a la de fin');
+    await this.ensurePeriodIsOpen(classroomId, normalizedPeriod);
+
+    const [classroom] = await db.select({ bimesterDates: classrooms.bimesterDates }).from(classrooms).where(eq(classrooms.id, classroomId));
+    if (!classroom) throw new Error('Clase no encontrada');
+    const dates = this.parseBimesterDates(classroom.bimesterDates);
+    const overlapping = Object.entries(dates).find(([p, d]) => p !== normalizedPeriod && new Date(d.start) < end && start < new Date(d.end));
+    if (overlapping) throw new Error(`Las fechas no deben cruzarse con el Bimestre ${overlapping[0].split('-B')[1]} (${overlapping[0].split('-B')[0]})`);
+
+    dates[normalizedPeriod] = { start: start.toISOString(), end: end.toISOString() };
+    await db.update(classrooms).set({ bimesterDates: dates, updatedAt: new Date() }).where(eq(classrooms.id, classroomId));
+    return { success: true, period: normalizedPeriod, ...dates[normalizedPeriod] };
   }
 
   /**
@@ -2025,14 +2245,14 @@ class GradeService {
     if (!classroom) throw new Error('Clase no encontrada');
 
     const closedBimesters = this.parseClosedBimesters(classroom.closedBimesters);
-    
+
     // Verificar si el bimestre está cerrado
     if (closedBimesters.some((cb) => cb.period === normalizedPeriod)) {
       throw new Error('Este bimestre está cerrado. Debes reabrirlo primero.');
     }
 
     await db.update(classrooms)
-      .set({ 
+      .set({
         currentBimester: normalizedPeriod,
         updatedAt: new Date(),
       })
@@ -2042,7 +2262,8 @@ class GradeService {
   }
 
   /**
-   * Cierra un bimestre (congela las calificaciones)
+   * Cierra un bimestre: recalcula por última vez, fija sus fechas (reabrirlo no las mueve)
+   * y congela las notas.
    */
   async closeBimester(classroomId: string, period: string, userId: string) {
     if (!userId) {
@@ -2058,16 +2279,25 @@ class GradeService {
     if (!classroom) throw new Error('Clase no encontrada');
 
     const closedBimesters = this.parseClosedBimesters(classroom.closedBimesters);
-    
+
     // Verificar si ya está cerrado
     if (closedBimesters.some((cb) => cb.period === normalizedPeriod)) {
       throw new Error('Este bimestre ya está cerrado');
     }
 
-    // Agregar a la lista de bimestres cerrados
+    // Última foto: las notas no manuales quedan con la evidencia hasta el cierre.
+    await this.recalculateClassroomGrades(classroomId, normalizedPeriod);
+
+    const now = new Date();
+    const dates = this.parseBimesterDates(classroom.bimesterDates);
+    if (!dates[normalizedPeriod]) {
+      const range = await this.getBimesterDateRange(classroomId, normalizedPeriod);
+      dates[normalizedPeriod] = { start: range.startDate.toISOString(), end: now.toISOString() };
+    }
+
     closedBimesters.push({
       period: normalizedPeriod,
-      closedAt: new Date().toISOString(),
+      closedAt: now.toISOString(),
       closedBy: userId,
     });
 
@@ -2075,45 +2305,46 @@ class GradeService {
     const currentRaw = classroom.currentBimester?.trim().toUpperCase();
     const currentBimester = currentRaw && BIMESTER_PERIOD_REGEX.test(currentRaw)
       ? currentRaw
-      : `${new Date().getFullYear()}-B1`;
+      : `${now.getFullYear()}-B1`;
 
     let newCurrentBimester = currentBimester;
     if (currentBimester === normalizedPeriod) {
       const [yearPart] = normalizedPeriod.split('-B');
       const bimesterNum = Number(normalizedPeriod.split('-B')[1]);
-      if (bimesterNum < 4) {
-        newCurrentBimester = `${yearPart}-B${bimesterNum + 1}`;
-      } else {
-        // Si es B4, pasar a B1 del siguiente año
-        newCurrentBimester = `${Number(yearPart) + 1}-B1`;
-      }
+      newCurrentBimester = bimesterNum < 4 ? `${yearPart}-B${bimesterNum + 1}` : `${Number(yearPart) + 1}-B1`;
     }
 
-    await db.update(classrooms)
-      .set({ 
-        closedBimesters: closedBimesters,
+    // Condicional: dos cierres simultáneos no duplican la entrada.
+    const result = await db.update(classrooms)
+      .set({
+        closedBimesters,
+        bimesterDates: dates,
         currentBimester: newCurrentBimester,
-        updatedAt: new Date(),
+        updatedAt: now,
       })
-      .where(eq(classrooms.id, classroomId));
+      .where(and(
+        eq(classrooms.id, classroomId),
+        sql`NOT JSON_CONTAINS(COALESCE(${classrooms.closedBimesters}, JSON_ARRAY()), JSON_OBJECT('period', ${normalizedPeriod}))`,
+      ));
+    if (affectedRows(result) === 0) throw new Error('Este bimestre ya está cerrado');
 
     // Storytelling: completar capítulos tipo BIMESTER
     try {
       const { storyService } = await import('./story.service.js');
       await storyService.onBimesterClosed(classroomId);
-    } catch (error) {
-      // Silently fail - don't break bimester close
+    } catch {
+      // No bloquea el cierre del bimestre.
     }
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       closedPeriod: normalizedPeriod,
       newCurrentBimester,
     };
   }
 
   /**
-   * Reabre un bimestre cerrado
+   * Reabre un bimestre cerrado (sus fechas se conservan: la evidencia no se mueve de bimestre).
    */
   async reopenBimester(classroomId: string, period: string, userId: string) {
     if (!userId) {
@@ -2129,18 +2360,16 @@ class GradeService {
     if (!classroom) throw new Error('Clase no encontrada');
 
     const closedBimesters = this.parseClosedBimesters(classroom.closedBimesters);
-    
-    // Verificar si está cerrado
+
     const closedIndex = closedBimesters.findIndex((cb) => cb.period === normalizedPeriod);
     if (closedIndex === -1) {
       throw new Error('Este bimestre no está cerrado');
     }
 
-    // Remover de la lista de cerrados
     closedBimesters.splice(closedIndex, 1);
 
     await db.update(classrooms)
-      .set({ 
+      .set({
         closedBimesters: closedBimesters.length > 0 ? closedBimesters : null,
         updatedAt: new Date(),
       })

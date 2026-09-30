@@ -42,10 +42,32 @@ const calculateClassroomBodySchema = z.object({
   period: periodSchema.optional().default('CURRENT'),
 });
 
+// Nota manual con un valor de la escala de la clase (AD, 17, 85…); el servicio lo valida contra la escala.
 const manualGradeBodySchema = z.object({
-  manualScore: z.coerce.number().min(0, 'manualScore debe estar entre 0 y 100').max(100, 'manualScore debe estar entre 0 y 100'),
-  manualNote: z.string().trim().max(1000, 'manualNote no puede exceder 1000 caracteres').optional(),
+  value: z.string().trim().min(1, 'Elige una nota').max(10),
+  manualNote: z.string().trim().max(1000, 'El comentario no puede exceder 1000 caracteres').nullable().optional(),
 });
+
+const gradeNotesBodySchema = z.object({
+  manualNote: z.string().trim().max(1000).nullable().optional(),
+  privateNote: z.string().trim().max(1000).nullable().optional(),
+  conclusion: z.string().trim().max(2000).nullable().optional(),
+});
+
+const gradeSettingsBodySchema = z.object({
+  gradeScaleType: z.enum(['PERU_LETTERS', 'PERU_VIGESIMAL', 'CENTESIMAL', 'USA_LETTERS', 'CUSTOM']).optional(),
+  customRanges: z.array(z.object({
+    label: z.string().trim().min(1).max(10),
+    minPercent: z.number().int().min(0).max(100),
+  })).min(2).max(10).optional(),
+  evaluationWeight: z.number().int().min(0).max(100).optional(),
+}).refine((b) => b.gradeScaleType !== 'CUSTOM' || !!b.customRanges, { message: 'La escala personalizada necesita sus niveles', path: ['customRanges'] });
+
+const bimesterDatesBodySchema = z.object({
+  period: periodSchema,
+  start: z.string().datetime(),
+  end: z.string().datetime(),
+}).refine((b) => new Date(b.start) < new Date(b.end), { message: 'La fecha de inicio debe ser anterior a la de fin', path: ['start'] });
 
 const bimesterStatusQuerySchema = z.object({
   year: z.coerce.number().int().min(2000).max(2100).optional(),
@@ -258,9 +280,12 @@ export class GradeController {
         return;
       }
 
+      // La nota privada es solo del docente (el alumno y la familia no la ven).
+      const role = req.user?.role;
       const grades = await gradeService.getStudentGrades(
         studentProfileId,
-        period
+        period,
+        { includePrivate: role === 'TEACHER' || role === 'ADMIN' }
       );
 
       res.json(grades);
@@ -406,21 +431,78 @@ export class GradeController {
       }
 
       const { gradeId } = paramsValidation.data;
-      const { manualScore, manualNote } = bodyValidation.data;
+      const { value, manualNote } = bodyValidation.data;
 
       if (!(await ensureTeacherGradeAccess(req, res, gradeId))) {
         return;
       }
 
-      const result = await gradeService.setManualGrade(
-        gradeId,
-        manualScore,
-        manualNote
-      );
+      const result = await gradeService.setManualGrade(gradeId, value, manualNote);
 
       res.json(result);
     } catch (error) {
       handleControllerError(res, error, 'Error al establecer calificación manual');
+    }
+  }
+
+  /**
+   * Comentario para el alumno, nota privada y conclusión descriptiva
+   * PATCH /api/grades/:gradeId/notes
+   */
+  async updateGradeNotes(req: Request, res: Response) {
+    try {
+      const paramsValidation = gradeParamsSchema.safeParse(req.params);
+      if (!paramsValidation.success) return handleValidationError(res, paramsValidation.error);
+      const bodyValidation = gradeNotesBodySchema.safeParse(req.body);
+      if (!bodyValidation.success) return handleValidationError(res, bodyValidation.error);
+
+      const { gradeId } = paramsValidation.data;
+      if (!(await ensureTeacherGradeAccess(req, res, gradeId))) return;
+
+      res.json(await gradeService.updateGradeNotes(gradeId, bodyValidation.data));
+    } catch (error) {
+      handleControllerError(res, error, 'Error al guardar los comentarios');
+    }
+  }
+
+  /**
+   * Escala y peso de las evaluaciones propias
+   * PUT /api/grades/settings/:classroomId
+   */
+  async updateGradeSettings(req: Request, res: Response) {
+    try {
+      const paramsValidation = classroomParamsSchema.safeParse(req.params);
+      if (!paramsValidation.success) return handleValidationError(res, paramsValidation.error);
+      const bodyValidation = gradeSettingsBodySchema.safeParse(req.body);
+      if (!bodyValidation.success) return handleValidationError(res, bodyValidation.error);
+
+      const { classroomId } = paramsValidation.data;
+      if (!(await ensureTeacherClassroomAccess(req, res, classroomId))) return;
+
+      res.json(await gradeService.updateGradeSettings(classroomId, bodyValidation.data));
+    } catch (error) {
+      handleControllerError(res, error, 'Error al guardar los ajustes de calificación');
+    }
+  }
+
+  /**
+   * Fechas de un bimestre
+   * PUT /api/grades/bimesters/:classroomId/dates
+   */
+  async setBimesterDates(req: Request, res: Response) {
+    try {
+      const paramsValidation = classroomParamsSchema.safeParse(req.params);
+      if (!paramsValidation.success) return handleValidationError(res, paramsValidation.error);
+      const bodyValidation = bimesterDatesBodySchema.safeParse(req.body);
+      if (!bodyValidation.success) return handleValidationError(res, bodyValidation.error);
+
+      const { classroomId } = paramsValidation.data;
+      if (!(await ensureTeacherClassroomAccess(req, res, classroomId))) return;
+
+      const { period, start, end } = bodyValidation.data;
+      res.json(await gradeService.setBimesterDates(classroomId, period, new Date(start), new Date(end)));
+    } catch (error) {
+      handleControllerError(res, error, 'Error al guardar las fechas del bimestre');
     }
   }
 

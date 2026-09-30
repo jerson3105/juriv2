@@ -1,5 +1,5 @@
 import { 
-  mysqlTable, 
+  mysqlTable, tinyint, date, 
   varchar, 
   text, 
   boolean, 
@@ -30,6 +30,8 @@ export const purchaseStatusEnum = mysqlEnum('purchase_status', ['PENDING', 'APPR
 export const attendanceStatusEnum = mysqlEnum('attendance_status', ['PRESENT', 'ABSENT', 'LATE', 'EXCUSED']);
 
 // Enums para Sistema de Calificaciones por Competencias
+export interface BimesterDates { start: string; end: string }
+
 export const gradeScaleTypeEnum = mysqlEnum('grade_scale_type', ['PERU_LETTERS', 'PERU_VIGESIMAL', 'CENTESIMAL', 'USA_LETTERS', 'CUSTOM']);
 
 // Enums para Sistema de Padres de Familia
@@ -230,6 +232,8 @@ export const classrooms = mysqlTable('classrooms', {
     }>;
   }>(),
   competencyIndicatorStartPeriod: varchar('competency_indicator_start_period', { length: 20 }),
+  // Peso (%) de las evaluaciones propias frente a la evidencia gamificada. NULL = 100.
+  gradeEvaluationWeight: tinyint('grade_evaluation_weight', { unsigned: true }),
   // Gestión de bimestres
   currentBimester: varchar('current_bimester', { length: 20 }).default('2024-B1'),
   closedBimesters: json('closed_bimesters').$type<Array<{
@@ -237,6 +241,8 @@ export const classrooms = mysqlTable('classrooms', {
     closedAt: string;
     closedBy: string;
   }>>(),
+  // Fechas de cada bimestre (ISO, fin exclusivo). Sin entrada = rango por cierres (lógica anterior).
+  bimesterDates: json('bimester_dates').$type<Record<string, BimesterDates>>(),
   
   // Escuela asociada (opcional)
   schoolId: varchar('school_id', { length: 36 }),
@@ -2026,6 +2032,7 @@ export const classroomCompetencyIndicators = mysqlTable('classroom_competency_in
   name: varchar('name', { length: 255 }).notNull(),
   description: text('description'),
   displayOrder: int('display_order').notNull().default(0),
+  weight: tinyint('weight', { unsigned: true }).notNull().default(1), // peso dentro de su competencia
   isActive: boolean('is_active').notNull().default(true),
   createdByTeacherId: varchar('created_by_teacher_id', { length: 36 }).notNull(),
   createdAt: datetime('created_at').notNull(),
@@ -2120,6 +2127,9 @@ export const studentGrades = mysqlTable('student_grades', {
   period: varchar('period', { length: 20 }).notNull().default('CURRENT'),
   score: decimal('score', { precision: 5, scale: 2 }).notNull().default('0'),
   gradeLabel: varchar('grade_label', { length: 10 }),
+  // Lo que calcula el sistema aunque haya ajuste manual (score/gradeLabel = nota efectiva).
+  calculatedScore: decimal('calculated_score', { precision: 5, scale: 2 }),
+  calculatedLabel: varchar('calculated_label', { length: 10 }),
   calculationDetails: json('calculation_details').$type<{
     activities: Array<{
       type: string;
@@ -2134,7 +2144,10 @@ export const studentGrades = mysqlTable('student_grades', {
   activitiesCount: int('activities_count').notNull().default(0),
   isManualOverride: boolean('is_manual_override').notNull().default(false),
   manualScore: decimal('manual_score', { precision: 5, scale: 2 }),
-  manualNote: text('manual_note'),
+  manualLabel: varchar('manual_label', { length: 10 }),
+  manualNote: text('manual_note'), // comentario visible para el alumno
+  privateNote: text('private_note'), // solo el docente
+  conclusion: text('conclusion'), // conclusión descriptiva (libreta / SIAGIE)
   calculatedAt: datetime('calculated_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
 }, (table) => ({
@@ -2161,6 +2174,42 @@ export const studentGradesRelations = relations(studentGrades, ({ one }) => ({
 }));
 
 // Puntajes individuales por actividad completada
+// Evaluaciones propias del docente (examen, tarea...) con nota directa por alumno.
+export const gradeEvaluationKinds = ['EXAM', 'TASK', 'PROJECT', 'ORAL', 'PRACTICE', 'OTHER'] as const;
+export type GradeEvaluationKind = typeof gradeEvaluationKinds[number];
+
+export const gradeEvaluations = mysqlTable('grade_evaluations', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
+  period: varchar('period', { length: 20 }).notNull(),
+  competencyId: varchar('competency_id', { length: 36 }).notNull(),
+  indicatorId: varchar('indicator_id', { length: 36 }),
+  title: varchar('title', { length: 150 }).notNull(),
+  kind: varchar('kind', { length: 20 }).notNull().default('OTHER'),
+  evaluatedOn: date('evaluated_on', { mode: 'string' }),
+  weight: tinyint('weight', { unsigned: true }).notNull().default(1),
+  createdBy: varchar('created_by', { length: 36 }).notNull(),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  classroomPeriodIdx: index('idx_grade_evaluations_classroom_period').on(table.classroomId, table.period),
+  competencyIdx: index('idx_grade_evaluations_competency').on(table.competencyId),
+}));
+
+export const gradeEvaluationScores = mysqlTable('grade_evaluation_scores', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  evaluationId: varchar('evaluation_id', { length: 36 }).notNull(),
+  studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),
+  score: decimal('score', { precision: 5, scale: 2 }).notNull(), // 0-100
+  label: varchar('label', { length: 10 }).notNull(), // valor en la escala de la clase
+  note: varchar('note', { length: 500 }),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  uniqueEvaluationStudent: unique('uniq_grade_evaluation_student').on(table.evaluationId, table.studentProfileId),
+  studentIdx: index('idx_grade_evaluation_scores_student').on(table.studentProfileId),
+}));
+
 export const studentActivityScores = mysqlTable('student_activity_scores', {
   id: varchar('id', { length: 36 }).primaryKey(),
   studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),

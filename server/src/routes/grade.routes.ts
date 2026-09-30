@@ -26,6 +26,12 @@ router.put('/:gradeId/manual', authorize('TEACHER'), gradeController.setManualGr
 // Eliminar calificación manual (solo profesor)
 router.delete('/:gradeId/manual', authorize('TEACHER'), gradeController.clearManualGrade);
 
+// Comentario para el alumno, nota privada y conclusión descriptiva
+router.patch('/:gradeId/notes', authorize('TEACHER'), gradeController.updateGradeNotes);
+
+// Escala y peso de evaluaciones de la clase
+router.put('/settings/:classroomId', authorize('TEACHER'), gradeController.updateGradeSettings);
+
 // Exportar libro de calificaciones en PDF (solo profesor)
 router.get('/export/pdf/:classroomId', authorize('TEACHER'), gradeController.exportPDF);
 
@@ -45,6 +51,9 @@ router.put('/bimesters/:classroomId/current', authorize('TEACHER'), gradeControl
 
 // Cerrar bimestre (solo profesor)
 router.post('/bimesters/:classroomId/close', authorize('TEACHER'), gradeController.closeBimester);
+
+// Fechas de un bimestre
+router.put('/bimesters/:classroomId/dates', authorize('TEACHER'), gradeController.setBimesterDates);
 
 // Reabrir bimestre (solo profesor)
 router.post('/bimesters/:classroomId/reopen', authorize('TEACHER'), gradeController.reopenBimester);
