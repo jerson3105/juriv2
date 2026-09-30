@@ -311,13 +311,15 @@ export const StudentGradesPage = () => {
                 <span className="font-medium text-gray-800 dark:text-white">
                   Bimestre {selectedBimesterInfo?.period.split('-B')[1] || bimesterNumber}
                 </span>
-                {selectedBimesterInfo?.isCurrent && (
-                  <span className="text-xs px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-full font-medium">
-                    Actual
+                {/* Mientras el bimestre está abierto las notas son de avance; al cerrarse, finales. */}
+                {selectedBimesterInfo?.isClosed ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-gray-200 px-2 py-0.5 text-xs font-bold text-gray-900 dark:bg-gray-700 dark:text-gray-100">
+                    <Lock size={12} aria-hidden="true" /> Final
                   </span>
-                )}
-                {selectedBimesterInfo?.isClosed && (
-                  <Lock size={12} className="text-gray-400" />
+                ) : (
+                  <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-bold text-purple-900 dark:bg-purple-900/40 dark:text-purple-100">
+                    En curso · avance
+                  </span>
                 )}
               </div>
               <button
@@ -584,13 +586,17 @@ export const StudentGradesPage = () => {
                             </div>
                           </div>
 
-                          {/* Nota del profesor si existe */}
+                          {/* Comentario y conclusión del docente */}
                           {grade.manualNote && (
-                            <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
-                              <span className="text-blue-600 dark:text-blue-400 text-xs font-medium">Nota del profesor</span>
-                              <p className="text-sm text-gray-700 dark:text-gray-300 mt-1">
-                                {grade.manualNote}
-                              </p>
+                            <div className="rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
+                              <span className="text-sm font-semibold text-blue-900 dark:text-blue-100">Comentario de tu profe</span>
+                              <p className="mt-1 text-sm text-gray-800 dark:text-gray-100">{grade.manualNote}</p>
+                            </div>
+                          )}
+                          {grade.conclusion && (
+                            <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-900/40">
+                              <span className="text-sm font-semibold text-gray-900 dark:text-white">Conclusión</span>
+                              <p className="mt-1 text-sm text-gray-800 dark:text-gray-100">{grade.conclusion}</p>
                             </div>
                           )}
                         </div>
