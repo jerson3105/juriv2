@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { schoolController } from '../controllers/school.controller.js';
+import { schoolController, schoolManagementController } from '../controllers/school.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 
 const router = Router();
@@ -11,6 +11,10 @@ router.use(authenticate);
 
 // Buscar escuelas existentes
 router.get('/search', authorize('TEACHER'), schoolController.search.bind(schoolController));
+
+// Invitación por enlace (antes de /:schoolId)
+router.get('/invite/:code', authorize('TEACHER'), schoolManagementController.previewInvite);
+router.post('/invite/:code/join', authorize('TEACHER'), schoolManagementController.joinByInvite);
 
 // Mis escuelas
 router.get('/my-schools', authorize('TEACHER'), schoolController.getMySchools.bind(schoolController));
@@ -35,6 +39,12 @@ router.patch('/members/:memberId/review', authorize('TEACHER'), schoolController
 
 // Cancelar solicitud de unión (profesor)
 router.delete('/members/:memberId/cancel', authorize('TEACHER'), schoolController.cancelJoinRequest.bind(schoolController));
+
+// Gestión del responsable
+router.delete('/:schoolId/members/:memberId', authorize('TEACHER', 'ADMIN'), schoolManagementController.removeTeacher);
+router.get('/:schoolId/classrooms/:classroomId/report', authorize('TEACHER', 'ADMIN'), schoolManagementController.classroomReport);
+router.post('/:schoolId/invite', authorize('TEACHER', 'ADMIN'), schoolManagementController.regenerateInvite);
+router.delete('/:schoolId/invite', authorize('TEACHER', 'ADMIN'), schoolManagementController.disableInvite);
 
 // Asignar/desasignar clase
 router.post('/:schoolId/classrooms/:classroomId', authorize('TEACHER'), schoolController.assignClassroom.bind(schoolController));

@@ -1,4 +1,6 @@
 import api from './api';
+import type { ClassroomStats } from './historyApi';
+import type { AttendanceStats } from './attendanceApi';
 
 export interface School {
   id: string;
@@ -65,14 +67,29 @@ export interface SchoolClassroom {
   name: string;
   code: string;
   gradeLevel: string | null;
+  teacherId: string;
+  teacherName: string;
   curriculumAreaId: string | null;
   curriculumAreaName: string | null;
+  isActive: boolean;
   studentCount: number;
+  lastActivityAt: string | null; // último punto dado en los últimos 60 días
 }
 
 export interface SchoolDetail extends School {
+  inviteCode: string | null; // solo lo recibe el responsable
   members: SchoolMember[];
   classrooms: SchoolClassroom[];
+}
+
+export interface SchoolClassroomReport {
+  stats: ClassroomStats;
+  attendance: AttendanceStats;
+}
+
+export interface SchoolInvitePreview {
+  school: { id: string; name: string; city: string | null; country: string };
+  memberStatus: SchoolMember['status'] | null;
 }
 
 export interface PendingVerification {
@@ -297,6 +314,36 @@ export interface AttendanceReport {
 }
 
 export const schoolApi = {
+  // Gestión del responsable
+  removeTeacher: async (schoolId: string, memberId: string): Promise<{ unassignedClassrooms: number }> => {
+    const response = await api.delete(`/schools/${schoolId}/members/${memberId}`);
+    return response.data.data;
+  },
+
+  getClassroomReport: async (schoolId: string, classroomId: string): Promise<SchoolClassroomReport> => {
+    const response = await api.get(`/schools/${schoolId}/classrooms/${classroomId}/report`);
+    return response.data.data;
+  },
+
+  regenerateInvite: async (schoolId: string): Promise<{ inviteCode: string }> => {
+    const response = await api.post(`/schools/${schoolId}/invite`);
+    return response.data.data;
+  },
+
+  disableInvite: async (schoolId: string): Promise<void> => {
+    await api.delete(`/schools/${schoolId}/invite`);
+  },
+
+  previewInvite: async (code: string): Promise<SchoolInvitePreview> => {
+    const response = await api.get(`/schools/invite/${encodeURIComponent(code)}`);
+    return response.data.data;
+  },
+
+  joinByInvite: async (code: string): Promise<{ school: SchoolInvitePreview['school']; alreadyMember: boolean }> => {
+    const response = await api.post(`/schools/invite/${encodeURIComponent(code)}/join`);
+    return response.data.data;
+  },
+
   // Buscar escuelas existentes
   search: async (query: string): Promise<SchoolSearchResult[]> => {
     const response = await api.get(`/schools/search?q=${encodeURIComponent(query)}`);
@@ -364,7 +411,7 @@ export const schoolApi = {
   },
 
   // Actualizar comportamiento de escuela
-  updateSchoolBehavior: async (behaviorId: string, data: Partial<CreateSchoolBehaviorData>): Promise<SchoolBehavior> => {
+  updateSchoolBehavior: async (behaviorId: string, data: Partial<CreateSchoolBehaviorData> & { isActive?: boolean }): Promise<SchoolBehavior> => {
     const response = await api.patch(`/schools/behaviors/${behaviorId}`, data);
     return response.data.data;
   },
@@ -395,7 +442,7 @@ export const schoolApi = {
   },
 
   // Actualizar insignia de escuela
-  updateSchoolBadge: async (badgeId: string, data: Partial<CreateSchoolBadgeData>): Promise<SchoolBadge> => {
+  updateSchoolBadge: async (badgeId: string, data: Partial<CreateSchoolBadgeData> & { isActive?: boolean }): Promise<SchoolBadge> => {
     const response = await api.patch(`/schools/badges/${badgeId}`, data);
     return response.data.data;
   },

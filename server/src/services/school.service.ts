@@ -158,7 +158,7 @@ export class SchoolService {
         memberRole: schoolMembers.role,
         memberStatus: schoolMembers.status,
         rejectionReason: schoolMembers.rejectionReason,
-        memberCount: sql<number>`(SELECT COUNT(*) FROM school_members WHERE school_id = ${schools.id} AND school_member_status != 'REJECTED')`,
+        memberCount: sql<number>`(SELECT COUNT(*) FROM school_members WHERE school_id = ${schools.id} AND school_member_status = 'VERIFIED')`,
         classroomCount: sql<number>`(SELECT COUNT(*) FROM classrooms WHERE school_id = ${schools.id})`,
         pendingRequestCount: sql<number>`(SELECT COUNT(*) FROM school_members WHERE school_id = ${schools.id} AND school_member_status = 'PENDING_OWNER')`,
       })
@@ -595,6 +595,7 @@ export class SchoolService {
     hpValue?: number;
     gpValue?: number;
     icon?: string | null;
+    isActive?: boolean;
   }) {
     const now = new Date();
     await db.update(schoolBehaviors)
@@ -751,6 +752,7 @@ export class SchoolService {
     rewardXp?: number;
     rewardGp?: number;
     isSecret?: boolean;
+    isActive?: boolean;
   }) {
     const now = new Date();
     await db.update(schoolBadges)

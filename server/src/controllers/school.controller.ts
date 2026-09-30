@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { schoolService } from '../services/school.service.js';
+import { schoolManagementService, SchoolManagementError } from '../services/schoolManagement.service.js';
 import { z } from 'zod';
 import {
   requireSchoolOwner,
@@ -8,6 +9,8 @@ import {
   schoolIdOfClassroom,
   teacherOwnsClassroom,
   requireSchoolClassroomMember,
+  requireSchoolViewer,
+  verifiedSchoolRole,
 } from '../utils/access.js';
 
 const createSchoolSchema = z.object({
@@ -58,6 +61,7 @@ const updateSchoolBehaviorSchema = z.object({
   hpValue: z.number().int().min(0).optional(),
   gpValue: z.number().int().min(0).optional(),
   icon: z.string().max(50).optional().nullable(),
+  isActive: z.boolean().optional(), // Deshacer un eliminado
 });
 
 const importBehaviorsSchema = z.object({
@@ -90,12 +94,33 @@ const updateSchoolBadgeSchema = z.object({
   rewardXp: z.number().int().min(0).optional(),
   rewardGp: z.number().int().min(0).optional(),
   isSecret: z.boolean().optional(),
+  isActive: z.boolean().optional(), // Deshacer un eliminado
 });
 
 const importBadgesSchema = z.object({
   badgeIds: z.array(z.string().max(36)).min(1),
   classroomIds: z.array(z.string().max(36)).min(1),
 });
+
+// Periodo de un reporte: fechas YYYY-MM-DD en la hora del servidor (la misma con la que se guardan los registros).
+// Sin fechas: del 1 de enero a hoy. Devuelve null si el formato o el orden son inválidos.
+const DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const parseDay = (value: unknown, endOfDay: boolean): Date | null => {
+  const m = typeof value === 'string' ? DAY_RE.exec(value) : null;
+  if (!m) return null;
+  const d = endOfDay
+    ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 23, 59, 59, 999)
+    : new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  // Rechaza fechas imposibles (2026-02-31 se convertiría en marzo).
+  return d.getMonth() === Number(m[2]) - 1 && d.getDate() === Number(m[3]) ? d : null;
+};
+const parseReportRange = (sd: unknown, ed: unknown) => {
+  const now = new Date();
+  const startDate = sd === undefined ? new Date(now.getFullYear(), 0, 1) : parseDay(sd, false);
+  const endDate = ed === undefined ? new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999) : parseDay(ed, true);
+  if (!startDate || !endDate || startDate > endDate) return null;
+  return { startDate, endDate };
+};
 
 class SchoolController {
   // Buscar escuelas existentes en Juried
@@ -182,14 +207,22 @@ class SchoolController {
       const { schoolId } = req.params;
       const userId = (req as any).user.id;
 
-      // Verificar que el usuario es miembro verificado
-      const membership = await schoolService.getMembership(schoolId, userId);
-      if (!membership || membership.status !== 'VERIFIED') {
-        return res.status(403).json({ success: false, message: 'No tienes acceso a esta escuela' });
-      }
+      if (!(await requireSchoolViewer(req, res, schoolId))) return;
 
       const detail = await schoolService.getSchoolDetail(schoolId);
-      res.json({ success: true, data: detail });
+      if (!detail) return res.status(404).json({ success: false, message: 'Escuela no encontrada' });
+      const isOwner = req.user!.role === 'ADMIN' || (await verifiedSchoolRole(req.user!.id, schoolId)) === 'OWNER';
+      const classroomsWithActivity = await schoolManagementService.getSchoolClassrooms(schoolId);
+      // Solo el responsable ve el código de invitación y los miembros no verificados.
+      res.json({
+        success: true,
+        data: {
+          ...detail,
+          inviteCode: isOwner ? detail.inviteCode : null,
+          members: isOwner ? detail.members : detail.members.filter((m) => m.status === 'VERIFIED'),
+          classrooms: classroomsWithActivity,
+        },
+      });
     } catch (error) {
       console.error('Error getting school detail:', error);
       res.status(500).json({ success: false, message: 'Error al obtener detalle de escuela' });
@@ -202,10 +235,7 @@ class SchoolController {
       const { schoolId } = req.params;
       const userId = (req as any).user.id;
 
-      const membership = await schoolService.getMembership(schoolId, userId);
-      if (!membership || (membership.status !== 'VERIFIED' && !(membership.role === 'OWNER' && membership.status === 'PENDING_ADMIN'))) {
-        return res.status(403).json({ success: false, message: 'No tienes acceso a esta escuela' });
-      }
+      if (!(await requireSchoolViewer(req, res, schoolId))) return;
 
       const teachers = await schoolService.getSchoolTeachers(schoolId);
       res.json({ success: true, data: teachers });
@@ -221,11 +251,7 @@ class SchoolController {
       const { schoolId } = req.params;
       const userId = (req as any).user.id;
 
-      // Verificar que es OWNER
-      const membership = await schoolService.getMembership(schoolId, userId);
-      if (!membership || membership.role !== 'OWNER') {
-        return res.status(403).json({ success: false, message: 'Solo el responsable puede ver solicitudes' });
-      }
+      if (!(await requireSchoolOwner(req, res, schoolId))) return;
 
       const requests = await schoolService.getPendingRequests(schoolId);
       res.json({ success: true, data: requests });
@@ -243,11 +269,14 @@ class SchoolController {
 
       if (!(await requireSchoolOwnerByMember(req, res, memberId))) return;
 
-      await schoolService.reviewJoinRequest(memberId, data.approved, data.reason);
+      await schoolManagementService.reviewPendingRequest(memberId, data.approved, data.reason);
       res.json({ success: true, message: data.approved ? 'Solicitud aceptada' : 'Solicitud rechazada' });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ success: false, message: 'Datos inválidos' });
+      }
+      if (error instanceof SchoolManagementError) {
+        return res.status(error.status).json({ success: false, message: error.message });
       }
       console.error('Error reviewing join request:', error);
       res.status(500).json({ success: false, message: 'Error al revisar solicitud' });
@@ -392,10 +421,7 @@ class SchoolController {
       const { schoolId } = req.params;
       const userId = (req as any).user.id;
 
-      const membership = await schoolService.getMembership(schoolId, userId);
-      if (!membership || (membership.status !== 'VERIFIED' && !(membership.role === 'OWNER' && membership.status === 'PENDING_ADMIN'))) {
-        return res.status(403).json({ success: false, message: 'No tienes acceso a esta escuela' });
-      }
+      if (!(await requireSchoolViewer(req, res, schoolId))) return;
 
       const behaviors = await schoolService.getSchoolBehaviors(schoolId);
       res.json({ success: true, data: behaviors });
@@ -411,10 +437,7 @@ class SchoolController {
       const { schoolId } = req.params;
       const userId = (req as any).user.id;
 
-      const membership = await schoolService.getMembership(schoolId, userId);
-      if (!membership || membership.role !== 'OWNER') {
-        return res.status(403).json({ success: false, message: 'Solo el responsable puede crear comportamientos' });
-      }
+      if (!(await requireSchoolOwner(req, res, schoolId))) return;
 
       const data = createSchoolBehaviorSchema.parse(req.body);
       const behavior = await schoolService.createSchoolBehavior(schoolId, userId, data);
@@ -439,10 +462,7 @@ class SchoolController {
         return res.status(404).json({ success: false, message: 'Comportamiento no encontrado' });
       }
 
-      const membership = await schoolService.getMembership(behavior.schoolId, userId);
-      if (!membership || membership.role !== 'OWNER') {
-        return res.status(403).json({ success: false, message: 'Solo el responsable puede editar comportamientos' });
-      }
+      if (!(await requireSchoolOwner(req, res, behavior.schoolId))) return;
 
       const data = updateSchoolBehaviorSchema.parse(req.body);
       const updated = await schoolService.updateSchoolBehavior(behaviorId, data);
@@ -467,10 +487,7 @@ class SchoolController {
         return res.status(404).json({ success: false, message: 'Comportamiento no encontrado' });
       }
 
-      const membership = await schoolService.getMembership(behavior.schoolId, userId);
-      if (!membership || membership.role !== 'OWNER') {
-        return res.status(403).json({ success: false, message: 'Solo el responsable puede eliminar comportamientos' });
-      }
+      if (!(await requireSchoolOwner(req, res, behavior.schoolId))) return;
 
       await schoolService.deleteSchoolBehavior(behaviorId);
       res.json({ success: true, message: 'Comportamiento eliminado' });
@@ -486,10 +503,7 @@ class SchoolController {
       const { schoolId } = req.params;
       const userId = (req as any).user.id;
 
-      const membership = await schoolService.getMembership(schoolId, userId);
-      if (!membership || membership.status !== 'VERIFIED') {
-        return res.status(403).json({ success: false, message: 'No tienes acceso a esta escuela' });
-      }
+      if (!(await requireSchoolViewer(req, res, schoolId))) return;
 
       const data = importBehaviorsSchema.parse(req.body);
       const result = await schoolService.importBehaviorsToClassrooms(data.behaviorIds, data.classroomIds, userId);
@@ -514,10 +528,7 @@ class SchoolController {
       const { schoolId } = req.params;
       const userId = (req as any).user.id;
 
-      const membership = await schoolService.getMembership(schoolId, userId);
-      if (!membership || (membership.status !== 'VERIFIED' && !(membership.role === 'OWNER' && membership.status === 'PENDING_ADMIN'))) {
-        return res.status(403).json({ success: false, message: 'No tienes acceso a esta escuela' });
-      }
+      if (!(await requireSchoolViewer(req, res, schoolId))) return;
 
       const badges = await schoolService.getSchoolBadges(schoolId);
       res.json({ success: true, data: badges });
@@ -533,10 +544,7 @@ class SchoolController {
       const { schoolId } = req.params;
       const userId = (req as any).user.id;
 
-      const membership = await schoolService.getMembership(schoolId, userId);
-      if (!membership || membership.role !== 'OWNER') {
-        return res.status(403).json({ success: false, message: 'Solo el responsable puede crear insignias' });
-      }
+      if (!(await requireSchoolOwner(req, res, schoolId))) return;
 
       const data = createSchoolBadgeSchema.parse(req.body);
       const badge = await schoolService.createSchoolBadge(schoolId, userId, data);
@@ -561,10 +569,7 @@ class SchoolController {
         return res.status(404).json({ success: false, message: 'Insignia no encontrada' });
       }
 
-      const membership = await schoolService.getMembership(badge.schoolId, userId);
-      if (!membership || membership.role !== 'OWNER') {
-        return res.status(403).json({ success: false, message: 'Solo el responsable puede editar insignias' });
-      }
+      if (!(await requireSchoolOwner(req, res, badge.schoolId))) return;
 
       const data = updateSchoolBadgeSchema.parse(req.body);
       const updated = await schoolService.updateSchoolBadge(badgeId, data);
@@ -589,10 +594,7 @@ class SchoolController {
         return res.status(404).json({ success: false, message: 'Insignia no encontrada' });
       }
 
-      const membership = await schoolService.getMembership(badge.schoolId, userId);
-      if (!membership || membership.role !== 'OWNER') {
-        return res.status(403).json({ success: false, message: 'Solo el responsable puede eliminar insignias' });
-      }
+      if (!(await requireSchoolOwner(req, res, badge.schoolId))) return;
 
       await schoolService.deleteSchoolBadge(badgeId);
       res.json({ success: true, message: 'Insignia eliminada' });
@@ -608,10 +610,7 @@ class SchoolController {
       const { schoolId } = req.params;
       const userId = (req as any).user.id;
 
-      const membership = await schoolService.getMembership(schoolId, userId);
-      if (!membership || membership.status !== 'VERIFIED') {
-        return res.status(403).json({ success: false, message: 'No tienes acceso a esta escuela' });
-      }
+      if (!(await requireSchoolViewer(req, res, schoolId))) return;
 
       const data = importBadgesSchema.parse(req.body);
       const result = await schoolService.importBadgesToClassrooms(data.badgeIds, data.classroomIds, userId);
@@ -634,16 +633,11 @@ class SchoolController {
       const { schoolId } = req.params;
       const { startDate: sd, endDate: ed } = req.query;
 
-      // Verificar que es OWNER
-      const membership = await schoolService.getMembership(schoolId, req.user!.id);
-      if (!membership || membership.role !== 'OWNER') {
-        return res.status(403).json({ success: false, message: 'Solo el profesor responsable puede ver reportes' });
-      }
+      if (!(await requireSchoolOwner(req, res, schoolId))) return;
 
-      const startDate = sd ? new Date(sd as string) : new Date(new Date().getFullYear(), 0, 1);
-      const endDate = ed ? new Date(ed as string) : new Date();
-      startDate.setHours(0, 0, 0, 0);
-      endDate.setHours(23, 59, 59, 999);
+      const range = parseReportRange(sd, ed);
+      if (!range) return res.status(400).json({ success: false, message: 'Periodo inválido' });
+      const { startDate, endDate } = range;
       const data = await schoolService.getReportSummary(schoolId, startDate, endDate);
       res.json({ success: true, data });
     } catch (error) {
@@ -657,16 +651,16 @@ class SchoolController {
       const { schoolId } = req.params;
       const { startDate: sd, endDate: ed, classroomId } = req.query;
 
-      const membership = await schoolService.getMembership(schoolId, req.user!.id);
-      if (!membership || membership.role !== 'OWNER') {
-        return res.status(403).json({ success: false, message: 'Solo el profesor responsable puede ver reportes' });
-      }
+      if (!(await requireSchoolOwner(req, res, schoolId))) return;
 
-      const startDate = sd ? new Date(sd as string) : new Date(new Date().getFullYear(), 0, 1);
-      const endDate = ed ? new Date(ed as string) : new Date();
-      startDate.setHours(0, 0, 0, 0);
-      endDate.setHours(23, 59, 59, 999);
-      const data = await schoolService.getBehaviorTrends(schoolId, startDate, endDate, classroomId as string | undefined);
+      const range = parseReportRange(sd, ed);
+      if (!range) return res.status(400).json({ success: false, message: 'Periodo inválido' });
+      const { startDate, endDate } = range;
+      // Si se filtra por clase, debe pertenecer a esta escuela (evita leer clases de otras escuelas).
+      if (classroomId !== undefined && (typeof classroomId !== 'string' || (await schoolIdOfClassroom(classroomId)) !== schoolId)) {
+        return res.status(404).json({ success: false, message: 'Clase no encontrada en esta escuela' });
+      }
+      const data = await schoolService.getBehaviorTrends(schoolId, startDate, endDate, classroomId);
       res.json({ success: true, data });
     } catch (error) {
       console.error('Error getting behavior trends:', error);
@@ -679,15 +673,11 @@ class SchoolController {
       const { schoolId } = req.params;
       const { startDate: sd, endDate: ed } = req.query;
 
-      const membership = await schoolService.getMembership(schoolId, req.user!.id);
-      if (!membership || membership.role !== 'OWNER') {
-        return res.status(403).json({ success: false, message: 'Solo el profesor responsable puede ver reportes' });
-      }
+      if (!(await requireSchoolOwner(req, res, schoolId))) return;
 
-      const startDate = sd ? new Date(sd as string) : new Date(new Date().getFullYear(), 0, 1);
-      const endDate = ed ? new Date(ed as string) : new Date();
-      startDate.setHours(0, 0, 0, 0);
-      endDate.setHours(23, 59, 59, 999);
+      const range = parseReportRange(sd, ed);
+      if (!range) return res.status(400).json({ success: false, message: 'Periodo inválido' });
+      const { startDate, endDate } = range;
       const data = await schoolService.getClassRanking(schoolId, startDate, endDate);
       res.json({ success: true, data });
     } catch (error) {
@@ -701,15 +691,11 @@ class SchoolController {
       const { schoolId } = req.params;
       const { startDate: sd, endDate: ed } = req.query;
 
-      const membership = await schoolService.getMembership(schoolId, req.user!.id);
-      if (!membership || membership.role !== 'OWNER') {
-        return res.status(403).json({ success: false, message: 'Solo el profesor responsable puede ver reportes' });
-      }
+      if (!(await requireSchoolOwner(req, res, schoolId))) return;
 
-      const startDate = sd ? new Date(sd as string) : new Date(new Date().getFullYear(), 0, 1);
-      const endDate = ed ? new Date(ed as string) : new Date();
-      startDate.setHours(0, 0, 0, 0);
-      endDate.setHours(23, 59, 59, 999);
+      const range = parseReportRange(sd, ed);
+      if (!range) return res.status(400).json({ success: false, message: 'Periodo inválido' });
+      const { startDate, endDate } = range;
       const data = await schoolService.getTopBehaviors(schoolId, startDate, endDate);
       res.json({ success: true, data });
     } catch (error) {
@@ -723,15 +709,11 @@ class SchoolController {
       const { schoolId } = req.params;
       const { startDate: sd, endDate: ed } = req.query;
 
-      const membership = await schoolService.getMembership(schoolId, req.user!.id);
-      if (!membership || membership.role !== 'OWNER') {
-        return res.status(403).json({ success: false, message: 'Solo el profesor responsable puede ver reportes' });
-      }
+      if (!(await requireSchoolOwner(req, res, schoolId))) return;
 
-      const startDate = sd ? new Date(sd as string) : new Date(new Date().getFullYear(), 0, 1);
-      const endDate = ed ? new Date(ed as string) : new Date();
-      startDate.setHours(0, 0, 0, 0);
-      endDate.setHours(23, 59, 59, 999);
+      const range = parseReportRange(sd, ed);
+      if (!range) return res.status(400).json({ success: false, message: 'Periodo inválido' });
+      const { startDate, endDate } = range;
       const data = await schoolService.getStudentsAtRisk(schoolId, startDate, endDate);
       res.json({ success: true, data });
     } catch (error) {
@@ -745,15 +727,11 @@ class SchoolController {
       const { schoolId } = req.params;
       const { startDate: sd, endDate: ed } = req.query;
 
-      const membership = await schoolService.getMembership(schoolId, req.user!.id);
-      if (!membership || membership.role !== 'OWNER') {
-        return res.status(403).json({ success: false, message: 'Solo el profesor responsable puede ver reportes' });
-      }
+      if (!(await requireSchoolOwner(req, res, schoolId))) return;
 
-      const startDate = sd ? new Date(sd as string) : new Date(new Date().getFullYear(), 0, 1);
-      const endDate = ed ? new Date(ed as string) : new Date();
-      startDate.setHours(0, 0, 0, 0);
-      endDate.setHours(23, 59, 59, 999);
+      const range = parseReportRange(sd, ed);
+      if (!range) return res.status(400).json({ success: false, message: 'Periodo inválido' });
+      const { startDate, endDate } = range;
       const data = await schoolService.getAttendanceReport(schoolId, startDate, endDate);
       res.json({ success: true, data });
     } catch (error) {
@@ -764,3 +742,92 @@ class SchoolController {
 }
 
 export const schoolController = new SchoolController();
+
+// ==================== GESTIÓN DEL RESPONSABLE ====================
+
+const sendManagementError = (res: Response, error: unknown, fallback: string) => {
+  if (error instanceof SchoolManagementError) {
+    return res.status(error.status).json({ success: false, message: error.message });
+  }
+  console.error(fallback, error);
+  return res.status(500).json({ success: false, message: fallback });
+};
+
+const INVITE_CODE_RE = /^[A-Z0-9]{6,16}$/;
+
+export const schoolManagementController = {
+  // DELETE /schools/:schoolId/members/:memberId — retirar profesor (sus clases vuelven a ser personales)
+  async removeTeacher(req: Request, res: Response) {
+    try {
+      const { schoolId, memberId } = req.params;
+      if (!(await requireSchoolOwner(req, res, schoolId))) return;
+      const result = await schoolManagementService.removeTeacher(schoolId, memberId);
+      res.json({ success: true, data: result, message: 'Profesor retirado de la escuela' });
+    } catch (error) {
+      return sendManagementError(res, error, 'Error al retirar al profesor');
+    }
+  },
+
+  // GET /schools/:schoolId/classrooms/:classroomId/report — reporte de una clase de la escuela
+  async classroomReport(req: Request, res: Response) {
+    try {
+      const { schoolId, classroomId } = req.params;
+      if (!(await requireSchoolOwner(req, res, schoolId))) return;
+      const data = await schoolManagementService.getClassroomReport(schoolId, classroomId);
+      res.json({ success: true, data });
+    } catch (error) {
+      return sendManagementError(res, error, 'Error al obtener el reporte de la clase');
+    }
+  },
+
+  // POST /schools/:schoolId/invite — genera o renueva el código (invalida el anterior)
+  async regenerateInvite(req: Request, res: Response) {
+    try {
+      const { schoolId } = req.params;
+      if (!(await requireSchoolOwner(req, res, schoolId))) return;
+      const inviteCode = await schoolManagementService.regenerateInviteCode(schoolId);
+      res.json({ success: true, data: { inviteCode } });
+    } catch (error) {
+      return sendManagementError(res, error, 'Error al generar la invitación');
+    }
+  },
+
+  // DELETE /schools/:schoolId/invite — desactiva el enlace
+  async disableInvite(req: Request, res: Response) {
+    try {
+      const { schoolId } = req.params;
+      if (!(await requireSchoolOwner(req, res, schoolId))) return;
+      await schoolManagementService.disableInviteCode(schoolId);
+      res.json({ success: true, message: 'Invitación desactivada' });
+    } catch (error) {
+      return sendManagementError(res, error, 'Error al desactivar la invitación');
+    }
+  },
+
+  // GET /schools/invite/:code — a qué escuela lleva el enlace
+  async previewInvite(req: Request, res: Response) {
+    try {
+      const code = String(req.params.code || '').toUpperCase();
+      if (!INVITE_CODE_RE.test(code)) return res.status(404).json({ success: false, message: 'Enlace no válido' });
+      const school = await schoolManagementService.findByInviteCode(code);
+      if (!school) return res.status(404).json({ success: false, message: 'El enlace de invitación no es válido o fue desactivado' });
+      const membership = await schoolService.getMembership(school.id, req.user!.id);
+      res.json({ success: true, data: { school, memberStatus: membership?.status ?? null } });
+    } catch (error) {
+      return sendManagementError(res, error, 'Error al leer la invitación');
+    }
+  },
+
+  // POST /schools/invite/:code/join — unirse con el enlace
+  async joinByInvite(req: Request, res: Response) {
+    try {
+      const code = String(req.params.code || '').toUpperCase();
+      if (!INVITE_CODE_RE.test(code)) return res.status(404).json({ success: false, message: 'Enlace no válido' });
+      const result = await schoolManagementService.joinByInvite(req.user!.id, code);
+      res.json({ success: true, data: result, message: result.alreadyMember ? 'Ya eras parte de esta escuela' : 'Te uniste a la escuela' });
+    } catch (error) {
+      return sendManagementError(res, error, 'Error al unirse con la invitación');
+    }
+  },
+};
+

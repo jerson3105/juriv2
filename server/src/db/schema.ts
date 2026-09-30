@@ -2646,6 +2646,7 @@ export const schools = mysqlTable('schools', {
   latitude: decimal('latitude', { precision: 10, scale: 8 }),
   longitude: decimal('longitude', { precision: 11, scale: 8 }),
   logoUrl: varchar('logo_url', { length: 500 }),
+  inviteCode: varchar('invite_code', { length: 16 }).unique('uniq_schools_invite_code'),
   isVerified: boolean('is_verified').notNull().default(false),
   isActive: boolean('is_active').notNull().default(true),
   createdBy: varchar('created_by', { length: 36 }).notNull(),

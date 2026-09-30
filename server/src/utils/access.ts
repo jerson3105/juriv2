@@ -325,6 +325,25 @@ export const requireSchoolOwner = async (
 };
 
 /**
+ * Ver la escuela (profesores, clases, biblioteca): ADMIN, miembro VERIFIED, o el dueño que la registró
+ * y espera verificación (PENDING_ADMIN). Gestionar (reportes, solicitudes, biblioteca, retirar) usa requireSchoolOwner.
+ */
+export const requireSchoolViewer = async (
+  req: Request,
+  res: Response,
+  schoolId: string
+): Promise<boolean> => {
+  const user = req.user;
+  if (!user) return deny(res, 401, 'No autenticado');
+  if (user.role === 'ADMIN') return true;
+  if (!schoolId) return deny(res, 400, 'Falta el identificador de la escuela');
+  if (!(await canAttachClassroomsToSchool(user.id, schoolId))) {
+    return deny(res, 403, 'No tienes acceso a esta escuela');
+  }
+  return true;
+};
+
+/**
  * Asignar clases a una escuela: ADMIN, o profesor que pertenece a ella (ver canAttachClassroomsToSchool).
  */
 export const requireSchoolClassroomMember = async (
