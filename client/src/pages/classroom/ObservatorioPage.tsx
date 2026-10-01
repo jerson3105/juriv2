@@ -17,6 +17,8 @@ const ConquistaActivity = lazy(() => import('../../components/observatorio/conqu
 const ExpeditionsActivity = lazy(() => import('../../components/activities/ExpeditionsActivity').then((m) => ({ default: m.ExpeditionsActivity })));
 const DescansoActivity = lazy(() => import('../../components/observatorio/descanso/DescansoActivity').then((m) => ({ default: m.DescansoActivity })));
 const EstrellasActivity = lazy(() => import('../../components/observatorio/estrellas/EstrellasActivity').then((m) => ({ default: m.EstrellasActivity })));
+const ErrorActivity = lazy(() => import('../../components/observatorio/error/ErrorActivity').then((m) => ({ default: m.ErrorActivity })));
+const CorreoActivity = lazy(() => import('../../components/observatorio/correo/CorreoActivity').then((m) => ({ default: m.CorreoActivity })));
 const JiroExpeditionsActivity = lazy(() => import('../../components/activities/JiroExpeditionsActivity').then((m) => ({ default: m.JiroExpeditionsActivity })));
 
 type ClassroomWithStudents = Classroom & { students?: Student[] };
@@ -106,6 +108,8 @@ export const ObservatorioPage = () => {
         {selected.id === 'descanso' && <DescansoActivity classroom={classroom} resume={selected.resume} onExit={back} />}
         {selected.id === 'estrellas' && <EstrellasActivity classroom={classroom} resume={selected.resume} onExit={back} />}
         {selected.id === 'conquista' && <ConquistaActivity classroom={classroom} resume={selected.resume} onExit={back} />}
+        {selected.id === 'error' && <ErrorActivity classroom={classroom} resume={selected.resume} onExit={back} />}
+        {selected.id === 'correo' && <CorreoActivity classroom={classroom} resume={selected.resume} onExit={back} />}
         {selected.id === 'pergaminos' && <ScrollsActivity classroom={classroom} onBack={back} />}
         {selected.id === 'expeditions' && <ExpeditionsActivity classroom={classroom} onBack={back} />}
         {selected.id === 'jiro-expeditions' && <JiroExpeditionsActivity classroom={classroom} onBack={back} />}
@@ -188,7 +192,7 @@ export const ObservatorioPage = () => {
       <section aria-labelledby="observatorio-catalog">
         <h2 id="observatorio-catalog" className="mb-3 text-lg font-bold text-gray-900 dark:text-white">Actividades</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {CATALOG.map((entry) => (
+          {CATALOG.filter((entry) => !entry.onlyWithScrolls || classroom.scrollsEnabled).map((entry) => (
             <ActivityCard
               key={entry.id}
               entry={entry}

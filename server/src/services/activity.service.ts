@@ -94,7 +94,7 @@ const serialize = (row: SessionRow, withState = false) => ({
  */
 class ActivityService {
   /** Partida de una clase del profesor (404 si no es suya). */
-  private async ownedSession(sessionId: string, teacherId: string) {
+  async ownedSession(sessionId: string, teacherId: string) {
     const [row] = await db.select({ session: activitySessions, teacherId: classrooms.teacherId })
       .from(activitySessions)
       .innerJoin(classrooms, eq(classrooms.id, activitySessions.classroomId))

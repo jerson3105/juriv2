@@ -185,7 +185,7 @@ export const questionBankApi = {
   },
 
   /** Observatorio: genera con IA y guarda directo en un banco de la clase (sin CSV). */
-  generateIntoBank: async (classroomId: string, data: { topic: string; quantity: number; kind: 'TRUE_FALSE' | 'SINGLE_CHOICE'; bankId?: string | null }): Promise<{ bankId: string; bankName: string; created: number }> => {
+  generateIntoBank: async (classroomId: string, data: { topic: string; quantity: number; kind: 'TRUE_FALSE' | 'SINGLE_CHOICE' | 'ERROR_STEPS'; bankId?: string | null }): Promise<{ bankId: string; bankName: string; created: number }> => {
     const response = await api.post(`/question-banks/classroom/${classroomId}/generate-into-bank`, data);
     return response.data.data;
   },

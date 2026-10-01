@@ -583,6 +583,23 @@ export const activitySessions = mysqlTable('activity_sessions', {
   classroomTypeIdx: index('idx_activity_sessions_classroom_type').on(table.classroomId, table.activityType, table.createdAt),
 }));
 
+// Correo Estelar: cartas a la estrella secreta (privadas, sin autor para quien las recibe, moderadas).
+export const activityLetters = mysqlTable('activity_letters', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  sessionId: varchar('session_id', { length: 36 }).notNull(),
+  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
+  writerId: varchar('writer_id', { length: 36 }).notNull(),
+  recipientId: varchar('recipient_id', { length: 36 }).notNull(),
+  message: text('message').notNull(),
+  status: varchar('status', { length: 10 }).notNull().default('PENDING'), // PENDING | APPROVED | REJECTED
+  reviewedAt: datetime('reviewed_at'),
+  createdAt: datetime('created_at').notNull(),
+}, (table) => ({
+  writerUnique: unique('uq_activity_letters_writer').on(table.sessionId, table.writerId),
+  recipientIdx: index('idx_activity_letters_recipient').on(table.recipientId, table.status, table.createdAt),
+  sessionIdx: index('idx_activity_letters_session').on(table.sessionId, table.status),
+}));
+
 // ==================== REGISTRO DE PUNTOS ====================
 
 export const pointLogs = mysqlTable('point_logs', {

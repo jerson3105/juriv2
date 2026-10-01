@@ -12,6 +12,7 @@ import { Bitacora } from '../Bitacora';
 import { EscenarioObservatorio, stageControlClass } from '../EscenarioObservatorio';
 import { answerOf, questionSizeClass } from '../questionHelpers';
 import { StageEndButton } from '../StageEndButton';
+import { applyMark, maxStars, suggestedXpFor } from '../streak';
 import type { JiroPose } from '../jiroPoses';
 import { useStageSound } from '../observatorioSound';
 import { useActivitySession } from '../useActivitySession';
@@ -47,9 +48,6 @@ const CORNERS = [
   { letter: 'C', className: 'border-emerald-300 bg-emerald-400/20' },
   { letter: 'D', className: 'border-amber-300 bg-amber-400/20' },
 ];
-// Cada 3 aciertos seguidos, una estrella extra.
-const BONUS_EVERY = 3;
-const maxStars = (rounds: number) => rounds + Math.floor(rounds / BONUS_EVERY);
 
 const chip = (on: boolean) =>
   `min-h-[48px] rounded-xl border px-4 text-lg font-bold transition-colors ${on ? 'border-amber-300 bg-amber-300 text-amber-950' : 'border-white/30 text-white hover:bg-white/10'}`;
@@ -144,16 +142,7 @@ export const EstrellasActivity = ({ classroom, resume, onExit }: EstrellasActivi
 
   const mark = useCallback((correct: boolean) => {
     if (!state) return;
-    const streak = correct ? state.streak + 1 : 0;
-    const bonus = correct && streak % BONUS_EVERY === 0 ? 1 : 0;
-    const next: EstrellasState = {
-      ...state,
-      marks: [...state.marks, correct],
-      stars: state.stars + (correct ? 1 + bonus : 0),
-      streak,
-      bestStreak: Math.max(state.bestStreak, streak),
-      index: state.index + 1,
-    };
+    const { next, bonus } = applyMark(state, correct);
     if (correct) sound.star(next.stars - 1);
     else sound.soft();
     if (bonus) window.setTimeout(() => sound.success(), 250);
@@ -379,7 +368,7 @@ export const EstrellasActivity = ({ classroom, resume, onExit }: EstrellasActivi
             { icon: '✅', label: 'rondas acertadas', value: `${result?.correct ?? 0}/${result?.rounds ?? 0}` },
             { icon: '🔥', label: 'mejor racha', value: String(result?.bestStreak ?? 0) },
           ]}
-          suggestedXp={result && result.rounds > 0 && result.correct / result.rounds >= 0.8 ? 20 : result && result.rounds > 0 && result.correct / result.rounds >= 0.5 ? 15 : 10}
+          suggestedXp={suggestedXpFor(result?.correct ?? 0, result?.rounds ?? 0)}
           activityName="Estrellas en Movimiento"
           onSessionChange={(s) => game.setSession(s as ActivitySession<EstrellasState, EstrellasResult>)}
           onPlayAgain={() => { game.setSession(null); setState(null); setHistory([]); setPhase('setup'); }}

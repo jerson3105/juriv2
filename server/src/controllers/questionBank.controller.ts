@@ -89,7 +89,7 @@ const generateWithAISchema = z.object({
 const generateIntoBankSchema = z.object({
   topic: z.string().trim().min(2, 'Escribe el tema').max(200),
   quantity: z.coerce.number().int().min(3).max(15),
-  kind: z.enum(['TRUE_FALSE', 'SINGLE_CHOICE']),
+  kind: z.enum(['TRUE_FALSE', 'SINGLE_CHOICE', 'ERROR_STEPS']),
   bankId: z.string().uuid().optional().nullable(),
 });
 

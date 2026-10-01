@@ -1,7 +1,7 @@
 import type { ActivityOverview, ActivitySession, ActivityType } from '../../lib/activityApi';
 import type { JiroPose } from './jiroPoses';
 
-export type ObservatorioActivityId = 'descanso' | 'estrellas' | 'conquista' | 'pergaminos' | 'expediciones';
+export type ObservatorioActivityId = 'descanso' | 'estrellas' | 'conquista' | 'correo' | 'error' | 'pergaminos' | 'expediciones';
 
 export interface CatalogEntry {
   id: ObservatorioActivityId;
@@ -13,6 +13,8 @@ export interface CatalogEntry {
   requirements: { icon: string; label: string }[];
   /** Tipo de partida en el servidor (las actividades que guardan sesión). */
   sessionType?: ActivityType;
+  /** Solo se muestra si la clase tiene el mural de Pergaminos activado. */
+  onlyWithScrolls?: boolean;
 }
 
 // Catálogo del Observatorio. Sin etiquetas de "Popular/Nuevo": la tarjeta dice duración,
@@ -46,12 +48,31 @@ export const CATALOG: CatalogEntry[] = [
     sessionType: 'CONQUISTA',
   },
   {
+    id: 'error',
+    name: 'El Error de Jiro',
+    description: 'Jiro resolvió un ejercicio y se equivocó en un paso. En parejas o en clan, encuéntrenlo y explíquenlo.',
+    pose: 'confundido',
+    duration: '10–20 min',
+    requirements: [{ icon: '📚', label: 'Banco o IA' }],
+    sessionType: 'ERROR',
+  },
+  {
+    id: 'correo',
+    name: 'Correo Estelar',
+    description: 'Cada uno escribe a una estrella secreta. En papel o desde su cuenta; Jiro entrega las cartas.',
+    pose: 'emocionado',
+    duration: '15 min + entrega',
+    requirements: [{ icon: '📝', label: 'Papel o cuentas' }],
+    sessionType: 'CORREO',
+  },
+  {
     id: 'pergaminos',
     name: 'Pergaminos del Aula',
     description: 'Mural donde los alumnos se envían mensajes de ánimo y reconocimiento.',
     pose: 'emocionado',
     duration: 'Toda la semana',
     requirements: [{ icon: '👤', label: 'Cuentas de alumnos' }],
+    onlyWithScrolls: true,
   },
   {
     id: 'expediciones',

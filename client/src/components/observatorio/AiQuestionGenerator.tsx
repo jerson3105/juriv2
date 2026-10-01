@@ -10,23 +10,25 @@ const errorMessage = (error: unknown, fallback: string) =>
 
 interface AiQuestionGeneratorProps {
   classroomId: string;
-  kind: 'TRUE_FALSE' | 'SINGLE_CHOICE';
+  kind: 'TRUE_FALSE' | 'SINGLE_CHOICE' | 'ERROR_STEPS';
+  /** Cuántas generar (por defecto 10). */
+  quantity?: number;
   onCreated: (bank: { bankId: string; bankName: string }) => void;
 }
 
-/** Genera 10 preguntas con IA y las guarda directo en un banco de la clase (sin CSV). */
-export const AiQuestionGenerator = ({ classroomId, kind, onCreated }: AiQuestionGeneratorProps) => {
+/** Genera preguntas (o ejercicios con error) con IA y las guarda directo en un banco de la clase (sin CSV). */
+export const AiQuestionGenerator = ({ classroomId, kind, quantity = 10, onCreated }: AiQuestionGeneratorProps) => {
   const queryClient = useQueryClient();
   const inputId = useId();
   const [topic, setTopic] = useState('');
   const generate = useMutation({
-    mutationFn: () => questionBankApi.generateIntoBank(classroomId, { topic: topic.trim(), quantity: 10, kind }),
+    mutationFn: () => questionBankApi.generateIntoBank(classroomId, { topic: topic.trim(), quantity, kind }),
     onSuccess: (data) => {
       void queryClient.invalidateQueries({ queryKey: ['question-banks-mine'] });
       void queryClient.invalidateQueries({ queryKey: ['questionBanks', classroomId] });
       onCreated({ bankId: data.bankId, bankName: data.bankName });
       setTopic('');
-      toast.success(`${data.created} preguntas guardadas en "${data.bankName}"`);
+      toast.success(`${data.created} ${kind === 'ERROR_STEPS' ? 'ejercicios guardados' : 'preguntas guardadas'} en "${data.bankName}"`);
     },
     onError: (error) => toast.error(errorMessage(error, 'No se pudieron generar las preguntas')),
   });
@@ -34,7 +36,7 @@ export const AiQuestionGenerator = ({ classroomId, kind, onCreated }: AiQuestion
   return (
     <div className="rounded-2xl border border-white/15 bg-[#121a3d] p-4">
       <label htmlFor={inputId} className="flex items-center gap-2 text-lg font-bold text-indigo-100">
-        <Sparkles size={20} aria-hidden="true" /> Generar 10 preguntas con IA sobre…
+        <Sparkles size={20} aria-hidden="true" /> {kind === 'ERROR_STEPS' ? `Que Jiro invente ${quantity} ejercicios con un error sobre…` : `Generar ${quantity} preguntas con IA sobre…`}
       </label>
       <div className="mt-2 flex flex-wrap gap-2">
         <input
