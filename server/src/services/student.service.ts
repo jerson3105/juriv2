@@ -5,7 +5,7 @@ import {
   badgeProgress, studentBadges, loginStreaks, studentStreaks, attendanceRecords,
   purchases, itemUsages, powerUsages, expeditionSubmissions, expeditionStudentProgress,
   jiroStudentExpeditions, jiroQuestionAnswers, jiroDeliveries,
-  tournamentParticipants, studentCollectibles, scrolls, scrollReactions,
+  studentCollectibles, scrolls, scrollReactions,
   collectibleCards, collectibleAlbums, classroomCharacterClasses,
   stories,
   levelUpLogs,
@@ -1223,9 +1223,6 @@ export class StudentService {
         await tx.delete(jiroDeliveries).where(inArray(jiroDeliveries.studentExpeditionId, jiroStudentExpIds));
       }
       await tx.delete(jiroStudentExpeditions).where(eq(jiroStudentExpeditions.studentProfileId, studentId));
-
-      // 11. Tournaments
-      await tx.delete(tournamentParticipants).where(eq(tournamentParticipants.studentProfileId, studentId));
 
       // 12. Collectibles
       await tx.delete(studentCollectibles).where(eq(studentCollectibles.studentProfileId, studentId));

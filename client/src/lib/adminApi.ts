@@ -110,7 +110,6 @@ export interface AdminClassroomDetails {
       total: number;
       byType: {
         timer: number;
-        tournament: number;
         expedition: number;
       };
       completed: number;
@@ -120,7 +119,6 @@ export interface AdminClassroomDetails {
   students: AdminClassroomStudent[];
   activities: {
     timed: AdminClassroomActivity[];
-    tournaments: AdminClassroomActivity[];
     expeditions: AdminClassroomActivity[];
   };
   questionBanks: AdminQuestionBank[];

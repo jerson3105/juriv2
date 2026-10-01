@@ -8,7 +8,6 @@ import {
   Clock,
   BookOpen,
   Target,
-  Trophy,
   Map,
   CheckCircle,
   Copy,
@@ -272,11 +271,6 @@ const GeneralTab = ({ details, formatDate, getTimeAgo, getDaysActive }: any) => 
             <p className="text-2xl font-bold text-blue-900">{details.stats.activities.byType.timer}</p>
             <p className="text-xs text-blue-700">Temporizador</p>
           </div>
-          <div className="text-center p-4 bg-purple-50 rounded-lg">
-            <Trophy className="w-8 h-8 text-purple-600 mx-auto mb-2" />
-            <p className="text-2xl font-bold text-purple-900">{details.stats.activities.byType.tournament}</p>
-            <p className="text-xs text-purple-700">Torneos</p>
-          </div>
           <div className="text-center p-4 bg-green-50 rounded-lg">
             <Map className="w-8 h-8 text-green-600 mx-auto mb-2" />
             <p className="text-2xl font-bold text-green-900">{details.stats.activities.byType.expedition}</p>
@@ -535,12 +529,11 @@ const QuestionBanksTab = ({ details }: any) => {
 
 // Tab: Activities
 const ActivitiesTab = ({ details }: any) => {
-  const [filterType, setFilterType] = useState<'all' | 'timed' | 'tournament' | 'expedition'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'timed' | 'expedition'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   const allActivities = [
     ...details.activities.timed.map((a: any) => ({ ...a, type: 'TIMER', typeLabel: 'Temporizador', icon: Clock, color: 'blue' })),
-    ...details.activities.tournaments.map((a: any) => ({ ...a, type: 'TOURNAMENT', typeLabel: 'Torneo', icon: Trophy, color: 'purple' })),
     ...details.activities.expeditions.map((a: any) => ({ ...a, type: 'EXPEDITION', typeLabel: 'Expedición', icon: Map, color: 'green' })),
   ];
 
@@ -588,7 +581,6 @@ const ActivitiesTab = ({ details }: any) => {
         >
           <option value="all">Todos los tipos</option>
           <option value="timed">Temporizador</option>
-          <option value="tournament">Torneos</option>
           <option value="expedition">Expediciones</option>
         </select>
       </div>

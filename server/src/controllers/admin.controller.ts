@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { db } from '../db/index.js';
 import { 
   users, classrooms, avatarItems, studentProfiles,
-  questionBanks, questions, timedActivities, tournaments, expeditions
+  questionBanks, questions, timedActivities, expeditions
 } from '../db/schema.js';
 import { eq, desc, count, sql, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
@@ -446,11 +446,6 @@ export const adminController = {
         .from(timedActivities)
         .where(eq(timedActivities.classroomId, id));
 
-      const [tournamentsCount] = await db
-        .select({ count: count() })
-        .from(tournaments)
-        .where(eq(tournaments.classroomId, id));
-
       const [expeditionsCount] = await db
         .select({ count: count() })
         .from(expeditions)
@@ -462,18 +457,13 @@ export const adminController = {
         .from(timedActivities)
         .where(sql`${timedActivities.classroomId} = ${id} AND ${timedActivities.status} = 'COMPLETED'`);
 
-      const [tournamentsCompleted] = await db
-        .select({ count: count() })
-        .from(tournaments)
-        .where(sql`${tournaments.classroomId} = ${id} AND ${tournaments.status} = 'FINISHED'`);
-
       const [expeditionsCompleted] = await db
         .select({ count: count() })
         .from(expeditions)
         .where(sql`${expeditions.classroomId} = ${id} AND ${expeditions.status} = 'ARCHIVED'`);
 
-      const totalActivities = timedActivitiesCount.count + tournamentsCount.count + expeditionsCount.count;
-      const completedActivities = timedCompleted.count + tournamentsCompleted.count + expeditionsCompleted.count;
+      const totalActivities = timedActivitiesCount.count + expeditionsCount.count;
+      const completedActivities = timedCompleted.count + expeditionsCompleted.count;
 
       // Última actividad (más reciente entre todas las tablas)
       const lastTimedActivity = await db
@@ -481,13 +471,6 @@ export const adminController = {
         .from(timedActivities)
         .where(eq(timedActivities.classroomId, id))
         .orderBy(desc(timedActivities.updatedAt))
-        .limit(1);
-
-      const lastTournament = await db
-        .select({ updatedAt: tournaments.updatedAt })
-        .from(tournaments)
-        .where(eq(tournaments.classroomId, id))
-        .orderBy(desc(tournaments.updatedAt))
         .limit(1);
 
       const lastExpedition = await db
@@ -499,7 +482,6 @@ export const adminController = {
 
       const allLastActivities = [
         lastTimedActivity[0]?.updatedAt,
-        lastTournament[0]?.updatedAt,
         lastExpedition[0]?.updatedAt,
       ].filter(Boolean);
 
@@ -537,18 +519,6 @@ export const adminController = {
         .from(timedActivities)
         .where(eq(timedActivities.classroomId, id))
         .orderBy(desc(timedActivities.createdAt));
-
-      const tournamentsList = await db
-        .select({
-          id: tournaments.id,
-          name: tournaments.name,
-          type: tournaments.type,
-          status: tournaments.status,
-          createdAt: tournaments.createdAt,
-        })
-        .from(tournaments)
-        .where(eq(tournaments.classroomId, id))
-        .orderBy(desc(tournaments.createdAt));
 
       const expeditionsList = await db
         .select({
@@ -603,7 +573,6 @@ export const adminController = {
               total: totalActivities,
               byType: {
                 timer: timedActivitiesCount.count,
-                tournament: tournamentsCount.count,
                 expedition: expeditionsCount.count,
               },
               completed: completedActivities,
@@ -613,7 +582,6 @@ export const adminController = {
           students: studentsList,
           activities: {
             timed: timedActivitiesList,
-            tournaments: tournamentsList,
             expeditions: expeditionsList,
           },
           questionBanks: questionBanksWithCount,

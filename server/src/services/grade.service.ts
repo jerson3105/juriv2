@@ -11,8 +11,6 @@ import {
   badges,
   timedActivityResults,
   timedActivities,
-  tournamentParticipants,
-  tournaments,
   expeditionStudentProgress,
   expeditions,
   pointLogs,
@@ -1269,10 +1267,6 @@ class GradeService {
     const timedScores = await this.getTimedActivityScores(studentProfileId, competencyId, dateRange);
     scores.push(...timedScores);
 
-    // 3. Torneos
-    const tournamentScores = await this.getTournamentScores(studentProfileId, competencyId, dateRange);
-    scores.push(...tournamentScores);
-
     // 4. Expediciones clásicas
     const expeditionScores = await this.getExpeditionScores(studentProfileId, competencyId, dateRange);
     scores.push(...expeditionScores);
@@ -1356,57 +1350,6 @@ class GradeService {
           competencyId,
         });
       }
-    }
-
-    return scores;
-  }
-
-  private async getTournamentScores(studentProfileId: string, competencyId: string, dateRange: BimesterDateRange): Promise<ActivityScoreData[]> {
-    const scores: ActivityScoreData[] = [];
-
-    const tournamentCompetencies = await db.select({
-      activityId: activityCompetencies.activityId,
-      weight: activityCompetencies.weight,
-    })
-    .from(activityCompetencies)
-    .where(and(
-      eq(activityCompetencies.activityType, 'TOURNAMENT'),
-      eq(activityCompetencies.competencyId, competencyId)
-    ));
-
-    if (tournamentCompetencies.length === 0) return scores;
-    const tournamentIds = tournamentCompetencies.map(t => t.activityId);
-
-    const participations = await db.select({
-      tournamentId: tournamentParticipants.tournamentId,
-      finalPosition: tournamentParticipants.finalPosition,
-      totalPoints: tournamentParticipants.totalPoints,
-      tournamentName: tournaments.name,
-      maxParticipants: tournaments.maxParticipants,
-    })
-    .from(tournamentParticipants)
-    .leftJoin(tournaments, eq(tournamentParticipants.tournamentId, tournaments.id))
-    .where(and(
-      eq(tournamentParticipants.studentProfileId, studentProfileId),
-      inArray(tournamentParticipants.tournamentId, tournamentIds),
-      gte(tournamentParticipants.joinedAt, dateRange.startDate),
-      lte(tournamentParticipants.joinedAt, dateRange.endDate)
-    ));
-
-    for (const p of participations) {
-      const tournComp = tournamentCompetencies.find(t => t.activityId === p.tournamentId);
-      const maxPos = p.maxParticipants || 8;
-      const position = p.finalPosition || maxPos;
-      const positionScore = 100 - ((position - 1) / Math.max(1, maxPos - 1)) * 50;
-
-      scores.push({
-        type: 'TOURNAMENT',
-        id: p.tournamentId,
-        name: p.tournamentName || 'Torneo',
-        score: Math.max(50, positionScore),
-        weight: tournComp?.weight || 100,
-        competencyId,
-      });
     }
 
     return scores;

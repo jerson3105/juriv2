@@ -50,7 +50,7 @@ export const CloneClassModal = ({ classroom, schools, onClose, onCloned }: {
     { key: 'behaviors' as const, icon: Sparkles, label: 'Comportamientos', hint: 'Acciones positivas y a mejorar', n: counts?.behaviors },
     { key: 'badges' as const, icon: Trophy, label: 'Insignias', hint: 'Logros y reconocimientos', n: counts?.badges },
     { key: 'shopItems' as const, icon: ShoppingBag, label: 'Tienda', hint: 'Artículos y recompensas', n: counts?.shopItems },
-    { key: 'questionBanks' as const, icon: HelpCircle, label: 'Bancos de preguntas', hint: 'Para torneos y actividades', n: counts?.questionBanks },
+    { key: 'questionBanks' as const, icon: HelpCircle, label: 'Bancos de preguntas', hint: 'Para el Observatorio y las Expediciones', n: counts?.questionBanks },
   ];
   const canSubmit = name.trim().length >= 2 && !clone.isPending;
 

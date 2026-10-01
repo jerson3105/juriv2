@@ -38,9 +38,6 @@ import {
   expeditionPins,
   expeditionStudentProgress,
   expeditionSubmissions,
-  tournaments,
-  tournamentParticipants,
-  tournamentMatches,
   studentGrades,
   studentActivityScores,
   classroomCompetencyIndicators,
@@ -368,7 +365,7 @@ export class ClassroomService {
       return new Map<string, CompetencyUsageSummary>();
     }
 
-    const [behaviorRows, badgeRows, timedActivityRows, expeditionActivityRows, tournamentActivityRows, gradeRows, pointRows, jiroRows, indicatorRows] = await Promise.all([
+    const [behaviorRows, badgeRows, timedActivityRows, expeditionActivityRows, gradeRows, pointRows, jiroRows, indicatorRows] = await Promise.all([
       db.select({ competencyId: behaviors.competencyId })
         .from(behaviors)
         .where(and(
@@ -402,16 +399,6 @@ export class ClassroomService {
         .where(and(
           inArray(activityCompetencies.competencyId, competencyIds),
           eq(expeditions.classroomId, classroomId),
-        )),
-      db.select({ competencyId: activityCompetencies.competencyId })
-        .from(activityCompetencies)
-        .innerJoin(tournaments, and(
-          eq(activityCompetencies.activityId, tournaments.id),
-          eq(activityCompetencies.activityType, 'TOURNAMENT'),
-        ))
-        .where(and(
-          inArray(activityCompetencies.competencyId, competencyIds),
-          eq(tournaments.classroomId, classroomId),
         )),
       db.select({ competencyId: studentGrades.competencyId })
         .from(studentGrades)
@@ -452,7 +439,6 @@ export class ClassroomService {
       ...badgeRows,
       ...timedActivityRows,
       ...expeditionActivityRows,
-      ...tournamentActivityRows,
       ...jiroRows,
       ...indicatorRows,
     ].map((row) => row.competencyId).filter((value): value is string => !!value));
@@ -1850,13 +1836,6 @@ export class ClassroomService {
     });
     const scrollIds = classScrolls.map(s => s.id);
 
-    // Obtener IDs de torneos
-    const classTournaments = await db.query.tournaments.findMany({
-      where: eq(tournaments.classroomId, classroomId),
-      columns: { id: true }
-    });
-    const tournamentIds = classTournaments.map(t => t.id);
-
     // Obtener IDs de álbumes de coleccionables
     const classAlbums = await db.query.collectibleAlbums.findMany({
       where: eq(collectibleAlbums.classroomId, classroomId),
@@ -1937,13 +1916,6 @@ export class ClassroomService {
         await tx.delete(jiroDeliveryStations).where(inArray(jiroDeliveryStations.expeditionId, jiroExpeditionIds));
         await tx.delete(jiroExpeditionCompetencies).where(inArray(jiroExpeditionCompetencies.expeditionId, jiroExpeditionIds));
         await tx.delete(jiroExpeditions).where(inArray(jiroExpeditions.id, jiroExpeditionIds));
-      }
-
-      // 8. Eliminar torneos
-      if (tournamentIds.length > 0) {
-        await tx.delete(tournamentMatches).where(inArray(tournamentMatches.tournamentId, tournamentIds));
-        await tx.delete(tournamentParticipants).where(inArray(tournamentParticipants.tournamentId, tournamentIds));
-        await tx.delete(tournaments).where(inArray(tournaments.id, tournamentIds));
       }
 
       // 9. Eliminar datos de tienda

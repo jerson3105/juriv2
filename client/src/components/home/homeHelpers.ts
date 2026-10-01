@@ -94,7 +94,7 @@ export const JIRO_TIPS = [
   { text: 'Con los álbumes de cromos, completar la colección se vuelve una meta de toda la clase.', highlight: 'álbumes de cromos' },
   { text: 'Cierra la clase con la Gala de Rankings: podio, redoble y confeti.', highlight: 'Gala de Rankings' },
   { text: 'Pasa lista en segundos desde Asistencia: los presentes suman XP solos.', highlight: 'Asistencia' },
-  { text: 'El banco de preguntas te deja reutilizar preguntas en torneos y actividades.', highlight: 'banco de preguntas' },
+  { text: 'El banco de preguntas te deja reutilizar preguntas en el Observatorio de Jiro y las Expediciones.', highlight: 'banco de preguntas' },
 ];
 
 export const copyClassCode = async (code: string) => {
