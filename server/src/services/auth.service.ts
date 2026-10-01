@@ -11,7 +11,7 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { avatarService } from './avatar.service.js';
 import { studentService } from './student.service.js';
-import { ConflictError, isDuplicateEntry } from '../utils/errors.js';
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError, isDuplicateEntry } from '../utils/errors.js';
 import { maskPersonName } from '../utils/helpers.js';
 import { teacherVerificationService, UNVERIFIED_CLASS_MESSAGE } from './teacherVerification.service.js';
 
@@ -265,27 +265,68 @@ export const verifyStudentRegistrationCode = async (code: string): Promise<Stude
   };
 };
 
+/**
+ * Perfil de la lista al que se vincula la cuenta nueva: por la tarjeta (código personal) o por el
+ * nombre que el alumno tocó en la lista de su clase (solo con la clase abierta, como el PIN).
+ */
+const findStudentTarget = async (
+  q: Pick<typeof db, 'query'>,
+  target: { linkCode: string } | { classCode: string; studentId: string },
+) => {
+  const columns = { id: true, userId: true, classroomId: true, displayName: true, characterName: true } as const;
+  if ('linkCode' in target) {
+    return q.query.studentProfiles.findFirst({
+      where: and(eq(studentProfiles.linkCode, target.linkCode), eq(studentProfiles.isActive, true)),
+      columns,
+    });
+  }
+  const classroom = await q.query.classrooms.findFirst({
+    where: eq(classrooms.code, normalizeStudentCode(target.classCode)),
+    columns: { id: true, isActive: true, acceptingStudents: true },
+  });
+  if (!classroom || !classroom.isActive) return undefined;
+  if (!classroom.acceptingStudents) {
+    throw new ForbiddenError('Esta clase no está recibiendo estudiantes ahora. Pídele tu tarjeta a tu profe.');
+  }
+  return q.query.studentProfiles.findFirst({
+    where: and(
+      eq(studentProfiles.id, target.studentId),
+      eq(studentProfiles.classroomId, classroom.id),
+      eq(studentProfiles.isActive, true),
+      eq(studentProfiles.isDemo, false),
+    ),
+    columns,
+  });
+};
+
 export const registerStudentWithCode = async (input: {
-  code: string;
+  code?: string;
+  classCode?: string;
+  studentId?: string;
   email: string;
   password: string;
   avatarGender?: 'MALE' | 'FEMALE';
 }): Promise<AuthResponse> => {
-  const normalizedCode = normalizeStudentCode(input.code);
+  const normalizedCode = input.code ? normalizeStudentCode(input.code) : null;
+  if (!normalizedCode && !(input.classCode && input.studentId)) {
+    throw new ValidationError('Falta tu código o tu nombre.');
+  }
+  const target = normalizedCode
+    ? { linkCode: normalizedCode }
+    : { classCode: input.classCode!, studentId: input.studentId! };
   const normalizedEmail = normalizeEmail(input.email);
   const avatarGender = input.avatarGender || 'MALE';
 
   // Primero el código: sin uno válido y libre no se dice nada del correo (antes, con un código
   // inventado, la respuesta delataba si el correo era de un docente o de un alumno).
-  const codeProfile = await db.query.studentProfiles.findFirst({
-    where: and(eq(studentProfiles.linkCode, normalizedCode), eq(studentProfiles.isActive, true)),
-    columns: { userId: true, classroomId: true },
-  });
+  const codeProfile = await findStudentTarget(db, target);
   if (!codeProfile) {
-    throw new Error('Código inválido');
+    if (normalizedCode) throw new Error('Código inválido');
+    throw new NotFoundError('No encontramos tu nombre en esta clase.');
   }
   if (codeProfile.userId) {
-    throw new Error('Este código ya fue usado');
+    if (normalizedCode) throw new Error('Este código ya fue usado');
+    throw new ConflictError('Ese nombre ya tiene acceso. Si es tuyo, entra con tu cuenta o pídele ayuda a tu profe.');
   }
   await teacherVerificationService.assertClassroomAcceptsAccounts(codeProfile.classroomId);
 
@@ -324,11 +365,13 @@ export const registerStudentWithCode = async (input: {
       throw new Error('Ese correo ya tiene una cuenta. Usa tu contraseña actual para agregar esta nueva clase.');
     }
 
-    await studentService.linkStudentAccount({
-      userId: existingUser.id,
-      linkCode: normalizedCode,
-      avatarGender,
-    });
+    if (normalizedCode) {
+      await studentService.linkStudentAccount({ userId: existingUser.id, linkCode: normalizedCode, avatarGender });
+    } else {
+      await studentService.linkRosterProfile({
+        userId: existingUser.id, classCode: input.classCode!, studentId: input.studentId!, avatarGender,
+      });
+    }
 
     const tokens = await generateTokenPair({
       userId: existingUser.id,
@@ -358,18 +401,7 @@ export const registerStudentWithCode = async (input: {
 
   try {
     await db.transaction(async (tx) => {
-      const profile = await tx.query.studentProfiles.findFirst({
-        where: and(
-          eq(studentProfiles.linkCode, normalizedCode),
-          eq(studentProfiles.isActive, true)
-        ),
-        columns: {
-          id: true,
-          userId: true,
-          displayName: true,
-          characterName: true,
-        },
-      });
+      const profile = await findStudentTarget(tx, target);
 
       if (!profile) {
         throw new Error('Código inválido');
@@ -409,7 +441,8 @@ export const registerStudentWithCode = async (input: {
         })
         .where(and(
           eq(studentProfiles.id, profile.id),
-          eq(studentProfiles.linkCode, normalizedCode),
+          // Por la tarjeta, el código debe seguir siendo el mismo al escribir.
+          ...(normalizedCode ? [eq(studentProfiles.linkCode, normalizedCode)] : []),
           sql`${studentProfiles.userId} IS NULL`
         ));
 

@@ -28,12 +28,15 @@ const studentCodeVerificationSchema = z.object({
   code: z.string().trim().min(6, 'El código debe tener entre 6 y 8 caracteres').max(8, 'El código debe tener entre 6 y 8 caracteres'),
 });
 
+// Con la tarjeta (code) o con el nombre de la lista de su clase (classCode + studentId).
 const registerStudentWithCodeSchema = z.object({
-  code: z.string().trim().min(6, 'El código debe tener entre 6 y 8 caracteres').max(8, 'El código debe tener entre 6 y 8 caracteres'),
+  code: z.string().trim().min(6, 'El código debe tener entre 6 y 8 caracteres').max(8, 'El código debe tener entre 6 y 8 caracteres').optional(),
+  classCode: z.string().trim().min(6).max(12).optional(),
+  studentId: z.string().uuid().optional(),
   email: z.string().trim().email('Email inválido'),
   password: passwordSchema,
   avatarGender: z.enum(['MALE', 'FEMALE']).default('MALE'),
-});
+}).refine((d) => !!d.code || (!!d.classCode && !!d.studentId), 'Falta tu código o tu nombre');
 
 const loginSchema = z.object({
   email: z.string().trim().email('Email inválido'),

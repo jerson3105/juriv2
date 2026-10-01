@@ -646,6 +646,37 @@ export class StudentController {
     }
   }
 
+  // Alumno con cuenta: toca su nombre en la lista de la clase (lista cerrada)
+  async joinRoster(req: Request, res: Response) {
+    try {
+      const data = z.object({
+        code: z.string().trim().min(6).max(12),
+        studentId: z.string().uuid(),
+        characterName: z.string().trim().max(100).optional(),
+        avatarGender: z.enum(['MALE', 'FEMALE']).optional(),
+      }).parse(req.body);
+      const result = await studentService.linkRosterProfile({
+        userId: req.user!.id,
+        classCode: data.code,
+        studentId: data.studentId,
+        characterName: data.characterName,
+        avatarGender: data.avatarGender,
+      });
+      res.json({ success: true, message: `¡Te has unido a ${result.classroom.name}!`, data: result });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ success: false, message: 'Datos inválidos', errors: error.errors });
+      }
+      if (error instanceof AppError) {
+        return res.status(error.statusCode).json({ success: false, message: error.message });
+      }
+      if (error instanceof Error) {
+        return res.status(400).json({ success: false, message: error.message });
+      }
+      res.status(500).json({ success: false, message: 'Error al unirse a la clase' });
+    }
+  }
+
   // Docente: "Restablecer acceso" de un alumno con PIN (borra el PIN, cierra sus sesiones, tarjeta nueva)
   async resetAccess(req: Request, res: Response) {
     try {

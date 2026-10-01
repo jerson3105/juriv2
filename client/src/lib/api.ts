@@ -115,8 +115,11 @@ export const authApi = {
       alreadyLinked: boolean;
     }>>('/auth/student-code/verify', { code }),
 
+  /** Cuenta con correo vinculada a su perfil: por la tarjeta (code) o por su nombre de la lista. */
   registerStudentWithCode: (data: {
-    code: string;
+    code?: string;
+    classCode?: string;
+    studentId?: string;
     email: string;
     password: string;
     avatarGender: 'MALE' | 'FEMALE';

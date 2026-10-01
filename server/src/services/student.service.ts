@@ -20,6 +20,9 @@ import { prepareForTx } from '../utils/notificationEmitter.js';
 import { generateRandomCode, maskPersonName } from '../utils/helpers.js';
 import { teacherVerificationService } from './teacherVerification.service.js';
 import { applyPointDeltas } from '../utils/points.js';
+import { ConflictError, ForbiddenError, NotFoundError } from '../utils/errors.js';
+
+export const ROSTER_REQUIRED_MESSAGE = 'Esta clase tiene lista: busca tu nombre en ella.';
 
 type CharacterClass = 'GUARDIAN' | 'ARCANE' | 'EXPLORER' | 'ALCHEMIST';
 type PointType = 'XP' | 'HP' | 'GP';
@@ -116,6 +119,12 @@ export class StudentService {
     }
 
     await teacherVerificationService.assertClassroomAcceptsAccounts(classroom.id);
+
+    // Lista cerrada: si el docente tiene nombres sin reclamar, el alumno toca el suyo en vez de crear
+    // un perfil repetido (antes cada alumno con correo duplicaba su entrada de la lista).
+    if (await this.hasUnclaimedRoster(classroom.id)) {
+      throw new ConflictError(ROSTER_REQUIRED_MESSAGE);
+    }
 
     const id = uuidv4();
     const now = new Date();
@@ -1018,6 +1027,56 @@ export class StudentService {
       throw new Error('Este perfil ya está vinculado a una cuenta');
     }
 
+    return this.linkProfileToUser(profile, data);
+  }
+
+  /** ¿El docente tiene nombres en la lista que nadie ha reclamado? (alumnos demo y retirados no cuentan) */
+  async hasUnclaimedRoster(classroomId: string): Promise<boolean> {
+    const [row] = await db.select({ id: studentProfiles.id }).from(studentProfiles).where(and(
+      eq(studentProfiles.classroomId, classroomId),
+      sql`${studentProfiles.userId} IS NULL`,
+      eq(studentProfiles.isActive, true),
+      eq(studentProfiles.isDemo, false),
+    )).limit(1);
+    return !!row;
+  }
+
+  /**
+   * Alumno con cuenta (correo o Google) que toca su nombre en la lista de la clase. Igual que con el
+   * código de clase: solo mientras el docente recibe alumnos (si no, con su código personal).
+   */
+  async linkRosterProfile(data: {
+    userId: string;
+    classCode: string;
+    studentId: string;
+    characterName?: string;
+    avatarGender?: 'MALE' | 'FEMALE';
+  }) {
+    const classroom = await db.query.classrooms.findFirst({
+      where: eq(classrooms.code, data.classCode.toUpperCase()),
+      columns: { id: true, isActive: true, acceptingStudents: true },
+    });
+    if (!classroom || !classroom.isActive) throw new NotFoundError('No encontramos esa clase.');
+    if (!classroom.acceptingStudents) {
+      throw new ForbiddenError('Esta clase no está recibiendo estudiantes ahora. Pídele tu código personal a tu profe.');
+    }
+    const profile = await db.query.studentProfiles.findFirst({
+      where: and(
+        eq(studentProfiles.id, data.studentId),
+        eq(studentProfiles.classroomId, classroom.id),
+        eq(studentProfiles.isActive, true),
+      ),
+    });
+    if (!profile || profile.isDemo) throw new NotFoundError('No encontramos tu nombre en esta clase.');
+    if (profile.userId) throw new ConflictError('Ese nombre ya tiene acceso. Si es tuyo, pídele ayuda a tu profe.');
+    return this.linkProfileToUser(profile, data);
+  }
+
+  /** Vincula un perfil de la lista (sin cuenta) a la cuenta del alumno: tarjeta o nombre de la lista. */
+  private async linkProfileToUser(
+    profile: typeof studentProfiles.$inferSelect,
+    data: { userId: string; characterName?: string; avatarGender?: 'MALE' | 'FEMALE' },
+  ) {
     await teacherVerificationService.assertClassroomAcceptsAccounts(profile.classroomId);
 
     // Verificar que el usuario no esté ya en esta clase con otro perfil

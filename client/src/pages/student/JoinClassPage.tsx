@@ -11,6 +11,11 @@ import toast from 'react-hot-toast';
 import { useAuthStore } from '../../store/authStore';
 import { StudentSwitchPanel } from '../../components/auth/StudentSwitch';
 import { useStudentSwitch } from '../../components/auth/useStudentSwitch';
+import { RosterPicker } from '../../components/auth/RosterPicker';
+import { authApi, type ClassRoster } from '../../lib/api';
+
+type RosterStudent = ClassRoster['students'][number];
+const ROSTER_STEP = 4;
 
 type CodeType = 'classroom' | 'student' | null;
 
@@ -27,6 +32,7 @@ const STEP_LABELS = [
   'Ingresa tu código',
   'Crea tu personaje',
   'Elige tu clase',
+  'Busca tu nombre',
 ];
 
 export const JoinClassPage = () => {
@@ -74,6 +80,13 @@ const JoinClassFlow = () => {
 
   // Link mode state
   const [isLinking, setIsLinking] = useState(false);
+
+  // Lista cerrada: si el docente tiene nombres sin reclamar, el alumno toca el suyo (no se duplica).
+  const [roster, setRoster] = useState<ClassRoster | null>(null);
+  const [rosterPick, setRosterPick] = useState<RosterStudent | null>(null);
+  const [rosterNote, setRosterNote] = useState<string | null>(null);
+  const [loadingRoster, setLoadingRoster] = useState(false);
+  const rosterMode = !!rosterPick;
 
   // Query para cargar clases de personaje del aula
   const { data: classroomClasses, refetch: fetchClasses } = useQuery({
@@ -148,10 +161,59 @@ const JoinClassFlow = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Go to step 2
-  const handleContinueToCharacter = () => {
+  // Go to step 2 (o a la lista, si la clase tiene nombres sin reclamar)
+  const handleContinueToCharacter = async () => {
     if (!verifyResult) return;
+    setRosterPick(null);
+    setRosterNote(null);
+    if (codeType === 'classroom') {
+      setLoadingRoster(true);
+      try {
+        const list = (await authApi.classRoster(code)).data.data!;
+        if (list.students.some((s) => s.state === 'new')) {
+          setRoster(list);
+          setStep(ROSTER_STEP);
+          return;
+        }
+      } catch {
+        // Sin lista: se sigue con el personaje nuevo (el servidor vuelve a comprobarlo al unirse).
+      } finally {
+        setLoadingRoster(false);
+      }
+    }
     setStep(2);
+  };
+
+  const pickRosterStudent = (student: RosterStudent) => {
+    if (student.state !== 'new') {
+      setRosterNote(`${student.name} ya tiene acceso. Si es tu nombre, pídele ayuda a tu profe.`);
+      return;
+    }
+    setRosterNote(null);
+    setRosterPick(student);
+    setStep(2);
+  };
+
+  // Final link for roster mode
+  const handleJoinRoster = async () => {
+    if (!rosterPick) return;
+    setIsLinking(true);
+    try {
+      const result = await studentApi.joinRoster({
+        code: code.toUpperCase(),
+        studentId: rosterPick.id,
+        characterName: characterName.trim() || undefined,
+        avatarGender,
+      });
+      await queryClient.invalidateQueries({ queryKey: ['my-classes'] });
+      toast.success(`¡Te has unido a ${result.classroom.name}!`);
+      navigate('/my-classes');
+    } catch (error) {
+      const message = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      toast.error(message || 'No se pudo unir a la clase');
+    } finally {
+      setIsLinking(false);
+    }
   };
 
   // Step 2 → 3 or submit (for classroom mode)
@@ -213,8 +275,10 @@ const JoinClassFlow = () => {
     }
   };
 
-  const totalSteps = codeType === 'classroom' ? 3 : 2;
-  const isNameOptional = codeType === 'student';
+  const totalSteps = codeType === 'classroom' && !rosterMode && step !== ROSTER_STEP ? 3 : 2;
+  const isNameOptional = codeType === 'student' || rosterMode;
+  // La lista se muestra como parte del paso 1 en la barra de progreso.
+  const shownStep = step === ROSTER_STEP ? 1 : step;
   const joinTargetName = verifyResult?.classroomName;
   const joinTargetCode = verifyResult?.classroomCode || code.toUpperCase();
 
@@ -241,6 +305,11 @@ const JoinClassFlow = () => {
             <p className="text-sm text-slate-500 dark:text-gray-400">
               Código {joinTargetCode}
             </p>
+            {rosterPick && step === 2 && (
+              <p className="text-sm text-slate-700 dark:text-gray-200">
+                Te unes como <strong>{rosterPick.name}</strong>
+              </p>
+            )}
           </div>
         </div>
       </motion.div>
@@ -287,18 +356,18 @@ const JoinClassFlow = () => {
                 animate={{ scale: 1 }}
                 transition={{ delay: s * 0.1 }}
                 className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300 ${
-                  s < step
+                  s < shownStep
                     ? 'bg-green-500 text-white shadow-lg shadow-green-500/30'
-                    : s === step
+                    : s === shownStep
                       ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-lg shadow-purple-500/30'
                       : 'bg-gray-200 text-gray-400 dark:bg-gray-800 dark:text-gray-500'
                 }`}
               >
-                {s < step ? <Check size={16} /> : s}
+                {s < shownStep ? <Check size={16} /> : s}
               </motion.div>
               {s < totalSteps && (
                 <div className={`w-8 h-0.5 rounded-full transition-all duration-300 ${
-                  s < step ? 'bg-green-500' : 'bg-gray-200'
+                  s < shownStep ? 'bg-green-500' : 'bg-gray-200'
                 }`} />
               )}
             </div>
@@ -452,7 +521,8 @@ const JoinClassFlow = () => {
                     <Button
                       className="w-full bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white py-4 text-lg"
                       size="lg"
-                      onClick={handleContinueToCharacter}
+                      onClick={() => void handleContinueToCharacter()}
+                      isLoading={loadingRoster}
                       rightIcon={<ArrowRight size={20} />}
                     >
                       ¡Continuar!
@@ -542,13 +612,13 @@ const JoinClassFlow = () => {
                   <Button
                     variant="secondary"
                     className="flex-1 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 border-0"
-                    onClick={() => setStep(1)}
+                    onClick={() => setStep(rosterMode ? ROSTER_STEP : 1)}
                     leftIcon={<ArrowLeft size={18} />}
                   >
                     Atrás
                   </Button>
 
-                  {codeType === 'classroom' ? (
+                  {codeType === 'classroom' && !rosterMode ? (
                     <Button
                       className="flex-1 bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white"
                       onClick={handleContinueToClass}
@@ -560,7 +630,7 @@ const JoinClassFlow = () => {
                   ) : (
                     <Button
                       className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white"
-                      onClick={handleLinkAccount}
+                      onClick={rosterMode ? handleJoinRoster : handleLinkAccount}
                       disabled={isLinking}
                       isLoading={isLinking}
                     >
@@ -568,6 +638,37 @@ const JoinClassFlow = () => {
                     </Button>
                   )}
                 </div>
+              </motion.div>
+            )}
+
+            {/* ===== Lista de la clase: el alumno toca su nombre ===== */}
+            {step === ROSTER_STEP && roster && (
+              <motion.div
+                key="roster"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                className="space-y-4"
+              >
+                {renderClassroomContext()}
+                <p className="text-sm text-gray-700 dark:text-gray-300">
+                  Tu profe ya tiene la lista de esta clase. Toca tu nombre para unirte con todo lo que ya ganaste.
+                </p>
+                <RosterPicker students={roster.students} onPick={pickRosterStudent} />
+                {rosterNote && (
+                  <p role="alert" className="text-sm font-medium text-red-700 dark:text-red-300">{rosterNote}</p>
+                )}
+                <p className="text-sm text-gray-700 dark:text-gray-300">
+                  ¿No estás en la lista? Pídele a tu profe que te agregue o que te dé tu código personal.
+                </p>
+                <Button
+                  variant="secondary"
+                  className="w-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 border-0"
+                  onClick={() => { setStep(1); setRosterNote(null); }}
+                  leftIcon={<ArrowLeft size={18} />}
+                >
+                  Atrás
+                </Button>
               </motion.div>
             )}
 

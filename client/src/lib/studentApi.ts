@@ -201,6 +201,12 @@ export const studentApi = {
     return response.data.data;
   },
 
+  /** Clase con lista: el alumno con cuenta toca su nombre y su cuenta queda vinculada a ese perfil. */
+  joinRoster: async (data: { code: string; studentId: string; characterName?: string; avatarGender?: AvatarGender }): Promise<{ profileId: string; classroom: { id: string; name: string } }> => {
+    const response = await api.post('/students/join-roster', data);
+    return response.data.data;
+  },
+
   // Obtener mis clases como estudiante
   getMyClasses: async (): Promise<(StudentProfile & { classroom: { id: string; name: string; code: string; clansEnabled?: boolean; scrollsEnabled?: boolean; scrollsOpen?: boolean; scrollsRequireApproval?: boolean; useCompetencies?: boolean; hasActiveStory?: boolean; themeConfig?: { colors?: { primary?: string; secondary?: string; accent?: string; background?: string; sidebar?: string }; particles?: { type?: string; color?: string; speed?: string; density?: string }; decorations?: Array<{ type: string; position: string; asset: string }>; banner?: { emoji?: string; title?: string } } | null } })[]> => {
     const response = await api.get('/students/my-classes');
