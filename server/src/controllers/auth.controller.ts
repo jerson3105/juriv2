@@ -6,6 +6,7 @@ import { config_app } from '../config/env.js';
 import { cache } from '../utils/cache.js';
 import { OAUTH_STATE_COOKIE_NAME } from '../utils/oauth-state.js';
 import { passwordSchema } from '../utils/passwordPolicy.js';
+import { AppError } from '../utils/errors.js';
 
 // Schema de validación de contraseña robusta
 
@@ -830,5 +831,31 @@ export const completeGoogleRegistration = async (req: Request, res: Response): P
     });
   } catch (error) {
     handleAuthError(res, error, 'Error al completar registro con Google');
+  }
+};
+
+/**
+ * GET /api/auth/switch-to-student — ¿Puede esta cuenta de docente pasar a estudiante?
+ * POST /api/auth/switch-to-student — Hace el cambio y devuelve una sesión nueva de estudiante.
+ */
+export const getStudentSwitch = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const result = await authService.getStudentSwitchEligibility(req.user!.id);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    handleAuthError(res, error, 'No se pudo revisar la cuenta');
+  }
+};
+
+export const switchToStudent = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const result = await authService.switchTeacherToStudent(req.user!.id);
+    res.json({ success: true, message: 'Tu cuenta ahora es de estudiante', data: result });
+  } catch (error) {
+    if (error instanceof AppError) {
+      res.status(error.statusCode).json({ success: false, message: error.message });
+      return;
+    }
+    handleAuthError(res, error, 'No se pudo cambiar la cuenta');
   }
 };

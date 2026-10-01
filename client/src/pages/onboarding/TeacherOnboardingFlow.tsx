@@ -18,6 +18,10 @@ import {
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { onboardingApi } from '../../lib/onboardingApi';
 import confetti from 'canvas-confetti';
+import { LogOut } from 'lucide-react';
+import { useAuthStore } from '../../store/authStore';
+import { StudentSwitchPanel } from '../../components/auth/StudentSwitch';
+import { useStudentSwitch } from '../../components/auth/useStudentSwitch';
 
 type Objective = 'participation' | 'behavior' | 'learning' | 'unknown';
 
@@ -93,6 +97,8 @@ export default function TeacherOnboardingFlow() {
       {/* Background decoration */}
       <div className="absolute top-20 right-20 w-72 h-72 bg-indigo-200 dark:bg-indigo-900 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse pointer-events-none" />
       <div className="absolute bottom-20 left-20 w-72 h-72 bg-purple-200 dark:bg-purple-900 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse pointer-events-none" style={{ animationDelay: '2s' }} />
+
+      <OnboardingExit />
 
       <AnimatePresence mode="wait">
         {step === 1 && (
@@ -178,7 +184,7 @@ function Step1Welcome({
           ¡Bienvenido a Juried!
         </h1>
         <p className="text-gray-500 dark:text-gray-400 text-lg">
-          Gamificá tu aula y transformá la experiencia de tus estudiantes
+          Gamifica tu aula y transforma la experiencia de tus estudiantes
         </p>
       </motion.div>
 
@@ -344,7 +350,7 @@ function Step2Objective({
 
       <div className="text-center mb-8">
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-          ¿Qué es lo primero que querés mejorar en tu clase?
+          ¿Qué es lo primero que quieres mejorar en tu clase?
         </h2>
         <p className="text-gray-500 dark:text-gray-400">
           Esto nos ayuda a personalizar tu experiencia
@@ -405,20 +411,20 @@ function Step2Objective({
 
 const SETUP_STEPS = [
   {
-    title: 'Creá tu primera clase',
+    title: 'Crea tu primera clase',
     description: 'Una clase es tu espacio gamificado. Tus estudiantes se unen con un código único.',
     icon: GraduationCap,
     gradient: 'from-violet-500 to-purple-500',
   },
   {
-    title: 'Agregá al menos un estudiante',
-    description: 'Podés agregar estudiantes manualmente o compartirles el código de clase.',
+    title: 'Agrega al menos un estudiante',
+    description: 'Puedes agregar estudiantes manualmente o compartirles el código de clase.',
     icon: Users,
     gradient: 'from-blue-500 to-indigo-500',
   },
   {
-    title: 'Aplicá tu primer comportamiento',
-    description: 'Los comportamientos son acciones que suman o restan puntos. Probá con uno positivo.',
+    title: 'Aplica tu primer comportamiento',
+    description: 'Los comportamientos son acciones que suman o restan puntos. Prueba con uno positivo.',
     icon: Award,
     gradient: 'from-emerald-500 to-teal-500',
   },
@@ -568,7 +574,7 @@ function Step3Setup({
       </div>
 
       <p className="text-center text-xs text-gray-400 dark:text-gray-500 mt-4">
-        Podés completar estos pasos ahora o más tarde dentro de la plataforma
+        Puedes completar estos pasos ahora o más tarde dentro de la plataforma
       </p>
     </motion.div>
   );
@@ -618,5 +624,41 @@ function CelebrationScreen() {
         </p>
       </motion.div>
     </motion.div>
+  );
+}
+
+// ── Salida del onboarding ──
+// Antes era una pantalla completa sin salida: un alumno que eligió "Docente" por error quedaba atrapado.
+function OnboardingExit() {
+  const logout = useAuthStore((state) => state.logout);
+  const { data } = useStudentSwitch();
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+
+  const chip = 'inline-flex min-h-[44px] items-center gap-1.5 rounded-xl bg-white px-3 text-sm font-semibold text-gray-800 ring-1 ring-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-100 dark:ring-gray-600 dark:hover:bg-gray-700';
+  return (
+    <>
+      <div className="absolute right-3 top-3 z-10 flex flex-wrap justify-end gap-2">
+        {data?.eligible && (
+          <button type="button" onClick={() => setOpen(true)} className={chip}>¿Eres estudiante?</button>
+        )}
+        <button type="button" onClick={() => void logout()} className={chip}>
+          <LogOut size={16} aria-hidden="true" /> Salir
+        </button>
+      </div>
+      {open && (
+        <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/60 p-4" onClick={() => setOpen(false)}>
+          <div role="dialog" aria-modal="true" aria-label="Cambiar a cuenta de estudiante" className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <StudentSwitchPanel onCancel={() => setOpen(false)} />
+          </div>
+        </div>
+      )}
+    </>
   );
 }

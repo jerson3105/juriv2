@@ -15,6 +15,8 @@ import { RegisterPage } from './pages/auth/RegisterPage';
 import { StudentCodeRegistrationPage } from './pages/auth/StudentCodeRegistrationPage';
 import { GoogleCallbackPage } from './pages/auth/GoogleCallbackPage';
 import { SelectRolePage } from './pages/auth/SelectRolePage';
+import { TeacherRegisterPage } from './pages/auth/TeacherRegisterPage';
+import { FamilyRegisterPage } from './pages/auth/FamilyRegisterPage';
 
 // Resto de páginas: bajo demanda (code splitting por ruta). Cada usuario descarga solo lo que abre.
 const AboutPage = lazyPage(() => import('./pages/AboutPage').then((m) => ({ default: m.AboutPage })));
@@ -202,6 +204,9 @@ function App() {
               </PublicRoute>
             }
           />
+          <Route path="/registro/docente" element={<PublicRoute><TeacherRegisterPage /></PublicRoute>} />
+          <Route path="/registro/familia" element={<PublicRoute><FamilyRegisterPage /></PublicRoute>} />
+          <Route path="/unirse" element={<PublicRoute><StudentCodeRegistrationPage /></PublicRoute>} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/privacy" element={<PrivacyPolicyPage />} />
           

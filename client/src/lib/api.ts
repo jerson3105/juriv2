@@ -199,6 +199,13 @@ export const authApi = {
       '/auth/google/exchange-code',
       code ? { code } : {}
     ),
+
+  /** ¿Esta cuenta de docente puede pasar a estudiante? (sin alumnos reales ni escuela) */
+  getStudentSwitch: () =>
+    api.get<ApiResponse<{ eligible: boolean; reason?: string }>>('/auth/switch-to-student'),
+
+  /** "Soy estudiante, me equivoqué": cambia la cuenta y devuelve una sesión nueva. */
+  switchToStudent: () => api.post<ApiResponse<AuthData>>('/auth/switch-to-student'),
 };
 
 // Tipos

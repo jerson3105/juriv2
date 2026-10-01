@@ -4,7 +4,7 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import passport from 'passport';
 import * as authController from '../controllers/auth.controller.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, authorize } from '../middleware/auth.js';
 import {
   authTokenLimiter, loginAccountLimiter, loginIpLimiter, oauthLimiter, registerLimiter, studentCodeLimiter,
 } from '../middleware/security.js';
@@ -47,6 +47,8 @@ router.post('/upload-avatar', authenticate, avatarUpload.single('avatar'), verif
 router.put('/notifications', authenticate, authController.updateNotifications);
 router.post('/logout-all', authenticate, authController.logoutAll);
 router.put('/change-password', authenticate, authController.changePassword);
+router.get('/switch-to-student', authenticate, authorize('TEACHER'), authController.getStudentSwitch);
+router.post('/switch-to-student', authenticate, authorize('TEACHER'), authController.switchToStudent);
 
 // ==================== GOOGLE OAUTH ====================
 // Iniciar autenticación con Google

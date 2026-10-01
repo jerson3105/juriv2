@@ -1,204 +1,75 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { GraduationCap, Users, Heart, Loader2, Sparkles } from 'lucide-react';
+import { Presentation } from 'lucide-react';
+import { AuthShell } from '../../components/auth/AuthShell';
+import { RoleDoors } from '../../components/auth/RoleDoors';
+import { errorMessage, type SignupRole } from '../../components/auth/authHelpers';
+import { primaryButton } from '../../components/home/homeHelpers';
+import { secondaryButton } from '../../components/gradebook/gradebookHelpers';
 import { useAuthStore } from '../../store/authStore';
 import { authApi } from '../../lib/api';
-import toast from 'react-hot-toast';
 
-type UserRole = 'TEACHER' | 'STUDENT' | 'PARENT';
-
-const getHashParam = (paramName: string): string | null => {
+const getHashParam = (name: string): string | null => {
   const hash = window.location.hash;
-  if (!hash || hash.length <= 1) {
-    return null;
-  }
-
-  const hashParams = new URLSearchParams(hash.slice(1));
-  return hashParams.get(paramName);
+  return hash.length > 1 ? new URLSearchParams(hash.slice(1)).get(name) : null;
 };
 
+const AFTER_SIGNUP = { STUDENT: '/join-class', TEACHER: '/dashboard', PARENT: '/dashboard' } as const;
+
+/**
+ * Cuenta nueva con Google sin puerta elegida. Antes un toque en "Docente" (la primera tarjeta)
+ * creaba la cuenta: ahora Estudiante va primero y Docente pide confirmación.
+ */
 export const SelectRolePage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { setAuth } = useAuthStore();
-  const [registrationCode, setRegistrationCode] = useState<string | undefined>(undefined);
-  const [isLoading, setIsLoading] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
+  const [code] = useState(() => searchParams.get('code') || getHashParam('code') || undefined);
+  const [confirmTeacher, setConfirmTeacher] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const code = searchParams.get('code') || getHashParam('code');
-    if (code) {
-      setRegistrationCode(code);
-    }
-  }, [searchParams, navigate]);
+    // El código es de un solo uso: no se deja en el historial.
+    window.history.replaceState(null, '', window.location.pathname);
+  }, []);
 
-  const handleSelectRole = async (role: UserRole) => {
-    if (isLoading) return;
-    
-    setSelectedRole(role);
-    setIsLoading(true);
-
+  const complete = async (role: SignupRole) => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
     try {
-      const response = await authApi.completeGoogleRegistration({
-        role,
-        ...(registrationCode ? { code: registrationCode } : {}),
-      });
-      
+      const response = await authApi.completeGoogleRegistration({ role, ...(code ? { code } : {}) });
       if (response.data.success && response.data.data) {
-        const { user, accessToken, refreshToken } = response.data.data;
-        
-        setAuth({ user, accessToken, refreshToken });
-        
-        toast.success(`¡Bienvenido/a ${user.firstName}!`);
-        navigate('/dashboard');
+        setAuth(response.data.data);
+        navigate(AFTER_SIGNUP[role]);
       }
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Error al completar registro');
-      setSelectedRole(null);
-    } finally {
-      setIsLoading(false);
+    } catch (err) {
+      setError(errorMessage(err, 'No se pudo crear la cuenta. Vuelve a intentarlo desde el inicio de sesión.'));
+      setBusy(false);
     }
   };
 
-  const roles = [
-    {
-      id: 'TEACHER' as UserRole,
-      icon: GraduationCap,
-      title: 'Soy Docente',
-      description: 'Crea y gestiona clases con gamificación',
-      color: 'primary',
-      gradient: 'from-blue-500 to-indigo-600',
-    },
-    {
-      id: 'STUDENT' as UserRole,
-      icon: Users,
-      title: 'Soy Estudiante',
-      description: 'Únete a clases y gana recompensas',
-      color: 'secondary',
-      gradient: 'from-emerald-500 to-teal-600',
-    },
-    {
-      id: 'PARENT' as UserRole,
-      icon: Heart,
-      title: 'Soy Padre/Madre',
-      description: 'Sigue el progreso de tus hijos',
-      color: 'pink',
-      gradient: 'from-pink-500 to-rose-600',
-    },
-  ];
+  if (confirmTeacher) {
+    return (
+      <AuthShell title="Vas a crear una cuenta de docente">
+        <div className="flex items-start gap-3 rounded-xl bg-gray-50 p-3 text-sm text-gray-800 dark:bg-gray-900/40 dark:text-gray-100">
+          <Presentation size={22} className="mt-0.5 shrink-0 text-gray-700 dark:text-gray-200" aria-hidden="true" />
+          <p>Con esta cuenta podrás crear clases y dar puntos. <strong>Si eres estudiante, tu cuenta debe ser de estudiante</strong>: con una cuenta de docente no podrás unirte a la clase de tu profe.</p>
+        </div>
+        {error && <p className="mt-4 text-sm font-medium text-red-700 dark:text-red-300" role="alert">{error}</p>}
+        <div className="mt-6 grid gap-2 sm:grid-cols-2">
+          <button type="button" onClick={() => void complete('STUDENT')} disabled={busy} className={secondaryButton}>Soy estudiante</button>
+          <button type="button" onClick={() => void complete('TEACHER')} disabled={busy} className={primaryButton}>Sí, soy docente</button>
+        </div>
+      </AuthShell>
+    );
+  }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-900 via-primary-800 to-primary-950 p-4">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="w-full max-w-lg"
-      >
-        {/* Header */}
-        <div className="text-center mb-8">
-          <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ type: 'spring', duration: 0.8 }}
-            className="mb-4"
-          >
-            <img 
-              src="/logo.png" 
-              alt="Juried" 
-              className="h-16 w-auto mx-auto drop-shadow-2xl"
-            />
-          </motion.div>
-          
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="flex items-center justify-center gap-2 mb-2"
-          >
-            <Sparkles className="w-5 h-5 text-yellow-400" />
-            <span className="text-primary-200">¡Casi listo!</span>
-            <Sparkles className="w-5 h-5 text-yellow-400" />
-          </motion.div>
-        </div>
-
-        {/* Card */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-8"
-        >
-          {/* Info */}
-          <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl text-center">
-            <p className="font-semibold text-gray-900 dark:text-white">Cuenta de Google verificada</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Elige tu rol para finalizar el registro
-            </p>
-          </div>
-
-          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2 text-center">
-            ¿Cómo usarás Juried?
-          </h2>
-          <p className="text-gray-600 dark:text-gray-400 text-center mb-6">
-            Selecciona tu rol para personalizar tu experiencia
-          </p>
-
-          {/* Role selection */}
-          <div className="space-y-3">
-            {roles.map((role, index) => (
-              <motion.button
-                key={role.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.3 + index * 0.1 }}
-                onClick={() => handleSelectRole(role.id)}
-                disabled={isLoading}
-                className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-all
-                  ${selectedRole === role.id 
-                    ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' 
-                    : 'border-gray-200 dark:border-gray-600 hover:border-primary-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'
-                  }
-                  ${isLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-                `}
-              >
-                <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${role.gradient} flex items-center justify-center shadow-lg`}>
-                  {isLoading && selectedRole === role.id ? (
-                    <Loader2 className="w-7 h-7 text-white animate-spin" />
-                  ) : (
-                    <role.icon className="w-7 h-7 text-white" />
-                  )}
-                </div>
-                <div className="text-left flex-1">
-                  <p className="font-semibold text-gray-900 dark:text-white">
-                    {role.title}
-                  </p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {role.description}
-                  </p>
-                </div>
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: selectedRole === role.id ? 1 : 0 }}
-                  className="w-6 h-6 rounded-full bg-primary-500 flex items-center justify-center"
-                >
-                  <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                </motion.div>
-              </motion.button>
-            ))}
-          </div>
-        </motion.div>
-
-        {/* Footer */}
-        <div className="text-center mt-6">
-          <p className="text-primary-400 text-xs">
-            © {new Date().getFullYear()} Juried. Todos los derechos reservados.
-          </p>
-        </div>
-      </motion.div>
-    </div>
+    <AuthShell title="¿Cómo vas a usar Juried?" subtitle="Es la primera vez que entras con esta cuenta de Google.">
+      <RoleDoors onPick={(role) => (role === 'TEACHER' ? setConfirmTeacher(true) : void complete(role))} disabled={busy} />
+      {error && <p className="mt-4 text-sm font-medium text-red-700 dark:text-red-300" role="alert">{error}</p>}
+    </AuthShell>
   );
 };

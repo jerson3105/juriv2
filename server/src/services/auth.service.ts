@@ -2,11 +2,13 @@ import bcrypt from 'bcryptjs';
 import { randomBytes } from 'node:crypto';
 import { and, eq, or, sql } from 'drizzle-orm';
 import { db, users, parentProfiles, studentProfiles, classrooms } from '../db/index.js';
+import { schoolMembers, schools } from '../db/schema.js';
+import { cache, CACHE_KEYS } from '../utils/cache.js';
 import { consumeRefreshToken, generateTokenPair, revokeRefreshToken, revokeAllUserTokens } from '../utils/jwt.js';
 import { v4 as uuidv4 } from 'uuid';
 import { avatarService } from './avatar.service.js';
 import { studentService } from './student.service.js';
-import { isDuplicateEntry } from '../utils/errors.js';
+import { ConflictError, isDuplicateEntry } from '../utils/errors.js';
 import { maskPersonName } from '../utils/helpers.js';
 
 // Tipos
@@ -856,6 +858,64 @@ export const completeGoogleRegistration = async (googleData: {
       lastName: normalizedLastName,
       role,
       avatarUrl: normalizedAvatarUrl,
+    },
+    ...tokens,
+  };
+};
+
+/**
+ * "Soy estudiante, me equivoqué": un alumno que eligió "Docente" al registrarse no tenía salida
+ * (no puede unirse a clases y el correo ya estaba usado). Solo se permite si la cuenta no tiene
+ * alumnos (salvo el de demostración) ni escuela: así nunca se rompe la clase de un docente real.
+ */
+export const getStudentSwitchEligibility = async (userId: string): Promise<{ eligible: boolean; reason?: string }> => {
+  const user = await db.query.users.findFirst({ where: eq(users.id, userId), columns: { role: true } });
+  if (!user || user.role !== 'TEACHER') return { eligible: false, reason: 'Solo una cuenta de docente puede cambiarse a estudiante' };
+
+  const [school] = await db.select({ id: schools.id }).from(schools).where(eq(schools.createdBy, userId)).limit(1);
+  const [membership] = await db.select({ id: schoolMembers.id }).from(schoolMembers).where(eq(schoolMembers.userId, userId)).limit(1);
+  if (school || membership) return { eligible: false, reason: 'Esta cuenta pertenece a una escuela. Pide ayuda al responsable de tu escuela.' };
+
+  const [realStudent] = await db
+    .select({ id: studentProfiles.id })
+    .from(studentProfiles)
+    .innerJoin(classrooms, eq(classrooms.id, studentProfiles.classroomId))
+    .where(and(eq(classrooms.teacherId, userId), eq(studentProfiles.isDemo, false)))
+    .limit(1);
+  if (realStudent) return { eligible: false, reason: 'Tus clases ya tienen estudiantes, así que esta cuenta es de docente.' };
+
+  return { eligible: true };
+};
+
+export const switchTeacherToStudent = async (userId: string): Promise<AuthResponse> => {
+  const eligibility = await getStudentSwitchEligibility(userId);
+  if (!eligibility.eligible) {
+    throw new ConflictError(eligibility.reason ?? 'No se puede cambiar esta cuenta');
+  }
+
+  // Sus clases solo tienen el alumno de demostración: se borran con el servicio (limpia dependencias).
+  const { classroomService } = await import('./classroom.service.js');
+  const own = await db.select({ id: classrooms.id }).from(classrooms).where(eq(classrooms.teacherId, userId));
+  for (const classroom of own) {
+    await db.update(classrooms).set({ isActive: false }).where(eq(classrooms.id, classroom.id));
+    await classroomService.delete(classroom.id, userId);
+  }
+
+  await db.update(users).set({ role: 'STUDENT', updatedAt: new Date() }).where(eq(users.id, userId));
+  cache.delete(CACHE_KEYS.user(userId));
+  await revokeAllUserTokens(userId);
+
+  const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
+  if (!user) throw new Error('Usuario no encontrado');
+  const tokens = await generateTokenPair({ userId: user.id, email: user.email, role: 'STUDENT' });
+  return {
+    user: {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: 'STUDENT',
+      avatarUrl: user.avatarUrl,
     },
     ...tokens,
   };

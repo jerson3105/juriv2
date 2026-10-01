@@ -8,6 +8,9 @@ import { studentApi, CHARACTER_CLASSES, type AvatarGender } from '../../lib/stud
 import { characterClassApi } from '../../lib/characterClassApi';
 import { placeholderStudentApi } from '../../lib/placeholderStudentApi';
 import toast from 'react-hot-toast';
+import { useAuthStore } from '../../store/authStore';
+import { StudentSwitchPanel } from '../../components/auth/StudentSwitch';
+import { useStudentSwitch } from '../../components/auth/useStudentSwitch';
 
 type CodeType = 'classroom' | 'student' | null;
 
@@ -27,6 +30,28 @@ const STEP_LABELS = [
 ];
 
 export const JoinClassPage = () => {
+  const role = useAuthStore((state) => state.user?.role);
+  if (role === 'TEACHER') return <TeacherAccountNotice />;
+  return <JoinClassFlow />;
+};
+
+const TeacherAccountNotice = () => {
+  const navigate = useNavigate();
+  const { data, isLoading } = useStudentSwitch();
+  return (
+    <div className="mx-auto max-w-md space-y-4 px-4 py-10">
+      <h1 className="text-xl font-bold text-gray-900 dark:text-white">Esta es una cuenta de docente</h1>
+      <p className="text-sm text-gray-700 dark:text-gray-300">Las cuentas de docente no pueden unirse a una clase como estudiante.</p>
+      {isLoading ? null : data?.eligible ? (
+        <StudentSwitchPanel onCancel={() => navigate('/dashboard')} />
+      ) : (
+        <button type="button" onClick={() => navigate('/dashboard')} className="inline-flex min-h-[44px] items-center rounded-xl bg-primary-600 px-5 text-sm font-bold text-white hover:bg-primary-700">Ir a mis clases</button>
+      )}
+    </div>
+  );
+};
+
+const JoinClassFlow = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -93,8 +118,13 @@ export const JoinClassPage = () => {
         setVerifyResult(null);
         setCodeType(null);
       }
-    } catch {
-      setVerifyError('Código no encontrado. Revisa que esté bien escrito.');
+    } catch (error) {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      setVerifyError(
+        status === 429 ? 'Demasiados intentos. Espera unos minutos y vuelve a probar.'
+          : status === 403 ? 'Esta es una cuenta de docente: no puede unirse a una clase como estudiante.'
+            : 'No encontramos ese código. Revísalo letra por letra con tu profe.',
+      );
       setVerifyResult(null);
       setCodeType(null);
     } finally {
@@ -282,7 +312,7 @@ export const JoinClassPage = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-2">
+                  <label htmlFor="join-code" className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
                     Tu código
                   </label>
                   <div className="relative">
@@ -291,7 +321,7 @@ export const JoinClassPage = () => {
                       placeholder="Escribe tu código aquí"
                       value={code}
                       onChange={(e) => {
-                        setCode(e.target.value.toUpperCase());
+                        setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8));
                         setVerifyError('');
                         setVerifyResult(null);
                         setCodeType(null);
@@ -302,7 +332,12 @@ export const JoinClassPage = () => {
                         verifyResult ? 'border-green-400 focus:ring-green-500' :
                         'border-gray-200 dark:border-gray-700 focus:ring-purple-500'
                       }`}
-                      maxLength={8}
+                      id="join-code"
+                      autoComplete="off"
+                      autoCapitalize="characters"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      enterKeyHint="go"
                       autoFocus
                     />
                   </div>
