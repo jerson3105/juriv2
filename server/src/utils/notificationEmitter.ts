@@ -1,4 +1,4 @@
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and, ne, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import { notifications } from '../db/schema.js';
@@ -79,6 +79,12 @@ export function prepareForTx(rawEntries: NotificationEntry | NotificationEntry[]
   };
 }
 
+/**
+ * El globo de la campana cuenta solo lo importante: los puntos de cada día se ven en
+ * "Lo nuevo" del inicio del alumno (que además los marca como leídos).
+ */
+export const countsInBell = ne(notifications.type, 'POINTS');
+
 // ==================== INTERNAL ====================
 
 function prepareEntry(entry: NotificationEntry): NotificationInsert {
@@ -110,7 +116,8 @@ async function emitCountForUsers(userIds: string[]): Promise<void> {
         .from(notifications)
         .where(and(
           eq(notifications.userId, userIds[0]),
-          eq(notifications.isRead, false)
+          eq(notifications.isRead, false),
+          countsInBell
         ));
       io.to(`user:${userIds[0]}`).emit('notification:unread_count', { count: result?.count ?? 0 });
     } else {
@@ -123,7 +130,8 @@ async function emitCountForUsers(userIds: string[]): Promise<void> {
         .from(notifications)
         .where(and(
           sql`${notifications.userId} IN (${sql.join(userIds.map(id => sql`${id}`), sql`, `)})`,
-          eq(notifications.isRead, false)
+          eq(notifications.isRead, false),
+          countsInBell
         ))
         .groupBy(notifications.userId);
 

@@ -1,4 +1,4 @@
-import { eq, and, desc, asc, sql } from 'drizzle-orm';
+import { eq, and, desc, asc, isNotNull, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import { classNotes, classrooms } from '../db/schema.js';
@@ -41,10 +41,13 @@ class ClassNoteService {
     return { id, classroomId, teacherId, content: trimmed, category: validCategory, isCompleted: false, dueDate: dueDate || null, createdAt: now, completedAt: null };
   }
 
-  async list(classroomId: string) {
+  /** `datedOnly`: los alumnos solo ven las notas con fecha (lo que el docente lee al escribirlas). */
+  async list(classroomId: string, { datedOnly = false }: { datedOnly?: boolean } = {}) {
     const results = await db.select()
       .from(classNotes)
-      .where(eq(classNotes.classroomId, classroomId))
+      .where(datedOnly
+        ? and(eq(classNotes.classroomId, classroomId), isNotNull(classNotes.dueDate))
+        : eq(classNotes.classroomId, classroomId))
       .orderBy(asc(classNotes.isCompleted), desc(classNotes.createdAt));
 
     return results;

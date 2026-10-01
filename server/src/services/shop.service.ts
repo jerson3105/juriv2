@@ -2,7 +2,7 @@ import { eq, and, desc, gte, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import { badgeService } from './badge.service.js';
-import { createNotification, emitUnreadCount } from '../utils/notificationEmitter.js';
+import { countsInBell, createNotification, emitUnreadCount } from '../utils/notificationEmitter.js';
 import { 
   shopItems, 
   purchases, 
@@ -1211,9 +1211,10 @@ export class ShopService {
   async getUnreadCount(userId: string, classroomId?: string): Promise<number> {
     const conditions = [
       eq(notifications.userId, userId),
-      eq(notifications.isRead, false)
+      eq(notifications.isRead, false),
+      countsInBell,
     ];
-    
+
     if (classroomId) {
       conditions.push(eq(notifications.classroomId, classroomId));
     }

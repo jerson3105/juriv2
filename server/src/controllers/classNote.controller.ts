@@ -27,7 +27,7 @@ class ClassNoteController {
     try {
       const classroomId = req.params.id;
       if (!(await requireClassroomMember(req, res, classroomId))) return;
-      const notes = await classNoteService.list(classroomId);
+      const notes = await classNoteService.list(classroomId, { datedOnly: req.user!.role === 'STUDENT' });
       res.json(notes);
     } catch (error) {
       console.error('Error getting class notes:', error);

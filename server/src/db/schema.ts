@@ -397,6 +397,7 @@ export const studentProfiles = mysqlTable('student_profiles', {
   isActive: boolean('is_active').notNull().default(true),
   isDemo: boolean('is_demo').notNull().default(false), // Estudiante demo para onboarding
   celebratedAt: datetime('celebrated_at'), // hasta dónde vio sus celebraciones (null = aún no)
+  homeSeenAt: datetime('home_seen_at'), // hasta dónde vio "Lo nuevo" en su inicio (null = aún no)
   restingSince: datetime('resting_since'), // HP en 0: desde cuándo descansa (null = tiene energía)
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
