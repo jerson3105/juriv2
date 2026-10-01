@@ -117,7 +117,7 @@ const moduleGroups = [
     description: 'Convierte una sesión común en una experiencia activa.',
     accent: 'from-violet-100 via-fuchsia-50 to-white',
     items: [
-      { icon: Sparkles, name: 'Actividades gamificadas', text: 'Ruleta, torneos y más.' },
+      { icon: Sparkles, name: 'Observatorio de Jiro', text: 'Actividades para jugar en clase con Jiro.' },
       { icon: MapIcon, name: 'Expediciones', text: 'Mapas, misiones y energía.' },
       { icon: BookOpen, name: 'Preguntas e historia de clase', text: 'Bancos reutilizables y narrativa.' },
     ],

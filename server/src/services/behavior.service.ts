@@ -6,7 +6,7 @@ import { badgeService } from './badge.service.js';
 import { clanService } from './clan.service.js';
 import { storyService } from './story.service.js';
 import { prepareForTx } from '../utils/notificationEmitter.js';
-import { applyPointDeltasBulk, type PointResult } from '../utils/points.js';
+import { applyPointDeltasBulk, type LevelUpSource, type PointResult } from '../utils/points.js';
 
 type PointType = 'XP' | 'HP' | 'GP';
 
@@ -30,6 +30,8 @@ interface ApplyBehaviorData {
   studentIds: string[];
   teacherId: string;
   multiplier?: number;
+  /** Origen de las subidas de nivel (p. ej. ACTIVITY desde el Observatorio). */
+  source?: LevelUpSource;
 }
 
 export class BehaviorService {
@@ -358,7 +360,7 @@ export class BehaviorService {
       xpPerLevel,
       hpMin: 0,
       hpMax: classroom.maxHp,
-      source: 'BEHAVIOR' as const,
+      source: data.source ?? ('BEHAVIOR' as const),
     };
     const studentUpdates: { studentId: string }[] = [];
     const xpAwardsForSideEffects: { studentId: string; xpAmount: number }[] = [];

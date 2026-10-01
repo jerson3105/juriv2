@@ -559,6 +559,30 @@ export const levelUpLogs = mysqlTable('level_up_logs', {
   studentDateIdx: index('idx_level_up_logs_student_date').on(table.studentProfileId, table.createdAt),
 }));
 
+// ==================== OBSERVATORIO DE JIRO ====================
+
+// Partidas de las actividades del Observatorio: estado para reanudar, resumen de la Bitácora y
+// recompensa (se entrega una sola vez por partida; ver activity.service).
+export const activitySessions = mysqlTable('activity_sessions', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
+  activityType: varchar('activity_type', { length: 20 }).notNull(), // DESCANSO | ESTRELLAS | CONQUISTA | CORREO | ERROR
+  status: varchar('status', { length: 12 }).notNull().default('ACTIVE'), // ACTIVE | FINISHED | ABANDONED
+  title: varchar('title', { length: 120 }),
+  state: json('state'),
+  result: json('result'),
+  selfAssessment: varchar('self_assessment', { length: 8 }), // GREEN | YELLOW | RED
+  reward: json('reward'),
+  rewardedAt: datetime('rewarded_at'),
+  createdBy: varchar('created_by', { length: 36 }).notNull(),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+  finishedAt: datetime('finished_at'),
+}, (table) => ({
+  classroomStatusIdx: index('idx_activity_sessions_classroom_status').on(table.classroomId, table.status, table.updatedAt),
+  classroomTypeIdx: index('idx_activity_sessions_classroom_type').on(table.classroomId, table.activityType, table.createdAt),
+}));
+
 // ==================== REGISTRO DE PUNTOS ====================
 
 export const pointLogs = mysqlTable('point_logs', {

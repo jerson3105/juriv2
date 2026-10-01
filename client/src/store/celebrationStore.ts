@@ -41,11 +41,14 @@ interface CelebrationState {
   pending: NewCelebration[];
   silent: boolean;
   sound: boolean;
+  /** Escenario del Observatorio abierto: las celebraciones van por encima de él. */
+  raised: boolean;
   celebrate: (celebration: NewCelebration) => void;
   dismiss: (id: number) => void;
   playPending: () => void;
   setSilent: (value: boolean) => void;
   setSound: (value: boolean) => void;
+  setRaised: (value: boolean) => void;
 }
 
 // Preferencias del visitante: silencio por sesión (exámenes), sonido persistente.
@@ -78,6 +81,7 @@ export const useCelebrationStore = create<CelebrationState>((set, get) => ({
   pending: [],
   silent: read(() => sessionStorage, 'juried-celebrations-silent', false),
   sound: read(() => localStorage, 'juried-celebrations-sound', true),
+  raised: false,
 
   // Una acción = una celebración. Si llega otra, reemplaza a la visible (nunca hay cola).
   celebrate: (celebration) => {
@@ -111,6 +115,8 @@ export const useCelebrationStore = create<CelebrationState>((set, get) => ({
     write(() => localStorage, 'juried-celebrations-sound', value);
     set({ sound: value });
   },
+
+  setRaised: (value) => set({ raised: value }),
 }));
 
 /** Hito: cruzar un múltiplo de 5 o una insignia legendaria → celebración grande. */

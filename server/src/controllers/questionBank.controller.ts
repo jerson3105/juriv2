@@ -1,8 +1,9 @@
 import { Request, Response } from 'express';
 import { questionBankService } from '../services/questionBank.service.js';
 import { z } from 'zod';
-import { createGenAI } from '../utils/aiClient.js';
-import { AppError, RateLimitError } from '../utils/errors.js';
+import { createGenAI, generateContentWithRetry, isAIRateLimitError } from '../utils/aiClient.js';
+import { generateIntoBank } from '../services/observatorioAi.service.js';
+import { AppError } from '../utils/errors.js';
 import { requireClassroomTeacher } from '../utils/access.js';
 
 const questionTypeSchema = z.enum(['TRUE_FALSE', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'MATCHING']);
@@ -84,6 +85,14 @@ const generateWithAISchema = z.object({
   difficulty: questionDifficultySchema.optional(),
 });
 
+// Observatorio: generar con IA y guardar directo en un banco de la clase.
+const generateIntoBankSchema = z.object({
+  topic: z.string().trim().min(2, 'Escribe el tema').max(200),
+  quantity: z.coerce.number().int().min(3).max(15),
+  kind: z.enum(['TRUE_FALSE', 'SINGLE_CHOICE']),
+  bankId: z.string().uuid().optional().nullable(),
+});
+
 const generateFromPDFSchema = z.object({
   quantity: z.coerce.number().int().min(1).max(50),
   level: z.string().trim().min(1).max(100),
@@ -105,55 +114,6 @@ const DEFAULT_AI_TYPES: Array<z.infer<typeof questionTypeSchema>> = [
 ];
 
 const QUESTION_BANK_AI_MODEL = 'gemini-2.5-flash-lite';
-
-const AI_RETRY_DELAYS_MS = [1500, 4000];
-
-const isAIRateLimitError = (error: unknown): boolean => {
-  if (!error || typeof error !== 'object') return false;
-
-  const candidate = error as {
-    status?: unknown;
-    message?: unknown;
-  };
-
-  const message = typeof candidate.message === 'string'
-    ? candidate.message.toLowerCase()
-    : '';
-
-  return candidate.status === 429
-    || message.includes('resource exhausted')
-    || message.includes('resource_exhausted')
-    || message.includes('too many requests')
-    || message.includes('"code":429');
-};
-
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-const generateContentWithRetry = async <T>(operation: () => Promise<T>): Promise<T> => {
-  let lastError: unknown;
-
-  for (let attempt = 0; attempt <= AI_RETRY_DELAYS_MS.length; attempt++) {
-    try {
-      return await operation();
-    } catch (error) {
-      lastError = error;
-
-      if (!isAIRateLimitError(error) || attempt === AI_RETRY_DELAYS_MS.length) {
-        break;
-      }
-
-      await wait(AI_RETRY_DELAYS_MS[attempt]);
-    }
-  }
-
-  if (isAIRateLimitError(lastError)) {
-    throw new RateLimitError(
-      'La IA está temporalmente saturada. Intenta nuevamente en unos minutos o reduce la cantidad de preguntas.'
-    );
-  }
-
-  throw lastError;
-};
 
 const handleValidationError = (res: Response, error: z.ZodError) => {
   return res.status(400).json({
@@ -270,6 +230,16 @@ class QuestionBankController {
       }
 
       const banks = await questionBankService.getBanksByClassroom(classroomId);
+      res.json({ success: true, data: banks });
+    } catch (error) {
+      handleControllerError(res, error, 'Error al obtener bancos de preguntas');
+    }
+  }
+
+  // GET /question-banks/mine: bancos de todas las clases del profesor
+  async getMyBanks(req: Request, res: Response) {
+    try {
+      const banks = await questionBankService.getBanksForTeacher(req.user!.id);
       res.json({ success: true, data: banks });
     } catch (error) {
       handleControllerError(res, error, 'Error al obtener bancos de preguntas');
@@ -612,6 +582,20 @@ Genera ${quantity} preguntas variadas y educativas:`;
 
     } catch (error) {
       handleControllerError(res, error, 'Error al generar preguntas con IA');
+    }
+  }
+
+  // POST /question-banks/classroom/:classroomId/generate-into-bank
+  async generateIntoBank(req: Request, res: Response) {
+    try {
+      const { classroomId } = req.params;
+      if (!(await ensureTeacherClassroomAccess(req, res, classroomId))) return;
+      const validation = generateIntoBankSchema.safeParse(req.body);
+      if (!validation.success) return handleValidationError(res, validation.error);
+      const data = await generateIntoBank({ classroomId, ...validation.data });
+      res.status(201).json({ success: true, data });
+    } catch (error) {
+      handleControllerError(res, error, 'No se pudieron generar las preguntas');
     }
   }
 

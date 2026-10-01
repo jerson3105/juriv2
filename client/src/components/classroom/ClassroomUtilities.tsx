@@ -122,6 +122,8 @@ export const ClassroomUtilities = ({
             isApplying={pointsTools.isApplying}
             onApply={async (behavior, student) =>
               (await pointsTools.apply(behavior, [student.id], getDisplayName(student, showCharacterName))) !== null}
+            onApplyGroup={async (behavior, members, label) =>
+              (await pointsTools.apply(behavior, members.map((m) => m.id), label)) !== null}
             onClose={closeAll}
           />
         )}

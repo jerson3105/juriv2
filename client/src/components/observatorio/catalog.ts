@@ -1,0 +1,118 @@
+import type { ActivityOverview, ActivitySession, ActivityType } from '../../lib/activityApi';
+import type { JiroPose } from './jiroPoses';
+
+export type ObservatorioActivityId = 'descanso' | 'estrellas' | 'conquista' | 'pergaminos' | 'expediciones';
+
+export interface CatalogEntry {
+  id: ObservatorioActivityId;
+  name: string;
+  description: string;
+  pose: JiroPose;
+  /** Duración típica en clase. */
+  duration: string;
+  requirements: { icon: string; label: string }[];
+  /** Tipo de partida en el servidor (las actividades que guardan sesión). */
+  sessionType?: ActivityType;
+}
+
+// Catálogo del Observatorio. Sin etiquetas de "Popular/Nuevo": la tarjeta dice duración,
+// requisitos y cuándo se jugó por última vez.
+export const CATALOG: CatalogEntry[] = [
+  {
+    id: 'descanso',
+    name: 'Descanso de Jiro',
+    description: 'Mientras hay calma, Jiro sueña y dibuja una constelación. El ruido solo pausa.',
+    pose: 'dormido',
+    duration: '3–10 min',
+    requirements: [{ icon: '🎤', label: 'Micrófono o manual' }],
+    sessionType: 'DESCANSO',
+  },
+  {
+    id: 'estrellas',
+    name: 'Estrellas en Movimiento',
+    description: 'Verdadero o falso con el cuerpo: de pie o agachados. Las rachas encienden estrellas.',
+    pose: 'emocionado',
+    duration: '10–15 min',
+    requirements: [{ icon: '📚', label: 'Banco, IA o modo libre' }],
+    sessionType: 'ESTRELLAS',
+  },
+  {
+    id: 'conquista',
+    name: 'Conquista del Territorio',
+    description: 'Los equipos compiten por territorios respondiendo preguntas por turnos.',
+    pose: 'senalando',
+    duration: '15–25 min',
+    requirements: [{ icon: '📚', label: 'Banco de preguntas' }],
+  },
+  {
+    id: 'pergaminos',
+    name: 'Pergaminos del Aula',
+    description: 'Mural donde los alumnos se envían mensajes de ánimo y reconocimiento.',
+    pose: 'emocionado',
+    duration: 'Toda la semana',
+    requirements: [{ icon: '👤', label: 'Cuentas de alumnos' }],
+  },
+  {
+    id: 'expediciones',
+    name: 'Expediciones',
+    description: 'Aventuras con mapas: los alumnos exploran y completan misiones.',
+    pose: 'senalando',
+    duration: 'Varias clases',
+    requirements: [{ icon: '👤', label: 'Cuentas de alumnos' }],
+  },
+];
+
+export const entryForSession = (type: ActivityType) => CATALOG.find((e) => e.sessionType === type) ?? null;
+
+/** Días de calendario local entre una fecha y hoy. */
+export const daysAgo = (iso: string) => {
+  const then = new Date(iso);
+  const now = new Date();
+  const a = Date.UTC(then.getFullYear(), then.getMonth(), then.getDate());
+  const b = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.max(0, Math.round((b - a) / 86_400_000));
+};
+
+export const lastPlayedLabel = (iso: string | null | undefined) => {
+  if (!iso) return 'Nunca jugada';
+  const days = daysAgo(iso);
+  if (days === 0) return 'Jugada hoy';
+  if (days === 1) return 'Jugada ayer';
+  return `Jugada hace ${days} días`;
+};
+
+export interface Recommendation {
+  line: string;
+  entry: CatalogEntry | null;
+  resume: ActivitySession | null;
+}
+
+/**
+ * Lo que propone Jiro al entrar, con datos reales: una partida a medias, la calma si hay varios
+ * descansando, o la actividad que más tiempo lleva sin jugarse.
+ */
+export const recommend = (overview: ActivityOverview | undefined, restingCount: number): Recommendation => {
+  const active = overview?.active[0] ?? null;
+  const activeEntry = active ? entryForSession(active.activityType) : null;
+  if (active && activeEntry) {
+    return { line: `Dejamos ${activeEntry.name} a medias. ¿La seguimos?`, entry: activeEntry, resume: active };
+  }
+  if (restingCount >= 3) {
+    return {
+      line: `Hay ${restingCount} descansando. Un Descanso de Jiro nos ayuda a recuperar la calma.`,
+      entry: CATALOG.find((e) => e.id === 'descanso') ?? null,
+      resume: null,
+    };
+  }
+  const tracked = CATALOG.filter((e) => e.sessionType);
+  const last = new Map((overview?.lastByType ?? []).map((r) => [r.activityType, r.lastPlayedAt]));
+  const never = tracked.find((e) => !last.get(e.sessionType!));
+  if (never) return { line: `Aún no jugamos ${never.name}. ¿Probamos hoy?`, entry: never, resume: null };
+  const oldest = tracked
+    .map((e) => ({ e, at: last.get(e.sessionType!) as string }))
+    .sort((a, b) => a.at.localeCompare(b.at))[0];
+  if (oldest && daysAgo(oldest.at) >= 3) {
+    return { line: `Hace ${daysAgo(oldest.at)} días que no jugamos ${oldest.e.name}.`, entry: oldest.e, resume: null };
+  }
+  return { line: '¡Hola! ¿Qué exploramos hoy?', entry: null, resume: null };
+};

@@ -276,6 +276,39 @@ class QuestionBankService {
     }));
   }
 
+  /**
+   * Bancos activos de todas las clases activas del profesor, con el conteo de preguntas por tipo
+   * (las actividades del Observatorio pueden usar bancos de cualquiera de sus clases).
+   */
+  async getBanksForTeacher(teacherId: string) {
+    const banks = await db
+      .select({
+        id: questionBanks.id,
+        name: questionBanks.name,
+        icon: questionBanks.icon,
+        color: questionBanks.color,
+        classroomId: questionBanks.classroomId,
+        classroomName: classrooms.name,
+      })
+      .from(questionBanks)
+      .innerJoin(classrooms, eq(classrooms.id, questionBanks.classroomId))
+      .where(and(eq(classrooms.teacherId, teacherId), eq(classrooms.isActive, true), eq(questionBanks.isActive, true)))
+      .orderBy(classrooms.name, questionBanks.name);
+    if (banks.length === 0) return [];
+
+    const counts = await db
+      .select({ bankId: questions.bankId, type: questions.type, count: sql<number>`count(*)` })
+      .from(questions)
+      .where(and(inArray(questions.bankId, banks.map((b) => b.id)), eq(questions.isActive, true)))
+      .groupBy(questions.bankId, questions.type);
+
+    return banks.map((bank) => {
+      const byType: Record<BankQuestionType, number> = { TRUE_FALSE: 0, SINGLE_CHOICE: 0, MULTIPLE_CHOICE: 0, MATCHING: 0 };
+      for (const row of counts) if (row.bankId === bank.id) byType[row.type as BankQuestionType] = Number(row.count);
+      return { ...bank, questionCount: Object.values(byType).reduce((a, b) => a + b, 0), countsByType: byType };
+    });
+  }
+
   async getBankById(bankId: string) {
     const bank = await db
       .select()

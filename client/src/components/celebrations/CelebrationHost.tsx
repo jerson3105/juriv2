@@ -11,6 +11,7 @@ const VISIBLE_MS = 2500;
 const REDUCED_VISIBLE_MS = 4000;
 const MAX_ROWS = 6;
 // Capa única para celebraciones: encima de modales de vista (60) y debajo de los del layout (200).
+// Con el escenario del Observatorio abierto (z-180), todo el host sube a 190.
 const LAYER = 'z-[80]';
 
 const prefersReducedMotion = () =>
@@ -24,6 +25,7 @@ export const CelebrationHost = () => {
   const current = useCelebrationStore((s) => s.current);
   const dismiss = useCelebrationStore((s) => s.dismiss);
   const sound = useCelebrationStore((s) => s.sound);
+  const raised = useCelebrationStore((s) => s.raised);
   const { play } = useSound();
   const cardRef = useRef<HTMLDivElement>(null);
   const remaining = useRef(VISIBLE_MS);
@@ -49,7 +51,7 @@ export const CelebrationHost = () => {
         startVelocity: big ? 42 : 28,
         ticks: big ? 160 : 90,
         scalar: 0.9,
-        zIndex: 81,
+        zIndex: raised ? 191 : 81,
         disableForReducedMotion: true,
         origin: rect
           ? { x: (rect.left + rect.width / 2) / window.innerWidth, y: Math.min(0.9, (rect.top + rect.height * 0.4) / window.innerHeight) }
@@ -76,7 +78,11 @@ export const CelebrationHost = () => {
   useEffect(() => {
     if (id === undefined) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') dismiss(id);
+      if (event.key === 'Escape') {
+        // Que Esc cierre solo la celebración (no el escenario o el modal de debajo).
+        event.preventDefault();
+        dismiss(id);
+      }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
@@ -84,7 +90,7 @@ export const CelebrationHost = () => {
 
   if (typeof document === 'undefined') return null;
 
-  return createPortal(
+  const content = (
     <AnimatePresence>
       {current && (
         current.audience === 'personal'
@@ -95,9 +101,9 @@ export const CelebrationHost = () => {
             : <ClassCard key={current.id} celebration={current} cardRef={cardRef} onClose={() => dismiss(current.id)}
                 onPause={setPaused} paused={paused} duration={duration} reduced={reduced} />
       )}
-    </AnimatePresence>,
-    document.body,
+    </AnimatePresence>
   );
+  return createPortal(raised ? <div className="relative z-[190]">{content}</div> : content, document.body);
 };
 
 type CardProps = {

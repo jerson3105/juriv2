@@ -87,7 +87,7 @@ export const errorMessage = (error: unknown, fallback: string) =>
   (error as { response?: { data?: { message?: string } } })?.response?.data?.message || fallback;
 
 export const JIRO_TIPS = [
-  { text: 'Los eventos aleatorios sorprenden a la clase: actívalos desde Actividades.', highlight: 'eventos aleatorios' },
+  { text: 'En el Observatorio de Jiro la clase juega proyectada y cierra con la Bitácora.', highlight: 'Observatorio de Jiro' },
   { text: 'Crea insignias propias y otórgalas en lote al final de la clase.', highlight: 'insignias propias' },
   { text: 'En la tienda tus estudiantes canjean su oro por recompensas reales.', highlight: 'tienda' },
   { text: 'Los clanes fomentan el trabajo en equipo: cada punto suma para su equipo.', highlight: 'clanes' },

@@ -28,6 +28,17 @@ export interface QuestionBank {
   questions?: Question[];
 }
 
+export interface TeacherBank {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  classroomId: string;
+  classroomName: string;
+  questionCount: number;
+  countsByType: Record<BankQuestionType, number>;
+}
+
 export interface Question {
   id: string;
   bankId: string;
@@ -164,6 +175,18 @@ export const questionBankApi = {
   
   getBanks: async (classroomId: string): Promise<QuestionBank[]> => {
     const response = await api.get(`/question-banks/classroom/${classroomId}`);
+    return response.data.data;
+  },
+
+  /** Bancos de todas las clases del profesor (el Observatorio usa bancos de cualquiera). */
+  getMyBanks: async (): Promise<TeacherBank[]> => {
+    const response = await api.get('/question-banks/mine');
+    return response.data.data;
+  },
+
+  /** Observatorio: genera con IA y guarda directo en un banco de la clase (sin CSV). */
+  generateIntoBank: async (classroomId: string, data: { topic: string; quantity: number; kind: 'TRUE_FALSE' | 'SINGLE_CHOICE'; bankId?: string | null }): Promise<{ bankId: string; bankName: string; created: number }> => {
+    const response = await api.post(`/question-banks/classroom/${classroomId}/generate-into-bank`, data);
     return response.data.data;
   },
 

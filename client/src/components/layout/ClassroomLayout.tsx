@@ -13,7 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ShoppingBag,
-  Dices,
+  Telescope,
   GraduationCap,
   CalendarCheck,
   ChevronDown,
@@ -82,7 +82,7 @@ const FEATURE_LABELS: Record<string, string> = {
   storytelling: 'Historia de clase',
   expedition: 'Expediciones',
   question_bank: 'Preguntas',
-  activities: 'Actividades',
+  activities: 'Observatorio de Jiro',
 };
 
 const FEATURE_INFO: Record<string, { emoji: string; description: string }> = {
@@ -93,8 +93,8 @@ const FEATURE_INFO: Record<string, { emoji: string; description: string }> = {
   collectibles: { emoji: '\u{1F4E6}', description: 'Tus estudiantes coleccionan cromos que pueden comprar con sus monedas (GP).' },
   storytelling: { emoji: '\u{1F4D6}', description: 'Crea una historia narrativa de fondo para tu clase que ambienta la experiencia.' },
   expedition: { emoji: '\u{1F5FA}\uFE0F', description: 'Aventuras de aprendizaje con mapas interactivos donde los estudiantes exploran y completan misiones. Incluye la Expedición de Jiro con bancos de preguntas y sistema de energía.' },
-  question_bank: { emoji: '\u2753', description: 'Crea y organiza preguntas para usar en Expediciones y Torneos.' },
-  activities: { emoji: '\u26A1', description: 'Herramientas interactivas para dinamizar tu clase: Ruleta del Destino, Torneos, Descanso de Jiro, Actividades de Tiempo, Pergaminos del Aula y más.' },
+  question_bank: { emoji: '\u2753', description: 'Crea y organiza preguntas para el Observatorio de Jiro y las Expediciones.' },
+  activities: { emoji: '\u26A1', description: 'Actividades para jugar en clase con Jiro de guía: Descanso de Jiro, Conquista, Pergaminos del Aula y Expediciones.' },
 };
 
 export const ClassroomLayout = () => {
@@ -229,7 +229,7 @@ export const ClassroomLayout = () => {
       menuKey: 'clase',
       featureKey: 'activities',
       subItems: [
-        { path: `/classroom/${id}/activities`, label: 'Actividades', icon: Dices, featureKey: 'activities' },
+        { path: `/classroom/${id}/activities`, label: 'Observatorio de Jiro', icon: Telescope, featureKey: 'activities' },
         { path: `/classroom/${id}/question-banks`, label: 'Preguntas', icon: BookOpen, featureKey: 'question_bank' },
         // Siempre visible: sin configurar, Calificaciones muestra cómo empezar.
         { path: `/classroom/${id}/gradebook`, label: 'Calificaciones', icon: ClipboardList, featureKey: 'grades' },

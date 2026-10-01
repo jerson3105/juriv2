@@ -24,6 +24,7 @@ const pdfUpload = multer({
 router.use(authenticate);
 
 // Bancos de preguntas
+router.get('/mine', authorize('TEACHER'), questionBankController.getMyBanks.bind(questionBankController));
 router.get('/classroom/:classroomId', authorize('TEACHER'), questionBankController.getBanks.bind(questionBankController));
 router.post('/classroom/:classroomId', authorize('TEACHER'), questionBankController.createBank.bind(questionBankController));
 router.get('/bank/:bankId', authorize('TEACHER'), questionBankController.getBank.bind(questionBankController));
@@ -44,6 +45,7 @@ router.post('/question/:questionId/check', authorize('TEACHER'), questionBankCon
 
 // Generación con IA
 router.post('/generate-ai', authorize('TEACHER'), ...aiGuard, questionBankController.generateWithAI.bind(questionBankController));
+router.post('/classroom/:classroomId/generate-into-bank', authorize('TEACHER'), ...aiGuard, questionBankController.generateIntoBank.bind(questionBankController));
 router.post('/generate-from-pdf', authorize('TEACHER'), aiLimiter, aiRequestTimeout, pdfUpload.single('pdf'), verifyUploadedFile, questionBankController.generateFromPDF.bind(questionBankController));
 
 // Exportar bancos a otras clases

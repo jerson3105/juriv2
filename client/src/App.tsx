@@ -32,7 +32,7 @@ const StudentAttendancePage = lazyPage(() => import('./pages/student/StudentAtte
 const StudentsPage = lazyPage(() => import('./pages/classroom/StudentsPage').then((m) => ({ default: m.StudentsPage })));
 const BehaviorsPage = lazyPage(() => import('./pages/classroom/BehaviorsPage').then((m) => ({ default: m.BehaviorsPage })));
 const ShopPage = lazyPage(() => import('./pages/classroom/ShopPage').then((m) => ({ default: m.ShopPage })));
-const ActivitiesPage = lazyPage(() => import('./pages/classroom/ActivitiesPage').then((m) => ({ default: m.ActivitiesPage })));
+const ObservatorioPage = lazyPage(() => import('./pages/classroom/ObservatorioPage').then((m) => ({ default: m.ObservatorioPage })));
 const ClassroomSettingsPage = lazyPage(() => import('./pages/classroom/ClassroomSettingsPage').then((m) => ({ default: m.ClassroomSettingsPage })));
 const AttendancePage = lazyPage(() => import('./pages/classroom/AttendancePage').then((m) => ({ default: m.AttendancePage })));
 const StudentDetailPage = lazyPage(() => import('./pages/classroom/StudentDetailPage').then((m) => ({ default: m.StudentDetailPage })));
@@ -238,7 +238,7 @@ function App() {
               <Route path="students" element={<StudentsPage />} />
               <Route path="behaviors" element={<BehaviorsPage />} />
               <Route path="shop" element={<ShopPage />} />
-              <Route path="activities" element={<ActivitiesPage />} />
+              <Route path="activities" element={<ObservatorioPage />} />
               <Route path="attendance" element={<AttendancePage />} />
               <Route path="badges" element={<BadgesPage />} />
               <Route path="clans" element={<ClansPage />} />
