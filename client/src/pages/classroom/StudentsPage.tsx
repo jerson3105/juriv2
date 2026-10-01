@@ -48,6 +48,7 @@ import { QuickBehaviorPicker, QuickPointButtons } from '../../components/student
 import { useQuickBehaviors } from '../../hooks/useQuickBehaviors';
 import { useSound } from '../../hooks/useSound';
 import toast from 'react-hot-toast';
+import { accessLabel } from '../../lib/studentAccess';
 
 type ListFilter = 'all' | 'low_hp' | 'resting' | 'no_activity' | 'round_pending' | 'round_scored' | 'round_repeated';
 
@@ -1535,13 +1536,13 @@ export const StudentsPage = () => {
                                 <span className="font-medium text-gray-800 dark:text-white">{getDisplayName(student)}</span>
                                 {isTopStudent && <Crown size={14} className="text-amber-500" />}
                               </div>
-                              {(getRealStudentName(student) || student.linkedEmail) && (
+                              {(getRealStudentName(student) || accessLabel(student)) && (
                                 <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
                                   {getRealStudentName(student) && (
                                     <span className="text-gray-500 dark:text-gray-400">{getRealStudentName(student)}</span>
                                   )}
-                                  {student.linkedEmail && (
-                                    <span className="text-gray-500 dark:text-gray-400">{student.linkedEmail}</span>
+                                  {accessLabel(student) && (
+                                    <span className="text-gray-500 dark:text-gray-400">{accessLabel(student)}</span>
                                   )}
                                 </div>
                               )}

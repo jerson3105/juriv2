@@ -75,7 +75,7 @@ export const LoginPage = () => {
         </span>
         <span className="min-w-0 flex-1">
           <span className="block font-bold text-gray-900 dark:text-white">Soy estudiante y tengo un código</span>
-          <span className="block text-sm text-gray-700 dark:text-gray-300">Tu profe te lo da en la pizarra o en tu tarjeta</span>
+          <span className="block text-sm text-gray-700 dark:text-gray-300">El de tu clase o tu tarjeta. Aquí también entras con tu PIN</span>
         </span>
         <ChevronRight size={20} className="shrink-0 text-primary-700 dark:text-primary-300" aria-hidden="true" />
       </Link>

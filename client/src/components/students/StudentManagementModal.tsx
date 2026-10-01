@@ -8,6 +8,7 @@ import { placeholderStudentApi } from '../../lib/placeholderStudentApi';
 import { studentApi } from '../../lib/studentApi';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
+import { accessLabel } from '../../lib/studentAccess';
 
 type StudentAccountStatus = 'LINKED' | 'PENDING_LINK' | 'DEMO';
 
@@ -227,7 +228,7 @@ export const StudentManagementModal = ({
 
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Correo</p>
-                  <p className="mt-1 break-all text-sm text-gray-700 dark:text-gray-200">{student.linkedEmail || 'No disponible'}</p>
+                  <p className="mt-1 break-all text-sm text-gray-700 dark:text-gray-200">{accessLabel(student) || 'No disponible'}</p>
                 </div>
 
                 <div>

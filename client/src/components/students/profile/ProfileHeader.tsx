@@ -10,6 +10,7 @@ import { accentGradient, type StoryAccent } from '../../../lib/storyTheme';
 import { StudentAvatarMini } from '../../avatar/StudentAvatarMini';
 import { ActionMenu } from '../../home/ActionMenu';
 import { LOW_HP_RATIO, levelProgress, studentNames } from './profileHelpers';
+import { hasStudentAccount, isPinStudent } from '../../../lib/studentAccess';
 
 type CharacterClassOption = { id?: string; name: string; icon?: string | null; isActive?: boolean };
 
@@ -49,11 +50,11 @@ export const ProfileHeader = ({
   const maxHp = classroom.maxHp || 100;
   const hpRatio = Math.min(student.hp / maxHp, 1);
   const level = levelProgress(student.xp, student.level, classroom.xpPerLevel || 100);
-  const hasAccount = !!student.linkedEmail;
+  const hasAccount = hasStudentAccount(student);
 
   const menu = [
     { label: 'Editar nombres', icon: Pencil, onClick: onEdit },
-    { label: hasAccount ? 'Cuenta del alumno' : 'Código de acceso', icon: KeyRound, onClick: onAccessCode },
+    { label: isPinStudent(student) ? 'Acceso del alumno' : hasAccount ? 'Cuenta del alumno' : 'Código de acceso', icon: KeyRound, onClick: onAccessCode },
     { label: 'Código para la familia', icon: Users, onClick: onFamilyCode },
     { label: 'Retirar de la clase', icon: UserMinus, danger: true, onClick: onRemove },
   ];

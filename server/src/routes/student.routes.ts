@@ -35,6 +35,7 @@ router.get('/demo/:classroomId/check', authorize('TEACHER'), studentController.h
 router.post('/placeholder/:classroomId', authorize('TEACHER'), studentController.createPlaceholderStudent.bind(studentController));
 router.post('/placeholder/:classroomId/bulk', authorize('TEACHER'), studentController.createBulkPlaceholderStudents.bind(studentController));
 router.get('/placeholder/:classroomId', authorize('TEACHER'), studentController.getPlaceholderStudents.bind(studentController));
+router.post('/:studentId/reset-access', authorize('TEACHER'), studentController.resetAccess.bind(studentController));
 router.post('/placeholder/:studentId/regenerate-code', authorize('TEACHER'), studentController.regenerateLinkCode.bind(studentController));
 
 // Generar PDFs de tarjetas de vinculación

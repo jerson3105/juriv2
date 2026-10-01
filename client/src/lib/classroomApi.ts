@@ -101,6 +101,11 @@ export interface Student {
   displayName?: string | null;
   linkCode?: string | null;
   linkedEmail?: string | null;
+  /** Cómo entra el alumno (null = aún sin acceso). Los alumnos con PIN no tienen correo visible. */
+  accessType?: 'PIN' | 'EMAIL' | 'GOOGLE' | null;
+  /** PIN restablecido por el docente: aún no crea el nuevo (1/0). */
+  pinPending?: number | boolean | null;
+  pinLockedUntil?: string | null;
   level: number;
   xp: number;
   hp: number;

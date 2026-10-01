@@ -19,7 +19,8 @@ export const userRoleEnum = mysqlEnum('role', ['ADMIN', 'TEACHER', 'STUDENT', 'P
 // Docente sin verificar: usa su clase con la lista, pero no recibe alumnos con cuenta ni familias.
 export const teacherStatusEnum = mysqlEnum('teacher_status', ['UNVERIFIED', 'PENDING', 'VERIFIED']);
 export const teacherVerifiedViaEnum = mysqlEnum('teacher_verified_via', ['LEGACY', 'ADMIN', 'SCHOOL', 'DOMAIN']);
-export const authProviderEnum = mysqlEnum('provider', ['LOCAL', 'GOOGLE']);
+// PIN = alumno sin correo (código de clase + nombre de la lista + PIN de 4 números).
+export const authProviderEnum = mysqlEnum('provider', ['LOCAL', 'GOOGLE', 'PIN']);
 export const characterClassEnum = mysqlEnum('character_class', ['GUARDIAN', 'ARCANE', 'EXPLORER', 'ALCHEMIST']);
 export const pointTypeEnum = mysqlEnum('point_type', ['XP', 'HP', 'GP']);
 export const pointActionEnum = mysqlEnum('action', ['ADD', 'REMOVE']);
@@ -71,6 +72,10 @@ export const users = mysqlTable('users', {
   updatedAt: datetime('updated_at').notNull(),
   /** Para retirar cuentas docentes sin verificar tras 180 días sin uso. */
   lastLoginAt: datetime('last_login_at'),
+  /** Alumnos sin correo: PIN de 4 números (bcrypt). Null = sin PIN (nuevo o restablecido por el docente). */
+  pinHash: varchar('pin_hash', { length: 100 }),
+  pinFailedAttempts: int('pin_failed_attempts').notNull().default(0),
+  pinLockedUntil: datetime('pin_locked_until'),
 });
 
 /** Dominios institucionales: un docente con ese correo queda verificado al registrarse. */

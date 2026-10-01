@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit';
+import QRCode from 'qrcode';
 
 interface StudentCard {
   displayName: string;
@@ -30,12 +31,21 @@ const CLASS_SYMBOLS: Record<string, string> = {
   ALCHEMIST: '[Q]',
 };
 
+/** Enlace de la puerta del alumno con el código de su clase (el QR solo abre la puerta: el PIN se pide igual). */
+const joinUrl = (appUrl: string, classroomCode: string) => `${appUrl.replace(/\/+$/, '')}/unirse/${classroomCode}`;
+const shortHost = (appUrl: string) => appUrl.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+const qrFor = (url: string) => QRCode.toBuffer(url, { errorCorrectionLevel: 'M', margin: 1, width: 360, color: { dark: '#0f172a', light: '#ffffff' } });
+
 export class PDFService {
   // Generar PDF con tarjetas de vinculación para estudiantes
   async generateStudentCards(
     students: StudentCard[],
     appUrl: string
   ): Promise<Buffer> {
+    const qrByClass = new Map<string, Buffer>();
+    for (const code of new Set(students.map((st) => st.classroomCode))) {
+      qrByClass.set(code, await qrFor(joinUrl(appUrl, code)));
+    }
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({
         size: 'LETTER',
@@ -65,7 +75,7 @@ export class PDFService {
         const x = 40 + col * (cardWidth + 20);
         const y = 40 + row * (cardHeight + 15);
 
-        this.drawStudentCard(doc, student, x, y, cardWidth, cardHeight, appUrl);
+        this.drawStudentCard(doc, student, x, y, cardWidth, cardHeight, appUrl, qrByClass.get(student.classroomCode)!);
       });
 
       doc.end();
@@ -79,7 +89,8 @@ export class PDFService {
     y: number,
     width: number,
     height: number,
-    appUrl: string
+    appUrl: string,
+    qr: Buffer
   ) {
     const classColor = CLASS_COLORS[student.characterClass] || '#3b82f6';
     const className = CLASS_NAMES[student.characterClass] || student.characterClass;
@@ -127,77 +138,43 @@ export class PDFService {
       .fontSize(14)
       .fillColor('#1e293b')
       .font('Helvetica-Bold')
-      .text(student.displayName, x + 15, y + 60, { 
-        width: width - 30,
-        align: 'center'
-      });
+      .text(student.displayName, x + 12, y + 58, { width: width - 24, align: 'center', height: 18, ellipsis: true });
 
-    // Clase del personaje
     doc
-      .fontSize(10)
-      .fillColor('#64748b')
-      .font('Helvetica')
-      .text(`Clase: ${className}`, x + 15, y + 80, { 
-        width: width - 30,
-        align: 'center'
-      });
-
-    // Línea separadora
-    doc
-      .moveTo(x + 20, y + 100)
-      .lineTo(x + width - 20, y + 100)
+      .moveTo(x + 12, y + 80)
+      .lineTo(x + width - 12, y + 80)
       .strokeColor('#e2e8f0')
       .stroke();
 
-    // Código de vinculación
-    doc
-      .fontSize(9)
-      .fillColor('#64748b')
-      .font('Helvetica')
-      .text('Tu código de vinculación:', x + 15, y + 110, { 
-        width: width - 30,
-        align: 'center'
-      });
+    // Códigos a la izquierda, QR de la clase a la derecha
+    const qrSize = 74;
+    const textWidth = width - qrSize - 34;
+    doc.fontSize(8).fillColor('#475569').font('Helvetica')
+      .text('Primera vez, tu código:', x + 12, y + 88, { width: textWidth });
+    doc.fontSize(20).fillColor(classColor).font('Helvetica-Bold')
+      .text(student.linkCode, x + 12, y + 99, { width: textWidth, characterSpacing: 3 });
+    doc.fontSize(8).fillColor('#475569').font('Helvetica')
+      .text('Código de tu clase:', x + 12, y + 126, { width: textWidth });
+    doc.fontSize(12).fillColor('#1e293b').font('Helvetica-Bold')
+      .text(student.classroomCode, x + 12, y + 137, { width: textWidth, characterSpacing: 2 });
+    doc.image(qr, x + width - qrSize - 12, y + 86, { width: qrSize, height: qrSize });
 
-    // Código grande
-    doc
-      .fontSize(24)
-      .fillColor(classColor)
-      .font('Helvetica-Bold')
-      .text(student.linkCode, x + 15, y + 125, { 
-        width: width - 30,
-        align: 'center',
-        characterSpacing: 4
-      });
-
-    // Instrucciones
-    doc
-      .fontSize(8)
-      .fillColor('#64748b')
-      .font('Helvetica')
-      .text('Pasos para vincular tu cuenta:', x + 15, y + 160, { 
-        width: width - 30 
-      });
-
+    // Pasos
     const steps = [
-      `1. Entra a ${appUrl}/unirse`,
-      '2. Escribe el código de arriba',
-      '3. Crea tu acceso con Google o con tu correo',
+      `1. Entra a ${shortHost(appUrl)}/unirse o escanea el QR`,
+      '2. Primera vez: escribe tu código y crea un PIN de 4 números',
+      '3. Después: código de tu clase, tu nombre y tu PIN',
     ];
-
     steps.forEach((step, i) => {
-      doc
-        .fontSize(7)
-        .fillColor('#475569')
-        .text(step, x + 15, y + 172 + (i * 10), { width: width - 30 });
+      doc.fontSize(7).fillColor('#334155').font('Helvetica')
+        .text(step, x + 12, y + 166 + (i * 10), { width: width - 24 });
     });
 
-    // Clase y código de aula
     doc
       .fontSize(7)
-      .fillColor('#94a3b8')
-      .text(`Clase: ${student.classroomName}`, x + 15, y + height - 18, { 
-        width: width - 30,
+      .fillColor('#64748b')
+      .text(`Clase: ${student.classroomName} · No compartas tu PIN`, x + 12, y + height - 14, {
+        width: width - 24,
         align: 'center'
       });
   }
@@ -207,6 +184,7 @@ export class PDFService {
     student: StudentCard,
     appUrl: string
   ): Promise<Buffer> {
+    const qr = await qrFor(joinUrl(appUrl, student.classroomCode));
     return new Promise((resolve, reject) => {
       const doc = new PDFDocument({
         size: 'A5',
@@ -267,68 +245,50 @@ export class PDFService {
           align: 'center'
         });
 
-      // Clase
-      doc
-        .fontSize(14)
-        .fillColor('#64748b')
-        .font('Helvetica')
-        .text(`Tu clase de personaje: ${className}`, 30, contentY + 35, {
-          width: pageWidth - 60,
-          align: 'center'
-        });
-
-      // Código de vinculación
+      // Clase de personaje
       doc
         .fontSize(12)
-        .fillColor('#475569')
-        .text('Tu código personal de vinculación es:', 30, contentY + 70, {
+        .fillColor('#64748b')
+        .font('Helvetica')
+        .text(`Tu clase de personaje: ${className}`, 30, contentY + 32, {
           width: pageWidth - 60,
           align: 'center'
         });
 
-      // Código grande con fondo
-      const codeBoxWidth = 200;
-      const codeBoxX = (pageWidth - codeBoxWidth) / 2;
+      // Códigos a la izquierda, QR de la clase a la derecha
+      const qrSize = 120;
+      const qrX = pageWidth - qrSize - 50;
+      const colWidth = qrX - 80;
+      doc.fontSize(11).fillColor('#475569').font('Helvetica')
+        .text('Primera vez, tu código personal:', 50, contentY + 62, { width: colWidth });
       doc
-        .roundedRect(codeBoxX, contentY + 90, codeBoxWidth, 50, 8)
-        .fill('#ffffff')
-        .strokeColor(classColor)
+        .roundedRect(50, contentY + 80, 200, 46, 8)
         .lineWidth(2)
+        .strokeColor(classColor)
         .stroke();
-
-      doc
-        .fontSize(32)
-        .fillColor(classColor)
-        .font('Helvetica-Bold')
-        .text(student.linkCode, 30, contentY + 100, {
-          width: pageWidth - 60,
-          align: 'center',
-          characterSpacing: 6
-        });
+      doc.fontSize(28).fillColor(classColor).font('Helvetica-Bold')
+        .text(student.linkCode, 50, contentY + 89, { width: 200, align: 'center', characterSpacing: 5 });
+      doc.fontSize(11).fillColor('#475569').font('Helvetica')
+        .text('Código de tu clase:', 50, contentY + 138, { width: colWidth });
+      doc.fontSize(18).fillColor('#1e293b').font('Helvetica-Bold')
+        .text(student.classroomCode, 50, contentY + 153, { width: colWidth, characterSpacing: 3 });
+      doc.image(qr, qrX, contentY + 62, { width: qrSize, height: qrSize });
+      doc.fontSize(9).fillColor('#475569').font('Helvetica')
+        .text('Escanéalo para abrir tu clase', qrX - 10, contentY + 62 + qrSize + 4, { width: qrSize + 20, align: 'center' });
 
       // Instrucciones
-      doc
-        .fontSize(11)
-        .fillColor('#1e293b')
-        .font('Helvetica-Bold')
-        .text('¿Cómo vincular tu cuenta?', 30, contentY + 160, {
-          width: pageWidth - 60,
-          align: 'center'
-        });
-
       const instructions = [
-        `1. Entra a ${appUrl}/unirse desde tu navegador`,
-        '2. Escribe el código de arriba y confirma que eres tú',
-        '3. Crea tu acceso con Google o con tu correo y una clave',
-        '4. ¡Listo! Tu progreso en clase quedará en tu cuenta'
+        `1. Entra a ${shortHost(appUrl)}/unirse o escanea el QR`,
+        '2. Primera vez: escribe tu código personal, confirma que eres tú y crea un PIN de 4 números',
+        '3. Las siguientes veces: código de tu clase, elige tu nombre y escribe tu PIN',
+        '4. No le digas tu PIN a nadie. Si lo olvidas, tu profe te da una tarjeta nueva',
       ];
-
       instructions.forEach((instruction, i) => {
         doc
           .fontSize(10)
-          .fillColor('#475569')
+          .fillColor('#334155')
           .font('Helvetica')
-          .text(instruction, 50, contentY + 180 + (i * 16), {
+          .text(instruction, 50, contentY + 198 + (i * 15), {
             width: pageWidth - 100,
           });
       });
@@ -337,7 +297,7 @@ export class PDFService {
       doc
         .fontSize(9)
         .fillColor('#94a3b8')
-        .text(`Clase: ${student.classroomName}`, 30, pageHeight - 40, {
+        .text(`Clase: ${student.classroomName}`, 30, pageHeight - 48, {
           width: pageWidth - 60,
           align: 'center'
         });

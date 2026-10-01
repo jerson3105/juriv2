@@ -6,7 +6,7 @@ import passport from 'passport';
 import * as authController from '../controllers/auth.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import {
-  authTokenLimiter, loginAccountLimiter, loginIpLimiter, oauthLimiter, registerLimiter, studentCodeLimiter,
+  authTokenLimiter, loginAccountLimiter, loginIpLimiter, oauthLimiter, pinLoginLimiter, registerLimiter, studentCodeLimiter,
 } from '../middleware/security.js';
 import { config_app } from '../config/env.js';
 import { createUploadFilter, safeUploadFilename, verifyUploadedFile, IMAGE_MIMES } from '../utils/fileValidation.js';
@@ -38,6 +38,10 @@ router.post('/login', loginIpLimiter, loginAccountLimiter, authController.login)
 router.post('/student-code/verify', studentCodeLimiter, authController.verifyStudentCode);
 router.post('/join-code/verify', studentCodeLimiter, authController.verifyJoinCode);
 router.post('/student-code/register', studentCodeLimiter, authController.registerStudentWithCode);
+// Alumnos sin correo: lista de la clase, crear PIN y entrar con PIN (además del bloqueo por cuenta).
+router.post('/class-roster', studentCodeLimiter, authController.getClassRoster);
+router.post('/pin/setup', studentCodeLimiter, authController.setupPin);
+router.post('/pin/login', pinLoginLimiter, authController.loginWithPin);
 router.post('/refresh', authTokenLimiter, authController.refresh);
 router.post('/logout', authTokenLimiter, authController.logout);
 
@@ -48,6 +52,7 @@ router.post('/upload-avatar', authenticate, avatarUpload.single('avatar'), verif
 router.put('/notifications', authenticate, authController.updateNotifications);
 router.post('/logout-all', authenticate, authController.logoutAll);
 router.put('/change-password', authenticate, authController.changePassword);
+router.put('/pin', authenticate, authorize('STUDENT'), pinLoginLimiter, authController.changePin);
 router.get('/switch-to-student', authenticate, authorize('TEACHER'), authController.getStudentSwitch);
 router.get('/teacher-status', authenticate, authorize('TEACHER'), authController.getTeacherStatus);
 router.post('/teacher-status/request', authenticate, authorize('TEACHER'), authController.requestTeacherReview);

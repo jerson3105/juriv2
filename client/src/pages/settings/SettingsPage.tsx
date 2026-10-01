@@ -24,6 +24,7 @@ import { userApi } from '../../lib/userApi';
 import { Button } from '../../components/ui/Button';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { ChangePinSection } from '../../components/auth/ChangePinSection';
 
 export const SettingsPage = () => {
   const { user, updateUser } = useAuthStore();
@@ -235,7 +236,7 @@ export const SettingsPage = () => {
                     <h3 className="font-semibold text-gray-800 dark:text-white">
                       {user?.firstName} {user?.lastName}
                     </h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">{user?.email}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{user?.provider === 'PIN' ? 'Entras con el código de tu clase y tu PIN' : user?.email}</p>
                     <span className="inline-block mt-1 px-2 py-0.5 bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 text-xs font-medium rounded">
                       {user?.role === 'TEACHER' ? 'Profesor' : user?.role === 'ADMIN' ? 'Administrador' : 'Estudiante'}
                     </span>
@@ -265,6 +266,7 @@ export const SettingsPage = () => {
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-800 dark:text-white focus:ring-2 focus:ring-violet-500 focus:border-transparent"
                     />
                   </div>
+                  {user?.provider !== 'PIN' && (
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                       <Mail size={14} className="inline mr-1" />
@@ -278,6 +280,7 @@ export const SettingsPage = () => {
                     />
                     <p className="text-xs text-gray-400 mt-1">El email no se puede cambiar</p>
                   </div>
+                  )}
                 </div>
 
                 <Button 
@@ -413,6 +416,7 @@ export const SettingsPage = () => {
                 <h2 className="text-lg font-bold text-gray-800 dark:text-white">Seguridad</h2>
                 
                 <div className="space-y-4">
+                  {user?.provider === 'PIN' ? <ChangePinSection /> : (
                   <div>
                     <h3 className="font-medium text-gray-800 dark:text-white mb-3 flex items-center gap-2">
                       <Lock size={16} />
@@ -452,6 +456,7 @@ export const SettingsPage = () => {
                       Actualizar contraseña
                     </Button>
                   </div>
+                  )}
 
                   <div className="pt-6 border-t border-gray-100 dark:border-gray-700">
                     <h3 className="font-medium text-red-600 dark:text-red-400 mb-2">Zona de peligro</h3>

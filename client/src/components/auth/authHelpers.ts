@@ -62,6 +62,13 @@ export const studentLanding = (): string => {
   return code ? `/join-class?code=${encodeURIComponent(code)}` : '/dashboard';
 };
 
+/** Lo que se muestra como "cuenta" del usuario: los alumnos con PIN no tienen correo visible. */
+export const accountLabel = (user: { email?: string; provider?: string } | null | undefined) =>
+  user?.provider === 'PIN' ? 'Entras con tu PIN' : user?.email ?? '';
+
+/** PIN que cualquiera probaría primero (0000, 1111, 1234, 4321…). El servidor aplica la misma regla. */
+export const isWeakPin = (pin: string) => /^(\d)\1{3}$/.test(pin) || '0123456789'.includes(pin) || '9876543210'.includes(pin);
+
 /** Código como lo escribe un niño: mayúsculas, sin espacios ni guiones. */
 export const normalizeJoinCode = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
 

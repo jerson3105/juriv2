@@ -55,6 +55,13 @@ export const useAuthStore = create<AuthState>()(
       error: null,
 
       setAuth: (data: AuthData) => {
+        // Otra persona (o la misma con otro rol) entra en este navegador sin cerrar la sesión anterior
+        // (p. ej. un alumno en /unirse en la computadora del docente): nada de la anterior queda a la
+        // vista. La parte síncrona (caché y almacenamiento) se limpia antes de guardar la nueva.
+        const previous = get().user;
+        if (previous && (previous.id !== data.user.id || previous.role !== data.user.role)) {
+          void clearSessionData();
+        }
         set({
           user: data.user,
           accessToken: data.accessToken,

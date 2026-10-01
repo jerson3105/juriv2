@@ -68,6 +68,8 @@ const authFailureLimiter = (max: number, message: string) => rateLimit({
 export const loginIpLimiter = authFailureLimiter(100, 'Demasiados intentos de inicio de sesión desde esta red, intenta en 15 minutos.');
 export const registerLimiter = authFailureLimiter(60, 'Demasiados intentos de registro desde esta red, intenta en 15 minutos.');
 export const studentCodeLimiter = authFailureLimiter(30, 'Demasiados intentos con códigos, intenta nuevamente en 15 minutos.');
+// PIN: un salón entero entra desde la misma red del colegio; cuentan solo los fallos (cada cuenta se bloquea aparte).
+export const pinLoginLimiter = authFailureLimiter(60, 'Demasiados PIN equivocados desde esta red, intenta en 15 minutos.');
 export const oauthLimiter = authFailureLimiter(60, 'Demasiados intentos con Google, intenta nuevamente en 15 minutos.');
 // Registro de padres (ruta propia).
 export const authLimiter = authFailureLimiter(30, 'Demasiados intentos, intenta en 15 minutos.');

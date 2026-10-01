@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Copy, Download, KeyRound, Loader2, RefreshCw } from 'lucide-react';
+import { Copy, Download, KeyRound, Loader2, Lock, RefreshCw, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { Student } from '../../../lib/classroomApi';
 import { studentApi } from '../../../lib/studentApi';
@@ -9,6 +9,7 @@ import { parentApi } from '../../../lib/parentApi';
 import { HomeModal } from '../../home/HomeModal';
 import { cancelButton, inputClass, labelClass, primaryButton } from '../../home/homeHelpers';
 import { errorMessage } from './profileHelpers';
+import { isPinPending, isPinStudent, pinLockedUntil } from '../../../lib/studentAccess';
 
 const copy = async (text: string, what: string) => {
   try {
@@ -77,6 +78,91 @@ export const EditNamesModal = ({ classroomId, student, onClose }: { classroomId:
   );
 };
 
+// ---------- Acceso con PIN ----------
+
+const outlineButton = 'inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-gray-300 px-4 text-sm font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-60 dark:border-gray-600 dark:text-gray-100 dark:hover:bg-gray-700';
+
+/**
+ * Alumno sin correo: entra con código de clase + nombre + PIN. "Restablecer acceso" borra su PIN,
+ * cierra sus sesiones y da una tarjeta nueva para que cree otro (conserva todo su progreso).
+ */
+const PinAccessPanel = ({ classroomId, student, name }: { classroomId: string; student: Student; name: string }) => {
+  const queryClient = useQueryClient();
+  const [code, setCode] = useState(student.linkCode ?? null);
+  const [pending, setPending] = useState(isPinPending(student));
+  const [busy, setBusy] = useState<'reset' | 'pdf' | null>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const lockedUntil = pending ? null : pinLockedUntil(student);
+
+  const reset = async () => {
+    setBusy('reset');
+    try {
+      const result = await placeholderStudentApi.resetAccess(student.id);
+      setCode(result.linkCode);
+      setPending(true);
+      setConfirmReset(false);
+      queryClient.invalidateQueries({ queryKey: ['classroom', classroomId] });
+      toast.success('Acceso restablecido: entrégale la tarjeta nueva');
+    } catch (e) {
+      toast.error(errorMessage(e, 'No se pudo restablecer el acceso'));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const download = async () => {
+    setBusy('pdf');
+    try {
+      await placeholderStudentApi.downloadSingleCardPDF(student.id, name);
+    } catch (e) {
+      toast.error(errorMessage(e, 'No se pudo descargar la tarjeta'));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <>
+      {pending ? (
+        <p className="text-sm text-gray-800 dark:text-gray-100">
+          Su acceso está restablecido. Con esta tarjeta crea un PIN nuevo en <strong>/unirse</strong> y conserva todo su progreso.
+        </p>
+      ) : (
+        <p className="text-sm text-gray-800 dark:text-gray-100">
+          Entra sin correo: código de la clase, su nombre de la lista y un PIN de 4 números que eligió. Tú no ves su PIN.
+        </p>
+      )}
+      {lockedUntil && (
+        <p className="flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-900/30 dark:text-amber-50" role="status">
+          <Lock size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+          Su PIN está bloqueado por intentos fallidos hasta las {lockedUntil.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}. Si no lo recuerda, restablece su acceso.
+        </p>
+      )}
+      {pending && code && <CodeBox code={code} label="Código" />}
+      <div className="flex flex-wrap gap-2">
+        {pending && code && (
+          <button type="button" onClick={download} disabled={!!busy} className={outlineButton}>
+            {busy === 'pdf' ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <Download size={16} aria-hidden="true" />} Tarjeta en PDF
+          </button>
+        )}
+        {!confirmReset ? (
+          <button type="button" onClick={() => setConfirmReset(true)} disabled={!!busy} className={outlineButton}>
+            <RotateCcw size={16} aria-hidden="true" /> {pending ? 'Cambiar tarjeta' : 'Restablecer acceso'}
+          </button>
+        ) : (
+          <span className="flex flex-wrap items-center gap-2 rounded-xl bg-amber-50 p-2 text-sm text-amber-950 dark:bg-amber-900/30 dark:text-amber-50">
+            {pending ? 'La tarjeta actual dejará de funcionar.' : 'Se borra su PIN y se cierra su sesión en todos los equipos.'}
+            <button type="button" onClick={reset} disabled={!!busy} className="inline-flex min-h-[40px] items-center gap-1 rounded-lg bg-amber-700 px-3 font-semibold text-white hover:bg-amber-800">
+              {busy === 'reset' && <Loader2 size={14} className="animate-spin" aria-hidden="true" />} Confirmar
+            </button>
+            <button type="button" onClick={() => setConfirmReset(false)} className="min-h-[40px] rounded-lg px-2 font-semibold">Cancelar</button>
+          </span>
+        )}
+      </div>
+    </>
+  );
+};
+
 // ---------- Código de acceso ----------
 
 export const AccessCodeModal = ({ classroomId, student, name, onClose }: { classroomId: string; student: Student; name: string; onClose: () => void }) => {
@@ -112,15 +198,17 @@ export const AccessCodeModal = ({ classroomId, student, name, onClose }: { class
   };
 
   return (
-    <HomeModal title={student.linkedEmail ? 'Cuenta del alumno' : 'Código de acceso'} subtitle={name} onClose={onClose}
+    <HomeModal title={isPinStudent(student) ? 'Acceso del alumno' : student.linkedEmail ? 'Cuenta del alumno' : 'Código de acceso'} subtitle={name} onClose={onClose}
       footer={<button type="button" onClick={onClose} className={cancelButton}>Cerrar</button>}>
-      {student.linkedEmail ? (
+      {isPinStudent(student) ? (
+        <PinAccessPanel classroomId={classroomId} student={student} name={name} />
+      ) : student.linkedEmail ? (
         <p className="text-sm text-gray-800 dark:text-gray-100">
           Ya entra con su cuenta <strong>{student.linkedEmail}</strong>. No necesita código.
         </p>
       ) : (
         <>
-          <p className="text-sm text-gray-800 dark:text-gray-100">Con este código el alumno vincula su cuenta y conserva todo su progreso.</p>
+          <p className="text-sm text-gray-800 dark:text-gray-100">Con este código el alumno crea su acceso (un PIN de 4 números, o su correo o Google) y conserva todo su progreso.</p>
           {code ? <CodeBox code={code} label="Código" /> : <p className="text-sm text-gray-700 dark:text-gray-300">Este alumno no tiene código todavía.</p>}
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={download} disabled={!!busy || !code} className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-gray-300 px-4 text-sm font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-60 dark:border-gray-600 dark:text-gray-100 dark:hover:bg-gray-700">

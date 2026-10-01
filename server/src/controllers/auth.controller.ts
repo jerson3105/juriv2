@@ -10,6 +10,7 @@ import { AppError } from '../utils/errors.js';
 import { corsOptions } from '../middleware/security.js';
 import { SessionError } from '../utils/jwt.js';
 import { teacherVerificationService } from '../services/teacherVerification.service.js';
+import { studentPinService } from '../services/studentPin.service.js';
 import jwt from 'jsonwebtoken';
 
 // Schema de validación de contraseña robusta
@@ -963,5 +964,66 @@ export const requestTeacherReview = async (req: Request, res: Response): Promise
       return;
     }
     handleAuthError(res, error, 'No se pudo enviar la solicitud');
+  }
+};
+
+// ==================== Alumnos sin correo (PIN) ====================
+const pinSchema = z.string().regex(/^[0-9]{4}$/, 'El PIN tiene 4 números');
+const classCodeSchema = z.string().trim().min(6).max(12);
+
+/**
+ * POST /api/auth/class-roster — Puerta /unirse: la lista de la clase (nombres parciales) para
+ * elegir su nombre. Sin sesión.
+ */
+export const getClassRoster = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { code } = z.object({ code: classCodeSchema }).parse(req.body);
+    const roster = await studentPinService.getClassRoster(code);
+    if (!roster) {
+      res.status(404).json({ success: false, message: 'No encontramos esa clase. Revisa el código con tu profe.' });
+      return;
+    }
+    res.json({ success: true, data: roster });
+  } catch (error) {
+    handleAuthError(res, error, 'No se pudo cargar la lista de la clase');
+  }
+};
+
+/** POST /api/auth/pin/setup — Crear el PIN con la tarjeta o eligiendo su nombre (clase abierta). */
+export const setupPin = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const data = z.object({
+      linkCode: z.string().trim().min(6).max(8).optional(),
+      classCode: classCodeSchema.optional(),
+      studentId: z.string().uuid().optional(),
+      pin: pinSchema,
+      avatarGender: z.enum(['MALE', 'FEMALE']).optional(),
+    }).refine((d) => !!d.linkCode || (!!d.classCode && !!d.studentId), 'Falta tu código o tu nombre').parse(req.body);
+    const result = await studentPinService.setupPin(data, req.get('user-agent'));
+    sendAuth(res, 201, 'Tu PIN está listo', result);
+  } catch (error) {
+    handleAuthError(res, error, 'No se pudo crear tu PIN');
+  }
+};
+
+/** POST /api/auth/pin/login — Código de la clase + nombre + PIN. */
+export const loginWithPin = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const data = z.object({ classCode: classCodeSchema, studentId: z.string().uuid(), pin: pinSchema }).parse(req.body);
+    const result = await studentPinService.loginWithPin(data, req.get('user-agent'));
+    sendAuth(res, 200, 'Inicio de sesión exitoso', result);
+  } catch (error) {
+    handleAuthError(res, error, 'No se pudo iniciar sesión');
+  }
+};
+
+/** PUT /api/auth/pin — El alumno cambia su PIN; cierra sus otras sesiones y sigue en esta. */
+export const changePin = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { currentPin, newPin } = z.object({ currentPin: pinSchema, newPin: pinSchema }).parse(req.body);
+    const tokens = await studentPinService.changePin(req.user!.id, currentPin, newPin, req.get('user-agent'));
+    sendAuth(res, 200, 'PIN actualizado', tokens);
+  } catch (error) {
+    handleAuthError(res, error, 'No se pudo cambiar tu PIN');
   }
 };

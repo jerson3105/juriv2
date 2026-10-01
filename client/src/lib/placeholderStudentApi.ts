@@ -38,6 +38,12 @@ export const placeholderStudentApi = {
   },
 
   // Regenerar código de vinculación
+  /** Alumno con PIN: borra el PIN, cierra sus sesiones y da una tarjeta nueva. */
+  resetAccess: async (studentId: string): Promise<{ linkCode: string }> => {
+    const response = await api.post(`/students/${studentId}/reset-access`);
+    return response.data.data;
+  },
+
   regenerateCode: async (studentId: string): Promise<{ linkCode: string }> => {
     const response = await api.post(`/students/placeholder/${studentId}/regenerate-code`);
     return response.data.data;

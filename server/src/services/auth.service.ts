@@ -61,6 +61,8 @@ export interface StudentCodeVerificationResult {
   studentName: string | null;
   classroomName: string | null;
   alreadyLinked: boolean;
+  /** 'new' = crea su acceso (PIN, correo o Google); 'pin-reset' = su profe restableció el PIN: solo PIN nuevo. */
+  access: 'new' | 'pin-reset';
   teacherVerified: boolean;
   message?: string;
 }
@@ -79,7 +81,7 @@ const normalizeAvatarUrl = (value?: string | null): string | null => {
   return normalized ? normalized : null;
 };
 
-const splitOfficialStudentName = (value: string): { firstName: string; lastName: string } => {
+export const splitOfficialStudentName = (value: string): { firstName: string; lastName: string } => {
   const tokens = normalizeName(value)
     .split(/\s+/)
     .filter(Boolean);
@@ -243,10 +245,21 @@ export const verifyStudentRegistrationCode = async (code: string): Promise<Stude
   });
   const teacherVerified = classroom ? await teacherVerificationService.isVerified(classroom.teacherId) : false;
 
+  // Tarjeta nueva tras "Restablecer acceso": la cuenta PIN sigue vinculada pero sin PIN.
+  let pinReset = false;
+  if (profile.userId) {
+    const owner = await db.query.users.findFirst({
+      where: eq(users.id, profile.userId),
+      columns: { provider: true, pinHash: true },
+    });
+    pinReset = owner?.provider === 'PIN' && !owner.pinHash;
+  }
+
   return {
     studentName: maskPersonName(profile.displayName || profile.characterName),
     classroomName: classroom?.name || null,
-    alreadyLinked: !!profile.userId,
+    alreadyLinked: !!profile.userId && !pinReset,
+    access: pinReset ? 'pin-reset' : 'new',
     teacherVerified,
     ...(teacherVerified ? {} : { message: UNVERIFIED_CLASS_MESSAGE }),
   };

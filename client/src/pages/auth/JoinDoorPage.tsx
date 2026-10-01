@@ -1,25 +1,38 @@
 import { useEffect, useId, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Lock, Mail, School, User } from 'lucide-react';
+import { KeyRound, Lock, Mail, School, User } from 'lucide-react';
 import { AuthShell } from '../../components/auth/AuthShell';
 import { GoogleButton, OrDivider } from '../../components/auth/GoogleButton';
 import { PasswordRules } from '../../components/auth/PasswordRules';
+import { PinInput } from '../../components/auth/PinInput';
+import { RosterPicker } from '../../components/auth/RosterPicker';
 import { Input } from '../../components/ui/Input';
 import {
-  errorMessage, isPasswordValid, normalizeJoinCode, setPendingJoinCode, pressable } from '../../components/auth/authHelpers';
+  errorMessage, isPasswordValid, isWeakPin, normalizeJoinCode, setPendingJoinCode, pressable } from '../../components/auth/authHelpers';
 import { primaryButton, cancelButton } from '../../components/home/homeHelpers';
 import { authApi } from '../../lib/api';
+import type { ClassRoster, PinAuthData } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
 
 type Verified = (
   | { type: 'classroom'; classroomName: string; teacherName: string | null; open: boolean }
-  | { type: 'student'; studentName: string | null; classroomName: string | null; alreadyLinked: boolean }
+  | { type: 'student'; studentName: string | null; classroomName: string | null; alreadyLinked: boolean; access?: 'new' | 'pin-reset' }
 ) & { teacherVerified?: boolean; message?: string };
-type Step = 'code' | 'confirm' | 'notme' | 'access';
+type RosterStudent = ClassRoster['students'][number];
+type Step =
+  | 'code' | 'confirm' | 'notme' | 'access' | 'email'
+  | 'roster' | 'pick-confirm' | 'pin-login' | 'pin-create' | 'done'
+  | 'not-listed' | 'need-card' | 'has-account';
+
+const WEAK_PIN_HINT = 'No uses 1234 ni el mismo número cuatro veces.';
+
+const linkClass = 'inline-flex min-h-[44px] items-center font-semibold text-primary-700 underline-offset-2 hover:underline dark:text-primary-300';
 
 /**
- * Puerta del alumno (/unirse o /unirse/:code). Nunca muestra la opción de docente: el código dice a
- * qué clase entra, confirma quién es y crea el acceso como estudiante. El personaje se elige después.
+ * Puerta del alumno (/unirse o /unirse/:code). Nunca muestra la opción de docente.
+ * - Código de clase con lista: toca su nombre y entra con su PIN (o lo crea, si la clase está abierta).
+ * - Código personal (tarjeta): confirma quién es y crea su PIN, o su acceso con correo o Google.
+ * - Código de clase sin lista: crea su acceso con correo o Google y se une.
  */
 export const JoinDoorPage = () => {
   const navigate = useNavigate();
@@ -34,6 +47,15 @@ export const JoinDoorPage = () => {
   const [checking, setChecking] = useState(false);
   const [codeError, setCodeError] = useState<string | null>(null);
 
+  // Lista de la clase y PIN
+  const [roster, setRoster] = useState<ClassRoster | null>(null);
+  const [picked, setPicked] = useState<RosterStudent | null>(null);
+  const [pin, setPin] = useState('');
+  const [pinConfirm, setPinConfirm] = useState('');
+  const [pinPhase, setPinPhase] = useState<'first' | 'repeat'>('first');
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [created, setCreated] = useState<PinAuthData | null>(null);
+
   // Acceso con correo
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -46,13 +68,17 @@ export const JoinDoorPage = () => {
   const [accessError, setAccessError] = useState<string | null>(null);
 
   // Un alumno que YA tenía sesión al abrir la página no necesita crear acceso: termina de unirse.
-  // (Solo al abrir: tras crear el acceso aquí, la navegación la decide createAccess.)
+  // (Solo al abrir: tras crear el acceso aquí, la navegación la decide cada paso.)
   const [startedAsStudent] = useState(() => isAuthenticated && user?.role === 'STUDENT');
   useEffect(() => {
     if (startedAsStudent) navigate(`/join-class${code ? `?code=${code}` : ''}`, { replace: true });
     // Solo al abrir.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const resetPin = () => { setPin(''); setPinConfirm(''); setPinPhase('first'); setPinError(null); };
+  const goTo = (next: Step) => { resetPin(); setAccessError(null); setStep(next); };
+  const backToCode = () => { setVerified(null); setRoster(null); setPicked(null); goTo('code'); };
 
   const verify = async (value = code) => {
     if (value.length < 6 || checking) return;
@@ -63,13 +89,24 @@ export const JoinDoorPage = () => {
       const data = response.data.data as Verified;
       if (data.teacherVerified === false) {
         setCodeError(data.message ?? 'Tu profe aún está verificando su cuenta de docente. Avísale para que la verifique.');
-      } else if (data.type === 'classroom' && !data.open) {
-        setCodeError('Esta clase no está recibiendo estudiantes ahora. Avísale a tu profe.');
-      } else if (data.type === 'student' && data.alreadyLinked) {
+      } else if (data.type === 'classroom') {
+        // Con lista: cada alumno toca su nombre (también para volver a entrar con la clase cerrada).
+        const list = (await authApi.classRoster(value)).data.data!;
+        if (list.students.length > 0) {
+          setVerified(data);
+          setRoster(list);
+          goTo('roster');
+        } else if (!data.open) {
+          setCodeError('Esta clase no está recibiendo estudiantes ahora. Avísale a tu profe.');
+        } else {
+          setVerified(data);
+          goTo('confirm');
+        }
+      } else if (data.alreadyLinked) {
         setCodeError('Este código ya se usó. Si es tuyo, entra con tu cuenta o pídele a tu profe uno nuevo.');
       } else {
         setVerified(data);
-        setStep('confirm');
+        goTo('confirm');
       }
     } catch (error) {
       const status = (error as { response?: { status?: number } })?.response?.status;
@@ -89,6 +126,7 @@ export const JoinDoorPage = () => {
   }, []);
 
   const isPersonal = verified?.type === 'student';
+  const isPinReset = verified?.type === 'student' && verified.access === 'pin-reset';
   const problems = {
     firstName: !isPersonal && firstName.trim().length < 2 ? 'Escribe tu nombre' : undefined,
     lastName: !isPersonal && lastName.trim().length < 2 ? 'Escribe tu apellido' : undefined,
@@ -121,6 +159,77 @@ export const JoinDoorPage = () => {
     }
   };
 
+  // ==================== PIN ====================
+  const pickStudent = (student: RosterStudent) => {
+    setPicked(student);
+    if (student.state === 'pin') goTo('pin-login');
+    else if (student.state === 'account') goTo('has-account');
+    else goTo(roster?.open ? 'pick-confirm' : 'need-card');
+  };
+
+  const loginWithPin = async (value = pin) => {
+    if (!picked || value.length !== 4 || busy) return;
+    setBusy(true);
+    setPinError(null);
+    try {
+      const response = await authApi.loginWithPin({ classCode: code, studentId: picked.id, pin: value });
+      setAuth(response.data.data!);
+      navigate('/dashboard');
+    } catch (error) {
+      setPin('');
+      setPinError(errorMessage(error, 'No se pudo entrar. Inténtalo otra vez.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const firstPinDone = (value: string) => {
+    if (isWeakPin(value)) {
+      setPin('');
+      setPinError(`Ese PIN es muy fácil de adivinar. ${WEAK_PIN_HINT}`);
+      return;
+    }
+    setPinError(null);
+    setPinPhase('repeat');
+  };
+
+  const createPin = async (value = pinConfirm) => {
+    if (value.length !== 4 || busy) return;
+    if (value !== pin) {
+      resetPin();
+      setPinError('Los PIN no coinciden. Escríbelo de nuevo.');
+      return;
+    }
+    setBusy(true);
+    setPinError(null);
+    try {
+      const response = await authApi.setupPin(isPersonal
+        ? { linkCode: code, pin, ...(isPinReset ? {} : { avatarGender }) }
+        : { classCode: code, studentId: picked!.id, pin, avatarGender });
+      setCreated(response.data.data!);
+      setStep('done');
+    } catch (error) {
+      resetPin();
+      setPinError(errorMessage(error, 'No se pudo crear tu PIN. Inténtalo otra vez.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const genderPicker = (
+    <fieldset>
+      <legend className="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-100">Tu avatar</legend>
+      <div className="grid grid-cols-2 gap-2">
+        {([['MALE', 'Chico'], ['FEMALE', 'Chica']] as const).map(([value, label]) => (
+          <label key={value} className={`flex min-h-[44px] cursor-pointer items-center justify-center rounded-xl border-2 text-sm font-semibold has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary-500 ${avatarGender === value ? 'border-primary-600 bg-primary-50 text-primary-900 dark:border-primary-400 dark:bg-primary-500/15 dark:text-white' : 'border-gray-300 text-gray-800 dark:border-gray-600 dark:text-gray-100'}`}>
+            <input type="radio" name={`${ids}-gender`} value={value} checked={avatarGender === value} onChange={() => setAvatarGender(value)} className="sr-only" />
+            {label}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+
   // ==================== Paso 1: código ====================
   if (step === 'code') {
     return (
@@ -130,9 +239,9 @@ export const JoinDoorPage = () => {
         back={{ to: '/login', label: 'Volver' }}
         footer={(
           <p>
-            ¿Ya tienes cuenta?{' '}
-            <Link to="/login" onClick={() => code.length >= 6 && setPendingJoinCode(code)} className="inline-flex min-h-[44px] items-center font-semibold text-primary-700 underline-offset-2 hover:underline dark:text-primary-300">
-              Entra con ella
+            ¿Entras con correo o Google?{' '}
+            <Link to="/login" onClick={() => code.length >= 6 && setPendingJoinCode(code)} className={linkClass}>
+              Inicia sesión
             </Link>
           </p>
         )}
@@ -170,19 +279,156 @@ export const JoinDoorPage = () => {
     );
   }
 
+  // ==================== Lista de la clase ====================
+  if (step === 'roster' && roster) {
+    return (
+      <AuthShell title="Toca tu nombre" subtitle={`Clase: ${roster.classroomName}`} back={{ onClick: backToCode, label: 'Otro código' }} wide>
+        <RosterPicker students={roster.students} onPick={pickStudent} />
+        <button type="button" onClick={() => goTo('not-listed')} className={`${cancelButton} mt-4 w-full`}>No estoy en la lista</button>
+      </AuthShell>
+    );
+  }
+
+  if (step === 'not-listed') {
+    return (
+      <AuthShell title="Tu nombre no está en la lista">
+        <p className="text-gray-800 dark:text-gray-100">Pídele a tu profe que te agregue a la lista de la clase o que te dé tu tarjeta con tu código personal.</p>
+        <div className="mt-6 grid gap-2 sm:grid-cols-2">
+          <button type="button" onClick={backToCode} className={cancelButton}>Tengo mi tarjeta</button>
+          <button type="button" onClick={() => goTo('roster')} className={`${primaryButton} ${pressable}`}>Volver a la lista</button>
+        </div>
+      </AuthShell>
+    );
+  }
+
+  if (step === 'need-card' && picked) {
+    return (
+      <AuthShell title="Pide tu tarjeta a tu profe">
+        <p className="text-gray-800 dark:text-gray-100">
+          Es tu primera vez, <strong>{picked.name}</strong>. Ahora la clase no está recibiendo estudiantes: con la tarjeta que te da tu profe puedes crear tu PIN.
+        </p>
+        <div className="mt-6 grid gap-2 sm:grid-cols-2">
+          <button type="button" onClick={() => goTo('roster')} className={cancelButton}>No soy yo</button>
+          <button type="button" onClick={backToCode} className={`${primaryButton} ${pressable}`}>Escribir mi tarjeta</button>
+        </div>
+      </AuthShell>
+    );
+  }
+
+  if (step === 'has-account' && picked) {
+    return (
+      <AuthShell title={`Hola, ${picked.name}`}>
+        <p className="text-gray-800 dark:text-gray-100">Tú entras con tu correo o con Google.</p>
+        <div className="mt-6 grid gap-2 sm:grid-cols-2">
+          <button type="button" onClick={() => goTo('roster')} className={cancelButton}>No soy yo</button>
+          <Link to="/login" className={`${primaryButton} ${pressable}`}>Ir a iniciar sesión</Link>
+        </div>
+      </AuthShell>
+    );
+  }
+
+  if (step === 'pick-confirm' && picked) {
+    return (
+      <AuthShell title="¿Eres tú?">
+        <div className="rounded-xl bg-gray-50 p-4 text-center dark:bg-gray-900/40">
+          <p className="text-2xl font-bold text-gray-900 dark:text-white">{picked.name}</p>
+          {roster && <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">{roster.classroomName}</p>}
+        </div>
+        <p className="mt-4 text-sm text-gray-700 dark:text-gray-300">Elige solo tu nombre: usar el de otra persona no está permitido.</p>
+        <div className="mt-6 grid gap-2 sm:grid-cols-2">
+          <button type="button" onClick={() => goTo('roster')} className={cancelButton}>No soy yo</button>
+          <button type="button" onClick={() => goTo('pin-create')} className={`${primaryButton} ${pressable}`}>Sí, soy yo</button>
+        </div>
+      </AuthShell>
+    );
+  }
+
+  // ==================== Entrar con PIN ====================
+  if (step === 'pin-login' && picked) {
+    return (
+      <AuthShell title={`Hola, ${picked.name}`} subtitle="Escribe tu PIN de 4 números.">
+        <form onSubmit={(e) => { e.preventDefault(); void loginWithPin(); }} className="space-y-5" noValidate>
+          <PinInput label="Tu PIN" value={pin} onChange={(v) => { setPin(v); setPinError(null); }} onComplete={(v) => void loginWithPin(v)} error={pinError} autoFocus disabled={busy} />
+          <button type="submit" disabled={pin.length !== 4 || busy} className={`${primaryButton} ${pressable} w-full`}>
+            {busy ? 'Entrando…' : 'Entrar'}
+          </button>
+        </form>
+        <p className="mt-5 text-center text-sm text-gray-700 dark:text-gray-300">¿Olvidaste tu PIN? Pídele a tu profe que restablezca tu acceso.</p>
+        <button type="button" onClick={() => goTo('roster')} className={`${cancelButton} mt-2 w-full`}>No soy {picked.name}</button>
+      </AuthShell>
+    );
+  }
+
+  // ==================== Crear PIN ====================
+  if (step === 'pin-create') {
+    const name = picked?.name ?? (verified?.type === 'student' ? verified.studentName : null);
+    const repeating = pinPhase === 'repeat';
+    return (
+      <AuthShell
+        title={isPinReset ? 'Crea tu PIN nuevo' : 'Crea tu PIN'}
+        subtitle={name ? `${name} · 4 números que solo tú sepas` : '4 números que solo tú sepas'}
+      >
+        <form onSubmit={(e) => { e.preventDefault(); if (repeating) void createPin(); else if (pin.length === 4) firstPinDone(pin); }} className="space-y-5" noValidate>
+          {!isPinReset && !repeating && genderPicker}
+          {repeating ? (
+            <PinInput key="repeat" label="Escríbelo otra vez" value={pinConfirm} onChange={(v) => { setPinConfirm(v); setPinError(null); }} onComplete={(v) => void createPin(v)} error={pinError} autoFocus disabled={busy} />
+          ) : (
+            <PinInput key="first" label="Tu PIN" value={pin} onChange={(v) => { setPin(v); setPinError(null); }} onComplete={firstPinDone} error={pinError} hint={WEAK_PIN_HINT} autoFocus />
+          )}
+          <p className="text-center text-sm text-gray-700 dark:text-gray-300">No le digas tu PIN a nadie, ni a tus amigos.</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <button type="button" onClick={() => (repeating ? resetPin() : goTo(picked ? 'roster' : isPinReset ? 'confirm' : 'access'))} className={cancelButton}>
+              {repeating ? 'Cambiar PIN' : 'Volver'}
+            </button>
+            <button type="submit" disabled={(repeating ? pinConfirm : pin).length !== 4 || busy} className={`${primaryButton} ${pressable}`}>
+              {busy ? 'Guardando…' : repeating ? 'Crear mi PIN' : 'Seguir'}
+            </button>
+          </div>
+        </form>
+      </AuthShell>
+    );
+  }
+
+  // ==================== Listo: cómo entrar la próxima vez ====================
+  if (step === 'done' && created) {
+    return (
+      <AuthShell title={`¡Listo, ${created.user.firstName}!`} subtitle="Así entras la próxima vez:">
+        <ol className="space-y-3">
+          <li className="flex items-center gap-3 rounded-xl bg-gray-50 p-3 dark:bg-gray-900/40">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-600 text-sm font-bold text-white" aria-hidden="true">1</span>
+            <span className="text-gray-800 dark:text-gray-100">
+              Escribe el código de tu clase: <strong className="font-mono text-lg tracking-widest text-gray-900 dark:text-white">{created.classroom.code}</strong>
+            </span>
+          </li>
+          <li className="flex items-center gap-3 rounded-xl bg-gray-50 p-3 dark:bg-gray-900/40">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-600 text-sm font-bold text-white" aria-hidden="true">2</span>
+            <span className="text-gray-800 dark:text-gray-100">Toca tu nombre en la lista</span>
+          </li>
+          <li className="flex items-center gap-3 rounded-xl bg-gray-50 p-3 dark:bg-gray-900/40">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-600 text-sm font-bold text-white" aria-hidden="true">3</span>
+            <span className="flex items-center gap-1.5 text-gray-800 dark:text-gray-100"><KeyRound size={16} aria-hidden="true" /> Escribe tu PIN</span>
+          </li>
+        </ol>
+        <p className="mt-4 text-sm text-gray-700 dark:text-gray-300">También puedes escanear el QR de tu tarjeta. Si olvidas tu PIN, tu profe te ayuda.</p>
+        <button type="button" onClick={() => { setAuth(created); navigate('/dashboard'); }} className={`${primaryButton} ${pressable} mt-6 w-full`}>
+          Entrar a mi clase
+        </button>
+      </AuthShell>
+    );
+  }
+
   // ==================== "No soy yo" ====================
   if (step === 'notme') {
     return (
-      <AuthShell title="Esta tarjeta no es tuya" back={{ to: '/unirse', label: 'Escribir otro código' }}>
+      <AuthShell title="Esta tarjeta no es tuya" back={{ onClick: () => { setCode(''); backToCode(); }, label: 'Escribir otro código' }}>
         <p className="text-gray-800 dark:text-gray-100">Devuélvele esta tarjeta a tu profe y pídele la tuya.</p>
-        <button type="button" onClick={() => { setStep('code'); setCode(''); setVerified(null); }} className={`${primaryButton} ${pressable} mt-6 w-full`}>Escribir otro código</button>
+        <button type="button" onClick={() => { setCode(''); backToCode(); }} className={`${primaryButton} ${pressable} mt-6 w-full`}>Escribir otro código</button>
       </AuthShell>
     );
   }
 
   // ==================== Paso 2: confirmar ====================
   if (step === 'confirm' && verified) {
-    const goBack = () => { setStep('code'); setVerified(null); };
     return verified.type === 'student' ? (
       <AuthShell title="¿Eres tú?">
         <div className="rounded-xl bg-gray-50 p-4 text-center dark:bg-gray-900/40">
@@ -191,7 +437,8 @@ export const JoinDoorPage = () => {
         </div>
         <div className="mt-6 grid gap-2 sm:grid-cols-2">
           <button type="button" onClick={() => setStep('notme')} className={cancelButton}>No soy yo</button>
-          <button type="button" onClick={() => setStep('access')} className={`${primaryButton} ${pressable}`}>Sí, soy yo</button>
+          {/* Tras "Restablecer acceso" del docente, la tarjeta solo sirve para crear un PIN nuevo. */}
+          <button type="button" onClick={() => goTo(isPinReset ? 'pin-create' : 'access')} className={`${primaryButton} ${pressable}`}>Sí, soy yo</button>
         </div>
       </AuthShell>
     ) : (
@@ -204,19 +451,39 @@ export const JoinDoorPage = () => {
           </div>
         </div>
         <div className="mt-6 grid gap-2 sm:grid-cols-2">
-          <button type="button" onClick={goBack} className={cancelButton}>No es mi clase</button>
-          <button type="button" onClick={() => setStep('access')} className={`${primaryButton} ${pressable}`}>Seguir</button>
+          <button type="button" onClick={backToCode} className={cancelButton}>No es mi clase</button>
+          <button type="button" onClick={() => goTo('email')} className={`${primaryButton} ${pressable}`}>Seguir</button>
         </div>
       </AuthShell>
     );
   }
 
-  // ==================== Paso 3: crear el acceso ====================
+  // ==================== Tarjeta: elegir cómo entrar ====================
+  if (step === 'access' && isPersonal) {
+    return (
+      <AuthShell
+        title="¿Cómo quieres entrar la próxima vez?"
+        subtitle={verified?.classroomName ? `Clase: ${verified.classroomName}` : undefined}
+        back={{ onClick: backToCode, label: 'Volver' }}
+      >
+        <button type="button" onClick={() => goTo('pin-create')} className={`${primaryButton} ${pressable} min-h-[56px] w-full text-base`}>
+          <KeyRound size={20} aria-hidden="true" /> Con un PIN de 4 números
+        </button>
+        <p className="mt-2 text-center text-sm text-gray-700 dark:text-gray-300">Sin correo: código de tu clase, tu nombre y tu PIN.</p>
+        <OrDivider text="o" />
+        <button type="button" onClick={() => goTo('email')} className={`${cancelButton} w-full border border-gray-300 dark:border-gray-600`}>
+          <span className="inline-flex items-center gap-2"><Mail size={18} aria-hidden="true" /> Con mi correo o Google</span>
+        </button>
+      </AuthShell>
+    );
+  }
+
+  // ==================== Crear el acceso con correo o Google ====================
   return (
     <AuthShell
       title="¿Cómo quieres entrar la próxima vez?"
       subtitle={verified?.classroomName ? `Clase: ${verified.classroomName}` : undefined}
-      back={{ to: '/unirse', label: 'Volver' }}
+      back={{ onClick: backToCode, label: 'Volver' }}
     >
       <div onClickCapture={() => setPendingJoinCode(code)}>
         <GoogleButton role="STUDENT" label="Con Google (Gmail o correo del colegio)" />
@@ -235,25 +502,19 @@ export const JoinDoorPage = () => {
           <PasswordRules id={`${ids}-rules`} password={password} />
         </div>
         <Input label="Repite la clave" type="password" name="confirmPassword" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} leftIcon={<Lock size={18} />} error={show('confirm')} required />
-        {isPersonal && (
-          <fieldset>
-            <legend className="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-100">Tu avatar</legend>
-            <div className="grid grid-cols-2 gap-2">
-              {([['MALE', 'Chico'], ['FEMALE', 'Chica']] as const).map(([value, label]) => (
-                <label key={value} className={`flex min-h-[44px] cursor-pointer items-center justify-center rounded-xl border-2 text-sm font-semibold has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary-500 ${avatarGender === value ? 'border-primary-600 bg-primary-50 text-primary-900 dark:border-primary-400 dark:bg-primary-500/15 dark:text-white' : 'border-gray-300 text-gray-800 dark:border-gray-600 dark:text-gray-100'}`}>
-                  <input type="radio" name={`${ids}-gender`} value={value} checked={avatarGender === value} onChange={() => setAvatarGender(value)} className="sr-only" />
-                  {label}
-                </label>
-              ))}
-            </div>
-          </fieldset>
-        )}
+        {isPersonal && genderPicker}
         <p className="text-sm text-gray-700 dark:text-gray-300">No compartas tu clave con nadie, ni con tus amigos.</p>
+        {!isPersonal && (
+          <p className="text-sm text-gray-700 dark:text-gray-300">¿No tienes correo? Pídele a tu profe que te agregue a la lista de la clase: así entras con un PIN.</p>
+        )}
         {accessError && <p className="text-sm font-medium text-red-700 dark:text-red-300" role="alert">{accessError}</p>}
         <button type="submit" disabled={busy} className={`${primaryButton} ${pressable} w-full`}>
           {busy ? 'Creando tu acceso…' : 'Crear mi acceso'}
         </button>
       </form>
+      {isPersonal && (
+        <button type="button" onClick={() => goTo('access')} className={`${cancelButton} mt-3 w-full`}>Mejor con un PIN</button>
+      )}
     </AuthShell>
   );
 };

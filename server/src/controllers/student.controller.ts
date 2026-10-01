@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { studentService } from '../services/student.service.js';
 import { pdfService } from '../services/pdf.service.js';
+import { studentPinService } from '../services/studentPin.service.js';
 import { db } from '../db/index.js';
 import { classrooms, studentProfiles } from '../db/schema.js';
 import { eq, and, sql } from 'drizzle-orm';
@@ -642,6 +643,20 @@ export class StudentController {
         success: false,
         message: 'Error al regenerar código',
       });
+    }
+  }
+
+  // Docente: "Restablecer acceso" de un alumno con PIN (borra el PIN, cierra sus sesiones, tarjeta nueva)
+  async resetAccess(req: Request, res: Response) {
+    try {
+      const result = await studentPinService.resetAccess(req.params.studentId, req.user!.id);
+      res.json({ success: true, message: 'Acceso restablecido', data: result });
+    } catch (error) {
+      if (error instanceof AppError) {
+        return res.status(error.statusCode).json({ success: false, message: error.message });
+      }
+      console.error('Error al restablecer acceso:', error);
+      res.status(500).json({ success: false, message: 'Error al restablecer el acceso' });
     }
   }
 

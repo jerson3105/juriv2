@@ -14,6 +14,7 @@ import { PresenceEditor } from '../presence';
 import { useActivitySession } from '../useActivitySession';
 import { useTodayPresence } from '../usePresence';
 import { printSecretStars } from './printSecretStars';
+import { hasStudentAccount } from '../../../lib/studentAccess';
 
 type Stage = null | 'announce' | 'delivery' | 'bitacora';
 
@@ -75,7 +76,8 @@ export const CorreoActivity = ({ classroom, resume, onExit }: CorreoActivityProp
   const [mode, setMode] = useState<CorreoMode>('papel');
   const [editingPresence, setEditingPresence] = useState(false);
 
-  const withAccount = (id: string) => !!byId.get(id)?.linkedEmail;
+  // Con cuenta propia (correo, Google o PIN): puede escribir desde su dispositivo.
+  const withAccount = (id: string) => { const s = byId.get(id); return !!s && hasStudentAccount(s); };
   const presentIds = students.filter((s) => presence.presentIds.has(s.id)).map((s) => s.id);
   const writers = mode === 'dispositivo' ? presentIds.filter(withAccount) : presentIds;
   const prompt = (customPrompt.trim() || promptChoice).slice(0, 300);

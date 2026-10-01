@@ -568,8 +568,11 @@ export class ClassroomService {
       teamId: studentProfiles.teamId,
       isActive: studentProfiles.isActive,
       isDemo: studentProfiles.isDemo,
-      // Datos del usuario real
-      linkedEmail: users.email,
+      // Datos del usuario real. Alumnos con PIN: su correo es interno y no se muestra.
+      linkedEmail: sql<string | null>`CASE WHEN ${users.provider} = 'PIN' THEN NULL ELSE ${users.email} END`,
+      accessType: sql<'PIN' | 'EMAIL' | 'GOOGLE' | null>`CASE WHEN ${users.id} IS NULL THEN NULL WHEN ${users.provider} = 'PIN' THEN 'PIN' WHEN ${users.provider} = 'GOOGLE' THEN 'GOOGLE' ELSE 'EMAIL' END`,
+      pinPending: sql<number>`(${users.provider} = 'PIN' AND ${users.pinHash} IS NULL)`,
+      pinLockedUntil: users.pinLockedUntil,
       realName: users.firstName,
       realLastName: users.lastName,
       // Datos del clan

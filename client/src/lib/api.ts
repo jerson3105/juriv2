@@ -33,6 +33,9 @@ const NO_REFRESH_ROUTES = [
   '/auth/student-code/verify',
   '/auth/join-code/verify',
   '/auth/student-code/register',
+  '/auth/class-roster',
+  '/auth/pin/setup',
+  '/auth/pin/login',
   '/auth/refresh',
   '/auth/logout',
   '/auth/google',
@@ -101,7 +104,7 @@ export const authApi = {
   verifyJoinCode: (code: string) =>
     api.post<ApiResponse<
       (| { type: 'classroom'; classroomName: string; teacherName: string | null; open: boolean }
-      | { type: 'student'; studentName: string | null; classroomName: string | null; alreadyLinked: boolean })
+      | { type: 'student'; studentName: string | null; classroomName: string | null; alreadyLinked: boolean; access?: 'new' | 'pin-reset' })
       & { teacherVerified?: boolean; message?: string }
     >>('/auth/join-code/verify', { code }),
 
@@ -118,6 +121,21 @@ export const authApi = {
     password: string;
     avatarGender: 'MALE' | 'FEMALE';
   }) => api.post<ApiResponse<AuthData>>('/auth/student-code/register', data),
+
+  /** Lista de la clase (nombres parciales) para elegir su nombre. Sin sesión. */
+  classRoster: (code: string) => api.post<ApiResponse<ClassRoster>>('/auth/class-roster', { code }),
+
+  /** Crear el PIN: con la tarjeta (linkCode) o eligiendo su nombre de la lista (classCode + studentId). */
+  setupPin: (data: { linkCode?: string; classCode?: string; studentId?: string; pin: string; avatarGender?: 'MALE' | 'FEMALE' }) =>
+    api.post<ApiResponse<PinAuthData>>('/auth/pin/setup', data),
+
+  /** Entrar con el código de la clase, su nombre y su PIN. */
+  loginWithPin: (data: { classCode: string; studentId: string; pin: string }) =>
+    api.post<ApiResponse<PinAuthData>>('/auth/pin/login', data),
+
+  /** Cambiar el PIN: cierra las otras sesiones y devuelve un token nuevo para esta. */
+  changePin: (data: { currentPin: string; newPin: string }) =>
+    api.put<ApiResponse<{ accessToken: string }>>('/auth/pin', data),
 
   login: (data: { email: string; password: string }) =>
     api.post<ApiResponse<AuthData>>('/auth/login', data),
@@ -158,7 +176,8 @@ export interface User {
   lastName: string;
   role: 'ADMIN' | 'TEACHER' | 'STUDENT' | 'PARENT';
   avatarUrl: string | null;
-  provider: 'LOCAL' | 'GOOGLE';
+  /** PIN = alumno sin correo (su correo guardado es interno: no se muestra). */
+  provider?: 'LOCAL' | 'GOOGLE' | 'PIN';
   createdAt: string;
 }
 
@@ -166,6 +185,20 @@ export interface AuthData {
   user: User;
   /** El refresh no viaja en el cuerpo: va en una cookie httpOnly. */
   accessToken: string;
+}
+
+export interface PinAuthData extends AuthData {
+  /** Para recordarle al alumno con qué código de clase entra la próxima vez. */
+  classroom: { name: string; code: string };
+}
+
+export type RosterState = 'new' | 'pin' | 'account';
+export interface ClassRoster {
+  classroomName: string;
+  open: boolean;
+  teacherVerified: boolean;
+  message?: string;
+  students: Array<{ id: string; name: string; state: RosterState }>;
 }
 
 export default api;

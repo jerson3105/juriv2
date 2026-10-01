@@ -33,6 +33,7 @@ import {
 import { Hearts } from '../energy/EnergyMeter';
 import { isInitialLevel } from '../energy/energyHelpers';
 import { useAuthStore } from '../../store/authStore';
+import { accountLabel } from '../auth/authHelpers';
 import { useStudentStore } from '../../store/studentStore';
 import { useThemeStore } from '../../store/themeStore';
 import { studentApi } from '../../lib/studentApi';
@@ -773,7 +774,7 @@ export const MainLayout = () => {
                     >
                       <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-700">
                         <p className="text-sm font-semibold text-gray-800 dark:text-white">{user?.firstName} {user?.lastName}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400">{user?.email}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{accountLabel(user)}</p>
                       </div>
                       <Link
                         to="/settings"
