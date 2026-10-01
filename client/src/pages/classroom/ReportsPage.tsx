@@ -1,5 +1,3 @@
-import { DashboardPage } from './DashboardPage';
+import { StatsPage } from './StatsPage';
 
-export const ReportsPage = () => {
-  return <DashboardPage />;
-};
+export const ReportsPage = () => <StatsPage />;

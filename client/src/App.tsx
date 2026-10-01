@@ -44,7 +44,6 @@ const CollectiblesPage = lazyPage(() => import('./pages/classroom/CollectiblesPa
 const ReportsPage = lazyPage(() => import('./pages/classroom/ReportsPage').then((m) => ({ default: m.ReportsPage })));
 const HistoryPage = lazyPage(() => import('./pages/classroom/HistoryPage').then((m) => ({ default: m.HistoryPage })));
 const GradebookPage = lazyPage(() => import('./pages/classroom/GradebookPage').then((m) => ({ default: m.GradebookPage })));
-const GradebookStatsPage = lazyPage(() => import('./pages/classroom/GradebookStatsPage').then((m) => ({ default: m.GradebookStatsPage })));
 const StorytellingPage = lazyPage(() => import('./pages/classroom/StorytellingPage').then((m) => ({ default: m.StorytellingPage })));
 const AnnouncementsPage = lazyPage(() => import('./pages/classroom/AnnouncementsPage').then((m) => ({ default: m.AnnouncementsPage })));
 const ClassroomChatPage = lazyPage(() => import('./pages/classroom/ClassroomChatPage').then((m) => ({ default: m.ClassroomChatPage })));
@@ -233,7 +232,7 @@ function App() {
               <Route path="dashboard" element={<Navigate to="../reports" replace />} />
               <Route path="history" element={<HistoryPage />} />
               <Route path="gradebook" element={<GradebookPage />} />
-              <Route path="gradebook/stats" element={<GradebookStatsPage />} />
+              <Route path="gradebook/stats" element={<Navigate to="../gradebook?tab=resumen" replace />} />
               <Route path="gamification-stats" element={<ReportsPage />} />
               <Route path="students" element={<StudentsPage />} />
               <Route path="behaviors" element={<BehaviorsPage />} />

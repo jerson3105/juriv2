@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useOutletContext, useSearchParams } from 'react-router-dom';
+import { useOutletContext, useSearchParams } from 'react-router-dom';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { BarChart3, BookOpenCheck, CalendarRange, ChevronDown, Download, FileSpreadsheet, FileText, Loader2, Lock } from 'lucide-react';
+import { BookOpenCheck, CalendarRange, ChevronDown, Download, FileSpreadsheet, FileText, Loader2, Lock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { Classroom } from '../../lib/classroomApi';
 import { gradeApi } from '../../lib/gradeApi';
@@ -12,12 +12,14 @@ import { EvaluationsTab } from '../../components/gradebook/EvaluationsTab';
 import { GradebookSetup } from '../../components/gradebook/GradebookSetup';
 import { GradeDetailPanel } from '../../components/gradebook/GradeDetailPanel';
 import { GradesTab, type CellRef } from '../../components/gradebook/GradesTab';
+import { GradebookSummaryTab } from '../../components/gradebook/GradebookSummaryTab';
 import {
   bimesterKey, card, chip, errorMessage, gradebookKey, periodLabel, relativeTime, secondaryButton, tabButton,
 } from '../../components/gradebook/gradebookHelpers';
 
 const TABS = [
   { id: 'notas', label: 'Notas' },
+  { id: 'resumen', label: 'Resumen' },
   { id: 'evaluaciones', label: 'Evaluaciones' },
   { id: 'conclusiones', label: 'Conclusiones' },
   { id: 'competencias', label: 'Competencias' },
@@ -120,7 +122,6 @@ export const GradebookPage = () => {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link to={`/classroom/${classroom.id}/gradebook/stats`} className={secondaryButton}><BarChart3 size={16} aria-hidden="true" /> Estadísticas</Link>
           {book && <ExportMenu classroomId={classroom.id} period={book.period} />}
         </div>
       </div>
@@ -172,6 +173,8 @@ export const GradebookPage = () => {
           </div>
         ) : tab === 'notas' ? (
           <GradesTab book={book} onOpenDetail={setDetail} />
+        ) : tab === 'resumen' ? (
+          <GradebookSummaryTab book={book} onGoTo={setTab} />
         ) : tab === 'evaluaciones' ? (
           <EvaluationsTab book={book} />
         ) : tab === 'conclusiones' ? (
