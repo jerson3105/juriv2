@@ -180,9 +180,9 @@ export class PDFService {
       });
 
     const steps = [
-      `1. Ve a ${appUrl}`,
-      '2. Crea tu cuenta o inicia sesión',
-      '3. Ingresa el código de arriba',
+      `1. Entra a ${appUrl}/unirse`,
+      '2. Escribe el código de arriba',
+      '3. Crea tu acceso con Google o con tu correo',
     ];
 
     steps.forEach((step, i) => {
@@ -317,10 +317,10 @@ export class PDFService {
         });
 
       const instructions = [
-        `1. Ingresa a ${appUrl} desde tu navegador`,
-        '2. Crea una cuenta nueva con tu correo o inicia sesión si ya tienes una',
-        '3. Selecciona "Vincular con código" e ingresa el código de arriba',
-        '4. ¡Listo! Tu progreso en clase estará vinculado a tu cuenta'
+        `1. Entra a ${appUrl}/unirse desde tu navegador`,
+        '2. Escribe el código de arriba y confirma que eres tú',
+        '3. Crea tu acceso con Google o con tu correo y una clave',
+        '4. ¡Listo! Tu progreso en clase quedará en tu cuenta'
       ];
 
       instructions.forEach((instruction, i) => {

@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Presentation } from 'lucide-react';
 import { AuthShell } from '../../components/auth/AuthShell';
 import { RoleDoors } from '../../components/auth/RoleDoors';
-import { errorMessage, type SignupRole } from '../../components/auth/authHelpers';
+import { errorMessage, studentLanding, type SignupRole } from '../../components/auth/authHelpers';
 import { primaryButton } from '../../components/home/homeHelpers';
 import { secondaryButton } from '../../components/gradebook/gradebookHelpers';
 import { useAuthStore } from '../../store/authStore';
@@ -14,7 +14,7 @@ const getHashParam = (name: string): string | null => {
   return hash.length > 1 ? new URLSearchParams(hash.slice(1)).get(name) : null;
 };
 
-const AFTER_SIGNUP = { STUDENT: '/join-class', TEACHER: '/dashboard', PARENT: '/dashboard' } as const;
+const afterSignup = (role: SignupRole) => (role === 'STUDENT' ? studentLanding().replace(/^\/dashboard$/, '/join-class') : '/dashboard');
 
 /**
  * Cuenta nueva con Google sin puerta elegida. Antes un toque en "Docente" (la primera tarjeta)
@@ -42,7 +42,7 @@ export const SelectRolePage = () => {
       const response = await authApi.completeGoogleRegistration({ role, ...(code ? { code } : {}) });
       if (response.data.success && response.data.data) {
         setAuth(response.data.data);
-        navigate(AFTER_SIGNUP[role]);
+        navigate(afterSignup(role));
       }
     } catch (err) {
       setError(errorMessage(err, 'No se pudo crear la cuenta. Vuelve a intentarlo desde el inicio de sesión.'));

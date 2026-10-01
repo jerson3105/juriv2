@@ -33,3 +33,34 @@ export const errorMessage = (error: unknown, fallback: string) =>
   (error as { response?: { data?: { message?: string } } })?.response?.data?.message
   || (error instanceof Error && error.message)
   || fallback;
+
+// Código de la puerta /unirse mientras el alumno va a Google (o inicia sesión) y vuelve.
+const PENDING_JOIN_KEY = 'juried:pending-join';
+
+export const setPendingJoinCode = (code: string) => {
+  try {
+    sessionStorage.setItem(PENDING_JOIN_KEY, code);
+  } catch {
+    // Sin almacenamiento: el alumno vuelve a escribir el código.
+  }
+};
+
+/** Lee y borra el código pendiente. */
+export const takePendingJoinCode = (): string | null => {
+  try {
+    const code = sessionStorage.getItem(PENDING_JOIN_KEY);
+    sessionStorage.removeItem(PENDING_JOIN_KEY);
+    return code;
+  } catch {
+    return null;
+  }
+};
+
+/** Adónde va un alumno tras entrar: a terminar de unirse si traía un código. */
+export const studentLanding = (): string => {
+  const code = takePendingJoinCode();
+  return code ? `/join-class?code=${encodeURIComponent(code)}` : '/dashboard';
+};
+
+/** Código como lo escribe un niño: mayúsculas, sin espacios ni guiones. */
+export const normalizeJoinCode = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);

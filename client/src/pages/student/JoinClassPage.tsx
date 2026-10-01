@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowRight, Check, ArrowLeft, Sparkles, Loader2, Search, PartyPopper, School, UserCheck } from 'lucide-react';
@@ -57,7 +57,9 @@ const JoinClassFlow = () => {
 
   // Step flow: 1=code, 2=character name+avatar, 3=class selection (only for classroom mode)
   const [step, setStep] = useState(1);
-  const [code, setCode] = useState('');
+  const [searchParams] = useSearchParams();
+  // Llega desde /unirse con el código ya escrito.
+  const [code, setCode] = useState(() => (searchParams.get('code') ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8));
   const [codeType, setCodeType] = useState<CodeType>(null);
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -131,6 +133,16 @@ const JoinClassFlow = () => {
       setIsVerifying(false);
     }
   };
+
+  // Código que llega en la URL (desde /unirse): se revisa una vez al abrir.
+  const autoVerified = useRef(false);
+  useEffect(() => {
+    if (autoVerified.current || code.length < 6) return;
+    autoVerified.current = true;
+    void handleVerifyCode();
+    // Solo al abrir con el código ya escrito.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Go to step 2
   const handleContinueToCharacter = () => {

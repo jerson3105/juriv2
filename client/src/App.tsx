@@ -12,7 +12,7 @@ import { CelebrationHost } from './components/celebrations/CelebrationHost';
 // Páginas del flujo de acceso: carga inmediata (primera pantalla de quien no ha iniciado sesión).
 import { LoginPage } from './pages/auth/LoginPage';
 import { RegisterPage } from './pages/auth/RegisterPage';
-import { StudentCodeRegistrationPage } from './pages/auth/StudentCodeRegistrationPage';
+import { JoinDoorPage } from './pages/auth/JoinDoorPage';
 import { GoogleCallbackPage } from './pages/auth/GoogleCallbackPage';
 import { SelectRolePage } from './pages/auth/SelectRolePage';
 import { TeacherRegisterPage } from './pages/auth/TeacherRegisterPage';
@@ -196,17 +196,11 @@ function App() {
               </PublicRoute>
             }
           />
-          <Route
-            path="/register/student-code"
-            element={
-              <PublicRoute>
-                <StudentCodeRegistrationPage />
-              </PublicRoute>
-            }
-          />
+          <Route path="/register/student-code" element={<Navigate to="/unirse" replace />} />
           <Route path="/registro/docente" element={<PublicRoute><TeacherRegisterPage /></PublicRoute>} />
           <Route path="/registro/familia" element={<PublicRoute><FamilyRegisterPage /></PublicRoute>} />
-          <Route path="/unirse" element={<PublicRoute><StudentCodeRegistrationPage /></PublicRoute>} />
+          <Route path="/unirse" element={<JoinDoorPage />} />
+          <Route path="/unirse/:code" element={<JoinDoorPage />} />
           <Route path="/about" element={<AboutPage />} />
           <Route path="/privacy" element={<PrivacyPolicyPage />} />
           

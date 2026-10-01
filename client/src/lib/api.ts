@@ -67,6 +67,7 @@ api.interceptors.response.use(
       '/auth/login',
       '/auth/register',
       '/auth/student-code/verify',
+      '/auth/join-code/verify',
       '/auth/student-code/register',
       '/auth/refresh',
       '/auth/logout',
@@ -160,6 +161,13 @@ export const authApi = {
     lastName: string;
     role: 'TEACHER' | 'STUDENT' | 'PARENT';
   }) => api.post<ApiResponse<AuthData>>('/auth/register', data),
+
+  /** Puerta /unirse: código de clase o personal, sin sesión. */
+  verifyJoinCode: (code: string) =>
+    api.post<ApiResponse<
+      | { type: 'classroom'; classroomName: string; teacherName: string | null; open: boolean }
+      | { type: 'student'; studentName: string | null; classroomName: string | null; alreadyLinked: boolean }
+    >>('/auth/join-code/verify', { code }),
 
   verifyStudentCode: (code: string) =>
     api.post<ApiResponse<{

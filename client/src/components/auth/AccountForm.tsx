@@ -1,8 +1,9 @@
 import { useId, useState } from 'react';
-import { Check, Lock, Mail, User, X } from 'lucide-react';
+import { Lock, Mail, User } from 'lucide-react';
 import { Input } from '../ui/Input';
 import { primaryButton } from '../home/homeHelpers';
-import { isPasswordValid, passwordChecks } from './authHelpers';
+import { isPasswordValid } from './authHelpers';
+import { PasswordRules } from './PasswordRules';
 
 export interface AccountFormValues {
   firstName: string;
@@ -30,7 +31,6 @@ export const AccountForm = ({ submitLabel, onSubmit, busy, error, declaration }:
   const set = (key: keyof AccountFormValues) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setValues((v) => ({ ...v, [key]: e.target.value }));
 
-  const checks = passwordChecks(values.password);
   const problems = {
     firstName: values.firstName.trim().length < 2 ? 'Escribe tu nombre' : undefined,
     lastName: values.lastName.trim().length < 2 ? 'Escribe tu apellido' : undefined,
@@ -58,14 +58,7 @@ export const AccountForm = ({ submitLabel, onSubmit, busy, error, declaration }:
       <Input label="Correo electrónico" type="email" name="email" autoComplete="email" inputMode="email" placeholder="tu@correo.com" value={values.email} onChange={set('email')} leftIcon={<Mail size={18} />} error={show('email')} required />
       <div>
         <Input label="Contraseña" type="password" name="password" autoComplete="new-password" value={values.password} onChange={set('password')} leftIcon={<Lock size={18} />} error={show('password')} aria-describedby={`${ids}-rules`} required />
-        <ul id={`${ids}-rules`} className="mt-2 grid gap-1 text-sm sm:grid-cols-2" aria-label="Requisitos de la contraseña">
-          {checks.map((c) => (
-            <li key={c.label} className={`flex items-center gap-1.5 ${c.ok ? 'text-emerald-800 dark:text-emerald-300' : 'text-gray-700 dark:text-gray-300'}`}>
-              {c.ok ? <Check size={14} aria-hidden="true" /> : <X size={14} aria-hidden="true" />}
-              <span>{c.label}<span className="sr-only">{c.ok ? ': cumplido' : ': falta'}</span></span>
-            </li>
-          ))}
-        </ul>
+        <PasswordRules id={`${ids}-rules`} password={values.password} />
       </div>
       <Input label="Repite la contraseña" type="password" name="confirmPassword" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} leftIcon={<Lock size={18} />} error={show('confirm')} required />
       {declaration && (

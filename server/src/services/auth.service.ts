@@ -168,6 +168,36 @@ export const register = async (input: RegisterInput): Promise<AuthResponse> => {
   };
 };
 
+export type JoinCodeVerification =
+  | { type: 'classroom'; classroomName: string; teacherName: string | null; open: boolean }
+  | ({ type: 'student' } & StudentCodeVerificationResult);
+
+/**
+ * Puerta /unirse (sin sesión): el alumno escribe el código de su clase o su código personal y ve
+ * a qué clase entra antes de crear su acceso. Nombres parciales: no expone a un menor.
+ */
+export const verifyJoinCode = async (code: string): Promise<JoinCodeVerification | null> => {
+  const normalizedCode = normalizeStudentCode(code).replace(/[^A-Z0-9]/g, '');
+  const classroom = await db.query.classrooms.findFirst({
+    where: eq(classrooms.code, normalizedCode),
+    columns: { name: true, teacherId: true, isActive: true, acceptingStudents: true },
+  });
+  if (classroom) {
+    const teacher = await db.query.users.findFirst({
+      where: eq(users.id, classroom.teacherId),
+      columns: { firstName: true, lastName: true },
+    });
+    return {
+      type: 'classroom',
+      classroomName: classroom.name,
+      teacherName: teacher ? maskPersonName(`${teacher.firstName} ${teacher.lastName}`) : null,
+      open: classroom.isActive && classroom.acceptingStudents,
+    };
+  }
+  const student = await verifyStudentRegistrationCode(normalizedCode);
+  return student ? { type: 'student', ...student } : null;
+};
+
 export const verifyStudentRegistrationCode = async (code: string): Promise<StudentCodeVerificationResult | null> => {
   const normalizedCode = normalizeStudentCode(code);
 

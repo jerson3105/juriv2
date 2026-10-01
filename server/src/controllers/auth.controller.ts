@@ -859,3 +859,20 @@ export const switchToStudent = async (req: Request, res: Response): Promise<void
     handleAuthError(res, error, 'No se pudo cambiar la cuenta');
   }
 };
+
+/**
+ * POST /api/auth/join-code/verify — Puerta del alumno: código de clase o personal, sin sesión.
+ */
+export const verifyJoinCode = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const code = z.object({ code: z.string().trim().min(6).max(12) }).parse(req.body).code;
+    const result = await authService.verifyJoinCode(code);
+    if (!result) {
+      res.status(404).json({ success: false, message: 'No encontramos ese código. Revísalo letra por letra con tu profe.' });
+      return;
+    }
+    res.json({ success: true, data: result });
+  } catch (error) {
+    handleAuthError(res, error, 'No se pudo revisar el código');
+  }
+};

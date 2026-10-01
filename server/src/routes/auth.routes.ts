@@ -36,6 +36,7 @@ const avatarUpload = multer({
 router.post('/register', registerLimiter, authController.register);
 router.post('/login', loginIpLimiter, loginAccountLimiter, authController.login);
 router.post('/student-code/verify', studentCodeLimiter, authController.verifyStudentCode);
+router.post('/join-code/verify', studentCodeLimiter, authController.verifyJoinCode);
 router.post('/student-code/register', studentCodeLimiter, authController.registerStudentWithCode);
 router.post('/refresh', authTokenLimiter, authController.refresh);
 router.post('/logout', authTokenLimiter, authController.logout);
