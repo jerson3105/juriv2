@@ -7,6 +7,7 @@ import { eq, and, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { config_app } from '../config/env.js';
 import { requireClassroomTeacher } from '../utils/access.js';
+import { AppError } from '../utils/errors.js';
 
 const joinClassSchema = z.object({
   code: z.string().min(6, 'El código debe tener al menos 6 caracteres').max(8, 'El código no puede tener más de 8 caracteres'),
@@ -106,6 +107,9 @@ export class StudentController {
           message: 'Datos inválidos',
           errors: error.errors,
         });
+      }
+      if (error instanceof AppError) {
+        return res.status(error.statusCode).json({ success: false, message: error.message });
       }
       if (error instanceof Error) {
         return res.status(400).json({

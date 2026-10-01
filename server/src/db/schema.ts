@@ -16,6 +16,9 @@ import { relations } from 'drizzle-orm';
 // ==================== ENUMS ====================
 
 export const userRoleEnum = mysqlEnum('role', ['ADMIN', 'TEACHER', 'STUDENT', 'PARENT']);
+// Docente sin verificar: usa su clase con la lista, pero no recibe alumnos con cuenta ni familias.
+export const teacherStatusEnum = mysqlEnum('teacher_status', ['UNVERIFIED', 'PENDING', 'VERIFIED']);
+export const teacherVerifiedViaEnum = mysqlEnum('teacher_verified_via', ['LEGACY', 'ADMIN', 'SCHOOL', 'DOMAIN']);
 export const authProviderEnum = mysqlEnum('provider', ['LOCAL', 'GOOGLE']);
 export const characterClassEnum = mysqlEnum('character_class', ['GUARDIAN', 'ARCANE', 'EXPLORER', 'ALCHEMIST']);
 export const pointTypeEnum = mysqlEnum('point_type', ['XP', 'HP', 'GP']);
@@ -52,6 +55,11 @@ export const users = mysqlTable('users', {
   firstName: varchar('first_name', { length: 100 }).notNull(),
   lastName: varchar('last_name', { length: 100 }).notNull(),
   role: userRoleEnum.notNull(),
+  teacherStatus: teacherStatusEnum,
+  teacherVerifiedVia: teacherVerifiedViaEnum,
+  teacherVerifiedAt: datetime('teacher_verified_at'),
+  teacherVerificationNote: varchar('teacher_verification_note', { length: 500 }),
+  teacherVerificationRequestedAt: datetime('teacher_verification_requested_at'),
   provider: authProviderEnum.notNull().default('LOCAL'),
   googleId: varchar('google_id', { length: 255 }).unique(),
   avatarUrl: varchar('avatar_url', { length: 500 }),
@@ -61,6 +69,18 @@ export const users = mysqlTable('users', {
   notifyLevelUp: boolean('notify_level_up').notNull().default(true),
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
+  /** Para retirar cuentas docentes sin verificar tras 180 días sin uso. */
+  lastLoginAt: datetime('last_login_at'),
+});
+
+/** Dominios institucionales: un docente con ese correo queda verificado al registrarse. */
+export const verifiedDomains = mysqlTable('verified_domains', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  domain: varchar('domain', { length: 255 }).notNull().unique('uniq_verified_domains_domain'),
+  schoolId: varchar('school_id', { length: 36 }),
+  note: varchar('note', { length: 255 }),
+  createdBy: varchar('created_by', { length: 36 }).notNull(),
+  createdAt: datetime('created_at').notNull(),
 });
 
 export const usersRelations = relations(users, ({ many, one }) => ({
@@ -363,6 +383,8 @@ export const studentProfiles = mysqlTable('student_profiles', {
   userIdx: index('idx_student_profiles_user').on(table.userId),
   teamIdx: index('idx_student_profiles_team').on(table.teamId),
   activeIdx: index('idx_student_profiles_active').on(table.isActive),
+  // Un perfil por alumno en cada clase (los alumnos sin cuenta tienen user_id NULL y no chocan).
+  classroomUserUnique: unique('uniq_student_profiles_classroom_user').on(table.classroomId, table.userId),
 }));
 
 export const studentProfilesRelations = relations(studentProfiles, ({ one, many }) => ({
@@ -2549,6 +2571,8 @@ export const schools = mysqlTable('schools', {
   longitude: decimal('longitude', { precision: 11, scale: 8 }),
   logoUrl: varchar('logo_url', { length: 500 }),
   inviteCode: varchar('invite_code', { length: 16 }).unique('uniq_schools_invite_code'),
+  /** La invitación caduca: antes servía para siempre y daba estado verificado. */
+  inviteExpiresAt: datetime('invite_expires_at'),
   isVerified: boolean('is_verified').notNull().default(false),
   isActive: boolean('is_active').notNull().default(true),
   createdBy: varchar('created_by', { length: 36 }).notNull(),

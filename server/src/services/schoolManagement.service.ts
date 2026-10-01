@@ -6,6 +6,9 @@ import { classrooms, curriculumAreas, pointLogs, schoolMembers, schools, student
 import { affectedRows } from '../utils/points.js';
 import { historyService } from './history.service.js';
 import { attendanceService } from './attendance.service.js';
+import { teacherVerificationService } from './teacherVerification.service.js';
+
+const INVITE_DAYS = 14;
 
 const INVITE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // sin 0/O ni 1/I para dictarlo sin errores
 const INVITE_LENGTH = 8;
@@ -32,6 +35,10 @@ class SchoolManagementService {
       })
       .where(and(eq(schoolMembers.id, memberId), eq(schoolMembers.status, 'PENDING_OWNER')));
     if (affectedRows(result) !== 1) throw new SchoolManagementError('Esta solicitud ya fue atendida', 409);
+    if (approved) {
+      const [member] = await db.select({ userId: schoolMembers.userId }).from(schoolMembers).where(eq(schoolMembers.id, memberId));
+      if (member) await teacherVerificationService.markVerified(member.userId, 'SCHOOL');
+    }
   }
 
   // Retirar a un profesor: sus clases vuelven a ser personales (las conserva) y deja de ser miembro.
@@ -120,7 +127,9 @@ class SchoolManagementService {
     for (let attempt = 0; attempt < 5; attempt++) {
       const code = newInviteCode();
       try {
-        await db.update(schools).set({ inviteCode: code, updatedAt: new Date() }).where(eq(schools.id, schoolId));
+        await db.update(schools)
+          .set({ inviteCode: code, inviteExpiresAt: new Date(Date.now() + INVITE_DAYS * 24 * 60 * 60 * 1000), updatedAt: new Date() })
+          .where(eq(schools.id, schoolId));
         return code;
       } catch (error) {
         if ((error as { code?: string }).code !== 'ER_DUP_ENTRY') throw error;
@@ -130,7 +139,7 @@ class SchoolManagementService {
   }
 
   async disableInviteCode(schoolId: string) {
-    await db.update(schools).set({ inviteCode: null, updatedAt: new Date() }).where(eq(schools.id, schoolId));
+    await db.update(schools).set({ inviteCode: null, inviteExpiresAt: null, updatedAt: new Date() }).where(eq(schools.id, schoolId));
   }
 
   // Escuela de un código válido (solo verificada y activa).
@@ -138,14 +147,17 @@ class SchoolManagementService {
     const [school] = await db
       .select({ id: schools.id, name: schools.name, city: schools.city, country: schools.country })
       .from(schools)
-      .where(and(eq(schools.inviteCode, code), eq(schools.isVerified, true), eq(schools.isActive, true)));
+      .where(and(
+        eq(schools.inviteCode, code), eq(schools.isVerified, true), eq(schools.isActive, true),
+        sql`(${schools.inviteExpiresAt} IS NULL OR ${schools.inviteExpiresAt} > NOW())`,
+      ));
     return school ?? null;
   }
 
   // Unirse con el enlace: el responsable ya dio su visto bueno al compartirlo, así que entra verificado.
   async joinByInvite(userId: string, code: string) {
     const school = await this.findByInviteCode(code);
-    if (!school) throw new SchoolManagementError('El enlace de invitación no es válido o fue desactivado', 404);
+    if (!school) throw new SchoolManagementError('El enlace de invitación no es válido, caducó o fue desactivado. Pide uno nuevo al responsable de tu escuela.', 404);
     const now = new Date();
     const [existing] = await db.select().from(schoolMembers)
       .where(and(eq(schoolMembers.schoolId, school.id), eq(schoolMembers.userId, userId)));
@@ -160,6 +172,8 @@ class SchoolManagementService {
         id: uuidv4(), schoolId: school.id, userId, role: 'TEACHER', status: 'VERIFIED', joinedAt: now, createdAt: now, updatedAt: now,
       });
     }
+    // El responsable de la escuela respalda a quien entra con su invitación.
+    await teacherVerificationService.markVerified(userId, 'SCHOOL');
     return { school, alreadyMember: false };
   }
 }

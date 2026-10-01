@@ -328,6 +328,19 @@ const startServer = async () => {
     cleanExpiredTokens().catch(err => 
       logger.error('Error en limpieza inicial de tokens:', { error: err })
     );
+
+    // Cuentas docentes sin verificar, sin clases y sin entrar en 180 días: se anonimizan una vez al día.
+    const { teacherVerificationService } = await import('./services/teacherVerification.service.js');
+    const retireStale = async () => {
+      try {
+        const retired = await teacherVerificationService.anonymizeStaleTeachers();
+        if (retired > 0) logger.info(`Cuentas docentes sin uso retiradas: ${retired}`);
+      } catch (error) {
+        logger.error('Error retirando cuentas docentes sin uso:', { error });
+      }
+    };
+    setInterval(retireStale, 24 * 60 * 60 * 1000);
+    void retireStale();
     
     // Iniciar servidor HTTP
     httpServer.listen(config_app.port, () => {

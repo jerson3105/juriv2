@@ -12,6 +12,9 @@ import { revokeAllUserTokens } from '../utils/jwt.js';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { teacherVerificationService } from '../services/teacherVerification.service.js';
+import { AppError } from '../utils/errors.js';
+import { z } from 'zod';
 
 // Obtener __dirname en ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -147,6 +150,7 @@ export const adminController = {
         .set({ role, updatedAt: new Date() })
         .where(eq(users.id, userId));
 
+      if (role === 'TEACHER') await teacherVerificationService.markVerified(userId, 'ADMIN');
       // El rol viaja en el token y en el socket: se cierran sus sesiones para que entre con el nuevo.
       cache.delete(CACHE_KEYS.user(userId));
       await revokeAllUserTokens(userId);
@@ -155,6 +159,64 @@ export const adminController = {
     } catch (error) {
       console.error('Error updating user role:', error);
       res.status(500).json({ success: false, message: 'Error al actualizar rol' });
+    }
+  },
+
+  // ==================== Verificación de docentes ====================
+
+  async listTeacherVerifications(req: Request, res: Response) {
+    try {
+      const filter = req.query.status === 'UNVERIFIED' ? 'UNVERIFIED' : 'PENDING';
+      res.json({ success: true, data: await teacherVerificationService.listForAdmin(filter) });
+    } catch (error) {
+      console.error('Error listing teacher verifications:', error);
+      res.status(500).json({ success: false, message: 'Error al obtener docentes por verificar' });
+    }
+  },
+
+  async reviewTeacherVerification(req: Request, res: Response) {
+    try {
+      const body = z.object({ approved: z.boolean(), reason: z.string().max(480).optional() }).parse(req.body);
+      if (body.approved) await teacherVerificationService.approve(req.params.userId);
+      else await teacherVerificationService.reject(req.params.userId, body.reason);
+      res.json({ success: true, message: body.approved ? 'Docente verificado' : 'Solicitud rechazada' });
+    } catch (error) {
+      if (error instanceof AppError) return res.status(error.statusCode).json({ success: false, message: error.message });
+      if (error instanceof z.ZodError) return res.status(400).json({ success: false, message: 'Datos inválidos' });
+      console.error('Error reviewing teacher verification:', error);
+      res.status(500).json({ success: false, message: 'Error al revisar la verificación' });
+    }
+  },
+
+  async listVerifiedDomains(_req: Request, res: Response) {
+    try {
+      res.json({ success: true, data: await teacherVerificationService.listDomains() });
+    } catch (error) {
+      console.error('Error listing domains:', error);
+      res.status(500).json({ success: false, message: 'Error al obtener dominios' });
+    }
+  },
+
+  async addVerifiedDomain(req: Request, res: Response) {
+    try {
+      const body = z.object({ domain: z.string().min(3).max(255), note: z.string().max(255).optional(), schoolId: z.string().uuid().nullable().optional() }).parse(req.body);
+      const result = await teacherVerificationService.addDomain(req.user!.id, body);
+      res.status(201).json({ success: true, data: result });
+    } catch (error) {
+      if (error instanceof AppError) return res.status(error.statusCode).json({ success: false, message: error.message });
+      if (error instanceof z.ZodError) return res.status(400).json({ success: false, message: 'Datos inválidos' });
+      console.error('Error adding domain:', error);
+      res.status(500).json({ success: false, message: 'Error al agregar el dominio' });
+    }
+  },
+
+  async removeVerifiedDomain(req: Request, res: Response) {
+    try {
+      await teacherVerificationService.removeDomain(req.params.domainId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error removing domain:', error);
+      res.status(500).json({ success: false, message: 'Error al quitar el dominio' });
     }
   },
 
@@ -193,6 +255,10 @@ export const adminController = {
         lastName,
         password: hashedPassword,
         role: 'TEACHER' as const,
+        // Lo crea el admin: queda verificado.
+        teacherStatus: 'VERIFIED' as const,
+        teacherVerifiedVia: 'ADMIN' as const,
+        teacherVerifiedAt: now,
         provider: 'LOCAL' as const,
         isActive: true,
         notifyBadges: true,

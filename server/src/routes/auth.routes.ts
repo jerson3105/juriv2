@@ -49,6 +49,8 @@ router.put('/notifications', authenticate, authController.updateNotifications);
 router.post('/logout-all', authenticate, authController.logoutAll);
 router.put('/change-password', authenticate, authController.changePassword);
 router.get('/switch-to-student', authenticate, authorize('TEACHER'), authController.getStudentSwitch);
+router.get('/teacher-status', authenticate, authorize('TEACHER'), authController.getTeacherStatus);
+router.post('/teacher-status/request', authenticate, authorize('TEACHER'), authController.requestTeacherReview);
 router.post('/switch-to-student', authenticate, authorize('TEACHER'), authController.switchToStudent);
 
 // ==================== GOOGLE OAUTH ====================

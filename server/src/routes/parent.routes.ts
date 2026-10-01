@@ -13,6 +13,7 @@ router.post('/register', authLimiter, parentController.register);
 router.get('/profile', authenticate, authorize('PARENT'), parentController.getProfile);
 router.post('/link', authenticate, authorize('PARENT'), codeRedemptionLimiter, parentController.linkChild);
 router.get('/children', authenticate, authorize('PARENT'), parentController.getChildren);
+router.get('/pending-links', authenticate, authorize('PARENT'), parentController.getPendingLinks);
 router.get('/child/:studentId', authenticate, authorize('PARENT'), parentController.getChildDetail);
 router.get('/child/:studentId/grades', authenticate, authorize('PARENT'), parentController.getChildGrades);
 router.get('/child/:studentId/activity', authenticate, authorize('PARENT'), parentController.getChildActivity);
@@ -21,6 +22,11 @@ router.get('/child/:studentId/ai-report', authenticate, authorize('PARENT'), ...
 router.post('/child/:studentId/ai-report/regenerate', authenticate, authorize('PARENT'), ...aiGuard, parentController.regenerateAIReport);
 router.delete('/child/:studentId', authenticate, authorize('PARENT'), parentController.unlinkChild);
 router.put('/preferences', authenticate, authorize('PARENT'), parentController.updatePreferences);
+
+// Profesor: familias que esperan aprobación
+router.get('/pending-approvals', authenticate, authorize('TEACHER'), parentController.getPendingApprovals.bind(parentController));
+router.post('/links/:linkId/approve', authenticate, authorize('TEACHER'), parentController.reviewLink.bind(parentController));
+router.post('/links/:linkId/reject', authenticate, authorize('TEACHER'), parentController.reviewLink.bind(parentController));
 
 // Ruta para profesor: generar código de vinculación
 router.post('/generate-code/:studentId', authenticate, authorize('TEACHER'), parentController.generateParentLinkCode);

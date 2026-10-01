@@ -7,6 +7,7 @@ import { config_app } from './env.js';
 import { OAUTH_STATE_COOKIE_NAME, verifyOAuthState } from '../utils/oauth-state.js';
 import { isDuplicateEntry } from '../utils/errors.js';
 import { revokeAllUserTokens } from '../utils/jwt.js';
+import { teacherVerificationService } from '../services/teacherVerification.service.js';
 
 type UserRole = 'TEACHER' | 'STUDENT' | 'PARENT';
 
@@ -138,6 +139,7 @@ export const configurePassport = () => {
             // Tiene rol seleccionado - crear usuario
             const newUserId = uuidv4();
             const now = new Date();
+            const teacherFields = selectedRole === 'TEACHER' ? await teacherVerificationService.initialStatusFor(normalizedEmail) : {};
 
             try {
               await db.transaction(async (tx) => {
@@ -149,6 +151,7 @@ export const configurePassport = () => {
                   lastName: normalizedLastName,
                   password: '', // No password para usuarios de Google
                   role: selectedRole as UserRole,
+                  ...teacherFields,
                   provider: 'GOOGLE',
                   avatarUrl: normalizedAvatarUrl,
                   isActive: true,

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { parentService } from '../services/parent.service.js';
 import { passwordSchema } from '../utils/passwordPolicy.js';
+import { AppError } from '../utils/errors.js';
 
 // ==================== VALIDATION SCHEMAS ====================
 
@@ -174,6 +175,10 @@ class ParentController {
       const result = await parentService.linkChild(profile.id, validation.data.linkCode);
       res.json({ success: true, data: result });
     } catch (error) {
+      if (error instanceof AppError) {
+        res.status(error.statusCode).json({ success: false, message: error.message });
+        return;
+      }
       handleControllerError(res, error, 'Error al vincular hijo');
     }
   }
@@ -386,6 +391,42 @@ class ParentController {
       res.json(report);
     } catch (error) {
       handleControllerError(res, error, 'Error al generar informe IA');
+    }
+  }
+
+  // Familia: solicitudes pendientes
+  async getPendingLinks(req: Request, res: Response) {
+    try {
+      const profile = await ensureParentProfile(req, res);
+      if (!profile) return;
+      res.json({ success: true, data: await parentService.getPendingLinks(profile.id) });
+    } catch (error) {
+      handleControllerError(res, error, 'Error al obtener solicitudes');
+    }
+  }
+
+  // Docente: familias por aprobar
+  async getPendingApprovals(req: Request, res: Response) {
+    try {
+      res.json({ success: true, data: await parentService.getPendingApprovals(req.user!.id) });
+    } catch (error) {
+      handleControllerError(res, error, 'Error al obtener solicitudes de familias');
+    }
+  }
+
+  async reviewLink(req: Request, res: Response) {
+    try {
+      const params = z.object({ linkId: z.string().uuid() }).safeParse(req.params);
+      if (!params.success) return handleValidationError(res, params.error);
+      const approved = req.path.endsWith('/approve');
+      await parentService.reviewLink(req.user!.id, params.data.linkId, approved);
+      res.json({ success: true, message: approved ? 'Familia aprobada' : 'Solicitud rechazada' });
+    } catch (error) {
+      if (error instanceof AppError) {
+        res.status(error.statusCode).json({ success: false, message: error.message });
+        return;
+      }
+      handleControllerError(res, error, 'Error al revisar la solicitud');
     }
   }
 }

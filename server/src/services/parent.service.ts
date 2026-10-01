@@ -26,6 +26,8 @@ import bcrypt from 'bcryptjs';
 import { gradeService } from './grade.service.js';
 import { generateRandomCode } from '../utils/helpers.js';
 import { teacherOwnsClassroom } from '../utils/access.js';
+import { teacherVerificationService } from './teacherVerification.service.js';
+import { ConflictError, NotFoundError } from '../utils/errors.js';
 import { createGenAI } from '../utils/aiClient.js';
 
 // Marcador que sustituye al nombre del menor en los prompts enviados a la IA (minimización de datos).
@@ -185,6 +187,9 @@ class ParentService {
     if (!student) {
       throw new Error('Código de vinculación inválido');
     }
+
+    // Solo clases de docentes verificados reciben familias.
+    await teacherVerificationService.assertClassroomAcceptsAccounts(student.classroomId);
     
     // Verificar si ya existe un vínculo
     const existingLink = await db.select()
@@ -198,16 +203,15 @@ class ParentService {
       if (existingLink[0].status === 'ACTIVE') {
         throw new Error('Este estudiante ya está vinculado a tu cuenta');
       }
-      // Reactivar vínculo revocado
+      if (existingLink[0].status === 'PENDING') {
+        throw new ConflictError('Ya enviaste esta solicitud. Espera a que el docente la apruebe.');
+      }
+      // Vínculo revocado: vuelve a pedir aprobación.
       await db.update(parentStudentLinks)
-        .set({ 
-          status: 'ACTIVE', 
-          linkedAt: now,
-          updatedAt: now 
-        })
+        .set({ status: 'PENDING', linkedAt: null, updatedAt: now })
         .where(eq(parentStudentLinks.id, existingLink[0].id));
       
-      return { linked: true, studentId: student.id };
+      return { linked: false, pending: true, studentId: student.id };
     }
     
     // Crear nuevo vínculo
@@ -216,16 +220,71 @@ class ParentService {
       id: linkId,
       parentProfileId,
       studentProfileId: student.id,
-      status: 'ACTIVE',
+      // El docente confirma que es la familia de su alumno antes de que vea nada.
+      status: 'PENDING',
       linkCode,
-      linkedAt: now,
+      linkedAt: null,
       createdAt: now,
       updatedAt: now,
     });
     
-    return { linked: true, studentId: student.id, linkId };
+    return { linked: false, pending: true, studentId: student.id, linkId };
   }
   
+  /** Solicitudes de la familia que esperan al docente (la familia las ve como "esperando aprobación"). */
+  async getPendingLinks(parentProfileId: string) {
+    return db.select({
+      linkId: parentStudentLinks.id,
+      studentName: studentProfiles.displayName,
+      classroomName: classrooms.name,
+      createdAt: parentStudentLinks.createdAt,
+    })
+      .from(parentStudentLinks)
+      .innerJoin(studentProfiles, eq(parentStudentLinks.studentProfileId, studentProfiles.id))
+      .innerJoin(classrooms, eq(studentProfiles.classroomId, classrooms.id))
+      .where(and(eq(parentStudentLinks.parentProfileId, parentProfileId), eq(parentStudentLinks.status, 'PENDING')))
+      .orderBy(desc(parentStudentLinks.createdAt));
+  }
+
+  /** Docente: familias que pidieron vincularse a alumnos de sus clases. */
+  async getPendingApprovals(teacherId: string) {
+    return db.select({
+      linkId: parentStudentLinks.id,
+      parentFirstName: users.firstName,
+      parentLastName: users.lastName,
+      parentEmail: users.email,
+      relationship: parentProfiles.relationship,
+      studentName: studentProfiles.displayName,
+      studentCharacterName: studentProfiles.characterName,
+      classroomId: classrooms.id,
+      classroomName: classrooms.name,
+      createdAt: parentStudentLinks.createdAt,
+    })
+      .from(parentStudentLinks)
+      .innerJoin(parentProfiles, eq(parentStudentLinks.parentProfileId, parentProfiles.id))
+      .innerJoin(users, eq(parentProfiles.userId, users.id))
+      .innerJoin(studentProfiles, eq(parentStudentLinks.studentProfileId, studentProfiles.id))
+      .innerJoin(classrooms, eq(studentProfiles.classroomId, classrooms.id))
+      .where(and(eq(classrooms.teacherId, teacherId), eq(parentStudentLinks.status, 'PENDING')))
+      .orderBy(desc(parentStudentLinks.createdAt));
+  }
+
+  /** Docente: aprobar o rechazar una solicitud de una clase propia. */
+  async reviewLink(teacherId: string, linkId: string, approved: boolean) {
+    const [row] = await db.select({ id: parentStudentLinks.id, status: parentStudentLinks.status, teacherId: classrooms.teacherId })
+      .from(parentStudentLinks)
+      .innerJoin(studentProfiles, eq(parentStudentLinks.studentProfileId, studentProfiles.id))
+      .innerJoin(classrooms, eq(studentProfiles.classroomId, classrooms.id))
+      .where(eq(parentStudentLinks.id, linkId));
+    // Sin distinguir "no existe" de "no es tuya": no se revela nada de otras clases.
+    if (!row || row.teacherId !== teacherId) throw new NotFoundError('Solicitud no encontrada');
+    if (row.status !== 'PENDING') throw new ConflictError('Esta solicitud ya fue atendida');
+    const now = new Date();
+    await db.update(parentStudentLinks)
+      .set(approved ? { status: 'ACTIVE', linkedAt: now, updatedAt: now } : { status: 'REVOKED', updatedAt: now })
+      .where(and(eq(parentStudentLinks.id, linkId), eq(parentStudentLinks.status, 'PENDING')));
+  }
+
   // Obtener lista de hijos vinculados (batched — no N+1)
   async getChildren(parentProfileId: string): Promise<ChildSummary[]> {
     const links = await db.select({

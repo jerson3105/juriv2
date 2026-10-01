@@ -2,6 +2,7 @@ import { db } from '../db/index.js';
 import { schools, schoolMembers, schoolVerifications, classrooms, users, schoolBehaviors, behaviors, schoolBadges, badges, curriculumAreas, pointLogs, attendanceRecords, studentProfiles, studentGrades } from '../db/schema.js';
 import { eq, and, like, count, sql, desc, ne, inArray, gte, lte } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
+import { teacherVerificationService } from './teacherVerification.service.js';
 
 interface CreateSchoolData {
   name: string;
@@ -226,6 +227,10 @@ export class SchoolService {
         updatedAt: now,
       })
       .where(eq(schoolMembers.id, memberId));
+    if (approved) {
+      const [member] = await db.select({ userId: schoolMembers.userId }).from(schoolMembers).where(eq(schoolMembers.id, memberId));
+      if (member) await teacherVerificationService.markVerified(member.userId, 'SCHOOL');
+    }
   }
 
   // Obtener solicitudes pendientes para el owner de una escuela
@@ -439,6 +444,8 @@ export class SchoolService {
           eq(schoolMembers.schoolId, verification.schoolId),
           eq(schoolMembers.userId, verification.userId)
         ));
+      // El equipo de Juried verificó la escuela y a su responsable.
+      await teacherVerificationService.markVerified(verification.userId, 'ADMIN');
     } else {
       // Rechazar al miembro
       await db.update(schoolMembers)

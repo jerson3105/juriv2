@@ -7,6 +7,7 @@ import { cache } from '../utils/cache.js';
 import { OAUTH_STATE_COOKIE_NAME } from '../utils/oauth-state.js';
 import { passwordSchema } from '../utils/passwordPolicy.js';
 import { AppError } from '../utils/errors.js';
+import { teacherVerificationService } from '../services/teacherVerification.service.js';
 
 // Schema de validación de contraseña robusta
 
@@ -315,6 +316,11 @@ const handleValidationError = (res: Response, error: z.ZodError) => {
 const handleAuthError = (res: Response, error: unknown, fallbackMessage = 'Error interno del servidor') => {
   if (error instanceof z.ZodError) {
     handleValidationError(res, error);
+    return;
+  }
+
+  if (error instanceof AppError) {
+    res.status(error.statusCode).json({ success: false, message: error.statusCode >= 500 ? fallbackMessage : error.message });
     return;
   }
 
@@ -874,5 +880,30 @@ export const verifyJoinCode = async (req: Request, res: Response): Promise<void>
     res.json({ success: true, data: result });
   } catch (error) {
     handleAuthError(res, error, 'No se pudo revisar el código');
+  }
+};
+
+/**
+ * GET /api/auth/teacher-status — Estado de verificación del docente.
+ * POST /api/auth/teacher-status/request — Pedir revisión al equipo de Juried.
+ */
+export const getTeacherStatus = async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await teacherVerificationService.getStatus(req.user!.id) });
+  } catch (error) {
+    handleAuthError(res, error, 'No se pudo obtener el estado');
+  }
+};
+
+export const requestTeacherReview = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { note } = z.object({ note: z.string().trim().min(10, 'Cuéntanos tu colegio y tu curso').max(500) }).parse(req.body);
+    res.json({ success: true, data: await teacherVerificationService.requestReview(req.user!.id, note) });
+  } catch (error) {
+    if (error instanceof AppError) {
+      res.status(error.statusCode).json({ success: false, message: error.message });
+      return;
+    }
+    handleAuthError(res, error, 'No se pudo enviar la solicitud');
   }
 };

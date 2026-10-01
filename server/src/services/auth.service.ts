@@ -10,6 +10,7 @@ import { avatarService } from './avatar.service.js';
 import { studentService } from './student.service.js';
 import { ConflictError, isDuplicateEntry } from '../utils/errors.js';
 import { maskPersonName } from '../utils/helpers.js';
+import { teacherVerificationService, UNVERIFIED_CLASS_MESSAGE } from './teacherVerification.service.js';
 
 // Tipos
 type UserRole = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'PARENT';
@@ -111,6 +112,8 @@ export const register = async (input: RegisterInput): Promise<AuthResponse> => {
   const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
   const now = new Date();
   const userId = uuidv4();
+  // Docente: nace sin verificar (salvo correo de un dominio institucional).
+  const teacherFields = role === 'TEACHER' ? await teacherVerificationService.initialStatusFor(normalizedEmail) : {};
 
   try {
     await db.transaction(async (tx) => {
@@ -121,6 +124,7 @@ export const register = async (input: RegisterInput): Promise<AuthResponse> => {
         firstName: normalizedFirstName,
         lastName: normalizedLastName,
         role,
+        ...teacherFields,
         provider: 'LOCAL',
         isActive: true,
         createdAt: now,
@@ -169,7 +173,7 @@ export const register = async (input: RegisterInput): Promise<AuthResponse> => {
 };
 
 export type JoinCodeVerification =
-  | { type: 'classroom'; classroomName: string; teacherName: string | null; open: boolean }
+  | { type: 'classroom'; classroomName: string; teacherName: string | null; open: boolean; teacherVerified: boolean; message?: string }
   | ({ type: 'student' } & StudentCodeVerificationResult);
 
 /**
@@ -180,9 +184,10 @@ export const verifyJoinCode = async (code: string): Promise<JoinCodeVerification
   const normalizedCode = normalizeStudentCode(code).replace(/[^A-Z0-9]/g, '');
   const classroom = await db.query.classrooms.findFirst({
     where: eq(classrooms.code, normalizedCode),
-    columns: { name: true, teacherId: true, isActive: true, acceptingStudents: true },
+    columns: { id: true, name: true, teacherId: true, isActive: true, acceptingStudents: true },
   });
   if (classroom) {
+    const teacherVerified = await teacherVerificationService.isVerified(classroom.teacherId);
     const teacher = await db.query.users.findFirst({
       where: eq(users.id, classroom.teacherId),
       columns: { firstName: true, lastName: true },
@@ -192,6 +197,8 @@ export const verifyJoinCode = async (code: string): Promise<JoinCodeVerification
       classroomName: classroom.name,
       teacherName: teacher ? maskPersonName(`${teacher.firstName} ${teacher.lastName}`) : null,
       open: classroom.isActive && classroom.acceptingStudents,
+      teacherVerified,
+      ...(teacherVerified ? {} : { message: UNVERIFIED_CLASS_MESSAGE }),
     };
   }
   const student = await verifyStudentRegistrationCode(normalizedCode);
@@ -246,7 +253,7 @@ export const registerStudentWithCode = async (input: {
   // inventado, la respuesta delataba si el correo era de un docente o de un alumno).
   const codeProfile = await db.query.studentProfiles.findFirst({
     where: and(eq(studentProfiles.linkCode, normalizedCode), eq(studentProfiles.isActive, true)),
-    columns: { userId: true },
+    columns: { userId: true, classroomId: true },
   });
   if (!codeProfile) {
     throw new Error('Código inválido');
@@ -254,6 +261,7 @@ export const registerStudentWithCode = async (input: {
   if (codeProfile.userId) {
     throw new Error('Este código ya fue usado');
   }
+  await teacherVerificationService.assertClassroomAcceptsAccounts(codeProfile.classroomId);
 
   const existingUser = await db.query.users.findFirst({
     where: eq(users.email, normalizedEmail),
@@ -835,6 +843,7 @@ export const completeGoogleRegistration = async (googleData: {
   const newUserId = uuidv4();
   const now = new Date();
 
+  const teacherFields = role === 'TEACHER' ? await teacherVerificationService.initialStatusFor(normalizedEmail) : {};
   try {
     await db.transaction(async (tx) => {
       await tx.insert(users).values({
@@ -845,6 +854,7 @@ export const completeGoogleRegistration = async (googleData: {
         lastName: normalizedLastName,
         password: '',
         role,
+        ...teacherFields,
         provider: 'GOOGLE',
         avatarUrl: normalizedAvatarUrl,
         isActive: true,
@@ -931,7 +941,9 @@ export const switchTeacherToStudent = async (userId: string): Promise<AuthRespon
     await classroomService.delete(classroom.id, userId);
   }
 
-  await db.update(users).set({ role: 'STUDENT', updatedAt: new Date() }).where(eq(users.id, userId));
+  await db.update(users)
+    .set({ role: 'STUDENT', teacherStatus: null, teacherVerifiedVia: null, teacherVerifiedAt: null, updatedAt: new Date() })
+    .where(eq(users.id, userId));
   cache.delete(CACHE_KEYS.user(userId));
   await revokeAllUserTokens(userId);
 

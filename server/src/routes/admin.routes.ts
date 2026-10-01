@@ -67,6 +67,13 @@ router.get('/users', adminController.getUsers);
 router.post('/users/teacher', adminController.createTeacher);
 router.patch('/users/:userId/role', adminController.updateUserRole);
 
+// Verificación de docentes y dominios institucionales
+router.get('/teacher-verifications', adminController.listTeacherVerifications);
+router.post('/teacher-verifications/:userId', adminController.reviewTeacherVerification);
+router.get('/verified-domains', adminController.listVerifiedDomains);
+router.post('/verified-domains', adminController.addVerifiedDomain);
+router.delete('/verified-domains/:domainId', adminController.removeVerifiedDomain);
+
 // ==================== GESTIÓN DE ITEMS DE AVATAR ====================
 router.get('/avatar-items', adminController.getAvatarItems);
 router.post('/avatar-items', upload.single('image'), verifyUploadedFile, adminController.createAvatarItem);

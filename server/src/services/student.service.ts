@@ -18,6 +18,7 @@ import { badgeService } from './badge.service.js';
 import { storyService } from './story.service.js';
 import { prepareForTx } from '../utils/notificationEmitter.js';
 import { generateRandomCode, maskPersonName } from '../utils/helpers.js';
+import { teacherVerificationService } from './teacherVerification.service.js';
 import { applyPointDeltas } from '../utils/points.js';
 
 type CharacterClass = 'GUARDIAN' | 'ARCANE' | 'EXPLORER' | 'ALCHEMIST';
@@ -111,6 +112,8 @@ export class StudentService {
     if (!classroom.acceptingStudents) {
       throw new Error('Esta clase no está aceptando alumnos nuevos. Pídele a tu profesor que lo active.');
     }
+
+    await teacherVerificationService.assertClassroomAcceptsAccounts(classroom.id);
 
     const id = uuidv4();
     const now = new Date();
@@ -1012,6 +1015,8 @@ export class StudentService {
     if (profile.userId) {
       throw new Error('Este perfil ya está vinculado a una cuenta');
     }
+
+    await teacherVerificationService.assertClassroomAcceptsAccounts(profile.classroomId);
 
     // Verificar que el usuario no esté ya en esta clase con otro perfil
     const existingProfile = await db.query.studentProfiles.findFirst({

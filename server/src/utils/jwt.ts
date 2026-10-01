@@ -1,8 +1,8 @@
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
-import { eq, lt, or } from 'drizzle-orm';
+import { and, eq, lt, or, sql } from 'drizzle-orm';
 import { config_app } from '../config/env.js';
-import { db, refreshTokens } from '../db/index.js';
+import { db, refreshTokens, users } from '../db/index.js';
 import { v4 as uuidv4 } from 'uuid';
 import { getIO } from './notificationEmitter.js';
 
@@ -81,6 +81,11 @@ export const generateTokenPair = async (payload: TokenPayload, tx: any = db): Pr
     expiresAt,
     createdAt: new Date(),
   });
+
+  // Último ingreso (para retirar cuentas docentes sin verificar tras 180 días sin uso).
+  await tx.update(users)
+    .set({ lastLoginAt: new Date() })
+    .where(and(eq(users.id, payload.userId), sql`(${users.lastLoginAt} IS NULL OR ${users.lastLoginAt} < NOW() - INTERVAL 1 DAY)`));
   
   return { accessToken, refreshToken };
 };
