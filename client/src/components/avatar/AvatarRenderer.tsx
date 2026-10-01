@@ -32,9 +32,11 @@ export interface EquippedItem {
 interface AvatarRendererProps {
   gender: AvatarGender;
   equippedItems?: EquippedItem[];
-  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'hero';
   className?: string;
   showBase?: boolean;
+  /** Nombre accesible del personaje: el lector lo lee como una imagen, no capa por capa. */
+  label?: string;
 }
 
 // Proporción original: 255x444 (ratio ~1:1.74)
@@ -44,6 +46,7 @@ const SIZE_CLASSES = {
   md: 'w-32 h-[224px]',      // 128x224
   lg: 'w-48 h-[336px]',      // 192x336
   xl: 'w-[255px] h-[444px]', // Tamaño exacto 255x444
+  hero: 'w-32 h-[224px] xl:w-48 xl:h-[336px]', // Inicio del alumno: md y, en pantallas anchas, lg
 };
 
 export const AvatarRenderer = ({
@@ -52,7 +55,10 @@ export const AvatarRenderer = ({
   size = 'md',
   className = '',
   showBase = true,
+  label,
 }: AvatarRendererProps) => {
+  // Con nombre accesible, las capas son decorativas (alt vacío).
+  const alt = (text: string) => (label ? '' : text);
   // Ordenar items por capa
   const sortedItems = useMemo(() => {
     return [...equippedItems].sort((a, b) => {
@@ -65,7 +71,7 @@ export const AvatarRenderer = ({
   const basePath = `/avatars/base/${gender.toLowerCase()}.png`;
 
   return (
-    <div className={`relative ${SIZE_CLASSES[size]} ${className}`}>
+    <div className={`relative ${SIZE_CLASSES[size]} ${className}`} {...(label ? { role: 'img', 'aria-label': label } : {})}>
       {/* Fondo (BACKGROUND) - cubre todo el área, detrás de todo */}
       {sortedItems
         .filter(item => item.slot === 'BACKGROUND')
@@ -77,7 +83,7 @@ export const AvatarRenderer = ({
           >
             <img
               src={item.imagePath}
-              alt="Fondo"
+              alt={alt('Fondo')}
               className="w-full h-full object-cover"
             />
           </div>
@@ -90,7 +96,7 @@ export const AvatarRenderer = ({
           <img
             key={`back-${item.slot}-${index}`}
             src={item.imagePath}
-            alt={item.slot}
+            alt={alt(item.slot)}
             className="absolute inset-0 w-full h-full object-contain"
             style={{ zIndex: BASE_Z_INDEX + (item.layerOrder ?? LAYER_ORDER[item.slot] ?? 0) }}
           />
@@ -100,7 +106,7 @@ export const AvatarRenderer = ({
       {showBase && (
         <img
           src={basePath}
-          alt="Avatar base"
+          alt={alt('Avatar base')}
           className="absolute inset-0 w-full h-full object-contain"
           style={{ zIndex: BASE_Z_INDEX }}
         />
@@ -113,7 +119,7 @@ export const AvatarRenderer = ({
           <img
             key={`front-${item.slot}-${index}`}
             src={item.imagePath}
-            alt={item.slot}
+            alt={alt(item.slot)}
             className="absolute inset-0 w-full h-full object-contain"
             style={{ zIndex: BASE_Z_INDEX + (item.layerOrder ?? LAYER_ORDER[item.slot] ?? 0) }}
           />

@@ -81,6 +81,27 @@ export interface StudentCelebrations {
   until: string;
 }
 
+/** Una línea de "Lo nuevo": puntos agrupados por motivo (reason null si la clase no muestra motivos). */
+export interface StudentNewsLine {
+  pointType: 'XP' | 'HP' | 'GP';
+  amount: number;
+  count: number;
+  reason: string | null;
+}
+
+export interface StudentNews {
+  /** Corte anterior; null = primera visita ("Lo que ya ganaste en esta clase"). */
+  since: string | null;
+  /** Instante de esta foto: se envía al marcarla como vista. */
+  until: string;
+  everEarned: boolean;
+  totals: { xp: number; gp: number };
+  gains: StudentNewsLine[];
+  losses: StudentNewsLine[];
+  badges: { id: string; name: string; icon: string; customImage: string | null; rewardXp: number; rewardGp: number }[];
+  level: { from: number; to: number } | null;
+}
+
 export interface PointLog {
   id: string;
   studentId: string;
@@ -178,6 +199,16 @@ export const studentApi = {
 
   markCelebrationsSeen: async (profileId: string, until: string): Promise<void> => {
     await api.post(`/students/profiles/${profileId}/celebrations/seen`, { until });
+  },
+
+  // "Lo nuevo" del inicio: lo ganado en esta clase desde la última visita, y marcarlo como visto
+  getNews: async (profileId: string): Promise<StudentNews> => {
+    const response = await api.get(`/students/profiles/${profileId}/news`);
+    return response.data.data;
+  },
+
+  markNewsSeen: async (profileId: string, until: string): Promise<void> => {
+    await api.post(`/students/profiles/${profileId}/news/seen`, { until });
   },
 
   verifyCode: async (code: string): Promise<{

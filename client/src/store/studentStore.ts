@@ -9,6 +9,12 @@ interface StudentState {
    */
   pendingClassCode: string | null;
   setPendingClassCode: (code: string | null) => void;
+  /**
+   * Ya terminó lo que ocurre al entrar (historia, premio de racha y celebración): el inicio puede
+   * dar "Lo nuevo" por visto. Lo mantiene StudentEntryEffects.
+   */
+  entrySettled: boolean;
+  setEntrySettled: (settled: boolean) => void;
 }
 
 export const useStudentStore = create<StudentState>((set) => ({
@@ -16,4 +22,6 @@ export const useStudentStore = create<StudentState>((set) => ({
   setSelectedClassIndex: (index) => set({ selectedClassIndex: index }),
   pendingClassCode: null,
   setPendingClassCode: (code) => set({ pendingClassCode: code }),
+  entrySettled: false,
+  setEntrySettled: (settled) => set({ entrySettled: settled }),
 }));

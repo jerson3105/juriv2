@@ -32,7 +32,7 @@ import {
   Plus,
 } from 'lucide-react';
 import { Hearts } from '../energy/EnergyMeter';
-import { isInitialLevel } from '../energy/energyHelpers';
+import { isYoungLevel } from '../energy/energyHelpers';
 import { useAuthStore } from '../../store/authStore';
 import { accountLabel } from '../auth/authHelpers';
 import { useStudentStore } from '../../store/studentStore';
@@ -210,7 +210,7 @@ export const MainLayout = () => {
       subItems: [
         {
           path: '/my-class',
-          label: 'Mi Clase',
+          label: 'Inicio',
           icon: <Users size={14} />,
           gradient: 'from-emerald-500 to-teal-500',
           isActive: matchesPath('/my-class'),
@@ -732,8 +732,9 @@ export const MainLayout = () => {
                 <Menu size={20} aria-hidden="true" />
               </button>
 
-              {/* Nivel, energía y oro de la clase (el nivel con el sistema de niveles de la clase) */}
-              {!isTeacher && currentProfile && !isStudentOverviewZone && (() => {
+              {/* Nivel, energía y oro de la clase (el nivel con el sistema de niveles de la clase).
+                  En el Inicio no se repiten: los muestra el bloque del personaje. */}
+              {!isTeacher && currentProfile && !isStudentOverviewZone && !matchesPath('/my-class') && (() => {
                 const classroom = currentProfile.classroom as { xpPerLevel?: number; maxHp?: number; gradeLevel?: string | null };
                 const level = levelProgress(currentProfile.xp, currentProfile.level, classroom.xpPerLevel || 100);
                 const maxHp = classroom.maxHp || 100;
@@ -753,7 +754,7 @@ export const MainLayout = () => {
                         <Moon size={13} className="fill-current" aria-hidden="true" />
                         <span>Descansando</span>
                       </div>
-                    ) : isInitialLevel(classroom.gradeLevel) ? (
+                    ) : isYoungLevel(classroom.gradeLevel) ? (
                       <div className="flex items-center px-2 py-1 rounded-lg bg-red-50 dark:bg-red-900/20">
                         <Hearts hp={currentProfile.hp} maxHp={maxHp} />
                       </div>
@@ -775,7 +776,7 @@ export const MainLayout = () => {
                 );
               })()}
 
-              {(isTeacher || isStudentOverviewZone || (!isTeacher && !currentProfile)) && <div className="flex-1" />}
+              {(isTeacher || isStudentOverviewZone || (!isTeacher && !currentProfile) || (!isTeacher && matchesPath('/my-class'))) && <div className="flex-1" />}
             </div>
 
             <div className="ml-auto flex items-center gap-2 md:gap-3">

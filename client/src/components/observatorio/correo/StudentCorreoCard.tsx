@@ -11,12 +11,14 @@ const formatDate = (iso: string) => new Date(iso).toLocaleDateString('es-PE', { 
 
 /**
  * Correo Estelar para el alumno: a quién escribirle (si hay Correo abierto en su clase) y las
- * cartas aprobadas que recibió, sin autor.
+ * cartas aprobadas que recibió, sin autor. `embedded`: dentro de un modal (sin marco ni título).
+ * El nombre del destinatario queda oculto hasta pedirlo (el compañero de al lado podría leerlo).
  */
-export const StudentCorreoCard = ({ profileId }: { profileId: string }) => {
+export const StudentCorreoCard = ({ profileId, embedded = false }: { profileId: string; embedded?: boolean }) => {
   const queryClient = useQueryClient();
   const textareaId = useId();
   const [message, setMessage] = useState('');
+  const [showName, setShowName] = useState(false);
   const { data } = useQuery({
     queryKey: correoKeys.mine(profileId),
     queryFn: () => correoApi.mine(profileId),
@@ -38,14 +40,28 @@ export const StudentCorreoCard = ({ profileId }: { profileId: string }) => {
   const canWrite = !!current && (!current.sent || current.sent.status === 'REJECTED');
 
   return (
-    <section aria-labelledby="correo-title" className="mb-4 rounded-2xl border border-indigo-200 bg-white p-4 shadow-sm dark:border-indigo-400/30 dark:bg-gray-900">
-      <h2 id="correo-title" className="text-base font-bold text-gray-900 dark:text-white">💌 Correo Estelar</h2>
+    <section
+      aria-labelledby={embedded ? undefined : 'correo-title'}
+      aria-label={embedded ? 'Correo Estelar' : undefined}
+      className={embedded ? '' : 'mb-4 rounded-2xl border border-indigo-200 bg-white p-4 shadow-sm dark:border-indigo-400/30 dark:bg-gray-900'}
+    >
+      {!embedded && <h2 id="correo-title" className="text-base font-bold text-gray-900 dark:text-white">💌 Correo Estelar</h2>}
 
       {current && (
-        <div className="mt-2">
-          <p className="text-sm text-gray-800 dark:text-gray-100">
-            Tu estrella secreta es <strong className="text-indigo-800 dark:text-indigo-200">{current.recipientName}</strong>. ¡Es un secreto!
-          </p>
+        <div className={embedded ? '' : 'mt-2'}>
+          {showName ? (
+            <p className="text-sm text-gray-800 dark:text-gray-100">
+              Tu estrella secreta es <strong className="text-indigo-800 dark:text-indigo-200">{current.recipientName}</strong>. ¡Es un secreto!
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowName(true)}
+              className="inline-flex min-h-[44px] items-center rounded-xl bg-indigo-50 px-4 text-sm font-semibold text-indigo-800 hover:bg-indigo-100 dark:bg-indigo-500/15 dark:text-indigo-100 dark:hover:bg-indigo-500/25"
+            >
+              Ver a quién le escribes
+            </button>
+          )}
           <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">«{current.prompt}»</p>
           {current.sent && current.sent.status !== 'REJECTED' ? (
             <p className="mt-2 rounded-xl bg-indigo-50 px-3 py-2 text-sm text-indigo-900 dark:bg-indigo-500/15 dark:text-indigo-100" role="status">

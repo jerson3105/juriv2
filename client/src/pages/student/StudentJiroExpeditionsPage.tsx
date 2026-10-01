@@ -60,7 +60,7 @@ export const StudentJiroExpeditionsPage = () => {
           className="flex items-center gap-1.5 sm:gap-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 mb-3 sm:mb-4 transition-colors text-sm"
         >
           <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
-          Volver a mi clase
+          Volver al inicio
         </button>
         
         <div className="flex items-center gap-2 sm:gap-3">

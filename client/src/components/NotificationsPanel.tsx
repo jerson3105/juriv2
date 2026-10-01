@@ -6,6 +6,9 @@ import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/authStore';
 import { useNotifications } from '../contexts/NotificationContext';
 
+/** El globo cuenta lo importante; los puntos del día se ven en "Lo nuevo" del inicio. */
+const countsInBell = (n: Pick<Notification, 'type'>) => n.type !== 'POINTS';
+
 interface NotificationsPanelProps {
   isOpen: boolean;
   onClose: () => void;
@@ -25,9 +28,10 @@ export const NotificationsPanel = ({ isOpen, onClose, classroomId }: Notificatio
 
   const markReadMutation = useMutation({
     mutationFn: shopApi.markNotificationRead,
-    onMutate: () => {
-      // Optimistic: decrement count
-      setUnreadCount(Math.max(0, contextUnreadCount - 1));
+    onMutate: (notificationId: string) => {
+      // Optimistic: decrement count (los puntos no cuentan en la campana)
+      const target = notifications.find((n) => n.id === notificationId);
+      if (target && countsInBell(target)) setUnreadCount(Math.max(0, contextUnreadCount - 1));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
@@ -73,6 +77,8 @@ export const NotificationsPanel = ({ isOpen, onClose, classroomId }: Notificatio
   });
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
+  // Mismo criterio que el globo de la campana (servidor: countsInBell).
+  const bellCount = notifications.filter((n) => !n.isRead && countsInBell(n)).length;
 
   if (!isOpen) return null;
 
@@ -100,9 +106,9 @@ export const NotificationsPanel = ({ isOpen, onClose, classroomId }: Notificatio
               <h2 className="text-xl font-bold text-gray-900 dark:text-white">
                 Notificaciones
               </h2>
-              {unreadCount > 0 && (
+              {bellCount > 0 && (
                 <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
-                  {unreadCount}
+                  {bellCount}
                 </span>
               )}
             </div>

@@ -9,14 +9,15 @@ export const RestingPill = ({ compact = false }: { compact?: boolean }) => (
   </span>
 );
 
-/** Inicial: 5 corazones, sin números. */
-export const Hearts = ({ hp, maxHp }: { hp: number; maxHp: number }) => {
+/** Inicial: 5 corazones, sin números. `night`: sobre fondo oscuro (inicio del alumno). */
+export const Hearts = ({ hp, maxHp, tone = 'light' }: { hp: number; maxHp: number; tone?: 'light' | 'night' }) => {
   const full = heartsOf(hp, maxHp);
+  const on = tone === 'night' ? 'fill-red-400 text-red-400' : 'fill-red-600 text-red-600 dark:fill-red-400 dark:text-red-400';
+  const off = tone === 'night' ? 'text-gray-400' : 'text-gray-400 dark:text-gray-500';
   return (
     <span className="inline-flex items-center gap-0.5" role="img" aria-label={`Energía: ${full} de 5`}>
       {[0, 1, 2, 3, 4].map((i) => (
-        <Heart key={i} size={14} aria-hidden="true"
-          className={i < full ? 'fill-red-600 text-red-600 dark:fill-red-400 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'} />
+        <Heart key={i} size={14} aria-hidden="true" className={i < full ? on : off} />
       ))}
     </span>
   );

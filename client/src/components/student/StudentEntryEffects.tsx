@@ -9,6 +9,7 @@ import { buildAutoplayItems } from '../story/storyPlayerHelpers';
 import { STORY_UPDATED_EVENT, type StoryUpdateEvent } from '../../hooks/useStoryLive';
 import type { StoryAccent } from '../../lib/storyTheme';
 import { useCelebrationStore } from '../../store/celebrationStore';
+import { useStudentStore } from '../../store/studentStore';
 import { LoginStreakWidget } from './LoginStreakWidget';
 
 type MyClass = Awaited<ReturnType<typeof studentApi.getMyClasses>>[number];
@@ -48,12 +49,14 @@ export const StudentEntryEffects = ({ profile, storyAccent }: { profile: MyClass
     queryKey: ['notifications'],
     queryFn: () => shopApi.getNotifications(),
   });
-  const { data: pendingCelebration } = useQuery({
+  const { data: pendingCelebration, isError: celebrationsFailed } = useQuery({
     queryKey: ['student-celebrations', profile.id],
     queryFn: () => studentApi.getCelebrations(profile.id),
     staleTime: 60_000,
   });
   const celebrate = useCelebrationStore((s) => s.celebrate);
+  const celebrationOpen = useCelebrationStore((s) => s.current !== null);
+  const setEntrySettled = useStudentStore((s) => s.setEntrySettled);
   const shownUntil = useRef<string | null>(null);
   // Orden al entrar, una cosa a la vez: historia → premio del día de racha → celebración.
   const [streakSettled, setStreakSettled] = useState(false);
@@ -91,6 +94,14 @@ export const StudentEntryEffects = ({ profile, storyAccent }: { profile: MyClass
     });
     void studentApi.markCelebrationsSeen(profile.id, until).catch(() => undefined);
   }, [pendingCelebration, profile, storyItems.length, streakSettled, celebrate]);
+
+  // Nada abierto ni por abrir. Va después del efecto anterior: si en este mismo paso se lanzó la
+  // celebración, el estado del store ya la tiene.
+  useEffect(() => {
+    const celebrationsChecked = pendingCelebration !== undefined || celebrationsFailed;
+    setEntrySettled(storyItems.length === 0 && streakSettled && celebrationsChecked && !useCelebrationStore.getState().current);
+  }, [storyItems.length, streakSettled, pendingCelebration, celebrationsFailed, celebrationOpen, setEntrySettled]);
+  useEffect(() => () => setEntrySettled(false), [setEntrySettled]);
 
   return (
     <>

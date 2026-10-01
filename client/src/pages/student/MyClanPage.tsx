@@ -60,7 +60,7 @@ export const MyClanPage = () => {
             className="flex items-center gap-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 mb-4 transition-colors"
           >
             <ArrowLeft size={20} />
-            <span>Volver a mi clase</span>
+            <span>Volver al inicio</span>
           </button>
 
           <div className="flex items-center gap-3">
@@ -104,7 +104,7 @@ export const MyClanPage = () => {
           className="flex items-center gap-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 mb-4 transition-colors"
         >
           <ArrowLeft size={20} />
-          <span>Volver a mi clase</span>
+          <span>Volver al inicio</span>
         </button>
 
         <div className="flex items-center gap-3">

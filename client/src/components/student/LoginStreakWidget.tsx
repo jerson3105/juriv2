@@ -1,39 +1,10 @@
 import { useState, useEffect, useId } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Flame, Gift, Sparkles, Check, ChevronRight } from 'lucide-react';
 import api from '../../lib/api';
 import confetti from 'canvas-confetti';
-
-interface Milestone {
-  day: number;
-  xp: number;
-  gp: number;
-  randomItem: boolean;
-}
-
-interface StreakStatus {
-  enabled: boolean;
-  streak?: {
-    currentStreak: number;
-    longestStreak: number;
-    totalLogins: number;
-    lastLoginDate: string | null;
-    claimedMilestones: number[];
-  };
-  config?: {
-    milestones: Milestone[];
-    dailyXp: number;
-  };
-  nextMilestone?: {
-    day: number;
-    xp: number;
-    gp: number;
-    randomItem: boolean;
-    daysRemaining: number;
-  } | null;
-  canClaimToday?: boolean;
-}
+import { nextGiftOf, useStreakStatus } from './loginStreak';
 
 interface LoginStreakResult {
   streak: {
@@ -72,15 +43,6 @@ interface LoginStreakWidgetProps {
   onSettledChange?: (settled: boolean) => void;
 }
 
-const useStreakStatus = (classroomId: string) => useQuery({
-  queryKey: ['login-streak', classroomId],
-  queryFn: async () => {
-    const { data } = await api.get(`/login-streak/${classroomId}/status`);
-    return data.data as StreakStatus;
-  },
-  enabled: !!classroomId,
-});
-
 export const LoginStreakWidget = ({ classroomId, variant = 'card', paused = false, onSettledChange }: LoginStreakWidgetProps) =>
   variant === 'recorder'
     ? <StreakRecorder classroomId={classroomId} paused={paused} onSettledChange={onSettledChange} />
@@ -92,6 +54,8 @@ const StreakRecorder = ({ classroomId, paused, onSettledChange }: { classroomId:
   const titleId = useId();
   const [rewardData, setRewardData] = useState<LoginStreakResult['rewards'] | null>(null);
   const [newStreak, setNewStreak] = useState(0);
+  // Primer ingreso: "¡Volviste hoy!" haría pensar que alguien entró antes con su cuenta.
+  const [firstDay, setFirstDay] = useState(false);
   const { data: streakStatus, isError } = useStreakStatus(classroomId);
 
   const recordLoginMutation = useMutation({
@@ -103,6 +67,7 @@ const StreakRecorder = ({ classroomId, paused, onSettledChange }: { classroomId:
       if (data.isNewLogin && data.rewards) {
         setRewardData(data.rewards);
         setNewStreak(data.streak.currentStreak);
+        setFirstDay(data.streak.totalLogins <= 1);
         if (data.rewards.milestoneReached) {
           confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, disableForReducedMotion: true });
         }
@@ -165,13 +130,15 @@ const StreakRecorder = ({ classroomId, paused, onSettledChange }: { classroomId:
             <h2 id={titleId} className="text-2xl font-bold mb-2">
               {rewardData.milestoneReached
                 ? `🎉 ¡${rewardData.milestoneReached} días seguidos!`
-                : '🔥 ¡Volviste hoy!'}
+                : firstDay ? '🔥 ¡Tu primer día!' : '🔥 ¡Volviste hoy!'}
             </h2>
 
             <p className="text-white mb-4">
               {rewardData.milestoneReached
                 ? '¡Llegaste a una meta de días seguidos!'
-                : `Llevas ${newStreak} ${newStreak === 1 ? 'día seguido' : 'días seguidos'}.`}
+                : firstDay
+                  ? 'Empezaste tus días seguidos. Vuelve mañana para sumar otro.'
+                  : `Llevas ${newStreak} ${newStreak === 1 ? 'día seguido' : 'días seguidos'}.`}
             </p>
 
             <div className="space-y-2 mb-6">
@@ -234,9 +201,11 @@ const StreakCard = ({ classroomId }: { classroomId: string }) => {
     return null;
   }
 
-  const { streak, config, nextMilestone } = streakStatus;
+  const { streak, config } = streakStatus;
   const currentStreak = streak?.currentStreak || 0;
   const claimedMilestones = streak?.claimedMilestones || [];
+  // El servidor puede anunciar un regalo ya cobrado: no se promete lo que no paga.
+  const nextMilestone = nextGiftOf(streakStatus);
   const milestones = config?.milestones || [];
 
   // Los próximos días para mostrar (centrado en el día actual)

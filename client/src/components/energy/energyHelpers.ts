@@ -8,6 +8,15 @@ export const restingKey = (classroomId: string) => ['recovery', classroomId] as 
 /** Inicial: corazones sin números, recuperación inmediata y sin pausa de tienda. */
 export const isInitialLevel = (gradeLevel?: string | null) => !!gradeLevel && gradeLevel.toUpperCase().startsWith('INICIAL');
 
+/**
+ * Pequeños (inicial a 2.º de primaria): solo para lo visual (menos números, botones grandes).
+ * Las reglas de energía siguen con isInitialLevel.
+ */
+export const isYoungLevel = (gradeLevel?: string | null) => {
+  const level = gradeLevel?.toUpperCase() ?? '';
+  return level.startsWith('INICIAL') || level === 'PRIMARIA_1' || level === 'PRIMARIA_2';
+};
+
 export const isResting = (student: { hp: number }) => student.hp <= 0;
 
 /** Corazones llenos de 5 (al menos 1 mientras quede algo de energía). */

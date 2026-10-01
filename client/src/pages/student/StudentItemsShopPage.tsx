@@ -31,7 +31,7 @@ export const StudentItemsShopPage = () => {
           className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors"
         >
           <ArrowLeft size={20} />
-          <span>Volver a mi clase</span>
+          <span>Volver al inicio</span>
         </button>
 
         <StudentShopPage
