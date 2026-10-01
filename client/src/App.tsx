@@ -28,7 +28,7 @@ const StudentOverviewPage = lazyPage(() => import('./pages/student/StudentOvervi
 const StudentClassesOverviewPage = lazyPage(() => import('./pages/student/StudentClassesOverviewPage').then((m) => ({ default: m.StudentClassesOverviewPage })));
 const StudentSkillsOverviewPage = lazyPage(() => import('./pages/student/StudentSkillsOverviewPage').then((m) => ({ default: m.StudentSkillsOverviewPage })));
 const MyClanPage = lazyPage(() => import('./pages/student/MyClanPage').then((m) => ({ default: m.MyClanPage })));
-const StudentAttendancePage = lazyPage(() => import('./pages/student/StudentAttendancePage').then((m) => ({ default: m.StudentAttendancePage })));
+const StudentCalendarPage = lazyPage(() => import('./pages/student/StudentCalendarPage').then((m) => ({ default: m.StudentCalendarPage })));
 
 // Classroom pages (teacher)
 const StudentsPage = lazyPage(() => import('./pages/classroom/StudentsPage').then((m) => ({ default: m.StudentsPage })));
@@ -283,7 +283,9 @@ function App() {
             <Route path="my-skills" element={<StudentSkillsOverviewPage />} />
             <Route path="join-class" element={<JoinClassPage />} />
             <Route path="my-clan" element={<MyClanPage />} />
-            <Route path="my-attendance" element={<StudentAttendancePage />} />
+            <Route path="my-calendar" element={<StudentCalendarPage />} />
+            {/* "Mi Asistencia" pasó a ser "Mi calendario" */}
+            <Route path="my-attendance" element={<Navigate to="/my-calendar" replace />} />
             <Route path="scrolls" element={<StudentScrollsPage />} />
             <Route path="my-grades" element={<StudentGradesPage />} />
             <Route path="my-progress" element={<StudentProgressPage />} />

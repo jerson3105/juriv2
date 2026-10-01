@@ -24,9 +24,18 @@ export interface AttendanceStats {
   bestStreak?: number;
 }
 
+/** Un día de asistencia del alumno: `day` (AAAA-MM-DD) ya viene calculado; no convertir de zona. */
+export interface MyAttendanceDay {
+  id: string;
+  day: string;
+  status: AttendanceStatus;
+  xpAwarded: number;
+}
+
+/** "Mi calendario": conteos sin porcentaje ni rachas (sin registros revertidos). */
 export interface MyAttendanceData {
-  stats: AttendanceStats;
-  history: AttendanceRecord[];
+  stats: { total: number; present: number; absent: number; late: number; excused: number; totalXpEarned: number };
+  history: MyAttendanceDay[];
 }
 
 export interface BulkAttendanceData {

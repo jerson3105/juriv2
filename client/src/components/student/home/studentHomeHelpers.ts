@@ -23,11 +23,20 @@ export const addDaysKey = (key: string, days: number) => {
   return localDateKey(date);
 };
 
-/** "Hoy", "Mañana" o "sáb 3". */
+/** "Hoy", "Mañana", "sáb 3" o, si es de otro mes, "lun 3 nov". */
 export const dayLabel = (key: string, today: string) => {
   if (key === today) return 'Hoy';
   if (key === addDaysKey(today, 1)) return 'Mañana';
-  return new Date(`${key}T12:00:00`).toLocaleDateString('es', { weekday: 'short', day: 'numeric' }).replace('.', '');
+  const sameMonth = key.slice(0, 7) === today.slice(0, 7);
+  return new Date(`${key}T12:00:00`)
+    .toLocaleDateString('es', sameMonth ? { weekday: 'short', day: 'numeric' } : { weekday: 'short', day: 'numeric', month: 'short' })
+    .replace(/[.,]/g, '');
+};
+
+/** "Jueves 1 de octubre". */
+export const longDayLabel = (key: string) => {
+  const text = new Date(`${key}T12:00:00`).toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long' }).replace(',', '');
+  return text.charAt(0).toUpperCase() + text.slice(1);
 };
 
 /** "el sábado" para frases ("cierra el sábado"). */

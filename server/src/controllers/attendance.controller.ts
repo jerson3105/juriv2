@@ -18,6 +18,10 @@ const parseLocalDate = (dateStr: string): Date => {
   return new Date(`${dateStr}T12:00:00.000Z`);
 };
 
+// Día (AAAA-MM-DD) de un registro en la zona del servidor: recordAttendance lo normaliza a su medianoche local.
+const serverDayKey = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
 const statusSchema = z.enum(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED']);
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida');
 // XP que recibe cada presente (se aplica solo cuando cambia el estado del registro).
@@ -246,43 +250,30 @@ export const attendanceController = {
         return res.status(404).json({ success: false, message: 'Perfil no encontrado' });
       }
 
-      // Obtener estadísticas
       const stats = await attendanceService.getStudentAttendanceStats(profile.id);
-      
-      // Obtener historial completo
       const history = await attendanceService.getStudentAttendanceHistory(profile.id, 365);
 
-      // Calcular racha actual de asistencia
-      let currentStreak = 0;
-      let bestStreak = 0;
-      let tempStreak = 0;
-      
-      // Ordenar por fecha descendente
-      const sortedHistory = [...history].sort((a, b) => 
-        new Date(b.date).getTime() - new Date(a.date).getTime()
-      );
-
-      for (const record of sortedHistory) {
-        if (record.status === 'PRESENT') {
-          tempStreak++;
-          if (tempStreak > bestStreak) bestStreak = tempStreak;
-        } else {
-          if (currentStreak === 0) currentStreak = tempStreak;
-          tempStreak = 0;
-        }
-      }
-      if (currentStreak === 0) currentStreak = tempStreak;
-      if (tempStreak > bestStreak) bestStreak = tempStreak;
-
+      // Para el alumno ("Mi calendario"): conteos sin porcentaje ni rachas, y cada registro con su día
+      // ya calculado en la zona del servidor (la misma con la que se guardó). Convertir la fecha en la
+      // zona del alumno lo corría un día (en prod se guarda 03:00 UTC: en Lima es el día anterior).
+      // Sin el comentario del docente (puede ser una nota privada).
       res.json({
         success: true,
         data: {
           stats: {
-            ...stats,
-            currentStreak,
-            bestStreak,
+            total: stats.total,
+            present: stats.present,
+            absent: stats.absent,
+            late: stats.late,
+            excused: stats.excused,
+            totalXpEarned: stats.totalXpEarned,
           },
-          history,
+          history: history.map((record) => ({
+            id: record.id,
+            day: serverDayKey(new Date(record.date)),
+            status: record.status,
+            xpAwarded: record.xpAwarded ?? 0,
+          })),
         },
       });
     } catch (error) {

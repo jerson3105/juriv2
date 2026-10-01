@@ -66,17 +66,17 @@ export interface TodoItem {
   action?: HomeAction;
 }
 
-const calendarLink: HomeAction = { kind: 'link', to: '/my-attendance', label: 'Ver mi calendario' };
+const calendarLink: HomeAction = { kind: 'link', to: '/my-calendar', label: 'Ver mi calendario' };
 
 // Expediciones de Jiro abiertas y sin terminar, las que cierran antes primero.
-const openJiro = (jiro: JiroItem[]) =>
+export const openJiro = (jiro: JiroItem[]) =>
   jiro
     .filter((e) => (e.status === 'OPEN' || e.status === 'IN_PROGRESS') && e.studentProgress?.status !== 'COMPLETED' && e.studentProgress?.status !== 'PENDING_REVIEW')
     .sort((a, b) => (a.endsAt ?? '9999').localeCompare(b.endsAt ?? '9999'));
 
-const jiroEndsKey = (e: JiroItem) => (e.endsAt ? localDateKey(new Date(e.endsAt)) : null);
-const stations = (e: JiroItem) => `${e.studentProgress?.completedStations ?? 0} de ${plural(e.totalStations, 'estación', 'estaciones')}`;
-const jiroAction = (e: JiroItem): HomeAction => ({
+export const jiroEndsKey = (e: JiroItem) => (e.endsAt ? localDateKey(new Date(e.endsAt)) : null);
+export const stations = (e: JiroItem) => `${e.studentProgress?.completedStations ?? 0} de ${plural(e.totalStations, 'estación', 'estaciones')}`;
+export const jiroAction = (e: JiroItem): HomeAction => ({
   kind: 'link',
   to: `/jiro-expedition/${e.id}`,
   label: e.studentProgress && e.studentProgress.status !== 'NOT_STARTED' ? 'Continuar' : 'Empezar',

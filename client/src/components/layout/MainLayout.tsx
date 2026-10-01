@@ -146,7 +146,7 @@ export const MainLayout = () => {
   const isStudentClassThemeRoute = !isTeacher && [
     { path: '/my-class', mode: 'exact' as const },
     { path: '/my-clan', mode: 'exact' as const },
-    { path: '/my-attendance', mode: 'exact' as const },
+    { path: '/my-calendar', mode: 'exact' as const },
     { path: '/scrolls', mode: 'exact' as const },
     { path: '/my-grades', mode: 'exact' as const },
     { path: '/my-progress', mode: 'exact' as const },
@@ -216,11 +216,11 @@ export const MainLayout = () => {
           isActive: matchesPath('/my-class'),
         },
         {
-          path: '/my-attendance',
-          label: 'Mi Asistencia',
+          path: '/my-calendar',
+          label: 'Mi calendario',
           icon: <Calendar size={14} />,
           gradient: 'from-indigo-500 to-purple-500',
-          isActive: matchesPath('/my-attendance'),
+          isActive: matchesPath('/my-calendar'),
         },
         ...(currentProfile.classroom?.useCompetencies ? [{
           path: '/my-grades',
@@ -739,27 +739,29 @@ export const MainLayout = () => {
                 const level = levelProgress(currentProfile.xp, currentProfile.level, classroom.xpPerLevel || 100);
                 const maxHp = classroom.maxHp || 100;
                 return (
-                  <div className="flex min-w-0 items-center gap-1.5 sm:gap-2 md:gap-3 flex-1 justify-center md:justify-start md:ml-2">
+                  // En el celular: chips compactos y alineados a la izquierda; si no caben, se desplazan
+                  // (centrados se salían por los dos lados y tapaban el menú y la campana).
+                  <div className="flex min-w-0 flex-1 items-center justify-start gap-1 overflow-x-auto sm:gap-2 md:ml-2 md:gap-3">
                     {/* Nivel + XP del nivel */}
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-100">
+                    <div className="flex flex-shrink-0 items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-100 sm:gap-1.5 sm:px-2.5">
                       <Zap size={13} className="text-blue-600 dark:text-blue-300" aria-hidden="true" />
                       <span className="sr-only">Nivel {currentProfile.level}, {level.inLevel} de {level.needed} XP</span>
-                      <span aria-hidden="true">Nv.{currentProfile.level}</span>
+                      <span aria-hidden="true"><span className="hidden sm:inline">Nv.</span>{currentProfile.level}</span>
                       <span className="hidden sm:inline" aria-hidden="true">· {level.inLevel}/{level.needed} XP</span>
                     </div>
 
-                    {/* Energía: luna si descansa, corazones en inicial, número con el máximo de la clase */}
+                    {/* Energía: luna si descansa, corazones de inicial a 2.º, número con el máximo de la clase */}
                     {currentProfile.hp <= 0 ? (
-                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-100">
+                      <div className="flex flex-shrink-0 items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-100 sm:gap-1.5 sm:px-2.5">
                         <Moon size={13} className="fill-current" aria-hidden="true" />
-                        <span>Descansando</span>
+                        <span className="max-sm:sr-only">Descansando</span>
                       </div>
                     ) : isYoungLevel(classroom.gradeLevel) ? (
-                      <div className="flex items-center px-2 py-1 rounded-lg bg-red-50 dark:bg-red-900/20">
+                      <div className="flex flex-shrink-0 items-center px-2 py-1 rounded-lg bg-red-50 dark:bg-red-900/20">
                         <Hearts hp={currentProfile.hp} maxHp={maxHp} />
                       </div>
                     ) : (
-                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-100">
+                      <div className="flex flex-shrink-0 items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-100 sm:gap-1.5 sm:px-2.5">
                         <Heart size={13} className="text-red-600 dark:text-red-300" aria-hidden="true" />
                         <span className="sr-only">Energía {currentProfile.hp} de {maxHp}</span>
                         <span aria-hidden="true">{currentProfile.hp}<span className="hidden sm:inline">/{maxHp}</span></span>
@@ -767,7 +769,7 @@ export const MainLayout = () => {
                     )}
 
                     {/* Oro */}
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 dark:bg-amber-900/20 text-amber-900 dark:text-amber-100">
+                    <div className="flex flex-shrink-0 items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold bg-amber-50 dark:bg-amber-900/20 text-amber-900 dark:text-amber-100 sm:gap-1.5 sm:px-2.5">
                       <Coins size={13} className="text-amber-600 dark:text-amber-300" aria-hidden="true" />
                       <span className="sr-only">Oro: </span>
                       <span>{currentProfile.gp}</span>
@@ -829,7 +831,7 @@ export const MainLayout = () => {
                     {user?.firstName}
                   </p>
                 </div>
-                <ChevronDown size={14} className='text-gray-400' />
+                <ChevronDown size={14} className="hidden text-gray-400 sm:block" aria-hidden="true" />
               </button>
 
               <AnimatePresence>

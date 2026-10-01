@@ -142,22 +142,22 @@ export const attendanceService = {
       ));
   },
 
-  // Obtener historial de asistencia de un estudiante
+  // Obtener historial de asistencia de un estudiante (sin los registros revertidos: ya no cuentan)
   async getStudentAttendanceHistory(studentProfileId: string, limit: number = 30) {
     return db
       .select()
       .from(attendanceRecords)
-      .where(eq(attendanceRecords.studentProfileId, studentProfileId))
+      .where(and(eq(attendanceRecords.studentProfileId, studentProfileId), eq(attendanceRecords.isReverted, false)))
       .orderBy(desc(attendanceRecords.date))
       .limit(limit);
   },
 
-  // Obtener estadísticas de asistencia de un estudiante
+  // Obtener estadísticas de asistencia de un estudiante (sin los registros revertidos)
   async getStudentAttendanceStats(studentProfileId: string) {
     const records = await db
       .select()
       .from(attendanceRecords)
-      .where(eq(attendanceRecords.studentProfileId, studentProfileId));
+      .where(and(eq(attendanceRecords.studentProfileId, studentProfileId), eq(attendanceRecords.isReverted, false)));
 
     const total = records.length;
     const present = records.filter(r => r.status === 'PRESENT').length;
