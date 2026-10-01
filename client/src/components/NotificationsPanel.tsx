@@ -295,12 +295,14 @@ export const NotificationsBell = ({ onClick }: { onClick: () => void; classroomI
 
   return (
     <button
+      type="button"
       onClick={onClick}
-      className="relative p-2 text-gray-600 dark:text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors"
+      aria-label={count > 0 ? `Notificaciones: ${count} sin leer` : 'Notificaciones'}
+      className="relative flex h-11 w-11 items-center justify-center text-gray-700 dark:text-gray-300 hover:text-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors"
     >
-      <Bell size={20} />
+      <Bell size={20} aria-hidden="true" />
       {count > 0 && (
-        <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs w-5 h-5 flex items-center justify-center rounded-full">
+        <span className="absolute top-0 right-0 bg-red-600 text-white text-xs w-5 h-5 flex items-center justify-center rounded-full" aria-hidden="true">
           {count > 9 ? '9+' : count}
         </span>
       )}

@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate, useOutletContext } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import { Link, useNavigate, useOutletContext } from 'react-router-dom';
 import { 
   ShoppingBag,
   Plus,
@@ -11,7 +11,6 @@ import {
   Medal,
   ChevronRight,
   ClipboardList,
-  Swords,
 } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { AvatarRenderer } from '../../components/avatar/AvatarRenderer';
@@ -22,22 +21,19 @@ import { studentApi } from '../../lib/studentApi';
 import { useCharacterClasses } from '../../hooks/useCharacterClasses';
 import { characterClassApi } from '../../lib/characterClassApi';
 import { avatarApi } from '../../lib/avatarApi';
-import { shopApi } from '../../lib/shopApi';
 import { badgeApi } from '../../lib/badgeApi';
-import { useCelebrationStore } from '../../store/celebrationStore';
 import { RestingBanner } from '../../components/energy/RestingBanner';
 import { StudentCorreoCard } from '../../components/observatorio/correo/StudentCorreoCard';
 import { LoginStreakWidget } from '../../components/student/LoginStreakWidget';
-import { storyApi } from '../../lib/storyApi';
-import { StoryPlayer } from '../../components/story/StoryPlayer';
-import { buildAutoplayItems } from '../../components/story/storyPlayerHelpers';
-import { STORY_UPDATED_EVENT, type StoryUpdateEvent } from '../../hooks/useStoryLive';
 import { accentGradient, type StoryAccent } from '../../lib/storyTheme';
 import { classNoteApi } from '../../lib/classNoteApi';
 import { clanApi, CLAN_EMBLEMS } from '../../lib/clanApi';
+import { HomeModal } from '../../components/home/HomeModal';
+import { cancelButton } from '../../components/home/homeHelpers';
+import { levelProgress } from '../../components/students/profile/profileHelpers';
 
 export const StudentDashboard = () => {
-  const { user } = useAuthStore();
+  const { user, logout } = useAuthStore();
   const { selectedClassIndex } = useStudentStore();
   const navigate = useNavigate();
   const { storyTheme, isThemeDark, storyAccent } = useOutletContext<{ storyTheme?: any; isThemeDark?: boolean; hasStoryTheme?: boolean; storyAccent?: StoryAccent | null }>();
@@ -50,12 +46,6 @@ export const StudentDashboard = () => {
   const { data: myClasses, isLoading } = useQuery({
     queryKey: ['my-classes'],
     queryFn: studentApi.getMyClasses,
-  });
-
-  // Notificaciones: si llega una de nivel o insignia, se vuelven a pedir las celebraciones.
-  const { data: notifications = [] } = useQuery({
-    queryKey: ['notifications'],
-    queryFn: () => shopApi.getNotifications(),
   });
 
   // Clase actualmente seleccionada (sincronizada con el sidebar)
@@ -78,16 +68,6 @@ export const StudentDashboard = () => {
   });
 
 
-  // Escenas nuevas de la historia: se reproducen una vez al entrar (hasta que el alumno cierra).
-  const [storyDismissed, setStoryDismissed] = useState(false);
-
-  // Fetch student story data for auto-cinematic
-  const { data: storyData } = useQuery({
-    queryKey: ['student-story', currentProfile?.classroomId, currentProfile?.id],
-    queryFn: () => storyApi.getStudentStoryData(currentProfile!.classroomId),
-    enabled: !!currentProfile?.classroomId && !!currentProfile?.id,
-  });
-
   // Notas de clase pendientes (para sección "Actividades pendientes")
   const { data: classNotes = [] } = useQuery({
     queryKey: ['class-notes', currentProfile?.classroomId],
@@ -101,21 +81,6 @@ export const StudentDashboard = () => {
     queryFn: () => clanApi.getStudentClanInfo(currentProfile!.id),
     enabled: !!currentProfile?.id,
   });
-
-  // Final revelado en vivo: vuelve a reproducir lo nuevo aunque ya se hubiera cerrado la historia.
-  useEffect(() => {
-    const onUpdate = (event: Event) => {
-      const kind = (event as CustomEvent<StoryUpdateEvent>).detail?.kind;
-      if (kind === 'revealed' || kind === 'decided') setStoryDismissed(false);
-    };
-    window.addEventListener(STORY_UPDATED_EVENT, onUpdate);
-    return () => window.removeEventListener(STORY_UPDATED_EVENT, onUpdate);
-  }, []);
-
-  const storyItems = useMemo(
-    () => (storyData && currentProfile && !storyDismissed ? buildAutoplayItems(storyData) : []),
-    [storyData, currentProfile, storyDismissed],
-  );
 
   // Formatear items equipados para el renderer
   const equippedForRenderer = equippedItems.map((item: any) => ({
@@ -139,48 +104,7 @@ export const StudentDashboard = () => {
     },
   });
 
-  // Celebraciones desde la última visita (subidas de nivel e insignias), leídas de los registros.
-  const { data: pendingCelebration } = useQuery({
-    queryKey: ['student-celebrations', currentProfile?.id],
-    queryFn: () => studentApi.getCelebrations(currentProfile!.id),
-    enabled: !!currentProfile?.id,
-    staleTime: 60_000,
-  });
-  const celebrate = useCelebrationStore((s) => s.celebrate);
-  const shownUntil = useRef<string | null>(null);
-
-  const unreadRewards = notifications
-    .filter((n: { type: string; isRead: boolean }) => !n.isRead && (n.type === 'LEVEL_UP' || n.type === 'BADGE'))
-    .map((n: { id: string }) => n.id)
-    .join(',');
-  useEffect(() => {
-    if (!unreadRewards || !currentProfile?.id) return;
-    // El servidor corta un segundo atrás (ver celebration.service): se espera un poco para incluirla.
-    const profileId = currentProfile.id;
-    const timer = setTimeout(() => queryClient.invalidateQueries({ queryKey: ['student-celebrations', profileId] }), 2500);
-    return () => clearTimeout(timer);
-  }, [unreadRewards, currentProfile?.id, queryClient]);
-
-  // Una sola celebración personal, después de la Historia; se marca como vista al mostrarse.
-  useEffect(() => {
-    if (!pendingCelebration || !currentProfile || storyItems.length > 0) return;
-    if (shownUntil.current === pendingCelebration.until) return;
-    shownUntil.current = pendingCelebration.until;
-    const { fromLevel, toLevel, badges: newBadges, until } = pendingCelebration;
-    const hasLevels = fromLevel !== null && toLevel !== null;
-    if (!hasLevels && newBadges.length === 0) return;
-    const step = (currentProfile.classroom as { xpPerLevel?: number } | undefined)?.xpPerLevel || 100;
-    const progress = hasLevels
-      ? ((currentProfile.xp - (step * toLevel * (toLevel - 1)) / 2) / (step * toLevel)) * 100
-      : undefined;
-    celebrate({
-      audience: 'personal',
-      levelUps: hasLevels ? [{ key: currentProfile.id, name: '', from: fromLevel, to: toLevel }] : [],
-      badges: newBadges.map((b) => ({ key: b.id, name: b.name, icon: b.icon, customImage: b.customImage, rarity: b.rarity, recipients: [] })),
-      progress: progress === undefined ? undefined : Math.max(0, Math.min(100, progress)),
-    });
-    void studentApi.markCelebrationsSeen(currentProfile.id, until).catch(() => undefined);
-  }, [pendingCelebration, currentProfile, storyItems.length, celebrate]);
+  // La historia, las celebraciones y la racha ocurren al entrar en cualquier pantalla: StudentEntryEffects.
 
   if (isLoading) {
     return (
@@ -206,12 +130,12 @@ export const StudentDashboard = () => {
           animate={{ opacity: 1, scale: 1 }}
           className="bg-white/80 dark:bg-gray-900/85 backdrop-blur-lg border border-white/50 dark:border-gray-800 rounded-2xl p-12 text-center max-w-md shadow-xl dark:shadow-black/20"
         >
-          <Users className="w-16 h-16 mx-auto text-indigo-400 mb-4" />
+          <Users className="w-16 h-16 mx-auto text-indigo-500 mb-4" aria-hidden="true" />
           <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">
-            ¡Bienvenido, {user?.firstName}!
+            ¡Hola, {user?.firstName}!
           </h2>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">
-            Aún no estás inscrito en ninguna clase. Pide el código a tu profesor para comenzar tu aventura.
+          <p className="text-gray-700 dark:text-gray-300 mb-6">
+            Aún no estás en ninguna clase. Pídele el código a tu profe para empezar tu aventura.
           </p>
           <Button 
             size="lg" 
@@ -225,34 +149,26 @@ export const StudentDashboard = () => {
     );
   }
 
-  // Calcular XP para el siguiente nivel (sistema progresivo)
-  // Nivel N requiere N * xpPerLevel para subir al siguiente
-  // XP total para nivel N = xpPerLevel * N * (N-1) / 2
-  const xpPerLevel = (currentProfile.classroom as any)?.xpPerLevel || 100;
-  const level = currentProfile.level;
-  const xpForCurrentLevel = (xpPerLevel * level * (level - 1)) / 2;
-  const xpForNextLevel = (xpPerLevel * (level + 1) * level) / 2;
-  const xpInLevel = currentProfile.xp - xpForCurrentLevel;
-  const xpNeeded = xpForNextLevel - xpForCurrentLevel; // = level * xpPerLevel
-  const xpProgress = (xpInLevel / xpNeeded) * 100;
+  // Progreso con el sistema de niveles de la clase (nivel N pide N × xpPorNivel), el mismo que ve el docente.
+  const xpPerLevel = (currentProfile.classroom as { xpPerLevel?: number } | undefined)?.xpPerLevel || 100;
+  const { inLevel: xpInLevel, needed: xpNeeded, percent: xpProgress } = levelProgress(currentProfile.xp, currentProfile.level, xpPerLevel);
   const xpRemaining = Math.max(xpNeeded - xpInLevel, 0);
   const studentDisplayName = [user?.firstName, user?.lastName].filter(Boolean).join(' ')
     || currentProfile.displayName
     || currentProfile.characterName
     || 'Estudiante';
-  const studentClassLabel = characterInfo?.name || 'Sin clase';
-  const currentStudentRank = currentProfile.classroomRank ?? null;
-  const totalClassroomStudents = currentProfile.classroomStudentCount ?? 0;
+  const studentClassLabel = characterInfo?.name || 'Sin personaje';
   const pendingClassNotesCount = classNotes.filter((note) => !note.isCompleted).length;
+  const sectionTitle = `text-sm font-semibold uppercase tracking-wider mb-3 ${hasTheme && isThemeDark ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`;
 
   return (
-    <div className={`min-h-screen -m-4 md:-m-6 lg:-m-8 p-4 md:p-6 lg:p-8 ${hasTheme ? '' : 'bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-gray-950'}`}>
+    <div className={`relative min-h-screen -m-4 md:-m-6 lg:-m-8 p-4 md:p-6 lg:p-8 ${hasTheme ? '' : 'bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-gray-950'}`}>
       {/* Decorative elements */}
       {!hasTheme && (
-        <>
-          <div className="absolute top-20 right-10 w-64 h-64 bg-blue-200 dark:bg-blue-950 rounded-full mix-blend-multiply filter blur-3xl opacity-20 dark:opacity-30 animate-pulse" />
-          <div className="absolute top-40 left-10 w-64 h-64 bg-purple-200 dark:bg-violet-950 rounded-full mix-blend-multiply filter blur-3xl opacity-20 dark:opacity-30 animate-pulse" style={{ animationDelay: '1s' }} />
-        </>
+        <div aria-hidden="true">
+          <div className="absolute top-20 right-10 w-64 h-64 bg-blue-200 dark:bg-blue-950 rounded-full mix-blend-multiply filter blur-3xl opacity-20 dark:opacity-30 motion-safe:animate-pulse" />
+          <div className="absolute top-40 left-10 w-64 h-64 bg-purple-200 dark:bg-violet-950 rounded-full mix-blend-multiply filter blur-3xl opacity-20 dark:opacity-30 motion-safe:animate-pulse" style={{ animationDelay: '1s' }} />
+        </div>
       )}
 
       <div className="relative z-10">
@@ -267,7 +183,7 @@ export const StudentDashboard = () => {
             animate={{ opacity: 1, x: 0 }}
             className="lg:w-[280px] flex-shrink-0"
           >
-            <div className={`backdrop-blur-lg rounded-2xl p-6 shadow-lg sticky top-4 ${hasTheme && isThemeDark ? 'bg-white/10 border border-white/10 shadow-black/20' : hasTheme ? 'bg-white/70 border border-white/40 shadow-black/5' : 'bg-white/80 shadow-blue-500/10 border border-white/50 dark:bg-gray-900/85 dark:border-gray-800 dark:shadow-black/20'}`}>
+            <div className={`backdrop-blur-lg rounded-2xl p-6 shadow-lg lg:sticky lg:top-20 ${hasTheme && isThemeDark ? 'bg-white/10 border border-white/10 shadow-black/20' : hasTheme ? 'bg-white/70 border border-white/40 shadow-black/5' : 'bg-white/80 shadow-blue-500/10 border border-white/50 dark:bg-gray-900/85 dark:border-gray-800 dark:shadow-black/20'}`}>
               {/* Avatar grande */}
               <motion.div 
                 animate={{ y: [0, -5, 0] }}
@@ -285,77 +201,92 @@ export const StudentDashboard = () => {
 
               {/* Nombre y clase */}
               <div className="text-center mb-4">
-                <h1 className={`text-2xl font-bold ${hasTheme && isThemeDark ? 'text-white' : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent'}`}
+                <h1 className={`text-2xl font-bold ${hasTheme && isThemeDark ? 'text-white' : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent dark:from-blue-300 dark:via-indigo-300 dark:to-purple-300'}`}
                   style={hasTheme && isThemeDark ? undefined : hasTheme ? { color: storyTheme.colors?.primary } : undefined}
                 >
                   {currentProfile.characterName || user?.firstName}
                 </h1>
                 <div className="flex items-center justify-center gap-2 mt-1">
-                  <span className="text-lg">{characterInfo?.icon || '👤'}</span>
-                  <p className={`text-sm ${hasTheme && isThemeDark ? 'text-white/60' : 'text-gray-500 dark:text-gray-400'}`}>
-                    {characterInfo?.name || 'Sin clase'} • Nivel {currentProfile.level}
+                  <span className="text-lg" aria-hidden="true">{characterInfo?.icon || '👤'}</span>
+                  <p className={`text-sm ${hasTheme && isThemeDark ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
+                    {studentClassLabel} • Nivel {currentProfile.level}
                   </p>
                 </div>
               </div>
 
-              {/* Barra de XP */}
+              {/* Barra de XP (XP en azul, como en la vista del docente) */}
               <div className="mt-4">
-                <div className={`flex justify-between text-xs mb-1 ${hasTheme && isThemeDark ? 'text-white/60' : 'text-gray-500 dark:text-gray-400'}`}>
+                <div className={`flex justify-between text-xs mb-1 ${hasTheme && isThemeDark ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
                   <span className="flex items-center gap-1">
-                    <Zap className="w-3 h-3 text-amber-500" />
+                    <Zap className="w-3 h-3 text-blue-600 dark:text-blue-300" aria-hidden="true" />
                     Nivel {currentProfile.level}
                   </span>
                   <span>{xpInLevel} / {xpNeeded} XP</span>
                 </div>
-                <div className={`h-2.5 rounded-full overflow-hidden ${hasTheme && isThemeDark ? 'bg-white/15' : 'bg-gray-100 dark:bg-gray-800'}`}>
+                <div
+                  role="progressbar"
+                  aria-label={`Nivel ${currentProfile.level}`}
+                  aria-valuemin={0}
+                  aria-valuemax={xpNeeded}
+                  aria-valuenow={xpInLevel}
+                  className={`h-2.5 rounded-full overflow-hidden ${hasTheme && isThemeDark ? 'bg-white/15' : 'bg-gray-100 dark:bg-gray-800'}`}
+                >
                   <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${Math.min(xpProgress, 100)}%` }}
+                    initial={{ scaleX: 0 }}
+                    animate={{ scaleX: xpProgress / 100 }}
                     transition={{ duration: 1, ease: 'easeOut' }}
-                    className="h-full bg-gradient-to-r from-amber-400 to-orange-500 rounded-full"
+                    className="h-full w-full origin-left bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full"
                   />
                 </div>
-                <p className={`text-xs mt-1 ${hasTheme && isThemeDark ? 'text-white/40' : 'text-gray-400 dark:text-gray-500'}`}>
-                  Faltan <span className="font-semibold">{(xpNeeded - xpInLevel).toLocaleString()}</span> XP
+                <p className={`text-xs mt-1 ${hasTheme && isThemeDark ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
+                  Faltan <span className="font-semibold">{xpRemaining.toLocaleString()}</span> XP
                 </p>
               </div>
             </div>
           </motion.div>
 
           {/* Columna derecha - Contenido */}
-          <div className="flex-1 space-y-5">
+          <div className="min-w-0 flex-1 space-y-5">
         {/* ===== BANNER COMPACTO ===== */}
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className={`rounded-2xl p-4 shadow-lg ${storyAccent ? 'shadow-black/20' : 'bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 shadow-purple-500/20'}`}
+          className={`rounded-2xl p-4 shadow-lg ${storyAccent ? 'shadow-black/20' : 'bg-gradient-to-r from-indigo-700 via-purple-700 to-pink-700 shadow-purple-500/20'}`}
           style={storyAccent ? { background: accentGradient(storyAccent) } : undefined}
         >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center">
-                <span className="text-xl">{storyAccent?.emoji ?? '📚'}</span>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="w-10 h-10 shrink-0 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center">
+                <span className="text-xl" aria-hidden="true">{storyAccent?.emoji ?? '📚'}</span>
               </div>
-              <div>
+              <div className="min-w-0">
                 <h2 className="text-white font-bold text-lg leading-tight">
                   {currentProfile.classroom?.name || 'Mi Clase'}
                 </h2>
-                <p className="text-white/70 text-sm">
-                  ¡Bienvenido, {currentProfile.characterName || user?.firstName}!
-                </p>
+                <div className="flex flex-wrap items-center gap-x-2 text-sm text-white">
+                  <span>¡Hola, {user?.firstName || currentProfile.characterName}!</span>
+                  {/* Computadoras compartidas: si no es su cuenta, sale de inmediato */}
+                  <button
+                    type="button"
+                    onClick={() => void logout()}
+                    className="-ml-1 inline-flex min-h-[44px] items-center rounded-lg px-1 font-semibold text-white underline underline-offset-2 hover:bg-white/15"
+                  >
+                    ¿No eres {user?.firstName || 'tú'}? Salir
+                  </button>
+                </div>
               </div>
             </div>
             <div className="flex items-center gap-3">
               {/* Contador de notas pendientes */}
               {pendingClassNotesCount > 0 && (
-                <div className="flex items-center gap-1.5 bg-white/20 backdrop-blur rounded-lg px-3 py-1.5">
-                  <ClipboardList className="w-4 h-4 text-white" />
-                  <span className="text-white font-bold text-sm">{pendingClassNotesCount}</span>
-                  <span className="text-white/70 text-xs hidden sm:inline">pendientes</span>
+                <div className="flex items-center gap-1.5 bg-black/20 backdrop-blur rounded-lg px-3 py-1.5 text-white">
+                  <ClipboardList className="w-4 h-4" aria-hidden="true" />
+                  <span className="font-bold text-sm">{pendingClassNotesCount}</span>
+                  <span className="text-xs">{pendingClassNotesCount === 1 ? 'pendiente' : 'pendientes'}</span>
                 </div>
               )}
               <div className="text-right">
-                <p className="text-white/60 text-xs">Código</p>
+                <p className="text-white text-xs">Código de la clase</p>
                 <p className="text-white font-mono font-bold text-lg tracking-wider">
                   {currentProfile.classroom?.code}
                 </p>
@@ -371,7 +302,7 @@ export const StudentDashboard = () => {
 
         {/* ===== TU PROGRESO ===== */}
         <div>
-          <h3 className={`text-sm font-semibold uppercase tracking-wider mb-3 ${hasTheme && isThemeDark ? 'text-white/50' : 'text-gray-400 dark:text-gray-500'}`}>
+          <h3 className={sectionTitle}>
             Tu progreso
           </h3>
 
@@ -387,16 +318,17 @@ export const StudentDashboard = () => {
                   : 'bg-gradient-to-r from-sky-200 via-sky-100 to-cyan-100 border-white/70 shadow-sky-500/10 dark:from-slate-800 dark:via-slate-800 dark:to-slate-900 dark:border-gray-800 dark:shadow-black/20'
             }`}
           >
-            <div className="absolute -right-10 -top-12 h-32 w-32 rounded-full bg-white/25 blur-xl" />
-            <div className="absolute -bottom-14 left-16 h-28 w-28 rounded-full bg-white/20 blur-2xl" />
+            <div className="absolute -right-10 -top-12 h-32 w-32 rounded-full bg-white/25 blur-xl" aria-hidden="true" />
+            <div className="absolute -bottom-14 left-16 h-28 w-28 rounded-full bg-white/20 blur-2xl" aria-hidden="true" />
 
+            {/* Sin ranking: el alumno ve su propio progreso, no un puesto frente a sus compañeros. */}
             <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-center lg:gap-6">
               <div className="min-w-0 lg:w-[230px]">
                 <h4 className={`truncate text-lg md:text-xl font-bold leading-tight ${hasTheme && isThemeDark ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
                   {studentDisplayName}
                 </h4>
-                <p className={`mt-1 truncate text-sm font-medium ${hasTheme && isThemeDark ? 'text-white/65' : 'text-slate-500 dark:text-gray-400'}`}>
-                  @{studentClassLabel}
+                <p className={`mt-1 truncate text-sm font-medium ${hasTheme && isThemeDark ? 'text-white/80' : 'text-slate-700 dark:text-gray-300'}`}>
+                  {characterInfo?.icon ? `${characterInfo.icon} ` : ''}{studentClassLabel}
                 </p>
               </div>
 
@@ -410,118 +342,87 @@ export const StudentDashboard = () => {
                       <button
                         type="button"
                         onClick={() => setShowClassPicker(true)}
-                        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                        className={`inline-flex min-h-[44px] items-center rounded-full px-3 text-xs font-semibold transition-colors ${
                           hasTheme && isThemeDark
-                            ? 'bg-white/10 text-white/80 hover:bg-white/15'
-                            : 'bg-white/70 text-sky-700 hover:bg-white dark:bg-gray-800 dark:text-sky-300 dark:hover:bg-gray-700'
+                            ? 'bg-white/10 text-white hover:bg-white/15'
+                            : 'bg-white/80 text-sky-800 hover:bg-white dark:bg-gray-800 dark:text-sky-200 dark:hover:bg-gray-700'
                         }`}
                       >
-                        {characterInfo ? 'Cambiar clase' : 'Elegir clase'}
+                        {characterInfo ? 'Cambiar personaje' : 'Elegir personaje'}
                       </button>
                     )}
                   </div>
-                  <span className={`text-sm font-medium ${hasTheme && isThemeDark ? 'text-white/75' : 'text-slate-600 dark:text-gray-300'}`}>
+                  <span className={`text-sm font-medium ${hasTheme && isThemeDark ? 'text-white/85' : 'text-slate-700 dark:text-gray-300'}`}>
                     {xpInLevel.toLocaleString()}/{xpNeeded.toLocaleString()} XP
                   </span>
                 </div>
 
-                <div className={`h-3 overflow-hidden rounded-full ${hasTheme && isThemeDark ? 'bg-white/15' : 'bg-white/70 dark:bg-gray-800/80'}`}>
+                <div
+                  role="progressbar"
+                  aria-label={`Nivel ${currentProfile.level}`}
+                  aria-valuemin={0}
+                  aria-valuemax={xpNeeded}
+                  aria-valuenow={xpInLevel}
+                  className={`h-3 overflow-hidden rounded-full ${hasTheme && isThemeDark ? 'bg-white/15' : 'bg-white/70 dark:bg-gray-800/80'}`}
+                >
                   <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${Math.min(xpProgress, 100)}%` }}
+                    initial={{ scaleX: 0 }}
+                    animate={{ scaleX: xpProgress / 100 }}
                     transition={{ duration: 1, ease: 'easeOut' }}
-                    className="h-full rounded-full bg-gradient-to-r from-sky-400 to-cyan-500"
+                    className="h-full w-full origin-left rounded-full bg-gradient-to-r from-blue-500 to-indigo-600"
                   />
                 </div>
 
-                <p className={`mt-2 text-xs ${hasTheme && isThemeDark ? 'text-white/55' : 'text-slate-500 dark:text-gray-400'}`}>
+                <p className={`mt-2 text-xs ${hasTheme && isThemeDark ? 'text-white/80' : 'text-slate-700 dark:text-gray-300'}`}>
                   Faltan <span className="font-semibold">{xpRemaining.toLocaleString()}</span> XP para el siguiente nivel
                 </p>
-              </div>
-
-              <div className="shrink-0 lg:w-[120px] lg:text-right">
-                <p className={`text-sm ${hasTheme && isThemeDark ? 'text-white/55' : 'text-slate-500 dark:text-gray-400'}`}>
-                  Mi ranking
-                </p>
-                <div className="mt-1 flex items-end gap-1 lg:justify-end">
-                  <span className={`text-4xl font-bold leading-none ${hasTheme && isThemeDark ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
-                    {currentStudentRank ?? '-'}
-                  </span>
-                  <span className={`pb-1 text-sm font-semibold ${hasTheme && isThemeDark ? 'text-white/65' : 'text-slate-500 dark:text-gray-400'}`}>
-                    /{totalClassroomStudents || '-'}
-                  </span>
-                </div>
               </div>
             </div>
           </motion.div>
 
-          {/* Modal de selección de clase */}
-          <AnimatePresence>
-            {showClassPicker && canChooseClass && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-                onClick={() => setShowClassPicker(false)}
-              >
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                  onClick={(e) => e.stopPropagation()}
-                  className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-lg w-full shadow-2xl"
-                >
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/40 rounded-xl flex items-center justify-center">
-                      <Swords className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-bold text-gray-800 dark:text-white">Elige tu clase</h3>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Selecciona la clase de tu personaje</p>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    {characterClasses.filter(c => c.isActive).map(cc => (
-                      <button
-                        key={cc.id}
-                        onClick={() => chooseClassMutation.mutate(cc.id)}
-                        disabled={chooseClassMutation.isPending}
-                        className={`p-4 rounded-xl border-2 text-left transition-all hover:scale-[1.02] ${
-                          currentProfile.characterClassId === cc.id
-                            ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30'
-                            : 'border-gray-200 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-600'
-                        }`}
-                      >
-                        <span className="text-3xl block mb-2">{cc.icon}</span>
-                        <p className="font-semibold text-gray-800 dark:text-white">{cc.name}</p>
-                        {cc.description && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{cc.description}</p>
-                        )}
-                      </button>
-                    ))}
-                  </div>
+          {/* Elegir el tipo de personaje (Guardián, Arcano…), si la clase lo permite */}
+          {showClassPicker && canChooseClass && (
+            <HomeModal
+              title="Elige tu personaje"
+              subtitle="Cada tipo de personaje tiene su estilo"
+              onClose={() => setShowClassPicker(false)}
+              footer={<button type="button" onClick={() => setShowClassPicker(false)} className={cancelButton}>Cancelar</button>}
+            >
+              <div className="grid grid-cols-2 gap-3">
+                {characterClasses.filter((c) => c.isActive).map((cc) => (
                   <button
-                    onClick={() => setShowClassPicker(false)}
-                    className="mt-4 w-full py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+                    key={cc.id}
+                    type="button"
+                    onClick={() => chooseClassMutation.mutate(cc.id)}
+                    disabled={chooseClassMutation.isPending}
+                    aria-pressed={currentProfile.characterClassId === cc.id}
+                    className={`p-4 rounded-xl border-2 text-left transition-colors ${
+                      currentProfile.characterClassId === cc.id
+                        ? 'border-indigo-600 bg-indigo-50 dark:border-indigo-400 dark:bg-indigo-900/30'
+                        : 'border-gray-300 dark:border-gray-600 hover:border-indigo-400 dark:hover:border-indigo-500'
+                    }`}
                   >
-                    Cancelar
+                    <span className="text-3xl block mb-2" aria-hidden="true">{cc.icon}</span>
+                    <p className="font-semibold text-gray-900 dark:text-white">{cc.name}</p>
+                    {cc.description && (
+                      <p className="text-xs text-gray-700 dark:text-gray-300 mt-1 line-clamp-2">{cc.description}</p>
+                    )}
                   </button>
-                </motion.div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                ))}
+              </div>
+            </HomeModal>
+          )}
         </div>
 
         {/* ===== MI CLAN ===== */}
         {myClanInfo && myClanInfo.clan && (
           <div>
-            <h3 className={`text-sm font-semibold uppercase tracking-wider mb-3 ${hasTheme && isThemeDark ? 'text-white/50' : 'text-gray-400 dark:text-gray-500'}`}>
+            <h3 className={sectionTitle}>
               Mi Clan
             </h3>
-            <div
-              onClick={() => navigate('/my-clan')}
-              className={`rounded-xl p-4 cursor-pointer transition-all hover:shadow-md ${hasTheme && isThemeDark ? 'bg-white/10 border border-white/10 hover:bg-white/15' : 'bg-white/80 backdrop-blur border border-white/50 shadow-sm hover:shadow-lg dark:bg-gray-900/85 dark:border-gray-800 dark:shadow-black/20 dark:hover:bg-gray-900'}`}
+            <Link
+              to="/my-clan"
+              className={`block rounded-xl p-4 transition-all hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500 ${hasTheme && isThemeDark ? 'bg-white/10 border border-white/10 hover:bg-white/15' : 'bg-white/80 backdrop-blur border border-white/50 shadow-sm hover:shadow-lg dark:bg-gray-900/85 dark:border-gray-800 dark:shadow-black/20 dark:hover:bg-gray-900'}`}
             >
               <div className="flex items-center gap-4">
                 {/* Emblema grande */}
@@ -544,19 +445,19 @@ export const StudentDashboard = () => {
                     )}
                   </div>
                   {myClanInfo.clan.motto && (
-                    <p className={`text-xs italic mt-0.5 ${hasTheme && isThemeDark ? 'text-white/50' : 'text-gray-400 dark:text-gray-500'}`}>
+                    <p className={`text-xs italic mt-0.5 ${hasTheme && isThemeDark ? 'text-white/80' : 'text-gray-600 dark:text-gray-300'}`}>
                       "{myClanInfo.clan.motto}"
                     </p>
                   )}
-                  <div className={`flex items-center gap-4 mt-1.5 text-xs ${hasTheme && isThemeDark ? 'text-white/60' : 'text-gray-500 dark:text-gray-400'}`}>
-                    <span className="flex items-center gap-1">⚡ {myClanInfo.clan.totalXp.toLocaleString()} XP</span>
-                    <span className="flex items-center gap-1">🏆 {myClanInfo.clan.wins}V - {myClanInfo.clan.losses}D</span>
-                    <span className="flex items-center gap-1">👥 {myClanInfo.members.length} miembros</span>
+                  <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5 text-xs ${hasTheme && isThemeDark ? 'text-white/85' : 'text-gray-700 dark:text-gray-300'}`}>
+                    <span className="flex items-center gap-1"><span aria-hidden="true">⚡</span> {myClanInfo.clan.totalXp.toLocaleString()} XP</span>
+                    <span className="flex items-center gap-1"><span aria-hidden="true">🏆</span> {myClanInfo.clan.wins} ganadas · {myClanInfo.clan.losses} perdidas</span>
+                    <span className="flex items-center gap-1"><span aria-hidden="true">👥</span> {myClanInfo.members.length} {myClanInfo.members.length === 1 ? 'miembro' : 'miembros'}</span>
                   </div>
                 </div>
-                <ChevronRight className={`w-5 h-5 flex-shrink-0 ${hasTheme && isThemeDark ? 'text-white/30' : 'text-gray-300 dark:text-gray-600'}`} />
+                <ChevronRight className={`w-5 h-5 flex-shrink-0 ${hasTheme && isThemeDark ? 'text-white/60' : 'text-gray-500 dark:text-gray-400'}`} aria-hidden="true" />
               </div>
-            </div>
+            </Link>
           </div>
         )}
 
@@ -572,75 +473,78 @@ export const StudentDashboard = () => {
 
         {/* ===== EXPLORAR ===== */}
         <div>
-          <h3 className={`text-sm font-semibold uppercase tracking-wider mb-3 ${hasTheme && isThemeDark ? 'text-white/50' : 'text-gray-400 dark:text-gray-500'}`}>
+          <h3 className={sectionTitle}>
             Explorar
           </h3>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {/* Tienda de Items */}
+            {/* Tienda de ítems */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
-              className="bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl p-4 text-white shadow-lg"
+              className="bg-gradient-to-br from-orange-700 to-amber-800 rounded-xl p-4 text-white shadow-lg"
             >
               <div className="flex items-center gap-2 mb-3">
-                <ShoppingBag className="w-5 h-5" />
-                <h3 className="font-bold text-sm">Tienda de Items</h3>
+                <ShoppingBag className="w-5 h-5" aria-hidden="true" />
+                <h3 className="font-bold text-sm">Tienda de ítems</h3>
               </div>
-              <p className="text-amber-100 mb-3 text-xs">Compra items especiales</p>
-              <button 
+              <p className="text-white mb-3 text-xs">Usa tu oro en premios de la clase</p>
+              <button
+                type="button"
                 onClick={() => navigate('/my-shop')}
-                className="w-full py-2 bg-white text-amber-600 rounded-lg text-xs font-bold hover:bg-amber-50 transition-colors"
+                className="w-full min-h-[44px] bg-white text-amber-900 rounded-lg text-sm font-bold hover:bg-amber-50 transition-colors"
               >
-                Ver items
+                Ver la tienda
               </button>
             </motion.div>
 
-            {/* Mis Insignias */}
+            {/* Mis insignias */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.35 }}
-              className="bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl p-4 text-white shadow-lg"
+              className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-xl p-4 text-white shadow-lg"
             >
               <div className="flex items-center gap-2 mb-3">
-                <Medal className="w-5 h-5" />
-                <h3 className="font-bold text-sm">Mis Insignias</h3>
+                <Medal className="w-5 h-5" aria-hidden="true" />
+                <h3 className="font-bold text-sm">Mis insignias</h3>
                 {studentBadges.length > 0 && (
-                  <span className="ml-auto bg-white/20 text-xs font-bold px-2 py-0.5 rounded-full">
+                  <span className="ml-auto bg-black/25 text-xs font-bold px-2 py-0.5 rounded-full">
                     {studentBadges.length}
                   </span>
                 )}
               </div>
-              <p className="text-amber-100 mb-3 text-xs">
-                {studentBadges.length > 0 
-                  ? `${studentBadges.length} logro${studentBadges.length !== 1 ? 's' : ''} desbloqueado${studentBadges.length !== 1 ? 's' : ''}`
-                  : 'Desbloquea logros en clase'}
+              <p className="text-white mb-3 text-xs">
+                {studentBadges.length > 0
+                  ? `${studentBadges.length} ${studentBadges.length === 1 ? 'insignia ganada' : 'insignias ganadas'}`
+                  : 'Gana insignias en clase'}
               </p>
-              <button 
+              <button
+                type="button"
                 onClick={() => navigate('/my-badges')}
-                className="w-full py-2 bg-white text-amber-600 rounded-lg text-xs font-bold hover:bg-amber-50 transition-colors flex items-center justify-center gap-1"
+                className="w-full min-h-[44px] bg-white text-indigo-800 rounded-lg text-sm font-bold hover:bg-indigo-50 transition-colors flex items-center justify-center gap-1"
               >
                 Ver insignias
-                <ChevronRight size={14} />
+                <ChevronRight size={14} aria-hidden="true" />
               </button>
             </motion.div>
 
-            {/* Personalizar Avatar */}
+            {/* Personalizar avatar */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4 }}
-              className="bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl p-4 text-white shadow-lg"
+              className="bg-gradient-to-br from-fuchsia-700 to-purple-700 rounded-xl p-4 text-white shadow-lg"
             >
               <div className="flex items-center gap-2 mb-3">
-                <Shirt className="w-5 h-5" />
-                <h3 className="font-bold text-sm">Personalizar Avatar</h3>
+                <Shirt className="w-5 h-5" aria-hidden="true" />
+                <h3 className="font-bold text-sm">Personalizar avatar</h3>
               </div>
-              <p className="text-purple-100 mb-3 text-xs">Viste a tu personaje</p>
-              <button 
+              <p className="text-white mb-3 text-xs">Viste a tu personaje</p>
+              <button
+                type="button"
                 onClick={() => navigate('/my-avatar')}
-                className="w-full py-2 bg-white text-purple-600 rounded-lg text-xs font-bold hover:bg-purple-50 transition-colors"
+                className="w-full min-h-[44px] bg-white text-purple-800 rounded-lg text-sm font-bold hover:bg-purple-50 transition-colors"
               >
                 Ver atuendos
               </button>
@@ -650,23 +554,6 @@ export const StudentDashboard = () => {
           </div>
         </div>
       </div>
-
-      {/* Novela visual: escenas nuevas de la historia (portada al empezar capítulo, cierre al terminarlo) */}
-      <AnimatePresence>
-        {storyItems.length > 0 && (
-          <StoryPlayer
-            items={storyItems}
-            accent={storyAccent ?? null}
-            label={storyData?.title ? `Historia: ${storyData.title}` : 'Historia de la clase'}
-            onSceneSeen={(sceneId) => { void storyApi.markSceneViewed(sceneId).catch(() => undefined); }}
-            onVote={async (sceneId, optionId) => (await storyApi.voteDecision(sceneId, optionId)).myVote}
-            onClose={() => {
-              setStoryDismissed(true);
-              queryClient.invalidateQueries({ queryKey: ['student-story'] });
-            }}
-          />
-        )}
-      </AnimatePresence>
 
     </div>
   );

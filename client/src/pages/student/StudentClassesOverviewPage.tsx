@@ -5,8 +5,8 @@ import {
   ChevronRight,
   ClipboardList,
   FileCheck,
-  MoreHorizontal,
   Package,
+  StickyNote,
   Plus,
   Sparkles,
   Users,
@@ -25,7 +25,8 @@ const NOTE_CATEGORY_CONFIG = {
   task: { label: 'Tarea', icon: FileCheck, tone: 'bg-blue-100 text-blue-700' },
   review: { label: 'Revisar', icon: BookOpen, tone: 'bg-amber-100 text-amber-700' },
   material: { label: 'Material', icon: Package, tone: 'bg-violet-100 text-violet-700' },
-  other: { label: 'Otro', icon: MoreHorizontal, tone: 'bg-slate-100 text-slate-700' },
+  // 'Otro' usaba puntos suspensivos: el alumno lo leía como texto cortado.
+  other: { label: 'Aviso', icon: StickyNote, tone: 'bg-slate-100 text-slate-700' },
 } as const;
 
 const isFutureDatedNote = (dueDate: string | null) => {
@@ -36,7 +37,8 @@ const isFutureDatedNote = (dueDate: string | null) => {
   const noteDate = new Date(dueDate);
   const noteDay = new Date(noteDate.getFullYear(), noteDate.getMonth(), noteDate.getDate()).getTime();
 
-  return noteDay > currentDay;
+  // Desde hoy en adelante (las de hoy antes desaparecían justo el día que tocaban).
+  return noteDay >= currentDay;
 };
 
 const parseThemeConfig = (rawTheme: unknown): ThemeConfig | null => {
@@ -151,7 +153,7 @@ export const StudentClassesOverviewPage = () => {
               .sort((left, right) => {
                 return new Date(left.dueDate!).getTime() - new Date(right.dueDate!).getTime();
               });
-            const previewNotes = notes.slice(0, 6);
+            const previewNotes = notes.slice(0, 3);
             const remainingNotes = Math.max(notes.length - previewNotes.length, 0);
 
             return (
@@ -212,55 +214,62 @@ export const StudentClassesOverviewPage = () => {
                     style={hasClassroomTheme ? { background: `linear-gradient(135deg, ${primary}10, ${secondary}08)`, border: `1px solid ${primary}20` } : undefined}
                   >
                     <div className="mb-3 flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2 text-amber-600">
-                        <ClipboardList className="h-4 w-4" />
-                        <span className="text-sm font-semibold">Notas activas</span>
+                      <div className={`flex items-center gap-2 ${hasTheme && isThemeDark ? 'text-amber-200' : 'text-amber-800 dark:text-amber-200'}`}>
+                        <ClipboardList className="h-4 w-4" aria-hidden="true" />
+                        <span className="text-sm font-semibold">Para hacer</span>
                       </div>
-                      <span className="text-xs font-semibold text-slate-500 dark:text-gray-400">
+                      <span className={`text-xs font-semibold ${hasTheme && isThemeDark ? 'text-white/80' : 'text-slate-700 dark:text-gray-300'}`}>
                         {notes.length} pendiente{notes.length === 1 ? '' : 's'}
                       </span>
                     </div>
 
+                    {/* Cada aviso con su día y su texto (antes solo un ícono "…") */}
                     {previewNotes.length > 0 ? (
-                      <div className="flex min-h-[52px] items-center gap-2 overflow-x-auto pb-1">
+                      <ul className="space-y-1.5">
                         {previewNotes.map((note) => {
                           const category = NOTE_CATEGORY_CONFIG[note.category] || NOTE_CATEGORY_CONFIG.other;
                           const NoteIcon = category.icon;
+                          const day = note.dueDate
+                            ? new Intl.DateTimeFormat('es-PE', { weekday: 'short', day: 'numeric' }).format(new Date(note.dueDate))
+                            : null;
 
                           return (
-                            <span
-                              key={note.id}
-                              title={`${category.label}${note.dueDate ? ` · ${new Intl.DateTimeFormat('es-PE', { day: 'numeric', month: 'short' }).format(new Date(note.dueDate))}` : ''}`}
-                              className={`inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl ${category.tone} shadow-sm`}
-                            >
-                              <NoteIcon className="h-5 w-5" />
-                            </span>
+                            <li key={note.id} className="flex min-w-0 items-center gap-2">
+                              <span className={`inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg ${category.tone}`}>
+                                <NoteIcon className="h-4 w-4" aria-hidden="true" />
+                                <span className="sr-only">{category.label}</span>
+                              </span>
+                              <span className={`min-w-0 flex-1 truncate text-sm ${hasTheme && isThemeDark ? 'text-white' : 'text-slate-800 dark:text-gray-100'}`}>
+                                {day && <span className="font-semibold">{day} · </span>}
+                                {note.content}
+                              </span>
+                            </li>
                           );
                         })}
 
                         {remainingNotes > 0 && (
-                          <span className={`inline-flex h-11 min-w-11 flex-shrink-0 items-center justify-center rounded-2xl px-3 text-sm font-semibold ${hasTheme && isThemeDark ? 'bg-white/10 text-white/80' : 'bg-slate-100 text-slate-600'}`}>
-                            +{remainingNotes}
-                          </span>
+                          <li className={`text-xs font-semibold ${hasTheme && isThemeDark ? 'text-white/80' : 'text-slate-700 dark:text-gray-300'}`}>
+                            y {remainingNotes} más
+                          </li>
                         )}
-                      </div>
+                      </ul>
                     ) : (
-                      <div className="flex min-h-[52px] items-center">
-                        <p className={`text-sm ${hasTheme && isThemeDark ? 'text-white/60' : 'text-slate-500 dark:text-gray-400'}`}>
-                          No hay notas activas futuras en esta clase.
+                      <div className="flex min-h-[44px] items-center">
+                        <p className={`text-sm ${hasTheme && isThemeDark ? 'text-white/80' : 'text-slate-700 dark:text-gray-300'}`}>
+                          Nada pendiente por ahora. <span aria-hidden="true">🎉</span>
                         </p>
                       </div>
                     )}
                   </div>
 
                   <div className="mt-4 flex items-center justify-between pt-1">
-                    <div className="flex items-center gap-2 text-emerald-600">
-                      <Users className="h-4 w-4" />
+                    <div className={`flex items-center gap-2 ${hasTheme && isThemeDark ? 'text-emerald-200' : 'text-emerald-800 dark:text-emerald-300'}`}>
+                      <Users className="h-4 w-4" aria-hidden="true" />
                       <span className="text-sm font-semibold">Entrar a la clase</span>
                     </div>
-                    <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-sky-600 dark:text-sky-400">
+                    <span className={`inline-flex items-center gap-1.5 text-sm font-semibold ${hasTheme && isThemeDark ? 'text-sky-200' : 'text-sky-800 dark:text-sky-300'}`}>
                       Abrir
-                      <ChevronRight className="h-4 w-4" />
+                      <ChevronRight className="h-4 w-4" aria-hidden="true" />
                     </span>
                   </div>
                 </div>

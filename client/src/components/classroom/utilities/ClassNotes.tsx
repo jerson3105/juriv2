@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BookOpen, Calendar, Check, ClipboardList, FileCheck, MoreHorizontal, Package, Plus, Trash2 } from 'lucide-react';
+import { BookOpen, Calendar, Check, ClipboardList, Eye, FileCheck, Package, Plus, StickyNote, Trash2 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { classNoteApi, type ClassNote } from '../../../lib/classNoteApi';
@@ -11,7 +11,7 @@ const NOTE_CATEGORIES = [
   { id: 'task', label: 'Tarea', icon: FileCheck, pill: 'bg-blue-500/25 text-blue-100 border-blue-300/50' },
   { id: 'review', label: 'Revisar', icon: BookOpen, pill: 'bg-amber-500/25 text-amber-100 border-amber-300/50' },
   { id: 'material', label: 'Material', icon: Package, pill: 'bg-purple-500/25 text-purple-100 border-purple-300/50' },
-  { id: 'other', label: 'Otro', icon: MoreHorizontal, pill: 'bg-gray-500/30 text-gray-100 border-gray-300/50' },
+  { id: 'other', label: 'Otro', icon: StickyNote, pill: 'bg-gray-500/30 text-gray-100 border-gray-300/50' },
 ] as const;
 
 // Notas del docente para la siguiente clase (tareas, páginas, pendientes).
@@ -110,6 +110,11 @@ export const ClassNotes = ({ classroomId, onClose }: { classroomId: string; onCl
             <p className="text-sm text-white/80 mt-0.5">
               {pendingCount} pendiente{pendingCount !== 1 ? 's' : ''} · {completedCount} completada{completedCount !== 1 ? 's' : ''}
             </p>
+            {/* Las notas con fecha aparecen en el calendario de los alumnos: que el docente lo sepa al escribirlas. */}
+            <p className="mt-1 flex items-center gap-1.5 text-sm text-emerald-100">
+              <Eye size={14} aria-hidden="true" />
+              Tus estudiantes ven en su calendario las notas que tienen fecha.
+            </p>
           </div>
         </div>
         <ToolCloseButton onClose={onClose} />
@@ -129,7 +134,7 @@ export const ClassNotes = ({ classroomId, onClose }: { classroomId: string; onCl
               type="text"
               value={newContent}
               onChange={(e) => setNewContent(e.target.value)}
-              placeholder="Ej: Revisar pág. 45-50, recoger cuadernos"
+              placeholder="Ej: Traer el cuaderno de fracciones, leer pág. 45-50"
               className="flex-1 min-h-[48px] rounded-xl border border-white/30 bg-white/10 px-4 text-white placeholder:text-white/60 focus:outline-none focus:border-emerald-300"
               autoFocus
             />

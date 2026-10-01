@@ -29,6 +29,7 @@ import {
   ShoppingBag,
   Medal,
   Shirt,
+  Plus,
 } from 'lucide-react';
 import { Hearts } from '../energy/EnergyMeter';
 import { isInitialLevel } from '../energy/energyHelpers';
@@ -46,6 +47,8 @@ import { ParticleLayer } from '../story/ParticleLayer';
 import { deriveStoryAccent, storyAccentVars, accentGradient } from '../../lib/storyTheme';
 import { useStoryParticles } from '../../hooks/useStoryParticles';
 import { useStoryLive } from '../../hooks/useStoryLive';
+import { StudentEntryEffects } from '../student/StudentEntryEffects';
+import { levelProgress } from '../students/profile/profileHelpers';
 
 type StudentMenuKey = 'space' | 'rewards' | 'adventures' | 'community';
 
@@ -54,6 +57,8 @@ type StudentMenuItem = {
   label: string;
   icon: JSX.Element;
   gradient: string;
+  /** Fondo cuando está activo, con texto blanco (tonos 700: contraste AA). */
+  activeGradient?: string;
   isActive: boolean;
   meta?: string;
   showPing?: boolean;
@@ -64,6 +69,7 @@ type StudentMenuGroup = {
   label: string;
   icon: JSX.Element;
   gradient: string;
+  activeGradient?: string;
   subItems: StudentMenuItem[];
 };
 
@@ -75,7 +81,7 @@ const teacherNavItems = [
 
 export const MainLayout = () => {
   const { user, logout } = useAuthStore();
-  const { selectedClassIndex, setSelectedClassIndex } = useStudentStore();
+  const { selectedClassIndex, setSelectedClassIndex, pendingClassCode, setPendingClassCode } = useStudentStore();
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme);
   const location = useLocation();
   const navigate = useNavigate();
@@ -102,6 +108,20 @@ export const MainLayout = () => {
 
   const currentProfile = myClasses?.[selectedClassIndex];
   const { classMap } = useCharacterClasses(currentProfile?.classroomId);
+
+  // Entró con PIN por una clase: esa es la que se abre (no la primera de la lista).
+  useEffect(() => {
+    if (!pendingClassCode || !myClasses) return;
+    const index = myClasses.findIndex((profile) => profile.classroom?.code === pendingClassCode);
+    if (index >= 0) setSelectedClassIndex(index);
+    setPendingClassCode(null);
+  }, [pendingClassCode, myClasses, setSelectedClassIndex, setPendingClassCode]);
+
+  // Tema de la clase para lo que ocurre al entrar (historia), en cualquier pantalla.
+  const entryAccent = useMemo(
+    () => deriveStoryAccent(currentProfile?.classroom?.themeConfig ?? null),
+    [currentProfile?.classroom?.themeConfig],
+  );
 
   // Cargar expediciones del estudiante para mostrar indicador
   const { data: studentExpeditions = [] } = useQuery({
@@ -156,9 +176,10 @@ export const MainLayout = () => {
   const studentOverviewNavItems: StudentMenuItem[] = !isTeacher ? [
     {
       path: '/dashboard',
-      label: 'Principal',
+      label: 'Inicio',
       icon: <LayoutDashboard size={14} />,
       gradient: 'from-blue-500 to-indigo-500',
+      activeGradient: 'from-blue-700 to-indigo-700',
       isActive: matchesPath('/dashboard'),
     },
     {
@@ -166,6 +187,7 @@ export const MainLayout = () => {
       label: 'Mis clases',
       icon: <Users size={14} />,
       gradient: 'from-emerald-500 to-teal-500',
+      activeGradient: 'from-emerald-700 to-teal-700',
       isActive: matchesPath('/my-classes') || matchesPath('/join-class'),
     },
     ...((hasCompetencyOverview || matchesPath('/my-skills')) ? [{
@@ -173,6 +195,7 @@ export const MainLayout = () => {
       label: 'Destrezas',
       icon: <BookOpen size={14} />,
       gradient: 'from-violet-500 to-indigo-500',
+      activeGradient: 'from-violet-700 to-indigo-700',
       isActive: matchesPath('/my-skills'),
     }] : []),
   ] : [];
@@ -183,6 +206,7 @@ export const MainLayout = () => {
       label: 'Mi espacio',
       icon: <Users size={16} />,
       gradient: 'from-emerald-500 to-teal-500',
+      activeGradient: 'from-emerald-700 to-teal-700',
       subItems: [
         {
           path: '/my-class',
@@ -219,6 +243,7 @@ export const MainLayout = () => {
       label: 'Recompensas',
       icon: <Medal size={16} />,
       gradient: 'from-amber-500 to-orange-500',
+      activeGradient: 'from-amber-700 to-orange-700',
       subItems: [
         {
           path: '/my-shop',
@@ -226,7 +251,7 @@ export const MainLayout = () => {
           icon: <ShoppingBag size={14} />,
           gradient: 'from-amber-500 to-orange-500',
           isActive: matchesPath('/my-shop'),
-          meta: `${currentProfile.gp} GP`,
+          meta: `${currentProfile.gp} de oro`,
         },
         {
           path: '/my-badges',
@@ -256,6 +281,7 @@ export const MainLayout = () => {
       label: 'Aventuras',
       icon: <Map size={16} />,
       gradient: 'from-cyan-500 to-blue-500',
+      activeGradient: 'from-cyan-700 to-blue-700',
       subItems: [
         ...(studentExpeditions.length > 0 ? [{
           path: '/expeditions',
@@ -294,6 +320,7 @@ export const MainLayout = () => {
       label: 'Comunidad',
       icon: <Shield size={16} />,
       gradient: 'from-teal-500 to-cyan-500',
+      activeGradient: 'from-teal-700 to-cyan-700',
       subItems: [
         ...(currentProfile.classroom?.clansEnabled ? [{
           path: '/my-clan',
@@ -371,10 +398,12 @@ export const MainLayout = () => {
             />
           </Link>
           <button
+            type="button"
             onClick={() => setSidebarOpen(false)}
-            className={`lg:hidden p-1.5 rounded-lg transition-colors ${hasStoryTheme ? 'text-white/85 hover:text-white hover:bg-white/10' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+            aria-label="Cerrar menú"
+            className={`lg:hidden flex h-11 w-11 items-center justify-center rounded-lg transition-colors ${hasStoryTheme ? 'text-white/85 hover:text-white hover:bg-white/10' : 'text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
           >
-            <X size={20} />
+            <X size={20} aria-hidden="true" />
           </button>
         </div>
 
@@ -479,7 +508,7 @@ export const MainLayout = () => {
                     flex items-center gap-3 px-3 py-2.5 rounded-xl
                     transition-all duration-200 group
                     ${item.isActive
-                      ? `${hasStoryTheme ? '' : `bg-gradient-to-r ${item.gradient}`} text-white shadow-md`
+                      ? `${hasStoryTheme ? '' : `bg-gradient-to-r ${item.activeGradient ?? item.gradient}`} text-white shadow-md`
                       : hasStoryTheme ? 'text-white/85 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                     }
                   `}
@@ -526,7 +555,7 @@ export const MainLayout = () => {
                         w-full flex items-center gap-3 px-3 py-2.5 rounded-xl
                         transition-all duration-200 group
                         ${groupHasActiveItem
-                          ? `${hasStoryTheme ? '' : `bg-gradient-to-r ${group.gradient}`} text-white shadow-md`
+                          ? `${hasStoryTheme ? '' : `bg-gradient-to-r ${group.activeGradient ?? group.gradient}`} text-white shadow-md`
                           : hasStoryTheme ? 'text-white/85 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                         }
                       `}
@@ -563,8 +592,9 @@ export const MainLayout = () => {
                             key={subItem.path}
                             to={subItem.path}
                             onClick={() => setSidebarOpen(false)}
+                            aria-current={subItem.isActive ? 'page' : undefined}
                             className={`
-                              flex items-center gap-2 px-2.5 py-1.5 rounded-lg
+                              flex min-h-[44px] items-center gap-2 px-2.5 py-1.5 rounded-lg
                               transition-all duration-200 group relative
                               ${subItem.isActive
                                 ? hasStoryTheme ? 'text-white' : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'
@@ -651,14 +681,30 @@ export const MainLayout = () => {
             </button>
           </div>
         )}
+        {/* Alumno en el celular: "Salir" dentro del menú (en pantallas grandes está en la barra superior) */}
+        {!isTeacher && (
+          <div className={`lg:hidden p-2 ${hasStoryTheme ? 'border-t border-white/10' : 'border-t border-gray-100 dark:border-gray-700'}`}>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className={`w-full flex min-h-[44px] items-center gap-2 px-3 rounded-xl text-sm font-semibold transition-colors ${hasStoryTheme ? 'text-red-200 hover:bg-red-500/20' : 'text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-900/20'}`}
+            >
+              <LogOut size={16} aria-hidden="true" />
+              Salir{user?.firstName ? ` · ¿No eres ${user.firstName}?` : ''}
+            </button>
+          </div>
+        )}
         {/* Toggle collapse - solo en desktop para estudiantes */}
         {!isTeacher && (
           <div className={`hidden lg:block p-2 ${hasStoryTheme ? 'border-t border-white/10' : 'border-t border-gray-100 dark:border-gray-700'}`}>
             <button
+              type="button"
               onClick={() => setCollapsed(!collapsed)}
-              className={`w-full flex items-center justify-center gap-2 px-2.5 py-2 rounded-xl transition-colors ${hasStoryTheme ? 'text-white/85 hover:text-white/80 hover:bg-white/10' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+              aria-label={collapsed ? 'Expandir menú' : 'Colapsar menú'}
+              aria-expanded={!collapsed}
+              className={`w-full flex min-h-[44px] items-center justify-center gap-2 px-2.5 rounded-xl transition-colors ${hasStoryTheme ? 'text-white/85 hover:text-white hover:bg-white/10' : 'text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
             >
-              {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+              {collapsed ? <ChevronRight size={18} aria-hidden="true" /> : <ChevronLeft size={18} aria-hidden="true" />}
               {!collapsed && <span className="text-xs font-medium">Colapsar</span>}
             </button>
           </div>
@@ -678,47 +724,56 @@ export const MainLayout = () => {
             <div className="flex min-w-0 flex-1 items-center">
               {/* Mobile Menu Button */}
               <button
+                type="button"
                 onClick={() => setSidebarOpen(true)}
-                className={`lg:hidden p-2 rounded-xl transition-colors text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700`}
+                aria-label="Abrir menú"
+                className={`lg:hidden flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-colors text-gray-600 hover:text-gray-800 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700`}
               >
-                <Menu size={20} />
+                <Menu size={20} aria-hidden="true" />
               </button>
 
-              {/* Student Stats in header */}
-              {!isTeacher && currentProfile && !isStudentOverviewZone && (
-                <div className="flex items-center gap-2 md:gap-3 flex-1 justify-center md:justify-start md:ml-2">
-                  {/* Nivel + XP */}
-                  <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300`}>
-                    <Zap size={13} className='text-amber-500' />
-                    <span>Nv.{currentProfile.level}</span>
-                    <span className="text-indigo-600 dark:text-indigo-300" aria-hidden="true">•</span>
-                    <span>{currentProfile.xp} XP</span>
-                  </div>
+              {/* Nivel, energía y oro de la clase (el nivel con el sistema de niveles de la clase) */}
+              {!isTeacher && currentProfile && !isStudentOverviewZone && (() => {
+                const classroom = currentProfile.classroom as { xpPerLevel?: number; maxHp?: number; gradeLevel?: string | null };
+                const level = levelProgress(currentProfile.xp, currentProfile.level, classroom.xpPerLevel || 100);
+                const maxHp = classroom.maxHp || 100;
+                return (
+                  <div className="flex min-w-0 items-center gap-1.5 sm:gap-2 md:gap-3 flex-1 justify-center md:justify-start md:ml-2">
+                    {/* Nivel + XP del nivel */}
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-100">
+                      <Zap size={13} className="text-blue-600 dark:text-blue-300" aria-hidden="true" />
+                      <span className="sr-only">Nivel {currentProfile.level}, {level.inLevel} de {level.needed} XP</span>
+                      <span aria-hidden="true">Nv.{currentProfile.level}</span>
+                      <span className="hidden sm:inline" aria-hidden="true">· {level.inLevel}/{level.needed} XP</span>
+                    </div>
 
-                  {/* Energía (HP): luna si descansa, corazones en inicial, número con el máximo de la clase */}
-                  {currentProfile.hp <= 0 ? (
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-100">
-                      <Moon size={13} className="fill-current" aria-hidden="true" />
-                      <span>Descansando</span>
-                    </div>
-                  ) : isInitialLevel((currentProfile.classroom as { gradeLevel?: string | null }).gradeLevel) ? (
-                    <div className="flex items-center px-2 py-1 rounded-lg bg-red-50 dark:bg-red-900/20">
-                      <Hearts hp={currentProfile.hp} maxHp={(currentProfile.classroom as { maxHp?: number }).maxHp || 100} />
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300">
-                      <Heart size={13} className="text-red-500" aria-hidden="true" />
-                      <span>{currentProfile.hp}/{(currentProfile.classroom as { maxHp?: number }).maxHp || 100}</span>
-                    </div>
-                  )}
+                    {/* Energía: luna si descansa, corazones en inicial, número con el máximo de la clase */}
+                    {currentProfile.hp <= 0 ? (
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-100">
+                        <Moon size={13} className="fill-current" aria-hidden="true" />
+                        <span>Descansando</span>
+                      </div>
+                    ) : isInitialLevel(classroom.gradeLevel) ? (
+                      <div className="flex items-center px-2 py-1 rounded-lg bg-red-50 dark:bg-red-900/20">
+                        <Hearts hp={currentProfile.hp} maxHp={maxHp} />
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-100">
+                        <Heart size={13} className="text-red-600 dark:text-red-300" aria-hidden="true" />
+                        <span className="sr-only">Energía {currentProfile.hp} de {maxHp}</span>
+                        <span aria-hidden="true">{currentProfile.hp}<span className="hidden sm:inline">/{maxHp}</span></span>
+                      </div>
+                    )}
 
-                  {/* Oro */}
-                  <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300`}>
-                    <Coins size={13} className="text-amber-500" />
-                    <span>{currentProfile.gp}</span>
+                    {/* Oro */}
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 dark:bg-amber-900/20 text-amber-900 dark:text-amber-100">
+                      <Coins size={13} className="text-amber-600 dark:text-amber-300" aria-hidden="true" />
+                      <span className="sr-only">Oro: </span>
+                      <span>{currentProfile.gp}</span>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {(isTeacher || isStudentOverviewZone || (!isTeacher && !currentProfile)) && <div className="flex-1" />}
             </div>
@@ -732,11 +787,28 @@ export const MainLayout = () => {
               {/* Theme Toggle */}
               <ThemeToggle />
 
+              {/* Alumno: "Salir" siempre a la vista (computadoras compartidas del colegio) */}
+              {!isTeacher && (
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  title={user?.firstName ? `¿No eres ${user.firstName}? Sal aquí` : 'Salir'}
+                  className="hidden sm:inline-flex min-h-[44px] items-center gap-1.5 rounded-xl px-3 text-sm font-semibold text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-900/20"
+                >
+                  <LogOut size={16} aria-hidden="true" />
+                  Salir
+                </button>
+              )}
+
               {/* User Menu */}
               <div className="relative">
               <button
+                type="button"
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
-                className={`flex items-center gap-2 rounded-xl px-2 py-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-gray-700`}
+                aria-expanded={userMenuOpen}
+                aria-haspopup="menu"
+                aria-label={`Menú de ${user?.firstName ?? 'usuario'}`}
+                className={`flex min-h-[44px] items-center gap-2 rounded-xl px-2 py-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-gray-700`}
               >
                 {user?.avatarUrl ? (
                   <img 
@@ -784,9 +856,31 @@ export const MainLayout = () => {
                         <Settings size={16} />
                         Configuración
                       </Link>
+                      {/* Alumno: sus clases y unirse a otra (ya no hay una pantalla general aparte) */}
+                      {!isTeacher && myClasses && myClasses.length > 1 && (
+                        <Link
+                          to="/my-classes"
+                          onClick={() => setUserMenuOpen(false)}
+                          className="flex min-h-[44px] items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                        >
+                          <Users size={16} aria-hidden="true" />
+                          Mis clases
+                        </Link>
+                      )}
+                      {!isTeacher && (
+                        <Link
+                          to="/join-class"
+                          onClick={() => setUserMenuOpen(false)}
+                          className="flex min-h-[44px] items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                        >
+                          <Plus size={16} aria-hidden="true" />
+                          Unirme a otra clase
+                        </Link>
+                      )}
                       <button
+                        type="button"
                         onClick={handleLogout}
-                        className="flex items-center gap-2 px-3 py-2 w-full text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                        className="flex min-h-[44px] items-center gap-2 px-3 py-2 w-full text-sm text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                       >
                         <LogOut size={16} />
                         Cerrar sesión
@@ -812,6 +906,11 @@ export const MainLayout = () => {
           isOpen={showNotifications}
           onClose={() => setShowNotifications(false)}
         />
+      )}
+
+      {/* Al entrar, en cualquier pantalla: historia, celebración y día de racha de la clase actual */}
+      {!isTeacher && currentProfile && (
+        <StudentEntryEffects key={currentProfile.id} profile={currentProfile} storyAccent={entryAccent} />
       )}
 
       {/* Botón de reporte de bugs (solo para profesores) */}

@@ -1,0 +1,123 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { AnimatePresence } from 'framer-motion';
+import { studentApi } from '../../lib/studentApi';
+import { shopApi } from '../../lib/shopApi';
+import { storyApi } from '../../lib/storyApi';
+import { StoryPlayer } from '../story/StoryPlayer';
+import { buildAutoplayItems } from '../story/storyPlayerHelpers';
+import { STORY_UPDATED_EVENT, type StoryUpdateEvent } from '../../hooks/useStoryLive';
+import type { StoryAccent } from '../../lib/storyTheme';
+import { useCelebrationStore } from '../../store/celebrationStore';
+import { LoginStreakWidget } from './LoginStreakWidget';
+
+type MyClass = Awaited<ReturnType<typeof studentApi.getMyClasses>>[number];
+
+/**
+ * Lo que le pasa al alumno al entrar, en cualquier pantalla de su clase: primero las escenas nuevas
+ * de la historia, después una celebración (subidas de nivel e insignias) y el registro del día de
+ * racha. Antes solo ocurría si abría "Mi Clase". Se monta con key = perfil: al cambiar de clase empieza de cero.
+ */
+export const StudentEntryEffects = ({ profile, storyAccent }: { profile: MyClass; storyAccent: StoryAccent | null }) => {
+  const queryClient = useQueryClient();
+
+  // ===== Historia: escenas nuevas, una vez al entrar (hasta que el alumno cierra) =====
+  const [storyDismissed, setStoryDismissed] = useState(false);
+  const { data: storyData } = useQuery({
+    queryKey: ['student-story', profile.classroomId, profile.id],
+    queryFn: () => storyApi.getStudentStoryData(profile.classroomId),
+  });
+
+  // Final revelado en vivo: vuelve a reproducir lo nuevo aunque ya se hubiera cerrado la historia.
+  useEffect(() => {
+    const onUpdate = (event: Event) => {
+      const kind = (event as CustomEvent<StoryUpdateEvent>).detail?.kind;
+      if (kind === 'revealed' || kind === 'decided') setStoryDismissed(false);
+    };
+    window.addEventListener(STORY_UPDATED_EVENT, onUpdate);
+    return () => window.removeEventListener(STORY_UPDATED_EVENT, onUpdate);
+  }, []);
+
+  const storyItems = useMemo(
+    () => (storyData && !storyDismissed ? buildAutoplayItems(storyData) : []),
+    [storyData, storyDismissed],
+  );
+
+  // ===== Celebraciones desde la última visita (subidas de nivel e insignias) =====
+  const { data: notifications = [] } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: () => shopApi.getNotifications(),
+  });
+  const { data: pendingCelebration } = useQuery({
+    queryKey: ['student-celebrations', profile.id],
+    queryFn: () => studentApi.getCelebrations(profile.id),
+    staleTime: 60_000,
+  });
+  const celebrate = useCelebrationStore((s) => s.celebrate);
+  const shownUntil = useRef<string | null>(null);
+  // Orden al entrar, una cosa a la vez: historia → premio del día de racha → celebración.
+  const [streakSettled, setStreakSettled] = useState(false);
+
+  // Si llega una notificación de nivel o insignia, se vuelven a pedir las celebraciones.
+  const unreadRewards = notifications
+    .filter((n: { type: string; isRead: boolean }) => !n.isRead && (n.type === 'LEVEL_UP' || n.type === 'BADGE'))
+    .map((n: { id: string }) => n.id)
+    .join(',');
+  useEffect(() => {
+    if (!unreadRewards) return;
+    // El servidor corta un segundo atrás (ver celebration.service): se espera un poco para incluirla.
+    const timer = setTimeout(() => queryClient.invalidateQueries({ queryKey: ['student-celebrations', profile.id] }), 2500);
+    return () => clearTimeout(timer);
+  }, [unreadRewards, profile.id, queryClient]);
+
+  // Una sola celebración personal, después de la historia; se marca como vista al mostrarse.
+  useEffect(() => {
+    if (!pendingCelebration || storyItems.length > 0 || !streakSettled) return;
+    if (shownUntil.current === pendingCelebration.until) return;
+    shownUntil.current = pendingCelebration.until;
+    const { fromLevel, toLevel, badges: newBadges, until } = pendingCelebration;
+    const hasLevels = fromLevel !== null && toLevel !== null;
+    if (!hasLevels && newBadges.length === 0) return;
+    // El sistema de niveles de la clase: el nivel N empieza en xpPerLevel·N(N−1)/2.
+    const step = (profile.classroom as { xpPerLevel?: number } | undefined)?.xpPerLevel || 100;
+    const progress = hasLevels
+      ? ((profile.xp - (step * toLevel * (toLevel - 1)) / 2) / (step * toLevel)) * 100
+      : undefined;
+    celebrate({
+      audience: 'personal',
+      levelUps: hasLevels ? [{ key: profile.id, name: '', from: fromLevel, to: toLevel }] : [],
+      badges: newBadges.map((b) => ({ key: b.id, name: b.name, icon: b.icon, customImage: b.customImage, rarity: b.rarity, recipients: [] })),
+      progress: progress === undefined ? undefined : Math.max(0, Math.min(100, progress)),
+    });
+    void studentApi.markCelebrationsSeen(profile.id, until).catch(() => undefined);
+  }, [pendingCelebration, profile, storyItems.length, streakSettled, celebrate]);
+
+  return (
+    <>
+      {/* Día de racha: se registra al entrar a cualquier pantalla (si la clase la tiene activa); el premio se muestra después de la historia. */}
+      <LoginStreakWidget
+        classroomId={profile.classroomId}
+        variant="recorder"
+        paused={storyItems.length > 0}
+        onSettledChange={setStreakSettled}
+      />
+
+      {/* Novela visual: escenas nuevas de la historia (portada al empezar capítulo, cierre al terminarlo) */}
+      <AnimatePresence>
+        {storyItems.length > 0 && (
+          <StoryPlayer
+            items={storyItems}
+            accent={storyAccent}
+            label={storyData?.title ? `Historia: ${storyData.title}` : 'Historia de la clase'}
+            onSceneSeen={(sceneId) => { void storyApi.markSceneViewed(sceneId).catch(() => undefined); }}
+            onVote={async (sceneId, optionId) => (await storyApi.voteDecision(sceneId, optionId)).myVote}
+            onClose={() => {
+              setStoryDismissed(true);
+              queryClient.invalidateQueries({ queryKey: ['student-story'] });
+            }}
+          />
+        )}
+      </AnimatePresence>
+    </>
+  );
+};

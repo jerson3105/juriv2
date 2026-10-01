@@ -6,8 +6,8 @@ import {
   ChevronLeft,
   ChevronRight,
   FileCheck,
-  MoreHorizontal,
   Package,
+  StickyNote,
   X,
 } from 'lucide-react';
 import { type ClassNote } from '../../lib/classNoteApi';
@@ -19,7 +19,8 @@ const NOTE_CATEGORY_CONFIG = {
   task: { label: 'Tarea', icon: FileCheck, color: 'text-blue-500', badgeColor: 'bg-blue-500' },
   review: { label: 'Revisar', icon: BookOpen, color: 'text-amber-500', badgeColor: 'bg-amber-500' },
   material: { label: 'Material', icon: Package, color: 'text-purple-500', badgeColor: 'bg-purple-500' },
-  other: { label: 'Otro', icon: MoreHorizontal, color: 'text-gray-500', badgeColor: 'bg-gray-500' },
+  // 'Otro' usaba puntos suspensivos: el alumno lo leía como texto cortado.
+  other: { label: 'Aviso', icon: StickyNote, color: 'text-slate-600', badgeColor: 'bg-slate-700' },
 } as const;
 
 type ClassroomNotesSummary = {
@@ -137,7 +138,8 @@ export const StudentGlobalNotesCalendarCard = ({
           <button
             type="button"
             onClick={() => navigateMonth(-1)}
-            className={`p-1 sm:p-1.5 rounded-lg transition-colors ${hasTheme && isThemeDark ? 'hover:bg-white/10' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+            aria-label="Mes anterior"
+            className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors ${hasTheme && isThemeDark ? 'hover:bg-white/10' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
           >
             <ChevronLeft className={`w-4 h-4 sm:w-5 sm:h-5 ${labelClasses}`} />
           </button>
@@ -147,7 +149,8 @@ export const StudentGlobalNotesCalendarCard = ({
           <button
             type="button"
             onClick={() => navigateMonth(1)}
-            className={`p-1 sm:p-1.5 rounded-lg transition-colors ${hasTheme && isThemeDark ? 'hover:bg-white/10' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+            aria-label="Mes siguiente"
+            className={`flex h-11 w-11 items-center justify-center rounded-lg transition-colors ${hasTheme && isThemeDark ? 'hover:bg-white/10' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}`}
           >
             <ChevronRight className={`w-4 h-4 sm:w-5 sm:h-5 ${labelClasses}`} />
           </button>

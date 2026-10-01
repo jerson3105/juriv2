@@ -13,6 +13,7 @@ import { primaryButton, cancelButton } from '../../components/home/homeHelpers';
 import { authApi } from '../../lib/api';
 import type { ClassRoster, PinAuthData } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
+import { useStudentStore } from '../../store/studentStore';
 
 type Verified = (
   | { type: 'classroom'; classroomName: string; teacherName: string | null; open: boolean }
@@ -40,6 +41,14 @@ export const JoinDoorPage = () => {
   const params = useParams<{ code?: string }>();
   const [searchParams] = useSearchParams();
   const { user, isAuthenticated, register, setAuth } = useAuthStore();
+  const setPendingClassCode = useStudentStore((s) => s.setPendingClassCode);
+
+  // Entró con PIN por una clase: abre esa clase (su inicio), no la primera de la lista.
+  const enterClass = (data: PinAuthData) => {
+    setAuth(data);
+    setPendingClassCode(data.classroom.code);
+    navigate('/my-class');
+  };
 
   const [code, setCode] = useState(() => normalizeJoinCode(params.code ?? searchParams.get('code') ?? ''));
   const [step, setStep] = useState<Step>('code');
@@ -176,8 +185,7 @@ export const JoinDoorPage = () => {
     setPinError(null);
     try {
       const response = await authApi.loginWithPin({ classCode: code, studentId: picked.id, pin: value });
-      setAuth(response.data.data!);
-      navigate('/dashboard');
+      enterClass(response.data.data!);
     } catch (error) {
       setPin('');
       setPinError(errorMessage(error, 'No se pudo entrar. Inténtalo otra vez.'));
@@ -429,7 +437,7 @@ export const JoinDoorPage = () => {
           </li>
         </ol>
         <p className="mt-4 text-sm text-gray-700 dark:text-gray-300">También puedes escanear el QR de tu tarjeta. Si olvidas tu PIN, tu profe te ayuda.</p>
-        <button type="button" onClick={() => { setAuth(created); navigate('/dashboard'); }} className={`${primaryButton} ${pressable} mt-6 w-full`}>
+        <button type="button" onClick={() => enterClass(created)} className={`${primaryButton} ${pressable} mt-6 w-full`}>
           Entrar a mi clase
         </button>
       </AuthShell>
