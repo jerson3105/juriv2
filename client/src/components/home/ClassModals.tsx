@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Copy, HelpCircle, Layers, ShoppingBag, Sparkles, Trophy } from 'lucide-react';
+import { AlertTriangle, Copy, HelpCircle, Layers, Maximize, Printer, ShoppingBag, Sparkles, Trophy } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { classroomApi, type Classroom } from '../../lib/classroomApi';
 import { schoolApi, type MySchool } from '../../lib/schoolApi';
@@ -202,21 +202,61 @@ export const AssignSchoolModal = ({ classrooms, schools, onClose }: { classrooms
 // ── Proyectar el código para que los estudiantes se unan ────────────────────
 export const ProjectCodeModal = ({ classroom, onClose }: { classroom: Classroom; onClose: () => void }) => {
   const site = window.location.host;
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [downloading, setDownloading] = useState(false);
+  // El código va en la clave: si el docente genera otro, el QR se vuelve a pedir.
+  const { data: qr, isError } = useQuery({
+    queryKey: ['classroom-join-qr', classroom.id, classroom.code],
+    queryFn: () => classroomApi.getJoinQr(classroom.id),
+    staleTime: Infinity,
+  });
+
+  const fullscreen = () => {
+    void panelRef.current?.requestFullscreen?.().catch(() => toast.error('Tu navegador no permitió la pantalla completa.'));
+  };
+  const downloadPoster = async () => {
+    setDownloading(true);
+    try {
+      await classroomApi.downloadPoster(classroom.id, classroom.code);
+    } catch (error) {
+      toast.error(errorMessage(error, 'No se pudo descargar el póster'));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <HomeModal
       title={`Código de ${classroom.name}`}
       onClose={onClose}
       size="lg"
-      footer={<><button type="button" onClick={() => void copyClassCode(classroom.code)} className={cancelButton}><Copy size={16} className="mr-1 inline" aria-hidden="true" />Copiar</button><button type="button" onClick={onClose} className={primaryButton} data-autofocus>Listo</button></>}
+      footer={<>
+        <button type="button" onClick={() => void downloadPoster()} disabled={downloading} className={cancelButton}><Printer size={16} className="mr-1 inline" aria-hidden="true" />{downloading ? 'Preparando…' : 'Póster con QR'}</button>
+        <button type="button" onClick={fullscreen} className={cancelButton}><Maximize size={16} className="mr-1 inline" aria-hidden="true" />Pantalla completa</button>
+        <button type="button" onClick={() => void copyClassCode(classroom.code)} className={cancelButton}><Copy size={16} className="mr-1 inline" aria-hidden="true" />Copiar</button>
+        <button type="button" onClick={onClose} className={primaryButton} data-autofocus>Listo</button>
+      </>}
     >
-      <div className="rounded-3xl bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 px-4 py-8 text-center text-white">
-        <p className="text-sm font-bold uppercase tracking-[0.25em] text-indigo-200">Únete a {classroom.name}</p>
-        <p className="mt-3 break-all font-mono text-5xl font-black tracking-[0.2em] sm:text-7xl" aria-label={`Código ${classroom.code.split('').join(' ')}`}>{classroom.code}</p>
-        <ol className="mx-auto mt-6 max-w-md space-y-1 text-left text-base text-indigo-50">
-          <li>1. Entra a <strong className="text-white">{site}</strong> e inicia sesión como estudiante.</li>
-          <li>2. Elige <strong className="text-white">Unirme a una clase</strong>.</li>
-          <li>3. Escribe este código.</li>
-        </ol>
+      {/* En pantalla completa este panel ocupa todo el proyector. */}
+      <div ref={panelRef} className="flex flex-col items-center justify-center gap-6 rounded-3xl bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 px-4 py-8 text-center text-white sm:flex-row sm:gap-10 sm:text-left [&:fullscreen]:rounded-none [&:fullscreen]:px-12">
+        <div className="shrink-0 rounded-2xl bg-white p-3 shadow-xl">
+          {qr ? (
+            <img src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(qr.svg)}`} alt={`Código QR para unirse a ${classroom.name}`} className="h-48 w-48 sm:h-56 sm:w-56 [:fullscreen_&]:h-[55vh] [:fullscreen_&]:w-[55vh]" />
+          ) : (
+            <div className="flex h-48 w-48 items-center justify-center text-sm text-gray-700 sm:h-56 sm:w-56" role="status">
+              {isError ? 'No se pudo cargar el QR' : 'Cargando QR…'}
+            </div>
+          )}
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-bold uppercase tracking-[0.25em] text-indigo-200">Únete a {classroom.name}</p>
+          <p className="mt-2 break-all font-mono text-5xl font-black tracking-[0.2em] [:fullscreen_&]:text-8xl" aria-label={`Código ${classroom.code.split('').join(' ')}`}>{classroom.code}</p>
+          <ol className="mt-5 space-y-1 text-base text-indigo-50 [:fullscreen_&]:text-2xl">
+            <li>1. Escanea el QR o entra a <strong className="text-white">{site}/unirse</strong> y escribe el código.</li>
+            <li>2. Toca tu nombre en la lista.</li>
+            <li>3. Escribe tu PIN. ¿Primera vez? Usa tu tarjeta.</li>
+          </ol>
+        </div>
       </div>
     </HomeModal>
   );

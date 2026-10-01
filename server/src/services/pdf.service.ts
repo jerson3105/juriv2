@@ -34,7 +34,12 @@ const CLASS_SYMBOLS: Record<string, string> = {
 /** Enlace de la puerta del alumno con el código de su clase (el QR solo abre la puerta: el PIN se pide igual). */
 const joinUrl = (appUrl: string, classroomCode: string) => `${appUrl.replace(/\/+$/, '')}/unirse/${classroomCode}`;
 const shortHost = (appUrl: string) => appUrl.replace(/^https?:\/\//, '').replace(/\/+$/, '');
-const qrFor = (url: string) => QRCode.toBuffer(url, { errorCorrectionLevel: 'M', margin: 1, width: 360, color: { dark: '#0f172a', light: '#ffffff' } });
+const qrFor = (url: string, width = 360) => QRCode.toBuffer(url, { errorCorrectionLevel: 'M', margin: 1, width, color: { dark: '#0f172a', light: '#ffffff' } });
+
+/** Enlace y QR (SVG) de la puerta de la clase, para proyectarlo en el aula. */
+export const classJoinUrl = joinUrl;
+export const classJoinQrSvg = (appUrl: string, classroomCode: string) =>
+  QRCode.toString(joinUrl(appUrl, classroomCode), { type: 'svg', errorCorrectionLevel: 'M', margin: 1, color: { dark: '#0f172a', light: '#ffffff' } });
 
 export class PDFService {
   // Generar PDF con tarjetas de vinculación para estudiantes
@@ -301,6 +306,70 @@ export class PDFService {
           width: pageWidth - 60,
           align: 'center'
         });
+
+      doc.end();
+    });
+  }
+
+  /**
+   * Póster de la clase para pegar en el aula: QR grande a /unirse/<código>, el código y los pasos.
+   * El QR solo abre la puerta de la clase: cada alumno entra con su PIN (o su cuenta).
+   */
+  async generateClassPoster(classroom: { name: string; code: string }, appUrl: string): Promise<Buffer> {
+    const qr = await qrFor(joinUrl(appUrl, classroom.code), 900);
+    return new Promise((resolve, reject) => {
+      const doc = new PDFDocument({ size: 'LETTER', margin: 0 });
+      const chunks: Buffer[] = [];
+      doc.on('data', (chunk) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const W = doc.page.width;
+      const H = doc.page.height;
+      const indigo = '#1e1b4b';
+      const accent = '#4f46e5';
+
+      // Franja nocturna superior
+      doc.rect(0, 0, W, 150).fill(indigo);
+      doc.fontSize(12).fillColor('#c7d2fe').font('Helvetica-Bold')
+        .text('JURIED', 0, 34, { width: W, align: 'center', characterSpacing: 4 });
+      doc.fontSize(34).fillColor('#ffffff').font('Helvetica-Bold')
+        .text('Únete a tu clase', 0, 56, { width: W, align: 'center' });
+      doc.fontSize(16).fillColor('#e0e7ff').font('Helvetica')
+        .text(classroom.name, 50, 104, { width: W - 100, align: 'center', height: 22, ellipsis: true });
+
+      // QR grande
+      const qrSize = 300;
+      const qrX = (W - qrSize) / 2;
+      const qrY = 182;
+      doc.roundedRect(qrX - 14, qrY - 14, qrSize + 28, qrSize + 28, 16).lineWidth(3).strokeColor(accent).stroke();
+      doc.image(qr, qrX, qrY, { width: qrSize, height: qrSize });
+
+      // Código y dirección
+      doc.fontSize(12).fillColor('#475569').font('Helvetica')
+        .text('Código de la clase', 0, qrY + qrSize + 34, { width: W, align: 'center' });
+      doc.fontSize(40).fillColor('#0f172a').font('Helvetica-Bold')
+        .text(classroom.code, 0, qrY + qrSize + 52, { width: W, align: 'center', characterSpacing: 8 });
+      doc.fontSize(14).fillColor(accent).font('Helvetica-Bold')
+        .text(`${shortHost(appUrl)}/unirse`, 0, qrY + qrSize + 102, { width: W, align: 'center' });
+
+      // Pasos
+      const steps = [
+        'Escanea el QR con la cámara (o entra a la página y escribe el código).',
+        'Toca tu nombre en la lista.',
+        'Escribe tu PIN. ¿Es tu primera vez? Usa la tarjeta que te dio tu profe.',
+      ];
+      const boxY = qrY + qrSize + 136;
+      doc.roundedRect(70, boxY, W - 140, 104, 12).fill('#eef2ff');
+      steps.forEach((step, i) => {
+        const y = boxY + 16 + i * 28;
+        doc.circle(98, y + 7, 10).fill(accent);
+        doc.fontSize(11).fillColor('#ffffff').font('Helvetica-Bold').text(String(i + 1), 88, y + 1, { width: 20, align: 'center' });
+        doc.fontSize(12).fillColor('#1e293b').font('Helvetica').text(step, 118, y, { width: W - 210 });
+      });
+
+      doc.fontSize(10).fillColor('#64748b').font('Helvetica')
+        .text('El QR solo abre la clase: cada alumno entra con su propio PIN. No compartas tu PIN.', 40, H - 46, { width: W - 80, align: 'center', lineBreak: false });
 
       doc.end();
     });

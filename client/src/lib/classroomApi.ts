@@ -491,6 +491,25 @@ export const classroomApi = {
     return response.data.data.code;
   },
 
+  // QR de la puerta de la clase (/unirse/<código>) para proyectarlo: SVG y enlace
+  getJoinQr: async (id: string): Promise<{ joinUrl: string; svg: string }> => {
+    const response = await api.get(`/classrooms/${id}/join-qr`);
+    return response.data.data;
+  },
+
+  // Póster en PDF con el QR y el código, para imprimir y pegar en el aula
+  downloadPoster: async (id: string, code: string): Promise<void> => {
+    const response = await api.get(`/classrooms/${id}/poster`, { responseType: 'blob' });
+    const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `poster-${code}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  },
+
   // "Hoy" de cada clase del profesor: XP, pendientes, asistencia y última actividad
   getOverview: async (since: string, date: string): Promise<ClassroomOverview[]> => {
     const response = await api.get('/classrooms/my/overview', { params: { since, date } });

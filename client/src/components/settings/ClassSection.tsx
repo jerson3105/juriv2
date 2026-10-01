@@ -1,9 +1,10 @@
 import { useId, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Check, Copy, IdCard, KeyRound, RefreshCw, Type } from 'lucide-react';
+import { Check, Copy, IdCard, KeyRound, MonitorUp, Printer, RefreshCw, Type } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { classroomApi, type Classroom } from '../../lib/classroomApi';
 import { HomeModal } from '../home/HomeModal';
+import { ProjectCodeModal } from '../home/ClassModals';
 import { cancelButton, classroomsKey, inputClass, labelClass, primaryButton } from '../home/homeHelpers';
 import { errorMessage, secondaryButton } from '../gradebook/gradebookHelpers';
 import { SaveBar, SettingsCard, SwitchRow } from './settingsUi';
@@ -71,7 +72,20 @@ const CodeCard = ({ classroom, onToggleAccepting }: { classroom: Classroom; onTo
   const [copied, setCopied] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [projecting, setProjecting] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const accepting = classroom.acceptingStudents !== false;
+
+  const downloadPoster = async () => {
+    setDownloading(true);
+    try {
+      await classroomApi.downloadPoster(classroom.id, classroom.code);
+    } catch (error) {
+      toast.error(errorMessage(error, 'No se pudo descargar el póster'));
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const copy = async () => {
     try {
@@ -100,7 +114,7 @@ const CodeCard = ({ classroom, onToggleAccepting }: { classroom: Classroom; onTo
   };
 
   return (
-    <SettingsCard title="Código para unirse" icon={KeyRound} description="Los alumnos lo escriben en su cuenta para entrar a la clase.">
+    <SettingsCard title="Código para unirse" icon={KeyRound} description="Los alumnos lo escriben en /unirse (o escanean el QR) para entrar a la clase.">
       <div className="flex flex-wrap items-center gap-2 py-3">
         <span className="rounded-xl bg-gray-100 px-4 py-2 font-mono text-xl font-bold tracking-widest text-gray-900 dark:bg-gray-700 dark:text-white" aria-label={`Código de la clase: ${classroom.code.split('').join(' ')}`}>
           {classroom.code}
@@ -113,6 +127,16 @@ const CodeCard = ({ classroom, onToggleAccepting }: { classroom: Classroom; onTo
           <RefreshCw size={16} aria-hidden="true" /> Generar otro
         </button>
       </div>
+      {/* QR de la puerta de la clase: proyectarlo al empezar o imprimir el póster para el aula. */}
+      <div className="flex flex-wrap items-center gap-2 pb-3">
+        <button type="button" onClick={() => setProjecting(true)} className={secondaryButton}>
+          <MonitorUp size={16} aria-hidden="true" /> Proyectar con QR
+        </button>
+        <button type="button" onClick={() => void downloadPoster()} disabled={downloading} className={secondaryButton}>
+          <Printer size={16} aria-hidden="true" /> {downloading ? 'Preparando…' : 'Póster con QR'}
+        </button>
+      </div>
+      {projecting && <ProjectCodeModal classroom={classroom} onClose={() => setProjecting(false)} />}
       <div className="border-t border-gray-100 dark:border-gray-700">
         <SwitchRow
           title="Aceptar alumnos nuevos"

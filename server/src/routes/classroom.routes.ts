@@ -26,6 +26,8 @@ router.put('/:id', authorize('TEACHER'), classroomController.update.bind(classro
 router.post('/:id/archive', authorize('TEACHER', 'ADMIN'), classroomOverviewController.archive.bind(classroomOverviewController));
 router.post('/:id/restore', authorize('TEACHER', 'ADMIN'), classroomOverviewController.restore.bind(classroomOverviewController));
 router.post('/:id/regenerate-code', authorize('TEACHER'), classroomController.regenerateCode.bind(classroomController));
+router.get('/:id/join-qr', authorize('TEACHER'), classroomController.getJoinQr.bind(classroomController));
+router.get('/:id/poster', authorize('TEACHER'), classroomController.downloadPoster.bind(classroomController));
 router.get('/:id/students/:studentId/summary', authorize('TEACHER', 'ADMIN'), studentSummaryController.getSummary.bind(studentSummaryController));
 router.delete('/:id', authorize('TEACHER'), classroomController.delete.bind(classroomController));
 router.post('/:id/reset-points', authorize('TEACHER'), classroomController.resetAllPoints.bind(classroomController));

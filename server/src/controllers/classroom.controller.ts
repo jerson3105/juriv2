@@ -8,6 +8,8 @@ import { z } from 'zod';
 import { createGenAI } from '../utils/aiClient.js';
 import { canAttachClassroomsToSchool, requireClassroomTeacher } from '../utils/access.js';
 import { AppError } from '../utils/errors.js';
+import { config_app } from '../config/env.js';
+import { classJoinQrSvg, classJoinUrl, pdfService } from '../services/pdf.service.js';
 
 const AI_CLASSROOM_SUBJECTS = [
   'matematicas',
@@ -792,6 +794,41 @@ REGLAS:
       }
       console.error('Error regenerating classroom code:', error);
       res.status(500).json({ success: false, message: 'No se pudo generar el código' });
+    }
+  }
+
+  /** QR de la puerta de la clase (/unirse/<código>) para proyectarlo en el aula. */
+  async getJoinQr(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      if (!(await requireClassroomTeacher(req, res, id))) return;
+      const classroom = await classroomService.getById(id);
+      if (!classroom) return res.status(404).json({ success: false, message: 'Clase no encontrada' });
+      const appUrl = config_app.clientUrl || 'https://juried.app';
+      res.json({
+        success: true,
+        data: { joinUrl: classJoinUrl(appUrl, classroom.code), svg: await classJoinQrSvg(appUrl, classroom.code) },
+      });
+    } catch (error) {
+      console.error('Error generating join QR:', error);
+      res.status(500).json({ success: false, message: 'No se pudo generar el QR' });
+    }
+  }
+
+  /** Póster en PDF con el QR y el código de la clase, para imprimir y pegar en el aula. */
+  async downloadPoster(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      if (!(await requireClassroomTeacher(req, res, id))) return;
+      const classroom = await classroomService.getById(id);
+      if (!classroom) return res.status(404).json({ success: false, message: 'Clase no encontrada' });
+      const pdf = await pdfService.generateClassPoster({ name: classroom.name, code: classroom.code }, config_app.clientUrl || 'https://juried.app');
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="poster-${classroom.code}.pdf"`);
+      res.send(pdf);
+    } catch (error) {
+      console.error('Error generating class poster:', error);
+      res.status(500).json({ success: false, message: 'No se pudo generar el póster' });
     }
   }
 
