@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Presentation } from 'lucide-react';
 import { AuthShell } from '../../components/auth/AuthShell';
 import { RoleDoors } from '../../components/auth/RoleDoors';
-import { errorMessage, studentLanding, type SignupRole } from '../../components/auth/authHelpers';
+import { errorMessage, studentLanding, type SignupRole, pressable } from '../../components/auth/authHelpers';
 import { primaryButton } from '../../components/home/homeHelpers';
 import { secondaryButton } from '../../components/gradebook/gradebookHelpers';
 import { useAuthStore } from '../../store/authStore';
@@ -60,7 +60,7 @@ export const SelectRolePage = () => {
         {error && <p className="mt-4 text-sm font-medium text-red-700 dark:text-red-300" role="alert">{error}</p>}
         <div className="mt-6 grid gap-2 sm:grid-cols-2">
           <button type="button" onClick={() => void complete('STUDENT')} disabled={busy} className={secondaryButton}>Soy estudiante</button>
-          <button type="button" onClick={() => void complete('TEACHER')} disabled={busy} className={primaryButton}>Sí, soy docente</button>
+          <button type="button" onClick={() => void complete('TEACHER')} disabled={busy} className={`${primaryButton} ${pressable}`}>Sí, soy docente</button>
         </div>
       </AuthShell>
     );

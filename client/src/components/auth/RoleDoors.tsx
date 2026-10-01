@@ -1,5 +1,5 @@
 import { Backpack, ChevronRight, Heart, Presentation } from 'lucide-react';
-import type { SignupRole } from './authHelpers';
+import { liftable, type SignupRole } from './authHelpers';
 
 const ROLE_DOORS: { role: SignupRole; title: string; text: string; icon: typeof Backpack }[] = [
   { role: 'STUDENT', title: 'Soy estudiante', text: 'Tengo un código de mi profe', icon: Backpack },
@@ -26,7 +26,7 @@ export const RoleDoors = ({ onPick, disabled }: RoleDoorsProps) => (
             type="button"
             onClick={() => onPick(door.role)}
             disabled={disabled}
-            className={`flex w-full items-center gap-3 rounded-xl border-2 p-3 text-left disabled:opacity-60 ${primary
+            className={`flex w-full items-center gap-3 rounded-xl border-2 p-3 text-left disabled:opacity-60 ${liftable} ${primary
               ? 'min-h-[72px] border-primary-600 bg-primary-50 hover:bg-primary-100 dark:border-primary-400 dark:bg-primary-500/10 dark:hover:bg-primary-500/20'
               : 'min-h-[64px] border-gray-200 bg-white hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:hover:bg-gray-700'}`}
           >

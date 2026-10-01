@@ -2,7 +2,7 @@ import { useId, useState } from 'react';
 import { Lock, Mail, User } from 'lucide-react';
 import { Input } from '../ui/Input';
 import { primaryButton } from '../home/homeHelpers';
-import { isPasswordValid } from './authHelpers';
+import { isPasswordValid, pressable } from './authHelpers';
 import { PasswordRules } from './PasswordRules';
 
 export interface AccountFormValues {
@@ -71,7 +71,7 @@ export const AccountForm = ({ submitLabel, onSubmit, busy, error, declaration }:
         </div>
       )}
       {error && <p className="text-sm font-medium text-red-700 dark:text-red-300" role="alert">{error}</p>}
-      <button type="submit" disabled={busy} className={`${primaryButton} w-full`}>
+      <button type="submit" disabled={busy} className={`${primaryButton} ${pressable} w-full`}>
         {busy ? 'Creando cuenta…' : submitLabel}
       </button>
     </form>

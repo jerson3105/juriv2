@@ -1,4 +1,4 @@
-import { googleAuthUrl, type SignupRole } from './authHelpers';
+import { googleAuthUrl, pressable, type SignupRole } from './authHelpers';
 
 interface GoogleButtonProps {
   /** Rol de la cuenta si es nueva (lo fija la puerta por la que entra). */
@@ -9,7 +9,7 @@ interface GoogleButtonProps {
 export const GoogleButton = ({ role, label = 'Continuar con Google' }: GoogleButtonProps) => (
   <a
     href={googleAuthUrl(role)}
-    className="flex min-h-[48px] w-full items-center justify-center gap-3 rounded-xl border border-gray-300 bg-white px-4 font-semibold text-gray-800 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+    className={`flex min-h-[48px] w-full items-center justify-center gap-3 rounded-xl border border-gray-300 bg-white px-4 font-semibold text-gray-800 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700 ${pressable}`}
   >
     <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
       <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />

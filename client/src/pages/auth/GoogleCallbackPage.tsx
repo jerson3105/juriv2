@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { Loader2 } from 'lucide-react';
+import { Starfield } from '../../components/auth/SpaceScene';
 import { authApi } from '../../lib/api';
 import { studentLanding } from '../../components/auth/authHelpers';
 
@@ -87,10 +88,12 @@ export const GoogleCallbackPage = () => {
   }, [searchParams, setAuth, navigate]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-900 via-primary-800 to-primary-950">
-      <div className="text-center">
-        <Loader2 className="w-12 h-12 animate-spin text-primary-400 mx-auto mb-4" />
-        <p className="text-primary-200 text-lg">Completando inicio de sesión con Google...</p>
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#0b1026] px-4" role="status">
+      <Starfield count={80} />
+      <div className="relative text-center">
+        <img src="/assets/jiro/emocionado.webp" alt="" aria-hidden="true" className="auth-float mx-auto h-36 w-auto drop-shadow-2xl" />
+        <Loader2 className="mx-auto mt-4 h-8 w-8 animate-spin text-amber-200" aria-hidden="true" />
+        <p className="mt-3 text-lg text-indigo-50">Completando tu inicio de sesión con Google…</p>
       </div>
     </div>
   );

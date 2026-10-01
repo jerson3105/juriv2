@@ -398,3 +398,17 @@
   100% { opacity: 1; transform: scale(1); }
 }
 .obs-star-in { animation: obs-star-in 520ms cubic-bezier(.34, 1.56, .64, 1) 1 both; }
+
+/* ── Pantallas de acceso: tema espacial (solo si no se pidió reducir el movimiento) ── */
+@keyframes auth-twinkle { 0%, 100% { opacity: var(--auth-o, 0.45); } 50% { opacity: 1; } }
+@keyframes auth-draw { to { stroke-dashoffset: 0; } }
+@keyframes auth-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+@keyframes auth-rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes auth-pop { from { opacity: 0; transform: scale(0.4); } to { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: no-preference) {
+  .auth-twinkle { animation: auth-twinkle var(--auth-d, 4s) ease-in-out var(--auth-delay, 0s) infinite; }
+  .auth-draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: auth-draw 0.7s ease-out var(--auth-delay, 0s) forwards; }
+  .auth-pop { animation: auth-pop 0.35s ease-out var(--auth-delay, 0s) backwards; }
+  .auth-float { animation: auth-float 5s ease-in-out infinite; }
+  .auth-rise { animation: auth-rise 0.28s ease-out both; }
+}

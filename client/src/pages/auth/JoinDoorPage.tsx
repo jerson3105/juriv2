@@ -6,8 +6,7 @@ import { GoogleButton, OrDivider } from '../../components/auth/GoogleButton';
 import { PasswordRules } from '../../components/auth/PasswordRules';
 import { Input } from '../../components/ui/Input';
 import {
-  errorMessage, isPasswordValid, normalizeJoinCode, setPendingJoinCode,
-} from '../../components/auth/authHelpers';
+  errorMessage, isPasswordValid, normalizeJoinCode, setPendingJoinCode, pressable } from '../../components/auth/authHelpers';
 import { primaryButton, cancelButton } from '../../components/home/homeHelpers';
 import { authApi } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
@@ -163,7 +162,7 @@ export const JoinDoorPage = () => {
               <p id={`${ids}-code-help`} className="mt-2 text-sm text-gray-700 dark:text-gray-300">Puede ser el código de tu clase o tu código personal.</p>
             )}
           </div>
-          <button type="submit" disabled={code.length < 6 || checking} className={`${primaryButton} w-full`}>
+          <button type="submit" disabled={code.length < 6 || checking} className={`${primaryButton} ${pressable} w-full`}>
             {checking ? 'Revisando…' : 'Seguir'}
           </button>
         </form>
@@ -176,7 +175,7 @@ export const JoinDoorPage = () => {
     return (
       <AuthShell title="Esta tarjeta no es tuya" back={{ to: '/unirse', label: 'Escribir otro código' }}>
         <p className="text-gray-800 dark:text-gray-100">Devuélvele esta tarjeta a tu profe y pídele la tuya.</p>
-        <button type="button" onClick={() => { setStep('code'); setCode(''); setVerified(null); }} className={`${primaryButton} mt-6 w-full`}>Escribir otro código</button>
+        <button type="button" onClick={() => { setStep('code'); setCode(''); setVerified(null); }} className={`${primaryButton} ${pressable} mt-6 w-full`}>Escribir otro código</button>
       </AuthShell>
     );
   }
@@ -192,7 +191,7 @@ export const JoinDoorPage = () => {
         </div>
         <div className="mt-6 grid gap-2 sm:grid-cols-2">
           <button type="button" onClick={() => setStep('notme')} className={cancelButton}>No soy yo</button>
-          <button type="button" onClick={() => setStep('access')} className={primaryButton}>Sí, soy yo</button>
+          <button type="button" onClick={() => setStep('access')} className={`${primaryButton} ${pressable}`}>Sí, soy yo</button>
         </div>
       </AuthShell>
     ) : (
@@ -206,7 +205,7 @@ export const JoinDoorPage = () => {
         </div>
         <div className="mt-6 grid gap-2 sm:grid-cols-2">
           <button type="button" onClick={goBack} className={cancelButton}>No es mi clase</button>
-          <button type="button" onClick={() => setStep('access')} className={primaryButton}>Seguir</button>
+          <button type="button" onClick={() => setStep('access')} className={`${primaryButton} ${pressable}`}>Seguir</button>
         </div>
       </AuthShell>
     );
@@ -251,7 +250,7 @@ export const JoinDoorPage = () => {
         )}
         <p className="text-sm text-gray-700 dark:text-gray-300">No compartas tu clave con nadie, ni con tus amigos.</p>
         {accessError && <p className="text-sm font-medium text-red-700 dark:text-red-300" role="alert">{accessError}</p>}
-        <button type="submit" disabled={busy} className={`${primaryButton} w-full`}>
+        <button type="submit" disabled={busy} className={`${primaryButton} ${pressable} w-full`}>
           {busy ? 'Creando tu acceso…' : 'Crear mi acceso'}
         </button>
       </form>

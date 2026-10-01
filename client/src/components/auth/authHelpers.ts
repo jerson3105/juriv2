@@ -64,3 +64,8 @@ export const studentLanding = (): string => {
 
 /** Código como lo escribe un niño: mayúsculas, sin espacios ni guiones. */
 export const normalizeJoinCode = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+
+/** Botones de las pantallas de acceso: se hunden un poco al tocarlos (sin efecto si se pidió reducir el movimiento). */
+export const pressable = 'transition duration-150 active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100';
+/** Tarjetas-puerta: se elevan al pasar el cursor. */
+export const liftable = 'transition duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:scale-[0.99] motion-reduce:transition-none motion-reduce:hover:translate-y-0 motion-reduce:active:scale-100';

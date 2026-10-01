@@ -4,7 +4,7 @@ import { Backpack, ChevronRight, Lock, Mail } from 'lucide-react';
 import { Input } from '../../components/ui/Input';
 import { AuthShell } from '../../components/auth/AuthShell';
 import { GoogleButton, OrDivider } from '../../components/auth/GoogleButton';
-import { AUTH_ERROR_MESSAGES, errorMessage, studentLanding } from '../../components/auth/authHelpers';
+import { AUTH_ERROR_MESSAGES, errorMessage, studentLanding, liftable, pressable } from '../../components/auth/authHelpers';
 import { primaryButton } from '../../components/home/homeHelpers';
 import { useAuthStore } from '../../store/authStore';
 
@@ -62,7 +62,7 @@ export const LoginPage = () => {
       {/* Puerta del alumno nuevo: lo primero que ve un niño, sin elegir rol. */}
       <Link
         to="/unirse"
-        className="mb-6 flex min-h-[64px] items-center gap-3 rounded-xl border-2 border-primary-600 bg-primary-50 p-3 text-left hover:bg-primary-100 dark:border-primary-400 dark:bg-primary-500/10 dark:hover:bg-primary-500/20"
+        className={`mb-6 flex min-h-[64px] items-center gap-3 rounded-xl border-2 ${liftable} border-primary-600 bg-primary-50 p-3 text-left hover:bg-primary-100 dark:border-primary-400 dark:bg-primary-500/10 dark:hover:bg-primary-500/20`}
       >
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-600 text-white" aria-hidden="true">
           <Backpack size={22} />
@@ -100,7 +100,7 @@ export const LoginPage = () => {
         {formError && (
           <p className="text-sm font-medium text-red-700 dark:text-red-300" role="alert">{formError}</p>
         )}
-        <button type="submit" disabled={isLoading || !email.trim() || !password} className={`${primaryButton} w-full`}>
+        <button type="submit" disabled={isLoading || !email.trim() || !password} className={`${primaryButton} ${pressable} w-full`}>
           {isLoading ? 'Entrando…' : 'Entrar'}
         </button>
       </form>
