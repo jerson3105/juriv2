@@ -8,7 +8,6 @@ import { DIFFICULTY_LABELS, getBankEmoji, questionBankApi, type Question, type Q
 import { inputClass, primaryButton } from '../home/homeHelpers';
 import { card, secondaryButton } from '../gradebook/gradebookHelpers';
 import { ActionMenu } from '../home/ActionMenu';
-import { Jiro } from '../observatorio/Jiro';
 import { showUndoToast } from '../storytelling/undoToast';
 import {
   ACTIVITY_NAMES, activityRoute, bankRoute, errorMessage, isErrorQuestion, usesOf, type ActivityKey, type EditorKind,
@@ -336,15 +335,17 @@ export const BankDetail = ({ classroom, bankId }: { classroom: Classroom; bankId
       {questionsLoading ? (
         <p className="py-10 text-center text-sm text-gray-700 dark:text-gray-300" role="status">Cargando preguntas…</p>
       ) : total === 0 ? (
-        <div className="flex flex-col items-center gap-4 rounded-2xl border border-gray-200 bg-white px-4 py-8 text-center dark:border-gray-700 dark:bg-gray-800">
-          <Jiro pose="confundido" variant="card" sizeClassName="h-32" line={null} />
-          <div>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Este banco está vacío</h2>
-            <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">Crea preguntas con IA o escríbelas tú.</p>
+        <div className="rounded-2xl border-2 border-dashed border-gray-300 bg-white/70 px-6 py-12 text-center dark:border-gray-600 dark:bg-gray-800/60">
+          <div className="mx-auto flex w-fit gap-3" aria-hidden="true">
+            <span className="text-4xl">✏️</span><span className="text-5xl">✨</span><span className="text-4xl">📄</span>
           </div>
-          <div className="flex flex-wrap justify-center gap-2">
-            <button type="button" onClick={() => setEditing('new')} className={secondaryButton}><Plus size={16} aria-hidden="true" /> Nueva pregunta</button>
+          <h2 className="mt-4 text-lg font-bold text-gray-900 dark:text-white">Este banco aún no tiene preguntas</h2>
+          <p className="mx-auto mt-1 max-w-md text-sm text-gray-700 dark:text-gray-300">
+            Genéralas con IA a partir de un tema o un PDF, o escríbelas tú una por una.
+          </p>
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
             <button type="button" onClick={() => setCreating(true)} className={primaryButton}><Sparkles size={16} aria-hidden="true" /> Crear con IA</button>
+            <button type="button" onClick={() => setEditing('new')} className={secondaryButton}><Plus size={16} aria-hidden="true" /> Nueva pregunta</button>
           </div>
         </div>
       ) : (

@@ -8,7 +8,6 @@ import { getBankEmoji, questionBankApi, type TeacherBank } from '../../lib/quest
 import { inputClass, primaryButton } from '../home/homeHelpers';
 import { secondaryButton } from '../gradebook/gradebookHelpers';
 import { ActionMenu } from '../home/ActionMenu';
-import { Jiro } from '../observatorio/Jiro';
 import { showUndoToast } from '../storytelling/undoToast';
 import { ACTIVITY_NAMES, bankActivities, bankRoute, errorMessage } from './bankHelpers';
 import { BankFormDialog } from './BankFormDialog';
@@ -119,15 +118,22 @@ export const BankLibrary = ({ classroom }: { classroom: Classroom }) => {
           No se pudieron cargar los bancos. <button type="button" onClick={() => void refetch()} className="inline-block py-1.5 font-bold underline">Reintentar</button>
         </div>
       ) : banks.length === 0 ? (
-        <div className="flex flex-col items-center gap-4 rounded-2xl border border-gray-200 bg-white px-4 py-8 text-center dark:border-gray-700 dark:bg-gray-800">
-          <Jiro pose="senalando" variant="card" sizeClassName="h-36" line={null} />
-          <div>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Aún no tienes preguntas</h2>
-            <p className="mt-1 max-w-md text-sm text-gray-700 dark:text-gray-300">Créalas con IA a partir de un tema o un PDF, o escríbelas tú. Luego las juegas en clase con Jiro.</p>
+        <div className="rounded-2xl border-2 border-dashed border-gray-300 bg-white/70 px-6 py-12 text-center dark:border-gray-600 dark:bg-gray-800/60">
+          <div className="mx-auto flex w-fit gap-3" aria-hidden="true">
+            <span className="text-4xl">📚</span><span className="text-5xl">❓</span><span className="text-4xl">⭐</span>
           </div>
-          <button type="button" onClick={() => setCreating(true)} className={primaryButton}>
-            <Sparkles size={16} aria-hidden="true" /> Crear preguntas
-          </button>
+          <h2 className="mt-4 text-lg font-bold text-gray-900 dark:text-white">Crea tu primer banco de preguntas</h2>
+          <p className="mx-auto mt-1 max-w-md text-sm text-gray-700 dark:text-gray-300">
+            Créalas con IA a partir de un tema o un PDF, o escríbelas tú. Luego las juegas en clase en el Observatorio.
+          </p>
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            <button type="button" onClick={() => setCreating(true)} className={primaryButton}>
+              <Sparkles size={16} aria-hidden="true" /> Crear preguntas
+            </button>
+            <button type="button" onClick={() => setBankForm('new')} className={secondaryButton}>
+              <Plus size={16} aria-hidden="true" /> Nuevo banco
+            </button>
+          </div>
         </div>
       ) : visible.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-gray-300 px-4 py-8 text-center text-sm text-gray-800 dark:border-gray-600 dark:text-gray-100">
