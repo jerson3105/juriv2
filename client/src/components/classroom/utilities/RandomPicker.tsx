@@ -344,7 +344,7 @@ export const RandomPicker = ({
               {awarded ? `✓ ${awarded}` : `Dar puntos a ${winnerLabel}${selectedClan ? ` (${selectedClan.members.length})` : ''}`}
             </p>
             <DarkBehaviorButtons
-              behaviors={behaviors}
+              behaviors={withQuestion ? behaviors.filter((b) => b.isPositive) : behaviors}
               disabled={isApplying}
               onApply={(behavior) => {
                 const done = selectedClan

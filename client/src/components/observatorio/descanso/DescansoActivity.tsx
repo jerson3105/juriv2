@@ -100,7 +100,7 @@ export const DescansoActivity = ({ classroom, resume, onExit }: DescansoActivity
   const [showAlbum, setShowAlbum] = useState(false);
   const [customName, setCustomName] = useState('');
   const [calibrationLeft, setCalibrationLeft] = useState(CALIBRATION_SECONDS);
-  const [view, setView] = useState({ lit: 0, noisy: false, veryLoud: false, calmMs: saved?.calmMs ?? 0, paused: false });
+  const [view, setView] = useState({ lit: 0, noisy: false, calmMs: saved?.calmMs ?? 0, paused: false });
 
   const constellation = constellationById(chosenId) ?? suggested;
   const total = constellation.stars.length;
@@ -172,7 +172,7 @@ export const DescansoActivity = ({ classroom, resume, onExit }: DescansoActivity
         litRef.current = lit;
         sound.star(lit - 1);
       }
-      setView({ lit, noisy: noisy.current, veryLoud: c.mode === 'mic' && level > threshold * 2.2, calmMs: calmMs.current, paused: paused.current });
+      setView({ lit, noisy: noisy.current, calmMs: calmMs.current, paused: paused.current });
       if (Date.now() - lastSave.current > 5000) {
         lastSave.current = Date.now();
         saveGame({
@@ -254,7 +254,7 @@ export const DescansoActivity = ({ classroom, resume, onExit }: DescansoActivity
     setSession(null);
     setChosenId(null);
     setCustomName('');
-    setView({ lit: 0, noisy: false, veryLoud: false, calmMs: 0, paused: false });
+    setView({ lit: 0, noisy: false, calmMs: 0, paused: false });
     setPhase('setup');
   };
 
@@ -271,7 +271,7 @@ export const DescansoActivity = ({ classroom, resume, onExit }: DescansoActivity
       case 'calibrating': return { pose: 'despertando', line: `Escucho el silencio del aula… ${calibrationLeft}`, placement: 'center' };
       case 'playing':
         if (view.paused) return { pose: 'dormido', line: 'Pausa', placement: 'center' };
-        if (view.veryLoud) return { pose: 'sobresaltado', line: '¡Uy, qué ruido!', placement: 'center' };
+        // El ruido fuerte no tiene una reacción especial: así no vale la pena gritar para verla.
         if (view.noisy) return { pose: 'despertando', line: 'Shh… ¡casi me despierto!', placement: 'center' };
         return { pose: 'dormido', line: null, placement: 'center' };
       case 'completed': return { pose: 'celebrando', line: constellation.fact, placement: 'center' };
@@ -472,6 +472,7 @@ export const DescansoActivity = ({ classroom, resume, onExit }: DescansoActivity
           ]}
           suggestedXp={(result?.percent ?? percent) >= 100 ? 20 : (result?.percent ?? percent) >= 60 ? 15 : 10}
           activityName="Descanso de Jiro"
+          allowGradeBehaviors={false}
           onSessionChange={(s) => setSession(s as ActivitySession<DescansoState, DescansoResult>)}
           onPlayAgain={playAgain}
           onExit={onExit}

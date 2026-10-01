@@ -75,6 +75,8 @@ interface BitacoraProps {
   session: AnySession;
   /** Nombre de la actividad (contexto de la celebración en modo XP y oro). */
   activityName: string;
+  /** false = la actividad no evalúa una competencia: no se ofrecen comportamientos que cuentan para la nota. */
+  allowGradeBehaviors?: boolean;
   classroomId: string;
   students: Student[];
   showCharacterName?: boolean;
@@ -94,7 +96,7 @@ interface BitacoraProps {
  * toque (una vez por partida, con Deshacer), avance del capítulo y autoevaluación de la clase.
  */
 export const Bitacora = ({
-  session, activityName, classroomId, students, showCharacterName, achievements, podium, suggestedXp = 20, onSessionChange, onPlayAgain, onExit,
+  session, activityName, allowGradeBehaviors = true, classroomId, students, showCharacterName, achievements, podium, suggestedXp = 20, onSessionChange, onPlayAgain, onExit,
 }: BitacoraProps) => {
   const queryClient = useQueryClient();
   const presence = useTodayPresence(classroomId, students);
@@ -110,8 +112,11 @@ export const Bitacora = ({
     queryFn: () => behaviorApi.getByClassroom(classroomId),
   });
   const positives = useMemo(
-    () => behaviors.filter((b) => b.isPositive).sort((a, b) => Number(!!b.competencyId) - Number(!!a.competencyId)),
-    [behaviors],
+    () => behaviors
+      .filter((b) => b.isPositive && (allowGradeBehaviors || !b.competencyId))
+      // Los que cuentan para la nota, al final: lo habitual es premiar sin calificar.
+      .sort((a, b) => Number(!!a.competencyId) - Number(!!b.competencyId)),
+    [behaviors, allowGradeBehaviors],
   );
   const selectedBehavior = positives.find((b) => b.id === behaviorId) ?? null;
   const presentStudents = students.filter((s) => presence.presentIds.has(s.id));
@@ -214,6 +219,28 @@ export const Bitacora = ({
           })}
         </ol>
       )}
+
+      {/* Autoevaluación de la clase */}
+      <section aria-labelledby="bitacora-assess" className="rounded-3xl border border-white/15 bg-[#121a3d] p-4 sm:p-5">
+        <h3 id="bitacora-assess" className="text-xl font-black text-white">¿Cómo nos fue?</h3>
+        <div className="mt-3 flex flex-wrap gap-3">
+          {SELF_ASSESSMENT.map((option) => {
+            const active = session.selfAssessment === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={active}
+                onClick={() => assess.mutate(active ? null : option.value)}
+                className={`inline-flex min-h-[56px] items-center gap-3 rounded-2xl border-2 px-5 text-lg font-black text-white ${active ? option.ring : 'border-white/20 hover:bg-white/10'}`}
+              >
+                <span className="text-2xl" aria-hidden="true">{option.icon}</span>
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+      </section>
 
       {/* Recompensa */}
       <section aria-labelledby="bitacora-reward" className="rounded-3xl border border-white/15 bg-[#121a3d] p-4 sm:p-5">
@@ -336,7 +363,13 @@ export const Bitacora = ({
                     </button>
                   ))}
                 </div>
-                <p className="mt-2 text-sm text-indigo-100">Solo los comportamientos con competencia cuentan para la nota.</p>
+                {selectedBehavior?.competency ? (
+                  <p className="mt-2 rounded-xl bg-amber-300/15 px-3 py-2 text-sm font-semibold text-amber-100" role="status">
+                    Cuenta para la nota de {presence.presentIds.size} alumnos en {selectedBehavior.competency.shortName || selectedBehavior.competency.name}.
+                  </p>
+                ) : allowGradeBehaviors ? (
+                  <p className="mt-2 text-sm text-indigo-100">Solo los que dicen «Nota» cuentan para la nota.</p>
+                ) : null}
               </div>
             )}
 
@@ -346,28 +379,6 @@ export const Bitacora = ({
             </button>
           </div>
         )}
-      </section>
-
-      {/* Autoevaluación de la clase */}
-      <section aria-labelledby="bitacora-assess" className="rounded-3xl border border-white/15 bg-[#121a3d] p-4 sm:p-5">
-        <h3 id="bitacora-assess" className="text-xl font-black text-white">¿Cómo nos fue?</h3>
-        <div className="mt-3 flex flex-wrap gap-3">
-          {SELF_ASSESSMENT.map((option) => {
-            const active = session.selfAssessment === option.value;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                aria-pressed={active}
-                onClick={() => assess.mutate(active ? null : option.value)}
-                className={`inline-flex min-h-[56px] items-center gap-3 rounded-2xl border-2 px-5 text-lg font-black text-white ${active ? option.ring : 'border-white/20 hover:bg-white/10'}`}
-              >
-                <span className="text-2xl" aria-hidden="true">{option.icon}</span>
-                {option.label}
-              </button>
-            );
-          })}
-        </div>
       </section>
 
       <div className="flex flex-wrap justify-center gap-3">
