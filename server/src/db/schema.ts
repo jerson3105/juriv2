@@ -163,7 +163,8 @@ export const classrooms = mysqlTable('classrooms', {
   code: varchar('code', { length: 8 }).notNull().unique(),
   teacherId: varchar('teacher_id', { length: 36 }).notNull(),
   gradeLevel: varchar('grade_level', { length: 20 }), // Nivel de grado: INICIAL_3, INICIAL_4, INICIAL_5, PRIMARIA_1-6, SECUNDARIA_1-5
-  isActive: boolean('is_active').notNull().default(true),
+  isActive: boolean('is_active').notNull().default(true), // false = archivada
+  acceptingStudents: boolean('accepting_students').notNull().default(true), // permite unirse con el código
   bannerUrl: varchar('banner_url', { length: 500 }),
   
   // Configuración de puntos

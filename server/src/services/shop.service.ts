@@ -212,7 +212,8 @@ export class ShopService {
     }
 
     // Verificar límite de compras diarias
-    if (classroom.dailyPurchaseLimit !== null && data.purchaseType === 'SELF') {
+    // 0 o vacío = sin límite (datos antiguos podían guardar 0).
+    if (classroom.dailyPurchaseLimit && data.purchaseType === 'SELF') {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       

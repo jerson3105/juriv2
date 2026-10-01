@@ -55,7 +55,8 @@ import {
   jiroExpeditionCompetencies,
 } from '../db/schema.js';
 import { eq, and, desc, inArray, sql, count, asc, or, gt } from 'drizzle-orm';
-import { generateClassCode } from '../utils/helpers.js';
+import { calculateLevel, generateClassCode } from '../utils/helpers.js';
+import { ConflictError, ValidationError } from '../utils/errors.js';
 import { v4 as uuidv4 } from 'uuid';
 import { avatarService } from './avatar.service.js';
 import { characterClassService } from './characterClass.service.js';
@@ -164,6 +165,7 @@ interface UpdateClassroomData {
   bannerUrl?: string | null;
   gradeLevel?: string | null;
   isActive?: boolean;
+  acceptingStudents?: boolean;
   defaultXp?: number;
   defaultHp?: number;
   defaultGp?: number;
@@ -181,7 +183,6 @@ interface UpdateClassroomData {
   // Clanes
   clansEnabled?: boolean;
   clanXpPercentage?: number;
-  clanGpRewardEnabled?: boolean;
   // Racha de login
   loginStreakEnabled?: boolean;
   loginStreakConfig?: {
@@ -599,11 +600,58 @@ export class ClassroomService {
       throw new Error('No autorizado');
     }
 
-    await db.update(classrooms)
-      .set({ ...data, updatedAt: new Date() })
-      .where(eq(classrooms.id, classroomId));
+    // Reglas que dependen de dos campos: se validan con el valor final (el enviado o el guardado).
+    const maxHp = data.maxHp ?? classroom.maxHp;
+    const defaultHp = data.defaultHp ?? classroom.defaultHp;
+    if (defaultHp > maxHp) {
+      throw new ValidationError('El HP inicial no puede ser mayor que el HP máximo');
+    }
+
+    const xpPerLevelChanged = data.xpPerLevel !== undefined && data.xpPerLevel !== classroom.xpPerLevel;
+    await db.transaction(async (tx) => {
+      await tx.update(classrooms)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(classrooms.id, classroomId));
+      // Cambiar la XP por nivel recalcula el nivel de todos los alumnos (puede subir o bajar).
+      if (xpPerLevelChanged) {
+        await this.recalculateLevels(tx, classroomId, data.xpPerLevel!);
+      }
+    });
 
     return this.getById(classroomId);
+  }
+
+  private async recalculateLevels(tx: Parameters<Parameters<typeof db.transaction>[0]>[0], classroomId: string, xpPerLevel: number) {
+    const students = await tx
+      .select({ id: studentProfiles.id, xp: studentProfiles.xp, level: studentProfiles.level })
+      .from(studentProfiles)
+      .where(eq(studentProfiles.classroomId, classroomId));
+    const byLevel = new Map<number, string[]>();
+    for (const student of students) {
+      const level = calculateLevel(Math.max(0, student.xp), xpPerLevel);
+      if (level !== student.level) byLevel.set(level, [...(byLevel.get(level) ?? []), student.id]);
+    }
+    for (const [level, ids] of byLevel) {
+      await tx.update(studentProfiles).set({ level }).where(inArray(studentProfiles.id, ids));
+    }
+  }
+
+  // Nuevo código de clase: el anterior deja de servir para unirse.
+  async regenerateCode(classroomId: string) {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const code = generateClassCode();
+      // Los códigos de clase y de alumno comparten el mismo campo de "unirse": no deben chocar.
+      const [clash] = await db.select({ id: studentProfiles.id }).from(studentProfiles).where(eq(studentProfiles.linkCode, code)).limit(1);
+      if (clash) continue;
+      try {
+        await db.update(classrooms).set({ code, updatedAt: new Date() }).where(eq(classrooms.id, classroomId));
+        return code;
+      } catch (error) {
+        if ((error as { code?: string })?.code === 'ER_DUP_ENTRY') continue;
+        throw error;
+      }
+    }
+    throw new ConflictError('No se pudo generar un código nuevo. Inténtalo otra vez.');
   }
 
   async getEnabledCompetencies(classroomId: string) {
@@ -1960,7 +2008,8 @@ export class ClassroomService {
     });
 
     if (!classroom) throw new Error('Código de clase inválido');
-    if (!classroom.isActive) throw new Error('Esta clase no está activa');
+    if (!classroom.isActive) throw new Error('Esta clase está archivada');
+    if (!classroom.acceptingStudents) throw new Error('Esta clase no está aceptando alumnos nuevos. Pídele a tu profesor que lo active.');
 
     const existing = await db.query.studentProfiles.findFirst({
       where: and(

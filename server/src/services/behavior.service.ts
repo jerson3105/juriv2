@@ -500,8 +500,8 @@ export class BehaviorService {
         }
       }
       
-      // Notificación de level up para el profesor (siempre, independiente del userId del estudiante)
-      if (classroom.notifyOnPoints && leveledUp) {
+      // Notificación de level up para el profesor (siempre: "Avisos al alumno" solo afecta al alumno)
+      if (leveledUp) {
         notificationsBatch.push({
           id: uuidv4(),
           userId: data.teacherId,

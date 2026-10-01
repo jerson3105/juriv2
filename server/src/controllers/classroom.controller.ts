@@ -7,6 +7,7 @@ import { eq, and, or, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { createGenAI } from '../utils/aiClient.js';
 import { canAttachClassroomsToSchool, requireClassroomTeacher } from '../utils/access.js';
+import { AppError } from '../utils/errors.js';
 
 const AI_CLASSROOM_SUBJECTS = [
   'matematicas',
@@ -297,13 +298,14 @@ const updateClassroomSchema = z.object({
   bannerUrl: z.string().url().optional().nullable(),
   gradeLevel: z.string().max(20).optional().nullable(),
   isActive: z.boolean().optional(),
+  acceptingStudents: z.boolean().optional(),
   
   // Puntos
-  defaultXp: z.number().int().min(0).optional(),
-  defaultHp: z.number().int().min(0).optional(),
-  defaultGp: z.number().int().min(0).optional(),
-  maxHp: z.number().int().min(1).optional(),
-  xpPerLevel: z.number().int().min(1).optional(),
+  defaultXp: z.number().int().min(0).max(100000).optional(),
+  defaultHp: z.number().int().min(0).max(10000).optional(),
+  defaultGp: z.number().int().min(0).max(100000).optional(),
+  maxHp: z.number().int().min(1).max(10000).optional(),
+  xpPerLevel: z.number().int().min(10).max(100000).optional(),
   allowNegativeHp: z.boolean().optional(),
   
   // Comportamientos
@@ -314,7 +316,8 @@ const updateClassroomSchema = z.object({
   // Tienda
   shopEnabled: z.boolean().optional(),
   requirePurchaseApproval: z.boolean().optional(),
-  dailyPurchaseLimit: z.number().int().min(0).optional().nullable(),
+  // 0 o vacío = sin límite (igual que en la barra de la Tienda).
+  dailyPurchaseLimit: z.number().int().min(0).max(1000).nullable().optional().transform((v) => (v === 0 ? null : v)),
   
   // Clases de personaje
   classAssignmentMode: z.enum(['STUDENT_CHOICE', 'TEACHER_ASSIGNS']).optional(),
@@ -325,19 +328,20 @@ const updateClassroomSchema = z.object({
   // Clanes
   clansEnabled: z.boolean().optional(),
   clanXpPercentage: z.number().int().min(0).max(100).optional(),
-  clanBattlesEnabled: z.boolean().optional(),
-  clanGpRewardEnabled: z.boolean().optional(),
   
   // Racha de login
   loginStreakEnabled: z.boolean().optional(),
   loginStreakConfig: z.object({
-    dailyXp: z.number().int().min(0).default(5),
+    dailyXp: z.number().int().min(0).max(50).default(5),
     milestones: z.array(z.object({
-      day: z.number().int().min(1),
-      xp: z.number().int().min(0),
-      gp: z.number().int().min(0),
+      day: z.number().int().min(1).max(365),
+      xp: z.number().int().min(0).max(10000),
+      gp: z.number().int().min(0).max(10000),
       randomItem: z.boolean(),
-    })).default([]),
+    })).max(20)
+      .refine((list) => new Set(list.map((m) => m.day)).size === list.length, 'Hay dos premios para el mismo día')
+      .transform((list) => [...list].sort((a, b) => a.day - b.day))
+      .default([]),
     resetOnMiss: z.boolean().default(true),
     graceDays: z.number().int().min(0).max(7).default(0),
   }).optional().nullable(),
@@ -347,6 +351,21 @@ const updateClassroomSchema = z.object({
   curriculumAreaId: z.string().max(36).optional().nullable(),
   gradeScaleType: z.string().max(20).optional().nullable(),
 });
+
+const SETTING_LABELS: Record<string, string> = {
+  name: 'Nombre de la clase', description: 'Descripción', defaultXp: 'XP inicial', defaultHp: 'HP inicial',
+  defaultGp: 'Oro inicial', maxHp: 'HP máximo', xpPerLevel: 'XP por nivel', dailyPurchaseLimit: 'Límite de compras diarias',
+  clanXpPercentage: 'XP para el clan', loginStreakConfig: 'Racha de conexión',
+};
+
+const settingsErrorMessage = (error: z.ZodError) => {
+  const issue = error.errors[0];
+  const label = issue ? SETTING_LABELS[String(issue.path[0])] : undefined;
+  if (!issue || !label) return 'Datos inválidos';
+  if (issue.code === 'too_small') return `${label}: el mínimo es ${issue.minimum}`;
+  if (issue.code === 'too_big') return `${label}: el máximo es ${issue.maximum}`;
+  return `${label}: ${issue.message}`;
+};
 
 const addClassroomCompetenciesSchema = z.object({
   competencyIds: z.array(z.string().max(36)).min(1).max(50),
@@ -743,9 +762,12 @@ REGLAS:
       if (error instanceof z.ZodError) {
         return res.status(400).json({
           success: false,
-          message: 'Datos inválidos',
+          message: settingsErrorMessage(error),
           errors: error.errors,
         });
+      }
+      if (error instanceof AppError) {
+        return res.status(error.statusCode).json({ success: false, message: error.message });
       }
       if (error instanceof Error && error.message === 'No autorizado') {
         return res.status(403).json({
@@ -758,6 +780,22 @@ REGLAS:
         success: false,
         message: 'Error al actualizar la clase',
       });
+    }
+  }
+
+  // POST /classrooms/:id/regenerate-code
+  async regenerateCode(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      if (!(await requireClassroomTeacher(req, res, id))) return;
+      const code = await classroomService.regenerateCode(id);
+      res.json({ success: true, message: 'Código nuevo generado', data: { code } });
+    } catch (error) {
+      if (error instanceof AppError) {
+        return res.status(error.statusCode).json({ success: false, message: error.message });
+      }
+      console.error('Error regenerating classroom code:', error);
+      res.status(500).json({ success: false, message: 'No se pudo generar el código' });
     }
   }
 

@@ -7,7 +7,10 @@ export interface Classroom {
   code: string;
   teacherId: string;
   gradeLevel: string | null;
+  /** false = archivada. */
   isActive: boolean;
+  /** Permite unirse con el código de clase. */
+  acceptingStudents: boolean;
   bannerUrl: string | null;
   
   // Configuración de puntos
@@ -37,8 +40,6 @@ export interface Classroom {
   // Configuración de clanes
   clansEnabled: boolean;
   clanXpPercentage: number;
-  clanBattlesEnabled: boolean;
-  clanGpRewardEnabled: boolean;
   
   // Configuración de Pergaminos del Aula
   scrollsEnabled: boolean;
@@ -356,6 +357,7 @@ export interface UpdateClassroomSettings {
   bannerUrl?: string | null;
   gradeLevel?: string | null;
   isActive?: boolean;
+  acceptingStudents?: boolean;
   
   // Puntos
   defaultXp?: number;
@@ -384,8 +386,6 @@ export interface UpdateClassroomSettings {
   // Clanes
   clansEnabled?: boolean;
   clanXpPercentage?: number;
-  clanBattlesEnabled?: boolean;
-  clanGpRewardEnabled?: boolean;
   
   // Racha de login
   loginStreakEnabled?: boolean;
@@ -481,6 +481,12 @@ export const classroomApi = {
 
   restore: async (id: string): Promise<void> => {
     await api.post(`/classrooms/${id}/restore`);
+  },
+
+  // Código de clase nuevo: el anterior deja de servir para unirse
+  regenerateCode: async (id: string): Promise<string> => {
+    const response = await api.post(`/classrooms/${id}/regenerate-code`);
+    return response.data.data.code;
   },
 
   // "Hoy" de cada clase del profesor: XP, pendientes, asistencia y última actividad

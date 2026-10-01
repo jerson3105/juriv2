@@ -174,6 +174,10 @@ export const loginStreakService = {
         newStreak = 1;
         graceDaysUsed = 0;
       }
+      // Sin "reiniciar al perder un día", la racha sigue aunque falte (antes volvía a 1 igual).
+      if (daysDiff > 1 && !config.resetOnMiss) {
+        newStreak = streakRecord.currentStreak + 1;
+      }
     }
 
     const newLongestStreak = Math.max(streakRecord.longestStreak, newStreak);

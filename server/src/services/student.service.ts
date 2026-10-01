@@ -66,6 +66,7 @@ export class StudentService {
         classroomName: classroom.name,
         classroomCode: classroom.code,
         isActive: classroom.isActive,
+        acceptingStudents: classroom.acceptingStudents,
       };
     }
 
@@ -101,7 +102,11 @@ export class StudentService {
     }
 
     if (!classroom.isActive) {
-      throw new Error('Esta clase no está activa');
+      throw new Error('Esta clase está archivada');
+    }
+
+    if (!classroom.acceptingStudents) {
+      throw new Error('Esta clase no está aceptando alumnos nuevos. Pídele a tu profesor que lo active.');
     }
 
     // Verificar si ya está inscrito

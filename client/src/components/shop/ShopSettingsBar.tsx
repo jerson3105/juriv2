@@ -23,7 +23,7 @@ const Switch = ({ checked, onChange, label, disabled }: { checked: boolean; onCh
   </button>
 );
 
-// Estado de la tienda a la vista y editable aquí mismo (los mismos ajustes que en Configuración).
+// Ajustes de la tienda (abierta, aprobación, límite diario): solo se editan aquí.
 // El padre la monta con key según el límite diario para reiniciar el borrador si cambia fuera.
 export const ShopSettingsBar = ({ classroom, onSaved }: ShopSettingsBarProps) => {
   const queryClient = useQueryClient();

@@ -1,44 +1,31 @@
-export type ClassroomSettingsSectionKey = 'general' | 'gamificacion' | 'clase' | 'personas' | 'riesgo';
+export type ClassroomSettingsSectionKey = 'general' | 'gamificacion' | 'riesgo';
 
 export const DEFAULT_CLASSROOM_SETTINGS_SECTION: ClassroomSettingsSectionKey = 'general';
 
+// Las claves de URL se mantienen (enlaces existentes); los nombres visibles son los nuevos.
 export const CLASSROOM_SETTINGS_SECTIONS = [
   {
     key: 'general',
-    label: 'General',
-    title: 'Configuracion',
-    description: 'Identidad y visualizacion del aula',
-    showsSaveAction: true,
+    label: 'Clase',
+    description: 'Nombre, código para unirse y cómo se muestran los nombres',
   },
   {
     key: 'gamificacion',
-    label: 'Gamificacion',
-    title: 'Configuracion de gamificacion',
-    description: 'Motor de juego, puntos y recompensas',
-    showsSaveAction: true,
-  },
-  {
-    key: 'clase',
-    label: 'Clase',
-    title: 'Configuracion academica',
-    description: 'Competencias, destrezas y notas',
-    showsSaveAction: false,
-  },
-  {
-    key: 'personas',
-    label: 'Personas',
-    title: 'Gestion de personas',
-    description: 'Estudiantes, vinculos y material para familias',
-    showsSaveAction: false,
+    label: 'Reglas del juego',
+    description: 'Puntos, avisos, clases de personaje, clanes y racha',
   },
   {
     key: 'riesgo',
-    label: 'Riesgo',
-    title: 'Zona de riesgo',
-    description: 'Acciones irreversibles o delicadas',
-    showsSaveAction: false,
+    label: 'Archivar o eliminar',
+    description: 'Archivar, borrar datos o eliminar la clase',
   },
 ] as const;
+
+/** Secciones antiguas que ahora viven en otras vistas. */
+export const LEGACY_SETTINGS_REDIRECTS: Record<string, (classroomId: string) => string> = {
+  clase: (id) => `/classroom/${id}/gradebook?tab=competencias`,
+  personas: (id) => `/classroom/${id}/students`,
+};
 
 export const isClassroomSettingsSection = (value: string | undefined | null): value is ClassroomSettingsSectionKey => {
   return CLASSROOM_SETTINGS_SECTIONS.some((section) => section.key === value);

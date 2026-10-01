@@ -164,6 +164,7 @@ export const studentApi = {
     classroomName?: string;
     classroomCode?: string;
     isActive?: boolean;
+    acceptingStudents?: boolean;
     studentName?: string | null;
     alreadyLinked?: boolean;
   }> => {

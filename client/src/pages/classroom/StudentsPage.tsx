@@ -36,6 +36,7 @@ import { MultiPointsAnimation, useMultiPointsEffect } from '../../components/eff
 import { TeacherBadgeAwardedModal } from '../../components/badges/TeacherBadgeAwardedModal';
 import { GiveBadgeModal } from '../../components/badges/GiveBadgeModal';
 import { AddPlaceholderStudentsModal } from '../../components/students/AddPlaceholderStudentsModal';
+import { StudentsManageMenu } from '../../components/students/StudentsManageMenu';
 import { PointsModal } from '../../components/modals/PointsModal';
 import { SelectionActionBar } from '../../components/students/SelectionActionBar';
 import { StudentFocusView } from '../../components/students/StudentFocusView';
@@ -1182,6 +1183,7 @@ export const StudentsPage = () => {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3 ml-auto">
+            <StudentsManageMenu classroomId={classroom.id} onAddStudents={() => setShowAddPlaceholderModal(true)} />
             {/* Toggle de vista - Siempre visible, al final */}
             <div className="flex items-center bg-primary-100 dark:bg-primary-900/30 rounded-lg p-0.5 border border-primary-200 dark:border-primary-800 flex-shrink-0">
               <button

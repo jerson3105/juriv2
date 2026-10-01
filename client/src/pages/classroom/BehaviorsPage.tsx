@@ -12,6 +12,8 @@ import { BehaviorFormModal, type BehaviorFormData, type BehaviorFormTarget } fro
 import { AIBehaviorModal } from '../../components/behaviors/AIBehaviorModal';
 import { ExportBehaviorsModal } from '../../components/behaviors/ExportBehaviorsModal';
 import { readSort, saveSort, sortBehaviors, type BehaviorSort } from '../../components/behaviors/behaviorHelpers';
+import { SwitchRow } from '../../components/settings/settingsUi';
+import { useClassroomSettingsSave } from '../../components/settings/settingsHooks';
 
 const errorMessage = (error: unknown, fallback: string) =>
   (error as { response?: { data?: { message?: string } } })?.response?.data?.message || fallback;
@@ -46,6 +48,8 @@ export const BehaviorsPage = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sort, setSort] = useState<BehaviorSort>(readSort);
   const { usageById } = useBehaviorUsage(classroom.id);
+  const { save: saveSetting } = useClassroomSettingsSave(classroom);
+  const showNegatives = classroom.allowNegativePoints !== false;
 
   const { data: behaviors = [], isLoading } = useQuery({
     queryKey: behaviorsKey,
@@ -316,6 +320,16 @@ export const BehaviorsPage = () => {
                   </button>
                 )}
               </div>
+              {!column.isPositive && !selectionMode && (
+                <div className="border-b border-gray-200 px-4 dark:border-gray-700">
+                  <SwitchRow
+                    title="Usarlos al dar puntos"
+                    description={showNegatives ? 'Aparecen en la Lista, el perfil del alumno y la barra rápida.' : 'Ocultos al dar puntos. Siguen guardados aquí.'}
+                    checked={showNegatives}
+                    onChange={(v) => saveSetting({ allowNegativePoints: v }, v ? 'Los negativos vuelven a aparecer al dar puntos' : 'Los negativos ya no aparecen al dar puntos', true)}
+                  />
+                </div>
+              )}
               {column.list.length === 0 ? (
                 <div className="px-4 py-8 text-center">
                   <p className="mx-auto max-w-sm text-sm text-gray-700 dark:text-gray-300">{column.empty}</p>

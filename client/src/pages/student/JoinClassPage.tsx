@@ -85,7 +85,11 @@ export const JoinClassPage = () => {
         setVerifyResult(null);
         setCodeType(null);
       } else if (result.type === 'classroom' && result.isActive === false) {
-        setVerifyError('Esta clase no está activa actualmente.');
+        setVerifyError('Esta clase está archivada.');
+        setVerifyResult(null);
+        setCodeType(null);
+      } else if (result.type === 'classroom' && result.acceptingStudents === false) {
+        setVerifyError('Esta clase no está aceptando alumnos nuevos. Pídele a tu profesor que lo active.');
         setVerifyResult(null);
         setCodeType(null);
       }

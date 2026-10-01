@@ -3,7 +3,7 @@ import { Outlet, useParams, useNavigate, useLocation, Link } from 'react-router-
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
-  AlertTriangle,
+  Archive,
   Users,
   Settings,
   Award,
@@ -231,7 +231,8 @@ export const ClassroomLayout = () => {
       subItems: [
         { path: `/classroom/${id}/activities`, label: 'Actividades', icon: Dices, featureKey: 'activities' },
         { path: `/classroom/${id}/question-banks`, label: 'Preguntas', icon: BookOpen, featureKey: 'question_bank' },
-        ...(classroom?.useCompetencies ? [{ path: `/classroom/${id}/gradebook`, label: 'Calificaciones', icon: ClipboardList, featureKey: 'grades' }] : []),
+        // Siempre visible: sin configurar, Calificaciones muestra cómo empezar.
+        { path: `/classroom/${id}/gradebook`, label: 'Calificaciones', icon: ClipboardList, featureKey: 'grades' },
         { path: `/classroom/${id}/history`, label: 'Registro de actividad', icon: Scroll },
       ],
     },
@@ -252,9 +253,7 @@ export const ClassroomLayout = () => {
   const settingsSectionIcons: Record<ClassroomSettingsSectionKey, typeof Settings> = {
     general: Settings,
     gamificacion: Gamepad2,
-    clase: BookMarked,
-    personas: Users,
-    riesgo: AlertTriangle,
+    riesgo: Archive,
   };
 
   const settingsSubItems = CLASSROOM_SETTINGS_SECTIONS.map((section) => ({
