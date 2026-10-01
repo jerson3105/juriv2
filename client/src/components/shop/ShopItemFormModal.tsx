@@ -19,6 +19,9 @@ export interface ShopItemFormData {
   // undefined = no cambiar (imagen antigua); null = quitar; string = nueva imagen subida
   imageUrl?: string | null;
   stock: number | null;
+  /** Poción: al aprobar su uso cura HP (no levanta a quien descansa). */
+  effectType: 'HEAL_HP' | null;
+  effectValue: number | null;
 }
 
 interface ShopItemFormModalProps {
@@ -46,6 +49,8 @@ const initialState = (target: ShopFormTarget) => {
     imageChanged: target.kind === 'create' && !!source?.imageUrl?.startsWith('/api/uploads/shop-items/'),
     limited: source ? source.stock !== null : false,
     stock: source?.stock ?? 10,
+    heals: source?.effectType === 'HEAL_HP',
+    healAmount: source?.effectType === 'HEAL_HP' && source.effectValue ? source.effectValue : 20,
   };
 };
 
@@ -111,6 +116,8 @@ export const ShopItemFormModal = ({ target, isSaving, onClose, onSubmit }: ShopI
       // Solo se envía la imagen si cambió (las antiguas pueden no cumplir el formato nuevo).
       imageUrl: form.imageChanged ? form.imageUrl : undefined,
       stock: form.limited ? Math.max(0, Math.round(form.stock || 0)) : null,
+      effectType: form.category === 'CONSUMABLE' && form.heals ? 'HEAL_HP' : null,
+      effectValue: form.category === 'CONSUMABLE' && form.heals ? Math.min(1000, Math.max(1, Math.round(form.healAmount || 1))) : null,
     }, another);
     if (saved && another) {
       setForm(initialState({ kind: 'create' }));
@@ -315,6 +322,42 @@ export const ShopItemFormModal = ({ target, isSaving, onClose, onSubmit }: ShopI
               />
             </div>
           </div>
+
+          {form.category === 'CONSUMABLE' && (
+            <div>
+              <span className={labelClass}>Efecto al usarla</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex rounded-xl border border-gray-300 bg-white p-0.5 dark:border-gray-600 dark:bg-gray-800" role="group" aria-label="Efecto al usarla">
+                  {([[false, 'Ninguno'], [true, '❤️ Cura energía (HP)']] as const).map(([value, label]) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => set('heals', value)}
+                      aria-pressed={form.heals === value}
+                      className={`min-h-[36px] rounded-lg px-3 text-sm font-semibold ${form.heals === value ? 'bg-primary-600 text-white' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700'}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {form.heals && (
+                  <label className="flex items-center gap-2 text-sm font-medium text-gray-800 dark:text-gray-100">
+                    +
+                    <input
+                      type="number"
+                      min={1}
+                      max={1000}
+                      value={form.healAmount}
+                      onChange={(e) => set('healAmount', parseInt(e.target.value) || 0)}
+                      className="h-10 w-20 rounded-lg border border-gray-300 bg-white text-center text-sm font-bold text-gray-900 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                    />
+                    HP al aprobar su uso
+                  </label>
+                )}
+              </div>
+              {form.heals && <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">No levanta a quien está descansando (0 HP): para eso está la misión de recuperación.</p>}
+            </div>
+          )}
 
           <div>
             <span className={labelClass}>Unidades disponibles</span>

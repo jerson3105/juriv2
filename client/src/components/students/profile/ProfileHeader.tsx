@@ -1,5 +1,8 @@
-import type { ReactNode } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, Coins, Heart, KeyRound, Medal, Pencil, Sparkles, Trophy, UserMinus, Users } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Coins, Heart, KeyRound, Medal, Moon, Pencil, Sparkles, Trophy, UserMinus, Users } from 'lucide-react';
+import { RestingPill } from '../../energy/EnergyMeter';
+import { RecoveryMissionModal } from '../../energy/RecoveryMissionModal';
+import { isInitialLevel } from '../../energy/energyHelpers';
 import type { Classroom, Student } from '../../../lib/classroomApi';
 import type { StudentSummary } from '../../../lib/studentApi';
 import { CLAN_EMBLEMS } from '../../../lib/clanApi';
@@ -41,6 +44,8 @@ export const ProfileHeader = ({
   onBack, onPrevious, onNext, onAssignClass, onGivePoints, onGiveBadge, onEdit, onAccessCode, onFamilyCode, onRemove,
 }: ProfileHeaderProps) => {
   const names = studentNames(student, classroom.showCharacterName);
+  const [showRecovery, setShowRecovery] = useState(false);
+  const initial = isInitialLevel(classroom.gradeLevel);
   const maxHp = classroom.maxHp || 100;
   const hpRatio = Math.min(student.hp / maxHp, 1);
   const level = levelProgress(student.xp, student.level, classroom.xpPerLevel || 100);
@@ -131,15 +136,31 @@ export const ProfileHeader = ({
 
             {/* Medidores */}
             <div className="grid gap-3 sm:grid-cols-3">
-              <Meter
-                icon={<Heart size={16} className="fill-current" aria-hidden="true" />}
-                label="Vida"
-                tone="text-red-700 dark:text-red-300"
-                value={`${student.hp}`}
-                suffix={`/ ${maxHp}`}
-                percent={hpRatio * 100}
-                bar={hpRatio < LOW_HP_RATIO ? 'bg-red-600' : hpRatio < 0.6 ? 'bg-amber-500' : 'bg-emerald-600'}
-              />
+              {student.hp <= 0 ? (
+                <div className="rounded-xl border border-slate-300 bg-slate-50 p-3 dark:border-slate-600 dark:bg-slate-800/60">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                      <Heart size={16} aria-hidden="true" /> Energía
+                    </span>
+                    <RestingPill compact />
+                  </div>
+                  <p className="mt-1 text-sm text-slate-800 dark:text-slate-100">{initial ? 'Sin energía: recupéralo cuando esté listo.' : 'Sin energía: la tienda está en pausa.'}</p>
+                  <button type="button" onClick={() => setShowRecovery(true)}
+                    className="mt-2 inline-flex min-h-[40px] items-center gap-1.5 rounded-lg bg-slate-700 px-3 text-sm font-semibold text-white hover:bg-slate-800 dark:bg-slate-200 dark:text-slate-900 dark:hover:bg-white">
+                    <Moon size={14} aria-hidden="true" /> {initial ? 'Recuperar energía' : 'Misión de recuperación'}
+                  </button>
+                </div>
+              ) : (
+                <Meter
+                  icon={<Heart size={16} className="fill-current" aria-hidden="true" />}
+                  label="Energía"
+                  tone="text-red-700 dark:text-red-300"
+                  value={`${student.hp}`}
+                  suffix={`/ ${maxHp}`}
+                  percent={hpRatio * 100}
+                  bar={hpRatio < LOW_HP_RATIO ? 'bg-red-600' : hpRatio < 0.6 ? 'bg-amber-500' : 'bg-emerald-600'}
+                />
+              )}
               <Meter
                 icon={<Sparkles size={16} aria-hidden="true" />}
                 label="Experiencia"
@@ -161,6 +182,9 @@ export const ProfileHeader = ({
           </div>
         </div>
       </section>
+      {showRecovery && (
+        <RecoveryMissionModal classroomId={classroom.id} studentId={student.id} studentName={names.primary} initial={initial} onClose={() => setShowRecovery(false)} />
+      )}
     </div>
   );
 };

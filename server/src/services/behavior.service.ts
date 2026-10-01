@@ -356,12 +356,14 @@ export class BehaviorService {
       : { xp: -xpChange, hp: -hpChange, gp: -gpChange };
     const pointRules = {
       xpPerLevel,
-      hpMin: classroom.allowNegativeHp ? null : 0,
+      hpMin: 0,
       hpMax: classroom.maxHp,
       source: 'BEHAVIOR' as const,
     };
     const studentUpdates: { studentId: string }[] = [];
     const xpAwardsForSideEffects: { studentId: string; xpAmount: number }[] = [];
+    // Alumnos descansando (0 HP) a los que no se les sumó HP: la Lista lo avisa.
+    let restingSkipped = 0;
 
     // Calcular nuevos valores para cada estudiante
     for (const student of students) {
@@ -377,7 +379,7 @@ export class BehaviorService {
         newGp += gpChange;
       } else {
         newXp -= xpChange;
-        newHp = classroom.allowNegativeHp ? newHp - hpChange : Math.max(0, newHp - hpChange);
+        newHp = Math.max(0, newHp - hpChange);
         newGp -= gpChange;
       }
 
@@ -411,7 +413,9 @@ export class BehaviorService {
           createdAt: now,
         });
       }
-      if (hpChange > 0) {
+      const hpIgnored = behavior.isPositive && hpChange > 0 && student.hp <= 0;
+      if (hpIgnored) restingSkipped += 1;
+      if (hpChange > 0 && !hpIgnored) {
         const logId = uuidv4();
         if (!pointLogEntryId) pointLogEntryId = logId;
         pointLogsBatch.push({
@@ -616,6 +620,7 @@ export class BehaviorService {
       results,
       levelUps,
       awardedBadges,
+      restingSkipped,
     };
   }
 

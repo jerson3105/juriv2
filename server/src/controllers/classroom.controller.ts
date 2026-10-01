@@ -306,7 +306,9 @@ const updateClassroomSchema = z.object({
   defaultGp: z.number().int().min(0).max(100000).optional(),
   maxHp: z.number().int().min(1).max(10000).optional(),
   xpPerLevel: z.number().int().min(10).max(100000).optional(),
-  allowNegativeHp: z.boolean().optional(),
+  // El HP ya no puede ser negativo (0 = descansando): la opción se ignora.
+  // Misiones de recuperación de la clase (vacío = las de fábrica).
+  recoveryMissions: z.array(z.string().trim().min(3).max(140)).max(6).nullable().optional(),
   
   // Comportamientos
   allowNegativePoints: z.boolean().optional(),
@@ -355,7 +357,7 @@ const updateClassroomSchema = z.object({
 const SETTING_LABELS: Record<string, string> = {
   name: 'Nombre de la clase', description: 'Descripción', defaultXp: 'XP inicial', defaultHp: 'HP inicial',
   defaultGp: 'Oro inicial', maxHp: 'HP máximo', xpPerLevel: 'XP por nivel', dailyPurchaseLimit: 'Límite de compras diarias',
-  clanXpPercentage: 'XP para el clan', loginStreakConfig: 'Racha de conexión',
+  clanXpPercentage: 'XP para el clan', loginStreakConfig: 'Racha de conexión', recoveryMissions: 'Misiones de recuperación',
 };
 
 const settingsErrorMessage = (error: z.ZodError) => {

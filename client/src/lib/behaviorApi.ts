@@ -97,6 +97,8 @@ export interface ApplyResult {
   }[];
   levelUps: LevelUpInfo[];
   awardedBadges?: AwardedBadgeInfo[];
+  /** Alumnos descansando (0 HP) a los que no se les sumó HP. */
+  restingSkipped?: number;
 }
 
 export const behaviorApi = {

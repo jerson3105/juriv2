@@ -107,6 +107,8 @@ export const ShopPage = () => {
         rarity: data.rarity,
         price: data.price,
         icon: data.icon,
+        effectType: data.effectType,
+        effectValue: data.effectValue,
         ...(data.imageUrl !== undefined ? { imageUrl: data.imageUrl } : {}),
       };
       if (id) await shopApi.updateItem(id, { ...payload, description: data.description, stock: data.stock });

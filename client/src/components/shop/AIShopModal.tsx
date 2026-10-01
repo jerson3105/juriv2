@@ -25,7 +25,7 @@ type ItemType = 'MIXED' | 'PRIVILEGES' | 'REWARDS' | 'POWERS';
 const EXAMPLES = [
   { emoji: '💺', title: 'Privilegios', desc: 'Elegir asiento, tiempo extra en exámenes, entregar tarde, ser ayudante del día' },
   { emoji: '🎁', title: 'Recompensas', desc: 'Stickers, certificados, tiempo libre, poner música en clase' },
-  { emoji: '⚡', title: 'Poderes', desc: 'Escudo anti-HP, duplicar XP del día, revivir puntos, congelar HP por un día' },
+  { emoji: '⚡', title: 'Poderes', desc: 'Poción de energía (cura HP), duplicar XP del día, escudo contra un negativo' },
   { emoji: '🎮', title: 'Temática gamer', desc: 'Pociones, escudos mágicos, power-ups, monedas doradas' },
   { emoji: '⚔️', title: 'Aventura medieval', desc: 'Pergamino del conocimiento, poción de sabiduría, escudo del guardián, amuleto de la suerte' },
   { emoji: '🚀', title: 'Espacial', desc: 'Combustible extra, escudo de energía, teletransporte, visión de rayos X' },

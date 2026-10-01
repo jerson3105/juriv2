@@ -10,6 +10,7 @@ import { eq, and, desc, sql, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { teacherOwnsClassroom } from '../utils/access.js';
 import { syncLevelFromXp } from '../utils/points.js';
+import { syncRestingState } from '../utils/energy.js';
 
 interface EventEffect {
   type: 'XP' | 'HP' | 'GP';
@@ -917,18 +918,27 @@ class EventsService {
   private async applyEffectsAtomically(tx: any, studentProfileId: string, effects: EventEffect[]) {
     // Los eventos escriben el XP directamente: el nivel (y su registro) se ponen al día al final.
     const addsXp = effects.some((effect) => effect.action === 'ADD' && this.effectTypeToField(effect.type) === 'xp');
+    const touchesHp = effects.some((effect) => this.effectTypeToField(effect.type) === 'hp');
+    const [limits] = touchesHp
+      ? await tx.select({ maxHp: classrooms.maxHp }).from(studentProfiles)
+        .innerJoin(classrooms, eq(classrooms.id, studentProfiles.classroomId)).where(eq(studentProfiles.id, studentProfileId))
+      : [];
     for (const effect of effects) {
       const field = this.effectTypeToField(effect.type);
       const column = studentProfiles[field];
-      const next = effect.action === 'ADD'
-        ? sql`${column} + ${effect.value}`
-        : sql`GREATEST(0, ${column} - ${effect.value})`;
+      // HP: tope maxHp y, con 0 HP (descansando), las sumas no aplican.
+      const next = effect.action !== 'ADD'
+        ? sql`GREATEST(0, ${column} - ${effect.value})`
+        : field === 'hp'
+          ? sql`CASE WHEN ${column} <= 0 THEN ${column} ELSE LEAST(${limits?.maxHp ?? 100}, ${column} + ${effect.value}) END`
+          : sql`${column} + ${effect.value}`;
       await tx
         .update(studentProfiles)
         .set({ [field]: next, updatedAt: new Date() })
         .where(eq(studentProfiles.id, studentProfileId));
     }
     if (addsXp) await syncLevelFromXp(tx, studentProfileId, 'EVENT');
+    if (touchesHp) await syncRestingState(tx, [studentProfileId]);
   }
 
   private effectTypeToField(effectType: EventEffect['type']): PointStatField {

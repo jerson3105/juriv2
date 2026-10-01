@@ -70,6 +70,8 @@ export interface UpdatePointsResult {
   newLevel?: number;
   fromLevel?: number;
   studentName: string;
+  /** Sumar HP a quien descansa no hace nada (solo su misión de recuperación). */
+  restingIgnored?: boolean;
 }
 
 export interface StudentCelebrations {

@@ -1,4 +1,5 @@
 import { db } from '../db/index.js';
+import { restoreEnergy } from '../utils/energy.js';
 import {
   stories,
   storyChapters,
@@ -197,6 +198,11 @@ class StoryService {
         updatedAt: now,
       })
       .where(eq(storyChapters.id, chapter.id));
+
+    // Capítulo nuevo, energía nueva: todos vuelven al HP máximo (también quien descansaba).
+    const students = await exec.select({ id: studentProfiles.id }).from(studentProfiles)
+      .where(and(eq(studentProfiles.classroomId, classroomId), eq(studentProfiles.isActive, true)));
+    await restoreEnergy(exec, students.map((s) => s.id), 'FULL', 'Nuevo capítulo: energía restaurada', null);
   }
 
   /** Siguiente capítulo bloqueado por orden (no exige índices consecutivos). */

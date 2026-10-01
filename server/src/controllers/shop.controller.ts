@@ -19,8 +19,9 @@ const createItemSchema = z.object({
   price: priceSchema,
   imageUrl: itemImageSchema.optional(),
   icon: z.string().max(50).optional(),
-  effectType: z.string().max(50).optional(),
-  effectValue: z.number().int().optional(),
+  // Único efecto automático: la poción cura HP al aprobarse su uso.
+  effectType: z.enum(['HEAL_HP']).nullable().optional(),
+  effectValue: z.number().int().min(1).max(1000).nullable().optional(),
   stock: stockSchema.optional(),
 });
 
@@ -32,8 +33,8 @@ const updateItemSchema = z.object({
   price: priceSchema.optional(),
   imageUrl: itemImageSchema.nullable().optional(),
   icon: z.string().max(50).optional(),
-  effectType: z.string().max(50).optional(),
-  effectValue: z.number().int().optional(),
+  effectType: z.enum(['HEAL_HP']).nullable().optional(),
+  effectValue: z.number().int().min(1).max(1000).nullable().optional(),
   stock: stockSchema.nullable().optional(),
   isActive: z.boolean().optional(),
 });

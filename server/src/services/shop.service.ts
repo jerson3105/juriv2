@@ -17,7 +17,10 @@ import {
   type ItemUsageStatus,
 } from '../db/schema.js';
 import { teacherOwnsClassroom } from '../utils/access.js';
-import { spendGp, affectedRows } from '../utils/points.js';
+import { spendGp, affectedRows, applyPointDeltas } from '../utils/points.js';
+import { isInitialLevel } from '../utils/energy.js';
+
+const RESTING_SHOP_MESSAGE = 'Estás descansando: completa tu misión de recuperación para volver a usar la tienda.';
 
 /** Rechazo de negocio dentro de una transacción de compra (se devuelve como success:false). */
 class PurchaseRejected extends Error {}
@@ -81,8 +84,8 @@ export class ShopService {
     price: number;
     imageUrl?: string;
     icon?: string;
-    effectType?: string;
-    effectValue?: number;
+    effectType?: string | null;
+    effectValue?: number | null;
     stock?: number;
   }): Promise<ShopItem> {
     const now = new Date();
@@ -128,8 +131,8 @@ export class ShopService {
       price: number;
       imageUrl: string | null;
       icon: string;
-      effectType: string;
-      effectValue: number;
+      effectType: string | null;
+      effectValue: number | null;
       stock: number | null;
       isActive: boolean;
     }>
@@ -209,6 +212,13 @@ export class ShopService {
     // Verificar si la tienda está habilitada (el profesor puede dar artículos aunque esté cerrada)
     if (!classroom.shopEnabled && data.purchaseType !== 'TEACHER') {
       return { success: false, message: 'La tienda no está habilitada para esta clase' };
+    }
+
+    // Con 0 HP la tienda está en pausa para quien paga (el profesor sí puede dar artículos).
+    if (data.purchaseType !== 'TEACHER' && !isInitialLevel(classroom.gradeLevel)) {
+      const payerId = data.purchaseType === 'GIFT' && data.buyerId ? data.buyerId : data.studentId;
+      const [payer] = payerId === student.id ? [student] : await db.select({ hp: studentProfiles.hp }).from(studentProfiles).where(eq(studentProfiles.id, payerId));
+      if (payer && payer.hp <= 0) return { success: false, message: RESTING_SHOP_MESSAGE };
     }
 
     // Verificar límite de compras diarias
@@ -838,6 +848,11 @@ export class ShopService {
         return { success: false, message: 'Estudiante no encontrado' };
       }
 
+      if (student.hp <= 0) {
+        const [cls] = await db.select({ gradeLevel: classrooms.gradeLevel }).from(classrooms).where(eq(classrooms.id, student.classroomId));
+        if (!isInitialLevel(cls?.gradeLevel)) return { success: false, message: RESTING_SHOP_MESSAGE };
+      }
+
       // Crear registro de uso primero
       const usageId = uuidv4();
       const now = new Date();
@@ -963,6 +978,7 @@ export class ShopService {
       return { success: false, message: 'Este uso ya fue revisado' };
     }
 
+    let healed = 0;
     try {
       await db.transaction(async (tx) => {
         // Solo una revisión puede pasar de PENDING (evita doble aprobación/rechazo simultáneo).
@@ -972,6 +988,28 @@ export class ShopService {
           .where(and(eq(itemUsages.id, usageId), eq(itemUsages.status, 'PENDING')));
         if (affectedRows(claim) !== 1) {
           throw new PurchaseRejected('Este uso ya fue revisado');
+        }
+
+        if (status === 'APPROVED') {
+          const item = await this.getItemById(usage.itemId);
+          if (item?.effectType === 'HEAL_HP' && (item.effectValue ?? 0) > 0) {
+            const [cls] = await tx.select({ maxHp: classrooms.maxHp }).from(classrooms).where(eq(classrooms.id, usage.classroomId));
+            const [before] = await tx.select({ hp: studentProfiles.hp }).from(studentProfiles).where(eq(studentProfiles.id, usage.studentId)).for('update');
+            const updated = await applyPointDeltas(tx, usage.studentId, { hp: item.effectValue! }, { hpMax: cls?.maxHp ?? 100 });
+            healed = Math.max(0, (updated?.hp ?? 0) - (before?.hp ?? 0));
+            if (healed > 0) {
+              await tx.insert(pointLogs).values({
+                id: uuidv4(),
+                studentId: usage.studentId,
+                pointType: 'HP',
+                action: 'ADD',
+                amount: healed,
+                reason: `Poción: ${item.name}`,
+                givenBy: teacherId,
+                createdAt: new Date(),
+              });
+            }
+          }
         }
 
         // Rechazado: la unidad se descontó al pedir el uso; se le devuelve al estudiante.
@@ -1010,7 +1048,7 @@ export class ShopService {
 
     return {
       success: true,
-      message: status === 'APPROVED' ? 'Uso aprobado' : 'Uso rechazado: se le devolvió el artículo'
+      message: status === 'APPROVED' ? (healed > 0 ? `Uso aprobado: +${healed} HP` : 'Uso aprobado') : 'Uso rechazado: se le devolvió el artículo'
     };
   }
 

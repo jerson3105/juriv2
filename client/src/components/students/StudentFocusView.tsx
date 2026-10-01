@@ -2,7 +2,10 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { ChevronLeft, Coins, Copy, Crown, Eye, Heart, LayoutList, Medal, RotateCcw, Search, Sparkles } from 'lucide-react';
+import { ChevronLeft, Coins, Copy, Crown, Eye, Heart, LayoutList, Medal, Moon, RotateCcw, Search, Sparkles } from 'lucide-react';
+import { Hearts, RestingPill } from '../energy/EnergyMeter';
+import { isInitialLevel, LOW_ENERGY_RATIO } from '../energy/energyHelpers';
+import { useProjectorStore } from '../../store/projectorStore';
 import { StudentAvatarMini } from '../avatar/StudentAvatarMini';
 import { historyApi, type ActivityLogEntry } from '../../lib/historyApi';
 import type { Behavior } from '../../lib/behaviorApi';
@@ -32,6 +35,8 @@ interface StudentFocusViewProps {
   onApplyBehavior: (behavior: Behavior, studentId: string) => void;
   onOpenAllBehaviors: (studentId: string) => void;
   onAwardBadge: (studentId: string) => void;
+  /** Misión de recuperación para quien descansa (0 HP). */
+  onRecovery?: (studentId: string) => void;
   onViewProfile: (studentId: string) => void;
   onAssignClass: (studentId: string, characterClassId: string | null) => void;
   storyTheme?: { colors?: { primary?: string } } | null;
@@ -77,6 +82,7 @@ export const StudentFocusView = ({
   onApplyBehavior,
   onOpenAllBehaviors,
   onAwardBadge,
+  onRecovery,
   onViewProfile,
   onAssignClass,
   storyTheme,
@@ -87,6 +93,8 @@ export const StudentFocusView = ({
 
   const student = (selectedStudentId && students.find((s) => s.id === selectedStudentId)) || students[0] || null;
   const maxHp = classroom.maxHp || 100;
+  const projecting = useProjectorStore((st) => st.projecting);
+  const initial = isInitialLevel(classroom.gradeLevel);
   const xpPerLevel = classroom.xpPerLevel || 100;
 
   const { data: studentHistory } = useQuery({
@@ -148,7 +156,8 @@ export const StudentFocusView = ({
           ) : students.map((s) => {
             const isActive = student?.id === s.id;
             const progress = levelProgress(s);
-            const lowHp = (s.hp / maxHp) * 100 < 30;
+            const resting = !projecting && s.hp <= 0;
+            const lowHp = !projecting && s.hp > 0 && s.hp / maxHp < LOW_ENERGY_RATIO;
             return (
               <button
                 key={s.id}
@@ -180,6 +189,7 @@ export const StudentFocusView = ({
                     </span>
                     {topStudentId === s.id && <Crown size={12} className="text-amber-500 flex-shrink-0" aria-label="Líder en XP" />}
                     {lowHp && <Heart size={12} className="text-red-600 fill-red-600 flex-shrink-0" aria-label="HP bajo" />}
+                    {resting && <Moon size={12} className="text-slate-700 fill-slate-700 dark:text-slate-200 dark:fill-slate-200 flex-shrink-0" aria-label="Descansando" />}
                   </span>
                   <span className="mt-1 flex items-center gap-2">
                     <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-600" aria-hidden="true">
@@ -271,14 +281,32 @@ export const StudentFocusView = ({
               </div>
 
               {/* Estadísticas */}
-              <div className="grid grid-cols-3 gap-2">
+              <div className={`grid gap-2 ${projecting ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                {!projecting && (
                 <div className="rounded-xl bg-gray-50 dark:bg-gray-900/40 p-3">
-                  <div className="flex items-center gap-1.5 text-sm font-semibold text-red-700 dark:text-red-300"><Heart size={16} className="fill-current" aria-hidden="true" />HP</div>
-                  <div className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tabular-nums whitespace-nowrap">{student.hp}<span className="text-xs sm:text-sm font-normal text-gray-500 dark:text-gray-400"> / {maxHp}</span></div>
-                  <div className="mt-1 h-1.5 rounded-full bg-gray-200 dark:bg-gray-600 overflow-hidden">
-                    <motion.div initial={false} animate={{ width: `${Math.min((student.hp / maxHp) * 100, 100)}%` }} className="h-full rounded-full bg-red-500" />
-                  </div>
+                  <div className="flex items-center gap-1.5 text-sm font-semibold text-red-700 dark:text-red-300"><Heart size={16} className="fill-current" aria-hidden="true" />Energía</div>
+                  {student.hp <= 0 ? (
+                    <div className="mt-1 space-y-1.5">
+                      <RestingPill compact />
+                      {onRecovery && (
+                        <button type="button" onClick={() => onRecovery(student.id)}
+                          className="block min-h-[36px] text-sm font-semibold text-primary-800 underline-offset-2 hover:underline dark:text-primary-200">
+                          {initial ? 'Recuperar' : 'Misión'}
+                        </button>
+                      )}
+                    </div>
+                  ) : initial ? (
+                    <div className="mt-1.5"><Hearts hp={student.hp} maxHp={maxHp} /></div>
+                  ) : (
+                    <>
+                      <div className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tabular-nums whitespace-nowrap">{student.hp}<span className="text-xs sm:text-sm font-normal text-gray-500 dark:text-gray-400"> / {maxHp}</span></div>
+                      <div className="mt-1 h-1.5 rounded-full bg-gray-200 dark:bg-gray-600 overflow-hidden">
+                        <motion.div initial={false} animate={{ width: `${Math.min((student.hp / maxHp) * 100, 100)}%` }} className="h-full rounded-full bg-red-500" />
+                      </div>
+                    </>
+                  )}
                 </div>
+                )}
                 <div className="rounded-xl bg-gray-50 dark:bg-gray-900/40 p-3">
                   <div className="flex items-center gap-1.5 text-sm font-semibold text-primary-700 dark:text-primary-300"><Sparkles size={16} aria-hidden="true" />XP</div>
                   <div className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tabular-nums whitespace-nowrap">{student.xp}</div>

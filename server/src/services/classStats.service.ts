@@ -224,7 +224,7 @@ class ClassStatsService {
     const attention = students
       .map((s) => {
         const reasons: Array<{ kind: AttentionKind; label: string }> = [];
-        if (s.hp / maxHp < LOW_HP_RATIO) reasons.push({ kind: 'LOW_HP', label: `Vida ${s.hp}/${maxHp}` });
+        if (s.hp / maxHp < LOW_HP_RATIO) reasons.push({ kind: 'LOW_HP', label: s.hp <= 0 ? 'Descansando (sin energía)' : `Energía ${s.hp}/${maxHp}` });
         const last = lastById.get(s.id);
         const idle = last ? Math.floor((now - last.getTime()) / DAY_MS) : null;
         if (idle === null) reasons.push({ kind: 'INACTIVE', label: 'Sin puntos todavía' });

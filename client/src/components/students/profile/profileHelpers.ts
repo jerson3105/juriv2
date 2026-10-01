@@ -59,8 +59,10 @@ export interface ProfileAlert {
 
 export const buildAlerts = (student: Student, summary: StudentSummary | undefined, maxHp: number): ProfileAlert[] => {
   const alerts: ProfileAlert[] = [];
-  if (student.hp / maxHp < LOW_HP_RATIO) {
-    alerts.push({ tone: 'danger', title: 'Vida baja', detail: `Tiene ${student.hp} de ${maxHp} HP (menos del ${Math.round(LOW_HP_RATIO * 100)} %).` });
+  if (student.hp <= 0) {
+    alerts.push({ tone: 'warning', title: 'Descansando', detail: 'Se quedó sin energía: asígnale una misión de recuperación.' });
+  } else if (student.hp / maxHp < LOW_HP_RATIO) {
+    alerts.push({ tone: 'danger', title: 'Energía baja', detail: `Tiene ${student.hp} de ${maxHp} HP (menos del ${Math.round(LOW_HP_RATIO * 100)} %).` });
   }
   if (summary) {
     const idle = daysSince(summary.lastActivityAt);

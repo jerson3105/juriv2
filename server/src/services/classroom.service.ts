@@ -173,7 +173,7 @@ interface UpdateClassroomData {
   defaultGp?: number;
   maxHp?: number;
   xpPerLevel?: number;
-  allowNegativeHp?: boolean;
+  recoveryMissions?: string[] | null;
   allowNegativePoints?: boolean;
   showReasonToStudent?: boolean;
   notifyOnPoints?: boolean;
@@ -578,6 +578,7 @@ export class ClassroomService {
       xp: studentProfiles.xp,
       hp: studentProfiles.hp,
       gp: studentProfiles.gp,
+      restingSince: studentProfiles.restingSince,
       teamId: studentProfiles.teamId,
       isActive: studentProfiles.isActive,
       isDemo: studentProfiles.isDemo,

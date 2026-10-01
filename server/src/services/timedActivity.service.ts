@@ -17,6 +17,7 @@ import { clanService } from './clan.service.js';
 import { storyService } from './story.service.js';
 import { teacherOwnsClassroom } from '../utils/access.js';
 import { syncLevelFromXp } from '../utils/points.js';
+import { syncRestingState } from '../utils/energy.js';
 
 // DTOs
 export interface CreateTimedActivityDto {
@@ -682,7 +683,12 @@ class TimedActivityService {
       .for('update');
     const source = fresh ?? student;
     const currentValue = pointType === 'XP' ? source.xp : pointType === 'HP' ? source.hp : source.gp;
-    const newValue = action === 'ADD' ? currentValue + amount : Math.max(0, currentValue - amount);
+    let newValue = action === 'ADD' ? currentValue + amount : Math.max(0, currentValue - amount);
+    // HP: tope maxHp y, con 0 HP (descansando), sumar no lo levanta.
+    if (pointType === 'HP' && action === 'ADD') {
+      const [limits] = await tx.select({ maxHp: classrooms.maxHp }).from(classrooms).where(eq(classrooms.id, student.classroomId));
+      newValue = currentValue <= 0 ? currentValue : Math.min(limits?.maxHp ?? 100, newValue);
+    }
     const appliedAmount = Math.abs(newValue - currentValue);
 
     if (appliedAmount === 0) {
@@ -703,6 +709,7 @@ class TimedActivityService {
       .where(eq(studentProfiles.id, student.id));
     // Este camino escribe el XP directamente: el nivel (y su registro) se ponen al día aquí.
     if (pointType === 'XP' && action === 'ADD') await syncLevelFromXp(tx, student.id, 'ACTIVITY');
+    if (pointType === 'HP') await syncRestingState(tx, [student.id]);
 
     await tx.insert(pointLogs).values({
       id: uuidv4(),

@@ -20,6 +20,8 @@ import {
   CATEGORY_CONFIG,
 } from '../../lib/shopApi';
 import { classroomApi } from '../../lib/classroomApi';
+import { recoveryApi } from '../../lib/recoveryApi';
+import { RestingBanner } from '../../components/energy/RestingBanner';
 import { useCharacterClasses } from '../../hooks/useCharacterClasses';
 import toast from 'react-hot-toast';
 
@@ -38,6 +40,13 @@ interface StudentShopPageProps {
 }
 
 export const StudentShopPage = ({ studentProfile, classmates: propClassmates }: StudentShopPageProps) => {
+  // Sin energía (0 HP) la tienda está en pausa (en inicial no): se muestra y no se puede comprar.
+  const { data: energy } = useQuery({
+    queryKey: ['my-energy', studentProfile.id],
+    queryFn: () => recoveryApi.mine(studentProfile.id),
+    staleTime: 30_000,
+  });
+  const shopPaused = !!energy?.resting && !energy.initial;
   const queryClient = useQueryClient();
   const [selectedItem, setSelectedItem] = useState<ShopItem | null>(null);
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
@@ -155,6 +164,8 @@ export const StudentShopPage = ({ studentProfile, classmates: propClassmates }: 
         </div>
       </div>
 
+      {shopPaused && <RestingBanner profileId={studentProfile.id} />}
+
       {/* Tabs */}
       <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700">
         <button
@@ -230,7 +241,7 @@ export const StudentShopPage = ({ studentProfile, classmates: propClassmates }: 
                           key={item.id}
                           item={item}
                           index={index}
-                          canAfford={studentProfile.gp >= item.price}
+                          canAfford={!shopPaused && studentProfile.gp >= item.price}
                           onBuy={handleBuy}
                           onGift={handleGift}
                         />

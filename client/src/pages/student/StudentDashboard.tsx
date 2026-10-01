@@ -25,6 +25,7 @@ import { avatarApi } from '../../lib/avatarApi';
 import { shopApi } from '../../lib/shopApi';
 import { badgeApi } from '../../lib/badgeApi';
 import { useCelebrationStore } from '../../store/celebrationStore';
+import { RestingBanner } from '../../components/energy/RestingBanner';
 import { LoginStreakWidget } from '../../components/student/LoginStreakWidget';
 import { storyApi } from '../../lib/storyApi';
 import { StoryPlayer } from '../../components/story/StoryPlayer';
@@ -254,6 +255,7 @@ export const StudentDashboard = () => {
       )}
 
       <div className="relative z-10">
+        {currentProfile.hp <= 0 && <RestingBanner profileId={currentProfile.id} />}
         {/* Layout de 2 columnas: Avatar + Contenido */}
         <div className="flex flex-col lg:flex-row gap-6">
           

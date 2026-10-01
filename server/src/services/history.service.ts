@@ -10,11 +10,13 @@ import {
   studentBadges,
   badges,
   attendanceRecords,
+  recoveryMissions,
 } from '../db/schema.js';
 import { eq, desc, and, inArray, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { teacherOwnsClassroom } from '../utils/access.js';
 import { affectedRows, revertLevelUpsAbove } from '../utils/points.js';
+import { syncRestingState } from '../utils/energy.js';
 
 export interface ActivityLogEntry {
   id: string;
@@ -563,8 +565,9 @@ class HistoryService {
     const hasAccess = await this.verifyTeacherOwnsClassroom(teacherId, student.classroomId);
     if (!hasAccess) throw new Error('Sin acceso a este salón');
 
-    const [classroom] = await db.select({ xpPerLevel: classrooms.xpPerLevel }).from(classrooms).where(eq(classrooms.id, student.classroomId));
+    const [classroom] = await db.select({ xpPerLevel: classrooms.xpPerLevel, maxHp: classrooms.maxHp }).from(classrooms).where(eq(classrooms.id, student.classroomId));
     const xpPerLevel = classroom?.xpPerLevel || 100;
+    const maxHp = classroom?.maxHp || 100;
 
     const now = new Date();
 
@@ -609,7 +612,7 @@ class HistoryService {
 
         // Accumulate deltas
         if (fieldKey === 'xp') currentXp = Math.max(0, currentXp + pointDelta);
-        else if (fieldKey === 'hp') currentHp = Math.max(0, currentHp + pointDelta);
+        else if (fieldKey === 'hp') currentHp = Math.min(maxHp, Math.max(0, currentHp + pointDelta));
         else if (fieldKey === 'gp') currentGp = Math.max(0, currentGp + pointDelta);
 
         // 2. Create inverse log
@@ -638,6 +641,11 @@ class HistoryService {
 
       await tx.update(studentProfiles).set(updateData).where(eq(studentProfiles.id, log.studentId));
       await revertLevelUpsAbove(tx, log.studentId, updateData.level as number);
+      // Revertir una recuperación devuelve la misión a pendiente; luego el estado se pone al día.
+      await tx.update(recoveryMissions)
+        .set({ status: 'ASSIGNED', completedAt: null, completedBy: null, completionPointLogId: null })
+        .where(and(inArray(recoveryMissions.completionPointLogId, logsToRevert.map((l) => l.id)), eq(recoveryMissions.status, 'COMPLETED')));
+      await syncRestingState(tx, [log.studentId]);
     });
 
     // Build result message

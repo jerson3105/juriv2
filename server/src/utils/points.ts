@@ -2,6 +2,7 @@ import { and, eq, gt, gte, inArray, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { classrooms, levelUpLogs, studentProfiles } from '../db/schema.js';
 import { calculateLevel } from './helpers.js';
+import { syncRestingState } from './energy.js';
 
 /**
  * Operaciones atómicas sobre la economía del alumno (oro/XP).
@@ -93,7 +94,7 @@ export const spendGp = async (exec: Executor, studentProfileId: string, amount: 
 export interface PointRules {
   /** XP por nivel de la clase (para recalcular el nivel). */
   xpPerLevel?: number;
-  /** Mínimo de PV al restar (0 si la clase no permite PV negativos; null = sin mínimo). */
+  /** Sin uso: el HP nunca baja de 0 (se conserva por compatibilidad de llamadas). */
   hpMin?: number | null;
   /** Máximo de PV al sumar (maxHp de la clase; null = sin máximo). */
   hpMax?: number | null;
@@ -103,6 +104,8 @@ export interface PointRules {
   xpMin?: number | null;
   /** Origen para el registro de subidas de nivel. */
   source?: LevelUpSource;
+  /** true solo para reversiones: con 0 HP las sumas normales no aplican (el alumno descansa). */
+  allowRevive?: boolean;
 }
 
 export interface PointResult {
@@ -112,6 +115,15 @@ export interface PointResult {
   level: number;
   previousLevel: number;
 }
+
+// HP: piso 0 siempre y tope maxHp. Con 0 HP el alumno descansa: sumar no lo levanta (solo una
+// misión de recuperación o un capítulo nuevo, ver utils/energy.ts).
+const hpDelta = (delta: number, rules: PointRules) => {
+  const column = studentProfiles.hp;
+  if (delta < 0) return sql`GREATEST(0, ${column} + ${delta})`;
+  const raised = rules.hpMax !== undefined && rules.hpMax !== null ? sql`LEAST(${rules.hpMax}, ${column} + ${delta})` : sql`${column} + ${delta}`;
+  return rules.allowRevive ? raised : sql`CASE WHEN ${column} <= 0 THEN ${column} ELSE ${raised} END`;
+};
 
 const clampedDelta = (column: any, delta: number, min?: number | null, max?: number | null) => {
   if (delta > 0 && max !== undefined && max !== null) return sql`LEAST(${max}, ${column} + ${delta})`;
@@ -136,7 +148,7 @@ export const applyPointDeltas = async (
 
   const set: Record<string, unknown> = { updatedAt: new Date() };
   if (xp !== 0) set.xp = clampedDelta(studentProfiles.xp, xp, rules.xpMin, null);
-  if (hp !== 0) set.hp = clampedDelta(studentProfiles.hp, hp, rules.hpMin, rules.hpMax);
+  if (hp !== 0) set.hp = hpDelta(hp, rules);
   if (gp !== 0) set.gp = clampedDelta(studentProfiles.gp, gp, rules.gpMin, null);
 
   const result = await exec
@@ -157,6 +169,7 @@ export const applyPointDeltas = async (
     await exec.update(studentProfiles).set({ level }).where(eq(studentProfiles.id, studentProfileId));
     await logLevelUps(exec, [{ studentProfileId, classroomId: row.classroomId, from: row.level, to: level }], rules.source);
   }
+  if (hp !== 0) await syncRestingState(exec, [studentProfileId]);
   return { xp: row.xp, hp: row.hp, gp: row.gp, level, previousLevel: row.level };
 };
 
@@ -181,7 +194,7 @@ export const applyPointDeltasBulk = async (
 
   const set: Record<string, unknown> = { updatedAt: new Date() };
   if (xp !== 0) set.xp = clampedDelta(studentProfiles.xp, xp, rules.xpMin, null);
-  if (hp !== 0) set.hp = clampedDelta(studentProfiles.hp, hp, rules.hpMin, rules.hpMax);
+  if (hp !== 0) set.hp = hpDelta(hp, rules);
   if (gp !== 0) set.gp = clampedDelta(studentProfiles.gp, gp, rules.gpMin, null);
 
   await exec.update(studentProfiles).set(set).where(inArray(studentProfiles.id, ids));
@@ -209,6 +222,7 @@ export const applyPointDeltasBulk = async (
     results.set(row.id, { xp: row.xp, hp: row.hp, gp: row.gp, level, previousLevel: row.level });
   }
   await logLevelUps(exec, changes, rules.source);
+  if (hp !== 0) await syncRestingState(exec, ids);
   return results;
 };
 

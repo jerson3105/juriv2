@@ -172,6 +172,7 @@ export const classrooms = mysqlTable('classrooms', {
   defaultHp: int('default_hp').notNull().default(100),
   defaultGp: int('default_gp').notNull().default(0),
   maxHp: int('max_hp').notNull().default(100),
+  recoveryMissions: json('recovery_missions').$type<string[]>(), // plantillas de misiones de recuperación
   xpPerLevel: int('xp_per_level').notNull().default(100),
   allowNegativeHp: boolean('allow_negative_hp').notNull().default(false),
   
@@ -354,6 +355,7 @@ export const studentProfiles = mysqlTable('student_profiles', {
   isActive: boolean('is_active').notNull().default(true),
   isDemo: boolean('is_demo').notNull().default(false), // Estudiante demo para onboarding
   celebratedAt: datetime('celebrated_at'), // hasta dónde vio sus celebraciones (null = aún no)
+  restingSince: datetime('resting_since'), // HP en 0: desde cuándo descansa (null = tiene energía)
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
 }, (table) => ({
@@ -518,6 +520,25 @@ export const behaviorsRelations = relations(behaviors, ({ one, many }) => ({
     references: [classroomCompetencyIndicators.id],
   }),
   pointLogs: many(pointLogs),
+}));
+
+// ==================== MISIONES DE RECUPERACIÓN (HP en 0) ====================
+
+// Con HP en 0 el alumno "descansa": sale solo con una misión que el profesor valida.
+export const recoveryMissions = mysqlTable('recovery_missions', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
+  studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),
+  text: varchar('text', { length: 255 }).notNull(),
+  status: varchar('status', { length: 12 }).notNull().default('ASSIGNED'), // ASSIGNED | COMPLETED | CANCELLED
+  assignedBy: varchar('assigned_by', { length: 36 }),
+  completedBy: varchar('completed_by', { length: 36 }),
+  completionPointLogId: varchar('completion_point_log_id', { length: 36 }),
+  createdAt: datetime('created_at').notNull(),
+  completedAt: datetime('completed_at'),
+}, (table) => ({
+  studentStatusIdx: index('idx_recovery_missions_student_status').on(table.studentProfileId, table.status),
+  classroomIdx: index('idx_recovery_missions_classroom').on(table.classroomId, table.createdAt),
 }));
 
 // ==================== REGISTRO DE SUBIDAS DE NIVEL ====================

@@ -5,6 +5,8 @@ import {
   Users,
   Sparkles,
   Heart,
+  Monitor,
+  Moon,
   Coins,
   Check,
   Crown,
@@ -14,7 +16,6 @@ import {
   List,
   Eye,
   Shield,
-  AlertTriangle,
   ChevronDown,
   PlayCircle,
   RotateCcw,
@@ -32,6 +33,10 @@ import { attendanceApi, type AttendanceRecord } from '../../lib/attendanceApi';
 import { historyApi, type ActivityLogEntry, type HistoryResponse } from '../../lib/historyApi';
 import { celebrateApplyResult, celebrateBadgeAward, celebrateLevelUps } from '../../components/celebrations/celebrationHelpers';
 import { TodayLevelUps } from '../../components/celebrations/TodayLevelUps';
+import { EnergyMeter } from '../../components/energy/EnergyMeter';
+import { RecoveryMissionModal } from '../../components/energy/RecoveryMissionModal';
+import { isInitialLevel, LOW_ENERGY_RATIO } from '../../components/energy/energyHelpers';
+import { useProjectorStore } from '../../store/projectorStore';
 import { GiveBadgeModal } from '../../components/badges/GiveBadgeModal';
 import { AddPlaceholderStudentsModal } from '../../components/students/AddPlaceholderStudentsModal';
 import { StudentsManageMenu } from '../../components/students/StudentsManageMenu';
@@ -44,7 +49,7 @@ import { useQuickBehaviors } from '../../hooks/useQuickBehaviors';
 import { useSound } from '../../hooks/useSound';
 import toast from 'react-hot-toast';
 
-type ListFilter = 'all' | 'low_hp' | 'no_activity' | 'round_pending' | 'round_scored' | 'round_repeated';
+type ListFilter = 'all' | 'low_hp' | 'resting' | 'no_activity' | 'round_pending' | 'round_scored' | 'round_repeated';
 
 type RoundBehaviorConfig = {
   behaviorId: string;
@@ -95,6 +100,12 @@ export const StudentsPage = () => {
 
   // Estado para modal de añadir estudiantes placeholder
   const [showAddPlaceholderModal, setShowAddPlaceholderModal] = useState(false);
+
+  // Energía (HP): "Proyectando" oculta la energía; misión de recuperación para quien descansa.
+  const projecting = useProjectorStore((s) => s.projecting);
+  const setProjecting = useProjectorStore((s) => s.setProjecting);
+  const [recoveryFor, setRecoveryFor] = useState<{ id: string; name: string } | null>(null);
+  const initialLevel = isInitialLevel(classroom.gradeLevel);
 
   // Estado para filtros de vista lista
   const [listFilter, setListFilter] = useState<ListFilter>('all');
@@ -378,7 +389,8 @@ export const StudentsPage = () => {
         const who = mode === 'row_quick'
           ? `${result.results[0]?.studentName || 'Estudiante'}: `
           : result.studentsAffected > 1 ? `${result.studentsAffected} estudiantes: ` : '';
-        showUndoableToast(`${who}${pointsSummary || 'Aplicado'} — ${beh.name}`, result, context?.toastId);
+        const resting = result.restingSkipped ? ` · ${result.restingSkipped} descansando (sin HP)` : '';
+        showUndoableToast(`${who}${pointsSummary || 'Aplicado'} — ${beh.name}${resting}`, result, context?.toastId);
       }
       
       if (!isRoundQuick) {
@@ -480,14 +492,6 @@ export const StudentsPage = () => {
   });
   uniqueClans.sort((a, b) => a.name.localeCompare(b.name, 'es'));
 
-  // Helper: HP color semántico
-  const getHpColor = (hp: number, maxHp: number) => {
-    const pct = (hp / maxHp) * 100;
-    if (pct < 30) return { bar: 'bg-red-500', text: 'text-red-600', warning: true };
-    if (pct <= 60) return { bar: 'bg-amber-500', text: 'text-amber-700 dark:text-amber-400', warning: false };
-    return { bar: 'bg-emerald-500', text: 'text-emerald-700 dark:text-emerald-400', warning: false };
-  };
-
   // Filtrar y ordenar estudiantes alfabéticamente
   const students = allStudents.filter((student) => {
     // Filtro de búsqueda
@@ -500,8 +504,10 @@ export const StudentsPage = () => {
     }
     // Filtros de lista
     if (listFilter === 'low_hp') {
-      const pct = (student.hp / (classroom.maxHp || 100)) * 100;
-      if (pct >= 40) return false;
+      if (student.hp <= 0 || student.hp / (classroom.maxHp || 100) >= LOW_ENERGY_RATIO) return false;
+    }
+    if (listFilter === 'resting') {
+      if (student.hp > 0) return false;
     }
     if (listFilter === 'no_activity') {
       if (studentsWithActivityToday.has(student.id)) return false;
@@ -991,7 +997,8 @@ export const StudentsPage = () => {
   const topStudent = allStudents.length > 0 
     ? [...allStudents].sort((a, b) => b.xp - a.xp)[0]
     : null;
-  const lowHpCount = allStudents.filter((s) => ((s.hp / (classroom.maxHp || 100)) * 100) < 40).length;
+  const lowHpCount = allStudents.filter((s) => s.hp > 0 && s.hp / (classroom.maxHp || 100) < LOW_ENERGY_RATIO).length;
+  const restingCount = allStudents.filter((s) => s.hp <= 0).length;
   const attendanceMarkedCount = todayAttendance.length;
 
   if (isLoading) {
@@ -1072,6 +1079,23 @@ export const StudentsPage = () => {
           {/* Contexto de clase - Vista tarjetas */}
           {viewMode === 'cards' && (
             <div className="flex items-center gap-2 flex-wrap min-w-0">
+              {!projecting && restingCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => { setListFilter(listFilter === 'resting' ? 'all' : 'resting'); setClanFilter(null); }}
+                  aria-pressed={listFilter === 'resting'}
+                  title="Mostrar solo alumnos sin energía"
+                  className={`inline-flex items-center gap-1.5 min-h-[36px] px-3 rounded-lg border text-sm font-semibold transition-colors ${
+                    listFilter === 'resting'
+                      ? 'bg-slate-700 border-slate-700 text-white'
+                      : 'bg-slate-100 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-600'
+                  }`}
+                >
+                  <Moon size={14} className="fill-current" aria-hidden="true" />
+                  Descansando ({restingCount})
+                </button>
+              )}
+              {!projecting && (
               <button
                 type="button"
                 onClick={() => { setListFilter(listFilter === 'low_hp' ? 'all' : 'low_hp'); setClanFilter(null); }}
@@ -1086,6 +1110,7 @@ export const StudentsPage = () => {
                 <Heart size={14} aria-hidden="true" />
                 HP bajo ({lowHpCount})
               </button>
+              )}
               <button
                 type="button"
                 onClick={() => navigate(`/classroom/${classroom.id}/attendance`)}
@@ -1101,6 +1126,15 @@ export const StudentsPage = () => {
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3 ml-auto">
+            <button
+              type="button"
+              onClick={() => setProjecting(!projecting)}
+              aria-pressed={projecting}
+              title={projecting ? 'Se oculta la energía y quién descansa' : 'Ocultar la energía al proyectar la Lista'}
+              className={`inline-flex min-h-[40px] items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 text-sm font-semibold ${projecting ? 'border-primary-600 bg-primary-600 text-white' : 'border-gray-300 bg-white text-gray-800 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700'}`}
+            >
+              <Monitor size={16} aria-hidden="true" /> Proyectando
+            </button>
             <TodayLevelUps
               classroomId={classroom.id}
               nameOf={(studentId, fallback) => {
@@ -1263,6 +1297,10 @@ export const StudentsPage = () => {
                 setBehaviorType('positive');
                 setShowBehaviorModal(true);
               }}
+              onRecovery={(studentId) => {
+                const s = allStudents.find((st) => st.id === studentId);
+                if (s) setRecoveryFor({ id: s.id, name: getDisplayName(s) });
+              }}
               onAwardBadge={(studentId) => {
                 setSelectedStudents(new Set([studentId]));
                 setShowBadgeModal(true);
@@ -1302,6 +1340,20 @@ export const StudentsPage = () => {
                     >
                       Todos ({allStudents.length})
                     </button>
+                    {!projecting && restingCount > 0 && (
+                      <button
+                        onClick={() => { setListFilter('resting'); setClanFilter(null); }}
+                        aria-pressed={listFilter === 'resting'}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 ${
+                          listFilter === 'resting'
+                            ? 'bg-slate-700 text-white border border-slate-700'
+                            : 'bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-100 border border-slate-300 dark:border-slate-600 hover:bg-slate-200 dark:hover:bg-slate-600'
+                        }`}
+                      >
+                        <Moon size={12} className="fill-current" aria-hidden="true" /> Descansando ({restingCount})
+                      </button>
+                    )}
+                    {!projecting && (
                     <button
                       onClick={() => { setListFilter('low_hp'); setClanFilter(null); }}
                       className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 ${
@@ -1312,6 +1364,7 @@ export const StudentsPage = () => {
                     >
                       <Heart size={12} /> HP bajo
                     </button>
+                    )}
                     <button
                       onClick={() => { setListFilter('no_activity'); setClanFilter(null); }}
                       className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
@@ -1444,7 +1497,7 @@ export const StudentsPage = () => {
                     <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Estudiante</th>
                     <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Nivel</th>
                     <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">XP</th>
-                    <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">HP</th>
+                    {!projecting && <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Energía</th>}
                     <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">GP</th>
                     {activeRound && (
                       <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Ronda</th>
@@ -1456,7 +1509,6 @@ export const StudentsPage = () => {
                   {students.map((student) => {
                     const classInfo = (student.characterClassId && characterClasses.find(c => c.id === student.characterClassId)) || classMap[student.characterClass];
                     const isSelected = selectedStudents.has(student.id);
-                    const hpPercent = Math.min((student.hp / (classroom.maxHp || 100)) * 100, 100);
                     const isTopStudent = topStudent?.id === student.id;
                     const studentRoundAwards = getRoundStudentAwards(student.id);
                     const roundCount = getRoundAwardCount(student.id);
@@ -1550,25 +1602,21 @@ export const StudentsPage = () => {
                           </div>
                         </td>
 
-                        {/* HP — semantic color */}
-                        <td className="px-4 py-3">
-                          {(() => {
-                            const hpStyle = getHpColor(student.hp, classroom.maxHp || 100);
-                            return (
-                              <div className="flex items-center gap-2">
-                                <Heart size={14} className={`${hpStyle.text} flex-shrink-0`} />
-                                <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden max-w-[80px]">
-                                  <div 
-                                    className={`h-full rounded-full ${hpStyle.bar}`}
-                                    style={{ width: `${hpPercent}%` }}
-                                  />
-                                </div>
-                                <span className={`text-sm font-medium w-16 ${hpStyle.text}`}>{student.hp}/{classroom.maxHp || 100}</span>
-                                {hpStyle.warning && <AlertTriangle size={14} className="text-red-500 flex-shrink-0" />}
-                              </div>
-                            );
-                          })()}
-                        </td>
+                        {/* Energía (HP): luna si descansa → misión de recuperación */}
+                        {!projecting && (
+                          <td className="px-4 py-3">
+                            {student.hp <= 0 ? (
+                              <button type="button"
+                                onClick={(e) => { e.stopPropagation(); setRecoveryFor({ id: student.id, name: getDisplayName(student) }); }}
+                                className="inline-flex min-h-[36px] items-center rounded-full hover:ring-2 hover:ring-slate-300 dark:hover:ring-slate-500"
+                                aria-label={`${getDisplayName(student)} está descansando: misión de recuperación`}>
+                                <EnergyMeter hp={student.hp} maxHp={classroom.maxHp || 100} initial={initialLevel} />
+                              </button>
+                            ) : (
+                              <EnergyMeter hp={student.hp} maxHp={classroom.maxHp || 100} initial={initialLevel} />
+                            )}
+                          </td>
+                        )}
 
                         {/* GP */}
                         <td className="px-4 py-3 text-center">
@@ -1765,7 +1813,6 @@ export const StudentsPage = () => {
                         {clan.students.map((student) => {
                           const isSelected = selectedStudents.has(student.id);
                           const classInfo = (student.characterClassId && characterClasses.find(c => c.id === student.characterClassId)) || classMap[student.characterClass];
-                          const hpPercent = (student.hp / (classroom.maxHp || 100)) * 100;
 
                           return (
                             <div 
@@ -1818,15 +1865,7 @@ export const StudentsPage = () => {
                                   <Sparkles size={14} className="text-yellow-500" />
                                   <span className="font-medium">{student.xp}</span>
                                 </div>
-                                <div className="flex items-center gap-1">
-                                  <Heart size={14} className="text-red-500" />
-                                  <div className="w-16 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                                    <div 
-                                      className="h-full bg-gradient-to-r from-red-500 to-rose-400 rounded-full"
-                                      style={{ width: `${hpPercent}%` }}
-                                    />
-                                  </div>
-                                </div>
+                                {!projecting && <EnergyMeter hp={student.hp} maxHp={classroom.maxHp || 100} initial={initialLevel} />}
                                 <div className="flex items-center gap-1">
                                   <Coins size={14} className="text-amber-500" />
                                   <span className="font-medium">{student.gp}</span>
@@ -1888,6 +1927,7 @@ export const StudentsPage = () => {
         onApplyManual={async (pointType, amount, reason, competencyId) => {
           // Aplicar manualmente a todos los estudiantes seleccionados
           const levelUps: Array<{ studentId: string; studentName: string; from: number; to: number }> = [];
+          let restingIgnored = 0;
           
           for (const studentId of selectedStudents) {
             const result = await studentApi.updatePoints(studentId, {
@@ -1897,6 +1937,7 @@ export const StudentsPage = () => {
               competencyId,
             });
             
+            if (result.restingIgnored) restingIgnored += 1;
             // Verificar si hubo subida de nivel
             if (result.leveledUp && result.newLevel) {
               levelUps.push({
@@ -1911,7 +1952,7 @@ export const StudentsPage = () => {
           queryClient.invalidateQueries({ queryKey: ['classroom', classroom.id] });
           setSelectedStudents(new Set());
           setShowBehaviorModal(false);
-          toast.success(`Puntos aplicados a ${selectedStudents.size} estudiante(s)`);
+          toast.success(`Puntos aplicados a ${selectedStudents.size} estudiante(s)${restingIgnored ? ` · ${restingIgnored} descansando: su energía vuelve con la misión de recuperación` : ''}`);
           
           celebrateLevelUps(queryClient, classroom.id, levelUps, reason || undefined);
         }}
@@ -1936,6 +1977,16 @@ export const StudentsPage = () => {
         }}
       />
 
+
+      {recoveryFor && (
+        <RecoveryMissionModal
+          classroomId={classroom.id}
+          studentId={recoveryFor.id}
+          studentName={recoveryFor.name}
+          initial={initialLevel}
+          onClose={() => setRecoveryFor(null)}
+        />
+      )}
 
       {/* Modal para añadir estudiantes placeholder */}
       <AddPlaceholderStudentsModal

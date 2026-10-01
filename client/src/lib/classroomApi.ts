@@ -19,7 +19,8 @@ export interface Classroom {
   defaultGp: number;
   maxHp: number;
   xpPerLevel: number;
-  allowNegativeHp: boolean;
+  /** Plantillas de misiones de recuperación (null = las de fábrica). */
+  recoveryMissions?: string[] | null;
   
   // Configuración de comportamientos
   allowNegativePoints: boolean;
@@ -103,6 +104,8 @@ export interface Student {
   level: number;
   xp: number;
   hp: number;
+  /** HP en 0: desde cuándo descansa (null = tiene energía). */
+  restingSince?: string | null;
   gp: number;
   realName: string | null;
   realLastName: string | null;
@@ -365,7 +368,7 @@ export interface UpdateClassroomSettings {
   defaultGp?: number;
   maxHp?: number;
   xpPerLevel?: number;
-  allowNegativeHp?: boolean;
+  recoveryMissions?: string[] | null;
   
   // Comportamientos
   allowNegativePoints?: boolean;

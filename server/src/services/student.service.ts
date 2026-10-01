@@ -359,9 +359,21 @@ export class StudentService {
     // Los límites de PV se aplican en SQL sobre el valor real (sin leer antes el saldo),
     // así un cambio simultáneo de otro origen no se pierde ni se pisa.
     const deltaField = data.pointType.toLowerCase() as 'xp' | 'hp' | 'gp';
+    // Con 0 HP el alumno descansa: sumar HP no lo levanta (solo su misión de recuperación).
+    if (data.pointType === 'HP' && data.amount > 0 && profile.hp <= 0) {
+      return {
+        student: await this.getStudentById(data.studentId),
+        leveledUp: false,
+        newLevel: undefined,
+        fromLevel: undefined,
+        studentName: profile.characterName || 'Estudiante',
+        awardedBadges: [],
+        restingIgnored: true,
+      };
+    }
     const rules = {
       xpPerLevel: classroom.xpPerLevel || 100,
-      hpMin: classroom.allowNegativeHp ? null : 0,
+      hpMin: 0,
       hpMax: classroom.maxHp,
       source: 'POINTS' as const,
     };
@@ -483,6 +495,7 @@ export class StudentService {
       fromLevel: leveledUp ? fromLevel : undefined,
       studentName: profile.characterName || 'Estudiante',
       awardedBadges,
+      restingIgnored: false,
     };
   }
 

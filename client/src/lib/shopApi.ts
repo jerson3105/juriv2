@@ -218,8 +218,8 @@ export const shopApi = {
     price: number;
     imageUrl?: string;
     icon?: string;
-    effectType?: string;
-    effectValue?: number;
+    effectType?: 'HEAL_HP' | null;
+    effectValue?: number | null;
     stock?: number;
   }): Promise<ShopItem> => {
     const { data } = await api.post('/shop/items', itemData);
@@ -234,8 +234,8 @@ export const shopApi = {
     price: number;
     imageUrl: string | null;
     icon: string;
-    effectType: string;
-    effectValue: number;
+    effectType: 'HEAL_HP' | null;
+    effectValue: number | null;
     stock: number | null;
     isActive: boolean;
   }>): Promise<ShopItem> => {

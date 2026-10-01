@@ -1,6 +1,8 @@
 import { useId, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Bell, ChevronRight, Flame, Plus, Shield, TrendingUp, Trash2, Zap } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Bell, ChevronRight, Flame, Moon, Plus, Shield, TrendingUp, Trash2, Zap } from 'lucide-react';
+import { isInitialLevel, restingKey, useRestingStudents } from '../energy/energyHelpers';
 import type { Classroom, Student } from '../../lib/classroomApi';
 import { HomeModal } from '../home/HomeModal';
 import { cancelButton, primaryButton } from '../home/homeHelpers';
@@ -35,6 +37,7 @@ export const GameRulesSection = ({ classroom, students }: { classroom: Classroom
       <div className="grid items-start gap-4 xl:grid-cols-2">
         <StartingPointsCard classroom={classroom} />
         <NoticesCard classroom={classroom} />
+        <EnergyCard classroom={classroom} />
         <CharacterClassesCard
           classroom={classroom}
           students={students}
@@ -97,14 +100,66 @@ const StartingPointsCard = ({ classroom }: { classroom: Classroom }) => {
         <NumberField label="HP inicial" unit="HP" min={0} max={10000} value={draft.defaultHp} onChange={(v) => setDraft({ ...draft, defaultHp: v })} error={fields.defaultHp.error ?? hpOverMax} />
         <NumberField label="HP máximo" unit="HP" min={1} max={10000} value={draft.maxHp} onChange={(v) => setDraft({ ...draft, maxHp: v })} error={fields.maxHp.error} />
       </div>
-      <div className="border-t border-gray-100 dark:border-gray-700">
-        <SwitchRow
-          title="Permitir HP negativo"
-          description="Si está apagado, el HP no baja de 0."
-          checked={classroom.allowNegativeHp ?? false}
-          onChange={(v) => save({ allowNegativeHp: v }, v ? 'El HP puede quedar en negativo' : 'El HP ya no baja de 0', true)}
-        />
-      </div>
+    </SettingsCard>
+  );
+};
+
+// Energía (HP): qué mide, qué pasa en 0 y las misiones de recuperación de la clase.
+const EnergyCard = ({ classroom }: { classroom: Classroom }) => {
+  const queryClient = useQueryClient();
+  const { save, saving } = useClassroomSettingsSave(classroom);
+  const { templates } = useRestingStudents(classroom.id);
+  const { draft, setDraft, dirty, reset, markSaved } = useDraft({ missions: templates });
+  const initial = isInitialLevel(classroom.gradeLevel);
+  const cleaned = draft.missions.map((m) => m.trim());
+  const invalid = cleaned.length === 0 || cleaned.some((m) => m.length < 3);
+
+  const submit = async () => {
+    if (invalid) return;
+    if (await save({ recoveryMissions: cleaned }, 'Misiones de recuperación guardadas')) {
+      markSaved();
+      void queryClient.invalidateQueries({ queryKey: restingKey(classroom.id) });
+    }
+  };
+
+  return (
+    <SettingsCard
+      title="Energía y misiones de recuperación"
+      icon={Moon}
+      description="La energía (HP) mide la convivencia, nunca las notas."
+      footer={initial ? null : <SaveBar dirty={dirty} saving={saving} invalid={invalid} onSave={submit} onDiscard={reset} note={invalid ? 'Cada misión necesita al menos 3 letras' : undefined} />}
+    >
+      <ul className="mt-2 space-y-1.5 text-sm text-gray-800 dark:text-gray-100">
+        <li>🌙 Con 0 HP el alumno <strong>descansa</strong>: {initial ? 'lo recuperas en cuanto esté listo.' : 'la tienda se pausa y sigue ganando XP.'}</li>
+        {!initial && <li>✅ Vuelve con la mitad de su energía al cumplir una <strong>misión de recuperación</strong> que tú validas.</li>}
+        <li>📖 Al empezar un capítulo de la Historia, todos vuelven a su energía máxima.</li>
+        {initial && <li>❤️ En inicial la energía se ve con corazones, sin números.</li>}
+      </ul>
+      {!initial && (
+        <div className="mt-3 border-t border-gray-100 pt-3 dark:border-gray-700">
+          <p className="text-sm font-semibold text-gray-900 dark:text-white">Misiones para elegir</p>
+          <ul className="mt-2 space-y-2">
+            {draft.missions.map((mission, i) => (
+              <li key={i} className="flex items-center gap-2">
+                <input type="text" value={mission} maxLength={140} aria-label={`Misión ${i + 1}`}
+                  onChange={(e) => setDraft({ missions: draft.missions.map((m, j) => (j === i ? e.target.value : m)) })}
+                  className="min-w-0 flex-1 rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white" />
+                <button type="button" onClick={() => setDraft({ missions: draft.missions.filter((_, j) => j !== i) })}
+                  disabled={draft.missions.length <= 1} aria-label={`Quitar misión ${i + 1}`}
+                  className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl text-red-700 hover:bg-red-50 disabled:opacity-40 dark:text-red-300 dark:hover:bg-red-900/30">
+                  <Trash2 size={18} aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ul>
+          {draft.missions.length < 6 && (
+            <button type="button" onClick={() => setDraft({ missions: [...draft.missions, ''] })} className={`${secondaryButton} mt-2`}>
+              <Plus size={16} aria-hidden="true" /> Añadir misión
+            </button>
+          )}
+          <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">Al asignar una misión también puedes escribir otra distinta.</p>
+        </div>
+      )}
     </SettingsCard>
   );
 };

@@ -56,7 +56,7 @@ export const useApplyWithUndo = (classroomId: string) => {
       toast.success(
         (t) => (
           <span className="flex items-center gap-3">
-            <span>{who}: {formatBehaviorRewards(behavior)} — {behavior.name}</span>
+            <span>{who}: {formatBehaviorRewards(behavior)} — {behavior.name}{result.restingSkipped ? ` · ${result.restingSkipped} descansando (sin HP)` : ''}</span>
             <button
               type="button"
               onClick={() => {

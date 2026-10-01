@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Heart,
+  Moon,
   Coins,
   Zap,
   Check,
@@ -29,6 +30,8 @@ import {
   Medal,
   Shirt,
 } from 'lucide-react';
+import { Hearts } from '../energy/EnergyMeter';
+import { isInitialLevel } from '../energy/energyHelpers';
 import { useAuthStore } from '../../store/authStore';
 import { useStudentStore } from '../../store/studentStore';
 import { useThemeStore } from '../../store/themeStore';
@@ -691,11 +694,22 @@ export const MainLayout = () => {
                     <span>{currentProfile.xp} XP</span>
                   </div>
 
-                  {/* HP */}
-                  <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300`}>
-                    <Heart size={13} className="text-red-500" />
-                    <span>{currentProfile.hp}/100</span>
-                  </div>
+                  {/* Energía (HP): luna si descansa, corazones en inicial, número con el máximo de la clase */}
+                  {currentProfile.hp <= 0 ? (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-100">
+                      <Moon size={13} className="fill-current" aria-hidden="true" />
+                      <span>Descansando</span>
+                    </div>
+                  ) : isInitialLevel((currentProfile.classroom as { gradeLevel?: string | null }).gradeLevel) ? (
+                    <div className="flex items-center px-2 py-1 rounded-lg bg-red-50 dark:bg-red-900/20">
+                      <Hearts hp={currentProfile.hp} maxHp={(currentProfile.classroom as { maxHp?: number }).maxHp || 100} />
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300">
+                      <Heart size={13} className="text-red-500" aria-hidden="true" />
+                      <span>{currentProfile.hp}/{(currentProfile.classroom as { maxHp?: number }).maxHp || 100}</span>
+                    </div>
+                  )}
 
                   {/* Oro */}
                   <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300`}>
