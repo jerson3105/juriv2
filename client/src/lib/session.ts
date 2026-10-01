@@ -13,11 +13,38 @@ const LEGACY_KEYS = ['accessToken', 'refreshToken'];
 let refreshing: Promise<string | null> | null = null;
 let proactiveTimer: ReturnType<typeof setTimeout> | null = null;
 
-const tokenExpiry = (token: string): number | null => {
+/** Datos del access token, sin verificar (solo para programar la renovación y comparar el usuario). */
+const tokenClaims = (token: string): { exp?: number; userId?: string; role?: string } | null => {
   try {
-    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-    return typeof payload.exp === 'number' ? payload.exp * 1000 : null;
+    return JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
   } catch {
+    return null;
+  }
+};
+
+const tokenExpiry = (token: string): number | null => {
+  const exp = tokenClaims(token)?.exp;
+  return typeof exp === 'number' ? exp * 1000 : null;
+};
+
+/**
+ * La cookie es de otra persona: en este navegador alguien entró con otra cuenta (p. ej. otro alumno
+ * en otra pestaña de la computadora del colegio). Se carga su usuario, se limpia lo del anterior
+ * (setAuth) y se recarga la app para que no quede nada en memoria. Si no se puede, se cierra la sesión.
+ */
+const switchToCookieUser = async (token: string): Promise<string | null> => {
+  try {
+    const response = await axios.get(`${API_URL}/auth/me`, {
+      withCredentials: true,
+      headers: { ...APP_HEADERS, Authorization: `Bearer ${token}` },
+    });
+    const user = response.data?.data;
+    if (!user?.id) throw new Error('Sin usuario');
+    useAuthStore.getState().setAuth({ user, accessToken: token });
+    window.location.reload();
+    return token;
+  } catch {
+    await useAuthStore.getState().endSession('error=session_changed');
     return null;
   }
 };
@@ -56,6 +83,12 @@ export const refreshSession = (): Promise<string | null> => {
       );
       const token: string | undefined = response.data?.data?.accessToken;
       if (!token) return null;
+      // La sesión guardada en este navegador debe ser la de la cookie (misma persona y rol).
+      const stored = useAuthStore.getState().user;
+      const claims = tokenClaims(token);
+      if (stored && claims?.userId && (claims.userId !== stored.id || (claims.role && claims.role !== stored.role))) {
+        return await switchToCookieUser(token);
+      }
       useAuthStore.getState().setAccessToken(token);
       return token;
     } catch {

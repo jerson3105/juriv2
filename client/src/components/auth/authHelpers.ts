@@ -14,6 +14,7 @@ export const AUTH_ERROR_MESSAGES: Record<string, string> = {
   google_email_unverified: 'Tu correo de Google aún no está verificado.',
   account_disabled: 'Tu cuenta está desactivada. Escríbele al equipo de Juried.',
   session_expired: 'Tu sesión terminó. Vuelve a entrar.',
+  session_changed: 'Alguien entró con otra cuenta en este navegador. Vuelve a entrar con la tuya.',
   missing_code: 'No se pudo completar el inicio con Google. Inténtalo otra vez.',
   token_error: 'No se pudo completar el inicio con Google. Inténtalo otra vez.',
 };
