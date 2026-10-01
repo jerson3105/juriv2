@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Award, CalendarCheck, ChevronDown, Loader2, RotateCcw, ShoppingBag, Sparkles, TrendingDown, TrendingUp, Users } from 'lucide-react';
+import { Award, CalendarCheck, ChevronDown, Loader2, RotateCcw, ShoppingBag, Sparkles, Star, TrendingDown, TrendingUp, Users } from 'lucide-react';
 import type { FeedEntry } from '../../lib/historyApi';
 import { HomeModal } from '../home/HomeModal';
 import { cancelButton } from '../home/homeHelpers';
@@ -21,6 +21,7 @@ const iconOf = (entry: FeedEntry, tone: Tone) => {
   if (entry.type === 'BADGE') return <Award size={18} aria-hidden="true" />;
   if (entry.type === 'PURCHASE') return <ShoppingBag size={18} aria-hidden="true" />;
   if (entry.type === 'ATTENDANCE') return <CalendarCheck size={18} aria-hidden="true" />;
+  if (entry.type === 'LEVEL_UP') return <Star size={18} aria-hidden="true" />;
   return <Sparkles size={18} aria-hidden="true" />;
 };
 

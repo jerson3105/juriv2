@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, useOutletContext } from 'react-router-dom';
+import { Link, useOutletContext, useSearchParams } from 'react-router-dom';
 import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, ScrollText, Settings2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -34,8 +34,15 @@ export const HistoryPage = () => {
   const viewerId = useAuthStore((s) => s.user?.id);
   const queryClient = useQueryClient();
 
-  const [type, setType] = useState<FeedType>('ALL');
-  const [period, setPeriod] = useState<PeriodKey>('all');
+  const [searchParams] = useSearchParams();
+  const [type, setType] = useState<FeedType>(() => {
+    const fromUrl = searchParams.get('type');
+    return TYPE_FILTERS.some((f) => f.id === fromUrl) ? (fromUrl as FeedType) : 'ALL';
+  });
+  const [period, setPeriod] = useState<PeriodKey>(() => {
+    const fromUrl = searchParams.get('period');
+    return PERIODS.some((p) => p.id === fromUrl) ? (fromUrl as PeriodKey) : 'all';
+  });
   const [custom, setCustom] = useState({ from: '', to: '' });
   const [studentId, setStudentId] = useState('');
   const [target, setTarget] = useState<RevertTarget | null>(null);

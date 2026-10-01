@@ -15,7 +15,7 @@ const historyQuerySchema = z.object({
   studentId: z.string().uuid().optional(),
 });
 
-const feedTypeSchema = z.enum(['POINTS', 'PURCHASE', 'ITEM_USED', 'BADGE', 'ATTENDANCE', 'ALL']);
+const feedTypeSchema = z.enum(['POINTS', 'PURCHASE', 'ITEM_USED', 'BADGE', 'ATTENDANCE', 'LEVEL_UP', 'ALL']);
 
 // Periodo: "bimester" lo resuelve el servidor; si no, [from, to) en instantes ISO calculados por el cliente en su zona.
 const periodSchema = z.object({

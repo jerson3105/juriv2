@@ -1,4 +1,5 @@
 import api from './api';
+import type { BadgeRarity } from './badgeApi';
 
 export type CharacterClass = 'GUARDIAN' | 'ARCANE' | 'EXPLORER' | 'ALCHEMIST';
 export type PointType = 'XP' | 'HP' | 'GP';
@@ -67,7 +68,15 @@ export interface UpdatePointsResult {
   student: StudentProfile;
   leveledUp: boolean;
   newLevel?: number;
+  fromLevel?: number;
   studentName: string;
+}
+
+export interface StudentCelebrations {
+  fromLevel: number | null;
+  toLevel: number | null;
+  badges: { id: string; name: string; description: string | null; icon: string; customImage: string | null; rarity: BadgeRarity; unlockedAt: string }[];
+  until: string;
 }
 
 export interface PointLog {
@@ -159,6 +168,16 @@ export interface StudentSummary {
 
 export const studentApi = {
   // Verificar código (detecta si es clase o estudiante)
+  // Celebraciones pendientes del alumno (desde su última visita) y marcarlas como vistas
+  getCelebrations: async (profileId: string): Promise<StudentCelebrations> => {
+    const response = await api.get(`/students/profiles/${profileId}/celebrations`);
+    return response.data.data;
+  },
+
+  markCelebrationsSeen: async (profileId: string, until: string): Promise<void> => {
+    await api.post(`/students/profiles/${profileId}/celebrations/seen`, { until });
+  },
+
   verifyCode: async (code: string): Promise<{
     type: 'classroom' | 'student';
     classroomName?: string;

@@ -7,6 +7,7 @@ import { queryClient } from './lib/queryClient';
 import { TimerProvider } from './contexts/TimerContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { lazyPage } from './lib/lazyPage';
+import { CelebrationHost } from './components/celebrations/CelebrationHost';
 
 // Páginas del flujo de acceso: carga inmediata (primera pantalla de quien no ha iniciado sesión).
 import { LoginPage } from './pages/auth/LoginPage';
@@ -372,6 +373,9 @@ function App() {
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
         </BrowserRouter>
+
+        {/* Subidas de nivel e insignias (profesor y alumno) */}
+        <CelebrationHost />
 
         {/* Toast notifications */}
         <Toaster

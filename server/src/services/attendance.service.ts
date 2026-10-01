@@ -70,7 +70,7 @@ export const attendanceService = {
       }
 
       if (delta !== 0) {
-        await applyPointDeltas(tx, studentProfileId, { xp: delta }, { xpPerLevel: levelStep, xpMin: 0 });
+        await applyPointDeltas(tx, studentProfileId, { xp: delta }, { xpPerLevel: levelStep, xpMin: 0, source: 'ATTENDANCE' });
         await tx.insert(pointLogs).values({
           id: uuidv4(),
           studentId: studentProfileId,

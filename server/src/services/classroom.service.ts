@@ -1,6 +1,7 @@
 import { db } from '../db/index.js';
 import { 
   classrooms, 
+  levelUpLogs,
   studentProfiles, 
   users, 
   teams,
@@ -56,6 +57,7 @@ import {
 } from '../db/schema.js';
 import { eq, and, desc, inArray, sql, count, asc, or, gt } from 'drizzle-orm';
 import { calculateLevel, generateClassCode } from '../utils/helpers.js';
+import { revertLevelUpsAbove } from '../utils/points.js';
 import { ConflictError, ValidationError } from '../utils/errors.js';
 import { v4 as uuidv4 } from 'uuid';
 import { avatarService } from './avatar.service.js';
@@ -633,6 +635,7 @@ export class ClassroomService {
     }
     for (const [level, ids] of byLevel) {
       await tx.update(studentProfiles).set({ level }).where(inArray(studentProfiles.id, ids));
+      for (const id of ids) await revertLevelUpsAbove(tx, id, level);
     }
   }
 
@@ -1867,6 +1870,7 @@ export class ClassroomService {
       // 1. Eliminar datos relacionados con estudiantes
       if (studentIds.length > 0) {
         await tx.delete(pointLogs).where(inArray(pointLogs.studentId, studentIds));
+        await tx.delete(levelUpLogs).where(eq(levelUpLogs.classroomId, classroomId));
         await tx.delete(studentAvatarPurchases).where(inArray(studentAvatarPurchases.studentProfileId, studentIds));
         await tx.delete(studentEquippedItems).where(inArray(studentEquippedItems.studentProfileId, studentIds));
         await tx.delete(studentGrades).where(eq(studentGrades.classroomId, classroomId));
@@ -2083,6 +2087,7 @@ export class ClassroomService {
       // 1. Historial de puntos
       if (options.history && studentIds.length > 0) {
         await tx.delete(pointLogs).where(inArray(pointLogs.studentId, studentIds));
+        await tx.delete(levelUpLogs).where(eq(levelUpLogs.classroomId, classroomId));
         cleaned.push('history');
       }
 
@@ -2178,6 +2183,8 @@ export class ClassroomService {
           level: 1,
           updatedAt: now,
         }).where(eq(studentProfiles.classroomId, classroomId));
+        // Con los niveles en 1, las subidas anteriores ya no corresponden.
+        await tx.delete(levelUpLogs).where(eq(levelUpLogs.classroomId, classroomId));
         cleaned.push('points');
       }
 

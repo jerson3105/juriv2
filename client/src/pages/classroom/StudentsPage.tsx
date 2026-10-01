@@ -27,13 +27,11 @@ import { behaviorApi, type ApplyResult, type Behavior } from '../../lib/behavior
 import { studentApi } from '../../lib/studentApi';
 import { useCharacterClasses } from '../../hooks/useCharacterClasses';
 import { characterClassApi } from '../../lib/characterClassApi';
-import { badgeApi, type Badge } from '../../lib/badgeApi';
 import { CLAN_EMBLEMS } from '../../lib/clanApi';
 import { attendanceApi, type AttendanceRecord } from '../../lib/attendanceApi';
 import { historyApi, type ActivityLogEntry, type HistoryResponse } from '../../lib/historyApi';
-import { LevelUpAnimation } from '../../components/effects/LevelUpAnimation';
-import { MultiPointsAnimation, useMultiPointsEffect } from '../../components/effects/PurchaseEffects';
-import { TeacherBadgeAwardedModal } from '../../components/badges/TeacherBadgeAwardedModal';
+import { celebrateApplyResult, celebrateBadgeAward, celebrateLevelUps } from '../../components/celebrations/celebrationHelpers';
+import { TodayLevelUps } from '../../components/celebrations/TodayLevelUps';
 import { GiveBadgeModal } from '../../components/badges/GiveBadgeModal';
 import { AddPlaceholderStudentsModal } from '../../components/students/AddPlaceholderStudentsModal';
 import { StudentsManageMenu } from '../../components/students/StudentsManageMenu';
@@ -93,16 +91,7 @@ export const StudentsPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'cards' | 'list' | 'clans'>('cards');
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
-  
-  // Estado para animación de subida de nivel
-  const [, setLevelUpQueue] = useState<Array<{ studentName: string; newLevel: number }>>([]);
-  const [currentLevelUp, setCurrentLevelUp] = useState<{ studentName: string; newLevel: number } | null>(null);
-  
-  // Estado para modal de insignias otorgadas automáticamente
-  const [awardedBadgeInfo, setAwardedBadgeInfo] = useState<{
-    badge: Badge | null;
-    studentNames: string[];
-  }>({ badge: null, studentNames: [] });
+
 
   // Estado para modal de añadir estudiantes placeholder
   const [showAddPlaceholderModal, setShowAddPlaceholderModal] = useState(false);
@@ -120,9 +109,6 @@ export const StudentsPage = () => {
   const [isUndoingRound, setIsUndoingRound] = useState(false);
   const [roundQuickActivityCounts, setRoundQuickActivityCounts] = useState<Record<string, number>>({});
 
-
-  // Hook para animación de puntos
-  const { effect: pointsEffect, showMultiPointsEffect, hideMultiPointsEffect } = useMultiPointsEffect();
 
   const { data: classroomData, isLoading } = useQuery({
     queryKey: ['classroom', classroom.id],
@@ -318,19 +304,15 @@ export const StudentsPage = () => {
         queryClient.invalidateQueries({ queryKey: ['classroom', classroom.id] });
       }
       
-      // Mostrar animación de puntos
       const behavior = result.behavior;
       const appliedPoints = result.results[0];
       const xp = Math.abs(appliedPoints?.xpChange || 0);
       const hp = Math.abs(appliedPoints?.hpChange || 0);
       const gp = Math.abs(appliedPoints?.gpChange || 0);
-      
-      if (!isRoundQuick && (xp > 0 || hp > 0 || gp > 0)) {
-        showMultiPointsEffect(xp, hp, gp, behavior.isPositive);
-      }
-      
-      // Sound effect
-      playSound(behavior.isPositive ? 'pointsGain' : 'pointsLoss');
+
+      // Subidas de nivel e insignias: una sola celebración (con su propio sonido).
+      const celebrated = celebrateApplyResult(queryClient, classroom.id, result);
+      if (!celebrated) playSound(behavior.isPositive ? 'pointsGain' : 'pointsLoss');
       
       // Detailed feedback toast
       const beh = result.behavior;
@@ -403,39 +385,6 @@ export const StudentsPage = () => {
         queryClient.invalidateQueries({ queryKey: ['history-today', classroom.id] });
       }
       
-      // Si hay subidas de nivel, mostrar animación
-      if (!isRoundQuick && result.levelUps && result.levelUps.length > 0) {
-        setLevelUpQueue(result.levelUps);
-        setCurrentLevelUp(result.levelUps[0]);
-        setTimeout(() => playSound('levelUp'), 400);
-      }
-      
-      // Si hay insignias otorgadas, mostrar modal consolidado
-      if (!isRoundQuick && result.awardedBadges && result.awardedBadges.length > 0) {
-        // Agrupar por insignia (todas las insignias otorgadas deberían ser la misma)
-        const badgeNames = result.awardedBadges.flatMap(ab => ab.badges);
-        const uniqueBadgeName = badgeNames[0]; // Tomar la primera (deberían ser todas iguales)
-        
-        // Obtener los nombres de estudiantes que ganaron la insignia
-        const studentNames = result.awardedBadges
-          .filter(ab => ab.badges.includes(uniqueBadgeName))
-          .map(ab => {
-            const studentResult = result.results.find(r => r.studentId === ab.studentId);
-            return studentResult?.studentName || 'Estudiante';
-          });
-        
-        // Obtener la insignia completa desde la API
-        try {
-          const badges = await badgeApi.getClassroomBadges(classroom.id);
-          const badge = badges.find((b: Badge) => b.name === uniqueBadgeName);
-          if (badge) {
-            setAwardedBadgeInfo({ badge, studentNames });
-            playSound('badge');
-          }
-        } catch {
-          // Error al obtener info de insignia - ignorar silenciosamente
-        }
-      }
     },
     onError: (error: any, variables, context) => {
       const mode = variables.mode || 'default';
@@ -479,18 +428,6 @@ export const StudentsPage = () => {
     },
   });
 
-  // Manejar cola de animaciones de nivel
-  const handleLevelUpComplete = () => {
-    setLevelUpQueue(prev => {
-      const newQueue = prev.slice(1);
-      if (newQueue.length > 0) {
-        setCurrentLevelUp(newQueue[0]);
-      } else {
-        setCurrentLevelUp(null);
-      }
-      return newQueue;
-    });
-  };
 
   const allStudents = classroomData?.students || [];
 
@@ -1069,25 +1006,6 @@ export const StudentsPage = () => {
 
   return (
     <div className={`space-y-5 ${(viewMode === 'list' || viewMode === 'clans') && selectedStudents.size > 0 ? 'pb-24' : ''}`}>
-      {/* Animación de puntos */}
-      <MultiPointsAnimation
-        show={pointsEffect.show}
-        xp={pointsEffect.xp}
-        hp={pointsEffect.hp}
-        gp={pointsEffect.gp}
-        isPositive={pointsEffect.isPositive}
-        onComplete={hideMultiPointsEffect}
-      />
-
-      {/* Animación de subida de nivel */}
-      {currentLevelUp && (
-        <LevelUpAnimation
-          show={true}
-          newLevel={currentLevelUp.newLevel}
-          onComplete={handleLevelUpComplete}
-        />
-      )}
-
       {/* Barra de acciones */}
       <div className="bg-white dark:bg-gray-800 rounded-xl px-3 sm:px-4 py-2.5 border border-gray-200 dark:border-gray-700 shadow-sm">
         <div className="flex flex-wrap items-center gap-2.5">
@@ -1182,7 +1100,14 @@ export const StudentsPage = () => {
           )}
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3 ml-auto">
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3 ml-auto">
+            <TodayLevelUps
+              classroomId={classroom.id}
+              nameOf={(studentId, fallback) => {
+                const s = allStudents.find((st) => st.id === studentId);
+                return s ? getDisplayName(s) : fallback || 'Estudiante';
+              }}
+            />
             <StudentsManageMenu classroomId={classroom.id} onAddStudents={() => setShowAddPlaceholderModal(true)} />
             {/* Toggle de vista - Siempre visible, al final */}
             <div className="flex items-center bg-primary-100 dark:bg-primary-900/30 rounded-lg p-0.5 border border-primary-200 dark:border-primary-800 flex-shrink-0">
@@ -1962,7 +1887,7 @@ export const StudentsPage = () => {
         classroom={classroom}
         onApplyManual={async (pointType, amount, reason, competencyId) => {
           // Aplicar manualmente a todos los estudiantes seleccionados
-          const levelUps: Array<{ studentName: string; newLevel: number }> = [];
+          const levelUps: Array<{ studentId: string; studentName: string; from: number; to: number }> = [];
           
           for (const studentId of selectedStudents) {
             const result = await studentApi.updatePoints(studentId, {
@@ -1975,8 +1900,10 @@ export const StudentsPage = () => {
             // Verificar si hubo subida de nivel
             if (result.leveledUp && result.newLevel) {
               levelUps.push({
+                studentId,
                 studentName: result.studentName,
-                newLevel: result.newLevel,
+                from: result.fromLevel ?? result.newLevel - 1,
+                to: result.newLevel,
               });
             }
           }
@@ -1986,11 +1913,7 @@ export const StudentsPage = () => {
           setShowBehaviorModal(false);
           toast.success(`Puntos aplicados a ${selectedStudents.size} estudiante(s)`);
           
-          // Mostrar animación de subida de nivel si hay
-          if (levelUps.length > 0) {
-            setLevelUpQueue(levelUps);
-            setCurrentLevelUp(levelUps[0]);
-          }
+          celebrateLevelUps(queryClient, classroom.id, levelUps, reason || undefined);
         }}
         isLoading={applyBehaviorMutation.isPending}
         classroomId={classroom.id}
@@ -2009,19 +1932,10 @@ export const StudentsPage = () => {
         onSuccess={(badge, names) => {
           setSelectedStudents(new Set());
           setShowBadgeModal(false);
-          // Mostrar animación de insignia otorgada
-          setAwardedBadgeInfo({ badge, studentNames: names });
-          playSound('badge');
+          celebrateBadgeAward(badge, names);
         }}
       />
 
-      {/* Modal de insignia otorgada automáticamente (para el profesor) */}
-      <TeacherBadgeAwardedModal
-        badge={awardedBadgeInfo.badge}
-        studentNames={awardedBadgeInfo.studentNames}
-        isOpen={!!awardedBadgeInfo.badge}
-        onClose={() => setAwardedBadgeInfo({ badge: null, studentNames: [] })}
-      />
 
       {/* Modal para añadir estudiantes placeholder */}
       <AddPlaceholderStudentsModal

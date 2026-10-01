@@ -1387,7 +1387,7 @@ class TournamentService {
         }
 
         // Suma atómica: no pisa otras escrituras simultáneas sobre el alumno.
-        const updated = await addXpGp(tx, participant.studentProfileId, { xp: xpReward, gp: gpReward }, xpPerLevel);
+        const updated = await addXpGp(tx, participant.studentProfileId, { xp: xpReward, gp: gpReward }, xpPerLevel, 'TOURNAMENT');
         if (!updated) continue;
         const newLevel = updated.level;
         const leveledUp = updated.level > updated.previousLevel;

@@ -1,12 +1,12 @@
 import { db } from '../db/index.js';
-import { behaviors, studentProfiles, pointLogs, classrooms, notifications, curriculumCompetencies, classroomCompetencies, classroomCompetencyIndicators } from '../db/schema.js';
+import { behaviors, studentProfiles, pointLogs, classrooms, notifications, users, curriculumCompetencies, classroomCompetencies, classroomCompetencyIndicators } from '../db/schema.js';
 import { eq, and, inArray, gte, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { badgeService } from './badge.service.js';
 import { clanService } from './clan.service.js';
 import { storyService } from './story.service.js';
 import { prepareForTx } from '../utils/notificationEmitter.js';
-import { applyPointDeltasBulk } from '../utils/points.js';
+import { applyPointDeltasBulk, type PointResult } from '../utils/points.js';
 
 type PointType = 'XP' | 'HP' | 'GP';
 
@@ -332,7 +332,7 @@ export class BehaviorService {
 
     const now = new Date();
     const results: { studentId: string; studentName: string; pointLogEntryId?: string | null; xpChange: number; hpChange: number; gpChange: number; newXp: number; newHp: number; newGp: number; leveledUp?: boolean; newLevel?: number }[] = [];
-    const levelUps: { studentId: string; studentName: string; newLevel: number }[] = [];
+    const levelUps: { studentId: string; studentName: string; fromLevel: number; newLevel: number }[] = [];
     const xpPerLevel = classroom.xpPerLevel || 100;
 
     // Usar valores combinados, con fallback a legacy
@@ -358,6 +358,7 @@ export class BehaviorService {
       xpPerLevel,
       hpMin: classroom.allowNegativeHp ? null : 0,
       hpMax: classroom.maxHp,
+      source: 'BEHAVIOR' as const,
     };
     const studentUpdates: { studentId: string }[] = [];
     const xpAwardsForSideEffects: { studentId: string; xpAmount: number }[] = [];
@@ -367,8 +368,6 @@ export class BehaviorService {
       let newXp = student.xp;
       let newHp = student.hp;
       let newGp = student.gp;
-      let leveledUp = false;
-      let newLevel = student.level;
       let pointLogEntryId: string | null = null;
 
       // Aplicar cambios según si es positivo o negativo
@@ -380,19 +379,6 @@ export class BehaviorService {
         newXp -= xpChange;
         newHp = classroom.allowNegativeHp ? newHp - hpChange : Math.max(0, newHp - hpChange);
         newGp -= gpChange;
-      }
-
-      // Verificar nivel (solo si hay cambio de XP positivo)
-      if (xpChange > 0 && behavior.isPositive) {
-        newLevel = this.calculateLevel(newXp, xpPerLevel);
-        if (newLevel > student.level) {
-          leveledUp = true;
-          levelUps.push({
-            studentId: student.id,
-            studentName: student.characterName || 'Estudiante',
-            newLevel,
-          });
-        }
       }
 
       studentUpdates.push({ studentId: student.id });
@@ -486,32 +472,6 @@ export class BehaviorService {
           createdAt: now,
         });
 
-        if (leveledUp) {
-          // Notificación para el estudiante
-          notificationsBatch.push({
-            id: uuidv4(),
-            userId: student.userId,
-            type: 'LEVEL_UP',
-            title: '🎉 ¡Subiste de nivel!',
-            message: `¡Felicidades! Has alcanzado el nivel ${newLevel}`,
-            isRead: false,
-            createdAt: now,
-          });
-        }
-      }
-      
-      // Notificación de level up para el profesor (siempre: "Avisos al alumno" solo afecta al alumno)
-      if (leveledUp) {
-        notificationsBatch.push({
-          id: uuidv4(),
-          userId: data.teacherId,
-          classroomId: behavior.classroomId,
-          type: 'LEVEL_UP',
-          title: '🎉 ¡Estudiante subió de nivel!',
-          message: `${student.characterName || 'Un estudiante'} ha alcanzado el nivel ${newLevel}`,
-          isRead: false,
-          createdAt: now,
-        });
       }
 
       results.push({ 
@@ -524,16 +484,54 @@ export class BehaviorService {
         newXp,
         newHp,
         newGp,
-        leveledUp,
-        newLevel: leveledUp ? newLevel : undefined,
       });
     }
 
-    const notifTx = prepareForTx(notificationsBatch);
+    // Preferencia del profesor (Ajustes > Notificaciones > Subidas de nivel).
+    const [teacher] = await db.select({ notifyLevelUp: users.notifyLevelUp }).from(users).where(eq(users.id, data.teacherId));
+    const studentById = new Map(students.map((s) => [s.id, s]));
+    let atomic = new Map<string, PointResult>();
+    let notifTx = prepareForTx([]);
 
     await db.transaction(async (tx) => {
       // Mismos deltas para todos: una sentencia en vez de 2-3 idas y vueltas por alumno.
-      await applyPointDeltasBulk(tx, studentUpdates.map((u) => u.studentId), signedDeltas, pointRules);
+      atomic = await applyPointDeltasBulk(tx, studentUpdates.map((u) => u.studentId), signedDeltas, pointRules);
+
+      // Subidas de nivel con los valores reales de la transacción (no con la foto previa).
+      for (const [studentId, result] of atomic) {
+        if (result.level <= result.previousLevel) continue;
+        const student = studentById.get(studentId);
+        const name = student?.characterName || 'Estudiante';
+        levelUps.push({ studentId, studentName: name, fromLevel: result.previousLevel, newLevel: result.level });
+        const levelData = { studentProfileId: studentId, fromLevel: result.previousLevel, toLevel: result.level };
+        if (classroom.notifyOnPoints && student?.userId) {
+          notificationsBatch.push({
+            id: uuidv4(),
+            userId: student.userId,
+            classroomId: behavior.classroomId,
+            type: 'LEVEL_UP',
+            title: '🎉 ¡Subiste de nivel!',
+            message: `¡Felicidades! Has alcanzado el nivel ${result.level}`,
+            data: levelData,
+            isRead: false,
+            createdAt: now,
+          });
+        }
+        if (teacher?.notifyLevelUp !== false) {
+          notificationsBatch.push({
+            id: uuidv4(),
+            userId: data.teacherId,
+            classroomId: behavior.classroomId,
+            type: 'LEVEL_UP',
+            title: '🎉 ¡Estudiante subió de nivel!',
+            message: `${name} ha alcanzado el nivel ${result.level}`,
+            data: levelData,
+            isRead: false,
+            createdAt: now,
+          });
+        }
+      }
+      notifTx = prepareForTx(notificationsBatch);
 
       if (pointLogsBatch.length > 0) {
         await tx.insert(pointLogs).values(pointLogsBatch);
@@ -545,6 +543,17 @@ export class BehaviorService {
     });
 
     await notifTx.emitAfterCommit();
+
+    // La respuesta refleja los saldos y niveles reales tras la transacción.
+    for (const r of results) {
+      const a = atomic.get(r.studentId);
+      if (!a) continue;
+      r.newXp = a.xp;
+      r.newHp = a.hp;
+      r.newGp = a.gp;
+      r.leveledUp = a.level > a.previousLevel;
+      r.newLevel = r.leveledUp ? a.level : undefined;
+    }
 
     // Side effects externos: ejecutar solo después de confirmar cambios de puntos.
     // Clan: solo alumnos con clan y si la clase tiene clanes (en otro caso la función no hace nada).
@@ -571,7 +580,7 @@ export class BehaviorService {
     }
 
     // Verificar insignias: las de la clase se cargan una vez; sin insignias automáticas no hay nada que comprobar.
-    const awardedBadges: { studentId: string; badges: string[] }[] = [];
+    const awardedBadges: { studentId: string; badges: { id: string; name: string; icon: string; customImage: string | null; rarity: string }[] }[] = [];
     const classroomBadges = await badgeService.getClassroomBadges(behavior.classroomId);
     const hasAutomaticBadges = classroomBadges.some(
       (b) => (b.assignmentMode === 'AUTOMATIC' || b.assignmentMode === 'BOTH') && b.unlockCondition !== null
@@ -593,7 +602,7 @@ export class BehaviorService {
         if (earnedBadges.length > 0) {
           awardedBadges.push({
             studentId: student.id,
-            badges: earnedBadges.map(b => b.name),
+            badges: earnedBadges.map((b) => ({ id: b.id, name: b.name, icon: b.icon, customImage: b.customImage ?? null, rarity: b.rarity })),
           });
         }
       } catch (error) {
@@ -730,13 +739,6 @@ export class BehaviorService {
       targetClassrooms: validTargets.length,
       behaviors: sourceBehaviors.length,
     };
-  }
-
-  // Calcular nivel basado en XP y xpPerLevel configurado
-  // Sistema progresivo: nivel N requiere N * xpPerLevel para subir al siguiente
-  private calculateLevel(xp: number, xpPerLevel: number = 100): number {
-    const level = Math.floor((1 + Math.sqrt(1 + (8 * xp) / xpPerLevel)) / 2);
-    return Math.max(1, level);
   }
 }
 

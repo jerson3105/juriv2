@@ -1,5 +1,6 @@
-import { and, eq, gte, inArray, sql } from 'drizzle-orm';
-import { studentProfiles } from '../db/schema.js';
+import { and, eq, gt, gte, inArray, sql } from 'drizzle-orm';
+import { v4 as uuidv4 } from 'uuid';
+import { classrooms, levelUpLogs, studentProfiles } from '../db/schema.js';
 import { calculateLevel } from './helpers.js';
 
 /**
@@ -11,7 +12,63 @@ import { calculateLevel } from './helpers.js';
  */
 
 // Acepta `db` o un `tx` de Drizzle.
-type Executor = { update: typeof import('../db/index.js').db.update; select: typeof import('../db/index.js').db.select };
+type Executor = {
+  update: typeof import('../db/index.js').db.update;
+  select: typeof import('../db/index.js').db.select;
+  insert: typeof import('../db/index.js').db.insert;
+};
+
+/** De dónde vino una subida de nivel (registro "Niveles" y celebraciones). */
+export type LevelUpSource =
+  | 'BEHAVIOR' | 'POINTS' | 'ATTENDANCE' | 'BADGE' | 'STORY' | 'STREAK'
+  | 'EXPEDITION' | 'TOURNAMENT' | 'EVENT' | 'ACTIVITY' | 'OTHER';
+
+type LevelChange = { studentProfileId: string; classroomId: string; from: number; to: number };
+
+/** Registra subidas de nivel en la misma transacción que el cambio de XP. */
+const logLevelUps = async (exec: Executor, changes: LevelChange[], source: LevelUpSource = 'OTHER') => {
+  const ups = changes.filter((c) => c.to > c.from);
+  if (ups.length === 0) return;
+  const now = new Date();
+  await exec.insert(levelUpLogs).values(ups.map((c) => ({
+    id: uuidv4(),
+    classroomId: c.classroomId,
+    studentProfileId: c.studentProfileId,
+    fromLevel: c.from,
+    toLevel: c.to,
+    source,
+    createdAt: now,
+  })));
+};
+
+/**
+ * Marca como revertidas las subidas por encima del nivel actual (una reversión bajó el XP).
+ * Así "Hoy subieron" y las celebraciones del alumno no muestran niveles que ya no tiene.
+ */
+export const revertLevelUpsAbove = async (exec: Executor, studentProfileId: string, level: number) => {
+  await exec.update(levelUpLogs)
+    .set({ isReverted: true })
+    .where(and(eq(levelUpLogs.studentProfileId, studentProfileId), gt(levelUpLogs.toLevel, level), eq(levelUpLogs.isReverted, false)));
+};
+
+/**
+ * Para caminos que escriben el XP sin pasar por applyPointDeltas (eventos, actividades):
+ * sube el nivel si el XP actual lo permite y lo registra. El nivel solo sube.
+ */
+export const syncLevelFromXp = async (exec: Executor, studentProfileId: string, source: LevelUpSource) => {
+  const [row] = await exec
+    .select({ xp: studentProfiles.xp, level: studentProfiles.level, classroomId: studentProfiles.classroomId, xpPerLevel: classrooms.xpPerLevel })
+    .from(studentProfiles)
+    .innerJoin(classrooms, eq(classrooms.id, studentProfiles.classroomId))
+    .where(eq(studentProfiles.id, studentProfileId));
+  if (!row) return null;
+  const level = Math.max(row.level, calculateLevel(Math.max(0, row.xp), row.xpPerLevel || 100));
+  if (level !== row.level) {
+    await exec.update(studentProfiles).set({ level }).where(eq(studentProfiles.id, studentProfileId));
+    await logLevelUps(exec, [{ studentProfileId, classroomId: row.classroomId, from: row.level, to: level }], source);
+  }
+  return { level, previousLevel: row.level };
+};
 
 /** Filas afectadas de un UPDATE/DELETE de Drizzle + mysql2. */
 export const affectedRows = (result: unknown): number => {
@@ -44,6 +101,8 @@ export interface PointRules {
   gpMin?: number | null;
   /** Mínimo de XP al restar (p. ej. 0 al corregir asistencia; null = sin mínimo). */
   xpMin?: number | null;
+  /** Origen para el registro de subidas de nivel. */
+  source?: LevelUpSource;
 }
 
 export interface PointResult {
@@ -88,7 +147,7 @@ export const applyPointDeltas = async (
 
   // El UPDATE bloqueó la fila dentro de la transacción: esta lectura ya es consistente.
   const [row] = await exec
-    .select({ xp: studentProfiles.xp, hp: studentProfiles.hp, gp: studentProfiles.gp, level: studentProfiles.level })
+    .select({ xp: studentProfiles.xp, hp: studentProfiles.hp, gp: studentProfiles.gp, level: studentProfiles.level, classroomId: studentProfiles.classroomId })
     .from(studentProfiles)
     .where(eq(studentProfiles.id, studentProfileId));
   if (!row) return null;
@@ -96,6 +155,7 @@ export const applyPointDeltas = async (
   const level = xp > 0 ? Math.max(row.level, calculateLevel(row.xp, rules.xpPerLevel || 100)) : row.level;
   if (level !== row.level) {
     await exec.update(studentProfiles).set({ level }).where(eq(studentProfiles.id, studentProfileId));
+    await logLevelUps(exec, [{ studentProfileId, classroomId: row.classroomId, from: row.level, to: level }], rules.source);
   }
   return { xp: row.xp, hp: row.hp, gp: row.gp, level, previousLevel: row.level };
 };
@@ -134,17 +194,21 @@ export const applyPointDeltasBulk = async (
       hp: studentProfiles.hp,
       gp: studentProfiles.gp,
       level: studentProfiles.level,
+      classroomId: studentProfiles.classroomId,
     })
     .from(studentProfiles)
     .where(inArray(studentProfiles.id, ids));
 
+  const changes: LevelChange[] = [];
   for (const row of rows) {
     const level = xp > 0 ? Math.max(row.level, calculateLevel(row.xp, rules.xpPerLevel || 100)) : row.level;
     if (level !== row.level) {
       await exec.update(studentProfiles).set({ level }).where(eq(studentProfiles.id, row.id));
+      changes.push({ studentProfileId: row.id, classroomId: row.classroomId, from: row.level, to: level });
     }
     results.set(row.id, { xp: row.xp, hp: row.hp, gp: row.gp, level, previousLevel: row.level });
   }
+  await logLevelUps(exec, changes, rules.source);
   return results;
 };
 
@@ -153,5 +217,6 @@ export const addXpGp = (
   exec: Executor,
   studentProfileId: string,
   deltas: { xp?: number; gp?: number },
-  xpPerLevel = 100
-) => applyPointDeltas(exec, studentProfileId, deltas, { xpPerLevel });
+  xpPerLevel = 100,
+  source: LevelUpSource = 'OTHER'
+) => applyPointDeltas(exec, studentProfileId, deltas, { xpPerLevel, source });

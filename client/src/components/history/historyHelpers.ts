@@ -7,10 +7,25 @@ export const TYPE_FILTERS: { id: FeedType; label: string }[] = [
   { id: 'ALL', label: 'Todo' },
   { id: 'POINTS', label: 'Puntos' },
   { id: 'BADGE', label: 'Insignias' },
+  { id: 'LEVEL_UP', label: 'Niveles' },
   { id: 'PURCHASE', label: 'Compras' },
   { id: 'ITEM_USED', label: 'Objetos usados' },
   { id: 'ATTENDANCE', label: 'Asistencia' },
 ];
+
+/** De dónde vino una subida de nivel (registro del servidor). */
+export const LEVEL_SOURCE_LABEL: Record<string, string> = {
+  BEHAVIOR: 'Por comportamiento',
+  POINTS: 'Por puntos',
+  ATTENDANCE: 'Por asistencia',
+  BADGE: 'Por insignia',
+  STORY: 'Por la Historia',
+  STREAK: 'Por racha',
+  EXPEDITION: 'Por expedición',
+  TOURNAMENT: 'Por torneo',
+  EVENT: 'Por evento',
+  ACTIVITY: 'Por actividad',
+};
 
 export type PeriodKey = 'today' | 'week' | 'bimester' | 'all' | 'custom';
 export const PERIODS: { id: PeriodKey; label: string }[] = [
@@ -118,7 +133,14 @@ export const describeEntry = (entry: FeedEntry): { title: string; amount: string
       note: d.action ? `Uso ${USAGE_LABEL[d.action] ?? d.action.toLowerCase()}` : undefined,
     };
   }
-  if (entry.type === 'LEVEL_UP') return { title: `Subió al nivel ${d.newLevel}`, amount: '', tone: 'positive' };
+  if (entry.type === 'LEVEL_UP') {
+    return {
+      title: d.fromLevel ? `Subió del nivel ${d.fromLevel} al ${d.newLevel}` : `Subió al nivel ${d.newLevel}`,
+      amount: '',
+      tone: 'positive',
+      note: d.levelSource ? LEVEL_SOURCE_LABEL[d.levelSource] ?? undefined : undefined,
+    };
+  }
   const status = d.attendanceStatus ?? '';
   return {
     title: `Asistencia: ${ATTENDANCE_LABEL[status] ?? status}`,

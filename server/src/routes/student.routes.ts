@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { studentController } from '../controllers/student.controller.js';
+import { celebrationController } from '../controllers/celebration.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { codeRedemptionLimiter } from '../middleware/security.js';
 
@@ -14,6 +15,8 @@ router.post('/join', authorize('STUDENT'), codeRedemptionLimiter, studentControl
 router.get('/my-classes', studentController.getMyClasses.bind(studentController));
 router.get('/profile/:classroomId', studentController.getMyProfile.bind(studentController));
 router.put('/profile/:classroomId', studentController.updateProfile.bind(studentController));
+router.get('/profiles/:profileId/celebrations', authorize('STUDENT'), celebrationController.getPending.bind(celebrationController));
+router.post('/profiles/:profileId/celebrations/seen', authorize('STUDENT'), celebrationController.markSeen.bind(celebrationController));
 router.get('/stats/:studentId', authorize('STUDENT', 'TEACHER', 'ADMIN'), studentController.getStudentStats.bind(studentController));
 
 // Rutas para profesores

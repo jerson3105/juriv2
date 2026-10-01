@@ -353,6 +353,7 @@ export const studentProfiles = mysqlTable('student_profiles', {
   teamId: varchar('team_id', { length: 36 }),
   isActive: boolean('is_active').notNull().default(true),
   isDemo: boolean('is_demo').notNull().default(false), // Estudiante demo para onboarding
+  celebratedAt: datetime('celebrated_at'), // hasta dónde vio sus celebraciones (null = aún no)
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
 }, (table) => ({
@@ -517,6 +518,24 @@ export const behaviorsRelations = relations(behaviors, ({ one, many }) => ({
     references: [classroomCompetencyIndicators.id],
   }),
   pointLogs: many(pointLogs),
+}));
+
+// ==================== REGISTRO DE SUBIDAS DE NIVEL ====================
+
+// Toda subida de nivel, venga de donde venga (ver utils/points.ts). "Hoy subieron", filtro
+// Niveles del registro y celebraciones del alumno.
+export const levelUpLogs = mysqlTable('level_up_logs', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
+  studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),
+  fromLevel: int('from_level').notNull(),
+  toLevel: int('to_level').notNull(),
+  source: varchar('source', { length: 20 }).notNull().default('OTHER'),
+  isReverted: boolean('is_reverted').notNull().default(false),
+  createdAt: datetime('created_at').notNull(),
+}, (table) => ({
+  classroomDateIdx: index('idx_level_up_logs_classroom_date').on(table.classroomId, table.createdAt),
+  studentDateIdx: index('idx_level_up_logs_student_date').on(table.studentProfileId, table.createdAt),
 }));
 
 // ==================== REGISTRO DE PUNTOS ====================

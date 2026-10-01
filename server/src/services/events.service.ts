@@ -9,6 +9,7 @@ import {
 import { eq, and, desc, sql, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { teacherOwnsClassroom } from '../utils/access.js';
+import { syncLevelFromXp } from '../utils/points.js';
 
 interface EventEffect {
   type: 'XP' | 'HP' | 'GP';
@@ -914,6 +915,8 @@ class EventsService {
    * con mínimo 0), igual que el cálculo previo pero sin pisar escrituras simultáneas.
    */
   private async applyEffectsAtomically(tx: any, studentProfileId: string, effects: EventEffect[]) {
+    // Los eventos escriben el XP directamente: el nivel (y su registro) se ponen al día al final.
+    const addsXp = effects.some((effect) => effect.action === 'ADD' && this.effectTypeToField(effect.type) === 'xp');
     for (const effect of effects) {
       const field = this.effectTypeToField(effect.type);
       const column = studentProfiles[field];
@@ -925,6 +928,7 @@ class EventsService {
         .set({ [field]: next, updatedAt: new Date() })
         .where(eq(studentProfiles.id, studentProfileId));
     }
+    if (addsXp) await syncLevelFromXp(tx, studentProfileId, 'EVENT');
   }
 
   private effectTypeToField(effectType: EventEffect['type']): PointStatField {

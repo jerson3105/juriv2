@@ -5,6 +5,7 @@ import {
   badges,
   behaviors,
   itemUsages,
+  levelUpLogs,
   pointLogs,
   purchases,
   shopItems,
@@ -15,7 +16,7 @@ import {
 import { NotFoundError, ValidationError } from '../utils/errors.js';
 import type { ActivityLogEntry } from './history.service.js';
 
-export type FeedType = 'ALL' | 'POINTS' | 'PURCHASE' | 'ITEM_USED' | 'BADGE' | 'ATTENDANCE';
+export type FeedType = 'ALL' | 'POINTS' | 'PURCHASE' | 'ITEM_USED' | 'BADGE' | 'ATTENDANCE' | 'LEVEL_UP';
 
 /** Entrada del registro con clave estable (orden y cursor), lote y autor. */
 export interface FeedEntry extends Omit<ActivityLogEntry, 'timestamp'> {
@@ -303,6 +304,27 @@ class HistoryFeedService {
           id: r.id, key: `A|${r.id}`, type: 'ATTENDANCE' as const, timestamp: r.createdAt, ...base(r.studentId),
           isReverted: !!r.isReverted,
           details: { attendanceStatus: r.status, attendanceDate: new Date(r.date).toISOString().split('T')[0], amount: r.xpAwarded || 0 },
+        })),
+      });
+    }
+
+    if (wants('LEVEL_UP')) {
+      sources.push({
+        rowsPerEntry: 1,
+        at: (r) => r.createdAt,
+        fetch: (bounds, max) => {
+          const q = db.select({
+            id: levelUpLogs.id, studentId: levelUpLogs.studentProfileId, fromLevel: levelUpLogs.fromLevel,
+            toLevel: levelUpLogs.toLevel, source: levelUpLogs.source, isReverted: levelUpLogs.isReverted, createdAt: levelUpLogs.createdAt,
+          }).from(levelUpLogs)
+            .where(and(eq(levelUpLogs.classroomId, classroomId), studentId ? eq(levelUpLogs.studentProfileId, studentId) : undefined, ...range(levelUpLogs.createdAt, bounds)))
+            .orderBy(desc(levelUpLogs.createdAt), desc(levelUpLogs.id));
+          return max ? q.limit(max) : q;
+        },
+        toEntries: (rows) => rows.map((r) => ({
+          id: r.id, key: `L|${r.id}`, type: 'LEVEL_UP' as const, timestamp: r.createdAt, ...base(r.studentId),
+          isReverted: !!r.isReverted,
+          details: { newLevel: r.toLevel, fromLevel: r.fromLevel, levelSource: r.source },
         })),
       });
     }

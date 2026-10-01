@@ -304,7 +304,7 @@ export const loginStreakService = {
     
     // Actualizar XP, GP y nivel del estudiante
     if (totalXpToAdd > 0 || totalGpToAdd > 0) {
-      const updated = await addXpGp(db, studentProfileId, { xp: totalXpToAdd, gp: totalGpToAdd }, xpPerLevel);
+      const updated = await addXpGp(db, studentProfileId, { xp: totalXpToAdd, gp: totalGpToAdd }, xpPerLevel, 'STREAK');
       const newLevel = updated?.level ?? student.level;
       const leveledUp = !!updated && updated.level > updated.previousLevel;
       

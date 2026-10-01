@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useOutletContext } from 'react-router-dom';
@@ -23,9 +23,8 @@ import { useCharacterClasses } from '../../hooks/useCharacterClasses';
 import { characterClassApi } from '../../lib/characterClassApi';
 import { avatarApi } from '../../lib/avatarApi';
 import { shopApi } from '../../lib/shopApi';
-import { badgeApi, type Badge } from '../../lib/badgeApi';
-import { BadgeUnlockModal } from '../../components/badges/BadgeUnlockModal';
-import { LevelUpAnimation } from '../../components/effects/LevelUpAnimation';
+import { badgeApi } from '../../lib/badgeApi';
+import { useCelebrationStore } from '../../store/celebrationStore';
 import { LoginStreakWidget } from '../../components/student/LoginStreakWidget';
 import { storyApi } from '../../lib/storyApi';
 import { StoryPlayer } from '../../components/story/StoryPlayer';
@@ -42,9 +41,6 @@ export const StudentDashboard = () => {
   const { storyTheme, isThemeDark, storyAccent } = useOutletContext<{ storyTheme?: any; isThemeDark?: boolean; hasStoryTheme?: boolean; storyAccent?: StoryAccent | null }>();
   const hasTheme = !!storyTheme;
   
-  // Estado para animación de subida de nivel
-  const [showLevelUp, setShowLevelUp] = useState(false);
-  const [newLevel, setNewLevel] = useState(1);
   const [showClassPicker, setShowClassPicker] = useState(false);
   const queryClient = useQueryClient();
   
@@ -54,7 +50,7 @@ export const StudentDashboard = () => {
     queryFn: studentApi.getMyClasses,
   });
 
-  // Consultar notificaciones de LEVEL_UP no leídas
+  // Notificaciones: si llega una de nivel o insignia, se vuelven a pedir las celebraciones.
   const { data: notifications = [] } = useQuery({
     queryKey: ['notifications'],
     queryFn: () => shopApi.getNotifications(),
@@ -79,8 +75,6 @@ export const StudentDashboard = () => {
     enabled: !!currentProfile?.id,
   });
 
-  // Estado para animación de insignia desbloqueada
-  const [unlockedBadge, setUnlockedBadge] = useState<Badge | null>(null);
 
   // Escenas nuevas de la historia: se reproducen una vez al entrar (hasta que el alumno cierra).
   const [storyDismissed, setStoryDismissed] = useState(false);
@@ -143,47 +137,48 @@ export const StudentDashboard = () => {
     },
   });
 
-  // Detectar notificaciones de LEVEL_UP no leídas y mostrar animación
-  useEffect(() => {
-    const levelUpNotification = notifications.find(
-      (n: any) => n.type === 'LEVEL_UP' && !n.isRead
-    );
-    
-    if (levelUpNotification && currentProfile) {
-      // Extraer nivel del mensaje (ej: "Has alcanzado el nivel 3")
-      const levelMatch = levelUpNotification.message.match(/nivel (\d+)/);
-      if (levelMatch) {
-        setNewLevel(parseInt(levelMatch[1]));
-        setShowLevelUp(true);
-        // Marcar como leída
-        shopApi.markNotificationRead(levelUpNotification.id).then(() => {
-          queryClient.invalidateQueries({ queryKey: ['notifications'] });
-        });
-      }
-    }
-  }, [notifications, currentProfile, queryClient]);
+  // Celebraciones desde la última visita (subidas de nivel e insignias), leídas de los registros.
+  const { data: pendingCelebration } = useQuery({
+    queryKey: ['student-celebrations', currentProfile?.id],
+    queryFn: () => studentApi.getCelebrations(currentProfile!.id),
+    enabled: !!currentProfile?.id,
+    staleTime: 60_000,
+  });
+  const celebrate = useCelebrationStore((s) => s.celebrate);
+  const shownUntil = useRef<string | null>(null);
 
-  // Detectar notificaciones de BADGE no leídas y mostrar animación
+  const unreadRewards = notifications
+    .filter((n: { type: string; isRead: boolean }) => !n.isRead && (n.type === 'LEVEL_UP' || n.type === 'BADGE'))
+    .map((n: { id: string }) => n.id)
+    .join(',');
   useEffect(() => {
-    const badgeNotification = notifications.find(
-      (n: any) => n.type === 'BADGE' && !n.isRead
-    );
-    
-    if (badgeNotification && currentProfile && studentBadges.length > 0) {
-      // Buscar la insignia más reciente
-      const latestBadge = studentBadges
-        .sort((a: any, b: any) => new Date(b.unlockedAt).getTime() - new Date(a.unlockedAt).getTime())[0];
-      
-      if (latestBadge?.badge) {
-        setUnlockedBadge(latestBadge.badge);
-        // Marcar como leída
-        shopApi.markNotificationRead(badgeNotification.id).then(() => {
-          queryClient.invalidateQueries({ queryKey: ['notifications'] });
-          queryClient.invalidateQueries({ queryKey: ['student-badges'] });
-        });
-      }
-    }
-  }, [notifications, currentProfile, studentBadges, queryClient]);
+    if (!unreadRewards || !currentProfile?.id) return;
+    // El servidor corta un segundo atrás (ver celebration.service): se espera un poco para incluirla.
+    const profileId = currentProfile.id;
+    const timer = setTimeout(() => queryClient.invalidateQueries({ queryKey: ['student-celebrations', profileId] }), 2500);
+    return () => clearTimeout(timer);
+  }, [unreadRewards, currentProfile?.id, queryClient]);
+
+  // Una sola celebración personal, después de la Historia; se marca como vista al mostrarse.
+  useEffect(() => {
+    if (!pendingCelebration || !currentProfile || storyItems.length > 0) return;
+    if (shownUntil.current === pendingCelebration.until) return;
+    shownUntil.current = pendingCelebration.until;
+    const { fromLevel, toLevel, badges: newBadges, until } = pendingCelebration;
+    const hasLevels = fromLevel !== null && toLevel !== null;
+    if (!hasLevels && newBadges.length === 0) return;
+    const step = (currentProfile.classroom as { xpPerLevel?: number } | undefined)?.xpPerLevel || 100;
+    const progress = hasLevels
+      ? ((currentProfile.xp - (step * toLevel * (toLevel - 1)) / 2) / (step * toLevel)) * 100
+      : undefined;
+    celebrate({
+      audience: 'personal',
+      levelUps: hasLevels ? [{ key: currentProfile.id, name: '', from: fromLevel, to: toLevel }] : [],
+      badges: newBadges.map((b) => ({ key: b.id, name: b.name, icon: b.icon, customImage: b.customImage, rarity: b.rarity, recipients: [] })),
+      progress: progress === undefined ? undefined : Math.max(0, Math.min(100, progress)),
+    });
+    void studentApi.markCelebrationsSeen(currentProfile.id, until).catch(() => undefined);
+  }, [pendingCelebration, currentProfile, storyItems.length, celebrate]);
 
   if (isLoading) {
     return (
@@ -250,13 +245,6 @@ export const StudentDashboard = () => {
 
   return (
     <div className={`min-h-screen -m-4 md:-m-6 lg:-m-8 p-4 md:p-6 lg:p-8 ${hasTheme ? '' : 'bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-950 dark:via-slate-900 dark:to-gray-950'}`}>
-      {/* Animación de subida de nivel */}
-      <LevelUpAnimation
-        show={showLevelUp}
-        newLevel={newLevel}
-        onComplete={() => setShowLevelUp(false)}
-      />
-
       {/* Decorative elements */}
       {!hasTheme && (
         <>
@@ -658,13 +646,6 @@ export const StudentDashboard = () => {
           </div>
         </div>
       </div>
-
-      {/* Modal de insignia desbloqueada */}
-      <BadgeUnlockModal
-        badge={unlockedBadge}
-        isOpen={!!unlockedBadge}
-        onClose={() => setUnlockedBadge(null)}
-      />
 
       {/* Novela visual: escenas nuevas de la historia (portada al empezar capítulo, cierre al terminarlo) */}
       <AnimatePresence>

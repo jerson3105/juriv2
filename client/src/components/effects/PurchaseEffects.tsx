@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShoppingBag, Sparkles, Check, Star, Shirt } from 'lucide-react';
 
@@ -340,17 +340,22 @@ export const MultiPointsAnimation = ({
   onComplete 
 }: MultiPointsEffectProps) => {
   const [isVisible, setIsVisible] = useState(false);
+  // El aviso de cierre puede cambiar en cada render del padre: no debe reiniciar el temporizador.
+  const onCompleteRef = useRef(onComplete);
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  });
 
   useEffect(() => {
     if (show) {
       setIsVisible(true);
       const timer = setTimeout(() => {
         setIsVisible(false);
-        onComplete?.();
+        onCompleteRef.current?.();
       }, 2500);
       return () => clearTimeout(timer);
     }
-  }, [show, onComplete]);
+  }, [show]);
 
   const rewards: { icon: React.ReactNode; value: number; color: string; label: string }[] = [];
   if (xp > 0) rewards.push({ icon: <Sparkles className="w-5 h-5" />, value: xp, color: 'emerald', label: 'XP' });

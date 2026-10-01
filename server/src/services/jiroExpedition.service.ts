@@ -1610,7 +1610,7 @@ export const jiroExpeditionService = {
         .where(eq(classrooms.id, student.classroomId));
 
       const xpPerLevel = classroom?.xpPerLevel || 100;
-      const updated = await addXpGp(tx, student.id, { xp: earnedXp, gp: earnedGp }, xpPerLevel);
+      const updated = await addXpGp(tx, student.id, { xp: earnedXp, gp: earnedGp }, xpPerLevel, 'EXPEDITION');
       if (!updated) return null;
       const newXp = updated.xp;
       const newGp = updated.gp;
@@ -1826,7 +1826,7 @@ export const jiroExpeditionService = {
           .where(eq(classrooms.id, student.classroomId));
 
         const xpPerLevel = classroom?.xpPerLevel || 100;
-        const updated = await addXpGp(tx, student.id, { xp: earnedXp, gp: earnedGp }, xpPerLevel);
+        const updated = await addXpGp(tx, student.id, { xp: earnedXp, gp: earnedGp }, xpPerLevel, 'EXPEDITION');
         const newXp = updated?.xp ?? student.xp;
         const newGp = updated?.gp ?? student.gp;
         const newLevel = updated?.level ?? student.level;

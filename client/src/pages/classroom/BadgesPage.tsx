@@ -7,13 +7,12 @@ import toast from 'react-hot-toast';
 import { RARITY_LABELS, badgeApi, type Badge, type BadgeRarity, type CreateBadgeDto, type GeneratedBadge } from '../../lib/badgeApi';
 import { behaviorApi } from '../../lib/behaviorApi';
 import type { Classroom } from '../../lib/classroomApi';
-import { useSound } from '../../hooks/useSound';
 import { BadgeTile } from '../../components/badges/BadgeTile';
 import { BadgeFormModal, type BadgeFormTarget } from '../../components/badges/BadgeFormModal';
 import { AwardBadgeModal } from '../../components/badges/AwardBadgeModal';
 import { BadgeWinnersPanel } from '../../components/badges/BadgeWinnersPanel';
 import { AIBadgeModal } from '../../components/badges/AIBadgeModal';
-import { TeacherBadgeAwardedModal } from '../../components/badges/TeacherBadgeAwardedModal';
+import { celebrateBadgeAward } from '../../components/celebrations/celebrationHelpers';
 import { RARITY_ORDER, badgeAwardCountsKey } from '../../components/badges/badgeHelpers';
 
 type ModeFilter = 'ALL' | 'MANUAL' | 'AUTO';
@@ -42,7 +41,6 @@ const segment = (active: boolean) =>
 export const BadgesPage = () => {
   const { classroom } = useOutletContext<{ classroom: Classroom }>();
   const queryClient = useQueryClient();
-  const { play } = useSound();
   const badgesKey = ['badges', classroom.id];
   const [search, setSearch] = useState('');
   const [rarityFilter, setRarityFilter] = useState<BadgeRarity | 'ALL'>('ALL');
@@ -52,7 +50,6 @@ export const BadgesPage = () => {
   const [awardBadge, setAwardBadge] = useState<Badge | null>(null);
   const [showWinners, setShowWinners] = useState(false);
   const [showAI, setShowAI] = useState(false);
-  const [celebration, setCelebration] = useState<{ badge: Badge | null; studentNames: string[] }>({ badge: null, studentNames: [] });
 
   const { data: badges = [], isLoading } = useQuery({
     queryKey: badgesKey,
@@ -370,8 +367,7 @@ export const BadgesPage = () => {
             onClose={() => setAwardBadge(null)}
             onAwarded={(badge, studentNames) => {
               setAwardBadge(null);
-              setCelebration({ badge, studentNames });
-              play('badge');
+              celebrateBadgeAward(badge, studentNames);
             }}
           />
         )}
@@ -385,12 +381,6 @@ export const BadgesPage = () => {
         {showAI && <AIBadgeModal key="ai" classroom={classroom} onClose={() => setShowAI(false)} onImport={handleImport} />}
       </AnimatePresence>
 
-      <TeacherBadgeAwardedModal
-        badge={celebration.badge}
-        studentNames={celebration.studentNames}
-        isOpen={!!celebration.badge}
-        onClose={() => setCelebration({ badge: null, studentNames: [] })}
-      />
     </div>
   );
 };

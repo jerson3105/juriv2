@@ -8,6 +8,7 @@ import {
   tournamentParticipants, studentCollectibles, scrolls, scrollReactions,
   collectibleCards, collectibleAlbums, classroomCharacterClasses,
   stories,
+  levelUpLogs,
 } from '../db/schema.js';
 import { eq, and, desc, sql, gte, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
@@ -362,9 +363,11 @@ export class StudentService {
       xpPerLevel: classroom.xpPerLevel || 100,
       hpMin: classroom.allowNegativeHp ? null : 0,
       hpMax: classroom.maxHp,
+      source: 'POINTS' as const,
     };
     let leveledUp = false;
     let newLevel = profile.level;
+    let fromLevel = profile.level;
 
     const now = new Date();
 
@@ -412,13 +415,16 @@ export class StudentService {
       if (updated.level > updated.previousLevel) {
         leveledUp = true;
         newLevel = updated.level;
-        if (profile.userId) {
+        fromLevel = updated.previousLevel;
+        if (profile.userId && classroom.notifyOnPoints) {
           notificationsBatch.push({
             id: uuidv4(),
             userId: profile.userId,
             type: 'LEVEL_UP',
             title: '🎉 ¡Subiste de nivel!',
             message: `¡Felicidades! Has alcanzado el nivel ${newLevel}`,
+            classroomId: profile.classroomId,
+            data: { studentProfileId: data.studentId, fromLevel: updated.previousLevel, toLevel: updated.level },
             isRead: false,
             createdAt: now,
           });
@@ -474,6 +480,7 @@ export class StudentService {
       student: updatedStudent,
       leveledUp,
       newLevel: leveledUp ? newLevel : undefined,
+      fromLevel: leveledUp ? fromLevel : undefined,
       studentName: profile.characterName || 'Estudiante',
       awardedBadges,
     };
@@ -601,6 +608,7 @@ export class StudentService {
 
     // Eliminar logs de puntos del demo
     await db.delete(pointLogs).where(eq(pointLogs.studentId, demoStudent.id));
+    await db.delete(levelUpLogs).where(eq(levelUpLogs.studentProfileId, demoStudent.id));
     
     // Eliminar el perfil demo
     await db.delete(studentProfiles).where(eq(studentProfiles.id, demoStudent.id));
@@ -1152,6 +1160,7 @@ export class StudentService {
     await db.transaction(async (tx) => {
       // 1. Point logs
       await tx.delete(pointLogs).where(eq(pointLogs.studentId, studentId));
+      await tx.delete(levelUpLogs).where(eq(levelUpLogs.studentProfileId, studentId));
 
       // 2. Avatar purchases & equipped items
       await tx.delete(studentAvatarPurchases).where(eq(studentAvatarPurchases.studentProfileId, studentId));

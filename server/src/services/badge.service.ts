@@ -1394,7 +1394,7 @@ class BadgeService {
     const now = createdAt;
 
     // Suma atómica: no pisa otras escrituras simultáneas sobre el alumno.
-    const updated = await addXpGp(tx, studentProfileId, { xp, gp }, xpPerLevel);
+    const updated = await addXpGp(tx, studentProfileId, { xp, gp }, xpPerLevel, 'BADGE');
     if (!updated) return;
     const newLevel = updated.level;
     const leveledUp = updated.level > updated.previousLevel;

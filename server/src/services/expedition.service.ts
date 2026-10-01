@@ -791,7 +791,7 @@ export class ExpeditionService {
         .where(eq(classrooms.id, student.classroomId));
 
       const xpPerLevel = classroom?.xpPerLevel || 100;
-      const updated = await addXpGp(tx, studentProfileId, { xp: pin.rewardXp, gp: pin.rewardGp }, xpPerLevel);
+      const updated = await addXpGp(tx, studentProfileId, { xp: pin.rewardXp, gp: pin.rewardGp }, xpPerLevel, 'EXPEDITION');
       const newLevel = updated?.level ?? student.level;
       const leveledUp = !!updated && updated.level > updated.previousLevel;
 

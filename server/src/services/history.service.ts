@@ -14,7 +14,7 @@ import {
 import { eq, desc, and, inArray, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { teacherOwnsClassroom } from '../utils/access.js';
-import { affectedRows } from '../utils/points.js';
+import { affectedRows, revertLevelUpsAbove } from '../utils/points.js';
 
 export interface ActivityLogEntry {
   id: string;
@@ -33,6 +33,8 @@ export interface ActivityLogEntry {
     itemIcon?: string;
     totalPrice?: number;
     newLevel?: number;
+    fromLevel?: number;
+    levelSource?: string;
     badgeName?: string;
     badgeIcon?: string;
     // Puntos combinados (cuando un comportamiento tiene XP+HP+GP)
@@ -635,6 +637,7 @@ class HistoryService {
       updateData.level = Math.max(1, Math.floor((1 + Math.sqrt(1 + (8 * currentXp) / xpPerLevel)) / 2));
 
       await tx.update(studentProfiles).set(updateData).where(eq(studentProfiles.id, log.studentId));
+      await revertLevelUpsAbove(tx, log.studentId, updateData.level as number);
     });
 
     // Build result message
@@ -722,6 +725,7 @@ class HistoryService {
           level: newLevel,
           updatedAt: now,
         }).where(eq(studentProfiles.id, student.id));
+        await revertLevelUpsAbove(tx, student.id, newLevel);
 
         // Marcar los pointLogs de recompensa relacionados como revertidos
         // (los que tienen reason = "Insignia: <name>" y fueron creados alrededor del mismo tiempo)
@@ -817,6 +821,7 @@ class HistoryService {
             level: newLevel,
             updatedAt: now,
           }).where(eq(studentProfiles.id, record.studentProfileId));
+          await revertLevelUpsAbove(tx, record.studentProfileId, newLevel);
 
           // Marcar pointLog de asistencia relacionado como revertido
           const relatedLogs = await tx.select({ id: pointLogs.id }).from(pointLogs).where(and(

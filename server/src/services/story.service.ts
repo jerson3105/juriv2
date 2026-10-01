@@ -803,7 +803,7 @@ class StoryService {
         ...(deltas.gp > 0 ? [{ id: uuidv4(), studentId, pointType: 'GP' as const, action: 'ADD' as const, amount: deltas.gp, reason, givenBy: teacherId, createdAt: now }] : []),
       ]);
       await tx.insert(pointLogs).values(rows);
-      await applyPointDeltasBulk(tx, studentIds, { xp: deltas.xp, gp: deltas.gp }, { xpPerLevel: classroom?.xpPerLevel ?? 100 });
+      await applyPointDeltasBulk(tx, studentIds, { xp: deltas.xp, gp: deltas.gp }, { xpPerLevel: classroom?.xpPerLevel ?? 100, source: 'STORY' });
     });
   }
 

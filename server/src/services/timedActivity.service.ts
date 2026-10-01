@@ -16,6 +16,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { clanService } from './clan.service.js';
 import { storyService } from './story.service.js';
 import { teacherOwnsClassroom } from '../utils/access.js';
+import { syncLevelFromXp } from '../utils/points.js';
 
 // DTOs
 export interface CreateTimedActivityDto {
@@ -700,6 +701,8 @@ class TimedActivityService {
       .update(studentProfiles)
       .set(updateData)
       .where(eq(studentProfiles.id, student.id));
+    // Este camino escribe el XP directamente: el nivel (y su registro) se ponen al día aquí.
+    if (pointType === 'XP' && action === 'ADD') await syncLevelFromXp(tx, student.id, 'ACTIVITY');
 
     await tx.insert(pointLogs).values({
       id: uuidv4(),

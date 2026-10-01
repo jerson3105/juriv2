@@ -17,6 +17,9 @@ export interface ActivityLogEntry {
     itemIcon?: string;
     totalPrice?: number;
     newLevel?: number;
+    fromLevel?: number;
+    /** Origen de una subida de nivel (BEHAVIOR, POINTS, ATTENDANCE…). */
+    levelSource?: string;
     badgeName?: string;
     badgeIcon?: string;
     // Puntos combinados (cuando un comportamiento tiene XP+HP+GP)
@@ -45,7 +48,7 @@ export interface HistoryResponse {
   total: number;
 }
 
-export type FeedType = 'ALL' | 'POINTS' | 'PURCHASE' | 'ITEM_USED' | 'BADGE' | 'ATTENDANCE';
+export type FeedType = 'ALL' | 'POINTS' | 'PURCHASE' | 'ITEM_USED' | 'BADGE' | 'ATTENDANCE' | 'LEVEL_UP';
 
 /** Entrada del registro por cursor: clave estable, lote (misma acción a varios alumnos) y autor. */
 export interface FeedEntry extends ActivityLogEntry {

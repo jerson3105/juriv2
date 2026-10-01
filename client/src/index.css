@@ -343,3 +343,17 @@
   from { transform: translateX(24px); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }
 }
+
+/* Celebraciones (subidas de nivel e insignias): solo transform y opacity, una sola vez.
+   Con menos movimiento la regla de arriba las deja en su estado final. */
+@keyframes celebrate-shine { from { transform: translateX(-120%) skewX(-20deg); } to { transform: translateX(380%) skewX(-20deg); } }
+@keyframes celebrate-rise { 0% { transform: translate(0, 0) scale(.5); opacity: 0; } 25% { opacity: 1; } 100% { transform: translate(var(--dx, 0), -40px) scale(1); opacity: 0; } }
+@keyframes celebrate-pop { 0% { transform: scale(.6); } 60% { transform: scale(1.18); } 100% { transform: scale(1); } }
+@keyframes celebrate-ring { from { transform: scale(.4); opacity: .6; } to { transform: scale(1.9); opacity: 0; } }
+@keyframes celebrate-timer { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@keyframes celebrate-row { from { transform: translateY(6px); opacity: 0; } to { transform: none; opacity: 1; } }
+.celebrate-shine { animation: celebrate-shine 900ms cubic-bezier(.2, .8, .2, 1) 120ms 1 both; }
+.celebrate-rise { animation: celebrate-rise 900ms ease-out 1 both; }
+.celebrate-pop { display: inline-block; animation: celebrate-pop 280ms cubic-bezier(.34, 1.56, .64, 1) 1 both; }
+.celebrate-ring { animation: celebrate-ring 700ms ease-out 1 both; }
+.celebrate-row { animation: celebrate-row 180ms cubic-bezier(.2, .8, .2, 1) 1 both; }

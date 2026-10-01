@@ -1,4 +1,5 @@
 import api from './api';
+import type { BadgeRarity } from './badgeApi';
 
 export type PointType = 'XP' | 'HP' | 'GP';
 
@@ -57,12 +58,13 @@ export interface ApplyBehaviorData {
 export interface LevelUpInfo {
   studentId: string;
   studentName: string;
+  fromLevel: number;
   newLevel: number;
 }
 
 export interface AwardedBadgeInfo {
   studentId: string;
-  badges: string[];
+  badges: { id: string; name: string; icon: string; customImage: string | null; rarity: BadgeRarity }[];
 }
 
 export interface BehaviorUsage {

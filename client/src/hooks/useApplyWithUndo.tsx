@@ -6,6 +6,7 @@ import { historyApi } from '../lib/historyApi';
 import { formatBehaviorRewards } from '../lib/behaviorPoints';
 import { behaviorUsageKey, useBehaviorUsage } from './useBehaviorUsage';
 import { useSound } from './useSound';
+import { celebrateApplyResult } from '../components/celebrations/celebrationHelpers';
 
 const errorMessage = (error: unknown, fallback: string) =>
   (error as { response?: { data?: { message?: string } } })?.response?.data?.message || fallback;
@@ -49,7 +50,8 @@ export const useApplyWithUndo = (classroomId: string) => {
     try {
       const result = await behaviorApi.apply({ behaviorId: behavior.id, studentIds, ...(multiplier !== undefined && multiplier !== 1 ? { multiplier } : {}) });
       usage.recordUse(behavior.id);
-      play(behavior.isPositive ? 'pointsGain' : 'pointsLoss');
+      // Subidas e insignias: una celebración con su propio sonido; si no hay, el sonido de puntos.
+      if (!celebrateApplyResult(queryClient, classroomId, result)) play(behavior.isPositive ? 'pointsGain' : 'pointsLoss');
       refresh();
       toast.success(
         (t) => (
