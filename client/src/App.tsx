@@ -244,6 +244,7 @@ function App() {
               <Route path="clans" element={<ClansPage />} />
               <Route path="rankings" element={<RankingsPage />} />
               <Route path="question-banks" element={<QuestionBanksPage />} />
+              <Route path="question-banks/:bankId" element={<QuestionBanksPage />} />
               <Route path="expeditions" element={<ExpeditionsPage />} />
               <Route path="collectibles" element={<CollectiblesPage />} />
               <Route path="storytelling" element={<StorytellingPage />} />

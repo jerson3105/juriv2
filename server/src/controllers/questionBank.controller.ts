@@ -1,7 +1,9 @@
 import { Request, Response } from 'express';
 import { questionBankService } from '../services/questionBank.service.js';
 import { z } from 'zod';
-import { createGenAI, generateContentWithRetry, isAIRateLimitError } from '../utils/aiClient.js';
+import { isAIRateLimitError } from '../utils/aiClient.js';
+import { generateDrafts } from '../services/questionAi.service.js';
+import { classroomService } from '../services/classroom.service.js';
 import { generateIntoBank } from '../services/observatorioAi.service.js';
 import { AppError } from '../utils/errors.js';
 import { requireClassroomTeacher } from '../utils/access.js';
@@ -47,7 +49,7 @@ const matchingPairSchema = z.object({
 
 const createQuestionSchema = z.object({
   type: questionTypeSchema,
-  difficulty: questionDifficultySchema.optional(),
+  difficulty: questionDifficultySchema.nullable().optional(),
   points: z.number().min(1).max(100).optional(),
   questionText: z.string().trim().min(1).max(2000),
   imageUrl: z.string().url().optional(),
@@ -60,7 +62,7 @@ const createQuestionSchema = z.object({
 
 const updateQuestionSchema = z.object({
   type: questionTypeSchema.optional(),
-  difficulty: questionDifficultySchema.optional(),
+  difficulty: questionDifficultySchema.nullable().optional(),
   points: z.number().min(1).max(100).optional(),
   questionText: z.string().trim().min(1).max(2000).optional(),
   imageUrl: z.string().url().nullable().optional(),
@@ -72,19 +74,6 @@ const updateQuestionSchema = z.object({
   isActive: booleanLikeSchema.optional(),
 });
 
-const randomQuestionsQuerySchema = z.object({
-  count: z.coerce.number().int().min(1).max(100).default(10),
-  difficulty: questionDifficultySchema.optional(),
-});
-
-const generateWithAISchema = z.object({
-  topic: z.string().trim().min(1).max(300),
-  quantity: z.coerce.number().int().min(1).max(50),
-  level: z.string().trim().min(1).max(100),
-  questionTypes: z.array(questionTypeSchema).min(1).max(4).optional(),
-  difficulty: questionDifficultySchema.optional(),
-});
-
 // Observatorio: generar con IA y guardar directo en un banco de la clase.
 const generateIntoBankSchema = z.object({
   topic: z.string().trim().min(2, 'Escribe el tema').max(200),
@@ -93,32 +82,32 @@ const generateIntoBankSchema = z.object({
   bankId: z.string().uuid().optional().nullable(),
 });
 
-const generateFromPDFSchema = z.object({
-  quantity: z.coerce.number().int().min(1).max(50),
-  level: z.string().trim().min(1).max(100),
-  questionTypes: z.preprocess(
-    (val) => typeof val === 'string' ? JSON.parse(val) : val,
-    z.array(questionTypeSchema).min(1).max(4).optional()
-  ),
-  difficulty: z.preprocess(
-    (val) => val === '' ? undefined : val,
-    questionDifficultySchema.optional()
-  ),
+// IA con vista previa: borradores que el docente revisa antes de guardar.
+const aiKindSchema = z.enum(['TRUE_FALSE', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'MATCHING', 'ERROR_STEPS']);
+const aiDraftsSchema = z.object({
+  topic: z.string().trim().min(2, 'Escribe el tema').max(300),
+  quantity: z.coerce.number().int().min(1).max(20),
+  kinds: z.array(aiKindSchema).min(1, 'Elige al menos un tipo').max(5),
+  difficulty: questionDifficultySchema.nullable().optional(),
+  level: z.string().trim().max(100).optional().nullable(),
 });
-
-const DEFAULT_AI_TYPES: Array<z.infer<typeof questionTypeSchema>> = [
-  'TRUE_FALSE',
-  'SINGLE_CHOICE',
-  'MULTIPLE_CHOICE',
-  'MATCHING',
-];
-
-const QUESTION_BANK_AI_MODEL = 'gemini-2.5-flash-lite';
+// Multipart (PDF): los campos llegan como texto.
+const aiDraftsPdfSchema = z.object({
+  quantity: z.coerce.number().int().min(1).max(20),
+  kinds: z.preprocess((v) => (typeof v === 'string' ? JSON.parse(v) : v), z.array(aiKindSchema).min(1, 'Elige al menos un tipo').max(5)),
+  difficulty: z.preprocess((v) => (v === '' || v === 'null' ? null : v), questionDifficultySchema.nullable().optional()),
+  level: z.string().trim().max(100).optional().nullable(),
+});
+const batchSchema = z.object({
+  questions: z.array(createQuestionSchema).min(1, 'No hay preguntas para guardar').max(50, 'Máximo 50 preguntas por vez'),
+  aiGenerated: z.boolean().optional(),
+});
+const duplicateSchema = z.object({ targetClassroomId: z.string().uuid() });
 
 const handleValidationError = (res: Response, error: z.ZodError) => {
   return res.status(400).json({
     success: false,
-    message: 'Datos invalidos',
+    message: error.errors[0]?.message && !error.errors[0].message.startsWith('Invalid') ? error.errors[0].message : 'Revisa los datos del formulario',
     errors: error.errors,
   });
 };
@@ -426,162 +415,42 @@ class QuestionBankController {
     }
   }
 
-  // ==================== UTILIDADES ====================
+  // ==================== GENERACIÓN CON IA (VISTA PREVIA) ====================
 
-  async getRandomQuestions(req: Request, res: Response) {
+  // POST /question-banks/classroom/:classroomId/ai-drafts { topic, quantity, kinds, difficulty?, level? }
+  async aiDrafts(req: Request, res: Response) {
     try {
-      const { bankId } = req.params;
-      if (!(await ensureTeacherBankAccess(req, res, bankId))) {
-        return;
-      }
-
-      const validation = randomQuestionsQuerySchema.safeParse(req.query);
-      if (!validation.success) {
-        return handleValidationError(res, validation.error);
-      }
-
-      const questions = await questionBankService.getRandomQuestions(
-        bankId,
-        validation.data.count,
-        validation.data.difficulty
-      );
-
-      res.json({ success: true, data: questions });
-    } catch (error) {
-      handleControllerError(res, error, 'Error al obtener preguntas aleatorias');
-    }
-  }
-
-  async getStats(req: Request, res: Response) {
-    try {
-      const { bankId } = req.params;
-      if (!(await ensureTeacherBankAccess(req, res, bankId))) {
-        return;
-      }
-
-      const stats = await questionBankService.getQuestionStats(bankId);
-      res.json({ success: true, data: stats });
-    } catch (error) {
-      handleControllerError(res, error, 'Error al obtener estadisticas');
-    }
-  }
-
-  async checkAnswer(req: Request, res: Response) {
-    try {
-      const { questionId } = req.params;
-      const { answer } = req.body;
-
-      if (!(await ensureTeacherQuestionAccess(req, res, questionId))) {
-        return;
-      }
-
-      const question = await questionBankService.getQuestionById(questionId);
-      if (!question) {
-        return res.status(404).json({ success: false, message: 'Pregunta no encontrada' });
-      }
-
-      const result = questionBankService.checkAnswer(question, answer);
-      res.json({ success: true, data: result });
-    } catch (error) {
-      handleControllerError(res, error, 'Error al verificar respuesta');
-    }
-  }
-
-  // ==================== GENERACIÓN CON IA ====================
-
-  async generateWithAI(req: Request, res: Response) {
-    try {
-      const validation = generateWithAISchema.safeParse(req.body);
-      if (!validation.success) {
-        return handleValidationError(res, validation.error);
-      }
-
-      const { topic, quantity, level, questionTypes, difficulty } = validation.data;
-
-      // Configurar tipos de preguntas a generar
-      const types = questionTypes && questionTypes.length > 0
-        ? questionTypes 
-        : DEFAULT_AI_TYPES;
-
-      const typesDescription = types.map((t) => {
-        switch(t) {
-          case 'TRUE_FALSE': return 'Verdadero/Falso (TRUE_FALSE)';
-          case 'SINGLE_CHOICE': return 'Selección única (SINGLE_CHOICE)';
-          case 'MULTIPLE_CHOICE': return 'Selección múltiple (MULTIPLE_CHOICE)';
-          case 'MATCHING': return 'Relacionar pares (MATCHING)';
-          default: return t;
-        }
-      }).join(', ');
-
-      const difficultyText = difficulty || 'variada (EASY, MEDIUM, HARD)';
-
-      // Construir el prompt
-      const prompt = `Genera exactamente ${quantity} preguntas sobre "${topic}" para estudiantes de ${level}.
-
-REGLAS ESTRICTAS:
-1. Genera ÚNICAMENTE los siguientes tipos de preguntas: ${typesDescription}
-2. Dificultad: ${difficultyText}
-3. Responde SOLO con el CSV, sin explicaciones adicionales
-4. Usa EXACTAMENTE este formato CSV:
-
-type,difficulty,points,questionText,options,correctAnswer,pairs,explanation,timeLimitSeconds
-
-EJEMPLOS POR TIPO:
-- TRUE_FALSE: TRUE_FALSE,EASY,10,"La Tierra es el tercer planeta del sistema solar",,true,,"La Tierra orbita al Sol en la tercera posición",20
-- SINGLE_CHOICE: SINGLE_CHOICE,MEDIUM,15,"¿Cuál es la capital de Francia?","[{""text"":""Londres"",""isCorrect"":false},{""text"":""París"",""isCorrect"":true},{""text"":""Madrid"",""isCorrect"":false},{""text"":""Roma"",""isCorrect"":false}]",,,"París es la capital y ciudad más poblada de Francia",30
-- MULTIPLE_CHOICE: MULTIPLE_CHOICE,HARD,20,"¿Cuáles son números primos?","[{""text"":""2"",""isCorrect"":true},{""text"":""4"",""isCorrect"":false},{""text"":""7"",""isCorrect"":true},{""text"":""9"",""isCorrect"":false}]",,,"2 y 7 son primos porque solo son divisibles por 1 y ellos mismos",45
-- MATCHING: MATCHING,MEDIUM,25,"Relaciona cada país con su capital",,,"[{""left"":""España"",""right"":""Madrid""},{""left"":""Italia"",""right"":""Roma""},{""left"":""Alemania"",""right"":""Berlín""}]","Las capitales son las ciudades principales de cada país",40
-
-IMPORTANTE:
-- Cada fila DEBE tener EXACTAMENTE 9 columnas separadas por comas (type,difficulty,points,questionText,options,correctAnswer,pairs,explanation,timeLimitSeconds)
-- La columna "explanation" es OBLIGATORIA en TODAS las preguntas. NUNCA la dejes vacía. Siempre incluye una explicación educativa de al menos 10 palabras que ayude al estudiante a entender la respuesta
-- Las comillas dentro del JSON deben ser dobles ("")
-- Para SINGLE_CHOICE solo una opción debe tener isCorrect:true
-- Para MULTIPLE_CHOICE puede haber múltiples opciones correctas
-- Para MATCHING genera al menos 3 pares
-- Varía la dificultad si no se especifica una única
-- Los puntos deben ser: EASY=10, MEDIUM=15-20, HARD=25-30
-
-Genera ${quantity} preguntas variadas y educativas:`;
-
-      // Inicializar cliente de Gemini
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        return res.status(500).json({
-          success: false,
-          message: 'API Key de Gemini no configurada'
-        });
-      }
-
-      const ai = createGenAI(apiKey);
-      
-      const response = await generateContentWithRetry(() => ai.models.generateContent({
-        model: QUESTION_BANK_AI_MODEL,
-        contents: prompt,
-      }));
-
-      let csvText = (response.text || '').trim();
-
-      if (!csvText) {
-        return res.status(500).json({
-          success: false,
-          message: 'La IA no genero contenido'
-        });
-      }
-
-      // Limpiar bloques markdown que Gemini a veces agrega
-      csvText = csvText.replace(/^```(?:csv|CSV)?\s*\n?/gm, '').replace(/```\s*$/gm, '').trim();
-
-      res.json({
-        success: true,
-        data: {
-          csv: csvText,
-          prompt: prompt
-        }
+      const { classroomId } = req.params;
+      if (!(await ensureTeacherClassroomAccess(req, res, classroomId))) return;
+      const validation = aiDraftsSchema.safeParse(req.body);
+      if (!validation.success) return handleValidationError(res, validation.error);
+      const classroom = await classroomService.getById(classroomId);
+      const drafts = await generateDrafts({
+        kinds: validation.data.kinds, quantity: validation.data.quantity, topic: validation.data.topic,
+        difficulty: validation.data.difficulty ?? null, gradeLevel: classroom?.gradeLevel, levelOverride: validation.data.level,
       });
-
+      res.json({ success: true, data: drafts });
     } catch (error) {
-      handleControllerError(res, error, 'Error al generar preguntas con IA');
+      handleControllerError(res, error, 'No se pudieron generar las preguntas');
+    }
+  }
+
+  // POST /question-banks/classroom/:classroomId/ai-drafts/pdf (multipart: pdf, quantity, kinds, difficulty?, level?)
+  async aiDraftsFromPdf(req: Request, res: Response) {
+    try {
+      const { classroomId } = req.params;
+      if (!(await ensureTeacherClassroomAccess(req, res, classroomId))) return;
+      if (!req.file) return res.status(400).json({ success: false, message: 'Sube un archivo PDF' });
+      const validation = aiDraftsPdfSchema.safeParse(req.body);
+      if (!validation.success) return handleValidationError(res, validation.error);
+      const classroom = await classroomService.getById(classroomId);
+      const drafts = await generateDrafts({
+        kinds: validation.data.kinds, quantity: validation.data.quantity, pdf: req.file.buffer,
+        difficulty: validation.data.difficulty ?? null, gradeLevel: classroom?.gradeLevel, levelOverride: validation.data.level,
+      });
+      res.json({ success: true, data: drafts });
+    } catch (error) {
+      handleControllerError(res, error, 'No se pudieron generar preguntas desde el PDF');
     }
   }
 
@@ -599,167 +468,77 @@ Genera ${quantity} preguntas variadas y educativas:`;
     }
   }
 
-  // ==================== GENERACIÓN DESDE PDF ====================
+  // ==================== LOTE, REVISIÓN, DESHACER Y DUPLICAR ====================
 
-  async generateFromPDF(req: Request, res: Response) {
+  // POST /question-banks/bank/:bankId/questions/batch { questions, aiGenerated? }
+  async createQuestionsBatch(req: Request, res: Response) {
     try {
-      if (!req.file) {
-        return res.status(400).json({
-          success: false,
-          message: 'No se proporcionó un archivo PDF'
-        });
-      }
-
-      const validation = generateFromPDFSchema.safeParse(req.body);
-      if (!validation.success) {
-        return handleValidationError(res, validation.error);
-      }
-
-      const { quantity, level, questionTypes, difficulty } = validation.data;
-
-      // Configurar tipos de preguntas a generar
-      const types = questionTypes && questionTypes.length > 0
-        ? questionTypes
-        : DEFAULT_AI_TYPES;
-
-      const typesDescription = types.map((t) => {
-        switch(t) {
-          case 'TRUE_FALSE': return 'Verdadero/Falso (TRUE_FALSE)';
-          case 'SINGLE_CHOICE': return 'Selección única (SINGLE_CHOICE)';
-          case 'MULTIPLE_CHOICE': return 'Selección múltiple (MULTIPLE_CHOICE)';
-          case 'MATCHING': return 'Relacionar pares (MATCHING)';
-          default: return t;
-        }
-      }).join(', ');
-
-      const difficultyText = difficulty || 'variada (EASY, MEDIUM, HARD)';
-
-      // Construir el prompt
-      const prompt = `Analiza el contenido del documento PDF adjunto y genera exactamente ${quantity} preguntas basadas en su contenido para estudiantes de ${level}.
-
-REGLAS ESTRICTAS:
-1. Las preguntas DEBEN estar basadas en el contenido del documento
-2. Genera ÚNICAMENTE los siguientes tipos de preguntas: ${typesDescription}
-3. Dificultad: ${difficultyText}
-4. Responde SOLO con el CSV, sin explicaciones adicionales
-5. Usa EXACTAMENTE este formato CSV:
-
-type,difficulty,points,questionText,options,correctAnswer,pairs,explanation,timeLimitSeconds
-
-EJEMPLOS POR TIPO:
-- TRUE_FALSE: TRUE_FALSE,EASY,10,"La Tierra es el tercer planeta del sistema solar",,true,,"La Tierra orbita al Sol en la tercera posición",20
-- SINGLE_CHOICE: SINGLE_CHOICE,MEDIUM,15,"¿Cuál es la capital de Francia?","[{""text"":""Londres"",""isCorrect"":false},{""text"":""París"",""isCorrect"":true},{""text"":""Madrid"",""isCorrect"":false},{""text"":""Roma"",""isCorrect"":false}]",,,"París es la capital y ciudad más poblada de Francia",30
-- MULTIPLE_CHOICE: MULTIPLE_CHOICE,HARD,20,"¿Cuáles son números primos?","[{""text"":""2"",""isCorrect"":true},{""text"":""4"",""isCorrect"":false},{""text"":""7"",""isCorrect"":true},{""text"":""9"",""isCorrect"":false}]",,,"2 y 7 son primos porque solo son divisibles por 1 y ellos mismos",45
-- MATCHING: MATCHING,MEDIUM,25,"Relaciona cada país con su capital",,,"[{""left"":""España"",""right"":""Madrid""},{""left"":""Italia"",""right"":""Roma""},{""left"":""Alemania"",""right"":""Berlín""}]","Las capitales son las ciudades principales de cada país",40
-
-IMPORTANTE:
-- Cada fila DEBE tener EXACTAMENTE 9 columnas separadas por comas (type,difficulty,points,questionText,options,correctAnswer,pairs,explanation,timeLimitSeconds)
-- La columna "explanation" es OBLIGATORIA en TODAS las preguntas. NUNCA la dejes vacía. Siempre incluye una explicación educativa de al menos 10 palabras que ayude al estudiante a entender la respuesta
-- Las comillas dentro del JSON deben ser dobles ("")
-- Para SINGLE_CHOICE solo una opción debe tener isCorrect:true
-- Para MULTIPLE_CHOICE puede haber múltiples opciones correctas
-- Para MATCHING genera al menos 3 pares
-- Varía la dificultad si no se especifica una única
-- Los puntos deben ser: EASY=10, MEDIUM=15-20, HARD=25-30
-
-Genera ${quantity} preguntas variadas y educativas basadas en el documento:`;
-
-      // Inicializar cliente de Gemini
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        return res.status(500).json({
-          success: false,
-          message: 'API Key de Gemini no configurada'
-        });
-      }
-
-      const ai = createGenAI(apiKey);
-
-      // Convertir el buffer del PDF a base64 para enviar como inlineData
-      const pdfBase64 = req.file.buffer.toString('base64');
-
-      const response = await generateContentWithRetry(() => ai.models.generateContent({
-        model: QUESTION_BANK_AI_MODEL,
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                inlineData: {
-                  mimeType: 'application/pdf',
-                  data: pdfBase64,
-                },
-              },
-              {
-                text: prompt,
-              },
-            ],
-          },
-        ],
-      }));
-
-      let csvText = (response.text || '').trim();
-
-      if (!csvText) {
-        return res.status(500).json({
-          success: false,
-          message: 'La IA no generó contenido a partir del PDF'
-        });
-      }
-
-      // Limpiar bloques markdown que Gemini a veces agrega
-      csvText = csvText.replace(/^```(?:csv|CSV)?\s*\n?/gm, '').replace(/```\s*$/gm, '').trim();
-
-      res.json({
-        success: true,
-        data: {
-          csv: csvText,
-          prompt: prompt
-        }
-      });
-
+      const { bankId } = req.params;
+      if (!(await ensureTeacherBankAccess(req, res, bankId))) return;
+      const validation = batchSchema.safeParse(req.body);
+      if (!validation.success) return handleValidationError(res, validation.error);
+      const result = await questionBankService.createQuestionsBatch(bankId, validation.data.questions, !!validation.data.aiGenerated);
+      res.status(201).json({ success: true, data: result });
     } catch (error) {
-      handleControllerError(res, error, 'Error al generar preguntas desde PDF');
+      handleControllerError(res, error, 'No se pudieron guardar las preguntas');
     }
   }
 
-  // Exportar bancos a otras clases
-  async exportBanks(req: Request, res: Response) {
+  // POST /question-banks/question/:questionId/review
+  async reviewQuestion(req: Request, res: Response) {
     try {
-      const schema = z.object({
-        bankIds: z.array(z.string()).min(1, 'Selecciona al menos un banco'),
-        targetClassroomIds: z.array(z.string()).min(1, 'Selecciona al menos una clase destino'),
-      });
-      const data = schema.parse(req.body);
-      const result = await questionBankService.exportBanks(
-        data.bankIds,
-        data.targetClassroomIds,
-        req.user!.id,
-      );
-
-      res.json({
-        success: true,
-        message: `${result.exportedBanks} banco(s) exportado(s) a ${result.targetClassrooms} clase(s)`,
-        data: result,
-      });
+      const { questionId } = req.params;
+      if (!(await ensureTeacherQuestionAccess(req, res, questionId))) return;
+      res.json({ success: true, data: await questionBankService.markReviewed(questionId) });
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({
-          success: false,
-          message: 'Datos inválidos',
-          errors: error.errors,
-        });
-      }
-      if (error instanceof Error) {
-        return res.status(400).json({
-          success: false,
-          message: error.message,
-        });
-      }
-      res.status(500).json({
-        success: false,
-        message: 'Error al exportar bancos de preguntas',
-      });
+      handleControllerError(res, error, 'No se pudo marcar como revisada');
+    }
+  }
+
+  // POST /question-banks/bank/:bankId/review-all
+  async reviewBank(req: Request, res: Response) {
+    try {
+      const { bankId } = req.params;
+      if (!(await ensureTeacherBankAccess(req, res, bankId))) return;
+      res.json({ success: true, data: await questionBankService.reviewAll(bankId) });
+    } catch (error) {
+      handleControllerError(res, error, 'No se pudo aprobar el banco');
+    }
+  }
+
+  // POST /question-banks/question/:questionId/restore (Deshacer)
+  async restoreQuestion(req: Request, res: Response) {
+    try {
+      const { questionId } = req.params;
+      if (!(await ensureTeacherQuestionAccess(req, res, questionId))) return;
+      res.json({ success: true, data: await questionBankService.restoreQuestion(questionId) });
+    } catch (error) {
+      handleControllerError(res, error, 'No se pudo restaurar la pregunta');
+    }
+  }
+
+  // POST /question-banks/bank/:bankId/restore (Deshacer)
+  async restoreBank(req: Request, res: Response) {
+    try {
+      const { bankId } = req.params;
+      if (!(await ensureTeacherBankAccess(req, res, bankId))) return;
+      res.json({ success: true, data: await questionBankService.restoreBank(bankId) });
+    } catch (error) {
+      handleControllerError(res, error, 'No se pudo restaurar el banco');
+    }
+  }
+
+  // POST /question-banks/bank/:bankId/duplicate { targetClassroomId }
+  async duplicateBank(req: Request, res: Response) {
+    try {
+      const { bankId } = req.params;
+      if (!(await ensureTeacherBankAccess(req, res, bankId))) return;
+      const validation = duplicateSchema.safeParse(req.body);
+      if (!validation.success) return handleValidationError(res, validation.error);
+      const data = await questionBankService.duplicateBank(bankId, validation.data.targetClassroomId, req.user!.id);
+      res.status(201).json({ success: true, data });
+    } catch (error) {
+      handleControllerError(res, error, 'No se pudo duplicar el banco');
     }
   }
 }

@@ -100,7 +100,11 @@ export const buildRegions = (banks: TeacherBank[], questionsByBank: Map<string, 
     const byDifficulty = (['EASY', 'MEDIUM', 'HARD'] as QuestionDifficulty[])
       .map((d) => ({ subtitle: `${banks[0].name} · ${DIFFICULTY_LABEL[d]}`, questions: all.filter((q) => q.difficulty === d) }))
       .filter((g) => g.questions.length > 0);
-    if (byDifficulty.length >= 2) groups.push(...byDifficulty);
+    if (byDifficulty.length >= 2) {
+      // Las de dificultad "sin definir" se reparten entre las regiones (sin cambiar su nombre).
+      shuffle(all.filter((q) => !q.difficulty)).forEach((q, i) => byDifficulty[i % byDifficulty.length].questions.push(q));
+      groups.push(...byDifficulty);
+    }
     else {
       const mixed = shuffle(all);
       const size = Math.max(1, Math.ceil(mixed.length / 3));

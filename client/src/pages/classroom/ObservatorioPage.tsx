@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useState, type ReactNode } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { useOutletContext, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { ClipboardCheck, Clock, Gift, Loader2, Moon, Play, Users } from 'lucide-react';
@@ -59,10 +59,24 @@ const Chip = ({ children }: { children: ReactNode }) => (
   <span className="inline-flex min-h-[32px] items-center gap-1.5 rounded-full bg-white/10 px-3 text-sm font-semibold text-indigo-50">{children}</span>
 );
 
+const BANK_ACTIVITIES = ['estrellas', 'conquista', 'error'];
+
 export const ObservatorioPage = () => {
   const { classroom } = useOutletContext<{ classroom: ClassroomWithStudents }>();
   const students = classroom?.students ?? [];
-  const [selected, setSelected] = useState<{ id: Selected; resume?: ActivitySession | null } | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  // "Usar en clase" desde el Banco de preguntas: ?actividad=estrellas&banco=<id> abre la actividad con ese banco.
+  const [selected, setSelected] = useState<{ id: Selected; resume?: ActivitySession | null; bankId?: string | null } | null>(() => {
+    const activity = searchParams.get('actividad');
+    return activity && BANK_ACTIVITIES.includes(activity) ? { id: activity as Selected, bankId: searchParams.get('banco') } : null;
+  });
+  useEffect(() => {
+    if (!searchParams.has('actividad') && !searchParams.has('banco')) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('actividad');
+    next.delete('banco');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
   const [showExpeditionModal, setShowExpeditionModal] = useState(false);
   const presence = useTodayPresence(classroom.id, students);
   useEffect(preloadJiro, []);
@@ -106,9 +120,9 @@ export const ObservatorioPage = () => {
     return (
       <Suspense fallback={<Loading />}>
         {selected.id === 'descanso' && <DescansoActivity classroom={classroom} resume={selected.resume} onExit={back} />}
-        {selected.id === 'estrellas' && <EstrellasActivity classroom={classroom} resume={selected.resume} onExit={back} />}
-        {selected.id === 'conquista' && <ConquistaActivity classroom={classroom} resume={selected.resume} onExit={back} />}
-        {selected.id === 'error' && <ErrorActivity classroom={classroom} resume={selected.resume} onExit={back} />}
+        {selected.id === 'estrellas' && <EstrellasActivity classroom={classroom} resume={selected.resume} initialBankId={selected.bankId} onExit={back} />}
+        {selected.id === 'conquista' && <ConquistaActivity classroom={classroom} resume={selected.resume} initialBankId={selected.bankId} onExit={back} />}
+        {selected.id === 'error' && <ErrorActivity classroom={classroom} resume={selected.resume} initialBankId={selected.bankId} onExit={back} />}
         {selected.id === 'correo' && <CorreoActivity classroom={classroom} resume={selected.resume} onExit={back} />}
         {selected.id === 'pergaminos' && <ScrollsActivity classroom={classroom} onBack={back} />}
         {selected.id === 'expeditions' && <ExpeditionsActivity classroom={classroom} onBack={back} />}

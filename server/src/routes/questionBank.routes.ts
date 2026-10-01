@@ -38,17 +38,17 @@ router.get('/question/:questionId', authorize('TEACHER'), questionBankController
 router.put('/question/:questionId', authorize('TEACHER'), questionBankController.updateQuestion.bind(questionBankController));
 router.delete('/question/:questionId', authorize('TEACHER'), questionBankController.deleteQuestion.bind(questionBankController));
 
-// Utilidades
-router.get('/bank/:bankId/random', authorize('TEACHER'), questionBankController.getRandomQuestions.bind(questionBankController));
-router.get('/bank/:bankId/stats', authorize('TEACHER'), questionBankController.getStats.bind(questionBankController));
-router.post('/question/:questionId/check', authorize('TEACHER'), questionBankController.checkAnswer.bind(questionBankController));
+// Lote (vista previa de la IA), revisión, deshacer y duplicar
+router.post('/bank/:bankId/questions/batch', authorize('TEACHER'), questionBankController.createQuestionsBatch.bind(questionBankController));
+router.post('/question/:questionId/review', authorize('TEACHER'), questionBankController.reviewQuestion.bind(questionBankController));
+router.post('/bank/:bankId/review-all', authorize('TEACHER'), questionBankController.reviewBank.bind(questionBankController));
+router.post('/question/:questionId/restore', authorize('TEACHER'), questionBankController.restoreQuestion.bind(questionBankController));
+router.post('/bank/:bankId/restore', authorize('TEACHER'), questionBankController.restoreBank.bind(questionBankController));
+router.post('/bank/:bankId/duplicate', authorize('TEACHER'), questionBankController.duplicateBank.bind(questionBankController));
 
-// Generación con IA
-router.post('/generate-ai', authorize('TEACHER'), ...aiGuard, questionBankController.generateWithAI.bind(questionBankController));
+// Generación con IA: borradores para revisar (tema o PDF) y, en el Observatorio, directo a un banco
+router.post('/classroom/:classroomId/ai-drafts', authorize('TEACHER'), ...aiGuard, questionBankController.aiDrafts.bind(questionBankController));
+router.post('/classroom/:classroomId/ai-drafts/pdf', authorize('TEACHER'), aiLimiter, aiRequestTimeout, pdfUpload.single('pdf'), verifyUploadedFile, questionBankController.aiDraftsFromPdf.bind(questionBankController));
 router.post('/classroom/:classroomId/generate-into-bank', authorize('TEACHER'), ...aiGuard, questionBankController.generateIntoBank.bind(questionBankController));
-router.post('/generate-from-pdf', authorize('TEACHER'), aiLimiter, aiRequestTimeout, pdfUpload.single('pdf'), verifyUploadedFile, questionBankController.generateFromPDF.bind(questionBankController));
-
-// Exportar bancos a otras clases
-router.post('/export', authorize('TEACHER'), questionBankController.exportBanks.bind(questionBankController));
 
 export default router;

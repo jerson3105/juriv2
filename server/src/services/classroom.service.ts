@@ -2446,6 +2446,8 @@ export class ClassroomService {
               pairs: q.pairs,
               explanation: q.explanation,
               timeLimitSeconds: q.timeLimitSeconds,
+              aiGenerated: q.aiGenerated,
+              reviewedAt: q.reviewedAt,
               isActive: q.isActive,
               createdAt: now,
               updatedAt: now,

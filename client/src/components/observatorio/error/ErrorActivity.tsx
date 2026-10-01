@@ -9,6 +9,7 @@ import { shuffle } from '../../classroom/utilities/helpers';
 import { useTeacherBanks } from '../../classroom/utilities/questionDraw';
 import { studentNames } from '../../students/profile/profileHelpers';
 import { AiQuestionGenerator } from '../AiQuestionGenerator';
+import { UnreviewedNotice } from '../UnreviewedNotice';
 import { Bitacora } from '../Bitacora';
 import { EscenarioObservatorio, stageControlClass } from '../EscenarioObservatorio';
 import type { JiroPose } from '../jiroPoses';
@@ -49,6 +50,8 @@ const stepText = (text: string) => text.replace(/^Paso \d+:\s*/, '');
 interface ErrorActivityProps {
   classroom: Classroom & { students?: Student[] };
   resume?: ActivitySession<unknown, unknown> | null;
+  /** Banco elegido desde el Banco de preguntas ("Usar en clase"). */
+  initialBankId?: string | null;
   onExit: () => void;
 }
 
@@ -57,7 +60,7 @@ interface ErrorActivityProps {
  * lo buscan y lo explican; el docente revela y marca si la mayoría lo encontró. Las preguntas se
  * guardan en el banco como opción única ("Paso 1…4"), generadas con IA o escritas por el docente.
  */
-export const ErrorActivity = ({ classroom, resume, onExit }: ErrorActivityProps) => {
+export const ErrorActivity = ({ classroom, resume, initialBankId, onExit }: ErrorActivityProps) => {
   const students = useMemo(() => classroom.students ?? [], [classroom.students]);
   const soundState = useStageSound();
   const { sound } = soundState;
@@ -75,6 +78,13 @@ export const ErrorActivity = ({ classroom, resume, onExit }: ErrorActivityProps)
 
   const { data: banks = [], isLoading: banksLoading } = useTeacherBanks(phase === 'setup');
   const candidateBanks = banks.filter((b) => b.countsByType.SINGLE_CHOICE > 0);
+  // El banco que llega del Banco de preguntas se elige al cargar la lista.
+  const [presetBank, setPresetBank] = useState(saved ? null : initialBankId ?? null);
+  if (presetBank && !banksLoading) {
+    setPresetBank(null);
+    const preset = banks.find((b) => b.id === presetBank);
+    if (preset) setBank({ bankId: preset.id, bankName: preset.name });
+  }
   const bankId = state?.bankId ?? bank?.bankId ?? null;
   const { data: bankQuestions = [], isLoading: questionsLoading } = useQuery({
     queryKey: ['questions', bankId],
@@ -238,6 +248,7 @@ export const ErrorActivity = ({ classroom, resume, onExit }: ErrorActivityProps)
               </p>
             )}
           </fieldset>
+          {bank && <UnreviewedNotice banks={banks.filter((b) => b.id === bank.bankId)} classroomId={classroom.id} />}
           <AiQuestionGenerator classroomId={classroom.id} kind="ERROR_STEPS" quantity={6} onCreated={(created) => setBank(created)} />
           <p className="text-sm text-indigo-100">
             También puedes escribirlos en tu banco: pregunta de opción única que empiece con «{ERROR_PREFIX}», cada opción es un paso y la correcta es el paso equivocado.

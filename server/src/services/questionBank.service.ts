@@ -1,6 +1,6 @@
 import { db } from '../db/index.js';
 import { classrooms, questionBanks, questions, type BankQuestionType, type QuestionDifficulty } from '../db/schema.js';
-import { eq, and, inArray, sql } from 'drizzle-orm';
+import { eq, and, desc, inArray, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { teacherOwnsClassroom } from '../utils/access.js';
 
@@ -34,7 +34,9 @@ interface MatchingPair {
 interface CreateQuestionData {
   bankId: string;
   type: BankQuestionType;
-  difficulty?: QuestionDifficulty;
+  difficulty?: QuestionDifficulty | null;
+  /** Generada con IA: nace "por revisar". */
+  aiGenerated?: boolean;
   points?: number;
   questionText: string;
   imageUrl?: string;
@@ -47,7 +49,7 @@ interface CreateQuestionData {
 
 interface UpdateQuestionData {
   type?: BankQuestionType;
-  difficulty?: QuestionDifficulty;
+  difficulty?: QuestionDifficulty | null;
   points?: number;
   questionText?: string;
   imageUrl?: string | null;
@@ -69,7 +71,11 @@ interface ParsedQuestion extends Omit<QuestionRow, 'options' | 'correctAnswer' |
 
 const DEFAULT_BANK_COLOR = '#6366f1';
 const DEFAULT_BANK_ICON = 'book';
-const MAX_RANDOM_QUESTIONS = 100;
+const MAX_BATCH = 50;
+// Paleta de bancos (igual que BANK_COLORS en el cliente): cada banco nuevo toma un color libre.
+const BANK_PALETTE = ['#6366f1', '#8b5cf6', '#ec4899', '#ef4444', '#f97316', '#eab308', '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6'];
+// Igual que ERROR_PREFIX (questionAi.service) y que el Observatorio en el cliente.
+const ERROR_PREFIX = '¿En qué paso está el error?';
 
 class QuestionBankService {
   private isValidHexColor(color: string): boolean {
@@ -169,30 +175,30 @@ class QuestionBankService {
     switch (data.type) {
       case 'TRUE_FALSE':
         if (typeof data.correctAnswer !== 'boolean') {
-          throw new Error('TRUE_FALSE requiere correctAnswer (boolean)');
+          throw new Error('Verdadero o falso: elige cuál es la respuesta correcta');
         }
         break;
       case 'SINGLE_CHOICE': {
         if (!data.options || data.options.length < 2) {
-          throw new Error('SINGLE_CHOICE requiere al menos 2 opciones');
+          throw new Error('Selección única: agrega al menos 2 opciones');
         }
         if (data.options.filter((o) => o.isCorrect).length !== 1) {
-          throw new Error('SINGLE_CHOICE debe tener exactamente 1 respuesta correcta');
+          throw new Error('Selección única: marca exactamente 1 opción correcta');
         }
         break;
       }
       case 'MULTIPLE_CHOICE': {
         if (!data.options || data.options.length < 2) {
-          throw new Error('MULTIPLE_CHOICE requiere al menos 2 opciones');
+          throw new Error('Selección múltiple: agrega al menos 2 opciones');
         }
         if (data.options.filter((o) => o.isCorrect).length < 1) {
-          throw new Error('MULTIPLE_CHOICE debe tener al menos 1 respuesta correcta');
+          throw new Error('Selección múltiple: marca al menos 1 opción correcta');
         }
         break;
       }
       case 'MATCHING':
         if (!data.pairs || data.pairs.length < 2) {
-          throw new Error('MATCHING requiere al menos 2 pares');
+          throw new Error('Unir pares: agrega al menos 2 pares');
         }
         break;
     }
@@ -277,36 +283,92 @@ class QuestionBankService {
   }
 
   /**
-   * Bancos activos de todas las clases activas del profesor, con el conteo de preguntas por tipo
-   * (las actividades del Observatorio pueden usar bancos de cualquiera de sus clases).
+   * Biblioteca del docente: bancos activos de TODAS sus clases (también archivadas), con su
+   * calidad y para qué actividades del Observatorio sirven. Se usan desde cualquier clase sin copiar.
    */
   async getBanksForTeacher(teacherId: string) {
     const banks = await db
       .select({
         id: questionBanks.id,
         name: questionBanks.name,
+        description: questionBanks.description,
         icon: questionBanks.icon,
         color: questionBanks.color,
         classroomId: questionBanks.classroomId,
         classroomName: classrooms.name,
+        classroomArchived: sql<number>`${classrooms.isActive} = 0`,
+        updatedAt: questionBanks.updatedAt,
       })
       .from(questionBanks)
       .innerJoin(classrooms, eq(classrooms.id, questionBanks.classroomId))
-      .where(and(eq(classrooms.teacherId, teacherId), eq(classrooms.isActive, true), eq(questionBanks.isActive, true)))
-      .orderBy(classrooms.name, questionBanks.name);
+      .where(and(eq(classrooms.teacherId, teacherId), eq(questionBanks.isActive, true)))
+      .orderBy(desc(questionBanks.updatedAt));
     if (banks.length === 0) return [];
 
-    const counts = await db
-      .select({ bankId: questions.bankId, type: questions.type, count: sql<number>`count(*)` })
+    const rows = await db
+      .select({
+        bankId: questions.bankId, type: questions.type, difficulty: questions.difficulty, questionText: questions.questionText,
+        options: questions.options, correctAnswer: questions.correctAnswer, explanation: questions.explanation, aiGenerated: questions.aiGenerated, reviewedAt: questions.reviewedAt,
+      })
       .from(questions)
-      .where(and(inArray(questions.bankId, banks.map((b) => b.id)), eq(questions.isActive, true)))
-      .groupBy(questions.bankId, questions.type);
+      .where(and(inArray(questions.bankId, banks.map((b) => b.id)), eq(questions.isActive, true)));
 
     return banks.map((bank) => {
       const byType: Record<BankQuestionType, number> = { TRUE_FALSE: 0, SINGLE_CHOICE: 0, MULTIPLE_CHOICE: 0, MATCHING: 0 };
-      for (const row of counts) if (row.bankId === bank.id) byType[row.type as BankQuestionType] = Number(row.count);
-      return { ...bank, questionCount: Object.values(byType).reduce((a, b) => a + b, 0), countsByType: byType };
+      const byDifficulty = { EASY: 0, MEDIUM: 0, HARD: 0, NONE: 0 };
+      let projectable = 0;
+      let trueFalse = 0;
+      let errorExercises = 0;
+      let unreviewed = 0;
+      let withExplanation = 0;
+      for (const row of rows) {
+        if (row.bankId !== bank.id) continue;
+        byType[row.type as BankQuestionType] += 1;
+        byDifficulty[(row.difficulty ?? 'NONE') as keyof typeof byDifficulty] += 1;
+        if (row.aiGenerated && !row.reviewedAt) unreviewed += 1;
+        if (row.explanation && row.explanation.trim()) withExplanation += 1;
+        if (this.isProjectable(row)) {
+          projectable += 1;
+          if (row.type === 'TRUE_FALSE') trueFalse += 1;
+          if (row.questionText.startsWith(ERROR_PREFIX)) errorExercises += 1;
+        }
+      }
+      const total = Object.values(byType).reduce((a, b) => a + b, 0);
+      return {
+        ...bank,
+        classroomArchived: Number(bank.classroomArchived) === 1,
+        questionCount: total,
+        countsByType: byType,
+        stats: { projectable, trueFalse, errorExercises, unreviewed, withExplanation, byDifficulty },
+      };
     });
+  }
+
+  /**
+   * Se puede jugar con tarjetas en el Observatorio: V/F, u opción única con 2 a 4 opciones y UNA
+   * correcta. Misma regla que answerOf (client/src/components/observatorio/questionHelpers.ts).
+   */
+  private isProjectable(row: { type: string; options: unknown; correctAnswer: unknown }) {
+    if (row.type === 'TRUE_FALSE') return this.parseBooleanValue(this.parseJsonValue(row.correctAnswer)) !== null;
+    if (row.type !== 'SINGLE_CHOICE') return false;
+    const options = this.parseJsonValue<QuestionOption[]>(row.options);
+    if (!Array.isArray(options) || options.length < 2 || options.length > 4) return false;
+    return options.filter((o) => o.isCorrect).length === 1;
+  }
+
+  /** Color del primer tono de la paleta que el docente aún no usa (si están todos, el menos usado). */
+  async pickBankColor(classroomId: string) {
+    const used = await db
+      .select({ color: questionBanks.color })
+      .from(questionBanks)
+      .innerJoin(classrooms, eq(classrooms.id, questionBanks.classroomId))
+      .where(and(
+        eq(questionBanks.isActive, true),
+        sql`${classrooms.teacherId} = (SELECT teacher_id FROM classrooms WHERE id = ${classroomId})`,
+      ));
+    const counts = new Map(BANK_PALETTE.map((c) => [c, 0]));
+    for (const row of used) if (counts.has(row.color)) counts.set(row.color, (counts.get(row.color) ?? 0) + 1);
+    return [...counts.entries()].sort((a, b) => a[1] - b[1])[0][0];
   }
 
   async getBankById(bankId: string) {
@@ -351,7 +413,7 @@ class QuestionBankService {
 
     const normalizedDescription = data.description ? this.normalizeText(data.description) : null;
 
-    const color = data.color ? this.normalizeText(data.color) : DEFAULT_BANK_COLOR;
+    const color = data.color ? this.normalizeText(data.color) : await this.pickBankColor(data.classroomId);
     if (!this.isValidHexColor(color)) {
       throw new Error('Color de banco inválido');
     }
@@ -590,7 +652,7 @@ class QuestionBankService {
         id,
         bankId: data.bankId,
         type: data.type,
-        difficulty: data.difficulty || 'MEDIUM',
+        difficulty: data.difficulty ?? null,
         points: data.points || 10,
         questionText: normalizedQuestionText,
         imageUrl: data.imageUrl || null,
@@ -599,6 +661,8 @@ class QuestionBankService {
         pairs: data.type === 'MATCHING' ? sanitizedPairs : null,
         explanation: normalizedExplanation,
         timeLimitSeconds: data.timeLimitSeconds || 30,
+        aiGenerated: !!data.aiGenerated,
+        reviewedAt: data.aiGenerated ? null : now,
         isActive: true,
         createdAt: now,
         updatedAt: now,
@@ -669,6 +733,8 @@ class QuestionBankService {
         options: null,
         correctAnswer: null,
         pairs: null,
+        // Editar una pregunta cuenta como revisarla.
+        reviewedAt: now,
         updatedAt: now,
       };
 
@@ -746,347 +812,127 @@ class QuestionBankService {
     });
   }
 
-  // ==================== UTILIDADES ====================
+  // ==================== LOTE, REVISIÓN, DESHACER Y DUPLICAR ====================
 
-  async getRandomQuestions(bankId: string, count: number, difficulty?: QuestionDifficulty) {
-    const safeCount = Number.isFinite(count)
-      ? Math.max(1, Math.min(MAX_RANDOM_QUESTIONS, Math.floor(count)))
-      : 10;
-
-    if (difficulty && !['EASY', 'MEDIUM', 'HARD'].includes(difficulty)) {
-      throw new Error('Dificultad inválida');
-    }
-
-    const [bank] = await db
-      .select({ id: questionBanks.id })
-      .from(questionBanks)
-      .where(
-        and(
-          eq(questionBanks.id, bankId),
-          eq(questionBanks.isActive, true)
-        )
-      );
-
-    if (!bank) {
-      throw new Error('Banco no encontrado');
-    }
-
-    const conditions = [
-      eq(questions.bankId, bankId),
-      eq(questions.isActive, true),
-    ];
-
-    if (difficulty) {
-      conditions.push(eq(questions.difficulty, difficulty));
-    }
-
-    const randomQuestions = await db
-      .select()
-      .from(questions)
-      .where(and(...conditions))
-      .orderBy(sql`RAND()`)
-      .limit(safeCount);
-
-    return randomQuestions.map((question) => this.normalizeQuestionRow(question));
-  }
-
-  async getQuestionStats(bankId: string) {
-    const [bank] = await db
-      .select({ id: questionBanks.id })
-      .from(questionBanks)
-      .where(
-        and(
-          eq(questionBanks.id, bankId),
-          eq(questionBanks.isActive, true)
-        )
-      );
-
-    if (!bank) {
-      throw new Error('Banco no encontrado');
-    }
-
-    const baseConditions = and(
-      eq(questions.bankId, bankId),
-      eq(questions.isActive, true)
-    );
-
-    const [totalRow] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(questions)
-      .where(baseConditions);
-
-    const byTypeRows = await db
-      .select({
-        type: questions.type,
-        count: sql<number>`count(*)`,
-      })
-      .from(questions)
-      .where(baseConditions)
-      .groupBy(questions.type);
-
-    const byDifficultyRows = await db
-      .select({
-        difficulty: questions.difficulty,
-        count: sql<number>`count(*)`,
-      })
-      .from(questions)
-      .where(baseConditions)
-      .groupBy(questions.difficulty);
-
-    const stats = {
-      total: Number(totalRow?.count || 0),
-      byType: {
-        TRUE_FALSE: 0,
-        SINGLE_CHOICE: 0,
-        MULTIPLE_CHOICE: 0,
-        MATCHING: 0,
-      },
-      byDifficulty: {
-        EASY: 0,
-        MEDIUM: 0,
-        HARD: 0,
-      },
-    };
-
-    byTypeRows.forEach((row) => {
-      stats.byType[row.type as keyof typeof stats.byType] = Number(row.count || 0);
-    });
-
-    byDifficultyRows.forEach((row) => {
-      stats.byDifficulty[row.difficulty as keyof typeof stats.byDifficulty] = Number(row.count || 0);
-    });
-
-    return stats;
-  }
-
-  // Verificar respuesta
-  checkAnswer(question: unknown, userAnswer: unknown): { correct: boolean; correctAnswer: unknown } {
-    const normalizedQuestion = this.normalizeQuestionRow(question as QuestionRow);
-    const type = normalizedQuestion.type;
-
-    switch (type) {
-      case 'TRUE_FALSE': {
-        if (typeof normalizedQuestion.correctAnswer !== 'boolean') {
-          return { correct: false, correctAnswer: null };
-        }
-
-        const userBoolean = this.parseBooleanValue(userAnswer);
-        return {
-          correct: userBoolean === normalizedQuestion.correctAnswer,
-          correctAnswer: normalizedQuestion.correctAnswer,
-        };
-      }
-
-      case 'SINGLE_CHOICE': {
-        const options = normalizedQuestion.options || [];
-        const correctIndex = options.findIndex((option) => option.isCorrect);
-        if (correctIndex < 0) {
-          return { correct: false, correctAnswer: null };
-        }
-
-        const answerIndex = typeof userAnswer === 'number' ? userAnswer : Number(userAnswer);
-        const isValidAnswer = Number.isInteger(answerIndex);
-        return {
-          correct: isValidAnswer && answerIndex === correctIndex,
-          correctAnswer: correctIndex,
-        };
-      }
-
-      case 'MULTIPLE_CHOICE': {
-        const options = normalizedQuestion.options || [];
-        const correctIndices = options
-          .map((option, index) => (option.isCorrect ? index : -1))
-          .filter((index) => index !== -1)
-          .sort((a, b) => a - b);
-
-        const userIndices = Array.isArray(userAnswer)
-          ? [...new Set(userAnswer
-              .map((value) => Number(value))
-              .filter((value) => Number.isInteger(value)))]
-              .sort((a, b) => a - b)
-          : [];
-
-        const correct =
-          userIndices.length === correctIndices.length &&
-          userIndices.every((value, index) => value === correctIndices[index]);
-
-        return { correct, correctAnswer: correctIndices };
-      }
-
-      case 'MATCHING': {
-        const pairs = normalizedQuestion.pairs || [];
-        const correctMapping = pairs.map((_, index) => index);
-
-        const userMapping = Array.isArray(userAnswer)
-          ? userAnswer.map((value) => Number(value))
-          : [];
-
-        const correct =
-          userMapping.length === correctMapping.length &&
-          userMapping.every((value, index) => value === correctMapping[index]);
-
-        return { correct, correctAnswer: correctMapping };
-      }
-
-      default:
-        return { correct: false, correctAnswer: null };
-    }
-  }
-
-  // ==================== EXPORTAR BANCOS ====================
-
-  async exportBanks(bankIds: string[], targetClassroomIds: string[], teacherId: string) {
-    if (bankIds.length === 0 || targetClassroomIds.length === 0) {
-      throw new Error('Se requieren bancos y clases destino');
-    }
-
-    // 1. Obtener bancos fuente con sus preguntas
-    const sourceBanks = await db
-      .select()
-      .from(questionBanks)
-      .where(
-        and(
-          inArray(questionBanks.id, bankIds),
-          eq(questionBanks.isActive, true)
-        )
-      );
-
-    if (sourceBanks.length === 0) {
-      throw new Error('No se encontraron bancos válidos');
-    }
-
-    // 2. Verificar que todos los bancos pertenecen a clases del profesor
-    const sourceClassroomIds = [...new Set(sourceBanks.map(b => b.classroomId))];
-    const sourceClassrooms = await db
-      .select({ id: classrooms.id, teacherId: classrooms.teacherId })
-      .from(classrooms)
-      .where(inArray(classrooms.id, sourceClassroomIds));
-
-    for (const sc of sourceClassrooms) {
-      if (sc.teacherId !== teacherId) {
-        throw new Error('No tienes permiso para exportar estos bancos');
-      }
-    }
-
-    // 3. Obtener clases destino y verificar propiedad
-    const targetResults = await db
-      .select({ id: classrooms.id, teacherId: classrooms.teacherId })
-      .from(classrooms)
-      .where(
-        and(
-          inArray(classrooms.id, targetClassroomIds),
-          eq(classrooms.teacherId, teacherId)
-        )
-      );
-
-    if (targetResults.length === 0) {
-      throw new Error('No se encontraron clases destino válidas');
-    }
-
-    // Excluir clases origen
-    const validTargets = targetResults.filter(c => !sourceClassroomIds.includes(c.id));
-    if (validTargets.length === 0) {
-      throw new Error('No puedes exportar a la misma clase origen');
-    }
-
-    // 4. Obtener todas las preguntas de los bancos fuente
-    const sourceQuestions = await db
-      .select()
-      .from(questions)
-      .where(
-        and(
-          inArray(questions.bankId, bankIds),
-          eq(questions.isActive, true)
-        )
-      );
-
-    const questionsByBank = new Map<string, typeof sourceQuestions>();
-    for (const q of sourceQuestions) {
-      if (!questionsByBank.has(q.bankId)) {
-        questionsByBank.set(q.bankId, []);
-      }
-      questionsByBank.get(q.bankId)!.push(q);
-    }
-
-    // 5. Clonar bancos y preguntas para cada clase destino
+  /** Guarda varias preguntas en una sola transacción (vista previa de la IA). Todo o nada. */
+  async createQuestionsBatch(bankId: string, items: Omit<CreateQuestionData, 'bankId'>[], aiGenerated: boolean) {
+    if (items.length === 0) throw new Error('No hay preguntas para guardar');
+    if (items.length > MAX_BATCH) throw new Error(`Máximo ${MAX_BATCH} preguntas por vez`);
     const now = new Date();
-    let totalBanksCreated = 0;
-    let totalQuestionsCreated = 0;
-
-    for (const target of validTargets) {
-      // Obtener nombres existentes en el destino para evitar duplicados
-      const existingBanks = await db
-        .select({ name: questionBanks.name })
-        .from(questionBanks)
-        .where(
-          and(
-            eq(questionBanks.classroomId, target.id),
-            eq(questionBanks.isActive, true)
-          )
-        );
-      const existingNames = new Set(existingBanks.map(b => b.name.toLowerCase()));
-
-      for (const bank of sourceBanks) {
-        // Generar nombre único
-        let bankName = bank.name;
-        if (existingNames.has(bankName.toLowerCase())) {
-          let suffix = 2;
-          while (existingNames.has(`${bank.name} (${suffix})`.toLowerCase())) {
-            suffix++;
-          }
-          bankName = `${bank.name} (${suffix})`;
-        }
-        existingNames.add(bankName.toLowerCase());
-
-        const newBankId = uuidv4();
-
-        await db.insert(questionBanks).values({
-          id: newBankId,
-          classroomId: target.id,
-          name: bankName,
-          description: bank.description,
-          color: bank.color,
-          icon: bank.icon,
-          isActive: true,
-          createdAt: now,
-          updatedAt: now,
-        });
-        totalBanksCreated++;
-
-        // Clonar preguntas del banco
-        const bankQuestions = questionsByBank.get(bank.id) || [];
-        const CHUNK_SIZE = 50;
-        for (let i = 0; i < bankQuestions.length; i += CHUNK_SIZE) {
-          const chunk = bankQuestions.slice(i, i + CHUNK_SIZE);
-          await db.insert(questions).values(
-            chunk.map(q => ({
-              id: uuidv4(),
-              bankId: newBankId,
-              type: q.type,
-              difficulty: q.difficulty,
-              points: q.points,
-              questionText: q.questionText,
-              imageUrl: q.imageUrl,
-              options: q.options,
-              correctAnswer: q.correctAnswer,
-              pairs: q.pairs,
-              explanation: q.explanation,
-              timeLimitSeconds: q.timeLimitSeconds,
-              isActive: true,
-              createdAt: now,
-              updatedAt: now,
-            }))
-          );
-          totalQuestionsCreated += chunk.length;
-        }
+    const rows = items.map((data, index) => {
+      const options = this.sanitizeOptions(data.options);
+      const pairs = this.sanitizePairs(data.pairs);
+      const correctAnswer = this.parseBooleanValue(data.correctAnswer);
+      const questionText = this.normalizeText(data.questionText);
+      try {
+        this.validateQuestionData({ type: data.type, questionText, options, correctAnswer, pairs });
+      } catch (error) {
+        throw new Error(`Pregunta ${index + 1}: ${(error as Error).message}`);
       }
-    }
+      return {
+        id: uuidv4(),
+        bankId,
+        type: data.type,
+        difficulty: data.difficulty ?? null,
+        points: data.points || 10,
+        questionText,
+        imageUrl: data.imageUrl || null,
+        options: data.type === 'SINGLE_CHOICE' || data.type === 'MULTIPLE_CHOICE' ? options : null,
+        correctAnswer: data.type === 'TRUE_FALSE' ? correctAnswer : null,
+        pairs: data.type === 'MATCHING' ? pairs : null,
+        explanation: data.explanation ? this.normalizeText(data.explanation) : null,
+        timeLimitSeconds: data.timeLimitSeconds || 30,
+        aiGenerated,
+        reviewedAt: aiGenerated ? null : now,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      };
+    });
+    await db.transaction(async (tx) => {
+      const [bank] = await tx.select({ id: questionBanks.id }).from(questionBanks)
+        .where(and(eq(questionBanks.id, bankId), eq(questionBanks.isActive, true)));
+      if (!bank) throw new Error('Banco no encontrado');
+      await tx.insert(questions).values(rows);
+      await tx.update(questionBanks).set({ updatedAt: now }).where(eq(questionBanks.id, bankId));
+    });
+    return { created: rows.length, ids: rows.map((r) => r.id) };
+  }
 
-    return {
-      exportedBanks: totalBanksCreated,
-      exportedQuestions: totalQuestionsCreated,
-      targetClassrooms: validTargets.length,
-    };
+  /** Aprueba una pregunta generada con IA. */
+  async markReviewed(questionId: string) {
+    await db.update(questions).set({ reviewedAt: new Date() })
+      .where(and(eq(questions.id, questionId), eq(questions.isActive, true)));
+    return this.getQuestionById(questionId);
+  }
+
+  /** Aprueba todas las preguntas pendientes de un banco. */
+  async reviewAll(bankId: string) {
+    const result = await db.update(questions).set({ reviewedAt: new Date() })
+      .where(and(eq(questions.bankId, bankId), eq(questions.isActive, true), sql`${questions.reviewedAt} IS NULL`));
+    const header = Array.isArray(result) ? result[0] : result;
+    return { reviewed: Number((header as { affectedRows?: number })?.affectedRows ?? 0) };
+  }
+
+  /** Deshacer el borrado de una pregunta (el borrado es suave). */
+  async restoreQuestion(questionId: string) {
+    const [question] = await db.select({ bankId: questions.bankId }).from(questions).where(eq(questions.id, questionId));
+    if (!question) throw new Error('Pregunta no encontrada');
+    const [bank] = await db.select({ isActive: questionBanks.isActive }).from(questionBanks).where(eq(questionBanks.id, question.bankId));
+    if (!bank?.isActive) throw new Error('El banco ya no existe');
+    const now = new Date();
+    await db.update(questions).set({ isActive: true, updatedAt: now }).where(eq(questions.id, questionId));
+    await db.update(questionBanks).set({ updatedAt: now }).where(eq(questionBanks.id, question.bankId));
+    return this.getQuestionById(questionId);
+  }
+
+  /** Deshacer el borrado de un banco: vuelven también las preguntas que se apagaron con él. */
+  async restoreBank(bankId: string) {
+    const [bank] = await db.select().from(questionBanks).where(eq(questionBanks.id, bankId));
+    if (!bank) throw new Error('Banco no encontrado');
+    if (bank.isActive) return this.getBankById(bankId);
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      // deleteBank apaga banco y preguntas con el mismo instante.
+      await tx.update(questions).set({ isActive: true, updatedAt: now })
+        .where(and(eq(questions.bankId, bankId), eq(questions.isActive, false), eq(questions.updatedAt, bank.updatedAt)));
+      await tx.update(questionBanks).set({ isActive: true, updatedAt: now }).where(eq(questionBanks.id, bankId));
+    });
+    return this.getBankById(bankId);
+  }
+
+  /**
+   * Duplicar: versión independiente del banco (para adaptarla) en la clase del docente que elija,
+   * incluso la misma. Con la biblioteca ya no hace falta copiar para usar un banco en otra clase.
+   */
+  async duplicateBank(bankId: string, targetClassroomId: string, teacherId: string) {
+    const [source] = await db.select().from(questionBanks).where(and(eq(questionBanks.id, bankId), eq(questionBanks.isActive, true)));
+    if (!source) throw new Error('Banco no encontrado');
+    if (!(await teacherOwnsClassroom(teacherId, source.classroomId)) || !(await teacherOwnsClassroom(teacherId, targetClassroomId))) {
+      throw new Error('Sin acceso a esa clase');
+    }
+    const existing = await db.select({ name: questionBanks.name }).from(questionBanks)
+      .where(and(eq(questionBanks.classroomId, targetClassroomId), eq(questionBanks.isActive, true)));
+    const taken = new Set(existing.map((b) => b.name.toLowerCase()));
+    // En otra clase conserva el nombre; "(copia)" solo si ya existe uno igual allí.
+    let name = taken.has(source.name.toLowerCase()) ? `${source.name} (copia)`.slice(0, 100) : source.name;
+    for (let n = 2; taken.has(name.toLowerCase()); n += 1) name = `${source.name} (copia ${n})`.slice(0, 100);
+
+    const sourceQuestions = await db.select().from(questions).where(and(eq(questions.bankId, bankId), eq(questions.isActive, true)));
+    const now = new Date();
+    const newBankId = uuidv4();
+    await db.transaction(async (tx) => {
+      await tx.insert(questionBanks).values({
+        id: newBankId, classroomId: targetClassroomId, name, description: source.description,
+        color: await this.pickBankColor(targetClassroomId), icon: source.icon, isActive: true, createdAt: now, updatedAt: now,
+      });
+      for (let i = 0; i < sourceQuestions.length; i += MAX_BATCH) {
+        await tx.insert(questions).values(sourceQuestions.slice(i, i + MAX_BATCH).map((q) => ({
+          ...q, id: uuidv4(), bankId: newBankId, createdAt: now, updatedAt: now,
+        })));
+      }
+    });
+    return { id: newBankId, name, classroomId: targetClassroomId, questions: sourceQuestions.length };
   }
 }
 

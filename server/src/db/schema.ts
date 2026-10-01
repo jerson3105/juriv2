@@ -1151,7 +1151,8 @@ export const questions = mysqlTable('questions', {
   id: varchar('id', { length: 36 }).primaryKey(),
   bankId: varchar('bank_id', { length: 36 }).notNull(),
   type: bankQuestionTypeEnum.notNull(),
-  difficulty: questionDifficultyEnum.notNull().default('MEDIUM'),
+  // null = sin definir (por defecto); la IA la sugiere.
+  difficulty: questionDifficultyEnum,
   points: int('points').notNull().default(10),
   questionText: text('question_text').notNull(),
   imageUrl: varchar('image_url', { length: 500 }),
@@ -1162,6 +1163,9 @@ export const questions = mysqlTable('questions', {
   correctAnswer: json('correct_answer'), // Para TRUE_FALSE: boolean
   pairs: json('pairs'), // Para MATCHING: [{left: string, right: string}]
   explanation: text('explanation'), // Explicación opcional de la respuesta
+  // Generada con IA: queda "por revisar" (reviewedAt null) hasta que el docente la aprueba o la edita.
+  aiGenerated: boolean('ai_generated').notNull().default(false),
+  reviewedAt: datetime('reviewed_at'),
   timeLimitSeconds: int('time_limit_seconds').default(30),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: datetime('created_at').notNull(),

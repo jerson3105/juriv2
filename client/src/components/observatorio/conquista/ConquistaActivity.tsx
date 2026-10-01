@@ -10,6 +10,7 @@ import { shuffle } from '../../classroom/utilities/helpers';
 import { useTeacherBanks } from '../../classroom/utilities/questionDraw';
 import { studentNames } from '../../students/profile/profileHelpers';
 import { AiQuestionGenerator } from '../AiQuestionGenerator';
+import { UnreviewedNotice } from '../UnreviewedNotice';
 import { Bitacora } from '../Bitacora';
 import { EscenarioObservatorio, stageControlClass } from '../EscenarioObservatorio';
 import type { JiroPose } from '../jiroPoses';
@@ -69,6 +70,8 @@ const quickTeams = (presentIds: string[], count: number): Team[] => {
 interface ConquistaActivityProps {
   classroom: Classroom & { students?: Student[] };
   resume?: ActivitySession<unknown, unknown> | null;
+  /** Banco elegido desde el Banco de preguntas ("Usar en clase"). */
+  initialBankId?: string | null;
   onExit: () => void;
 }
 
@@ -78,7 +81,7 @@ interface ConquistaActivityProps {
  * (despejar el cielo) con algo de competencia: la región toma el color de quien más estrellas
  * puso y lo premia con +3. Cartas de Jiro solo positivas. Se guarda para seguir otro día.
  */
-export const ConquistaActivity = ({ classroom, resume, onExit }: ConquistaActivityProps) => {
+export const ConquistaActivity = ({ classroom, resume, initialBankId, onExit }: ConquistaActivityProps) => {
   const students = useMemo(() => classroom.students ?? [], [classroom.students]);
   const studentById = useMemo(() => new Map(students.map((s) => [s.id, s])), [students]);
   const soundState = useStageSound();
@@ -106,7 +109,7 @@ export const ConquistaActivity = ({ classroom, resume, onExit }: ConquistaActivi
     [presentIds, quickCount, quickSeed],
   );
   const teams = teamMode === 'clanes' && clans.length >= 2 ? clans : quick;
-  const [selectedBanks, setSelectedBanks] = useState<string[]>([]);
+  const [selectedBanks, setSelectedBanks] = useState<string[]>(() => (!saved && initialBankId ? [initialBankId] : []));
   const { data: banks = [], isLoading: banksLoading } = useTeacherBanks(phase === 'setup');
   const usableBanks = banks.filter((b) => b.countsByType.SINGLE_CHOICE + b.countsByType.TRUE_FALSE > 0);
 
@@ -376,6 +379,8 @@ export const ConquistaActivity = ({ classroom, resume, onExit }: ConquistaActivi
             )}
             <p className="mt-2 text-sm text-indigo-100">Con un solo banco, las regiones se forman por dificultad.</p>
           </fieldset>
+
+          <UnreviewedNotice banks={banks.filter((b) => selectedBanks.includes(b.id))} classroomId={classroom.id} />
 
           <AiQuestionGenerator
             classroomId={classroom.id}

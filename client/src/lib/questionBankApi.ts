@@ -3,6 +3,8 @@ import api from './api';
 // Types
 export type BankQuestionType = 'TRUE_FALSE' | 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE' | 'MATCHING';
 export type QuestionDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
+/** Tipos que la IA puede generar (ERROR_STEPS = "El Error de Jiro", se guarda como opción única). */
+export type AiKind = BankQuestionType | 'ERROR_STEPS';
 
 export interface QuestionOption {
   text: string;
@@ -28,22 +30,40 @@ export interface QuestionBank {
   questions?: Question[];
 }
 
+export interface BankStats {
+  /** Se juegan con tarjetas en el Observatorio (V/F u opción única de 2 a 4 opciones). */
+  projectable: number;
+  trueFalse: number;
+  /** Ejercicios de "El Error de Jiro". */
+  errorExercises: number;
+  /** Generadas con IA y aún sin aprobar. */
+  unreviewed: number;
+  withExplanation: number;
+  byDifficulty: Record<QuestionDifficulty | 'NONE', number>;
+}
+
+/** Banco de la biblioteca del docente (todas sus clases, también archivadas). */
 export interface TeacherBank {
   id: string;
   name: string;
+  description: string | null;
   icon: string;
   color: string;
   classroomId: string;
   classroomName: string;
+  classroomArchived: boolean;
+  updatedAt: string;
   questionCount: number;
   countsByType: Record<BankQuestionType, number>;
+  stats: BankStats;
 }
 
 export interface Question {
   id: string;
   bankId: string;
   type: BankQuestionType;
-  difficulty: QuestionDifficulty;
+  /** null = sin definir. */
+  difficulty: QuestionDifficulty | null;
   points: number;
   questionText: string;
   imageUrl: string | null;
@@ -52,6 +72,9 @@ export interface Question {
   pairs: MatchingPair[] | string | null;
   explanation: string | null;
   timeLimitSeconds: number;
+  aiGenerated: boolean;
+  /** null = generada con IA y "por revisar". */
+  reviewedAt: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -74,7 +97,7 @@ export interface UpdateBankData {
 
 export interface CreateQuestionData {
   type: BankQuestionType;
-  difficulty?: QuestionDifficulty;
+  difficulty?: QuestionDifficulty | null;
   points?: number;
   questionText: string;
   imageUrl?: string;
@@ -87,7 +110,7 @@ export interface CreateQuestionData {
 
 export interface UpdateQuestionData {
   type?: BankQuestionType;
-  difficulty?: QuestionDifficulty;
+  difficulty?: QuestionDifficulty | null;
   points?: number;
   questionText?: string;
   imageUrl?: string | null;
@@ -99,46 +122,37 @@ export interface UpdateQuestionData {
   isActive?: boolean;
 }
 
-export interface QuestionStats {
-  total: number;
-  byType: {
-    TRUE_FALSE: number;
-    SINGLE_CHOICE: number;
-    MULTIPLE_CHOICE: number;
-    MATCHING: number;
-  };
-  byDifficulty: {
-    EASY: number;
-    MEDIUM: number;
-    HARD: number;
-  };
+/** Borrador de la IA: se revisa en la vista previa antes de guardarlo. */
+export interface DraftQuestion {
+  type: BankQuestionType;
+  questionText: string;
+  options?: QuestionOption[];
+  correctAnswer?: boolean;
+  pairs?: MatchingPair[];
+  explanation: string;
+  difficulty: QuestionDifficulty | null;
+}
+
+export interface AiDraftsInput {
+  quantity: number;
+  kinds: AiKind[];
+  difficulty?: QuestionDifficulty | null;
+  /** Solo si la clase no tiene nivel configurado. */
+  level?: string | null;
 }
 
 // Constants
 export const QUESTION_TYPE_LABELS: Record<BankQuestionType, string> = {
-  TRUE_FALSE: 'Verdadero o Falso',
+  TRUE_FALSE: 'Verdadero o falso',
   SINGLE_CHOICE: 'Selección única',
   MULTIPLE_CHOICE: 'Selección múltiple',
   MATCHING: 'Unir pares',
-};
-
-export const QUESTION_TYPE_ICONS: Record<BankQuestionType, string> = {
-  TRUE_FALSE: '✓✗',
-  SINGLE_CHOICE: '○',
-  MULTIPLE_CHOICE: '☑',
-  MATCHING: '↔',
 };
 
 export const DIFFICULTY_LABELS: Record<QuestionDifficulty, string> = {
   EASY: 'Fácil',
   MEDIUM: 'Media',
   HARD: 'Difícil',
-};
-
-export const DIFFICULTY_COLORS: Record<QuestionDifficulty, string> = {
-  EASY: 'bg-green-100 text-green-700',
-  MEDIUM: 'bg-yellow-100 text-yellow-700',
-  HARD: 'bg-red-100 text-red-700',
 };
 
 export const BANK_ICONS = [
@@ -156,37 +170,32 @@ export const BANK_ICONS = [
   { id: 'star', emoji: '⭐', label: 'General' },
 ];
 
+// Igual que BANK_PALETTE en el servidor (cada banco nuevo toma un color libre).
 export const BANK_COLORS = [
-  '#6366f1', // Indigo
-  '#8b5cf6', // Violet
-  '#ec4899', // Pink
-  '#ef4444', // Red
-  '#f97316', // Orange
-  '#eab308', // Yellow
-  '#22c55e', // Green
-  '#14b8a6', // Teal
-  '#06b6d4', // Cyan
-  '#3b82f6', // Blue
+  { value: '#6366f1', label: 'Índigo' },
+  { value: '#8b5cf6', label: 'Violeta' },
+  { value: '#ec4899', label: 'Rosado' },
+  { value: '#ef4444', label: 'Rojo' },
+  { value: '#f97316', label: 'Naranja' },
+  { value: '#eab308', label: 'Amarillo' },
+  { value: '#22c55e', label: 'Verde' },
+  { value: '#14b8a6', label: 'Turquesa' },
+  { value: '#06b6d4', label: 'Celeste' },
+  { value: '#3b82f6', label: 'Azul' },
 ];
 
 // API
 export const questionBankApi = {
   // ==================== BANCOS ====================
-  
+
   getBanks: async (classroomId: string): Promise<QuestionBank[]> => {
     const response = await api.get(`/question-banks/classroom/${classroomId}`);
     return response.data.data;
   },
 
-  /** Bancos de todas las clases del profesor (el Observatorio usa bancos de cualquiera). */
+  /** Biblioteca: bancos de todas las clases del docente (también archivadas), con sus estadísticas. */
   getMyBanks: async (): Promise<TeacherBank[]> => {
     const response = await api.get('/question-banks/mine');
-    return response.data.data;
-  },
-
-  /** Observatorio: genera con IA y guarda directo en un banco de la clase (sin CSV). */
-  generateIntoBank: async (classroomId: string, data: { topic: string; quantity: number; kind: 'TRUE_FALSE' | 'SINGLE_CHOICE' | 'ERROR_STEPS'; bankId?: string | null }): Promise<{ bankId: string; bankName: string; created: number }> => {
-    const response = await api.post(`/question-banks/classroom/${classroomId}/generate-into-bank`, data);
     return response.data.data;
   },
 
@@ -209,6 +218,24 @@ export const questionBankApi = {
     await api.delete(`/question-banks/bank/${bankId}`);
   },
 
+  /** Deshacer el borrado (vuelven también sus preguntas). */
+  restoreBank: async (bankId: string): Promise<QuestionBank> => {
+    const response = await api.post(`/question-banks/bank/${bankId}/restore`);
+    return response.data.data;
+  },
+
+  /** Versión independiente del banco en la clase elegida (puede ser la misma). */
+  duplicateBank: async (bankId: string, targetClassroomId: string): Promise<{ id: string; name: string; classroomId: string; questions: number }> => {
+    const response = await api.post(`/question-banks/bank/${bankId}/duplicate`, { targetClassroomId });
+    return response.data.data;
+  },
+
+  /** Aprueba todo lo que la IA dejó "por revisar" en el banco. */
+  reviewBank: async (bankId: string): Promise<{ reviewed: number }> => {
+    const response = await api.post(`/question-banks/bank/${bankId}/review-all`);
+    return response.data.data;
+  },
+
   // ==================== PREGUNTAS ====================
 
   getQuestions: async (bankId: string): Promise<Question[]> => {
@@ -216,13 +243,14 @@ export const questionBankApi = {
     return response.data.data;
   },
 
-  getQuestion: async (questionId: string): Promise<Question> => {
-    const response = await api.get(`/question-banks/question/${questionId}`);
+  createQuestion: async (bankId: string, data: CreateQuestionData): Promise<Question> => {
+    const response = await api.post(`/question-banks/bank/${bankId}/questions`, data);
     return response.data.data;
   },
 
-  createQuestion: async (bankId: string, data: CreateQuestionData): Promise<Question> => {
-    const response = await api.post(`/question-banks/bank/${bankId}/questions`, data);
+  /** Varias a la vez en una transacción (vista previa de la IA). */
+  createQuestionsBatch: async (bankId: string, questions: CreateQuestionData[], aiGenerated: boolean): Promise<{ created: number; ids: string[] }> => {
+    const response = await api.post(`/question-banks/bank/${bankId}/questions/batch`, { questions, aiGenerated });
     return response.data.data;
   },
 
@@ -235,74 +263,51 @@ export const questionBankApi = {
     await api.delete(`/question-banks/question/${questionId}`);
   },
 
-  // ==================== UTILIDADES ====================
-
-  getRandomQuestions: async (bankId: string, count: number, difficulty?: QuestionDifficulty): Promise<Question[]> => {
-    const params = new URLSearchParams({ count: count.toString() });
-    if (difficulty) params.append('difficulty', difficulty);
-    const response = await api.get(`/question-banks/bank/${bankId}/random?${params}`);
+  restoreQuestion: async (questionId: string): Promise<Question> => {
+    const response = await api.post(`/question-banks/question/${questionId}/restore`);
     return response.data.data;
   },
 
-  getStats: async (bankId: string): Promise<QuestionStats> => {
-    const response = await api.get(`/question-banks/bank/${bankId}/stats`);
+  reviewQuestion: async (questionId: string): Promise<Question> => {
+    const response = await api.post(`/question-banks/question/${questionId}/review`);
     return response.data.data;
   },
 
-  checkAnswer: async (questionId: string, answer: any): Promise<{ correct: boolean; correctAnswer: any }> => {
-    const response = await api.post(`/question-banks/question/${questionId}/check`, { answer });
+  // ==================== IA ====================
+
+  /** Borradores por tema (nivel de la clase). No guarda nada. */
+  aiDrafts: async (classroomId: string, data: AiDraftsInput & { topic: string }): Promise<DraftQuestion[]> => {
+    const response = await api.post(`/question-banks/classroom/${classroomId}/ai-drafts`, data);
     return response.data.data;
   },
 
-  // ==================== GENERACIÓN CON IA ====================
-
-  generateWithAI: async (data: {
-    topic: string;
-    quantity: number;
-    level: string;
-    questionTypes?: BankQuestionType[];
-    difficulty?: QuestionDifficulty;
-  }): Promise<{ csv: string; prompt: string }> => {
-    const response = await api.post('/question-banks/generate-ai', data);
-    return response.data.data;
-  },
-
-  generateFromPDF: async (data: {
-    file: File;
-    quantity: number;
-    level: string;
-    questionTypes?: BankQuestionType[];
-    difficulty?: QuestionDifficulty;
-  }): Promise<{ csv: string; prompt: string }> => {
+  /** Borradores desde un PDF. No guarda nada. */
+  aiDraftsFromPdf: async (classroomId: string, file: File, data: AiDraftsInput): Promise<DraftQuestion[]> => {
     const formData = new FormData();
-    formData.append('pdf', data.file);
+    formData.append('pdf', file);
     formData.append('quantity', String(data.quantity));
-    formData.append('level', data.level);
-    if (data.questionTypes) {
-      formData.append('questionTypes', JSON.stringify(data.questionTypes));
-    }
-    if (data.difficulty) {
-      formData.append('difficulty', data.difficulty);
-    }
-    const response = await api.post('/question-banks/generate-from-pdf', formData, {
+    formData.append('kinds', JSON.stringify(data.kinds));
+    if (data.difficulty) formData.append('difficulty', data.difficulty);
+    if (data.level) formData.append('level', data.level);
+    const response = await api.post(`/question-banks/classroom/${classroomId}/ai-drafts/pdf`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
     return response.data.data;
   },
 
-  exportBanks: async (data: { bankIds: string[]; targetClassroomIds: string[] }): Promise<{ exportedBanks: number; exportedQuestions: number; targetClassrooms: number }> => {
-    const response = await api.post('/question-banks/export', data);
+  /** Observatorio: genera con IA y guarda directo en un banco de la clase (quedan "por revisar"). */
+  generateIntoBank: async (classroomId: string, data: { topic: string; quantity: number; kind: 'TRUE_FALSE' | 'SINGLE_CHOICE' | 'ERROR_STEPS'; bankId?: string | null }): Promise<{ bankId: string; bankName: string; created: number }> => {
+    const response = await api.post(`/question-banks/classroom/${classroomId}/generate-into-bank`, data);
     return response.data.data;
   },
 };
 
 // Helper para parsear JSON que puede estar doblemente serializado
-const safeJsonParse = (value: any): any => {
+const safeJsonParse = (value: unknown): unknown => {
   if (value === null || value === undefined) return null;
   if (typeof value !== 'string') return value;
-  
   try {
-    let parsed = JSON.parse(value);
+    let parsed: unknown = JSON.parse(value);
     // Si sigue siendo string, intentar parsear de nuevo (doble serialización)
     while (typeof parsed === 'string') {
       try {
@@ -322,16 +327,15 @@ export const parseQuestionData = (question: Question) => {
   const options = safeJsonParse(question.options);
   const correctAnswer = safeJsonParse(question.correctAnswer);
   const pairs = safeJsonParse(question.pairs);
-  
   return {
     ...question,
-    options: Array.isArray(options) ? options : null,
-    correctAnswer: correctAnswer,
-    pairs: Array.isArray(pairs) ? pairs : null,
+    options: Array.isArray(options) ? (options as QuestionOption[]) : null,
+    correctAnswer: correctAnswer as boolean | string | null,
+    pairs: Array.isArray(pairs) ? (pairs as MatchingPair[]) : null,
   };
 };
 
 // Helper para obtener el emoji del banco
 export const getBankEmoji = (iconId: string): string => {
-  return BANK_ICONS.find(i => i.id === iconId)?.emoji || '📚';
+  return BANK_ICONS.find((i) => i.id === iconId)?.emoji || '📚';
 };

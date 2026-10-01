@@ -8,6 +8,7 @@ import { questionBankApi } from '../../../lib/questionBankApi';
 import { shuffle } from '../../classroom/utilities/helpers';
 import { useTeacherBanks } from '../../classroom/utilities/questionDraw';
 import { AiQuestionGenerator } from '../AiQuestionGenerator';
+import { UnreviewedNotice } from '../UnreviewedNotice';
 import { Bitacora } from '../Bitacora';
 import { EscenarioObservatorio, stageControlClass } from '../EscenarioObservatorio';
 import { answerOf, questionSizeClass } from '../questionHelpers';
@@ -55,6 +56,8 @@ const chip = (on: boolean) =>
 interface EstrellasActivityProps {
   classroom: Classroom & { students?: Student[] };
   resume?: ActivitySession<unknown, unknown> | null;
+  /** Banco elegido desde el Banco de preguntas ("Usar en clase"). */
+  initialBankId?: string | null;
   onExit: () => void;
 }
 
@@ -63,7 +66,7 @@ interface EstrellasActivityProps {
  * agachados = falso; o a una esquina A–D). Nadie queda eliminado: el docente marca si la
  * mayoría acertó y cada acierto enciende una estrella; las rachas dan estrellas extra.
  */
-export const EstrellasActivity = ({ classroom, resume, onExit }: EstrellasActivityProps) => {
+export const EstrellasActivity = ({ classroom, resume, initialBankId, onExit }: EstrellasActivityProps) => {
   const students = useMemo(() => classroom.students ?? [], [classroom.students]);
   const soundState = useStageSound();
   const { sound } = soundState;
@@ -80,6 +83,16 @@ export const EstrellasActivity = ({ classroom, resume, onExit }: EstrellasActivi
   const [history, setHistory] = useState<EstrellasState[]>([]);
 
   const { data: banks = [], isLoading: banksLoading } = useTeacherBanks(true);
+  // El banco que llega del Banco de preguntas se elige al cargar la lista (con la variante que más preguntas tiene).
+  const [presetBank, setPresetBank] = useState(saved ? null : initialBankId ?? null);
+  if (presetBank && !banksLoading) {
+    setPresetBank(null);
+    const preset = banks.find((b) => b.id === presetBank);
+    if (preset) {
+      setVariant(preset.countsByType.TRUE_FALSE >= preset.countsByType.SINGLE_CHOICE ? 'vf' : 'esquinas');
+      setSource({ kind: 'bank', bankId: preset.id, bankName: preset.name });
+    }
+  }
   const neededType = variant === 'vf' ? 'TRUE_FALSE' : 'SINGLE_CHOICE';
   const usableBanks = banks.filter((b) => b.countsByType[neededType] > 0);
   const bankId = (state?.source ?? source)?.kind === 'bank' ? ((state?.source ?? source) as { bankId: string }).bankId : null;
@@ -274,6 +287,8 @@ export const EstrellasActivity = ({ classroom, resume, onExit }: EstrellasActivi
               </div>
             )}
           </fieldset>
+
+          {source?.kind === 'bank' && <UnreviewedNotice banks={banks.filter((b) => b.id === source.bankId)} classroomId={classroom.id} />}
 
           <AiQuestionGenerator
             classroomId={classroom.id}
