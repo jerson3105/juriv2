@@ -78,6 +78,8 @@ export interface SchoolClassroom {
 
 export interface SchoolDetail extends School {
   inviteCode: string | null; // solo lo recibe el responsable
+  /** El enlace caduca a los 14 días de crearlo o renovarlo. */
+  inviteExpiresAt?: string | null;
   members: SchoolMember[];
   classrooms: SchoolClassroom[];
 }

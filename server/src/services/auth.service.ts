@@ -54,6 +54,8 @@ export interface StudentCodeVerificationResult {
   studentName: string | null;
   classroomName: string | null;
   alreadyLinked: boolean;
+  teacherVerified: boolean;
+  message?: string;
 }
 
 // Constantes
@@ -229,13 +231,17 @@ export const verifyStudentRegistrationCode = async (code: string): Promise<Stude
     where: eq(classrooms.id, profile.classroomId),
     columns: {
       name: true,
+      teacherId: true,
     },
   });
+  const teacherVerified = classroom ? await teacherVerificationService.isVerified(classroom.teacherId) : false;
 
   return {
     studentName: maskPersonName(profile.displayName || profile.characterName),
     classroomName: classroom?.name || null,
     alreadyLinked: !!profile.userId,
+    teacherVerified,
+    ...(teacherVerified ? {} : { message: UNVERIFIED_CLASS_MESSAGE }),
   };
 };
 

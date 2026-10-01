@@ -219,6 +219,7 @@ class SchoolController {
         data: {
           ...detail,
           inviteCode: isOwner ? detail.inviteCode : null,
+          inviteExpiresAt: isOwner ? detail.inviteExpiresAt : null,
           members: isOwner ? detail.members : detail.members.filter((m) => m.status === 'VERIFIED'),
           classrooms: classroomsWithActivity,
         },

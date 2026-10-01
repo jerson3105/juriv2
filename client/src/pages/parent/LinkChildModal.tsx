@@ -1,111 +1,71 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { X, Link2, Loader2 } from 'lucide-react';
-import { parentApi } from '../../lib/parentApi';
-import { Button } from '../../components/ui/Button';
 import toast from 'react-hot-toast';
+import { parentApi } from '../../lib/parentApi';
+import { HomeModal } from '../../components/home/HomeModal';
+import { cancelButton, primaryButton } from '../../components/home/homeHelpers';
+import { errorMessage, normalizeJoinCode } from '../../components/auth/authHelpers';
 
 interface LinkChildModalProps {
   onClose: () => void;
 }
 
+/**
+ * La familia pide ver el progreso de su hijo o hija con el código familiar (distinto del código de
+ * la clase). El docente confirma la solicitud antes de que vea nada.
+ */
 export default function LinkChildModal({ onClose }: LinkChildModalProps) {
-  const [linkCode, setLinkCode] = useState('');
+  const ids = useId();
+  const [code, setCode] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
-  const linkMutation = useMutation({
-    mutationFn: (code: string) => parentApi.linkChild(code),
+  const link = useMutation({
+    mutationFn: () => parentApi.linkChild(code),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['parent-children'] });
-      toast.success('¡Clase vinculada exitosamente!');
+      void queryClient.invalidateQueries({ queryKey: ['parent-children'] });
+      void queryClient.invalidateQueries({ queryKey: ['parent-pending-links'] });
+      toast.success('Solicitud enviada. El docente la confirmará pronto.');
       onClose();
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Código inválido');
-    },
+    onError: (err) => setError(errorMessage(err, 'Ese código no existe o ya se usó. Pide uno nuevo al docente.')),
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (linkCode.trim().length < 6) {
-      toast.error('Ingresa un código válido');
-      return;
-    }
-    linkMutation.mutate(linkCode.trim().toUpperCase());
-  };
-
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2">
-            <Link2 className="text-indigo-600" size={20} />
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Ingresar código de clase
-            </h2>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-          >
-            <X size={20} className="text-gray-500" />
+    <HomeModal
+      title="Vincular a tu hijo o hija"
+      onClose={onClose}
+      footer={(
+        <>
+          <button type="button" onClick={onClose} className={cancelButton}>Cancelar</button>
+          <button type="button" onClick={() => link.mutate()} disabled={link.isPending || code.length < 6} className={primaryButton}>
+            {link.isPending ? 'Enviando…' : 'Enviar solicitud'}
           </button>
-        </div>
-
-        {/* Content */}
-        <form onSubmit={handleSubmit} className="p-4 space-y-4">
-          <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
-            <h3 className="font-medium text-blue-800 dark:text-blue-300 mb-2">
-              ¿Cómo obtener el código?
-            </h3>
-            <p className="text-sm text-blue-700 dark:text-blue-400">
-              Solicita el <strong>código de clase</strong> al profesor de tu hijo. 
-              El profesor puede compartirlo desde la configuración de la clase.
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Código de clase
-            </label>
-            <input
-              type="text"
-              value={linkCode}
-              onChange={(e) => setLinkCode(e.target.value.toUpperCase())}
-              placeholder="Ej: ABC12345"
-              maxLength={8}
-              className="w-full px-4 py-3 text-center text-2xl font-mono tracking-widest border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              autoFocus
-            />
-          </div>
-
-          <div className="flex gap-3 pt-2">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={onClose}
-              className="flex-1"
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="submit"
-              disabled={linkMutation.isPending || linkCode.trim().length < 6}
-              className="flex-1"
-            >
-              {linkMutation.isPending ? (
-                <>
-                  <Loader2 className="animate-spin" size={18} />
-                  Vinculando...
-                </>
-              ) : (
-                'Vincular clase'
-              )}
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
+        </>
+      )}
+    >
+      <form onSubmit={(e) => { e.preventDefault(); if (code.length >= 6) link.mutate(); }}>
+        <p className="text-sm text-gray-800 dark:text-gray-100">
+          Pide al docente el <strong>código familiar</strong> de tu hijo o hija. Es distinto del código de la clase.
+        </p>
+        <label htmlFor={`${ids}-code`} className="mt-4 block text-sm font-semibold text-gray-800 dark:text-gray-100">Código familiar</label>
+        <input
+          id={`${ids}-code`}
+          data-autofocus
+          value={code}
+          onChange={(e) => { setCode(normalizeJoinCode(e.target.value)); setError(null); }}
+          placeholder="Ej.: ABC12345"
+          autoComplete="one-time-code"
+          autoCapitalize="characters"
+          autoCorrect="off"
+          spellCheck={false}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? `${ids}-error` : undefined}
+          className="mt-1 min-h-[52px] w-full rounded-xl border border-gray-300 bg-white px-4 text-center font-mono text-2xl font-bold tracking-[0.2em] text-gray-900 outline-none placeholder:font-sans placeholder:text-base placeholder:font-normal placeholder:tracking-normal placeholder:text-gray-500 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-400"
+        />
+        {error && <p id={`${ids}-error`} role="alert" className="mt-2 text-sm font-medium text-red-700 dark:text-red-300">{error}</p>}
+        <p className="mt-3 text-sm text-gray-700 dark:text-gray-300">El docente confirmará que eres su familia antes de que veas su progreso.</p>
+      </form>
+    </HomeModal>
   );
 }

@@ -146,7 +146,7 @@ export const SchoolPanel = ({ school, onBack, onVerify }: SchoolPanelProps) => {
       <div role="tabpanel">
         {tab === 'summary' && manage && <SummaryTab schoolId={school.id} onOpenReports={() => setTab('reports')} />}
         {tab === 'teachers' && (
-          <TeachersTab school={school} manage={manage} currentUserId={user?.id} teachers={teachers} classrooms={classrooms} requests={requests} inviteCode={detail?.inviteCode ?? null} isLoading={loadingTeachers} />
+          <TeachersTab school={school} manage={manage} currentUserId={user?.id} teachers={teachers} classrooms={classrooms} requests={requests} inviteCode={detail?.inviteCode ?? null} inviteExpiresAt={detail?.inviteExpiresAt ?? null} isLoading={loadingTeachers} />
         )}
         {tab === 'classes' && <ClassesTab schoolId={school.id} manage={manage} classrooms={classrooms} isLoading={loadingDetail} />}
         {tab === 'library' && <LibraryTab schoolId={school.id} manage={manage} myClassrooms={myClassrooms} />}

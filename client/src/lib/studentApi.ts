@@ -188,6 +188,8 @@ export const studentApi = {
     acceptingStudents?: boolean;
     studentName?: string | null;
     alreadyLinked?: boolean;
+    /** false = el docente aún no verificó su cuenta: no se puede unir con cuenta todavía. */
+    teacherVerified?: boolean;
   }> => {
     const response = await api.post('/students/verify-code', { code });
     return response.data.data;

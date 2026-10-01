@@ -71,6 +71,7 @@ export class StudentService {
         classroomCode: classroom.code,
         isActive: classroom.isActive,
         acceptingStudents: classroom.acceptingStudents,
+        teacherVerified: await teacherVerificationService.isVerified(classroom.teacherId),
       };
     }
 
@@ -89,6 +90,7 @@ export class StudentService {
         studentName: maskPersonName(profile.displayName || profile.characterName),
         classroomName: profileClassroom?.name || null,
         alreadyLinked: !!profile.userId,
+        teacherVerified: profileClassroom ? await teacherVerificationService.isVerified(profileClassroom.teacherId) : false,
       };
     }
 

@@ -14,7 +14,9 @@ const secondaryButton = 'inline-flex min-h-[40px] items-center justify-center ga
 const initials = (first: string, last: string) => `${first[0] ?? ''}${last[0] ?? ''}`.toUpperCase();
 
 // ── Invitación por enlace (solo responsable) ───────────────────────────────
-const InviteCard = ({ school, inviteCode }: { school: MySchool; inviteCode: string | null }) => {
+const InviteCard = ({ school, inviteCode, inviteExpiresAt }: { school: MySchool; inviteCode: string | null; inviteExpiresAt: string | null }) => {
+  const expires = inviteExpiresAt ? new Date(inviteExpiresAt) : null;
+  const expired = !!expires && expires.getTime() < Date.now();
   const queryClient = useQueryClient();
   const [confirmRenew, setConfirmRenew] = useState(false);
   const refresh = () => queryClient.invalidateQueries({ queryKey: schoolDetailKey(school.id) });
@@ -63,6 +65,11 @@ const InviteCard = ({ school, inviteCode }: { school: MySchool; inviteCode: stri
             </button>
           </div>
           <p className="text-sm text-gray-700 dark:text-gray-300">Código: <strong className="font-mono tracking-wider text-gray-900 dark:text-white">{inviteCode}</strong></p>
+          {expires && (
+            <p className={`text-sm ${expired ? 'font-semibold text-red-700 dark:text-red-300' : 'text-gray-700 dark:text-gray-300'}`}>
+              {expired ? 'Este enlace caducó el ' : 'Vence el '}{expires.toLocaleDateString('es', { day: 'numeric', month: 'long' })}. {expired ? 'Renuévalo para invitar a más profesores.' : 'Quien entra con él queda verificado como docente de tu escuela.'}
+            </p>
+          )}
           <div className="flex flex-wrap gap-2">
             {confirmRenew ? (
               <>
@@ -167,10 +174,11 @@ interface TeachersTabProps {
   classrooms: SchoolClassroom[];
   requests: SchoolMember[];
   inviteCode: string | null;
+  inviteExpiresAt?: string | null;
   isLoading: boolean;
 }
 
-export const TeachersTab = ({ school, manage, currentUserId, teachers, classrooms, requests, inviteCode, isLoading }: TeachersTabProps) => {
+export const TeachersTab = ({ school, manage, currentUserId, teachers, classrooms, requests, inviteCode, inviteExpiresAt = null, isLoading }: TeachersTabProps) => {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState<string | null>(null);
   const [removing, setRemoving] = useState<SchoolTeacher | null>(null);
@@ -194,7 +202,7 @@ export const TeachersTab = ({ school, manage, currentUserId, teachers, classroom
   return (
     <div className="space-y-4">
       {manage && <PendingRequests schoolId={school.id} requests={requests} />}
-      {manage && <InviteCard school={school} inviteCode={inviteCode} />}
+      {manage && <InviteCard school={school} inviteCode={inviteCode} inviteExpiresAt={inviteExpiresAt} />}
 
       <section aria-labelledby="teachers-title" className="space-y-3">
         <h3 id="teachers-title" className="text-sm font-bold uppercase tracking-wide text-gray-700 dark:text-gray-300">Profesores ({teachers.length})</h3>

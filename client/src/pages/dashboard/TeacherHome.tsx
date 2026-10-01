@@ -9,6 +9,8 @@ import { classroomApi, type Classroom, type ClassroomOverview } from '../../lib/
 import { schoolApi, type MySchool } from '../../lib/schoolApi';
 import { ClassCard } from '../../components/home/ClassCard';
 import { TodayPanel } from '../../components/home/TodayPanel';
+import { FamilyRequestsPanel } from '../../components/home/FamilyRequestsPanel';
+import { TeacherVerificationBanner } from '../../components/auth/TeacherVerificationBanner';
 import { ActionMenu } from '../../components/home/ActionMenu';
 import { CreateClassModal, NewClassChooser } from '../../components/home/CreateClassModal';
 import { AssignSchoolModal, CloneClassModal, DeleteClassModal, ProjectCodeModal } from '../../components/home/ClassModals';
@@ -213,6 +215,9 @@ export const TeacherHome = () => {
           </button>
         </div>
       </header>
+
+      <TeacherVerificationBanner />
+      <FamilyRequestsPanel />
 
       {isLoading ? (
         <div className="space-y-4" aria-busy="true" aria-label="Cargando tus clases">

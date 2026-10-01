@@ -9,8 +9,7 @@ import {
   ChevronRight,
   LogOut,
   Map,
-  Bug
-} from 'lucide-react';
+  Bug, ShieldCheck } from 'lucide-react';
 import { adminApi } from '../../lib/adminApi';
 import type { AdminStats } from '../../lib/adminApi';
 import { useAuthStore } from '../../store/authStore';
@@ -71,6 +70,13 @@ export default function AdminDashboard() {
   ] : [];
 
   const menuItems = [
+    {
+      title: 'Docentes por verificar',
+      description: 'Aprobar docentes y dominios institucionales de colegios',
+      icon: ShieldCheck,
+      link: '/admin/teacher-verifications',
+      color: 'bg-amber-100 text-amber-800',
+    },
     {
       title: 'Gestión de Items de Avatar',
       description: 'Subir y administrar items de avatar para los estudiantes',

@@ -115,6 +115,10 @@ const JoinClassFlow = () => {
         setVerifyError('Esta clase está archivada.');
         setVerifyResult(null);
         setCodeType(null);
+      } else if (result.teacherVerified === false) {
+        setVerifyError('Tu profe aún está verificando su cuenta de docente. Mientras tanto, la clase funciona con la lista: avísale para que la verifique.');
+        setVerifyResult(null);
+        setCodeType(null);
       } else if (result.type === 'classroom' && result.acceptingStudents === false) {
         setVerifyError('Esta clase no está aceptando alumnos nuevos. Pídele a tu profesor que lo active.');
         setVerifyResult(null);

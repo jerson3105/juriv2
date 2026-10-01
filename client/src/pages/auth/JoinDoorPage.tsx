@@ -12,9 +12,10 @@ import { primaryButton, cancelButton } from '../../components/home/homeHelpers';
 import { authApi } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
 
-type Verified =
+type Verified = (
   | { type: 'classroom'; classroomName: string; teacherName: string | null; open: boolean }
-  | { type: 'student'; studentName: string | null; classroomName: string | null; alreadyLinked: boolean };
+  | { type: 'student'; studentName: string | null; classroomName: string | null; alreadyLinked: boolean }
+) & { teacherVerified?: boolean; message?: string };
 type Step = 'code' | 'confirm' | 'notme' | 'access';
 
 /**
@@ -61,7 +62,9 @@ export const JoinDoorPage = () => {
     try {
       const response = await authApi.verifyJoinCode(value);
       const data = response.data.data as Verified;
-      if (data.type === 'classroom' && !data.open) {
+      if (data.teacherVerified === false) {
+        setCodeError(data.message ?? 'Tu profe aún está verificando su cuenta de docente. Avísale para que la verifique.');
+      } else if (data.type === 'classroom' && !data.open) {
         setCodeError('Esta clase no está recibiendo estudiantes ahora. Avísale a tu profe.');
       } else if (data.type === 'student' && data.alreadyLinked) {
         setCodeError('Este código ya se usó. Si es tuyo, entra con tu cuenta o pídele a tu profe uno nuevo.');

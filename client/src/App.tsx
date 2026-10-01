@@ -73,6 +73,7 @@ const AdminClassrooms = lazyPage(() => import('./pages/admin/AdminClassrooms'));
 const AdminExpeditionMaps = lazyPage(() => import('./pages/admin/AdminExpeditionMaps'));
 const AdminBugReports = lazyPage(() => import('./pages/admin/AdminBugReports').then((m) => ({ default: m.AdminBugReports })));
 const AdminSchoolVerifications = lazyPage(() => import('./pages/admin/AdminSchoolVerifications'));
+const AdminTeacherVerifications = lazyPage(() => import('./pages/admin/AdminTeacherVerifications'));
 
 // Schools
 const SchoolsPage = lazyPage(() => import('./pages/schools/SchoolsPage').then((m) => ({ default: m.SchoolsPage })));
@@ -325,6 +326,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <AdminBugReports />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/teacher-verifications"
+            element={
+              <ProtectedRoute>
+                <AdminTeacherVerifications />
               </ProtectedRoute>
             }
           />

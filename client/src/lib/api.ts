@@ -165,8 +165,9 @@ export const authApi = {
   /** Puerta /unirse: código de clase o personal, sin sesión. */
   verifyJoinCode: (code: string) =>
     api.post<ApiResponse<
-      | { type: 'classroom'; classroomName: string; teacherName: string | null; open: boolean }
-      | { type: 'student'; studentName: string | null; classroomName: string | null; alreadyLinked: boolean }
+      (| { type: 'classroom'; classroomName: string; teacherName: string | null; open: boolean }
+      | { type: 'student'; studentName: string | null; classroomName: string | null; alreadyLinked: boolean })
+      & { teacherVerified?: boolean; message?: string }
     >>('/auth/join-code/verify', { code }),
 
   verifyStudentCode: (code: string) =>
