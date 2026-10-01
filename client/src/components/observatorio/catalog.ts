@@ -38,11 +38,12 @@ export const CATALOG: CatalogEntry[] = [
   },
   {
     id: 'conquista',
-    name: 'Conquista del Territorio',
-    description: 'Los equipos compiten por territorios respondiendo preguntas por turnos.',
+    name: 'Conquista del Cielo',
+    description: 'Todos los equipos responden a la vez para despejar la Niebla. Se guarda para seguir otro día.',
     pose: 'senalando',
-    duration: '15–25 min',
-    requirements: [{ icon: '📚', label: 'Banco de preguntas' }],
+    duration: '15–30 min',
+    requirements: [{ icon: '🛡️', label: 'Clanes o equipos' }, { icon: '📚', label: 'Banco o IA' }],
+    sessionType: 'CONQUISTA',
   },
   {
     id: 'pergaminos',

@@ -193,21 +193,25 @@ export const Bitacora = ({
         </ul>
       )}
 
-      {/* Podio de clanes */}
+      {/* Podio de equipos */}
       {podium && podium.length > 0 && (
-        <ol className="flex flex-wrap items-end justify-center gap-3" aria-label="Podio de clanes">
-          {podium.slice(0, 3).map((entry, i) => (
-            <li
-              key={entry.key}
-              className="flex w-40 flex-col items-center rounded-2xl border-2 p-3 text-center"
-              style={{ borderColor: entry.color, backgroundColor: `${entry.color}26`, minHeight: `${9 - i * 1.5}rem` }}
-            >
-              <span className="text-sm font-black text-amber-200">{i + 1}.º</span>
-              <span className="text-4xl" aria-hidden="true">{entry.emblem}</span>
-              <span className="mt-1 text-base font-bold text-white">{entry.name}</span>
-              <span className="text-sm font-semibold text-indigo-100">{entry.score} {entry.unit}</span>
-            </li>
-          ))}
+        <ol className="flex flex-wrap items-end justify-center gap-3" aria-label="Podio de equipos">
+          {podium.slice(0, 3).map((entry) => {
+            // Empates comparten puesto (deportivo).
+            const place = podium.filter((p) => p.score > entry.score).length + 1;
+            return (
+              <li
+                key={entry.key}
+                className="flex w-[clamp(10rem,18vw,18rem)] flex-col items-center rounded-2xl border-2 p-3 text-center"
+                style={{ borderColor: entry.color, backgroundColor: `${entry.color}26`, minHeight: `${12 - (place - 1) * 2}vh` }}
+              >
+                <span className="text-[clamp(18px,2.8vh,32px)] font-black text-amber-200">{place}.º</span>
+                <span className="stage-option" aria-hidden="true">{entry.emblem}</span>
+                <span className="mt-1 text-[clamp(18px,2.8vh,32px)] font-bold text-white">{entry.name}</span>
+                <span className="text-[clamp(16px,2.4vh,28px)] font-semibold text-indigo-100">{entry.score} {entry.unit}</span>
+              </li>
+            );
+          })}
         </ol>
       )}
 

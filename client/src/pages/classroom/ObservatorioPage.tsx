@@ -13,7 +13,7 @@ import { useTodayPresence } from '../../components/observatorio/usePresence';
 
 // Cada actividad se descarga solo al abrirla.
 const ScrollsActivity = lazy(() => import('../../components/activities/ScrollsActivity').then((m) => ({ default: m.ScrollsActivity })));
-const TerritoryConquestActivity = lazy(() => import('../../components/activities/TerritoryConquestActivity').then((m) => ({ default: m.TerritoryConquestActivity })));
+const ConquistaActivity = lazy(() => import('../../components/observatorio/conquista/ConquistaActivity').then((m) => ({ default: m.ConquistaActivity })));
 const ExpeditionsActivity = lazy(() => import('../../components/activities/ExpeditionsActivity').then((m) => ({ default: m.ExpeditionsActivity })));
 const DescansoActivity = lazy(() => import('../../components/observatorio/descanso/DescansoActivity').then((m) => ({ default: m.DescansoActivity })));
 const EstrellasActivity = lazy(() => import('../../components/observatorio/estrellas/EstrellasActivity').then((m) => ({ default: m.EstrellasActivity })));
@@ -105,7 +105,7 @@ export const ObservatorioPage = () => {
       <Suspense fallback={<Loading />}>
         {selected.id === 'descanso' && <DescansoActivity classroom={classroom} resume={selected.resume} onExit={back} />}
         {selected.id === 'estrellas' && <EstrellasActivity classroom={classroom} resume={selected.resume} onExit={back} />}
-        {selected.id === 'conquista' && <TerritoryConquestActivity classroom={{ ...classroom, curriculumAreaId: classroom.curriculumAreaId ?? undefined }} onBack={back} />}
+        {selected.id === 'conquista' && <ConquistaActivity classroom={classroom} resume={selected.resume} onExit={back} />}
         {selected.id === 'pergaminos' && <ScrollsActivity classroom={classroom} onBack={back} />}
         {selected.id === 'expeditions' && <ExpeditionsActivity classroom={classroom} onBack={back} />}
         {selected.id === 'jiro-expeditions' && <JiroExpeditionsActivity classroom={classroom} onBack={back} />}
