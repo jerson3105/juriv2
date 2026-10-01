@@ -1,10 +1,13 @@
 import bcrypt from 'bcryptjs';
+import { randomBytes } from 'node:crypto';
 import { and, eq, or, sql } from 'drizzle-orm';
 import { db, users, parentProfiles, studentProfiles, classrooms } from '../db/index.js';
 import { consumeRefreshToken, generateTokenPair, revokeRefreshToken, revokeAllUserTokens } from '../utils/jwt.js';
 import { v4 as uuidv4 } from 'uuid';
 import { avatarService } from './avatar.service.js';
 import { studentService } from './student.service.js';
+import { isDuplicateEntry } from '../utils/errors.js';
+import { maskPersonName } from '../utils/helpers.js';
 
 // Tipos
 type UserRole = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'PARENT';
@@ -52,7 +55,9 @@ export interface StudentCodeVerificationResult {
 
 // Constantes
 const SALT_ROUNDS = 12;
-const DUMMY_PASSWORD_HASH = '$2a$10$7EqJtq98hPqEX7fNZaFWoOHiZy6u9j9l56k97X3CJidb8sRP/6ID.';
+// Hash de relleno con el MISMO costo que los reales: si fuera más barato, el tiempo de respuesta
+// delataría qué correos tienen cuenta.
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync(randomBytes(16).toString('hex'), SALT_ROUNDS);
 
 const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 const normalizeName = (value: string): string => value.trim();
@@ -89,14 +94,7 @@ const splitOfficialStudentName = (value: string): { firstName: string; lastName:
   };
 };
 
-const isDuplicateEntryError = (error: unknown): boolean => {
-  if (!error || typeof error !== 'object') {
-    return false;
-  }
-
-  const dbError = error as { code?: string; errno?: number };
-  return dbError.code === 'ER_DUP_ENTRY' || dbError.errno === 1062;
-};
+const isDuplicateEntryError = isDuplicateEntry;
 
 /**
  * Registrar nuevo usuario
@@ -196,7 +194,7 @@ export const verifyStudentRegistrationCode = async (code: string): Promise<Stude
   });
 
   return {
-    studentName: profile.displayName || profile.characterName || null,
+    studentName: maskPersonName(profile.displayName || profile.characterName),
     classroomName: classroom?.name || null,
     alreadyLinked: !!profile.userId,
   };
@@ -211,6 +209,19 @@ export const registerStudentWithCode = async (input: {
   const normalizedCode = normalizeStudentCode(input.code);
   const normalizedEmail = normalizeEmail(input.email);
   const avatarGender = input.avatarGender || 'MALE';
+
+  // Primero el código: sin uno válido y libre no se dice nada del correo (antes, con un código
+  // inventado, la respuesta delataba si el correo era de un docente o de un alumno).
+  const codeProfile = await db.query.studentProfiles.findFirst({
+    where: and(eq(studentProfiles.linkCode, normalizedCode), eq(studentProfiles.isActive, true)),
+    columns: { userId: true },
+  });
+  if (!codeProfile) {
+    throw new Error('Código inválido');
+  }
+  if (codeProfile.userId) {
+    throw new Error('Este código ya fue usado');
+  }
 
   const existingUser = await db.query.users.findFirst({
     where: eq(users.email, normalizedEmail),
@@ -390,6 +401,11 @@ export const login = async (input: LoginInput): Promise<AuthResponse> => {
 
   if (!user || !user.isActive || user.provider !== 'LOCAL' || !user.password || !isValidPassword) {
     throw new Error('Credenciales inválidas');
+  }
+
+  if (bcrypt.getRounds(user.password) < SALT_ROUNDS) {
+    const upgraded = await bcrypt.hash(password, SALT_ROUNDS);
+    await db.update(users).set({ password: upgraded }).where(eq(users.id, user.id));
   }
   
   // Generar tokens

@@ -43,17 +43,47 @@ export const pollingLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Rate limiter para autenticación (más estricto)
-export const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  max: config_app.isDev ? 50 : 15, // más permisivo en dev
+// IPv6: cada dispositivo puede tener muchas direcciones de su /64; se cuentan juntas.
+const ipKey = (req: Request): string => {
+  const ip = req.ip ?? 'unknown';
+  if (!ip.includes(':') || ip.startsWith('::ffff:')) return ip;
+  return `${ip.split(':').slice(0, 4).join(':')}::/64`;
+};
+
+/**
+ * Limitador de acceso por IP que solo cuenta fallos. Cada ruta tiene su propio contador:
+ * un aula entera sale por la misma IP del colegio (NAT), así que el techo es alto y los
+ * errores de registro no bloquean el login de los demás.
+ */
+const authFailureLimiter = (max: number, message: string) => rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: config_app.isDev ? max * 5 : max,
+  keyGenerator: ipKey,
+  message: { success: false, message },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+});
+
+export const loginIpLimiter = authFailureLimiter(100, 'Demasiados intentos de inicio de sesión desde esta red, intenta en 15 minutos.');
+export const registerLimiter = authFailureLimiter(60, 'Demasiados intentos de registro desde esta red, intenta en 15 minutos.');
+export const studentCodeLimiter = authFailureLimiter(30, 'Demasiados intentos con códigos, intenta nuevamente en 15 minutos.');
+export const oauthLimiter = authFailureLimiter(60, 'Demasiados intentos con Google, intenta nuevamente en 15 minutos.');
+// Registro de padres (ruta propia).
+export const authLimiter = authFailureLimiter(30, 'Demasiados intentos, intenta en 15 minutos.');
+
+// Login por cuenta: frena adivinar la contraseña de una persona desde muchas IP.
+export const loginAccountLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: config_app.isDev ? 50 : 10,
+  keyGenerator: (req) => `login:${String(req.body?.email ?? '').trim().toLowerCase() || ipKey(req)}`,
   message: {
     success: false,
-    message: 'Demasiados intentos de inicio de sesión, intenta en 15 minutos.',
+    message: 'Demasiados intentos con esta cuenta. Espera 15 minutos o pide ayuda a tu docente.',
   },
   standardHeaders: true,
   legacyHeaders: false,
-  skipSuccessfulRequests: true, // No contar logins exitosos
+  skipSuccessfulRequests: true,
 });
 
 // Rate limiter para operaciones con tokens (refresh/logout)
@@ -75,7 +105,7 @@ export const authTokenLimiter = rateLimit({
 export const codeRedemptionLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
   max: config_app.isDev ? 100 : 10,
-  keyGenerator: (req) => (req as any).user?.id ?? req.ip ?? 'unknown',
+  keyGenerator: (req) => (req as any).user?.id ?? ipKey(req),
   message: {
     success: false,
     message: 'Demasiados intentos con códigos, intenta nuevamente en 15 minutos.',

@@ -2,6 +2,7 @@ import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
 import { updateSocketToken } from './socket';
 import { queryClient } from './queryClient';
+import { clearSessionData } from './sessionCleanup';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
@@ -129,7 +130,8 @@ api.interceptors.response.use(
         if (!isLoggingOut) {
           isLoggingOut = true;
           clearClientAuthSession();
-          window.location.replace('/login');
+          void clearSessionData();
+          window.location.replace('/login?error=session_expired');
         }
         return Promise.reject(refreshError);
       } finally {

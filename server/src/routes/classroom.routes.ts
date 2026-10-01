@@ -8,7 +8,7 @@ import { rankingController } from '../controllers/ranking.controller.js';
 import { classroomOverviewController } from '../controllers/classroomOverview.controller.js';
 import { studentSummaryController } from '../controllers/studentSummary.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { aiGuard } from '../middleware/security.js';
+import { aiGuard, codeRedemptionLimiter } from '../middleware/security.js';
 
 const router = Router();
 
@@ -79,10 +79,8 @@ router.put('/:classroomId/character-classes/:id', authorize('TEACHER'), characte
 router.delete('/:classroomId/character-classes/:id', authorize('TEACHER'), characterClassController.remove.bind(characterClassController));
 
 // Buscar clases de personaje por código de aula (para estudiantes al unirse)
-router.get('/code/:code/character-classes', authorize('STUDENT'), characterClassController.listByCode.bind(characterClassController));
+router.get('/code/:code/character-classes', authorize('STUDENT'), codeRedemptionLimiter, characterClassController.listByCode.bind(characterClassController));
 
-// Rutas para estudiantes
-router.post('/join', authorize('STUDENT'), classroomController.join.bind(classroomController));
 
 // Rutas compartidas
 router.get('/:id', classroomController.getById.bind(classroomController));

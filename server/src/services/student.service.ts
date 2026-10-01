@@ -17,7 +17,7 @@ import { clanService } from './clan.service.js';
 import { badgeService } from './badge.service.js';
 import { storyService } from './story.service.js';
 import { prepareForTx } from '../utils/notificationEmitter.js';
-import { generateRandomCode } from '../utils/helpers.js';
+import { generateRandomCode, maskPersonName } from '../utils/helpers.js';
 import { applyPointDeltas } from '../utils/points.js';
 
 type CharacterClass = 'GUARDIAN' | 'ARCANE' | 'EXPLORER' | 'ALCHEMIST';
@@ -51,6 +51,8 @@ interface UpdateTeacherStudentProfileData {
   characterName?: string;
 }
 
+const LEGACY_CHARACTER_CLASSES = ['GUARDIAN', 'ARCANE', 'EXPLORER', 'ALCHEMIST'] as const;
+
 export class StudentService {
   // Verificar código (detecta si es código de clase o de estudiante)
   async verifyCode(code: string) {
@@ -83,7 +85,7 @@ export class StudentService {
 
       return {
         type: 'student' as const,
-        studentName: profile.displayName || profile.characterName || null,
+        studentName: maskPersonName(profile.displayName || profile.characterName),
         classroomName: profileClassroom?.name || null,
         alreadyLinked: !!profile.userId,
       };
@@ -110,50 +112,54 @@ export class StudentService {
       throw new Error('Esta clase no está aceptando alumnos nuevos. Pídele a tu profesor que lo active.');
     }
 
-    // Verificar si ya está inscrito
-    const existing = await db.query.studentProfiles.findFirst({
-      where: and(
-        eq(studentProfiles.classroomId, classroom.id),
-        eq(studentProfiles.userId, data.userId)
-      ),
-    });
-
-    if (existing) {
-      throw new Error('Ya estás inscrito en esta clase');
-    }
-
     const id = uuidv4();
     const now = new Date();
 
     const gender = data.avatarGender || 'MALE';
 
-    // Buscar el characterClassId correspondiente
+    // La clase de personaje debe ser de ESTA clase (antes se guardaba cualquier id que mandara el cliente).
     let characterClassId: string | null = null;
-    if (data.characterClassId) {
-      characterClassId = data.characterClassId;
-    } else if (data.characterClass) {
+    if (data.characterClassId || data.characterClass) {
       const charClass = await db.query.classroomCharacterClasses.findFirst({
         where: and(
           eq(classroomCharacterClasses.classroomId, classroom.id),
-          eq(classroomCharacterClasses.key, data.characterClass),
+          data.characterClassId
+            ? eq(classroomCharacterClasses.id, data.characterClassId)
+            : eq(classroomCharacterClasses.key, data.characterClass!),
         ),
       });
       characterClassId = charClass?.id ?? null;
     }
-    
-    await db.insert(studentProfiles).values({
-      id,
-      userId: data.userId,
-      classroomId: classroom.id,
-      characterName: data.characterName,
-      characterClass: data.characterClass as 'GUARDIAN' | 'ARCANE' | 'EXPLORER' | 'ALCHEMIST',
-      characterClassId,
-      avatarGender: gender,
-      hp: classroom.defaultHp,
-      xp: classroom.defaultXp,
-      gp: classroom.defaultGp,
-      createdAt: now,
-      updatedAt: now,
+    const legacyClass = LEGACY_CHARACTER_CLASSES.find((key) => key === data.characterClass) ?? 'GUARDIAN';
+
+    // Comprobar e insertar con la fila de la clase bloqueada: varios toques seguidos con la red lenta
+    // del colegio creaban perfiles repetidos del mismo alumno.
+    await db.transaction(async (tx) => {
+      await tx.select({ id: classrooms.id }).from(classrooms).where(eq(classrooms.id, classroom.id)).for('update');
+      const existing = await tx.query.studentProfiles.findFirst({
+        where: and(
+          eq(studentProfiles.classroomId, classroom.id),
+          eq(studentProfiles.userId, data.userId)
+        ),
+        columns: { id: true },
+      });
+      if (existing) {
+        throw new Error('Ya estás inscrito en esta clase');
+      }
+      await tx.insert(studentProfiles).values({
+        id,
+        userId: data.userId,
+        classroomId: classroom.id,
+        characterName: data.characterName,
+        characterClass: legacyClass,
+        characterClassId,
+        avatarGender: gender,
+        hp: classroom.defaultHp,
+        xp: classroom.defaultXp,
+        gp: classroom.defaultGp,
+        createdAt: now,
+        updatedAt: now,
+      });
     });
 
     // Equipar items de avatar por defecto
@@ -1042,9 +1048,17 @@ export class StudentService {
       updateData.avatarGender = data.avatarGender;
     }
 
-    await db.update(studentProfiles)
+    const updateResult = await db.update(studentProfiles)
       .set(updateData)
-      .where(eq(studentProfiles.id, profile.id));
+      .where(and(
+        eq(studentProfiles.id, profile.id),
+        eq(studentProfiles.isActive, true),
+        sql`${studentProfiles.userId} IS NULL`,
+      ));
+    const header = Array.isArray(updateResult) ? updateResult[0] : updateResult;
+    if (Number((header as { affectedRows?: number }).affectedRows ?? 0) !== 1) {
+      throw new Error('Este código ya fue usado');
+    }
 
     // Asignar items por defecto según el género seleccionado
     // Esto reemplaza cualquier item equipado anteriormente con los del género correcto

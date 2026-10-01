@@ -129,8 +129,13 @@ const parseOAuthCode = (value: string | undefined): string | null => {
   return parsed.success ? parsed.data : null;
 };
 
+// El código de un solo uso se ata al navegador que inició el login: debe venir en la cookie y, si el
+// cliente también lo manda, coincidir. Así nadie puede abrirle a otro un enlace con su propia sesión.
 const resolveOAuthCode = (req: Request, bodyCode: string | undefined, cookieName: string): string | null => {
-  return parseOAuthCode(bodyCode) || parseOAuthCode(getCookieValue(req, cookieName));
+  const cookieCode = parseOAuthCode(getCookieValue(req, cookieName));
+  if (!cookieCode) return null;
+  if (bodyCode && parseOAuthCode(bodyCode) !== cookieCode) return null;
+  return cookieCode;
 };
 
 const setOAuthCodeCookie = (res: Response, code: string) => {
@@ -720,7 +725,6 @@ export const googleCallback = async (req: Request, res: Response): Promise<void>
       setOAuthRegistrationCodeCookie(res, registrationCode);
 
       const redirectUrl = new URL(`${config_app.clientUrl}/auth/select-role`);
-      redirectUrl.searchParams.set('code', registrationCode);
       redirectUrl.hash = `code=${encodeURIComponent(registrationCode)}`;
 
       clearOAuthStateCookie(res);
@@ -741,7 +745,6 @@ export const googleCallback = async (req: Request, res: Response): Promise<void>
     
     // Redirigir al frontend con un código de un solo uso (evita exponer tokens en URL)
     const redirectUrl = new URL(`${config_app.clientUrl}/auth/google/callback`);
-    redirectUrl.searchParams.set('code', code);
     redirectUrl.hash = `code=${encodeURIComponent(code)}`;
     
     clearOAuthStateCookie(res);

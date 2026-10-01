@@ -7,6 +7,8 @@ import {
 import { eq, desc, count, sql, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcryptjs';
+import { cache, CACHE_KEYS } from '../utils/cache.js';
+import { revokeAllUserTokens } from '../utils/jwt.js';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -144,6 +146,10 @@ export const adminController = {
         .update(users)
         .set({ role, updatedAt: new Date() })
         .where(eq(users.id, userId));
+
+      // El rol viaja en el token y en el socket: se cierran sus sesiones para que entre con el nuevo.
+      cache.delete(CACHE_KEYS.user(userId));
+      await revokeAllUserTokens(userId);
 
       res.json({ success: true, message: 'Rol actualizado' });
     } catch (error) {

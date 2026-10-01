@@ -1979,46 +1979,6 @@ export class ClassroomService {
     return { success: true };
   }
 
-  async joinByCode(code: string, userId: string, characterName: string, characterClass: 'GUARDIAN' | 'ARCANE' | 'EXPLORER' | 'ALCHEMIST', avatarGender: AvatarGender = 'MALE') {
-    const classroom = await db.query.classrooms.findFirst({
-      where: eq(classrooms.code, code.toUpperCase()),
-    });
-
-    if (!classroom) throw new Error('Código de clase inválido');
-    if (!classroom.isActive) throw new Error('Esta clase está archivada');
-    if (!classroom.acceptingStudents) throw new Error('Esta clase no está aceptando alumnos nuevos. Pídele a tu profesor que lo active.');
-
-    const existing = await db.query.studentProfiles.findFirst({
-      where: and(
-        eq(studentProfiles.classroomId, classroom.id),
-        eq(studentProfiles.userId, userId)
-      ),
-    });
-
-    if (existing) throw new Error('Ya estás inscrito en esta clase');
-
-    const id = uuidv4();
-    const now = new Date();
-
-    await db.insert(studentProfiles).values({
-      id,
-      userId,
-      classroomId: classroom.id,
-      characterName,
-      characterClass,
-      avatarGender,
-      hp: classroom.defaultHp,
-      xp: classroom.defaultXp,
-      gp: classroom.defaultGp,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    // Equipar items de avatar por defecto
-    await avatarService.equipDefaultItems(id, avatarGender);
-
-    return { classroom, profileId: id };
-  }
 
   // Resetear puntos de todos los estudiantes (legacy — llama al selectivo con solo puntos)
   async resetAllPoints(classroomId: string, teacherId: string) {

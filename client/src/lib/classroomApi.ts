@@ -421,12 +421,6 @@ export interface ResetOptions {
   powerUsages?: boolean;
 }
 
-export interface JoinClassroomData {
-  code: string;
-  characterName: string;
-  characterClass: 'GUARDIAN' | 'ARCANE' | 'EXPLORER' | 'ALCHEMIST';
-}
-
 export const classroomApi = {
   // Obtener áreas curriculares
   getCurriculumAreas: async (countryCode: string = 'PE', level?: string): Promise<CurriculumArea[]> => {
@@ -588,11 +582,6 @@ export const classroomApi = {
     return response.data.data;
   },
 
-  // Unirse a clase (estudiante)
-  join: async (data: JoinClassroomData): Promise<{ classroom: Classroom; profileId: string }> => {
-    const response = await api.post('/classrooms/join', data);
-    return response.data.data;
-  },
 
   // Obtener cantidades de elementos clonables
   getCloneableCounts: async (classroomId: string): Promise<{

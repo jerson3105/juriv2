@@ -111,3 +111,14 @@ export const sanitizeString = (str: string): string => {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#x27;');
 };
+
+/**
+ * Nombre parcial para confirmar un código antes de iniciar sesión ("María R."): basta para que el
+ * alumno reconozca su perfil y no expone el nombre completo de un menor a quien adivine códigos.
+ */
+export const maskPersonName = (name: string | null | undefined): string | null => {
+  const tokens = (name ?? '').trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return null;
+  if (tokens.length === 1) return tokens[0];
+  return `${tokens[0]} ${tokens[tokens.length - 1].charAt(0).toUpperCase()}.`;
+};

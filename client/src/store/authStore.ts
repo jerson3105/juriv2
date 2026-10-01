@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { authApi } from '../lib/api';
 import type { User, AuthData } from '../lib/api';
+import { clearSessionData } from '../lib/sessionCleanup';
 
 interface AuthState {
   user: User | null;
@@ -113,6 +114,9 @@ export const useAuthStore = create<AuthState>()(
             isAuthenticated: false,
             error: null,
           });
+          await clearSessionData();
+          // Recarga completa: no queda nada del usuario anterior en memoria.
+          window.location.replace('/login?salida=1');
         }
       },
 

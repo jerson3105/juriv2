@@ -5,7 +5,9 @@ import { v4 as uuidv4 } from 'uuid';
 import passport from 'passport';
 import * as authController from '../controllers/auth.controller.js';
 import { authenticate } from '../middleware/auth.js';
-import { authLimiter, authTokenLimiter } from '../middleware/security.js';
+import {
+  authTokenLimiter, loginAccountLimiter, loginIpLimiter, oauthLimiter, registerLimiter, studentCodeLimiter,
+} from '../middleware/security.js';
 import { config_app } from '../config/env.js';
 import { createUploadFilter, safeUploadFilename, verifyUploadedFile, IMAGE_MIMES } from '../utils/fileValidation.js';
 import {
@@ -31,10 +33,10 @@ const avatarUpload = multer({
 });
 
 // Rutas públicas (con rate limiting estricto)
-router.post('/register', authLimiter, authController.register);
-router.post('/login', authLimiter, authController.login);
-router.post('/student-code/verify', authLimiter, authController.verifyStudentCode);
-router.post('/student-code/register', authLimiter, authController.registerStudentWithCode);
+router.post('/register', registerLimiter, authController.register);
+router.post('/login', loginIpLimiter, loginAccountLimiter, authController.login);
+router.post('/student-code/verify', studentCodeLimiter, authController.verifyStudentCode);
+router.post('/student-code/register', studentCodeLimiter, authController.registerStudentWithCode);
 router.post('/refresh', authTokenLimiter, authController.refresh);
 router.post('/logout', authTokenLimiter, authController.logout);
 
@@ -60,24 +62,32 @@ router.get('/google', (req, res, next) => {
     path: '/api/auth',
   });
 
-  passport.authenticate('google', { 
+  passport.authenticate('google', {
     scope: ['profile', 'email'],
     session: false,
     state,
-  })(req, res, next);
+    // En computadoras compartidas del colegio, Google no debe entrar solo con la cuenta del alumno anterior.
+    prompt: 'select_account',
+  } as passport.AuthenticateOptions)(req, res, next);
 });
 
-// Callback de Google
-router.get('/google/callback', 
-  passport.authenticate('google', { 
-    session: false,
-    failureRedirect: `${config_app.clientUrl}/login?error=google_auth_failed`
-  }),
-  authController.googleCallback
-);
+// Callback de Google. Los fallos esperados vuelven al login con un código que la pantalla explica
+// (antes salían como JSON 500).
+router.get('/google/callback', (req, res, next) => {
+  passport.authenticate('google', { session: false }, (error: unknown, user: unknown, info?: { code?: string }) => {
+    if (error || !user) {
+      if (error) console.error('Error en Google OAuth:', error);
+      const code = info?.code ?? 'google_auth_failed';
+      res.redirect(`${config_app.clientUrl}/login?error=${encodeURIComponent(code)}`);
+      return;
+    }
+    req.user = user as Express.User;
+    next();
+  })(req, res, next);
+}, authController.googleCallback);
 
 // Completar registro de Google con rol seleccionado
-router.post('/google/complete-registration', authLimiter, authController.completeGoogleRegistration);
-router.post('/google/exchange-code', authLimiter, authController.exchangeGoogleCode);
+router.post('/google/complete-registration', oauthLimiter, authController.completeGoogleRegistration);
+router.post('/google/exchange-code', oauthLimiter, authController.exchangeGoogleCode);
 
 export default router;

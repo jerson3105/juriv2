@@ -76,3 +76,16 @@ export const publicErrorMessage = (error: unknown, fallback = 'Error interno del
   if (process.env.NODE_ENV === 'production') return fallback;
   return error instanceof Error && error.message ? error.message : fallback;
 };
+
+/**
+ * Clave única duplicada en MySQL. Drizzle 0.44 envuelve el error del driver en `cause`,
+ * así que mirar solo `error.code` dejaba pasar el duplicado como un 500.
+ */
+export const isDuplicateEntry = (error: unknown): boolean => {
+  const candidates = [error, (error as { cause?: unknown } | null | undefined)?.cause];
+  return candidates.some((e) => {
+    if (!e || typeof e !== 'object') return false;
+    const dbError = e as { code?: string; errno?: number };
+    return dbError.code === 'ER_DUP_ENTRY' || dbError.errno === 1062;
+  });
+};

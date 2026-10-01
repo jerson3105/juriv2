@@ -5,6 +5,8 @@ import { eq, or } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { config_app } from './env.js';
 import { OAUTH_STATE_COOKIE_NAME, verifyOAuthState } from '../utils/oauth-state.js';
+import { isDuplicateEntry } from '../utils/errors.js';
+import { revokeAllUserTokens } from '../utils/jwt.js';
 
 type UserRole = 'TEACHER' | 'STUDENT' | 'PARENT';
 
@@ -15,14 +17,10 @@ const normalizeAvatarUrl = (value?: string | null): string | null => {
   return normalized ? normalized : null;
 };
 
-const isDuplicateEntryError = (error: unknown): boolean => {
-  if (!error || typeof error !== 'object') {
-    return false;
-  }
+const isDuplicateEntryError = isDuplicateEntry;
 
-  const dbError = error as { code?: string; errno?: number };
-  return dbError.code === 'ER_DUP_ENTRY' || dbError.errno === 1062;
-};
+// Fallos esperados: la ruta del callback redirige a /login?error=<code> y la pantalla lo explica.
+const fail = (code: string) => ({ code });
 
 export const configurePassport = () => {
   // Solo configurar si las credenciales están disponibles
@@ -49,18 +47,18 @@ export const configurePassport = () => {
           const stateValidation = verifyOAuthState(stateToken, stateNonce);
 
           if (!stateValidation.isValid) {
-            return done(new Error('Estado OAuth inválido o expirado'), undefined);
+            return done(null, false, fail('google_state_invalid'));
           }
 
           const selectedRole = stateValidation.role;
           const hasSelectedRole = !!selectedRole;
           
           if (!email) {
-            return done(new Error('No se pudo obtener el email de Google'), undefined);
+            return done(null, false, fail('google_email_missing'));
           }
 
           if (!googleId) {
-            return done(new Error('No se pudo obtener el identificador de Google'), undefined);
+            return done(null, false, fail('google_auth_failed'));
           }
 
           // Solo emails verificados por Google: la cuenta se vincula por email con cualquier
@@ -69,7 +67,7 @@ export const configurePassport = () => {
             (profile.emails?.[0] as { verified?: boolean | string } | undefined)?.verified ??
             (profile as any)._json?.email_verified;
           if (emailVerified !== true && emailVerified !== 'true') {
-            return done(new Error('El email de Google no está verificado'), undefined);
+            return done(null, false, fail('google_email_unverified'));
           }
 
           const normalizedEmail = normalizeEmail(email);
@@ -90,7 +88,7 @@ export const configurePassport = () => {
 
           if (user) {
             if (!user.isActive) {
-              return done(new Error('Tu cuenta ha sido desactivada'), undefined);
+              return done(null, false, fail('account_disabled'));
             }
 
             // Usuario existe - actualizar vínculo con Google si hace falta
@@ -99,6 +97,11 @@ export const configurePassport = () => {
             const shouldUpdateAvatar = !user.avatarUrl && !!normalizedAvatarUrl;
 
             if (shouldUpdateProvider || shouldUpdateGoogleId || shouldUpdateAvatar) {
+              // Primera vez con Google sobre una cuenta con contraseña: el correo nunca se verificó, así que
+              // otra persona pudo registrarlo antes. Se cierran sus sesiones para que no conserve acceso.
+              if (shouldUpdateProvider || shouldUpdateGoogleId) {
+                await revokeAllUserTokens(user.id);
+              }
               await db.update(users)
                 .set({ 
                   googleId,
@@ -183,11 +186,11 @@ export const configurePassport = () => {
             });
 
             if (!user) {
-              return done(new Error('Error al completar autenticación con Google'), undefined);
+              return done(null, false, fail('google_auth_failed'));
             }
 
             if (!user.isActive) {
-              return done(new Error('Tu cuenta ha sido desactivada'), undefined);
+              return done(null, false, fail('account_disabled'));
             }
 
             return done(null, user);

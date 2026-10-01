@@ -424,12 +424,6 @@ const transferCompetencyIndicatorsSchema = z.object({
   }
 });
 
-const joinClassroomSchema = z.object({
-  code: z.string().length(6),
-  characterName: z.string().min(2).max(100),
-  characterClass: z.enum(['GUARDIAN', 'ARCANE', 'EXPLORER', 'ALCHEMIST']),
-});
-
 // Reseteo selectivo: solo categorías conocidas, booleanas y al menos una.
 const resetOptionsSchema = z.object({
   points: z.boolean().optional(),
@@ -1403,41 +1397,6 @@ REGLAS:
     }
   }
 
-  async join(req: Request, res: Response) {
-    try {
-      const data = joinClassroomSchema.parse(req.body);
-      const result = await classroomService.joinByCode(
-        data.code,
-        req.user!.id,
-        data.characterName,
-        data.characterClass
-      );
-
-      res.status(201).json({
-        success: true,
-        message: `Te has unido a ${result.classroom.name}`,
-        data: result,
-      });
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({
-          success: false,
-          message: 'Datos inválidos',
-          errors: error.errors,
-        });
-      }
-      if (error instanceof Error) {
-        return res.status(400).json({
-          success: false,
-          message: error.message,
-        });
-      }
-      res.status(500).json({
-        success: false,
-        message: 'Error al unirse a la clase',
-      });
-    }
-  }
 
   async getCurriculumAreas(req: Request, res: Response) {
     try {
