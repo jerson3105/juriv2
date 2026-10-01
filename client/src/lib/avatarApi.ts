@@ -1,20 +1,5 @@
-import axios from 'axios';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
-
-const api = axios.create({
-  baseURL: API_URL,
-  withCredentials: true,
-});
-
-// Interceptor para agregar token
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('accessToken');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+// Instancia común: token en memoria y renovación de la sesión.
+import api from './api';
 
 export type AvatarGender = 'MALE' | 'FEMALE';
 export type AvatarSlot = 'HEAD' | 'HAIR' | 'EYES' | 'TOP' | 'BOTTOM' | 'LEFT_HAND' | 'RIGHT_HAND' | 'SHOES' | 'BACK' | 'FLAG' | 'BACKGROUND';

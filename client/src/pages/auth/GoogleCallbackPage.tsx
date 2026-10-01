@@ -47,22 +47,14 @@ export const GoogleCallbackPage = () => {
           throw new Error('No se pudo intercambiar el código de autenticación');
         }
 
-        const { accessToken, refreshToken } = tokenData;
+        const { accessToken } = tokenData;
+        // El refresh quedó en una cookie httpOnly; el access token vive en memoria.
+        useAuthStore.getState().setAccessToken(accessToken);
 
-        // Guardar tokens temporalmente para hacer la petición
-        localStorage.setItem('accessToken', accessToken);
-        localStorage.setItem('refreshToken', refreshToken);
-        
-        // Obtener datos del usuario
         const response = await authApi.getMe();
         
         if (response.data.success && response.data.data) {
-          // Guardar en el store con los datos del usuario
-          setAuth({
-            user: response.data.data,
-            accessToken,
-            refreshToken,
-          });
+          setAuth({ user: response.data.data, accessToken });
           
           // El alumno que venía de /unirse termina de unirse a su clase.
           navigate(response.data.data.role === 'STUDENT' ? studentLanding() : '/dashboard');
@@ -71,9 +63,6 @@ export const GoogleCallbackPage = () => {
         }
       } catch (err) {
         console.error('Error al procesar callback OAuth:', err);
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
-        localStorage.removeItem('auth-storage');
 
         if (!code) {
           navigate('/login?error=missing_code');

@@ -94,8 +94,25 @@ export const refreshTokens = mysqlTable('refresh_tokens', {
   id: varchar('id', { length: 36 }).primaryKey(),
   token: varchar('token', { length: 500 }).notNull().unique(),
   userId: varchar('user_id', { length: 36 }).notNull(),
+  /** Sesión a la que pertenece (null = token anterior a las sesiones). */
+  sessionId: varchar('session_id', { length: 36 }),
   expiresAt: datetime('expires_at').notNull(),
+  /** Rotado: se marca en vez de borrarse para detectar reusos. */
+  usedAt: datetime('used_at'),
   createdAt: datetime('created_at').notNull(),
+});
+
+/** Sesión de un dispositivo: se revoca al instante (también sus sockets) y tiene una vida máxima. */
+export const authSessions = mysqlTable('auth_sessions', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  userId: varchar('user_id', { length: 36 }).notNull(),
+  /** false = cookie de sesión (se borra al cerrar el navegador): alumnos en equipos compartidos. */
+  persistent: boolean('persistent').notNull().default(true),
+  userAgent: varchar('user_agent', { length: 255 }),
+  createdAt: datetime('created_at').notNull(),
+  lastSeenAt: datetime('last_seen_at').notNull(),
+  expiresAt: datetime('expires_at').notNull(),
+  revokedAt: datetime('revoked_at'),
 });
 
 export const refreshTokensRelations = relations(refreshTokens, ({ one }) => ({

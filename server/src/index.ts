@@ -19,6 +19,7 @@ import { userCanAccessClassroom } from './utils/access.js';
 import { eq } from 'drizzle-orm';
 import { announcementService } from './services/announcement.service.js';
 import { chatService } from './services/chat.service.js';
+import { getSessionState } from './utils/jwt.js';
 
 // Crear aplicación Express
 const app = express();
@@ -140,7 +141,16 @@ io.use(async (socket, next) => {
       userId: string;
       email: string;
       role: string;
+      sid?: string;
+      exp?: number;
     };
+
+    if (decoded.sid) {
+      const session = await getSessionState(decoded.sid);
+      if (!session || !session.active || session.userId !== decoded.userId) {
+        return next(new Error('Authentication error: Session revoked'));
+      }
+    }
     
     // Verificar que el usuario existe y está activo
     const user = await db.query.users.findFirst({
@@ -155,6 +165,8 @@ io.use(async (socket, next) => {
       return next(new Error('Authentication error: Invalid user'));
     }
     
+    socket.data.sid = decoded.sid ?? null;
+    socket.data.exp = decoded.exp ?? null;
     // Guardar datos del usuario en el socket
     socket.data.user = {
       id: user.id,
@@ -189,6 +201,45 @@ io.on('connection', (socket) => {
   
   // Auto-join user to their personal room for notifications
   socket.join(`user:${user.id}`);
+  // Sala de la sesión: cerrar sesión desconecta solo los sockets de ese dispositivo.
+  if (socket.data.sid) socket.join(`session:${socket.data.sid}`);
+
+  // El socket vive mientras su token: el cliente lo renueva con 'auth:refresh' (sin reconectar,
+  // así no pierde sus salas). Si vence sin renovarse, se desconecta.
+  let expiryTimer: NodeJS.Timeout | null = null;
+  const scheduleExpiry = () => {
+    if (expiryTimer) clearTimeout(expiryTimer);
+    const exp = socket.data.exp as number | null;
+    if (!exp) return;
+    const ms = exp * 1000 - Date.now() + 30_000;
+    expiryTimer = setTimeout(() => {
+      socket.emit('auth:expired');
+      socket.disconnect(true);
+    }, Math.max(ms, 1_000));
+  };
+  scheduleExpiry();
+
+  socket.on('auth:refresh', async (newToken: unknown, ack?: (result: { ok: boolean }) => void) => {
+    try {
+      if (typeof newToken !== 'string') throw new Error('token');
+      const next = jwt.verify(newToken, config_app.jwt.secret, { algorithms: ['HS256'] }) as { userId: string; sid?: string; exp?: number };
+      if (next.userId !== user.id) throw new Error('user');
+      if (next.sid) {
+        const session = await getSessionState(next.sid);
+        if (!session || !session.active || session.userId !== user.id) throw new Error('session');
+        if (next.sid !== socket.data.sid) {
+          if (socket.data.sid) socket.leave(`session:${socket.data.sid}`);
+          socket.join(`session:${next.sid}`);
+          socket.data.sid = next.sid;
+        }
+      }
+      socket.data.exp = next.exp ?? null;
+      scheduleExpiry();
+      ack?.({ ok: true });
+    } catch {
+      ack?.({ ok: false });
+    }
+  });
 
   // Auto-join parents to their children's classroom rooms for announcements + chat
   if (user.role === 'PARENT') {
@@ -216,6 +267,7 @@ io.on('connection', (socket) => {
   });
   
   socket.on('disconnect', () => {
+    if (expiryTimer) clearTimeout(expiryTimer);
     logger.info(`🔌 Cliente desconectado`, {
       socketId: socket.id,
       userId: user.id,

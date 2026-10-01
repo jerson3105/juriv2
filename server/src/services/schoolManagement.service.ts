@@ -149,7 +149,7 @@ class SchoolManagementService {
       .from(schools)
       .where(and(
         eq(schools.inviteCode, code), eq(schools.isVerified, true), eq(schools.isActive, true),
-        sql`(${schools.inviteExpiresAt} IS NULL OR ${schools.inviteExpiresAt} > NOW())`,
+        sql`(${schools.inviteExpiresAt} IS NULL OR ${schools.inviteExpiresAt} > ${new Date()})`,
       ));
     return school ?? null;
   }

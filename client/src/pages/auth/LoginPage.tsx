@@ -19,6 +19,7 @@ export const LoginPage = () => {
   const errorCode = searchParams.get('error');
   const notice = errorCode ? AUTH_ERROR_MESSAGES[errorCode] ?? AUTH_ERROR_MESSAGES.google_auth_failed : null;
   const signedOut = searchParams.get('salida') === '1';
+  const passwordChanged = searchParams.get('aviso') === 'clave';
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,6 +53,11 @@ export const LoginPage = () => {
           <p className="font-semibold">Cerraste sesión.</p>
           <p className="mt-0.5">¿Usas una computadora del colegio y entraste con Google? Cierra también tu cuenta de Google.</p>
         </div>
+      )}
+      {passwordChanged && (
+        <p className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100" role="status">
+          Contraseña actualizada. Cerramos tus sesiones en todos los dispositivos: entra con tu contraseña nueva.
+        </p>
       )}
       {notice && (
         <p className="mb-5 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-400/40 dark:bg-amber-400/10 dark:text-amber-100" role="alert">

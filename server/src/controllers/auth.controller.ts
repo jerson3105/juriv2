@@ -7,7 +7,10 @@ import { cache } from '../utils/cache.js';
 import { OAUTH_STATE_COOKIE_NAME } from '../utils/oauth-state.js';
 import { passwordSchema } from '../utils/passwordPolicy.js';
 import { AppError } from '../utils/errors.js';
+import { corsOptions } from '../middleware/security.js';
+import { SessionError } from '../utils/jwt.js';
 import { teacherVerificationService } from '../services/teacherVerification.service.js';
+import jwt from 'jsonwebtoken';
 
 // Schema de validación de contraseña robusta
 
@@ -116,6 +119,63 @@ const oauthCookieBaseOptions = {
   ...(oauthCookieDomain ? { domain: oauthCookieDomain } : {}),
 };
 
+// ==================== Cookie de sesión ====================
+// El refresh viaja en una cookie httpOnly (JavaScript no la lee: un XSS ya no se lleva la sesión).
+// Alumnos: cookie de sesión, se borra al cerrar el navegador (equipos compartidos del colegio).
+const SESSION_COOKIE = 'juried_rt';
+const sessionCookieOptions = {
+  httpOnly: true,
+  sameSite: 'lax' as const,
+  secure: config_app.isProd,
+  path: '/api/auth',
+  ...(oauthCookieDomain ? { domain: oauthCookieDomain } : {}),
+};
+
+const setSessionCookie = (res: Response, tokens: { refreshToken: string; persistent?: boolean; expiresAt?: Date }) => {
+  const maxAge = tokens.persistent === false || !tokens.expiresAt ? undefined : Math.max(0, tokens.expiresAt.getTime() - Date.now());
+  res.cookie(SESSION_COOKIE, tokens.refreshToken, { ...sessionCookieOptions, ...(maxAge ? { maxAge } : {}) });
+};
+
+const clearSessionCookie = (res: Response) => {
+  res.clearCookie(SESSION_COOKIE, sessionCookieOptions);
+};
+
+/** Datos de sesión para el cuerpo: sin el refresh (va en la cookie) ni detalles de la sesión. */
+const publicAuth = <T extends { refreshToken: string; sessionId?: string; persistent?: boolean; expiresAt?: Date }>(result: T) => {
+  const { refreshToken: _refresh, sessionId: _sid, persistent: _persistent, expiresAt: _expires, ...rest } = result;
+  return rest;
+};
+
+const sendAuth = <T extends { refreshToken: string; sessionId?: string; persistent?: boolean; expiresAt?: Date }>(
+  res: Response, status: number, message: string, result: T,
+) => {
+  setSessionCookie(res, result);
+  res.status(status).json({ success: true, message, data: publicAuth(result) });
+};
+
+/**
+ * La cookie solo se usa en peticiones de la propia app: cabecera X-Juried-Client y origen permitido
+ * (una página ajena no puede añadir esa cabecera sin que CORS la bloquee).
+ */
+const isTrustedAppRequest = (req: Request): boolean => {
+  if (req.get('x-juried-client') !== '1') return false;
+  const origin = req.get('origin');
+  if (!origin) return true;
+  const allowed = Array.isArray(corsOptions.origin) ? corsOptions.origin : [corsOptions.origin];
+  return allowed.includes(origin);
+};
+
+const sidFromAccessToken = (req: Request): string | null => {
+  const header = req.get('authorization');
+  if (!header?.startsWith('Bearer ')) return null;
+  try {
+    const decoded = jwt.verify(header.slice(7).trim(), config_app.jwt.secret, { algorithms: ['HS256'], ignoreExpiration: true }) as { sid?: string };
+    return decoded.sid ?? null;
+  } catch {
+    return null;
+  }
+};
+
 const getCookieValue = (req: Request, cookieName: string): string | undefined => {
   const cookieBag = (req as Request & { cookies?: Record<string, unknown> }).cookies;
   const value = cookieBag?.[cookieName];
@@ -171,15 +231,17 @@ const clearOAuthStateCookie = (res: Response) => {
   });
 };
 
-const issueOAuthCode = (tokens: { accessToken: string; refreshToken: string }): string => {
+type OAuthTokens = { accessToken: string; refreshToken: string; persistent?: boolean; expiresAt?: Date };
+
+const issueOAuthCode = (tokens: OAuthTokens): string => {
   const code = uuidv4();
   cache.set(oauthCodeKey(code), tokens, OAUTH_CODE_TTL_SECONDS);
   return code;
 };
 
-const consumeOAuthCode = (code: string): { accessToken: string; refreshToken: string } | null => {
+const consumeOAuthCode = (code: string): OAuthTokens | null => {
   const key = oauthCodeKey(code);
-  const tokens = cache.get<{ accessToken: string; refreshToken: string }>(key);
+  const tokens = cache.get<OAuthTokens>(key);
   if (!tokens) return null;
 
   cache.delete(key);
@@ -347,12 +409,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
   try {
     const validatedData = registerSchema.parse(req.body);
     const result = await authService.register(validatedData);
-    
-    res.status(201).json({
-      success: true,
-      message: 'Usuario registrado exitosamente',
-      data: result,
-    });
+    sendAuth(res, 201, 'Usuario registrado exitosamente', result);
   } catch (error) {
     handleAuthError(res, error, 'Error al registrar usuario');
   }
@@ -392,12 +449,7 @@ export const registerStudentWithCode = async (req: Request, res: Response): Prom
   try {
     const validatedData = registerStudentWithCodeSchema.parse(req.body);
     const result = await authService.registerStudentWithCode(validatedData);
-
-    res.status(201).json({
-      success: true,
-      message: 'Cuenta de estudiante activada exitosamente',
-      data: result,
-    });
+    sendAuth(res, 201, 'Cuenta de estudiante activada exitosamente', result);
   } catch (error) {
     handleAuthError(res, error, 'Error al activar la cuenta de estudiante');
   }
@@ -411,12 +463,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
   try {
     const validatedData = loginSchema.parse(req.body);
     const result = await authService.login(validatedData);
-    
-    res.json({
-      success: true,
-      message: 'Inicio de sesión exitoso',
-      data: result,
-    });
+    sendAuth(res, 200, 'Inicio de sesión exitoso', result);
   } catch (error) {
     handleAuthError(res, error);
   }
@@ -428,15 +475,21 @@ export const login = async (req: Request, res: Response): Promise<void> => {
  */
 export const refresh = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { refreshToken } = refreshSchema.parse(req.body);
-    const tokens = await authService.refreshTokens(refreshToken);
-    
-    res.json({
-      success: true,
-      message: 'Tokens actualizados',
-      data: tokens,
-    });
+    const cookieToken = getCookieValue(req, SESSION_COOKIE);
+    if (cookieToken && !isTrustedAppRequest(req)) {
+      res.status(403).json({ success: false, message: 'Solicitud no permitida' });
+      return;
+    }
+    const refreshToken = cookieToken ?? refreshSchema.parse(req.body).refreshToken;
+    const tokens = await authService.refreshTokens(refreshToken, req.get('user-agent'));
+    setSessionCookie(res, tokens);
+    res.json({ success: true, message: 'Tokens actualizados', data: { accessToken: tokens.accessToken } });
   } catch (error) {
+    if (error instanceof SessionError) {
+      clearSessionCookie(res);
+      res.status(401).json({ success: false, message: error.message, code: error.code === 'INVALID' ? 'REFRESH_INVALID' : `SESSION_${error.code}` });
+      return;
+    }
     handleAuthError(res, error);
   }
 };
@@ -447,8 +500,20 @@ export const refresh = async (req: Request, res: Response): Promise<void> => {
  */
 export const logout = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { refreshToken } = logoutSchema.parse(req.body);
-    await authService.logout(refreshToken);
+    const cookieToken = getCookieValue(req, SESSION_COOKIE);
+    if (cookieToken && !isTrustedAppRequest(req)) {
+      res.status(403).json({ success: false, message: 'Solicitud no permitida' });
+      return;
+    }
+    const bodyToken = logoutSchema.safeParse(req.body ?? {});
+    const refreshToken = cookieToken ?? (bodyToken.success ? bodyToken.data.refreshToken : undefined);
+    if (refreshToken) {
+      await authService.logout(refreshToken);
+    } else {
+      const sid = sidFromAccessToken(req);
+      if (sid) await authService.logoutSession(sid);
+    }
+    clearSessionCookie(res);
     
     res.json({
       success: true,
@@ -474,6 +539,7 @@ export const logoutAll = async (req: Request, res: Response): Promise<void> => {
     }
     
     await authService.logoutAll(req.user.id);
+    clearSessionCookie(res);
     
     res.json({
       success: true,
@@ -791,10 +857,7 @@ export const exchangeGoogleCode = async (req: Request, res: Response): Promise<v
       return;
     }
 
-    res.json({
-      success: true,
-      data: tokens,
-    });
+    sendAuth(res, 200, 'Inicio de sesión con Google', tokens);
   } catch (error) {
     handleAuthError(res, error, 'Error al completar autenticación con Google');
   }
@@ -829,12 +892,7 @@ export const completeGoogleRegistration = async (req: Request, res: Response): P
     }
 
     const result = await authService.completeGoogleRegistration(googleData, role);
-    
-    res.json({
-      success: true,
-      message: 'Registro completado exitosamente',
-      data: result,
-    });
+    sendAuth(res, 200, 'Registro completado exitosamente', result);
   } catch (error) {
     handleAuthError(res, error, 'Error al completar registro con Google');
   }
@@ -856,7 +914,7 @@ export const getStudentSwitch = async (req: Request, res: Response): Promise<voi
 export const switchToStudent = async (req: Request, res: Response): Promise<void> => {
   try {
     const result = await authService.switchTeacherToStudent(req.user!.id);
-    res.json({ success: true, message: 'Tu cuenta ahora es de estudiante', data: result });
+    sendAuth(res, 200, 'Tu cuenta ahora es de estudiante', result);
   } catch (error) {
     if (error instanceof AppError) {
       res.status(error.statusCode).json({ success: false, message: error.message });

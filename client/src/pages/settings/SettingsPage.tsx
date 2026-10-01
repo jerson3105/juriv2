@@ -100,10 +100,8 @@ export const SettingsPage = () => {
   const changePasswordMutation = useMutation({
     mutationFn: userApi.changePassword,
     onSuccess: () => {
-      toast.success('Contraseña actualizada. Por favor, inicia sesión nuevamente.');
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
+      // El servidor cerró todas las sesiones (también esta): se entra de nuevo con la clave nueva.
+      void useAuthStore.getState().endSession('aviso=clave');
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.message || 'Error al cambiar contraseña');

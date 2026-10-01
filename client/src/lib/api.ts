@@ -1,8 +1,6 @@
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
-import { updateSocketToken } from './socket';
-import { queryClient } from './queryClient';
-import { clearSessionData } from './sessionCleanup';
+import { APP_HEADERS, refreshSession } from './session';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
@@ -11,41 +9,15 @@ export const api = axios.create({
   baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
+    ...APP_HEADERS,
   },
   withCredentials: true,
 });
 
-let isRefreshing = false;
-let isLoggingOut = false;
-let refreshQueue: Array<{
-  resolve: (token: string) => void;
-  reject: (error: unknown) => void;
-}> = [];
-
-const processQueue = (error: unknown, token: string | null = null) => {
-  refreshQueue.forEach(({ resolve, reject }) => {
-    if (error) reject(error);
-    else resolve(token!);
-  });
-  refreshQueue = [];
-};
-
-const clearClientAuthSession = (): void => {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  console.error('[clearClientAuthSession] Limpiando sesión desde interceptor — stack:', new Error().stack);
-
-  window.localStorage.removeItem('accessToken');
-  window.localStorage.removeItem('refreshToken');
-  window.localStorage.removeItem('auth-storage');
-};
-
-// Interceptor para añadir token de autenticación
+// El access token vive solo en memoria (el refresh va en una cookie httpOnly).
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('accessToken');
+    const token = useAuthStore.getState().accessToken;
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -54,93 +26,56 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Interceptor para manejar errores y refresh token
+// Rutas que no deben disparar una renovación (son las que dan o cierran la sesión).
+const NO_REFRESH_ROUTES = [
+  '/auth/login',
+  '/auth/register',
+  '/auth/student-code/verify',
+  '/auth/join-code/verify',
+  '/auth/student-code/register',
+  '/auth/refresh',
+  '/auth/logout',
+  '/auth/google',
+  '/auth/google/complete-registration',
+  '/auth/google/exchange-code',
+];
+// La sesión terminó en el servidor (cerrada, robada o vencida): no se intenta renovar.
+const SESSION_ENDED = new Set(['SESSION_REVOKED', 'SESSION_REUSED', 'SESSION_EXPIRED', 'REFRESH_INVALID']);
+
+let endingSession = false;
+const endSession = () => {
+  if (endingSession) return;
+  endingSession = true;
+  void useAuthStore.getState().endSession('error=session_expired');
+};
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
-
     const status = error.response?.status;
-    const code = error.response?.data?.code;
+    const code = error.response?.data?.code as string | undefined;
     const message = error.response?.data?.message as string | undefined;
-    const noRefreshRoutes = [
-      '/auth/login',
-      '/auth/register',
-      '/auth/student-code/verify',
-      '/auth/join-code/verify',
-      '/auth/student-code/register',
-      '/auth/refresh',
-      '/auth/logout',
-      '/auth/google',
-      '/auth/google/callback',
-      '/auth/google/complete-registration',
-      '/auth/google/exchange-code',
-    ];
-    const isAuthRoute = noRefreshRoutes.some(route => originalRequest?.url?.includes(route));
+    const isAuthRoute = NO_REFRESH_ROUTES.some((route) => originalRequest?.url?.includes(route));
 
-    // Si el token expiró, intentar refrescarlo
-    if (
-      status === 401 &&
-      !isAuthRoute &&
-      !originalRequest._retry &&
-      (code === 'TOKEN_EXPIRED' || message === 'Token expirado' || message === 'Token de acceso no proporcionado' || message === 'Token inválido')
-    ) {
-      originalRequest._retry = true;
-
-      // Si ya hay un refresh en curso, encolar este request
-      if (isRefreshing) {
-        return new Promise<string>((resolve, reject) => {
-          refreshQueue.push({ resolve, reject });
-        }).then(() => {
-          delete originalRequest.headers?.Authorization;
-          return api(originalRequest);
-        });
-      }
-
-      isRefreshing = true;
-
-      try {
-        const refreshToken = localStorage.getItem('refreshToken');
-        if (!refreshToken) {
-          throw new Error('No refresh token');
-        }
-
-        const response = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
-        const { accessToken, refreshToken: newRefreshToken } = response.data.data;
-
-        // Write to localStorage FIRST — the request interceptor reads from here.
-        // Then update Zustand state (which also triggers persist to auth-storage).
-        localStorage.setItem('accessToken', accessToken);
-        localStorage.setItem('refreshToken', newRefreshToken);
-        useAuthStore.getState().setTokens(accessToken, newRefreshToken);
-        updateSocketToken(accessToken);
-
-        processQueue(null, accessToken);
-
-        // Invalidar queries para que refresquen con el token nuevo
-        queryClient.invalidateQueries();
-
-        // Don't set header here — let the request interceptor read
-        // the fresh token from localStorage (already saved above).
-        delete originalRequest.headers?.Authorization;
-        return api(originalRequest);
-      } catch (refreshError) {
-        processQueue(refreshError);
-
-        // Solo el primer caller ejecuta limpieza y redirect
-        if (!isLoggingOut) {
-          isLoggingOut = true;
-          clearClientAuthSession();
-          void clearSessionData();
-          window.location.replace('/login?error=session_expired');
-        }
-        return Promise.reject(refreshError);
-      } finally {
-        isRefreshing = false;
-      }
+    if (status !== 401 || isAuthRoute || !originalRequest || originalRequest._retry) {
+      return Promise.reject(error);
     }
+    if (code && SESSION_ENDED.has(code)) {
+      if (useAuthStore.getState().isAuthenticated) endSession();
+      return Promise.reject(error);
+    }
+    const renewable = code === 'TOKEN_EXPIRED' || message === 'Token expirado' || message === 'Token de acceso no proporcionado' || message === 'Token inválido';
+    if (!renewable) return Promise.reject(error);
 
-    return Promise.reject(error);
+    originalRequest._retry = true;
+    const token = await refreshSession();
+    if (!token) {
+      if (useAuthStore.getState().isAuthenticated) endSession();
+      return Promise.reject(error);
+    }
+    delete originalRequest.headers?.Authorization;
+    return api(originalRequest);
   }
 );
 
@@ -187,11 +122,9 @@ export const authApi = {
   login: (data: { email: string; password: string }) =>
     api.post<ApiResponse<AuthData>>('/auth/login', data),
 
-  logout: (refreshToken: string) =>
-    api.post<ApiResponse<null>>('/auth/logout', { refreshToken }),
+  /** Cierra la sesión de este dispositivo (la cookie la identifica). */
+  logout: () => api.post<ApiResponse<null>>('/auth/logout'),
 
-  refresh: (refreshToken: string) =>
-    api.post<ApiResponse<{ accessToken: string; refreshToken: string }>>('/auth/refresh', { refreshToken }),
 
   getMe: () => api.get<ApiResponse<User>>('/auth/me'),
 
@@ -204,7 +137,7 @@ export const authApi = {
   }) => api.post<ApiResponse<AuthData>>('/auth/google/complete-registration', data),
 
   exchangeGoogleCode: (code?: string) =>
-    api.post<ApiResponse<{ accessToken: string; refreshToken: string }>>(
+    api.post<ApiResponse<{ accessToken: string }>>(
       '/auth/google/exchange-code',
       code ? { code } : {}
     ),
@@ -231,8 +164,8 @@ export interface User {
 
 export interface AuthData {
   user: User;
+  /** El refresh no viaja en el cuerpo: va en una cookie httpOnly. */
   accessToken: string;
-  refreshToken: string;
 }
 
 export default api;

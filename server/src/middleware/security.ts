@@ -16,7 +16,7 @@ export const corsOptions = {
     : config_app.clientUrl,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-Juried-Client'],
 };
 
 // Rate limiter general

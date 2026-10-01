@@ -4,7 +4,10 @@ import { and, eq, or, sql } from 'drizzle-orm';
 import { db, users, parentProfiles, studentProfiles, classrooms } from '../db/index.js';
 import { schoolMembers, schools } from '../db/schema.js';
 import { cache, CACHE_KEYS } from '../utils/cache.js';
-import { consumeRefreshToken, generateTokenPair, revokeRefreshToken, revokeAllUserTokens } from '../utils/jwt.js';
+import {
+  generateTokenPair, revokeAllUserTokens, revokeRefreshToken, revokeSession, rotateRefreshToken, sessionIdForRefreshToken,
+  type SessionTokens,
+} from '../utils/jwt.js';
 import { v4 as uuidv4 } from 'uuid';
 import { avatarService } from './avatar.service.js';
 import { studentService } from './student.service.js';
@@ -48,6 +51,10 @@ interface AuthResponse {
   };
   accessToken: string;
   refreshToken: string;
+  /** De la sesión: el controlador decide la cookie (persistente o de sesión) y no los envía en el cuerpo. */
+  sessionId?: string;
+  persistent?: boolean;
+  expiresAt?: Date;
 }
 
 export interface StudentCodeVerificationResult {
@@ -598,54 +605,25 @@ export const googleAuth = async (input: GoogleAuthInput): Promise<AuthResponse> 
 /**
  * Refrescar tokens
  */
-export const refreshTokens = async (refreshToken: string): Promise<{ accessToken: string; refreshToken: string }> => {
-  const normalizedRefreshToken = refreshToken.trim();
-  if (!normalizedRefreshToken) {
-    throw new Error('Token de actualización requerido');
-  }
-
-  return await db.transaction(async (tx) => {
-    const payload = await consumeRefreshToken(normalizedRefreshToken, tx);
-    
-    if (!payload) {
-      throw new Error('Token de actualización inválido o expirado');
-    }
-
-    const user = await tx.query.users.findFirst({
-      where: eq(users.id, payload.userId),
-      columns: {
-        id: true,
-        email: true,
-        role: true,
-        isActive: true,
-      },
-    });
-
-    if (!user || !user.isActive) {
-      throw new Error('Token de actualización inválido o expirado');
-    }
-    
-    // Generar nuevos tokens
-    const tokens = await generateTokenPair({
-      userId: user.id,
-      email: user.email,
-      role: user.role as UserRole,
-    }, tx);
-    
-    return tokens;
-  });
-};
+export const refreshTokens = async (refreshToken: string, userAgent?: string | null): Promise<SessionTokens> =>
+  rotateRefreshToken(refreshToken, userAgent);
 
 /**
- * Cerrar sesión
+ * Cerrar sesión: cierra la sesión entera de ese dispositivo (refresh, access token y sockets).
  */
 export const logout = async (refreshToken: string): Promise<void> => {
   const normalizedRefreshToken = refreshToken.trim();
   if (!normalizedRefreshToken) {
     return;
   }
+  const sessionId = await sessionIdForRefreshToken(normalizedRefreshToken);
+  if (sessionId) await revokeSession(sessionId);
+  else await revokeRefreshToken(normalizedRefreshToken);
+};
 
-  await revokeRefreshToken(normalizedRefreshToken);
+/** Cerrar la sesión indicada por el access token (cuando no llega la cookie). */
+export const logoutSession = async (sessionId: string): Promise<void> => {
+  await revokeSession(sessionId);
 };
 
 /**
@@ -782,7 +760,7 @@ export const updateNotifications = async (
 /**
  * Generar tokens para un usuario existente (usado en Google OAuth callback)
  */
-export const generateTokensForUser = async (userId: string): Promise<{ accessToken: string; refreshToken: string }> => {
+export const generateTokensForUser = async (userId: string): Promise<SessionTokens> => {
   const user = await db.query.users.findFirst({
     where: eq(users.id, userId),
     columns: {

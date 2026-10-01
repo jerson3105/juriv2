@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { config_app } from '../config/env.js';
 import { db, users } from '../db/index.js';
 import { cache, CACHE_KEYS, CACHE_TTL } from '../utils/cache.js';
+import { getSessionState } from '../utils/jwt.js';
 
 type UserRole = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'PARENT';
 
@@ -12,6 +13,8 @@ interface JwtPayload {
   userId: string;
   email: string;
   role: UserRole;
+  /** Sesión del dispositivo (los tokens anteriores a las sesiones no lo traen). */
+  sid?: string;
 }
 
 interface CachedAuthUser {
@@ -78,6 +81,16 @@ export const authenticate = async (
 
     // Verificar token
     const decoded = jwt.verify(token, config_app.jwt.secret, { algorithms: ['HS256'] }) as JwtPayload;
+
+    // Sesión cerrada (logout, "cerrar todas", cambio de contraseña): el access token deja de servir
+    // al instante, no a los 15 minutos.
+    if (decoded.sid) {
+      const session = await getSessionState(decoded.sid);
+      if (!session || !session.active || session.userId !== decoded.userId) {
+        res.status(401).json({ success: false, message: 'Tu sesión terminó', code: 'SESSION_REVOKED' });
+        return;
+      }
+    }
 
     const user = await getUserFromCacheOrDb(decoded.userId);
     

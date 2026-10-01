@@ -23,34 +23,45 @@ export function connectSocket(): Socket | null {
   }
 
   socket = io(SOCKET_URL, {
-    auth: { token },
+    // Función: cada reconexión usa el token vigente (vive en memoria y se renueva).
+    auth: (cb) => cb({ token: useAuthStore.getState().accessToken }),
     transports: ['websocket', 'polling'],
     reconnection: true,
     reconnectionAttempts: 5,
     reconnectionDelay: 2000,
   });
 
-  // On auth errors, stop auto-reconnect — let axios interceptor handle the refresh.
+  // On auth errors, stop auto-reconnect — let the session refresh handle it.
   // updateSocketToken() will be called after a successful refresh to reconnect.
   socket.on('connect_error', (error) => {
     const msg = error.message || '';
-    if (msg.includes('jwt expired') || msg.includes('401') || msg.includes('Token')) {
+    if (msg.includes('jwt expired') || msg.includes('401') || msg.includes('Token') || msg.includes('Authentication')) {
       console.warn('[socket] Auth error, pausing reconnect — waiting for token refresh:', msg);
-      socket?.io.opts.reconnection && (socket.io.opts.reconnection = false);
+      if (socket?.io.opts.reconnection) socket.io.opts.reconnection = false;
     }
+  });
+
+  // El servidor cierra el socket si su token venció sin renovarse: renovar y volver a conectar.
+  socket.on('auth:expired', () => {
+    void import('./session').then(async ({ refreshSession }) => {
+      const fresh = await refreshSession();
+      if (fresh && socket && !socket.connected) socket.connect();
+    });
   });
 
   return socket;
 }
 
+/**
+ * Token nuevo: si el socket está conectado se renueva sin reconectar (no pierde sus salas);
+ * si no, se vuelve a conectar con él.
+ */
 export function updateSocketToken(token: string): void {
   if (!socket) return;
-
-  // Re-enable reconnection and set new token
   socket.io.opts.reconnection = true;
-  socket.auth = { token };
-
-  if (!socket.connected) {
+  if (socket.connected) {
+    socket.emit('auth:refresh', token);
+  } else {
     socket.connect();
   }
 }

@@ -1,197 +1,253 @@
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
-import { and, eq, lt, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { config_app } from '../config/env.js';
 import { db, refreshTokens, users } from '../db/index.js';
+import { authSessions } from '../db/schema.js';
 import { v4 as uuidv4 } from 'uuid';
 import { getIO } from './notificationEmitter.js';
+import { cache } from './cache.js';
 
 type UserRole = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'PARENT';
 
-interface TokenPayload {
+export interface TokenPayload {
   userId: string;
   email: string;
   role: UserRole;
+  /** Sesión del dispositivo (los tokens anteriores a las sesiones no lo traen). */
+  sid?: string;
 }
 
-interface TokenPair {
+export interface SessionTokens {
   accessToken: string;
+  /** Opaco: viaja en una cookie httpOnly, nunca en el cuerpo de la respuesta. */
   refreshToken: string;
+  sessionId: string;
+  /** false = cookie de sesión (se borra al cerrar el navegador). */
+  persistent: boolean;
+  expiresAt: Date;
 }
 
-const hashRefreshToken = (token: string): string =>
-  crypto.createHash('sha256').update(token).digest('hex');
+const HOUR = 60 * 60 * 1000;
+/** Vida máxima de una sesión: alumnos 8 h (equipos compartidos del colegio), el resto 30 días. */
+export const sessionMaxMs = (role: UserRole) => (role === 'STUDENT' ? 8 * HOUR : 30 * 24 * HOUR);
+/** Dos pestañas que renuevan a la vez con el mismo refresh: no se toma como robo. */
+const REUSE_GRACE_MS = 30 * 1000;
+const SESSION_CACHE_TTL = 30;
+const sessionCacheKey = (sid: string) => `session:${sid}`;
 
-const getRefreshTokenExpiryDate = (token: string): Date => {
-  const decoded = jwt.decode(token) as jwt.JwtPayload | null;
-  if (decoded?.exp && typeof decoded.exp === 'number') {
-    return new Date(decoded.exp * 1000);
+const hashToken = (token: string): string => crypto.createHash('sha256').update(token).digest('hex');
+const isLegacyJwt = (token: string) => token.split('.').length === 3;
+
+export class SessionError extends Error {
+  constructor(message: string, public code: 'INVALID' | 'REUSED' | 'EXPIRED') {
+    super(message);
   }
+}
 
-  // Fallback defensivo si no hay claim exp
-  const fallbackExpiry = new Date();
-  fallbackExpiry.setDate(fallbackExpiry.getDate() + 7);
-  return fallbackExpiry;
-};
+// ==================== Emisión ====================
 
-const findStoredRefreshToken = async (token: string, txOrDb: any = db) => {
-  const tokenHash = hashRefreshToken(token);
+export const generateAccessToken = (payload: TokenPayload): string =>
+  jwt.sign(
+    { userId: payload.userId, email: payload.email, role: payload.role, ...(payload.sid ? { sid: payload.sid } : {}) },
+    config_app.jwt.secret,
+    { expiresIn: config_app.jwt.expiresIn as jwt.SignOptions['expiresIn'], algorithm: 'HS256' },
+  );
 
-  return txOrDb.query.refreshTokens.findFirst({
-    where: or(
-      eq(refreshTokens.token, tokenHash),
-      eq(refreshTokens.token, token)
-    ),
-  });
-};
+const newOpaqueToken = () => crypto.randomBytes(32).toString('base64url');
 
-// Generar Access Token
-export const generateAccessToken = (payload: TokenPayload): string => {
-  return jwt.sign(payload, config_app.jwt.secret, {
-    expiresIn: config_app.jwt.expiresIn as jwt.SignOptions['expiresIn'],
-    algorithm: 'HS256',
-  });
-};
-
-// Generar Refresh Token
-export const generateRefreshToken = (payload: TokenPayload): string => {
-  // jwtid único: dos tokens emitidos en el mismo segundo para el mismo usuario serían
-  // idénticos y chocarían con la restricción única de refresh_tokens.
-  return jwt.sign(payload, config_app.jwt.refreshSecret, {
-    expiresIn: config_app.jwt.refreshExpiresIn as jwt.SignOptions['expiresIn'],
-    algorithm: 'HS256',
-    jwtid: uuidv4(),
-  });
-};
-
-// Generar par de tokens
-export const generateTokenPair = async (payload: TokenPayload, tx: any = db): Promise<TokenPair> => {
-  const accessToken = generateAccessToken(payload);
-  const refreshToken = generateRefreshToken(payload);
-  const refreshTokenHash = hashRefreshToken(refreshToken);
-  
-  // Calcular fecha de expiración del refresh token
-  const expiresAt = getRefreshTokenExpiryDate(refreshToken);
-  
-  // Guardar hash del refresh token en la base de datos
+const insertRefreshToken = async (tx: any, userId: string, sessionId: string, expiresAt: Date): Promise<string> => {
+  const refreshToken = newOpaqueToken();
   await tx.insert(refreshTokens).values({
     id: uuidv4(),
-    token: refreshTokenHash,
-    userId: payload.userId,
+    token: hashToken(refreshToken),
+    userId,
+    sessionId,
     expiresAt,
     createdAt: new Date(),
   });
+  return refreshToken;
+};
 
-  // Último ingreso (para retirar cuentas docentes sin verificar tras 180 días sin uso).
+/** Último ingreso (para retirar cuentas docentes sin verificar): como mucho una escritura al día. */
+const touchLastLogin = async (tx: any, userId: string) => {
   await tx.update(users)
     .set({ lastLoginAt: new Date() })
-    .where(and(eq(users.id, payload.userId), sql`(${users.lastLoginAt} IS NULL OR ${users.lastLoginAt} < NOW() - INTERVAL 1 DAY)`));
-  
-  return { accessToken, refreshToken };
+    .where(and(eq(users.id, userId), sql`(${users.lastLoginAt} IS NULL OR ${users.lastLoginAt} < ${new Date(Date.now() - 24 * HOUR)})`));
 };
 
-// Verificar Refresh Token
-export const verifyRefreshToken = async (token: string): Promise<TokenPayload | null> => {
-  const normalizedToken = token.trim();
-  if (!normalizedToken) {
-    return null;
-  }
+/** Inicia una sesión nueva (login, registro, Google…) y entrega sus tokens. */
+export const generateTokenPair = async (
+  payload: TokenPayload,
+  tx: any = db,
+  options: { userAgent?: string | null } = {},
+): Promise<SessionTokens> => {
+  const now = new Date();
+  const sessionId = uuidv4();
+  const persistent = payload.role !== 'STUDENT';
+  const expiresAt = new Date(now.getTime() + sessionMaxMs(payload.role));
+  await tx.insert(authSessions).values({
+    id: sessionId,
+    userId: payload.userId,
+    persistent,
+    userAgent: options.userAgent?.slice(0, 255) ?? null,
+    createdAt: now,
+    lastSeenAt: now,
+    expiresAt,
+  });
+  const refreshToken = await insertRefreshToken(tx, payload.userId, sessionId, expiresAt);
+  await touchLastLogin(tx, payload.userId);
+  return {
+    accessToken: generateAccessToken({ ...payload, sid: sessionId }),
+    refreshToken,
+    sessionId,
+    persistent,
+    expiresAt,
+  };
+};
 
+// ==================== Renovación ====================
+
+/** Refresh anterior a las sesiones (JWT): se canjea una vez por una sesión nueva. */
+const exchangeLegacyRefresh = async (token: string, userAgent?: string | null): Promise<SessionTokens> => {
+  let decoded: TokenPayload;
   try {
-    // Verificar firma del token
-    const decoded = jwt.verify(normalizedToken, config_app.jwt.refreshSecret, { algorithms: ['HS256'] }) as TokenPayload;
-    
-    // Verificar que existe en la base de datos y no ha expirado
-    const storedToken = await findStoredRefreshToken(normalizedToken);
-    
-    if (!storedToken || storedToken.expiresAt < new Date()) {
-      // Eliminar token expirado si existe
-      if (storedToken) {
-        await db.delete(refreshTokens).where(eq(refreshTokens.id, storedToken.id));
-      }
-      return null;
-    }
-    
-    return decoded;
+    decoded = jwt.verify(token, config_app.jwt.refreshSecret, { algorithms: ['HS256'] }) as TokenPayload;
   } catch {
-    return null;
+    throw new SessionError('Token de actualización inválido o expirado', 'INVALID');
   }
-};
-
-// Consumir Refresh Token (single-use)
-// Uses a single atomic DELETE WHERE token=hash AND expires_at > NOW() to avoid
-// transaction isolation issues between a separate SELECT and DELETE.
-export const consumeRefreshToken = async (token: string, tx: any = db): Promise<TokenPayload | null> => {
-  const normalizedToken = token.trim();
-  if (!normalizedToken) {
-    console.error('[consumeRefreshToken] Token vacío');
-    return null;
-  }
-
-  try {
-    // 1. Verify JWT signature + expiry
-    const decoded = jwt.verify(normalizedToken, config_app.jwt.refreshSecret, { algorithms: ['HS256'] }) as TokenPayload;
-
-    // 2. Atomic delete by hash only — no date condition.
-    //    jwt.verify() above already guarantees the token isn't expired.
-    //    Adding gt(expiresAt, new Date()) caused failures because Node sends
-    //    UTC timestamps but MySQL compares in its local timezone (GMT-5).
-    const tokenHash = hashRefreshToken(normalizedToken);
-
-    const deleteResult = await tx.delete(refreshTokens).where(
-      or(
-        eq(refreshTokens.token, tokenHash),
-        eq(refreshTokens.token, normalizedToken)
-      )
-    );
-
-    // Drizzle + MySQL2 returns [ResultSetHeader, null] — read index 0
-    const header = Array.isArray(deleteResult) ? deleteResult[0] : deleteResult;
-    const deletedRows = Number((header as { affectedRows?: number }).affectedRows ?? 0);
-
-    if (deletedRows < 1) {
-      return null;
+  return db.transaction(async (tx) => {
+    const deleted = await tx.delete(refreshTokens).where(or(eq(refreshTokens.token, hashToken(token)), eq(refreshTokens.token, token)));
+    const header = Array.isArray(deleted) ? deleted[0] : deleted;
+    if (Number((header as { affectedRows?: number }).affectedRows ?? 0) < 1) {
+      throw new SessionError('Token de actualización inválido o expirado', 'INVALID');
     }
-
-    return decoded;
-  } catch (err) {
-    return null;
-  }
+    const user = await tx.query.users.findFirst({ where: eq(users.id, decoded.userId), columns: { id: true, email: true, role: true, isActive: true } });
+    if (!user || !user.isActive) throw new SessionError('Token de actualización inválido o expirado', 'INVALID');
+    return generateTokenPair({ userId: user.id, email: user.email, role: user.role as UserRole }, tx, { userAgent });
+  });
 };
 
-// Revocar Refresh Token
-export const revokeRefreshToken = async (token: string): Promise<void> => {
-  const normalizedToken = token.trim();
-  if (!normalizedToken) {
-    return;
-  }
+/**
+ * Rota el refresh de una sesión: el usado queda marcado y se entrega uno nuevo. Si llega un refresh
+ * ya usado (fuera del margen de dos pestañas a la vez), alguien lo copió: se cierra esa sesión.
+ */
+export const rotateRefreshToken = async (rawToken: string, userAgent?: string | null): Promise<SessionTokens> => {
+  const token = rawToken.trim();
+  if (!token) throw new SessionError('Token de actualización requerido', 'INVALID');
+  if (isLegacyJwt(token)) return exchangeLegacyRefresh(token, userAgent);
 
-  const tokenHash = hashRefreshToken(normalizedToken);
-  await db.delete(refreshTokens).where(
-    or(
-      eq(refreshTokens.token, tokenHash),
-      eq(refreshTokens.token, normalizedToken)
-    )
-  );
+  const outcome = await db.transaction(async (tx) => {
+    const [row] = await tx.select().from(refreshTokens).where(eq(refreshTokens.token, hashToken(token))).for('update');
+    if (!row?.sessionId) return { kind: 'invalid' as const };
+    const [session] = await tx.select().from(authSessions).where(eq(authSessions.id, row.sessionId)).for('update');
+    const now = new Date();
+    if (!session || session.revokedAt || session.expiresAt.getTime() <= now.getTime()) {
+      await tx.delete(refreshTokens).where(eq(refreshTokens.id, row.id));
+      return { kind: session && !session.revokedAt ? 'expired' as const : 'invalid' as const };
+    }
+    if (row.usedAt && now.getTime() - row.usedAt.getTime() > REUSE_GRACE_MS) {
+      return { kind: 'reuse' as const, sessionId: session.id };
+    }
+    const user = await tx.query.users.findFirst({ where: eq(users.id, session.userId), columns: { id: true, email: true, role: true, isActive: true } });
+    if (!user || !user.isActive) return { kind: 'invalid' as const };
+
+    if (!row.usedAt) await tx.update(refreshTokens).set({ usedAt: now }).where(eq(refreshTokens.id, row.id));
+    await tx.update(authSessions).set({ lastSeenAt: now }).where(eq(authSessions.id, session.id));
+    const refreshToken = await insertRefreshToken(tx, user.id, session.id, session.expiresAt);
+    await touchLastLogin(tx, user.id);
+    return {
+      kind: 'ok' as const,
+      tokens: {
+        accessToken: generateAccessToken({ userId: user.id, email: user.email, role: user.role as UserRole, sid: session.id }),
+        refreshToken,
+        sessionId: session.id,
+        persistent: session.persistent,
+        expiresAt: session.expiresAt,
+      },
+    };
+  });
+
+  if (outcome.kind === 'ok') return outcome.tokens;
+  if (outcome.kind === 'reuse') {
+    await revokeSession(outcome.sessionId);
+    throw new SessionError('Por seguridad cerramos esta sesión. Vuelve a entrar.', 'REUSED');
+  }
+  if (outcome.kind === 'expired') throw new SessionError('Tu sesión terminó. Vuelve a entrar.', 'EXPIRED');
+  throw new SessionError('Token de actualización inválido o expirado', 'INVALID');
 };
 
-// Revocar todos los tokens de un usuario
-export const revokeAllUserTokens = async (userId: string): Promise<void> => {
-  await db.delete(refreshTokens).where(eq(refreshTokens.userId, userId));
+// ==================== Estado y revocación ====================
 
-  // Cerrar también los sockets abiertos: se autentican solo al conectar y seguirían
-  // recibiendo eventos tras cerrar todas las sesiones o cambiar la contraseña.
+interface SessionState { userId: string; active: boolean }
+
+/** ¿Sigue viva la sesión? (caché corta; se borra al revocar, así que el corte es inmediato). */
+export const getSessionState = async (sid: string): Promise<SessionState | null> => {
+  const cached = cache.get<SessionState>(sessionCacheKey(sid));
+  if (cached) return cached;
+  const [session] = await db.select({ userId: authSessions.userId, revokedAt: authSessions.revokedAt, expiresAt: authSessions.expiresAt })
+    .from(authSessions).where(eq(authSessions.id, sid)).limit(1);
+  if (!session) return null;
+  const state = { userId: session.userId, active: !session.revokedAt && session.expiresAt.getTime() > Date.now() };
+  cache.set(sessionCacheKey(sid), state, SESSION_CACHE_TTL);
+  return state;
+};
+
+const disconnect = (room: string) => {
   try {
-    getIO()?.in(`user:${userId}`).disconnectSockets(true);
+    getIO()?.in(room).disconnectSockets(true);
   } catch {
     // Socket.io aún no inicializado: no hay sockets que cerrar.
   }
 };
 
-// Limpiar tokens expirados (para ejecutar periódicamente)
+/** Cierra una sesión: sus refresh, su access token (por el sid) y sus sockets. */
+export const revokeSession = async (sessionId: string): Promise<void> => {
+  await db.update(authSessions).set({ revokedAt: new Date() }).where(and(eq(authSessions.id, sessionId), isNull(authSessions.revokedAt)));
+  await db.delete(refreshTokens).where(eq(refreshTokens.sessionId, sessionId));
+  cache.delete(sessionCacheKey(sessionId));
+  disconnect(`session:${sessionId}`);
+};
+
+/** Sesión a la que pertenece un refresh (para cerrar sesión con la cookie). */
+export const sessionIdForRefreshToken = async (rawToken: string): Promise<string | null> => {
+  const token = rawToken.trim();
+  if (!token) return null;
+  const [row] = await db.select({ sessionId: refreshTokens.sessionId }).from(refreshTokens)
+    .where(or(eq(refreshTokens.token, hashToken(token)), eq(refreshTokens.token, token))).limit(1);
+  return row?.sessionId ?? null;
+};
+
+/** Cierra un refresh anterior a las sesiones (cerrar sesión desde un cliente viejo). */
+export const revokeRefreshToken = async (rawToken: string): Promise<void> => {
+  const token = rawToken.trim();
+  if (!token) return;
+  await db.delete(refreshTokens).where(or(eq(refreshTokens.token, hashToken(token)), eq(refreshTokens.token, token)));
+};
+
+/** Cierra todas las sesiones de una persona (cambio de contraseña, de rol, "cerrar todas"…). */
+export const revokeAllUserTokens = async (userId: string): Promise<void> => {
+  const active = await db.select({ id: authSessions.id }).from(authSessions)
+    .where(and(eq(authSessions.userId, userId), isNull(authSessions.revokedAt)));
+  if (active.length > 0) {
+    await db.update(authSessions).set({ revokedAt: new Date() }).where(inArray(authSessions.id, active.map((s) => s.id)));
+    for (const s of active) cache.delete(sessionCacheKey(s.id));
+  }
+  await db.delete(refreshTokens).where(eq(refreshTokens.userId, userId));
+  disconnect(`user:${userId}`);
+};
+
+// Limpieza periódica: refresh vencidos o ya usados y sesiones terminadas hace más de una semana.
 export const cleanExpiredTokens = async (): Promise<number> => {
-  const result = await db.delete(refreshTokens)
-    .where(lt(refreshTokens.expiresAt, new Date()));
+  const now = Date.now();
+  const result = await db.delete(refreshTokens).where(or(
+    lt(refreshTokens.expiresAt, new Date(now)),
+    lt(refreshTokens.usedAt, new Date(now - 24 * HOUR)),
+  ));
+  await db.delete(authSessions).where(or(
+    lt(authSessions.expiresAt, new Date(now - 7 * 24 * HOUR)),
+    lt(authSessions.revokedAt, new Date(now - 7 * 24 * HOUR)),
+  ));
   const header = Array.isArray(result) ? result[0] : result;
   return Number((header as { affectedRows?: number }).affectedRows ?? 0);
 };

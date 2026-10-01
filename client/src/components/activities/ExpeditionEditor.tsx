@@ -39,6 +39,7 @@ import {
   type CreatePinDto,
 } from '../../lib/expeditionApi';
 import toast from 'react-hot-toast';
+import { useAuthStore } from '../../store/authStore';
 
 // Helper para construir URLs de archivos estáticos
 const getStaticUrl = (url: string) => {
@@ -827,7 +828,7 @@ export const ExpeditionEditor = ({ expeditionId, onBack }: ExpeditionEditorProps
                                   const response = await fetch(`${import.meta.env.VITE_API_URL}/expeditions/upload`, {
                                     method: 'POST',
                                     headers: {
-                                      'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+                                      'Authorization': `Bearer ${useAuthStore.getState().accessToken ?? ''}`,
                                     },
                                     body: formData,
                                   });

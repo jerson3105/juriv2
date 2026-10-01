@@ -4,14 +4,18 @@ import { authApi } from '../lib/api';
 import type { User, AuthData } from '../lib/api';
 import { clearSessionData } from '../lib/sessionCleanup';
 
+type ApiError = { response?: { status?: number; data?: { message?: string } } };
+
 interface AuthState {
   user: User | null;
+  /** Solo en memoria: el refresh vive en una cookie httpOnly y nunca se guarda en el navegador. */
   accessToken: string | null;
-  refreshToken: string | null;
   isAuthenticated: boolean;
+  /** 'checking' = recuperando la sesión desde la cookie al abrir la app. */
+  sessionStatus: 'checking' | 'ready';
   isLoading: boolean;
   error: string | null;
-  
+
   // Acciones
   login: (email: string, password: string) => Promise<void>;
   register: (data: {
@@ -22,40 +26,51 @@ interface AuthState {
     role: 'TEACHER' | 'STUDENT' | 'PARENT';
   }) => Promise<void>;
   logout: () => Promise<void>;
+  /** La sesión terminó (revocada o vencida): limpiar sin llamar al servidor. */
+  endSession: (reason?: string) => Promise<void>;
   fetchUser: () => Promise<void>;
   clearError: () => void;
   setAuth: (data: AuthData) => void;
-  setTokens: (accessToken: string, refreshToken: string) => void;
+  setAccessToken: (accessToken: string) => void;
+  setSessionStatus: (status: 'checking' | 'ready') => void;
   updateUser: (data: Partial<User>) => void;
 }
+
+// Cargado al usarse: session.ts importa este store.
+const notifyToken = (token: string) => {
+  void import('../lib/session').then(({ onAccessToken }) => onAccessToken(token));
+};
+const stopRefresh = () => {
+  void import('../lib/session').then(({ stopProactiveRefresh }) => stopProactiveRefresh());
+};
 
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       user: null,
       accessToken: null,
-      refreshToken: null,
       isAuthenticated: false,
+      sessionStatus: 'ready',
       isLoading: false,
       error: null,
 
       setAuth: (data: AuthData) => {
-        localStorage.setItem('accessToken', data.accessToken);
-        localStorage.setItem('refreshToken', data.refreshToken);
         set({
           user: data.user,
           accessToken: data.accessToken,
-          refreshToken: data.refreshToken,
           isAuthenticated: true,
+          sessionStatus: 'ready',
           error: null,
         });
+        notifyToken(data.accessToken);
       },
 
-      setTokens: (accessToken: string, refreshToken: string) => {
-        localStorage.setItem('accessToken', accessToken);
-        localStorage.setItem('refreshToken', refreshToken);
-        set({ accessToken, refreshToken });
+      setAccessToken: (accessToken: string) => {
+        set({ accessToken });
+        notifyToken(accessToken);
       },
+
+      setSessionStatus: (sessionStatus) => set({ sessionStatus }),
 
       updateUser: (data: Partial<User>) => {
         const currentUser = get().user;
@@ -71,8 +86,8 @@ export const useAuthStore = create<AuthState>()(
           if (response.data.success && response.data.data) {
             get().setAuth(response.data.data);
           }
-        } catch (error: any) {
-          const message = error.response?.data?.message || 'Error al iniciar sesión';
+        } catch (error) {
+          const message = (error as ApiError).response?.data?.message || 'Error al iniciar sesión';
           set({ error: message });
           throw new Error(message);
         } finally {
@@ -87,8 +102,8 @@ export const useAuthStore = create<AuthState>()(
           if (response.data.success && response.data.data) {
             get().setAuth(response.data.data);
           }
-        } catch (error: any) {
-          const message = error.response?.data?.message || 'Error al registrarse';
+        } catch (error) {
+          const message = (error as ApiError).response?.data?.message || 'Error al registrarse';
           set({ error: message });
           throw new Error(message);
         } finally {
@@ -97,27 +112,22 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: async () => {
-        const { refreshToken } = get();
         try {
-          if (refreshToken) {
-            await authApi.logout(refreshToken);
-          }
+          // El servidor cierra la sesión de este dispositivo (cookie) y borra la cookie.
+          await authApi.logout();
         } catch (error) {
           console.error('Error al cerrar sesión:', error);
         } finally {
-          localStorage.removeItem('accessToken');
-          localStorage.removeItem('refreshToken');
-          set({
-            user: null,
-            accessToken: null,
-            refreshToken: null,
-            isAuthenticated: false,
-            error: null,
-          });
-          await clearSessionData();
-          // Recarga completa: no queda nada del usuario anterior en memoria.
-          window.location.replace('/login?salida=1');
+          await get().endSession('salida=1');
         }
+      },
+
+      endSession: async (reason = 'error=session_expired') => {
+        stopRefresh();
+        set({ user: null, accessToken: null, isAuthenticated: false, sessionStatus: 'ready', error: null });
+        await clearSessionData();
+        // Recarga completa: no queda nada del usuario anterior en memoria.
+        window.location.replace(`/login?${reason}`);
       },
 
       fetchUser: async () => {
@@ -131,14 +141,8 @@ export const useAuthStore = create<AuthState>()(
             set({ user: response.data.data, isAuthenticated: true });
           }
         } catch (error) {
-          const status = (error as any)?.response?.status;
-          const errMsg = (error as any)?.response?.data?.message || (error as any)?.message;
-          console.error('[fetchUser] ERROR — status:', status, '| message:', errMsg, '| url:', (error as any)?.config?.url);
-
-          // NO limpiar sesión aquí — el interceptor de axios en api.ts se encarga
-          // del refresh y, si falla, de clearClientAuthSession + redirect a /login.
-          // Limpiar aquí causaba race conditions: fetchUser borraba tokens que el
-          // interceptor acababa de renovar.
+          // El interceptor de api.ts renueva la sesión o la cierra si ya no sirve.
+          console.error('[fetchUser]', (error as ApiError).response?.status);
         } finally {
           set({ isLoading: false });
         }
@@ -148,12 +152,17 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
+      version: 1,
+      // Nunca se guardan tokens en el navegador.
       partialize: (state) => ({
-        accessToken: state.accessToken,
-        refreshToken: state.refreshToken,
         user: state.user,
         isAuthenticated: state.isAuthenticated,
       }),
+      // Versión anterior: guardaba tokens. Se descartan (el refresh viejo se canjea una vez).
+      migrate: (persisted) => {
+        const old = (persisted ?? {}) as { user?: User | null; isAuthenticated?: boolean };
+        return { user: old.user ?? null, isAuthenticated: !!old.isAuthenticated } as AuthState;
+      },
     }
   )
 );

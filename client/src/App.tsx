@@ -96,6 +96,10 @@ import { useAuthStore } from './store/authStore';
 
 // Onboarding
 import { TeacherOnboardingProvider, useTeacherOnboarding } from './contexts/TeacherOnboardingContext';
+import { Loader2 } from 'lucide-react';
+import { refreshSession } from './lib/session';
+import { Starfield } from './components/auth/SpaceScene';
+import { StudentIdleGuard } from './components/auth/StudentIdleGuard';
 const TeacherOnboardingFlow = lazyPage(() => import('./pages/onboarding/TeacherOnboardingFlow'));
 
 // Dashboard Router - redirige según el rol
@@ -143,16 +147,31 @@ const TeacherMainLayout = () => {
 };
 
 
+// Al abrir la app, la sesión se recupera con la cookie httpOnly (el access token vive en memoria).
+// Mientras tanto se muestra el cielo nocturno; si la cookie ya no sirve, se pide entrar de nuevo.
+const SessionBootstrap = () => {
+  useEffect(() => {
+    const { isAuthenticated, accessToken } = useAuthStore.getState();
+    if (!isAuthenticated || accessToken) return;
+    void refreshSession().then((token) => {
+      if (!token) useAuthStore.setState({ user: null, isAuthenticated: false });
+    });
+  }, []);
+  return null;
+};
+
+const SessionSplash = () => (
+  <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#0b1026]" role="status" aria-label="Recuperando tu sesión">
+    <Starfield count={50} />
+    <Loader2 className="relative h-8 w-8 animate-spin text-amber-200" aria-hidden="true" />
+  </div>
+);
+
 // Protected Route Component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { isAuthenticated, accessToken, fetchUser } = useAuthStore();
+  const { isAuthenticated, accessToken } = useAuthStore();
 
-  useEffect(() => {
-    if (accessToken && !isAuthenticated) {
-      fetchUser();
-    }
-  }, [accessToken, isAuthenticated, fetchUser]);
-
+  if (isAuthenticated && !accessToken) return <SessionSplash />;
   if (!accessToken) {
     return <Navigate to="/login" replace />;
   }
@@ -164,6 +183,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 const PublicRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated, accessToken } = useAuthStore();
 
+  if (isAuthenticated && !accessToken) return <SessionSplash />;
   if (isAuthenticated && accessToken) {
     return <Navigate to="/dashboard" replace />;
   }
@@ -179,6 +199,8 @@ function App() {
       <NotificationProvider>
       <TimerProvider>
         <BrowserRouter>
+          <SessionBootstrap />
+          <StudentIdleGuard />
           <Routes>
           {/* Public Routes */}
           <Route

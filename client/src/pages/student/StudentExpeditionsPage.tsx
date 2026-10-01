@@ -39,6 +39,7 @@ import {
 } from '../../lib/expeditionApi';
 import { useStudentStore } from '../../store/studentStore';
 import toast from 'react-hot-toast';
+import { useAuthStore } from '../../store/authStore';
 
 // Helper para construir URLs de archivos estáticos
 const getStaticUrl = (url: string) => {
@@ -169,7 +170,7 @@ export const StudentExpeditionsPage = () => {
             method: 'POST',
             body: formData,
             headers: {
-              'Authorization': `Bearer ${localStorage.getItem('accessToken')}`,
+              'Authorization': `Bearer ${useAuthStore.getState().accessToken ?? ''}`,
             },
           }
         );
