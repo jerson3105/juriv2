@@ -52,11 +52,71 @@ export interface StudentBadge {
   badge: Badge;
 }
 
+/** Progreso hacia una automática (ficha del alumno del profe). */
 export interface BadgeProgress {
-  badge: Badge;
+  badge: Pick<Badge, 'id' | 'name' | 'icon' | 'customImage' | 'rarity'>;
   currentValue: number;
   targetValue: number;
   percentage: number;
+}
+
+// ---------- «Mis insignias» del alumno (GET /badges/student/:id/view) ----------
+
+export type BadgeAwardOrigin = 'TEACHER' | 'AUTO' | 'STORY' | 'ALBUM';
+
+interface StudentBadgeBase {
+  id: string;
+  name: string;
+  description: string | null;
+  icon: string;
+  customImage: string | null;
+  rarity: BadgeRarity;
+  /** Competencia que reconoce (su nombre). */
+  competency: string | null;
+  /** Las manuales de la clase se pueden ganar más de una vez. */
+  cumulative: boolean;
+}
+
+export interface BadgeProgressInfo {
+  current: number;
+  target: number;
+  unit: 'times' | 'xp' | 'level' | 'purchases';
+  /** Las de comportamientos cuentan desde que se creó la insignia. */
+  since: string | null;
+  level?: number;
+}
+
+export interface EarnedBadge extends StudentBadgeBase {
+  isSecret: boolean;
+  /** Ya no se entrega (archivada), pero lo ganado se queda. */
+  archived: boolean;
+  /** Cómo se gana sola («al recibir «Participación» 5 veces»), si tiene condición. */
+  condition: string | null;
+  count: number;
+  lastAt: string;
+  /** Cada vez que la ganó, la más reciente primero. */
+  awards: { at: string; origin: BadgeAwardOrigin; reason: string | null; xp: number; gp: number }[];
+}
+
+export interface BadgeToEarn extends StudentBadgeBase {
+  /** AUTO = se gana sola; TEACHER = te la da tu profe; BOTH = sola o tu profe. */
+  kind: 'AUTO' | 'TEACHER' | 'BOTH';
+  condition: string | null;
+  progress: BadgeProgressInfo | null;
+  /** Hacia abajo y nunca 100 sin ganarla. */
+  percent: number | null;
+  reward: { xp: number; gp: number };
+}
+
+export interface StudentBadgeView {
+  classroomName: string;
+  gradeLevel: string | null;
+  xpPerLevel: number;
+  earned: EarnedBadge[];
+  toEarn: BadgeToEarn[];
+  /** Secretas que aún puede descubrir (solo cuántas). */
+  secrets: number;
+  near: { id: string; name: string; percent: number; progress: BadgeProgressInfo } | null;
 }
 
 export interface CreateBadgeDto {
@@ -166,34 +226,6 @@ export interface BulkAwardResult {
   failed: { studentProfileId: string; message: string }[];
 }
 
-// Colores por rareza
-export const RARITY_COLORS = {
-  COMMON: {
-    bg: 'bg-gray-100 dark:bg-gray-700',
-    border: 'border-gray-300 dark:border-gray-600',
-    text: 'text-gray-700 dark:text-gray-200',
-    gradient: 'from-gray-400 to-gray-500',
-  },
-  RARE: {
-    bg: 'bg-blue-100 dark:bg-blue-900/30',
-    border: 'border-blue-300 dark:border-blue-700',
-    text: 'text-blue-800 dark:text-blue-200',
-    gradient: 'from-blue-400 to-blue-600',
-  },
-  EPIC: {
-    bg: 'bg-purple-100 dark:bg-purple-900/30',
-    border: 'border-purple-300 dark:border-purple-700',
-    text: 'text-purple-800 dark:text-purple-200',
-    gradient: 'from-purple-400 to-purple-600',
-  },
-  LEGENDARY: {
-    bg: 'bg-amber-100 dark:bg-amber-900/30',
-    border: 'border-amber-300 dark:border-amber-700',
-    text: 'text-amber-800 dark:text-amber-200',
-    gradient: 'from-amber-400 to-yellow-500',
-  },
-};
-
 export const RARITY_LABELS = {
   COMMON: 'Común',
   RARE: 'Rara',
@@ -276,10 +308,22 @@ export const badgeApi = {
     await api.put(`/badges/student/${studentProfileId}/displayed`, { badgeIds });
   },
 
-  // Obtener progreso hacia insignias
+  // Progreso hacia las automáticas (ficha del alumno del profe)
   getStudentProgress: async (studentProfileId: string, classroomId: string): Promise<BadgeProgress[]> => {
     const response = await api.get(`/badges/student/${studentProfileId}/progress/${classroomId}`);
     return response.data;
+  },
+
+  // «Mis insignias» del alumno: lo ganado, lo que puede ganar y cómo, y cuántas secretas hay
+  getStudentView: async (studentProfileId: string): Promise<StudentBadgeView> => {
+    const response = await api.get(`/badges/student/${studentProfileId}/view`);
+    return response.data.data;
+  },
+
+  // Motivos que el profe ya usó con esta insignia (motivos rápidos al otorgarla)
+  getRecentReasons: async (badgeId: string): Promise<string[]> => {
+    const response = await api.get(`/badges/${badgeId}/recent-reasons`);
+    return response.data.data;
   },
 
   // Otorgar insignia manualmente

@@ -18,6 +18,8 @@ export interface CelebrationBadge {
   rarity: BadgeRarity;
   /** Quiénes la ganaron (vacío en la celebración personal del alumno). */
   recipients: string[];
+  /** Solo personal: por qué la ganó («Te la dio tu profe: «…»»). */
+  reason?: string | null;
 }
 
 export interface Celebration {
@@ -30,6 +32,8 @@ export interface Celebration {
   context?: string;
   /** Solo personal: progreso hacia el siguiente nivel (0-100). */
   progress?: number;
+  /** Solo personal: un segundo botón (p. ej. «Ver mis insignias»); cierra la tarjeta y lo ejecuta. */
+  action?: { label: string; run: () => void };
   onDone?: () => void;
 }
 

@@ -31,6 +31,7 @@ import { CorreoModal, EnergyModal, RolePickerModal, StreakModal } from './HomeMo
 import { nextGoal, todoItems, type HomeInput } from './nextGoal';
 import type { HomeModalKind } from './HomeActionButton';
 import { homeCard, localDateKey } from './studentHomeHelpers';
+import { myBadgesKey, progressText } from '../badges/badgeStudentHelpers';
 
 type MyClass = Awaited<ReturnType<typeof studentApi.getMyClasses>>[number];
 // my-classes trae la configuración de la clase completa; aquí se usa solo esto.
@@ -77,8 +78,12 @@ export const StudentHome = ({ profile, firstName, storyAccent }: StudentHomeProp
   const { data: correo } = useQuery({ queryKey: correoKeys.mine(id), queryFn: () => correoApi.mine(id), staleTime: 30_000 });
   const { data: jiro = [] } = useQuery({ queryKey: ['jiro-available-expeditions', id], queryFn: () => jiroExpeditionApi.getAvailable(id) });
   const { data: classic = [] } = useQuery({ queryKey: ['student-expeditions', classroomId, id], queryFn: () => expeditionApi.getStudentExpeditions(classroomId, id) });
-  const { data: badgeProgress = [] } = useQuery({ queryKey: ['badge-progress', id, classroomId], queryFn: () => badgeApi.getStudentProgress(id, classroomId) });
-  const { data: myBadges = [] } = useQuery({ queryKey: ['student-badges', id], queryFn: () => badgeApi.getStudentBadges(id) });
+  // La misma vista que «Mis insignias»: mismo criterio de «te falta poco» y mismo conteo.
+  const { data: badgeView } = useQuery({
+    queryKey: myBadgesKey(id),
+    queryFn: () => badgeApi.getStudentView(id),
+    enabled: (profile.badgeSummary?.available ?? 0) > 0 || (profile.badgeSummary?.owned ?? 0) > 0,
+  });
   const { data: shopItems = [] } = useQuery({ queryKey: ['shop-items', classroomId], queryFn: () => shopApi.getItems(classroomId), enabled: !!classroom.shopEnabled });
   const { data: avatarShop = [] } = useQuery({
     queryKey: ['avatar-shop', classroomId, profile.avatarGender],
@@ -114,7 +119,7 @@ export const StudentHome = ({ profile, firstName, storyAccent }: StudentHomeProp
       current: roleName,
       others: roles.filter((role) => role.isActive && role.name !== roleName).map((role) => role.name),
     },
-    badgeProgress,
+    badgeNear: badgeView?.near ? { id: badgeView.near.id, name: badgeView.near.name, progress: progressText(badgeView.near.progress) } : null,
     shop: { enabled: !!classroom.shopEnabled && !resting, items: prizes, goalItemId: profile.shopGoalItemId ?? null },
     gold: profile.gp,
     level: { level: profile.level, remaining },
@@ -136,7 +141,6 @@ export const StudentHome = ({ profile, firstName, storyAccent }: StudentHomeProp
     navigate('/login');
   };
 
-  const near = [...badgeProgress].filter((p) => p.percentage >= 50 && p.percentage < 100).sort((a, b) => b.percentage - a.percentage)[0];
   const date = new Date().toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long' });
   const equippedForRenderer: EquippedItem[] = equipped.map((item) => ({ slot: item.slot, imagePath: item.avatarItem.imagePath, layerOrder: item.avatarItem.layerOrder }));
 
@@ -209,6 +213,7 @@ export const StudentHome = ({ profile, firstName, storyAccent }: StudentHomeProp
             items={todo}
             hasNotes={notes.some((note) => note.dueDate)}
             goalIsTask={goal.key.startsWith('note:')}
+            hasBadges={(profile.badgeSummary?.available ?? 0) > 0 || (profile.badgeSummary?.owned ?? 0) > 0}
             onOpen={setModal}
           />
           {clan?.clan && <ClanCard info={clan} />}
@@ -225,7 +230,13 @@ export const StudentHome = ({ profile, firstName, storyAccent }: StudentHomeProp
           gold: profile.gp,
           owned: profile.shopSummary?.owned ?? 0,
         }}
-        badges={{ visible: myBadges.length > 0 || badgeProgress.length > 0, count: myBadges.length, near: near?.badge.name ?? null }}
+        badges={{
+          // Igual que el menú: la clase tiene insignias que se pueden ganar o el alumno tiene alguna.
+          visible: (profile.badgeSummary?.available ?? 0) > 0 || (profile.badgeSummary?.owned ?? 0) > 0,
+          count: badgeView?.earned.length ?? profile.badgeSummary?.owned ?? 0,
+          toEarn: badgeView?.toEarn.length ?? 0,
+          near: badgeView?.near?.name ?? null,
+        }}
         avatar={avatarItems > 0}
         scrolls={!!classroom.scrollsEnabled && !!classroom.scrollsOpen}
       />

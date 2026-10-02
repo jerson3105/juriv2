@@ -18,7 +18,8 @@ interface AwardBadgeModalProps {
   onAwarded: (badge: Badge, studentNames: string[]) => void;
 }
 
-const QUICK_REASONS = ['Excelente participación', 'Ayudó a un compañero', 'Gran esfuerzo', 'Superó un reto'];
+const GENERIC_REASONS = ['Excelente participación', 'Ayudó a un compañero', 'Gran esfuerzo', 'Superó un reto'];
+const MAX_QUICK_REASONS = 4;
 
 const localToday = () => {
   const now = new Date();
@@ -47,6 +48,26 @@ export const AwardBadgeModal = ({ badge, classroomId, showCharacterName, onClose
     queryKey: ['attendance-today', classroomId, today],
     queryFn: () => attendanceApi.getAttendanceByDate(classroomId, today),
   });
+  const { data: recentReasons = [] } = useQuery({
+    queryKey: ['badge-recent-reasons', badge.id],
+    queryFn: () => badgeApi.getRecentReasons(badge.id),
+  });
+
+  // Motivos rápidos de esta insignia: su criterio («¿Cuándo la das?»), los que ya usaste con ella y,
+  // para completar, los genéricos. El alumno lee el motivo en su celebración y en «Mis insignias».
+  const quickReasons = useMemo(() => {
+    const seen = new Set<string>();
+    const list: string[] = [];
+    for (const raw of [badge.description ?? '', ...recentReasons, ...GENERIC_REASONS]) {
+      const text = raw.trim();
+      const key = text.toLocaleLowerCase('es');
+      if (!text || text.length > 80 || seen.has(key)) continue;
+      seen.add(key);
+      list.push(text);
+      if (list.length === MAX_QUICK_REASONS) break;
+    }
+    return list;
+  }, [badge.description, recentReasons]);
 
   const students = useMemo(
     () => [...(classroom?.students ?? [])].sort((a, b) => studentLabel(a, showCharacterName).localeCompare(studentLabel(b, showCharacterName), 'es')),
@@ -235,7 +256,7 @@ export const AwardBadgeModal = ({ badge, classroomId, showCharacterName, onClose
             className="h-10 w-full rounded-xl border border-gray-300 bg-white px-3 text-sm text-gray-900 outline-none placeholder:text-gray-500 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder:text-gray-400"
           />
           <div className="flex flex-wrap gap-1.5">
-            {QUICK_REASONS.map((text) => (
+            {quickReasons.map((text) => (
               <button
                 key={text}
                 type="button"

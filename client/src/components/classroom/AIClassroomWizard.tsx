@@ -460,7 +460,7 @@ export const AIClassroomWizard = ({ isOpen, onClose, onSuccess }: Props) => {
           count: blueprint.generationPlan.badges.count,
           assignmentMode: blueprint.generationPlan.badges.assignmentMode,
           competencies: competenciesPayload,
-          behaviors: behaviorDrafts.map((behavior) => behavior.name.trim()).filter(Boolean),
+          behaviors: behaviorDrafts.filter((behavior) => behavior.isPositive).map((behavior) => behavior.name.trim()).filter(Boolean),
         });
 
         const nextBadgeDrafts: BadgeDraft[] = (Array.isArray(generatedBadges?.items) ? generatedBadges.items : []).map((badge: any, index: number) => ({
@@ -745,6 +745,8 @@ export const AIClassroomWizard = ({ isOpen, onClose, onSuccess }: Props) => {
 
       const baseContext = buildBaseContext();
 
+      // Solo los positivos: las insignias reconocen logros (el servidor rechaza condiciones negativas,
+      // y un 400 cortaría la creación del resto de insignias).
       const behaviorNameToId: Record<string, string> = {};
       const createdBehaviorNames: string[] = [];
       const moduleWarnings: string[] = [];
@@ -796,8 +798,10 @@ export const AIClassroomWizard = ({ isOpen, onClose, onSuccess }: Props) => {
               competencyId: behavior.competencyId || undefined,
             });
 
-            createdBehaviorNames.push(createdBehavior.name);
-            behaviorNameToId[createdBehavior.name] = createdBehavior.id;
+            if (behavior.isPositive) {
+              createdBehaviorNames.push(createdBehavior.name);
+              behaviorNameToId[createdBehavior.name] = createdBehavior.id;
+            }
           }
         } catch (error) {
           console.error('Error creating AI behaviors:', error);

@@ -18,14 +18,18 @@ const formatDate = (value: string) => {
   return new Intl.DateTimeFormat('es-PE', { day: '2-digit', month: 'short', year: 'numeric' }).format(date);
 };
 
-const BadgeVisual = ({ icon, name, small = false }: { icon: string | null; name: string; small?: boolean }) =>
-  icon && icon.startsWith('/') ? (
-    <img src={badgeImageUrl(icon)} alt={name} className={`${small ? 'h-5 w-5 rounded' : 'h-10 w-10 rounded-xl'} object-cover`} />
+// Imagen propia o emoji; si la imagen no carga, se ve el trofeo.
+const BadgeVisual = ({ icon, name, small = false }: { icon: string | null; name: string; small?: boolean }) => {
+  const [broken, setBroken] = useState(false);
+  const emoji = icon && !icon.startsWith('/') ? icon : '🏆';
+  return icon && icon.startsWith('/') && !broken ? (
+    <img src={badgeImageUrl(icon)} alt={name} onError={() => setBroken(true)} className={`${small ? 'h-5 w-5 rounded' : 'h-10 w-10 rounded-xl'} object-cover`} />
   ) : small ? (
-    <span aria-hidden="true">{icon || '🏆'}</span>
+    <span aria-hidden="true">{emoji}</span>
   ) : (
-    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-xl dark:bg-amber-900/40" aria-hidden="true">{icon || '🏆'}</span>
+    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-xl dark:bg-amber-900/40" aria-hidden="true">{emoji}</span>
   );
+};
 
 const selectClass = 'h-10 rounded-xl border border-gray-300 bg-white px-3 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white';
 

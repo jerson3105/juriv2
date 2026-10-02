@@ -319,7 +319,7 @@ export const AIBadgeModal = ({ classroom, onClose, onImport }: AIBadgeModalProps
                         </select>
                         {(['rewardXp', 'rewardGp'] as const).map((key) => (
                           <label key={key} className="flex items-center gap-1.5 text-sm font-semibold text-gray-800 dark:text-gray-100">
-                            {key === 'rewardXp' ? 'XP' : 'GP'}
+                            {key === 'rewardXp' ? 'XP' : 'Oro'}
                             <input type="number" min={0} max={1000} value={b[key]} onChange={(e) => update(index, { [key]: clampReward(parseInt(e.target.value)) })} className="h-9 w-20 rounded-lg border border-gray-300 bg-white text-center text-sm font-bold text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white" />
                           </label>
                         ))}
@@ -333,7 +333,7 @@ export const AIBadgeModal = ({ classroom, onClose, onImport }: AIBadgeModalProps
                             className={`${fieldClass} story-select min-w-0 flex-1`}
                           >
                             <option value="">Elige el comportamiento…</option>
-                            {behaviors.map((beh) => <option key={beh.id} value={beh.id}>{beh.name}</option>)}
+                            {behaviors.filter((beh) => beh.isPositive).map((beh) => <option key={beh.id} value={beh.id}>{beh.name}</option>)}
                           </select>
                           <label className="flex items-center gap-1.5 text-sm font-semibold text-gray-800 dark:text-gray-100">
                             Veces
@@ -374,7 +374,7 @@ export const AIBadgeModal = ({ classroom, onClose, onImport }: AIBadgeModalProps
                       <span className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
                         <span className={`rounded-full px-2 py-0.5 font-bold ${RARITY_STYLE[b.rarity].chip}`}>{RARITY_LABELS[b.rarity]}</span>
                         {b.rewardXp > 0 && <span className={`rounded-full px-2 py-0.5 font-bold ${REWARD_PILL_CLASS.XP}`}>+{b.rewardXp} XP</span>}
-                        {b.rewardGp > 0 && <span className={`rounded-full px-2 py-0.5 font-bold ${REWARD_PILL_CLASS.GP}`}>+{b.rewardGp} GP</span>}
+                        {b.rewardGp > 0 && <span className={`rounded-full px-2 py-0.5 font-bold ${REWARD_PILL_CLASS.GP}`}>+{b.rewardGp} oro</span>}
                         {b.competencyId && competencies.some((c) => c.id === b.competencyId) && (
                           <span className="inline-flex items-center gap-1 rounded-md bg-violet-50 px-1.5 py-0.5 font-medium text-violet-800 dark:bg-violet-900/40 dark:text-violet-200">
                             <Award size={12} aria-hidden="true" />

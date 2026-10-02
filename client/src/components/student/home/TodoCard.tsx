@@ -14,11 +14,13 @@ interface TodoCardProps {
   hasNotes: boolean;
   /** La meta ya es una tarea: si no queda nada más, basta una línea. */
   goalIsTask: boolean;
+  /** La clase tiene insignias (si no, no se manda a una página vacía). */
+  hasBadges: boolean;
   onOpen: (kind: HomeModalKind) => void;
 }
 
 /** "Para hacer": lo de hoy, lo que espera en la plataforma y los próximos avisos con fecha. */
-export const TodoCard = ({ items, hasNotes, goalIsTask, onOpen }: TodoCardProps) => {
+export const TodoCard = ({ items, hasNotes, goalIsTask, hasBadges, onOpen }: TodoCardProps) => {
   const rows = items.slice(0, MAX_ROWS);
 
   return (
@@ -35,7 +37,7 @@ export const TodoCard = ({ items, hasNotes, goalIsTask, onOpen }: TodoCardProps)
               title="¡Estás al día!"
               text="Cuando tu profe deje un aviso, aparecerá aquí."
               primary={{ to: '/my-progress', label: 'Ver mi progreso' }}
-              secondary={{ to: '/my-badges', label: 'Ver mis insignias' }}
+              secondary={hasBadges ? { to: '/my-badges', label: 'Ver mis insignias' } : undefined}
             />
           </div>
         )

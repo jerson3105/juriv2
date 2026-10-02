@@ -1,5 +1,4 @@
 import type { ClassNote } from '../../../lib/classNoteApi';
-import type { BadgeProgress } from '../../../lib/badgeApi';
 import { NOTE_CATEGORY, activeNotes, addDaysKey, dayLabel, localDateKey, noteDateKey, plural, weekdayName } from './studentHomeHelpers';
 
 /** Lo que hace un botón del inicio: ir a una página o abrir un modal del propio inicio. */
@@ -38,7 +37,8 @@ export interface HomeInput {
   /** Carta por escribir (o por reescribir); null si no hay. */
   correo: CorreoItem | null;
   role: { needsChoice: boolean; current: string; others: string[] };
-  badgeProgress: BadgeProgress[];
+  /** La insignia a la que menos le falta (50–99 %), con su progreso en palabras. */
+  badgeNear: { id: string; name: string; progress: string } | null;
   /** goalItemId: el premio que el alumno eligió como meta en la tienda. */
   shop: { enabled: boolean; items: { id: string; name: string; price: number }[]; goalItemId: string | null };
   gold: number;
@@ -137,12 +137,10 @@ export const nextGoal = (input: HomeInput): Goal => {
     return { key: 'role', emoji: '✨', title: 'Elige tu rol', body: `Ahora eres ${input.role.current}.${others}`, primary: { kind: 'role', label: 'Elegir mi rol' } };
   }
 
-  // 5. Una insignia a medio camino
-  const badge = [...input.badgeProgress]
-    .filter((p) => p.percentage >= 50 && p.percentage < 100)
-    .sort((a, b) => b.percentage - a.percentage)[0];
-  if (badge) {
-    return { key: `badge:${badge.badge.id}`, emoji: '🏅', title: 'Estás cerca de una insignia', body: `«${badge.badge.name}» · ${badge.currentValue} de ${badge.targetValue}`, detail: badge.badge.description || undefined, primary: { kind: 'link', to: '/my-badges', label: 'Ver mis insignias' } };
+  // 5. Una insignia a medio camino (el mismo «Te falta poco» de Mis insignias: 50–99 %, medible)
+  if (input.badgeNear) {
+    const near = input.badgeNear;
+    return { key: `badge:${near.id}`, emoji: '🏅', title: 'Estás cerca de una insignia', body: `«${near.name}» · ${near.progress}`, primary: { kind: 'link', to: '/my-badges', label: 'Ver mis insignias' } };
   }
 
   // 6. Su meta de la tienda (si eligió una) o un premio que ya alcanza (o casi)

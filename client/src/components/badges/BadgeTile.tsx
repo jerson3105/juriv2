@@ -1,30 +1,38 @@
 import { motion } from 'framer-motion';
-import { Archive, Copy, Gift, Hand, Lock, Pencil, Zap } from 'lucide-react';
+import { AlertTriangle, Archive, Award, Copy, Gift, Hand, Lock, Pencil, Zap } from 'lucide-react';
 import { RARITY_LABELS, type Badge } from '../../lib/badgeApi';
 import type { Behavior } from '../../lib/behaviorApi';
 import { REWARD_PILL_CLASS } from '../../lib/behaviorPoints';
 import { BadgeMedallion } from './BadgeMedallion';
-import { RARITY_STYLE, canAwardManually, conditionText } from './badgeHelpers';
+import { RARITY_STYLE, canAwardManually, conditionText, stuckReason } from './badgeHelpers';
 
 interface BadgeTileProps {
   badge: Badge;
   index: number;
   behaviors: Behavior[];
   holders: { students: number; awards: number };
+  /** Si cuenta para la nota: el nombre de su competencia. */
+  competencyName?: string | null;
   onAward: () => void;
   onEdit?: () => void;
   onDuplicate?: () => void;
   onArchive?: () => void;
+  /** Arreglo de un clic para una automática que nunca se ganaría: pasa a «La doy yo». */
+  onMakeManual?: () => void;
 }
 
 const iconButton =
   'flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white';
 
 // Baldosa de insignia para el profesor: qué es, cómo se gana, qué da y quién la tiene.
-export const BadgeTile = ({ badge, index, behaviors, holders, onAward, onEdit, onDuplicate, onArchive }: BadgeTileProps) => {
+export const BadgeTile = ({ badge, index, behaviors, holders, competencyName, onAward, onEdit, onDuplicate, onArchive, onMakeManual }: BadgeTileProps) => {
   const style = RARITY_STYLE[badge.rarity];
   const condition = conditionText(badge.unlockCondition, behaviors);
   const manual = canAwardManually(badge);
+  // Automática o mixta que nunca se ganaría sola: la mixta queda como «La das tú»; la automática, inalcanzable.
+  const stuck = stuckReason(badge, behaviors);
+  const unreachable = badge.assignmentMode === 'AUTOMATIC' && !!stuck;
+  const handGiven = badge.assignmentMode === 'MANUAL' || (badge.assignmentMode === 'BOTH' && !!stuck);
 
   return (
     <motion.li
@@ -59,22 +67,30 @@ export const BadgeTile = ({ badge, index, behaviors, holders, onAward, onEdit, o
       )}
 
       <div className="mt-3 space-y-1.5 border-t border-gray-200/80 pt-3 text-xs dark:border-gray-700">
-        <p className="flex items-start gap-1.5 text-gray-800 dark:text-gray-200">
-          {badge.assignmentMode === 'MANUAL' ? (
-            <Hand size={14} className="mt-px flex-shrink-0 text-gray-600 dark:text-gray-300" aria-hidden="true" />
-          ) : (
-            <Zap size={14} className="mt-px flex-shrink-0 text-amber-600 dark:text-amber-300" aria-hidden="true" />
-          )}
-          <span>
-            {badge.assignmentMode === 'MANUAL' && 'La das tú'}
-            {badge.assignmentMode === 'AUTOMATIC' && `Sola ${condition ?? '(sin condición)'}`}
-            {badge.assignmentMode === 'BOTH' && `La das tú o sola ${condition ?? ''}`}
-          </span>
-        </p>
+        {!unreachable && (
+          <p className="flex items-start gap-1.5 text-gray-800 dark:text-gray-200">
+            {handGiven ? (
+              <Hand size={14} className="mt-px flex-shrink-0 text-gray-600 dark:text-gray-300" aria-hidden="true" />
+            ) : (
+              <Zap size={14} className="mt-px flex-shrink-0 text-amber-600 dark:text-amber-300" aria-hidden="true" />
+            )}
+            <span>
+              {handGiven && 'La das tú'}
+              {!handGiven && badge.assignmentMode === 'AUTOMATIC' && `Sola ${condition}`}
+              {!handGiven && badge.assignmentMode === 'BOTH' && `La das tú o sola ${condition}`}
+            </span>
+          </p>
+        )}
         {(badge.rewardXp > 0 || badge.rewardGp > 0) && (
           <p className="flex flex-wrap gap-1">
             {badge.rewardXp > 0 && <span className={`rounded-full px-2 py-0.5 font-bold ${REWARD_PILL_CLASS.XP}`}>+{badge.rewardXp} XP</span>}
-            {badge.rewardGp > 0 && <span className={`rounded-full px-2 py-0.5 font-bold ${REWARD_PILL_CLASS.GP}`}>+{badge.rewardGp} GP</span>}
+            {badge.rewardGp > 0 && <span className={`rounded-full px-2 py-0.5 font-bold ${REWARD_PILL_CLASS.GP}`}>+{badge.rewardGp} oro</span>}
+          </p>
+        )}
+        {competencyName && (
+          <p className="flex items-start gap-1.5 text-gray-800 dark:text-gray-200">
+            <Award size={14} className="mt-px flex-shrink-0 text-violet-700 dark:text-violet-300" aria-hidden="true" />
+            <span className="line-clamp-2" title={competencyName}>Cuenta para la nota de «{competencyName}»</span>
           </p>
         )}
         <p className={holders.students > 0 ? 'font-semibold text-gray-800 dark:text-gray-100' : 'italic text-gray-600 dark:text-gray-400'}>
@@ -85,7 +101,29 @@ export const BadgeTile = ({ badge, index, behaviors, holders, onAward, onEdit, o
       </div>
 
       <div className="mt-auto space-y-2 pt-3">
-        {manual ? (
+        {unreachable ? (
+          <div role="note" className="rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">
+            <p className="flex items-start gap-1.5 font-bold">
+              <AlertTriangle size={14} className="mt-px flex-shrink-0" aria-hidden="true" />
+              Nadie puede ganarla
+            </p>
+            <p className="mt-0.5">{stuck}</p>
+            {(onEdit || onMakeManual) && (
+              <div className="mt-2 grid gap-1.5">
+                {onEdit && (
+                  <button type="button" onClick={onEdit} className="min-h-[36px] rounded-lg bg-amber-600 px-2 text-xs font-bold text-white hover:bg-amber-700">
+                    Añadir la condición
+                  </button>
+                )}
+                {onMakeManual && (
+                  <button type="button" onClick={onMakeManual} className="min-h-[36px] rounded-lg border border-amber-400 bg-white px-2 text-xs font-semibold text-amber-950 hover:bg-amber-100 dark:border-amber-600 dark:bg-transparent dark:text-amber-100 dark:hover:bg-amber-900/40">
+                    Pasar a «La doy yo»
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        ) : manual ? (
           <button
             type="button"
             onClick={onAward}

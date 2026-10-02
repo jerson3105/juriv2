@@ -10,7 +10,7 @@ import { behaviorApi } from '../../lib/behaviorApi';
 import type { Classroom } from '../../lib/classroomApi';
 import { useClassroomCompetencies } from '../../hooks/useClassroomCompetencies';
 import { BadgeMedallion } from './BadgeMedallion';
-import { RARITY_ORDER, RARITY_STYLE, REWARD_PRESETS, conditionText, parseCondition } from './badgeHelpers';
+import { GRADE_WEIGHT, RARITY_ORDER, RARITY_STYLE, conditionText, parseCondition, rewardPreset } from './badgeHelpers';
 
 export type BadgeFormTarget = { kind: 'create'; template?: Badge } | { kind: 'edit'; badge: Badge };
 
@@ -22,12 +22,12 @@ interface BadgeFormModalProps {
   onSubmit: (data: CreateBadgeDto, another: boolean) => Promise<boolean>;
 }
 
-type ConditionType = 'BEHAVIOR_COUNT' | 'BEHAVIOR_CATEGORY' | 'ANY_BEHAVIOR' | 'XP_TOTAL' | 'LEVEL';
+type ConditionType = 'BEHAVIOR_COUNT' | 'BEHAVIOR_CATEGORY' | 'XP_TOTAL' | 'LEVEL';
 
+// Las insignias reconocen logros: solo comportamientos positivos (el servidor rechaza los negativos).
 const CONDITION_OPTIONS: { value: ConditionType; label: string }[] = [
-  { value: 'BEHAVIOR_COUNT', label: 'reciba un comportamiento concreto' },
-  { value: 'BEHAVIOR_CATEGORY', label: 'reciba comportamientos positivos o negativos' },
-  { value: 'ANY_BEHAVIOR', label: 'reciba cualquier comportamiento' },
+  { value: 'BEHAVIOR_COUNT', label: 'reciba un comportamiento positivo concreto' },
+  { value: 'BEHAVIOR_CATEGORY', label: 'reciba comportamientos positivos (cualquiera)' },
   { value: 'XP_TOTAL', label: 'junte XP' },
   { value: 'LEVEL', label: 'llegue a un nivel' },
 ];
@@ -40,10 +40,13 @@ const MODES: { value: BadgeAssignment; label: string; hint: string; icon: typeof
 
 const MAX_REWARD = 1000;
 
-const initialState = (target: BadgeFormTarget) => {
+const initialState = (target: BadgeFormTarget, xpPerLevel?: number) => {
   const source = target.kind === 'edit' ? target.badge : target.template;
   const condition = parseCondition(source?.unlockCondition);
-  const known = condition && CONDITION_OPTIONS.some((o) => o.value === condition.type);
+  // «Cualquier comportamiento» y la categoría ya solo cuentan positivos: se editan como «positivos (cualquiera)».
+  const type = condition?.type === 'ANY_BEHAVIOR' ? 'BEHAVIOR_CATEGORY' : condition?.type;
+  const known = !!type && CONDITION_OPTIONS.some((o) => o.value === type);
+  const preset = rewardPreset('COMMON', xpPerLevel);
   return {
     name: source ? (target.kind === 'edit' ? source.name : `${source.name} (copia)`) : '',
     description: source?.description ?? '',
@@ -51,14 +54,13 @@ const initialState = (target: BadgeFormTarget) => {
     customImage: source?.customImage ?? null,
     rarity: (source?.rarity ?? 'COMMON') as BadgeRarity,
     assignmentMode: (source?.assignmentMode ?? 'MANUAL') as BadgeAssignment,
-    rewardXp: source?.rewardXp ?? REWARD_PRESETS.COMMON.xp,
-    rewardGp: source?.rewardGp ?? REWARD_PRESETS.COMMON.gp,
+    rewardXp: source?.rewardXp ?? preset.xp,
+    rewardGp: source?.rewardGp ?? preset.gp,
     rewardsTouched: !!source,
     isSecret: source?.isSecret ?? false,
     competencyId: source?.competencyId ?? null,
-    conditionType: (known ? condition!.type : 'BEHAVIOR_COUNT') as ConditionType,
+    conditionType: (known ? type : 'BEHAVIOR_COUNT') as ConditionType,
     behaviorId: condition?.behaviorId ?? '',
-    category: (condition?.category ?? 'positive') as 'positive' | 'negative',
     amount: condition?.count ?? condition?.value ?? 5,
   };
 };
@@ -72,9 +74,7 @@ const buildCondition = (form: FormState): BadgeCondition | null => {
     case 'BEHAVIOR_COUNT':
       return form.behaviorId ? { type: 'BEHAVIOR_COUNT', behaviorId: form.behaviorId, count: amount } : null;
     case 'BEHAVIOR_CATEGORY':
-      return { type: 'BEHAVIOR_CATEGORY', category: form.category, count: amount };
-    case 'ANY_BEHAVIOR':
-      return { type: 'ANY_BEHAVIOR', count: amount };
+      return { type: 'BEHAVIOR_CATEGORY', category: 'positive', count: amount };
     case 'XP_TOTAL':
       return { type: 'XP_TOTAL', value: amount };
     case 'LEVEL':
@@ -89,23 +89,34 @@ const labelClass = 'mb-1.5 block text-sm font-semibold text-gray-800 dark:text-g
 
 export const BadgeFormModal = ({ target, classroom, isSaving, onClose, onSubmit }: BadgeFormModalProps) => {
   const isEdit = target.kind === 'edit';
-  const [form, setForm] = useState(() => initialState(target));
+  const [form, setForm] = useState(() => initialState(target, classroom.xpPerLevel));
   const [isUploading, setIsUploading] = useState(false);
+  // Imagen que no carga (archivo borrado): se ve el emoji y se puede quitar.
+  const [brokenImage, setBrokenImage] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const isPresent = useIsPresent();
 
-  const { data: behaviors = [] } = useQuery({
+  const { data: behaviors = [], isSuccess: behaviorsLoaded } = useQuery({
     queryKey: ['behaviors', classroom.id],
     queryFn: () => behaviorApi.getByClassroom(classroom.id),
   });
+  const positiveBehaviors = behaviors.filter((b) => b.isPositive);
   const { competencies = [] } = useClassroomCompetencies(classroom.id, !!classroom.useCompetencies && !!classroom.curriculumAreaId);
+
+  // Una insignia vieja que citaba un comportamiento negativo (o uno que ya no existe): hay que elegir otro.
+  useEffect(() => {
+    if (!behaviorsLoaded) return;
+    setForm((current) => (current.behaviorId && !behaviors.some((b) => b.id === current.behaviorId && b.isPositive)
+      ? { ...current, behaviorId: '' }
+      : current));
+  }, [behaviorsLoaded, behaviors]);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((current) => ({ ...current, [key]: value }));
   const condition = buildCondition(form);
   const needsCondition = form.assignmentMode !== 'MANUAL';
   const conditionMissing = needsCondition && !condition;
   const canSave = form.name.trim().length > 0 && !conditionMissing && !isSaving && !isUploading;
-  const preset = REWARD_PRESETS[form.rarity];
+  const preset = rewardPreset(form.rarity, classroom.xpPerLevel);
 
   const handleKey = useCallback((event: KeyboardEvent) => {
     if (event.key !== 'Escape' || !isPresent || event.defaultPrevented) return;
@@ -118,9 +129,10 @@ export const BadgeFormModal = ({ target, classroom, isSaving, onClose, onSubmit 
   }, [handleKey]);
 
   const setRarity = (rarity: BadgeRarity) => {
+    const next = rewardPreset(rarity, classroom.xpPerLevel);
     setForm((current) => current.rewardsTouched
       ? { ...current, rarity }
-      : { ...current, rarity, rewardXp: REWARD_PRESETS[rarity].xp, rewardGp: REWARD_PRESETS[rarity].gp });
+      : { ...current, rarity, rewardXp: next.xp, rewardGp: next.gp });
   };
 
   const setReward = (key: 'rewardXp' | 'rewardGp', value: number) => {
@@ -156,7 +168,7 @@ export const BadgeFormModal = ({ target, classroom, isSaving, onClose, onSubmit 
       competencyId: form.competencyId,
     }, another);
     if (saved && another) {
-      setForm(initialState({ kind: 'create' }));
+      setForm(initialState({ kind: 'create' }, classroom.xpPerLevel));
       nameRef.current?.focus();
     }
   };
@@ -213,7 +225,9 @@ export const BadgeFormModal = ({ target, classroom, isSaving, onClose, onSubmit 
                   aria-label="Quitar imagen y volver al emoji"
                   title="Quitar imagen"
                 >
-                  <img src={badgeImageUrl(form.customImage)} alt="" className="h-full w-full object-cover" />
+                  {brokenImage === form.customImage
+                    ? <span className="text-2xl" aria-hidden="true">{form.icon}</span>
+                    : <img src={badgeImageUrl(form.customImage)} alt="" onError={() => setBrokenImage(form.customImage)} className="h-full w-full object-cover" />}
                 </button>
               ) : (
                 <EmojiPicker
@@ -324,20 +338,9 @@ export const BadgeFormModal = ({ target, classroom, isSaving, onClose, onSubmit 
                       className={`${fieldClass} story-select min-w-0 flex-1`}
                     >
                       <option value="">Elige el comportamiento…</option>
-                      {behaviors.map((b) => (
+                      {positiveBehaviors.map((b) => (
                         <option key={b.id} value={b.id}>{b.icon ? `${b.icon} ` : ''}{b.name}</option>
                       ))}
-                    </select>
-                  )}
-                  {form.conditionType === 'BEHAVIOR_CATEGORY' && (
-                    <select
-                      value={form.category}
-                      onChange={(e) => set('category', e.target.value as 'positive' | 'negative')}
-                      aria-label="Tipo de comportamiento"
-                      className={`${fieldClass} story-select min-w-0 flex-1`}
-                    >
-                      <option value="positive">Positivos</option>
-                      <option value="negative">Negativos</option>
                     </select>
                   )}
                   <label className="flex items-center gap-2 text-sm font-medium text-gray-800 dark:text-gray-100">
@@ -353,7 +356,7 @@ export const BadgeFormModal = ({ target, classroom, isSaving, onClose, onSubmit 
                   </label>
                 </div>
                 <p className={`text-sm ${conditionMissing ? 'font-semibold text-red-700 dark:text-red-300' : 'text-gray-800 dark:text-gray-200'}`} role="status">
-                  {conditionMissing ? 'Elige el comportamiento para completar la condición.' : `Se otorgará ${conditionPreview}.`}
+                  {conditionMissing ? 'Elige un comportamiento positivo para completar la condición.' : `Se otorgará ${conditionPreview}.`}
                 </p>
               </div>
             )}
@@ -368,14 +371,14 @@ export const BadgeFormModal = ({ target, classroom, isSaving, onClose, onSubmit 
                   onClick={() => setForm((current) => ({ ...current, rewardXp: preset.xp, rewardGp: preset.gp, rewardsTouched: true }))}
                   className="min-h-[32px] rounded-lg px-2 text-xs font-semibold text-primary-700 hover:bg-primary-50 dark:text-primary-300 dark:hover:bg-primary-900/30"
                 >
-                  Usar la sugerida para {RARITY_LABELS[form.rarity].toLowerCase()}: +{preset.xp} XP · +{preset.gp} GP
+                  Usar la sugerida para {RARITY_LABELS[form.rarity].toLowerCase()}: +{preset.xp} XP · +{preset.gp} oro
                 </button>
               )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               {(['rewardXp', 'rewardGp'] as const).map((key) => (
                 <label key={key} className="flex items-center gap-2 rounded-xl bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-800 dark:bg-gray-900/40 dark:text-gray-100">
-                  {key === 'rewardXp' ? 'XP' : 'GP (oro)'}
+                  {key === 'rewardXp' ? 'XP' : 'Oro'}
                   <input
                     type="number"
                     min={0}
@@ -391,8 +394,10 @@ export const BadgeFormModal = ({ target, classroom, isSaving, onClose, onSubmit 
           </div>
 
           <div>
+            {/* La que das tú: decir cuándo la das es lo que el alumno lee en «Mis insignias» para saber cómo ganarla. */}
             <label htmlFor="badge-description" className={labelClass}>
-              Descripción <span className="font-normal text-gray-600 dark:text-gray-300">(opcional, la verán los estudiantes)</span>
+              {form.assignmentMode === 'AUTOMATIC' ? 'Descripción' : '¿Cuándo la das?'}{' '}
+              <span className="font-normal text-gray-600 dark:text-gray-300">(opcional, la verán los estudiantes)</span>
             </label>
             <textarea
               id="badge-description"
@@ -406,7 +411,7 @@ export const BadgeFormModal = ({ target, classroom, isSaving, onClose, onSubmit 
                   void submit(false);
                 }
               }}
-              placeholder="Qué logro reconoce"
+              placeholder={form.assignmentMode === 'AUTOMATIC' ? 'Qué logro reconoce' : 'Ej.: cuando explicas a un compañero cómo lo resolviste'}
               className="w-full resize-y rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none placeholder:text-gray-500 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder:text-gray-400"
             />
           </div>
@@ -444,6 +449,11 @@ export const BadgeFormModal = ({ target, classroom, isSaving, onClose, onSubmit 
                 noResultsLabel="No se encontraron competencias."
                 openUpward
               />
+              <p className="mt-1.5 text-xs text-gray-700 dark:text-gray-300">
+                {form.competencyId
+                  ? `Cuenta para la nota de esta competencia: en cada periodo suma la insignia de mayor rareza que gane el estudiante (pesa ${GRADE_WEIGHT.COMMON} si es común, ${GRADE_WEIGHT.RARE} rara, ${GRADE_WEIGHT.EPIC} épica y ${GRADE_WEIGHT.LEGENDARY} legendaria).`
+                  : 'Si eliges una, la insignia cuenta para la nota de esa competencia.'}
+              </p>
             </div>
           )}
         </div>

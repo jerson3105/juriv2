@@ -254,13 +254,14 @@ export const MainLayout = () => {
           isActive: matchesPath('/my-shop'),
           meta: `${currentProfile.gp} de oro`,
         }] : []),
-        {
+        // «Mis insignias» solo si la clase tiene alguna que se pueda ganar o el alumno tiene alguna.
+        ...((currentProfile.badgeSummary?.available ?? 0) > 0 || (currentProfile.badgeSummary?.owned ?? 0) > 0 ? [{
           path: '/my-badges',
           label: 'Mis insignias',
           icon: <Medal size={14} />,
           gradient: 'from-amber-500 to-orange-500',
           isActive: matchesPath('/my-badges'),
-        },
+        }] : []),
         {
           path: '/my-avatar',
           label: 'Personalizar avatar',

@@ -14,6 +14,7 @@ import { BadgeWinnersPanel } from '../../components/badges/BadgeWinnersPanel';
 import { AIBadgeModal } from '../../components/badges/AIBadgeModal';
 import { celebrateBadgeAward } from '../../components/celebrations/celebrationHelpers';
 import { RARITY_ORDER, badgeAwardCountsKey } from '../../components/badges/badgeHelpers';
+import { useClassroomCompetencies } from '../../hooks/useClassroomCompetencies';
 
 type ModeFilter = 'ALL' | 'MANUAL' | 'AUTO';
 type SortKey = 'awards' | 'rarity' | 'name';
@@ -63,6 +64,9 @@ export const BadgesPage = () => {
     queryKey: ['behaviors', classroom.id],
     queryFn: () => behaviorApi.getByClassroom(classroom.id),
   });
+  // Las que tienen competencia cuentan para la nota (grade.service): se dice en la tarjeta.
+  const { competencies } = useClassroomCompetencies(classroom.id, !!classroom.useCompetencies && !!classroom.curriculumAreaId);
+  const competencyNames = useMemo(() => new Map(competencies.map((c) => [c.id, c.name])), [competencies]);
 
   const holders = useMemo(() => {
     const map = new Map<string, { students: number; awards: number }>();
@@ -161,6 +165,18 @@ export const BadgesPage = () => {
     }
   };
 
+  // Arreglo de un clic: una automática sin condición válida pasa a «La doy yo».
+  const handleMakeManual = async (badge: Badge) => {
+    try {
+      await badgeApi.updateBadge(badge.id, { assignmentMode: 'MANUAL', unlockCondition: null });
+      toast.success(`«${badge.name}» ahora la das tú`);
+    } catch (error) {
+      toast.error(errorMessage(error, 'No se pudo cambiar la insignia'));
+    } finally {
+      refresh();
+    }
+  };
+
   const handleImport = async (generated: GeneratedBadge[]) => {
     const outcomes = await Promise.allSettled(generated.map((b) => badgeApi.createBadge(classroom.id, {
       name: b.name,
@@ -205,10 +221,12 @@ export const BadgesPage = () => {
             index={index}
             behaviors={behaviors}
             holders={holdersOf(badge.id)}
+            competencyName={badge.competencyId ? competencyNames.get(badge.competencyId) ?? null : null}
             onAward={() => setAwardBadge(badge)}
             onEdit={editable ? () => setFormTarget({ kind: 'edit', badge }) : undefined}
             onDuplicate={editable ? () => setFormTarget({ kind: 'create', template: badge }) : undefined}
             onArchive={editable ? () => void handleArchive(badge) : undefined}
+            onMakeManual={editable ? () => void handleMakeManual(badge) : undefined}
           />
         ))}
       </AnimatePresence>

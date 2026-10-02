@@ -14,7 +14,7 @@ interface Tile {
 interface AccessTilesProps {
   /** Se ve si hay premios a la venta o premios suyos (con la tienda cerrada puede usar los que tiene). */
   shop: { visible: boolean; enabled: boolean; paused: boolean; prices: number[]; gold: number; owned: number };
-  badges: { visible: boolean; count: number; near: string | null };
+  badges: { visible: boolean; count: number; toEarn: number; near: string | null };
   /** La clase tiene ropa para el personaje (el rol se cambia desde el bloque del personaje). */
   avatar: boolean;
   scrolls: boolean;
@@ -42,7 +42,11 @@ export const AccessTiles = ({ shop, badges, avatar, scrolls }: AccessTilesProps)
   if (badges.visible) {
     tiles.push({
       key: 'badges', icon: Medal, tint: 'bg-violet-50 text-violet-800 dark:bg-violet-900/30 dark:text-violet-200', title: 'Insignias', to: '/my-badges',
-      state: badges.near ? `Te falta poco para «${badges.near}»` : badges.count > 0 ? `Tienes ${badges.count}` : 'Aún no tienes',
+      state: badges.near
+        ? `Te falta poco para «${badges.near}»`
+        : badges.count > 0
+          ? `Tienes ${badges.count}`
+          : badges.toEarn > 0 ? `${plural(badges.toEarn, 'insignia', 'insignias')} por ganar` : 'Aún no tienes',
     });
   }
   if (avatar) {

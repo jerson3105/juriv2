@@ -77,7 +77,13 @@ export interface UpdatePointsResult {
 export interface StudentCelebrations {
   fromLevel: number | null;
   toLevel: number | null;
-  badges: { id: string; name: string; description: string | null; icon: string; customImage: string | null; rarity: BadgeRarity; unlockedAt: string }[];
+  badges: {
+    id: string; name: string; description: string | null; icon: string; customImage: string | null; rarity: BadgeRarity; unlockedAt: string;
+    /** Motivo que escribió el profe (o «Historia: …», «Álbum completado: …»). */
+    reason: string | null;
+    /** 1 si la dio el profe (MySQL devuelve el IS NOT NULL como número). */
+    fromTeacher: number | boolean;
+  }[];
   until: string;
 }
 
@@ -250,7 +256,7 @@ export const studentApi = {
 
   // Obtener mis clases como estudiante
   // shopSummary: premios a la venta en la clase y premios propios o pedidos (el menú «Tienda» se ve si hay alguno).
-  getMyClasses: async (): Promise<(StudentProfile & { shopGoalItemId?: string | null; shopSummary?: { items: number; owned: number }; classroom: { id: string; name: string; code: string; shopEnabled?: boolean; clansEnabled?: boolean; scrollsEnabled?: boolean; scrollsOpen?: boolean; scrollsRequireApproval?: boolean; useCompetencies?: boolean; hasActiveStory?: boolean; themeConfig?: { colors?: { primary?: string; secondary?: string; accent?: string; background?: string; sidebar?: string }; particles?: { type?: string; color?: string; speed?: string; density?: string }; decorations?: Array<{ type: string; position: string; asset: string }>; banner?: { emoji?: string; title?: string } } | null } })[]> => {
+  getMyClasses: async (): Promise<(StudentProfile & { shopGoalItemId?: string | null; shopSummary?: { items: number; owned: number }; badgeSummary?: { available: number; owned: number }; classroom: { id: string; name: string; code: string; shopEnabled?: boolean; clansEnabled?: boolean; scrollsEnabled?: boolean; scrollsOpen?: boolean; scrollsRequireApproval?: boolean; useCompetencies?: boolean; hasActiveStory?: boolean; themeConfig?: { colors?: { primary?: string; secondary?: string; accent?: string; background?: string; sidebar?: string }; particles?: { type?: string; color?: string; speed?: string; density?: string }; decorations?: Array<{ type: string; position: string; asset: string }>; banner?: { emoji?: string; title?: string } } | null } })[]> => {
     const response = await api.get('/students/my-classes');
     return response.data.data;
   },

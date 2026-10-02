@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { studentApi } from '../../lib/studentApi';
 import { shopApi } from '../../lib/shopApi';
 import { storyApi } from '../../lib/storyApi';
@@ -13,6 +14,18 @@ import { useStudentStore } from '../../store/studentStore';
 import { LoginStreakWidget } from './LoginStreakWidget';
 
 type MyClass = Awaited<ReturnType<typeof studentApi.getMyClasses>>[number];
+type NewBadge = Awaited<ReturnType<typeof studentApi.getCelebrations>>['badges'][number];
+
+// Por qué la ganó, en la misma voz que «Mis insignias».
+const badgeReason = (badge: NewBadge): string | null => {
+  const reason = badge.reason?.trim() ?? '';
+  if (reason.startsWith('Historia:')) return `Por la historia «${reason.replace(/^Historia:\s*/, '') || 'de tu clase'}»`;
+  if (!badge.fromTeacher && reason.startsWith('Álbum completado:')) {
+    return `Por completar el álbum «${reason.replace(/^Álbum completado:\s*/, '') || 'de cromos'}»`;
+  }
+  if (badge.fromTeacher) return reason ? `Te la dio tu profe: «${reason}»` : 'Te la dio tu profe';
+  return badge.description?.trim() || null;
+};
 
 /**
  * Lo que le pasa al alumno al entrar, en cualquier pantalla de su clase: primero las escenas nuevas
@@ -21,6 +34,7 @@ type MyClass = Awaited<ReturnType<typeof studentApi.getMyClasses>>[number];
  */
 export const StudentEntryEffects = ({ profile, storyAccent }: { profile: MyClass; storyAccent: StoryAccent | null }) => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   // ===== Historia: escenas nuevas, una vez al entrar (hasta que el alumno cierra) =====
   const [storyDismissed, setStoryDismissed] = useState(false);
@@ -89,11 +103,14 @@ export const StudentEntryEffects = ({ profile, storyAccent }: { profile: MyClass
     celebrate({
       audience: 'personal',
       levelUps: hasLevels ? [{ key: profile.id, name: '', from: fromLevel, to: toLevel }] : [],
-      badges: newBadges.map((b) => ({ key: b.id, name: b.name, icon: b.icon, customImage: b.customImage, rarity: b.rarity, recipients: [] })),
+      badges: newBadges.map((b) => ({
+        key: b.id, name: b.name, icon: b.icon, customImage: b.customImage, rarity: b.rarity, recipients: [], reason: badgeReason(b),
+      })),
       progress: progress === undefined ? undefined : Math.max(0, Math.min(100, progress)),
+      action: newBadges.length > 0 ? { label: 'Ver mis insignias', run: () => navigate('/my-badges') } : undefined,
     });
     void studentApi.markCelebrationsSeen(profile.id, until).catch(() => undefined);
-  }, [pendingCelebration, profile, storyItems.length, streakSettled, celebrate]);
+  }, [pendingCelebration, profile, storyItems.length, streakSettled, celebrate, navigate]);
 
   // Nada abierto ni por abrir. Va después del efecto anterior: si en este mismo paso se lanzó la
   // celebración, el estado del store ya la tiene.

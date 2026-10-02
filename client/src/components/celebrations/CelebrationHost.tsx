@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type RefObject } from 
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Star, X } from 'lucide-react';
-import { RARITY_LABELS } from '../../lib/badgeApi';
+import { RARITY_LABELS, badgeImageUrl } from '../../lib/badgeApi';
 import { RARITY_STYLE } from '../badges/badgeHelpers';
 import { useSound } from '../../hooks/useSound';
 import { isMilestone, useCelebrationStore, type Celebration, type CelebrationBadge, type CelebrationLevelUp } from '../../store/celebrationStore';
@@ -151,11 +151,17 @@ const LevelRow = ({ item, index }: { item: CelebrationLevelUp; index: number }) 
   </li>
 );
 
-const BadgeIcon = ({ badge, size = 'h-10 w-10 text-xl' }: { badge: CelebrationBadge; size?: string }) => (
-  <span className={`flex flex-shrink-0 items-center justify-center overflow-hidden rounded-full ${size} ${RARITY_STYLE[badge.rarity].disc}`} aria-hidden="true">
-    {badge.customImage ? <img src={badge.customImage} alt="" className="h-full w-full object-cover" /> : badge.icon}
-  </span>
-);
+// La imagen propia se sirve junto a la API (badgeImageUrl); si no carga, se ve el ícono.
+const BadgeIcon = ({ badge, size = 'h-10 w-10 text-xl' }: { badge: CelebrationBadge; size?: string }) => {
+  const [broken, setBroken] = useState(false);
+  return (
+    <span className={`flex flex-shrink-0 items-center justify-center overflow-hidden rounded-full ${size} ${RARITY_STYLE[badge.rarity].disc}`} aria-hidden="true">
+      {badge.customImage && !broken
+        ? <img src={badgeImageUrl(badge.customImage)} alt="" onError={() => setBroken(true)} className="h-full w-full object-cover" />
+        : badge.icon}
+    </span>
+  );
+};
 
 const BadgeRow = ({ badge, showRecipients = true }: { badge: CelebrationBadge; showRecipients?: boolean }) => {
   const shown = badge.recipients.slice(0, 3).join(', ');
@@ -171,6 +177,7 @@ const BadgeRow = ({ badge, showRecipients = true }: { badge: CelebrationBadge; s
         {showRecipients && badge.recipients.length > 0 && (
           <span className="block truncate text-sm text-gray-700 dark:text-gray-300">{shown}{more > 0 ? ` y ${more} más` : ''}</span>
         )}
+        {badge.reason && <span className="block text-sm text-gray-700 dark:text-gray-300">{badge.reason}</span>}
       </span>
     </li>
   );
@@ -358,10 +365,25 @@ const PersonalCard = ({ celebration, cardRef, onClose }: CardProps) => {
               {celebration.badges.map((b) => <BadgeRow key={b.key} badge={b} showRecipients={false} />)}
             </ul>
           )}
-          <button type="button" onClick={onClose} autoFocus
-            className="mt-5 inline-flex min-h-[44px] items-center justify-center rounded-xl bg-amber-500 px-6 text-sm font-bold text-gray-900 hover:bg-amber-400">
-            ¡Genial!
-          </button>
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            <button type="button" onClick={onClose} autoFocus
+              className="inline-flex min-h-[44px] items-center justify-center rounded-xl bg-amber-500 px-6 text-sm font-bold text-gray-900 hover:bg-amber-400">
+              ¡Genial!
+            </button>
+            {celebration.action && (
+              <button
+                type="button"
+                onClick={() => {
+                  const run = celebration.action!.run;
+                  onClose();
+                  run();
+                }}
+                className="inline-flex min-h-[44px] items-center justify-center rounded-xl border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-800 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+              >
+                {celebration.action.label}
+              </button>
+            )}
+          </div>
         </div>
       </motion.div>
     </motion.div>
