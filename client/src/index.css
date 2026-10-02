@@ -413,12 +413,14 @@
   .auth-rise { animation: auth-rise 0.28s ease-out both; }
 }
 
-/* Modales (HomeModal): entrada en CSS. El fondo se desvanece y el panel entra opaco con un leve "pop"
-   (nunca translúcido). "backwards": al terminar manda el estilo en línea, así la salida de framer
-   (opacidad del fondo) sí se ve. */
+/* Modales (HomeModal): entrada y salida en CSS. Al abrir, el fondo se desvanece y el panel entra opaco
+   con un leve "pop" (nunca translúcido). Al cerrar, "forwards" deja el fondo en 0 hasta que React lo
+   quita: al final no hay JS que pueda volver a oscurecerlo. */
 @keyframes home-modal-fade { from { opacity: 0; } }
+@keyframes home-modal-fade-out { to { opacity: 0; } }
 @keyframes home-modal-pop { from { transform: translateY(8px) scale(0.97); } }
 .home-modal-fade { animation: home-modal-fade 150ms ease-out backwards; }
+.home-modal-fade.home-modal-out { animation: home-modal-fade-out 150ms ease-in forwards; }
 @media (prefers-reduced-motion: no-preference) {
   .home-modal-pop { animation: home-modal-pop 150ms ease-out backwards; }
 }

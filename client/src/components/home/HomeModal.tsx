@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, type ReactNode } from 'react';
-import { motion, useIsPresent } from 'framer-motion';
+import { usePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 
 interface HomeModalProps {
@@ -14,14 +14,33 @@ interface HomeModalProps {
 
 /**
  * Marco de los modales de Inicio: Esc cierra, el foco entra al abrir y vuelve al cerrar.
- * Al abrir, el fondo se desvanece y el panel entra opaco con un leve "pop" (CSS, home-modal-* en
- * index.css); al cerrar, el panel se va al instante y solo el fondo se desvanece. El panel nunca es
- * translúcido y el fondo no lleva desenfoque: antes se veía la página a través del panel y el modal
- * parpadeaba al abrir y al cerrar.
+ * Animación solo en CSS (home-modal-* en index.css): al abrir, el fondo se desvanece y el panel entra
+ * opaco con un leve "pop"; al cerrar, el panel se oculta al instante y el fondo se desvanece. Dentro de
+ * AnimatePresence, usePresence espera esa salida para quitar el modal. Sin animaciones de framer: al
+ * terminar, framer cancelaba su animación y el elemento volvía un instante a su estilo en línea (el modal
+ * desaparecía un momento al abrir y el fondo volvía a oscurecerse al cerrar).
  */
 export const HomeModal = ({ title, subtitle, onClose, footer, children, size = 'md', header }: HomeModalProps) => {
-  const isPresent = useIsPresent();
+  const [isPresent, safeToRemove] = usePresence();
   const panelRef = useRef<HTMLDivElement>(null);
+  const removed = useRef(false);
+
+  // Se quita una sola vez: al terminar la salida del fondo o, si el navegador no la anima (pestaña
+  // oculta), por tiempo.
+  const finishExit = useCallback(() => {
+    if (removed.current) return;
+    removed.current = true;
+    safeToRemove?.();
+  }, [safeToRemove]);
+
+  useEffect(() => {
+    if (isPresent) {
+      removed.current = false;
+      return;
+    }
+    const timer = window.setTimeout(finishExit, 300);
+    return () => window.clearTimeout(timer);
+  }, [isPresent, finishExit]);
 
   const handleKey = useCallback((event: KeyboardEvent) => {
     if (event.key === 'Escape' && isPresent && !event.defaultPrevented) {
@@ -51,25 +70,20 @@ export const HomeModal = ({ title, subtitle, onClose, footer, children, size = '
   return (
     // !m-0: dentro de un contenedor space-y-* el margen bajaba el fondo y dejaba una franja sin cubrir.
     <div className="fixed inset-0 z-[60] !m-0 flex items-center justify-center p-4">
-      <motion.div
+      <div
         aria-hidden="true"
-        className="home-modal-fade absolute inset-0 bg-black/60"
-        initial={false}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.15 }}
-        onClick={onClose}
+        className={`home-modal-fade absolute inset-0 bg-black/60 ${isPresent ? '' : 'home-modal-out'}`}
+        onClick={isPresent ? onClose : undefined}
+        onAnimationEnd={(event) => { if (event.animationName === 'home-modal-fade-out') finishExit(); }}
       />
-      <motion.div
+      <div
         ref={panelRef}
-        initial={false}
-        // Al cerrar, el panel se va de inmediato y solo el fondo se desvanece.
-        exit={{ opacity: 0, transition: { duration: 0 } }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`home-modal-pop relative flex max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-800 ${size === 'lg' ? 'max-w-2xl' : 'max-w-lg'}`}
+        // Al cerrar se oculta al instante (invisible: ni clics ni foco mientras el fondo se desvanece).
+        className={`home-modal-pop relative flex max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-800 ${size === 'lg' ? 'max-w-2xl' : 'max-w-lg'} ${isPresent ? '' : 'invisible'}`}
       >
         {header ?? (
           <div className="flex items-start justify-between gap-3 border-b border-gray-200 px-5 py-4 dark:border-gray-700">
@@ -84,7 +98,7 @@ export const HomeModal = ({ title, subtitle, onClose, footer, children, size = '
         )}
         <div className="flex-1 space-y-4 overflow-y-auto p-5">{children}</div>
         {footer && <div className="flex items-center justify-end gap-2 border-t border-gray-200 bg-gray-50 px-5 py-3 dark:border-gray-700 dark:bg-gray-900/40">{footer}</div>}
-      </motion.div>
+      </div>
     </div>
   );
 };
