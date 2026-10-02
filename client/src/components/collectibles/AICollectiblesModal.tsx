@@ -49,7 +49,7 @@ export const AICollectiblesModal = ({ mode, classroomId, albumName, firstSlot = 
           icon: card.icon ? String(card.icon).slice(0, 50) : undefined,
         }));
       if (cards.length === 0) {
-        toast.error('La IA no devolvió cromos; prueba con otra descripción');
+        toast.error('La IA no devolvió figuritas; prueba con otra descripción');
         return;
       }
       setGenerated({ name: String(result.name ?? theme).slice(0, 100), description: String(result.description ?? '').slice(0, 500), cards });
@@ -74,7 +74,7 @@ export const AICollectiblesModal = ({ mode, classroomId, albumName, firstSlot = 
   };
 
   const included = generated ? generated.cards.length - excluded.size : 0;
-  // Casilla que ocupará cada cromo incluido (los quitados no cuentan).
+  // Casilla que ocupará cada figurita incluida (las quitadas no cuentan).
   const slotNumbers: number[] = [];
   for (const [i] of (generated?.cards ?? []).entries()) slotNumbers.push(excluded.has(i) ? 0 : firstSlot + slotNumbers.filter((n) => n > 0).length);
 
@@ -94,8 +94,8 @@ export const AICollectiblesModal = ({ mode, classroomId, albumName, firstSlot = 
           <div className="flex items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary-600 to-indigo-600 text-white" aria-hidden="true"><Sparkles size={20} /></span>
             <div>
-              <h2 id="ai-collectibles-title" className="text-lg font-bold text-gray-900 dark:text-white">{mode === 'album' ? 'Crear álbum con IA' : 'Añadir cromos con IA'}</h2>
-              <p className="text-sm text-gray-700 dark:text-gray-300">{generated ? `${included} de ${generated.cards.length} seleccionados` : mode === 'album' ? 'Describe el tema y la IA crea los cromos con su emoji' : `Para el álbum ${albumName ?? ''}`}</p>
+              <h2 id="ai-collectibles-title" className="text-lg font-bold text-gray-900 dark:text-white">{mode === 'album' ? 'Crear álbum con IA' : 'Añadir figuritas con IA'}</h2>
+              <p className="text-sm text-gray-700 dark:text-gray-300">{generated ? `${included} de ${generated.cards.length} seleccionadas` : mode === 'album' ? 'Describe el tema y la IA crea las figuritas con su emoji' : `Para el álbum ${albumName ?? ''}`}</p>
             </div>
           </div>
           <button type="button" onClick={onClose} disabled={busy} aria-label="Cerrar" className="flex h-11 w-11 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 disabled:opacity-50 dark:text-gray-300 dark:hover:bg-gray-700"><X size={20} aria-hidden="true" /></button>
@@ -117,15 +117,15 @@ export const AICollectiblesModal = ({ mode, classroomId, albumName, firstSlot = 
                 />
               </div>
               <div>
-                <span className="mb-1.5 block text-sm font-semibold text-gray-800 dark:text-gray-100">¿Cuántos cromos?</span>
-                <div className="flex flex-wrap gap-2" role="group" aria-label="Cantidad de cromos">
+                <span className="mb-1.5 block text-sm font-semibold text-gray-800 dark:text-gray-100">¿Cuántas figuritas?</span>
+                <div className="flex flex-wrap gap-2" role="group" aria-label="Cantidad de figuritas">
                   {COUNTS[mode].map((n) => (
                     <button key={n} type="button" onClick={() => setCount(n)} aria-pressed={count === n} className={`min-h-[44px] min-w-[56px] rounded-xl border-2 px-3 text-sm font-bold ${count === n ? 'border-primary-600 bg-primary-50 text-gray-900 dark:border-primary-400 dark:bg-primary-900/30 dark:text-white' : 'border-gray-200 text-gray-800 hover:border-gray-300 dark:border-gray-600 dark:text-gray-100'}`}>
                       {n}
                     </button>
                   ))}
                 </div>
-                {mode === 'album' && <p className="mt-1.5 text-xs text-gray-700 dark:text-gray-300">Con 6 cromos por página: {Math.ceil(count / 6)} páginas.</p>}
+                {mode === 'album' && <p className="mt-1.5 text-xs text-gray-700 dark:text-gray-300">Con 6 figuritas por página: {Math.ceil(count / 6)} páginas.</p>}
               </div>
             </div>
           ) : (
@@ -136,7 +136,7 @@ export const AICollectiblesModal = ({ mode, classroomId, albumName, firstSlot = 
                   {generated.description && <p className="text-sm text-gray-700 dark:text-gray-300">{generated.description}</p>}
                 </div>
               )}
-              <p className="text-xs text-gray-700 dark:text-gray-300">Toca un cromo para quitarlo o volver a incluirlo. Podrás editar nombre, emoji e imagen después.</p>
+              <p className="text-xs text-gray-700 dark:text-gray-300">Toca una figurita para quitarla o volver a incluirla. Podrás editar nombre, emoji e imagen después.</p>
               <ul className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5">
                 {generated.cards.map((card, i) => {
                   const isIncluded = !excluded.has(i);

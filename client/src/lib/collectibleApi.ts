@@ -5,6 +5,27 @@ import api from './api';
 export type CardRarity = 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
 export type PackType = 'SINGLE' | 'PACK_5' | 'PACK_10';
 export type ImageStyle = 'CARTOON' | 'REALISTIC' | 'PIXEL_ART' | 'ANIME' | 'WATERCOLOR' | 'MINIMALIST';
+/** Nivel de precio del álbum sobre el oro semanal de la clase: la mitad, normal o el doble. */
+export type CollectiblePriceLevel = 'LOW' | 'NORMAL' | 'HIGH';
+
+/** El precio que calcula el servidor (coleccionables v2): sobre, límite diario y lo que cuesta completarlo. */
+export interface AlbumPricing {
+  weeklyGold: number;
+  young: boolean;
+  packCards: number;
+  packPrice: number;
+  dailyPacks: number;
+  duplicatePercent: number;
+  welcomeCards: number;
+  completeCost: number;
+  completeWeeks: number;
+}
+
+export interface PricingPreview {
+  weeklyGold: number;
+  young: boolean;
+  levels: Record<CollectiblePriceLevel, AlbumPricing>;
+}
 
 export interface CollectibleAlbum {
   id: string;
@@ -14,16 +35,19 @@ export interface CollectibleAlbum {
   coverImage: string | null;
   theme: string | null;
   imageStyle: ImageStyle | null;
+  /** Sin uso desde coleccionables v2 (el precio sale de priceLevel). */
   singlePackPrice: number;
   fivePackPrice: number;
   tenPackPrice: number;
-  rewardXp: number;
+  priceLevel: CollectiblePriceLevel;
   rewardHp: number;
   rewardGp: number;
   rewardBadgeId: string | null;
   allowTrades: boolean;
   isActive: boolean;
   totalCards?: number;
+  /** Solo en la lista y el detalle del profe. */
+  pricing?: AlbumPricing;
   createdAt: string;
   updatedAt: string;
 }
@@ -142,10 +166,7 @@ export interface CreateAlbumData {
   coverImage?: string | null;
   theme?: string;
   imageStyle?: ImageStyle;
-  singlePackPrice?: number;
-  fivePackPrice?: number;
-  tenPackPrice?: number;
-  rewardXp?: number;
+  priceLevel?: CollectiblePriceLevel;
   rewardHp?: number;
   rewardGp?: number;
   rewardBadgeId?: string | null;
@@ -223,6 +244,12 @@ export const collectibleApi = {
   getAlbums: async (classroomId: string): Promise<CollectibleAlbum[]> => {
     const response = await api.get(`/collectibles/classroom/${classroomId}/albums`);
     return response.data;
+  },
+
+  // Los tres niveles de precio con el oro de la clase, para un álbum de `cards` figuritas.
+  getPricingPreview: async (classroomId: string, cards: number): Promise<PricingPreview> => {
+    const response = await api.get(`/collectibles/classroom/${classroomId}/pricing`, { params: { cards } });
+    return response.data.data;
   },
 
   getImportableAlbums: async (classroomId: string): Promise<ImportableAlbumSource[]> => {

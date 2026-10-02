@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Album, BookOpen, Download, Plus, RotateCcw, Sparkles } from 'lucide-react';
 import { collectibleImageUrl, type CollectibleAlbum } from '../../lib/collectibleApi';
+import { gold } from './collectibleHelpers';
 
 interface AlbumListViewProps {
   albums: CollectibleAlbum[];
@@ -50,7 +51,7 @@ export const AlbumListView = ({ albums, onOpen, onBrowse, onCreate, onCreateWith
           </span>
           <div>
             <h1 className="text-lg font-bold text-gray-900 dark:text-white">Coleccionables</h1>
-            <p className="text-sm text-gray-700 dark:text-gray-300">Álbumes de cromos que tus estudiantes completan abriendo sobres</p>
+            <p className="text-sm text-gray-700 dark:text-gray-300">Álbumes de figuritas que tus estudiantes completan abriendo sobres</p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -83,7 +84,7 @@ export const AlbumListView = ({ albums, onOpen, onBrowse, onCreate, onCreateWith
         <div className="rounded-2xl border-2 border-dashed border-gray-300 bg-white/70 px-6 py-12 text-center dark:border-gray-600 dark:bg-gray-800/60">
           <p className="text-5xl" aria-hidden="true">📖</p>
           <h2 className="mt-3 text-lg font-bold text-gray-900 dark:text-white">Crea tu primer álbum</h2>
-          <p className="mx-auto mt-1 max-w-md text-sm text-gray-700 dark:text-gray-300">Tus estudiantes compran sobres con su oro, pegan los cromos y ganan un premio al completarlo.</p>
+          <p className="mx-auto mt-1 max-w-md text-sm text-gray-700 dark:text-gray-300">Tus estudiantes abren sobres con su oro, pegan las figuritas y ganan un premio al completarlo.</p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             <button type="button" onClick={onCreateWithAI} className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-primary-600 px-5 text-sm font-bold text-white hover:bg-primary-700">
               <Sparkles size={16} aria-hidden="true" />
@@ -111,11 +112,11 @@ export const AlbumListView = ({ albums, onOpen, onBrowse, onCreate, onCreateWith
               <Cover album={album} />
               <div className="flex flex-1 flex-col gap-3 p-4">
                 <p className="flex flex-wrap gap-x-3 gap-y-1 text-sm text-gray-800 dark:text-gray-200">
-                  <span><strong>{album.totalCards || 0}</strong> cromos</span>
-                  <span>Sobre <strong>{album.singlePackPrice} GP</strong></span>
+                  <span><strong>{album.totalCards || 0}</strong> figuritas</span>
+                  {album.pricing && !!album.totalCards && <span>Sobre <strong>{gold(album.pricing.packPrice)}</strong></span>}
                   <span>
-                    {album.rewardXp > 0 || album.rewardGp > 0
-                      ? <>Premio <strong>{[album.rewardXp > 0 && `+${album.rewardXp} XP`, album.rewardGp > 0 && `+${album.rewardGp} GP`].filter(Boolean).join(' ')}</strong></>
+                    {album.rewardGp > 0 || album.rewardBadgeId
+                      ? <>Premio <strong>{[album.rewardGp > 0 && `+${gold(album.rewardGp)}`, album.rewardBadgeId && 'insignia'].filter(Boolean).join(' y ')}</strong></>
                       : <em className="text-gray-700 dark:text-gray-300">Sin premio</em>}
                   </span>
                 </p>

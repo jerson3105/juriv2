@@ -88,7 +88,7 @@ export const AchievementsTab = ({ classroomId, studentId, summary, onGiveBadge }
             <>
               <p className="flex items-center gap-2 text-sm text-gray-800 dark:text-gray-100">
                 <Album size={18} className="text-violet-700 dark:text-violet-300" aria-hidden="true" />
-                Tiene <strong>{summary.collectibles.owned}</strong> de <strong>{summary.collectibles.total}</strong> cromos de la clase.
+                Tiene <strong>{summary.collectibles.owned}</strong> de <strong>{summary.collectibles.total}</strong> figuritas de la clase.
               </p>
               <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700" aria-hidden="true">
                 <div className="h-full rounded-full bg-violet-600" style={{ width: `${(summary.collectibles.owned / summary.collectibles.total) * 100}%` }} />

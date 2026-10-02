@@ -305,12 +305,12 @@ export const collectibleController = {
       }
 
       if (
-        error.message === 'Selecciona al menos un cromo' ||
+        error.message === 'Selecciona al menos una figurita' ||
         error.message === 'Selecciona un álbum destino' ||
         error.message === 'Selecciona otro álbum destino' ||
-        error.message === 'Solo puedes mover cromos entre álbumes de la misma clase' ||
-        error.message === 'Hay cromos inválidos para mover' ||
-        error.message === 'No puedes mover cromos porque uno de los álbumes ya tiene progreso de estudiantes'
+        error.message === 'Solo puedes mover figuritas entre álbumes de la misma clase' ||
+        error.message === 'Hay figuritas inválidas para mover' ||
+        error.message === 'No puedes mover figuritas porque uno de los álbumes ya tiene progreso de estudiantes'
       ) {
         return res.status(400).json({ message: error.message });
       }
@@ -326,7 +326,7 @@ export const collectibleController = {
       const result = await collectibleService.deleteCard(cardId);
       if (!result.deleted && result.owners > 0) {
         return res.status(409).json({
-          message: `${result.owners} ${result.owners === 1 ? 'estudiante ya tiene' : 'estudiantes ya tienen'} este cromo: no se puede borrar, pero sí editar`,
+          message: `${result.owners} ${result.owners === 1 ? 'estudiante ya tiene' : 'estudiantes ya tienen'} esta figurita: no se puede borrar, pero sí editar`,
           owners: result.owners,
         });
       }

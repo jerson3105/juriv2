@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { motion, useIsPresent } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
-import { ImagePlus, X } from 'lucide-react';
+import { Coins, ImagePlus, X } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { collectibleApi, collectibleImageUrl, type AlbumWithCards, type CreateAlbumData } from '../../lib/collectibleApi';
+import { collectibleApi, collectibleImageUrl, type AlbumWithCards, type CollectiblePriceLevel, type CreateAlbumData } from '../../lib/collectibleApi';
 import { badgeApi } from '../../lib/badgeApi';
-import { expectedCostToComplete } from './collectibleHelpers';
+import { PACK_PRICE_LEVELS, completeCostText, gold, pricingKey } from './collectibleHelpers';
 
 export type AlbumFormTarget = { kind: 'create' } | { kind: 'edit'; album: AlbumWithCards };
 
@@ -17,8 +17,6 @@ interface AlbumFormModalProps {
   onSubmit: (data: CreateAlbumData & { isActive?: boolean }) => Promise<boolean>;
 }
 
-const SUGGESTED = { single: 10, five: 45, ten: 80 };
-
 const initialState = (target: AlbumFormTarget) => {
   const album = target.kind === 'edit' ? target.album : null;
   return {
@@ -26,11 +24,9 @@ const initialState = (target: AlbumFormTarget) => {
     description: album?.description ?? '',
     coverImage: album?.coverImage ?? null,
     coverChanged: false,
-    single: album?.singlePackPrice ?? SUGGESTED.single,
-    five: album?.fivePackPrice ?? SUGGESTED.five,
-    ten: album?.tenPackPrice ?? SUGGESTED.ten,
-    rewardXp: album?.rewardXp ?? 100,
-    rewardGp: album?.rewardGp ?? 50,
+    // Sin elegir, el servidor pone «Más barato» en inicial a 2.º y «Normal» en el resto.
+    priceLevel: album?.priceLevel ?? null as CollectiblePriceLevel | null,
+    rewardGp: album?.rewardGp ?? 0,
     rewardBadgeId: album?.rewardBadgeId ?? '',
     isActive: album?.isActive ?? true,
   };
@@ -41,6 +37,10 @@ type FormState = ReturnType<typeof initialState>;
 const fieldClass = 'h-11 w-full rounded-xl border border-gray-300 bg-white px-3 text-sm text-gray-900 outline-none placeholder:text-gray-500 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder:text-gray-400';
 const labelClass = 'mb-1.5 block text-sm font-semibold text-gray-800 dark:text-gray-100';
 const numberClass = 'h-10 w-full rounded-lg border border-gray-300 bg-white text-center text-sm font-bold text-gray-900 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white';
+const segment = (active: boolean) =>
+  `min-h-[40px] rounded-lg px-3 text-sm font-semibold transition-colors ${
+    active ? 'bg-primary-600 text-white' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700'
+  }`;
 const clamp = (value: number, max: number) => Math.min(max, Math.max(0, Math.round(Number.isFinite(value) ? value : 0)));
 
 export const AlbumFormModal = ({ target, classroomId, isSaving, onClose, onSubmit }: AlbumFormModalProps) => {
@@ -50,16 +50,19 @@ export const AlbumFormModal = ({ target, classroomId, isSaving, onClose, onSubmi
   const isPresent = useIsPresent();
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((current) => ({ ...current, [key]: value }));
   const canSave = form.name.trim().length > 0 && !isSaving && !isUploading;
+  const cardCount = target.kind === 'edit' ? target.album.cards.length : 0;
 
   const { data: badges = [] } = useQuery({
     queryKey: ['badges', classroomId],
     queryFn: () => badgeApi.getClassroomBadges(classroomId),
   });
-
-  const cost = useMemo(
-    () => (target.kind === 'edit' && target.album.cards.length > 0 ? expectedCostToComplete(target.album.cards, { single: form.single, five: form.five, ten: form.ten }) : null),
-    [target, form.single, form.five, form.ten],
-  );
+  // El precio lo calcula el servidor con el oro semanal de la clase (el mismo que usa la ropa del avatar).
+  const preview = useQuery({
+    queryKey: pricingKey(classroomId, cardCount),
+    queryFn: () => collectibleApi.getPricingPreview(classroomId, cardCount),
+  });
+  const level: CollectiblePriceLevel = form.priceLevel ?? (preview.data?.young ? 'LOW' : 'NORMAL');
+  const pricing = preview.data?.levels[level];
 
   const handleKey = useCallback((event: KeyboardEvent) => {
     if (event.key === 'Escape' && isPresent && !event.defaultPrevented) onClose();
@@ -91,10 +94,7 @@ export const AlbumFormModal = ({ target, classroomId, isSaving, onClose, onSubmi
       name: form.name.trim(),
       description: form.description.trim() || null,
       ...(form.coverChanged ? { coverImage: form.coverImage } : {}),
-      singlePackPrice: form.single,
-      fivePackPrice: form.five,
-      tenPackPrice: form.ten,
-      rewardXp: form.rewardXp,
+      ...(form.priceLevel ? { priceLevel: form.priceLevel } : {}),
       rewardGp: form.rewardGp,
       rewardBadgeId: form.rewardBadgeId || null,
       ...(isEdit ? { isActive: form.isActive } : {}),
@@ -167,44 +167,45 @@ export const AlbumFormModal = ({ target, classroomId, isSaving, onClose, onSubmi
           </div>
 
           <div>
-            <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-              <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">Precio de los sobres (oro)</span>
-              {(form.single !== SUGGESTED.single || form.five !== SUGGESTED.five || form.ten !== SUGGESTED.ten) && (
-                <button type="button" onClick={() => setForm((current) => ({ ...current, ...SUGGESTED }))} className="min-h-[32px] rounded-lg px-2 text-xs font-semibold text-primary-700 hover:bg-primary-50 dark:text-primary-300 dark:hover:bg-primary-900/30">
-                  Usar sugeridos (10 · 45 · 80)
+            <p id="album-price-level" className={labelClass}>Precio de los sobres</p>
+            <div className="flex w-fit flex-wrap gap-1 rounded-xl border border-gray-300 bg-white p-1 dark:border-gray-600 dark:bg-gray-800" role="radiogroup" aria-labelledby="album-price-level">
+              {PACK_PRICE_LEVELS.map((option) => (
+                <button key={option.value} type="button" role="radio" aria-checked={level === option.value} onClick={() => set('priceLevel', option.value)} className={segment(level === option.value)}>
+                  {option.label}
                 </button>
-              )}
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {([['single', 'Sobre ×1'], ['five', 'Paquete ×5'], ['ten', 'Paquete ×10']] as const).map(([key, label]) => (
-                <label key={key} className="rounded-xl bg-gray-50 p-2 text-center text-xs font-semibold text-gray-800 dark:bg-gray-900/40 dark:text-gray-100">
-                  {label}
-                  <input type="number" min={0} value={form[key]} onChange={(e) => set(key, clamp(e.target.valueAsNumber, 100000))} onFocus={(e) => e.target.select()} className={`${numberClass} mt-1`} />
-                </label>
               ))}
             </div>
-            <p className="mt-2 text-xs text-gray-700 dark:text-gray-300" role="status">
-              {cost
-                ? `Completarlo cuesta en promedio ~${cost.gp} GP (unos ${cost.draws} cromos, contando repetidos).`
-                : 'Cuando el álbum tenga cromos verás cuánto oro cuesta completarlo en promedio.'}
-            </p>
+            <div className="mt-2 space-y-1 text-sm text-gray-800 dark:text-gray-200" role="status">
+              {pricing ? (
+                <>
+                  <p className="flex flex-wrap items-center gap-x-1.5">
+                    <Coins size={16} className="text-amber-600 dark:text-amber-300" aria-hidden="true" />
+                    Sobre de {pricing.packCards}: <strong>{gold(pricing.packPrice)}</strong> · hasta {pricing.dailyPacks} al día
+                  </p>
+                  <p className="text-gray-700 dark:text-gray-300">{completeCostText(pricing, cardCount)}</p>
+                  <p className="text-xs text-gray-700 dark:text-gray-300">
+                    Calculado con el oro que gana tu clase (unos {gold(pricing.weeklyGold)} por semana), como la ropa del avatar.
+                    {pricing.duplicatePercent > 0 ? ` En cada sobre, 1 de cada 5 figuritas sale repetida.` : ' En inicial a 2.º no salen repetidas.'}
+                  </p>
+                </>
+              ) : (
+                <p className="text-gray-700 dark:text-gray-300">{preview.isError ? 'No pudimos calcular el precio ahora.' : 'Calculando el precio…'}</p>
+              )}
+            </div>
           </div>
 
           <div>
             <span className={labelClass}>Premio al completarlo</span>
-            <div className="grid grid-cols-2 gap-2">
-              {([['rewardXp', 'XP'], ['rewardGp', 'GP (oro)']] as const).map(([key, label]) => (
-                <label key={key} className="flex items-center gap-2 rounded-xl bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-800 dark:bg-gray-900/40 dark:text-gray-100">
-                  {label}
-                  <input type="number" min={0} max={1000} value={form[key]} onChange={(e) => set(key, clamp(e.target.valueAsNumber, 1000))} onFocus={(e) => e.target.select()} className={`${numberClass} ml-auto w-20`} />
-                </label>
-              ))}
-            </div>
-            <label htmlFor="album-badge" className="mt-2 block text-xs font-semibold text-gray-800 dark:text-gray-100">Insignia al completarlo <span className="font-normal text-gray-600 dark:text-gray-300">(opcional)</span></label>
+            <label htmlFor="album-badge" className="block text-xs font-semibold text-gray-800 dark:text-gray-100">Insignia <span className="font-normal text-gray-600 dark:text-gray-300">(recomendado)</span></label>
             <select id="album-badge" value={form.rewardBadgeId} onChange={(e) => set('rewardBadgeId', e.target.value)} className={`${fieldClass} story-select mt-1`}>
               <option value="">Sin insignia</option>
               {badges.map((badge) => <option key={badge.id} value={badge.id}>{badge.icon} {badge.name}</option>)}
             </select>
+            <label className="mt-2 flex items-center gap-2 rounded-xl bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-800 dark:bg-gray-900/40 dark:text-gray-100">
+              Oro <span className="font-normal text-gray-600 dark:text-gray-300">(opcional)</span>
+              <input type="number" min={0} max={1000} value={form.rewardGp} onChange={(e) => set('rewardGp', clamp(e.target.valueAsNumber, 1000))} onFocus={(e) => e.target.select()} className={`${numberClass} ml-auto w-20`} />
+            </label>
+            <p className="mt-1.5 text-xs text-gray-700 dark:text-gray-300">Sin XP: lo que se compra con oro no sube de nivel.</p>
           </div>
 
           {isEdit && (
@@ -212,7 +213,7 @@ export const AlbumFormModal = ({ target, classroomId, isSaving, onClose, onSubmi
               <input type="checkbox" checked={form.isActive} onChange={(e) => set('isActive', e.target.checked)} className="h-5 w-5 rounded border-gray-400 text-primary-600 focus:ring-primary-500" />
               <span>
                 <span className="block text-sm font-semibold text-gray-900 dark:text-white">A la venta</span>
-                <span className="block text-xs text-gray-700 dark:text-gray-300">Si lo desactivas, nadie puede comprar sobres; los estudiantes conservan sus cromos</span>
+                <span className="block text-xs text-gray-700 dark:text-gray-300">Si lo desactivas, nadie puede abrir sobres; los estudiantes conservan sus figuritas y siguen viendo su álbum</span>
               </span>
             </label>
           )}

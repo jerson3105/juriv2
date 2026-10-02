@@ -383,7 +383,7 @@ class CollectibleService {
     };
   }
 
-  // Archivar: deja de venderse y de mostrarse como activo; los estudiantes conservan sus cromos,
+  // Archivar: deja de venderse y de mostrarse como activo; los estudiantes conservan sus figuritas,
   // compras y álbumes completados (antes se borraba todo). Se restaura con isActive = true.
   async deleteAlbum(albumId: string) {
     await db
@@ -405,7 +405,7 @@ class CollectibleService {
     ));
 
     if (uniqueCardIds.length === 0) {
-      throw new Error('Selecciona al menos un cromo');
+      throw new Error('Selecciona al menos una figurita');
     }
 
     if (!targetAlbumId?.trim()) {
@@ -433,7 +433,7 @@ class CollectibleService {
     }
 
     if (sourceAlbum.classroomId !== targetAlbum.classroomId) {
-      throw new Error('Solo puedes mover cromos entre álbumes de la misma clase');
+      throw new Error('Solo puedes mover figuritas entre álbumes de la misma clase');
     }
 
     return db.transaction(async (tx) => {
@@ -443,7 +443,7 @@ class CollectibleService {
       ]);
 
       if (sourceHasUsage || targetHasUsage) {
-        throw new Error('No puedes mover cromos porque uno de los álbumes ya tiene progreso de estudiantes');
+        throw new Error('No puedes mover figuritas porque uno de los álbumes ya tiene progreso de estudiantes');
       }
 
       const cardsToMove = await tx
@@ -460,7 +460,7 @@ class CollectibleService {
         .orderBy(asc(collectibleCards.slotNumber), asc(collectibleCards.createdAt));
 
       if (cardsToMove.length !== uniqueCardIds.length) {
-        throw new Error('Hay cromos inválidos para mover');
+        throw new Error('Hay figuritas inválidas para mover');
       }
 
       const [maxSlotRow] = await tx

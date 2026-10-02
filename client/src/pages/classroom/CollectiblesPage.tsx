@@ -109,7 +109,7 @@ export const CollectiblesPage = () => {
   const openBook = async (target: CollectibleAlbum) => {
     try {
       const full = await queryClient.fetchQuery({ queryKey: albumKey(target.id), queryFn: () => collectibleApi.getAlbumById(target.id) });
-      setBook({ album: full, subtitle: 'Vista previa: así se ve con todos los cromos' });
+      setBook({ album: full, subtitle: 'Vista previa: así se ve con todas las figuritas' });
     } catch (error) {
       toast.error(errorMessage(error, 'No se pudo abrir el álbum'));
     }
@@ -144,7 +144,7 @@ export const CollectiblesPage = () => {
       refreshAlbum(target.id);
       if (!silent) {
         if (isActive) toast.success(`De vuelta a la venta: ${target.name}`);
-        else undoToast(`Archivado: ${target.name}. Tus estudiantes conservan sus cromos.`, () => void setAlbumActive(target, true));
+        else undoToast(`Archivado: ${target.name}. Tus estudiantes conservan sus figuritas.`, () => void setAlbumActive(target, true));
       }
     } catch (error) {
       toast.error(errorMessage(error, 'No se pudo actualizar el álbum'));
@@ -168,7 +168,7 @@ export const CollectiblesPage = () => {
       else setCardForm({ kind: 'create', nextSlot: album.cards.length + 2 });
       return true;
     } catch (error) {
-      toast.error(errorMessage(error, 'No se pudo guardar el cromo'));
+      toast.error(errorMessage(error, 'No se pudo guardar la figurita'));
       return false;
     } finally {
       setSaving(false);
@@ -192,13 +192,13 @@ export const CollectiblesPage = () => {
           });
           toast.success(`Recuperado: ${card.name}`);
         } catch (error) {
-          toast.error(errorMessage(error, 'No se pudo recuperar el cromo'));
+          toast.error(errorMessage(error, 'No se pudo recuperar la figurita'));
         } finally {
           refreshAlbum(album.id);
         }
       });
     } catch (error) {
-      toast.error(errorMessage(error, 'No se pudo borrar el cromo'));
+      toast.error(errorMessage(error, 'No se pudo borrar la figurita'));
       refreshAlbum(album.id);
     }
   };
@@ -208,23 +208,18 @@ export const CollectiblesPage = () => {
     const toCard = (card: GeneratedCard) => ({ name: card.name, description: card.description || null, rarity: card.rarity, icon: card.icon ?? null });
     try {
       if (albumInfo) {
-        // Precios y premio sugeridos; se ajustan luego en "Configurar" (antes el premio se perdía).
+        // El precio sale solo del oro de la clase; el premio (una insignia) se elige luego en «Configurar».
         const created = await collectibleApi.createAlbum(classroom.id, {
           name: albumInfo.name,
           description: albumInfo.description || null,
-          singlePackPrice: 10,
-          fivePackPrice: 45,
-          tenPackPrice: 80,
-          rewardXp: 100,
-          rewardGp: 50,
         });
         await collectibleApi.createManyCards(created.id, cards.map(toCard));
-        toast.success(`Álbum creado con ${cards.length} cromos`);
+        toast.success(`Álbum creado con ${cards.length} figuritas`);
         refreshAlbum(created.id);
         setView({ kind: 'album', albumId: created.id });
       } else if (album) {
         await collectibleApi.createManyCards(album.id, cards.map(toCard));
-        toast.success(`${cards.length} cromo${cards.length !== 1 ? 's' : ''} añadido${cards.length !== 1 ? 's' : ''}`);
+        toast.success(`${cards.length} figurita${cards.length !== 1 ? 's' : ''} añadida${cards.length !== 1 ? 's' : ''}`);
         refreshAlbum(album.id);
       }
       setAiMode(null);
@@ -253,12 +248,12 @@ export const CollectiblesPage = () => {
     setSaving(true);
     try {
       const result = await collectibleApi.moveCards(album.id, targetAlbumId, cardIds);
-      toast.success(`${result.movedCount} cromo${result.movedCount !== 1 ? 's' : ''} movido${result.movedCount !== 1 ? 's' : ''} a ${result.targetAlbumName}`);
+      toast.success(`${result.movedCount} figurita${result.movedCount !== 1 ? 's' : ''} movida${result.movedCount !== 1 ? 's' : ''} a ${result.targetAlbumName}`);
       refreshAlbum(album.id);
       queryClient.invalidateQueries({ queryKey: albumKey(targetAlbumId) });
       setTransfer(null);
     } catch (error) {
-      toast.error(errorMessage(error, 'No se pudieron mover los cromos'));
+      toast.error(errorMessage(error, 'No se pudieron mover las figuritas'));
     } finally {
       setSaving(false);
     }
@@ -289,7 +284,7 @@ export const CollectiblesPage = () => {
         album={album}
         owners={owners}
         onBack={() => setView({ kind: 'list' })}
-        onBrowse={() => setBook({ album, subtitle: 'Vista previa: así se ve con todos los cromos' })}
+        onBrowse={() => setBook({ album, subtitle: 'Vista previa: así se ve con todas las figuritas' })}
         onProgress={() => setView({ kind: 'progress', albumId: album.id })}
         onAddCard={() => setCardForm({ kind: 'create', nextSlot: album.cards.length + 1 })}
         onAddWithAI={() => setAiMode('cards')}

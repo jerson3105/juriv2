@@ -91,7 +91,7 @@ export const JIRO_TIPS = [
   { text: 'Crea insignias propias y otórgalas en lote al final de la clase.', highlight: 'insignias propias' },
   { text: 'En la tienda tus estudiantes canjean su oro por recompensas reales.', highlight: 'tienda' },
   { text: 'Los clanes fomentan el trabajo en equipo: cada punto suma para su equipo.', highlight: 'clanes' },
-  { text: 'Con los álbumes de cromos, completar la colección se vuelve una meta de toda la clase.', highlight: 'álbumes de cromos' },
+  { text: 'Con los álbumes de figuritas, completar la colección se vuelve una meta de toda la clase.', highlight: 'álbumes de figuritas' },
   { text: 'Cierra la clase con la Gala de Rankings: podio, redoble y confeti.', highlight: 'Gala de Rankings' },
   { text: 'Pasa lista en segundos desde Asistencia: los presentes suman XP solos.', highlight: 'Asistencia' },
   { text: 'El banco de preguntas te deja reutilizar preguntas en el Observatorio de Jiro y las Expediciones.', highlight: 'banco de preguntas' },

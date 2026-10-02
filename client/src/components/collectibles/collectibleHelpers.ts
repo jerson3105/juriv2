@@ -1,11 +1,10 @@
-import type { CardRarity, CollectibleCard } from '../../lib/collectibleApi';
+import type { AlbumPricing, CardRarity, CollectiblePriceLevel } from '../../lib/collectibleApi';
+import { gold } from '../avatar/avatarHelpers';
 
 export const CARD_RARITY_ORDER: CardRarity[] = ['COMMON', 'UNCOMMON', 'RARE', 'EPIC', 'LEGENDARY'];
 
-// Mismas probabilidades que el servidor al abrir un sobre (collectible.service).
-export const RARITY_WEIGHT: Record<CardRarity, number> = { COMMON: 50, UNCOMMON: 30, RARE: 15, EPIC: 4, LEGENDARY: 1 };
-
-// Estilos estáticos por rareza (Tailwind no ve clases armadas dinámicamente).
+// Estilos estáticos por rareza (Tailwind no ve clases armadas dinámicamente). La rareza solo cambia el marco:
+// en los sobres todas las figuritas salen igual de seguido. Etiquetas en femenino («figurita rara»).
 export const CARD_RARITY_STYLE: Record<CardRarity, {
   label: string;
   frame: string;
@@ -28,21 +27,21 @@ export const CARD_RARITY_STYLE: Record<CardRarity, {
     holo: false,
   },
   RARE: {
-    label: 'Raro',
+    label: 'Rara',
     frame: 'from-sky-400 via-blue-200 to-blue-600',
     art: 'from-sky-100 to-blue-300 dark:from-blue-950 dark:to-blue-800',
     chip: 'bg-blue-100 text-blue-900 dark:bg-blue-900/60 dark:text-blue-100',
     holo: false,
   },
   EPIC: {
-    label: 'Épico',
+    label: 'Épica',
     frame: 'from-fuchsia-400 via-purple-300 to-violet-600',
     art: 'from-fuchsia-100 to-violet-300 dark:from-purple-950 dark:to-violet-800',
     chip: 'bg-purple-100 text-purple-900 dark:bg-purple-900/60 dark:text-purple-100',
     holo: true,
   },
   LEGENDARY: {
-    label: 'Legendario',
+    label: 'Legendaria',
     frame: 'from-yellow-300 via-amber-200 to-orange-500',
     art: 'from-yellow-100 to-amber-300 dark:from-amber-950 dark:to-orange-900',
     chip: 'bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-100',
@@ -62,41 +61,22 @@ export const albumsKey = (classroomId: string) => ['collectible-albums', classro
 export const albumKey = (albumId: string) => ['collectible-album', albumId] as const;
 export const cardOwnersKey = (albumId: string) => ['collectible-card-owners', albumId] as const;
 
-// Probabilidad de cada cromo al sacar uno: la rareza se reparte entre sus cromos; si una rareza no
-// tiene cromos, su peso se reparte entre las que sí (aproximación del reparto del servidor).
-const cardProbabilities = (cards: Pick<CollectibleCard, 'rarity'>[]) => {
-  const byRarity = new Map<CardRarity, number>();
-  for (const card of cards) byRarity.set(card.rarity, (byRarity.get(card.rarity) ?? 0) + 1);
-  const totalWeight = [...byRarity.keys()].reduce((sum, rarity) => sum + RARITY_WEIGHT[rarity], 0);
-  return cards.map((card) => RARITY_WEIGHT[card.rarity] / totalWeight / (byRarity.get(card.rarity) ?? 1));
-};
+export const pricingKey = (classroomId: string, cards: number) => ['collectible-pricing', classroomId, cards] as const;
 
-// Cromos que hay que sacar, en promedio, para completar el álbum (coleccionista de cupones con
-// probabilidades distintas): E[T] = ∫₀^∞ (1 − Π(1 − e^(−p·t))) dt, integrado numéricamente.
-export const expectedDrawsToComplete = (cards: Pick<CollectibleCard, 'rarity'>[]) => {
-  if (cards.length === 0) return 0;
-  const probs = cardProbabilities(cards);
-  const minP = Math.min(...probs);
-  const limit = 30 / minP;
-  const steps = 4000;
-  const dt = limit / steps;
-  let total = 0;
-  for (let i = 0; i < steps; i++) {
-    const t = (i + 0.5) * dt;
-    let product = 1;
-    for (const p of probs) product *= 1 - Math.exp(-p * t);
-    total += (1 - product) * dt;
-  }
-  return total;
-};
+export { gold };
 
-// Costo medio en oro de completar el álbum comprando el sobre más barato por cromo.
-export const expectedCostToComplete = (
-  cards: Pick<CollectibleCard, 'rarity'>[],
-  prices: { single: number; five: number; ten: number },
-) => {
-  const draws = expectedDrawsToComplete(cards);
-  const perCard = Math.min(prices.single || Infinity, (prices.five || Infinity) / 5, (prices.ten || Infinity) / 10);
-  if (!Number.isFinite(perCard)) return { draws: Math.round(draws), gp: 0 };
-  return { draws: Math.round(draws), gp: Math.round(draws * perCard) };
+/** Nivel de precio del álbum (masculino: «sobre más barato»). */
+export const PACK_PRICE_LEVELS: { value: CollectiblePriceLevel; label: string }[] = [
+  { value: 'LOW', label: 'Más barato' },
+  { value: 'NORMAL', label: 'Normal' },
+  { value: 'HIGH', label: 'Más caro' },
+];
+
+const weeksText = (weeks: number) => `${weeks.toLocaleString('es', { maximumFractionDigits: 1 })} ${weeks === 1 ? 'semana' : 'semanas'}`;
+
+/** Lo que cuesta completar el álbum según el servidor (en promedio, con el sobre de bienvenida y las repetidas). */
+export const completeCostText = (pricing: AlbumPricing, cards: number) => {
+  if (cards === 0) return 'Cuando el álbum tenga figuritas verás cuánto cuesta completarlo.';
+  if (pricing.completeCost === 0) return `El sobre de bienvenida trae las ${cards} figuritas: completarlo no cuesta oro.`;
+  return `Completarlo: ${cards} figuritas, unos ${gold(pricing.completeCost)} en promedio (≈ ${weeksText(pricing.completeWeeks)} de oro), con el sobre de bienvenida gratis.`;
 };

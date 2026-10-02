@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, BookOpen, MoreHorizontal, Pencil, Plus, Sparkles, Trash2, Users } from 'lucide-react';
 import type { AlbumWithCards, CardOwners, CollectibleCard } from '../../lib/collectibleApi';
 import { CollectibleCardView } from './CollectibleCardView';
-import { expectedCostToComplete } from './collectibleHelpers';
+import { gold } from './collectibleHelpers';
 
 interface AlbumDetailViewProps {
   album: AlbumWithCards;
@@ -80,17 +80,24 @@ export const AlbumDetailView = ({
 }: AlbumDetailViewProps) => {
   const ownersById = useMemo(() => new Map(owners.map((o) => [o.cardId, o.owners])), [owners]);
   const cards = useMemo(() => [...album.cards].sort((a, b) => a.slotNumber - b.slotNumber), [album.cards]);
-  const cost = useMemo(
-    () => (cards.length > 0 ? expectedCostToComplete(cards, { single: album.singlePackPrice, five: album.fivePackPrice, ten: album.tenPackPrice }) : null),
-    [cards, album.singlePackPrice, album.fivePackPrice, album.tenPackPrice],
-  );
   const pages = Math.max(1, Math.ceil(cards.length / 6));
+  // El precio lo calcula el servidor con el oro semanal de la clase y el nivel del álbum.
+  const pricing = album.pricing;
+  const weeks = pricing ? pricing.completeWeeks.toLocaleString('es', { maximumFractionDigits: 1 }) : '';
 
   const stats = [
-    { label: 'Cromos', value: `${cards.length}`, hint: `${pages} ${pages === 1 ? 'página' : 'páginas'}` },
-    { label: 'Sobres', value: `${album.singlePackPrice} · ${album.fivePackPrice} · ${album.tenPackPrice}`, hint: 'GP por ×1 · ×5 · ×10' },
-    { label: 'Completarlo', value: cost ? `~${cost.gp} GP` : '—', hint: cost ? `unos ${cost.draws} cromos con repetidos` : 'añade cromos' },
-    { label: 'Premio', value: [album.rewardXp > 0 && `+${album.rewardXp} XP`, album.rewardGp > 0 && `+${album.rewardGp} GP`].filter(Boolean).join(' ') || 'Sin premio', hint: album.rewardBadgeId ? '+ insignia' : 'al completarlo' },
+    { label: 'Figuritas', value: `${cards.length}`, hint: `${pages} ${pages === 1 ? 'página' : 'páginas'}` },
+    { label: 'Sobre', value: pricing ? gold(pricing.packPrice) : '—', hint: pricing ? `de ${pricing.packCards} · hasta ${pricing.dailyPacks} al día` : 'precio automático' },
+    {
+      label: 'Completarlo',
+      value: pricing && cards.length > 0 ? `~${gold(pricing.completeCost)}` : '—',
+      hint: pricing && cards.length > 0 ? `≈ ${weeks} ${pricing.completeWeeks === 1 ? 'semana' : 'semanas'} de oro` : 'añade figuritas',
+    },
+    {
+      label: 'Premio',
+      value: album.rewardGp > 0 ? `+${gold(album.rewardGp)}` : album.rewardBadgeId ? 'Insignia' : 'Sin premio',
+      hint: album.rewardGp > 0 && album.rewardBadgeId ? '+ insignia' : 'al completarlo',
+    },
   ];
 
   return (
@@ -122,7 +129,7 @@ export const AlbumDetailView = ({
           <MoreMenu items={[
             { label: 'Configurar álbum', onClick: onConfigure },
             { label: 'Copiar a otras clases', onClick: onExport },
-            { label: 'Mover cromos a otro álbum', onClick: onMove, disabled: cards.length === 0 },
+            { label: 'Mover figuritas a otro álbum', onClick: onMove, disabled: cards.length === 0 },
             { label: album.isActive ? 'Archivar álbum' : 'Ya está archivado', onClick: onArchive, danger: true, disabled: !album.isActive },
           ]} />
         </div>
@@ -141,7 +148,7 @@ export const AlbumDetailView = ({
       <div className="flex flex-wrap gap-2">
         <button type="button" onClick={onAddCard} className={secondaryButton}>
           <Plus size={16} className="text-primary-600 dark:text-primary-300" aria-hidden="true" />
-          Añadir cromo
+          Añadir figurita
         </button>
         <button type="button" onClick={onAddWithAI} className={secondaryButton}>
           <Sparkles size={16} className="text-primary-600 dark:text-primary-300" aria-hidden="true" />
@@ -153,7 +160,7 @@ export const AlbumDetailView = ({
         <div className="rounded-2xl border-2 border-dashed border-gray-300 bg-white/70 px-6 py-12 text-center dark:border-gray-600 dark:bg-gray-800/60">
           <p className="text-4xl" aria-hidden="true">🃏</p>
           <h2 className="mt-3 text-lg font-bold text-gray-900 dark:text-white">El álbum está vacío</h2>
-          <p className="mx-auto mt-1 max-w-md text-sm text-gray-700 dark:text-gray-300">Añade cromos uno a uno o deja que la IA proponga una colección con su emoji.</p>
+          <p className="mx-auto mt-1 max-w-md text-sm text-gray-700 dark:text-gray-300">Añade figuritas una a una o deja que la IA proponga una colección con su emoji.</p>
         </div>
       ) : (
         <ul className="grid grid-cols-2 gap-4 min-[480px]:grid-cols-3 md:grid-cols-4 xl:grid-cols-6">
@@ -165,7 +172,7 @@ export const AlbumDetailView = ({
                   <CollectibleCardView card={card} />
                   <div className="flex items-center justify-between gap-1">
                     <span className={`text-xs ${count > 0 ? 'font-semibold text-gray-900 dark:text-gray-100' : 'italic text-gray-700 dark:text-gray-300'}`}>
-                      {count > 0 ? `${count} lo ${count === 1 ? 'tiene' : 'tienen'}` : 'Nadie aún'}
+                      {count > 0 ? `${count} la ${count === 1 ? 'tiene' : 'tienen'}` : 'Nadie aún'}
                     </span>
                     <span className="flex">
                       <button type="button" onClick={() => onEditCard(card, count)} aria-label={`Editar ${card.name}`} title="Editar" className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white">
@@ -175,8 +182,8 @@ export const AlbumDetailView = ({
                         type="button"
                         onClick={() => onDeleteCard(card)}
                         disabled={count > 0}
-                        aria-label={count > 0 ? `${card.name}: no se puede borrar porque ya lo tienen estudiantes` : `Borrar ${card.name}`}
-                        title={count > 0 ? 'Ya lo tienen estudiantes: no se puede borrar' : 'Borrar'}
+                        aria-label={count > 0 ? `${card.name}: no se puede borrar porque ya la tienen estudiantes` : `Borrar ${card.name}`}
+                        title={count > 0 ? 'Ya la tienen estudiantes: no se puede borrar' : 'Borrar'}
                         className="flex h-9 w-9 items-center justify-center rounded-lg text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-gray-400 disabled:hover:bg-transparent dark:text-red-300 dark:hover:bg-red-900/30 dark:disabled:text-gray-500"
                       >
                         <Trash2 size={16} aria-hidden="true" />

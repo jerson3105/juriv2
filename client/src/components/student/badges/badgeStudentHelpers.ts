@@ -38,7 +38,7 @@ export const awardWhy = (award: Award, badge: Pick<EarnedBadge, 'condition' | 'd
     case 'STORY':
       return `Por la historia «${reason.replace(/^Historia:\s*/, '') || 'de tu clase'}»`;
     case 'ALBUM':
-      return `Por completar el álbum «${reason.replace(/^Álbum completado:\s*/, '') || 'de cromos'}»`;
+      return `Por completar el álbum «${reason.replace(/^Álbum completado:\s*/, '') || 'de figuritas'}»`;
     case 'AUTO':
       return badge.condition ? `La ganaste ${badge.condition}` : 'La ganaste sola';
     default:

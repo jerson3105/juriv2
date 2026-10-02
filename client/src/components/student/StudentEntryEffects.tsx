@@ -21,7 +21,7 @@ const badgeReason = (badge: NewBadge): string | null => {
   const reason = badge.reason?.trim() ?? '';
   if (reason.startsWith('Historia:')) return `Por la historia «${reason.replace(/^Historia:\s*/, '') || 'de tu clase'}»`;
   if (!badge.fromTeacher && reason.startsWith('Álbum completado:')) {
-    return `Por completar el álbum «${reason.replace(/^Álbum completado:\s*/, '') || 'de cromos'}»`;
+    return `Por completar el álbum «${reason.replace(/^Álbum completado:\s*/, '') || 'de figuritas'}»`;
   }
   if (badge.fromTeacher) return reason ? `Te la dio tu profe: «${reason}»` : 'Te la dio tu profe';
   return badge.description?.trim() || null;

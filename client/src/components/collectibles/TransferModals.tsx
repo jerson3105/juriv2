@@ -80,7 +80,7 @@ export const ImportAlbumModal = ({ sources, isLoading, isSubmitting, onClose, on
           <label className="block text-sm font-semibold text-gray-800 dark:text-gray-100">
             Álbum
             <select value={album?.id ?? ''} onChange={(e) => setAlbumId(e.target.value)} className={`${selectClass} mt-1.5`}>
-              {source?.albums.map((a) => <option key={a.id} value={a.id}>{a.name} ({a.totalCards || 0} cromos)</option>)}
+              {source?.albums.map((a) => <option key={a.id} value={a.id}>{a.name} ({a.totalCards || 0} figuritas)</option>)}
             </select>
           </label>
         </>
@@ -108,7 +108,7 @@ export const ExportAlbumModal = ({ album, classrooms, isLoading, isSubmitting, o
   return (
     <ModalShell
       title="Copiar a otras clases"
-      subtitle={`${album.name} · ${album.totalCards || 0} cromos`}
+      subtitle={`${album.name} · ${album.totalCards || 0} figuritas`}
       onClose={onClose}
       footer={<><button type="button" onClick={onClose} className={cancelButton}>Cancelar</button><button type="button" disabled={selected.size === 0 || isSubmitting} onClick={() => onSubmit([...selected])} className={primaryButton}>{isSubmitting ? 'Copiando...' : `Copiar a ${selected.size || ''}`.trim()}</button></>}
     >
@@ -150,13 +150,13 @@ export const MoveCardsModal = ({ album, targets, isSubmitting, onClose, onSubmit
 
   return (
     <ModalShell
-      title="Mover cromos"
+      title="Mover figuritas"
       subtitle="Solo entre álbumes de esta clase que aún no tengan progreso de estudiantes"
       onClose={onClose}
       footer={<><button type="button" onClick={onClose} className={cancelButton}>Cancelar</button><button type="button" disabled={!targetId || selected.size === 0 || isSubmitting} onClick={() => onSubmit(targetId, [...selected])} className={primaryButton}>{isSubmitting ? 'Moviendo...' : `Mover ${selected.size || ''}`.trim()}</button></>}
     >
       {targets.length === 0 ? (
-        <p className="py-8 text-center text-sm text-gray-700 dark:text-gray-300">Necesitas otro álbum en esta clase para mover cromos.</p>
+        <p className="py-8 text-center text-sm text-gray-700 dark:text-gray-300">Necesitas otro álbum en esta clase para mover figuritas.</p>
       ) : (
         <>
           <label className="block text-sm font-semibold text-gray-800 dark:text-gray-100">
@@ -166,7 +166,7 @@ export const MoveCardsModal = ({ album, targets, isSubmitting, onClose, onSubmit
             </select>
           </label>
           <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">Cromos</span>
+            <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">Figuritas</span>
             <button type="button" onClick={() => setSelected(selected.size === album.cards.length ? new Set() : new Set(album.cards.map((c) => c.id)))} className="min-h-[36px] rounded-lg px-2 text-sm font-semibold text-primary-700 hover:bg-primary-50 dark:text-primary-300 dark:hover:bg-primary-900/30">
               {selected.size === album.cards.length ? 'Ninguno' : 'Todos'}
             </button>

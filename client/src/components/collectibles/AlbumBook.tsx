@@ -110,7 +110,7 @@ export const AlbumBook = ({ album, owned, subtitle, onClose }: AlbumBookProps) =
           <h3 className="text-2xl font-black text-stone-900 dark:text-stone-50">{album.name}</h3>
           {album.description && <p className="max-w-xs text-sm text-stone-700 dark:text-stone-300">{album.description}</p>}
           <p className="rounded-full bg-stone-900/85 px-3 py-1 text-sm font-bold text-white dark:bg-stone-100 dark:text-stone-900">
-            {owned ? `${collected} de ${album.cards.length} cromos` : `${album.cards.length} cromos`}
+            {owned ? `${collected} de ${album.cards.length} figuritas` : `${album.cards.length} figuritas`}
           </p>
           <div className="flex flex-wrap justify-center gap-1.5">
             {counts.map(({ rarity, count }) => (
@@ -119,9 +119,9 @@ export const AlbumBook = ({ album, owned, subtitle, onClose }: AlbumBookProps) =
               </span>
             ))}
           </div>
-          {(album.rewardXp > 0 || album.rewardGp > 0) && (
+          {(album.rewardGp > 0 || album.rewardBadgeId) && (
             <p className="text-xs font-semibold text-stone-700 dark:text-stone-300">
-              Al completarlo: {[album.rewardXp > 0 && `+${album.rewardXp} XP`, album.rewardGp > 0 && `+${album.rewardGp} GP`].filter(Boolean).join(' · ')}
+              Al completarlo: {[album.rewardBadgeId && 'una insignia', album.rewardGp > 0 && `+${album.rewardGp} de oro`].filter(Boolean).join(' · ')}
             </p>
           )}
         </div>

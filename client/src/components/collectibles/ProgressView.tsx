@@ -17,7 +17,7 @@ const FILTERS: { value: Filter; label: string }[] = [
   { value: 'all', label: 'Todos' },
   { value: 'almost', label: 'A punto (75%+)' },
   { value: 'done', label: 'Completados' },
-  { value: 'none', label: 'Sin cromos' },
+  { value: 'none', label: 'Sin figuritas' },
 ];
 
 export const ProgressView = ({ album, classroomId, nameOf, onBack, onBrowseStudent }: ProgressViewProps) => {
@@ -59,7 +59,7 @@ export const ProgressView = ({ album, classroomId, nameOf, onBack, onBrowseStude
         </button>
         <div>
           <h1 className="text-lg font-bold text-gray-900 dark:text-white">Progreso · {album.name}</h1>
-          <p className="text-sm text-gray-700 dark:text-gray-300">Quién colecciona y a quién le faltan cromos</p>
+          <p className="text-sm text-gray-700 dark:text-gray-300">Quién colecciona y a quién le faltan figuritas</p>
         </div>
       </div>
 

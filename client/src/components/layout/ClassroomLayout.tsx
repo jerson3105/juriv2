@@ -90,7 +90,7 @@ const FEATURE_INFO: Record<string, { emoji: string; description: string }> = {
   shop: { emoji: '\u{1F6CD}\uFE0F', description: 'Tus estudiantes canjean sus puntos por recompensas que vos creás.' },
   clans: { emoji: '\u2694\uFE0F', description: 'Divide tu clase en equipos que compiten y colaboran entre sí.' },
   attendance: { emoji: '\u{1F4CB}', description: 'Registra la asistencia diaria de tus estudiantes desde el aula.' },
-  collectibles: { emoji: '\u{1F4E6}', description: 'Tus estudiantes coleccionan cromos que pueden comprar con sus monedas (GP).' },
+  collectibles: { emoji: '\u{1F4E6}', description: 'Tus estudiantes completan álbumes de figuritas abriendo sobres con su oro.' },
   storytelling: { emoji: '\u{1F4D6}', description: 'Crea una historia narrativa de fondo para tu clase que ambienta la experiencia.' },
   expedition: { emoji: '\u{1F5FA}\uFE0F', description: 'Aventuras de aprendizaje con mapas interactivos donde los estudiantes exploran y completan misiones. Incluye la Expedición de Jiro con bancos de preguntas y sistema de energía.' },
   question_bank: { emoji: '\u2753', description: 'Crea y organiza preguntas para el Observatorio de Jiro y las Expediciones.' },

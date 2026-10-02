@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { EmojiPicker } from '../ui/EmojiPicker';
 import { collectibleApi, type CardRarity, type CollectibleCard, type CreateCardData } from '../../lib/collectibleApi';
 import { CollectibleCardView } from './CollectibleCardView';
-import { CARD_RARITY_ORDER, CARD_RARITY_STYLE, RARITY_FALLBACK_ICON, RARITY_WEIGHT } from './collectibleHelpers';
+import { CARD_RARITY_ORDER, CARD_RARITY_STYLE, RARITY_FALLBACK_ICON } from './collectibleHelpers';
 
 export type CardFormTarget = { kind: 'create'; nextSlot: number } | { kind: 'edit'; card: CollectibleCard; owners: number };
 
@@ -103,7 +103,7 @@ export const CardFormModal = ({ target, isSaving, onClose, onSubmit }: CardFormM
       >
         <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4 dark:border-gray-700">
           <h2 id="card-form-title" className="text-lg font-bold text-gray-900 dark:text-white">
-            {isEdit ? 'Editar cromo' : 'Nuevo cromo'} <span className="font-semibold text-gray-700 dark:text-gray-300">· casilla {slot}</span>
+            {isEdit ? 'Editar figurita' : 'Nueva figurita'} <span className="font-semibold text-gray-700 dark:text-gray-300">· casilla {slot}</span>
           </h2>
           <button type="button" onClick={onClose} aria-label="Cerrar" className="flex h-11 w-11 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700">
             <X size={20} aria-hidden="true" />
@@ -112,14 +112,14 @@ export const CardFormModal = ({ target, isSaving, onClose, onSubmit }: CardFormM
 
         <div className="flex flex-1 flex-col gap-5 overflow-y-auto px-5 py-4 sm:flex-row">
           <div className="mx-auto w-40 flex-shrink-0 sm:mx-0">
-            <CollectibleCardView card={{ name: form.name || 'Nombre del cromo', rarity: form.rarity, slotNumber: slot, imageUrl: form.imageUrl, icon: form.icon || null }} />
+            <CollectibleCardView card={{ name: form.name || 'Nombre de la figurita', rarity: form.rarity, slotNumber: slot, imageUrl: form.imageUrl, icon: form.icon || null }} />
             <p className="mt-2 text-center text-xs text-gray-700 dark:text-gray-300">Así se verá en el álbum</p>
           </div>
 
           <div className="min-w-0 flex-1 space-y-4">
             {isEdit && target.owners > 0 && (
               <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-900/30 dark:text-amber-100">
-                {target.owners} {target.owners === 1 ? 'estudiante ya lo tiene' : 'estudiantes ya lo tienen'}: los cambios también se verán en su álbum.
+                {target.owners} {target.owners === 1 ? 'estudiante ya la tiene' : 'estudiantes ya la tienen'}: los cambios también se verán en su álbum.
               </p>
             )}
             <div>
@@ -128,7 +128,7 @@ export const CardFormModal = ({ target, isSaving, onClose, onSubmit }: CardFormM
             </div>
 
             <div>
-              <span className={labelClass}>Rareza <span className="font-normal text-gray-600 dark:text-gray-300">(probabilidad al abrir un sobre)</span></span>
+              <span className={labelClass}>Rareza <span className="font-normal text-gray-600 dark:text-gray-300">(solo cambia el marco: en los sobres todas salen igual de seguido)</span></span>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" role="group" aria-label="Rareza">
                 {CARD_RARITY_ORDER.map((rarity) => {
                   const active = form.rarity === rarity;
@@ -138,7 +138,7 @@ export const CardFormModal = ({ target, isSaving, onClose, onSubmit }: CardFormM
                       type="button"
                       onClick={() => set('rarity', rarity)}
                       aria-pressed={active}
-                      className={`flex min-h-[44px] items-center justify-between gap-1 rounded-xl border-2 px-2.5 text-sm font-bold transition-colors ${
+                      className={`flex min-h-[44px] items-center gap-1 rounded-xl border-2 px-2.5 text-sm font-bold transition-colors ${
                         active ? 'border-primary-600 bg-primary-50 text-gray-900 dark:border-primary-400 dark:bg-primary-900/30 dark:text-white' : 'border-gray-200 text-gray-800 hover:border-gray-300 dark:border-gray-600 dark:text-gray-100'
                       }`}
                     >
@@ -146,7 +146,6 @@ export const CardFormModal = ({ target, isSaving, onClose, onSubmit }: CardFormM
                         <span aria-hidden="true">{RARITY_FALLBACK_ICON[rarity]}</span>
                         {CARD_RARITY_STYLE[rarity].label}
                       </span>
-                      <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">{RARITY_WEIGHT[rarity]}%</span>
                     </button>
                   );
                 })}
@@ -159,7 +158,7 @@ export const CardFormModal = ({ target, isSaving, onClose, onSubmit }: CardFormM
                 <EmojiPicker
                   value={form.icon || RARITY_FALLBACK_ICON[form.rarity]}
                   onChange={(icon) => set('icon', icon)}
-                  ariaLabel="Cambiar emoji del cromo"
+                  ariaLabel="Cambiar emoji de la figurita"
                   triggerClassName="flex h-11 w-14 items-center justify-center rounded-xl border-2 border-gray-300 bg-white text-2xl hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:border-gray-600 dark:bg-gray-700 dark:hover:bg-gray-600"
                 />
               </div>
