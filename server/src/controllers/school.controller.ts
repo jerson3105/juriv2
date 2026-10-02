@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { schoolService } from '../services/school.service.js';
 import { schoolManagementService, SchoolManagementError } from '../services/schoolManagement.service.js';
+import { BADGE_IMAGE_PATTERN } from '../utils/badgeConditions.js';
 import { z } from 'zod';
 import {
   requireSchoolOwner,
@@ -73,7 +74,8 @@ const createSchoolBadgeSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().min(1).max(255),
   icon: z.string().min(1).max(50),
-  customImage: z.string().max(500).optional(),
+  // Solo imágenes subidas a la plataforma: una URL externa se cargaría en el navegador de cada alumno.
+  customImage: z.string().regex(BADGE_IMAGE_PATTERN, 'Imagen no válida').optional(),
   category: z.enum(['PROGRESS', 'PARTICIPATION', 'SOCIAL', 'SHOP', 'SPECIAL', 'SECRET', 'CUSTOM']).optional(),
   rarity: z.enum(['RARE', 'EPIC', 'LEGENDARY']).optional(),
   assignmentMode: z.enum(['MANUAL']).optional(),
@@ -87,7 +89,7 @@ const updateSchoolBadgeSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   description: z.string().min(1).max(255).optional(),
   icon: z.string().min(1).max(50).optional(),
-  customImage: z.string().max(500).optional().nullable(),
+  customImage: z.string().regex(BADGE_IMAGE_PATTERN, 'Imagen no válida').optional().nullable(),
   category: z.enum(['PROGRESS', 'PARTICIPATION', 'SOCIAL', 'SHOP', 'SPECIAL', 'SECRET', 'CUSTOM']).optional(),
   rarity: z.enum(['RARE', 'EPIC', 'LEGENDARY']).optional(),
   unlockCondition: z.any().optional(),

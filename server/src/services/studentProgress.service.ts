@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gte, lt, lte, min, or, sql, type SQL } from 'drizzle-orm';
+import { and, countDistinct, desc, eq, gte, lt, lte, min, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { badges, behaviors, classrooms, pointLogs, studentBadges, studentProfiles } from '../db/schema.js';
 import { NotFoundError } from '../utils/errors.js';
@@ -115,7 +115,11 @@ class StudentProgressService {
         .where(inPeriod)
         .groupBy(bucketExpr)
         .orderBy(bucketExpr),
-      db.select({ total: count() }).from(studentBadges).where(eq(studentBadges.studentProfileId, profileId)),
+      // Insignias distintas (las repetidas se ven como «×N» en «Mis insignias»): el mismo número en todas partes.
+      db.select({ total: countDistinct(studentBadges.badgeId) })
+        .from(studentBadges)
+        .innerJoin(badges, eq(badges.id, studentBadges.badgeId))
+        .where(eq(studentBadges.studentProfileId, profileId)),
       db.select({ name: badges.name, at: studentBadges.unlockedAt })
         .from(studentBadges)
         .innerJoin(badges, eq(badges.id, studentBadges.badgeId))

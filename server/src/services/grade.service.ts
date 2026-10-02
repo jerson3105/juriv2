@@ -1610,12 +1610,12 @@ class GradeService {
   private async getBadgeScores(studentProfileId: string, competencyId: string, classroomId: string, dateRange: BimesterDateRange): Promise<ActivityScoreData[]> {
     const scores: ActivityScoreData[] = [];
 
+    // También las archivadas: lo ganado se queda, y la evidencia de la nota no desaparece al archivar.
     const competencyBadges = await db.select()
       .from(badges)
       .where(and(
         eq(badges.classroomId, classroomId),
         eq(badges.competencyId, competencyId),
-        eq(badges.isActive, true)
       ));
 
     if (competencyBadges.length === 0) return scores;
@@ -1638,10 +1638,12 @@ class GradeService {
 
     if (earnedBadges.length === 0) return scores;
 
+    // Una insignia es una observación del profe: la rareza influye, pero con tope 30, como los
+    // comportamientos (máx. 30) y las actividades cronometradas (30). Antes pesaba hasta 100.
     const getBadgeWeight = (rarity: string | null) => (
-      rarity === 'LEGENDARY' ? 100 :
-      rarity === 'EPIC' ? 80 :
-      rarity === 'RARE' ? 60 : 40
+      rarity === 'LEGENDARY' ? 30 :
+      rarity === 'EPIC' ? 25 :
+      rarity === 'RARE' ? 20 : 15
     );
 
     const highestImpactBadge = earnedBadges.reduce((best, current) => {

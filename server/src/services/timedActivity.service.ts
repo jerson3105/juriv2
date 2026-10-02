@@ -15,6 +15,7 @@ import { eq, and, desc, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { clanService } from './clan.service.js';
 import { storyService } from './story.service.js';
+import { badgeService } from './badge.service.js';
 import { teacherOwnsClassroom } from '../utils/access.js';
 import { syncLevelFromXp } from '../utils/points.js';
 import { syncRestingState } from '../utils/energy.js';
@@ -744,6 +745,9 @@ class TimedActivityService {
     } catch {
       // Silently fail
     }
+
+    // El XP de la actividad puede completar una insignia de XP o de nivel.
+    await badgeService.checkXpBadges([studentProfileId]);
   }
 
   async getClassroomIdByActivity(activityId: string): Promise<string | null> {

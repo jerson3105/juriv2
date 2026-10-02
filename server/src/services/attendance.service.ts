@@ -1,6 +1,7 @@
 import { db } from '../db/index.js';
 import { attendanceRecords, classrooms, pointLogs, type AttendanceStatus } from '../db/schema.js';
 import { applyPointDeltas } from '../utils/points.js';
+import { badgeService } from './badge.service.js';
 import { eq, and, between, desc, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -16,7 +17,9 @@ export const attendanceService = {
     status: AttendanceStatus,
     notes?: string,
     xpForPresent: number = 0,
-    xpPerLevel?: number
+    xpPerLevel?: number,
+    // En lote se revisan las insignias una vez al final.
+    checkBadges = true
   ) {
     const id = uuidv4();
     const now = new Date();
@@ -30,7 +33,8 @@ export const attendanceService = {
       .from(classrooms)
       .where(eq(classrooms.id, classroomId)))[0]?.xpPerLevel ?? 100;
 
-    return db.transaction(async (tx) => {
+    let gainedXp = false;
+    const result = await db.transaction(async (tx) => {
       // Bloquea el registro del día: dos guardados simultáneos no duplican ni pierden el ajuste.
       const [existing] = await tx
         .select()
@@ -70,6 +74,7 @@ export const attendanceService = {
       }
 
       if (delta !== 0) {
+        gainedXp = delta > 0;
         await applyPointDeltas(tx, studentProfileId, { xp: delta }, { xpPerLevel: levelStep, xpMin: 0, source: 'ATTENDANCE' });
         await tx.insert(pointLogs).values({
           id: uuidv4(),
@@ -86,6 +91,9 @@ export const attendanceService = {
         ? { ...existing, status, notes, xpAwarded, updatedAt: now }
         : { id, classroomId, studentProfileId, date: normalizedDate, status, notes, xpAwarded };
     });
+    // El XP de asistir puede completar una insignia de XP o de nivel.
+    if (gainedXp && checkBadges) await badgeService.checkXpBadges([studentProfileId]);
+    return result;
   },
 
   // Registrar asistencia masiva para toda la clase
@@ -113,10 +121,14 @@ export const attendanceService = {
         record.status,
         record.notes,
         xpForPresent,
-        classroom?.xpPerLevel ?? 100
+        classroom?.xpPerLevel ?? 100,
+        false
       );
       results.push(result);
     }
+
+    // Una sola revisión de insignias de XP o nivel para toda la clase (solo evalúa esas condiciones).
+    if (xpForPresent > 0) await badgeService.checkXpBadges(attendanceData.map((record) => record.studentProfileId));
 
     return results;
   },

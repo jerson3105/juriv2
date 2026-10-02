@@ -23,6 +23,7 @@ import { eq, and, desc, asc, sql, inArray, notInArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { clanService } from './clan.service.js';
 import { storyService } from './story.service.js';
+import { badgeService } from './badge.service.js';
 import { teacherOwnsClassroom } from '../utils/access.js';
 import { addXpGp, affectedRows } from '../utils/points.js';
 
@@ -872,6 +873,9 @@ export class ExpeditionService {
       } catch {
         // Silently fail
       }
+
+      // El XP del pin puede completar una insignia de XP o de nivel.
+      await badgeService.checkXpBadges([studentProfileId]);
     }
   }
   

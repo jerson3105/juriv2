@@ -7,7 +7,6 @@ import { emitUnreadCount } from '../utils/notificationEmitter.js';
 import { 
   badges, 
   studentBadges, 
-  badgeProgress,
   studentProfiles,
   behaviors,
   pointLogs,
@@ -21,6 +20,7 @@ import {
   type BadgeAssignment,
 } from '../db/schema.js';
 import { addXpGp } from '../utils/points.js';
+import { dependsOnXp, parseBadgeCondition } from '../utils/badgeConditions.js';
 
 // Tipos para condiciones
 export interface BadgeCondition {
@@ -178,6 +178,31 @@ class BadgeService {
     return Array.from(grouped.values());
   }
   
+  async getXpPerLevel(classroomId: string): Promise<number> {
+    const [classroom] = await db.select({ xpPerLevel: classrooms.xpPerLevel }).from(classrooms).where(eq(classrooms.id, classroomId));
+    return classroom?.xpPerLevel || 100;
+  }
+
+  /** Motivos que el profe ya usó con esta insignia (los más recientes, sin repetir): sus motivos rápidos. */
+  async getRecentReasons(badgeId: string, limit = 4): Promise<string[]> {
+    const rows = await db.select({ reason: studentBadges.awardReason })
+      .from(studentBadges)
+      .where(and(eq(studentBadges.badgeId, badgeId), sql`${studentBadges.awardedBy} IS NOT NULL`, sql`TRIM(COALESCE(${studentBadges.awardReason}, '')) <> ''`))
+      .orderBy(sql`${studentBadges.unlockedAt} DESC`)
+      .limit(50);
+    const seen = new Set<string>();
+    const reasons: string[] = [];
+    for (const row of rows) {
+      const reason = (row.reason ?? '').trim();
+      // Los de la historia los pone el sistema, no el profe.
+      if (!reason || reason.startsWith('Historia:') || seen.has(reason.toLocaleLowerCase('es'))) continue;
+      seen.add(reason.toLocaleLowerCase('es'));
+      reasons.push(reason);
+      if (reasons.length >= limit) break;
+    }
+    return reasons;
+  }
+
   async getBadgeById(badgeId: string): Promise<Badge | null> {
     const result = await db.select().from(badges).where(eq(badges.id, badgeId));
     return result[0] || null;
@@ -934,13 +959,14 @@ class BadgeService {
       const [student] = await tx.select().from(studentProfiles).where(eq(studentProfiles.id, studentProfileId));
       if (student?.userId) {
         const newCount = existingCount + 1;
-        const countText = newCount > 1 ? ` (x${newCount})` : '';
+        const countText = newCount > 1 ? ` (×${newCount})` : '';
+        // El modal del profe promete que el motivo «lo verá el estudiante»: va en el aviso.
         await tx.insert(notifications).values({
           id: uuid(),
           userId: student.userId,
           type: 'BADGE',
-          title: '🏅 ¡Nueva insignia recibida!',
-          message: `Tu profesor te ha otorgado la insignia "${badge.name}"${countText}`,
+          title: '🏅 ¡Nueva insignia!',
+          message: `Tu profe te dio la insignia «${badge.name}»${countText}${reason ? `: «${reason}»` : ''}`,
           isRead: false,
           createdAt: new Date(),
         });
@@ -983,11 +1009,14 @@ class BadgeService {
       } catch {
         // Silently fail
       }
+
+      // El XP de la recompensa puede completar una insignia de XP o de nivel.
+      await this.checkXpBadges([student.id]);
     }
-    
+
     return newStudentBadge as StudentBadge;
   }
-  
+
   // Otorga a varios alumnos de la misma clase; cada uno en su propia transacción para que un
   // fallo no deje a los demás sin su insignia. Devuelve qué se otorgó (con id para deshacer) y qué no.
   async awardBadgeToStudents(
@@ -1013,7 +1042,8 @@ class BadgeService {
     return { awarded, failed };
   }
 
-  async awardBadgeAutomatic(studentProfileId: string, badgeId: string): Promise<StudentBadge> {
+  /** @param reason de dónde salió (p. ej. «Álbum completado: X»), para que el alumno sepa por qué la tiene. */
+  async awardBadgeAutomatic(studentProfileId: string, badgeId: string, reason?: string): Promise<StudentBadge> {
     const badge = await this.getBadgeById(badgeId);
     if (!badge) {
       throw new Error('Insignia no encontrada');
@@ -1030,7 +1060,7 @@ class BadgeService {
       badgeId,
       unlockedAt: new Date(),
       awardedBy: null,
-      awardReason: null,
+      awardReason: reason || null,
       isDisplayed: false,
     };
 
@@ -1070,13 +1100,13 @@ class BadgeService {
 
       if (student.userId) {
         const newCount = existingCount + 1;
-        const countText = newCount > 1 ? ` (x${newCount})` : '';
+        const countText = newCount > 1 ? ` (×${newCount})` : '';
         await tx.insert(notifications).values({
           id: uuid(),
           userId: student.userId,
           type: 'BADGE',
-          title: '🏅 ¡Nueva insignia desbloqueada!',
-          message: `Has obtenido la insignia "${badge.name}"${countText}`,
+          title: '🏅 ¡Nueva insignia!',
+          message: `Ganaste la insignia «${badge.name}»${countText}${reason ? `: «${reason}»` : ''}`,
           isRead: false,
           createdAt: new Date(),
         });
@@ -1094,8 +1124,8 @@ class BadgeService {
           userId: classroom.teacherId,
           classroomId: classroom.id,
           type: 'BADGE',
-          title: '🏅 ¡Insignia desbloqueada!',
-          message: `${student.characterName || 'Un estudiante'} ha obtenido la insignia "${badge.name}"`,
+          title: '🏅 ¡Insignia ganada!',
+          message: `${student.characterName || 'Un estudiante'} ganó la insignia «${badge.name}»`,
           isRead: false,
           createdAt: new Date(),
         });
@@ -1138,18 +1168,63 @@ class BadgeService {
       } catch {
         // Silently fail
       }
+
+      // El XP de la recompensa puede completar otra insignia de XP o de nivel (cada una se gana una vez).
+      await this.checkXpBadges([student.id]);
     }
-    
+
     return newStudentBadge as StudentBadge;
   }
-  
-  async revokeBadge(studentProfileId: string, badgeId: string): Promise<void> {
-    await db.delete(studentBadges).where(
-      and(
-        eq(studentBadges.studentProfileId, studentProfileId),
-        eq(studentBadges.badgeId, badgeId)
-      )
-    );
+
+  /**
+   * Revocar = deshacer el último otorgamiento de esa insignia, con su recompensa (como «Deshacer»).
+   * Antes borraba todas las copias y dejaba el XP y el oro.
+   */
+  async revokeBadge(studentProfileId: string, badgeId: string, teacherId: string): Promise<void> {
+    const [latest] = await db.select({ id: studentBadges.id })
+      .from(studentBadges)
+      .where(and(eq(studentBadges.studentProfileId, studentProfileId), eq(studentBadges.badgeId, badgeId)))
+      .orderBy(sql`${studentBadges.unlockedAt} DESC`)
+      .limit(1);
+    if (!latest) throw new Error('El estudiante no tiene esta insignia');
+    const { historyService } = await import('./history.service.js');
+    await historyService.revertBadge(latest.id, teacherId);
+  }
+
+  /**
+   * Insignias de XP o de nivel tras sumar XP por una vía que no pasa por comportamientos (asistencia,
+   * racha, historia, expediciones, eventos, cronometradas, recompensa de otra insignia). Solo evalúa
+   * esas condiciones y nunca lanza: se llama después de confirmar el cambio.
+   */
+  async checkXpBadges(studentProfileIds: string[]): Promise<void> {
+    try {
+      const ids = [...new Set(studentProfileIds)].filter(Boolean);
+      if (ids.length === 0) return;
+      const profiles = await db.select({ id: studentProfiles.id, classroomId: studentProfiles.classroomId })
+        .from(studentProfiles)
+        .where(inArray(studentProfiles.id, ids));
+      const classroomIds = [...new Set(profiles.map((profile) => profile.classroomId))];
+      if (classroomIds.length === 0) return;
+      const candidates = await db.select().from(badges).where(and(
+        eq(badges.isActive, true),
+        inArray(badges.assignmentMode, ['AUTOMATIC', 'BOTH']),
+        or(eq(badges.scope, 'SYSTEM'), inArray(badges.classroomId, classroomIds)),
+      ));
+      const xpBadges = candidates.filter((badge) => dependsOnXp(parseBadgeCondition(badge.unlockCondition)));
+      if (xpBadges.length === 0) return;
+      const counts = await this.getBadgeCountsForStudents(profiles.map((profile) => profile.id));
+      for (const profile of profiles) {
+        const classBadges = xpBadges.filter((badge) => badge.scope === 'SYSTEM' || badge.classroomId === profile.classroomId);
+        if (classBadges.length === 0) continue;
+        await this.checkAndAwardBadges(
+          { type: 'POINTS_ADDED', data: { studentProfileId: profile.id, classroomId: profile.classroomId } },
+          classBadges,
+          counts.get(profile.id) ?? new Map(),
+        );
+      }
+    } catch (error) {
+      console.error('Error revisando insignias de XP o nivel:', error);
+    }
   }
   
   // ═══════════════════════════════════════════════════════════
@@ -1243,6 +1318,7 @@ class BadgeService {
         return behaviorCount >= (condition.count || 0);
         
       case 'BEHAVIOR_CATEGORY':
+        if (condition.category === 'negative') return false;
         const catBadgeCreatedAt = badge.createdAt ? new Date(badge.createdAt) : undefined;
         const categoryCount = await this.countBehaviorsByCategory(
           studentProfileId,
@@ -1278,96 +1354,36 @@ class BadgeService {
   // Helpers
   // ═══════════════════════════════════════════════════════════
   
-  private async countBehaviorApplications(
-    studentProfileId: string, 
-    behaviorId: string,
-    sinceDate?: Date
-  ): Promise<number> {
-    const conditions = [
-      eq(pointLogs.studentId, studentProfileId),
-      eq(pointLogs.behaviorId, behaviorId),
-      eq(pointLogs.isReverted, false)
-    ];
-    
-    // Solo contar desde la fecha de creación de la insignia
-    if (sinceDate) {
-      conditions.push(gte(pointLogs.createdAt, sinceDate));
-    }
-    
-    const result = await db.select()
+  /**
+   * Veces que el alumno recibió comportamientos POSITIVOS (todos o uno concreto) desde una fecha.
+   * Un comportamiento aplicado deja varios registros (XP, energía, oro) en el mismo segundo: cuenta una vez.
+   * Nunca insignias por lo negativo: un comportamiento negativo no suma.
+   */
+  private async countPositiveBehaviors(studentProfileId: string, sinceDate?: Date, behaviorId?: string): Promise<number> {
+    const rows = await db.select({ behaviorId: pointLogs.behaviorId, createdAt: pointLogs.createdAt })
       .from(pointLogs)
-      .where(and(...conditions));
-    
-    // Contar aplicaciones únicas por timestamp (un comportamiento puede generar múltiples logs)
-    // Agrupamos por createdAt redondeado al segundo para considerar logs del mismo momento
-    const uniqueApplications = new Set<string>();
-    for (const log of result) {
-      // Usar timestamp truncado al segundo como identificador único
-      const timestamp = new Date(log.createdAt).toISOString().slice(0, 19);
-      uniqueApplications.add(timestamp);
-    }
-    return uniqueApplications.size;
+      .innerJoin(behaviors, eq(behaviors.id, pointLogs.behaviorId))
+      .where(and(
+        eq(pointLogs.studentId, studentProfileId),
+        eq(pointLogs.isReverted, false),
+        eq(behaviors.isPositive, true),
+        ...(behaviorId ? [eq(pointLogs.behaviorId, behaviorId)] : []),
+        ...(sinceDate ? [gte(pointLogs.createdAt, sinceDate)] : []),
+      ));
+    return new Set(rows.map((row) => `${row.behaviorId}-${new Date(row.createdAt).toISOString().slice(0, 19)}`)).size;
   }
-  
-  private async countBehaviorsByCategory(
-    studentProfileId: string, 
-    category: 'positive' | 'negative',
-    sinceDate?: Date
-  ): Promise<number> {
-    // Obtener comportamientos de la categoría
-    const behaviorsList = await db.select()
-      .from(behaviors)
-      .where(eq(behaviors.isPositive, category === 'positive'));
-    
-    const behaviorIds = behaviorsList.map((b: { id: string }) => b.id);
-    if (behaviorIds.length === 0) return 0;
-    
-    const conditions = [
-      eq(pointLogs.studentId, studentProfileId),
-      inArray(pointLogs.behaviorId, behaviorIds),
-      eq(pointLogs.isReverted, false)
-    ];
-    
-    if (sinceDate) {
-      conditions.push(gte(pointLogs.createdAt, sinceDate));
-    }
-    
-    const result = await db.select()
-      .from(pointLogs)
-      .where(and(...conditions));
-    
-    // Contar aplicaciones únicas por behaviorId + timestamp
-    const uniqueApplications = new Set<string>();
-    for (const log of result) {
-      const timestamp = new Date(log.createdAt).toISOString().slice(0, 19);
-      uniqueApplications.add(`${log.behaviorId}-${timestamp}`);
-    }
-    return uniqueApplications.size;
+
+  private async countBehaviorApplications(studentProfileId: string, behaviorId: string, sinceDate?: Date): Promise<number> {
+    return this.countPositiveBehaviors(studentProfileId, sinceDate, behaviorId);
   }
-  
+
+  private async countBehaviorsByCategory(studentProfileId: string, category: 'positive' | 'negative', sinceDate?: Date): Promise<number> {
+    return category === 'positive' ? this.countPositiveBehaviors(studentProfileId, sinceDate) : 0;
+  }
+
+  // «Cualquier comportamiento» cuenta solo los positivos (antes sumaba también los negativos).
   private async countAllBehaviors(studentProfileId: string, sinceDate?: Date): Promise<number> {
-    const conditions = [
-      eq(pointLogs.studentId, studentProfileId),
-      eq(pointLogs.isReverted, false),
-    ];
-    
-    if (sinceDate) {
-      conditions.push(gte(pointLogs.createdAt, sinceDate));
-    }
-    
-    const result = await db.select()
-      .from(pointLogs)
-      .where(and(...conditions));
-    
-    // Contar aplicaciones únicas por behaviorId + timestamp
-    const uniqueApplications = new Set<string>();
-    for (const log of result) {
-      if (log.behaviorId) {
-        const timestamp = new Date(log.createdAt).toISOString().slice(0, 19);
-        uniqueApplications.add(`${log.behaviorId}-${timestamp}`);
-      }
-    }
-    return uniqueApplications.size;
+    return this.countPositiveBehaviors(studentProfileId, sinceDate);
   }
   
   private async giveReward(
@@ -1442,92 +1458,6 @@ class BadgeService {
     }
 
     return;
-  }
-
-  private calculateLevel(totalXp: number, xpPerLevel: number = 100): number {
-    const level = Math.floor((1 + Math.sqrt(1 + (8 * totalXp) / xpPerLevel)) / 2);
-    return Math.max(1, level);
-  }
-  
-  // ═══════════════════════════════════════════════════════════
-  // Progreso
-  // ═══════════════════════════════════════════════════════════
-  
-  async getStudentProgress(studentProfileId: string, classroomId: string): Promise<{
-    badge: Badge;
-    currentValue: number;
-    targetValue: number;
-    percentage: number;
-  }[]> {
-    const allBadges = await this.getClassroomBadges(classroomId);
-    const studentBadgesList = await this.getStudentBadges(studentProfileId);
-    const unlockedIds = new Set(studentBadgesList.map(sb => sb.badgeId));
-    
-    // Filtrar insignias no desbloqueadas con condiciones
-    const pendingBadges = allBadges.filter(b => 
-      !unlockedIds.has(b.id) && 
-      !b.isSecret &&
-      b.unlockCondition !== null
-    );
-    
-    const progress: {
-      badge: Badge;
-      currentValue: number;
-      targetValue: number;
-      percentage: number;
-    }[] = [];
-    
-    for (const badge of pendingBadges) {
-      let condition = badge.unlockCondition as BadgeCondition | string;
-      if (!condition) continue;
-      
-      // Parsear si es string
-      if (typeof condition === 'string') {
-        try {
-          condition = JSON.parse(condition) as BadgeCondition;
-        } catch (e) {
-          continue;
-        }
-      }
-      
-      let currentValue = 0;
-      let targetValue = condition.value || condition.count || 0;
-      const badgeCreatedAt = badge.createdAt ? new Date(badge.createdAt) : undefined;
-      
-      switch (condition.type) {
-        case 'XP_TOTAL':
-          const student = await db.select().from(studentProfiles).where(eq(studentProfiles.id, studentProfileId));
-          currentValue = student[0]?.xp || 0;
-          break;
-        case 'LEVEL':
-          const studentLevel = await db.select().from(studentProfiles).where(eq(studentProfiles.id, studentProfileId));
-          currentValue = studentLevel[0]?.level || 1;
-          break;
-        case 'BEHAVIOR_COUNT':
-          if (condition.behaviorId) {
-            currentValue = await this.countBehaviorApplications(studentProfileId, condition.behaviorId, badgeCreatedAt);
-          }
-          break;
-        case 'BEHAVIOR_CATEGORY':
-          currentValue = await this.countBehaviorsByCategory(studentProfileId, condition.category || 'positive', badgeCreatedAt);
-          break;
-        case 'ANY_BEHAVIOR':
-          currentValue = await this.countAllBehaviors(studentProfileId, badgeCreatedAt);
-          break;
-      }
-      
-      if (targetValue > 0) {
-        progress.push({
-          badge,
-          currentValue,
-          targetValue,
-          percentage: Math.min(100, Math.round((currentValue / targetValue) * 100)),
-        });
-      }
-    }
-    
-    // Ordenar por porcentaje descendente
-    return progress.sort((a, b) => b.percentage - a.percentage);
   }
 }
 

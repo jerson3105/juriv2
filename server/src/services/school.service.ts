@@ -3,6 +3,7 @@ import { schools, schoolMembers, schoolVerifications, classrooms, users, schoolB
 import { eq, and, like, count, sql, desc, ne, inArray, gte, lte } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { teacherVerificationService } from './teacherVerification.service.js';
+import { conditionBehaviorIds, normalizeBadgeAssignment, parseBadgeCondition, safeBadgeImage } from '../utils/badgeConditions.js';
 
 interface CreateSchoolData {
   name: string;
@@ -816,6 +817,13 @@ export class SchoolService {
     for (const cls of validClassroomIds) {
       for (const sb of schoolBadgeList) {
         const id = uuidv4();
+        // Sin comportamientos de la clase, solo sirven condiciones de XP o nivel: una automática sin
+        // condición válida (o negativa) pasa a «La das tú». La imagen solo si es de la plataforma.
+        const condition = parseBadgeCondition(sb.unlockCondition);
+        const normalized = normalizeBadgeAssignment(
+          sb.assignmentMode as 'AUTOMATIC' | 'MANUAL' | 'BOTH',
+          condition && conditionBehaviorIds(condition).length === 0 ? condition : null,
+        );
         await db.insert(badges).values({
           id,
           scope: 'CLASSROOM' as const,
@@ -824,11 +832,11 @@ export class SchoolService {
           name: sb.name,
           description: sb.description,
           icon: sb.icon,
-          customImage: sb.customImage,
+          customImage: safeBadgeImage(sb.customImage),
           category: sb.category as any,
           rarity: sb.rarity as any,
-          assignmentMode: sb.assignmentMode as any,
-          unlockCondition: sb.unlockCondition,
+          assignmentMode: normalized.assignmentMode,
+          unlockCondition: normalized.unlockCondition,
           rewardXp: sb.rewardXp,
           rewardGp: sb.rewardGp,
           maxAwards: 1,

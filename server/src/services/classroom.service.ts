@@ -56,6 +56,7 @@ import { eq, and, desc, inArray, sql, count, asc, or, gt } from 'drizzle-orm';
 import { calculateLevel, generateClassCode } from '../utils/helpers.js';
 import { revertLevelUpsAbove } from '../utils/points.js';
 import { ConflictError, ValidationError } from '../utils/errors.js';
+import { normalizeBadgeAssignment, parseBadgeCondition, safeBadgeImage, type BadgeConditionShape } from '../utils/badgeConditions.js';
 import { v4 as uuidv4 } from 'uuid';
 import { avatarService } from './avatar.service.js';
 import { characterClassService } from './characterClass.service.js';
@@ -2254,17 +2255,20 @@ export class ClassroomService {
     const behaviorIdMap: Record<string, string> = {};
     const badgeIdMap: Record<string, string> = {};
     const questionBankIdMap: Record<string, string> = {};
+    // Comportamientos negativos copiados (ids nuevos): una insignia no puede ganarse con ellos.
+    const sourceBehaviorsNegative: string[] = [];
 
     // Copiar comportamientos
     if (options.copyBehaviors) {
       const sourceBehaviors = await db.select()
         .from(behaviors)
         .where(eq(behaviors.classroomId, sourceClassroomId));
-      
+
       if (sourceBehaviors.length > 0) {
         for (const behavior of sourceBehaviors) {
           const newBehaviorId = uuidv4();
           behaviorIdMap[behavior.id] = newBehaviorId;
+          if (!behavior.isPositive) sourceBehaviorsNegative.push(newBehaviorId);
           
           await db.insert(behaviors).values({
             id: newBehaviorId,
@@ -2300,18 +2304,28 @@ export class ClassroomService {
           const newBadgeId = uuidv4();
           badgeIdMap[badge.id] = newBadgeId;
           
-          // Mapear IDs de comportamientos en unlockCondition
-          let newUnlockCondition = badge.unlockCondition;
-          if (newUnlockCondition && typeof newUnlockCondition === 'object') {
-            const condition = newUnlockCondition as { type?: string; behaviorId?: string; count?: number };
-            if (condition.behaviorId && behaviorIdMap[condition.behaviorId]) {
-              newUnlockCondition = {
-                ...condition,
-                behaviorId: behaviorIdMap[condition.behaviorId]
-              };
+          // Mapear IDs de comportamientos en unlockCondition (la base a veces la guarda como texto JSON).
+          // Si cita un comportamiento que no se copió, la condición ya no sirve en la clase nueva.
+          const sourceCondition = parseBadgeCondition(badge.unlockCondition);
+          const mapCondition = (condition: BadgeConditionShape | null): BadgeConditionShape | null => {
+            if (!condition) return null;
+            if (condition.type === 'COMPOUND') {
+              const subs = (condition.conditions ?? []).map(mapCondition);
+              return subs.every(Boolean) ? { ...condition, conditions: subs as BadgeConditionShape[] } : null;
             }
-          }
-          
+            if (!condition.behaviorId) return condition;
+            const mapped = behaviorIdMap[condition.behaviorId];
+            return mapped ? { ...condition, behaviorId: mapped } : null;
+          };
+          // Una automática sin condición válida (o negativa) nunca se ganaría sola: pasa a «La das tú».
+          const negativeBehaviorIds = new Set(sourceBehaviorsNegative);
+          const normalized = normalizeBadgeAssignment(
+            badge.assignmentMode,
+            mapCondition(sourceCondition),
+            (behaviorId) => negativeBehaviorIds.has(behaviorId),
+          );
+          const newUnlockCondition = normalized.unlockCondition;
+
           await db.insert(badges).values({
             id: newBadgeId,
             scope: 'CLASSROOM',
@@ -2320,10 +2334,10 @@ export class ClassroomService {
             name: badge.name,
             description: badge.description,
             icon: badge.icon,
-            customImage: badge.customImage,
+            customImage: safeBadgeImage(badge.customImage),
             category: badge.category,
             rarity: badge.rarity,
-            assignmentMode: badge.assignmentMode,
+            assignmentMode: normalized.assignmentMode,
             unlockCondition: newUnlockCondition,
             rewardXp: badge.rewardXp,
             rewardGp: badge.rewardGp,

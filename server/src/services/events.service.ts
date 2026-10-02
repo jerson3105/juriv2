@@ -10,6 +10,7 @@ import { eq, and, desc, sql, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { teacherOwnsClassroom } from '../utils/access.js';
 import { syncLevelFromXp } from '../utils/points.js';
+import { badgeService } from './badge.service.js';
 import { syncRestingState } from '../utils/energy.js';
 
 interface EventEffect {
@@ -487,6 +488,7 @@ class EventsService {
         triggeredAt: now,
       });
     });
+    await this.checkXpBadges(studentUpdates);
 
     return {
       success: true,
@@ -652,6 +654,7 @@ class EventsService {
         });
       }
     });
+    await this.checkXpBadges(studentUpdates);
 
     return {
       success: true,
@@ -886,8 +889,9 @@ class EventsService {
         await tx.insert(pointLogs).values(pointLogsBatch);
       }
     });
+    await this.checkXpBadges(studentUpdates);
 
-    const resultMessage = completed 
+    const resultMessage = completed
       ? `¡Desafío completado! ${affectedStudents.length} estudiante(s) recompensado(s)`
       : `Desafío fallido. ${affectedStudents.length} estudiante(s) penalizado(s)`;
 
@@ -905,6 +909,14 @@ class EventsService {
    * Aplica los efectos en orden, cada uno como sentencia atómica (ADD suma; REMOVE resta
    * con mínimo 0), igual que el cálculo previo pero sin pisar escrituras simultáneas.
    */
+  /** Tras sumar XP (ya confirmado), las insignias de XP o nivel se revisan. */
+  private async checkXpBadges(updates: { studentId: string; effects: EventEffect[] }[]) {
+    const ids = updates
+      .filter((update) => update.effects.some((effect) => effect.type === 'XP' && effect.action === 'ADD'))
+      .map((update) => update.studentId);
+    if (ids.length > 0) await badgeService.checkXpBadges(ids);
+  }
+
   private async applyEffectsAtomically(tx: any, studentProfileId: string, effects: EventEffect[]) {
     // Los eventos escriben el XP directamente: el nivel (y su registro) se ponen al día al final.
     const addsXp = effects.some((effect) => effect.action === 'ADD' && this.effectTypeToField(effect.type) === 'xp');

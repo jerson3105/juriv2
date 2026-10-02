@@ -811,6 +811,11 @@ class StoryService {
       await tx.insert(pointLogs).values(rows);
       await applyPointDeltasBulk(tx, studentIds, { xp: deltas.xp, gp: deltas.gp }, { xpPerLevel: classroom?.xpPerLevel ?? 100, source: 'STORY' });
     });
+    // El XP de la historia puede completar una insignia de XP o de nivel (import dinámico: badge ↔ story).
+    if (deltas.xp > 0) {
+      const { badgeService } = await import('./badge.service.js');
+      await badgeService.checkXpBadges(studentIds);
+    }
   }
 
   /** Un cromo para cada alumno (suma uno si ya lo tenía). */

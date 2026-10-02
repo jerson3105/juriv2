@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, isNull, lt, lte, or } from 'drizzle-orm';
+import { and, asc, eq, gt, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { badges, levelUpLogs, studentBadges, studentProfiles } from '../db/schema.js';
 import { NotFoundError } from '../utils/errors.js';
@@ -39,9 +39,11 @@ class CelebrationService {
           lte(levelUpLogs.createdAt, until),
         ))
         .orderBy(asc(levelUpLogs.createdAt)),
+      // El motivo y de quién vino: el modal del profe promete que el motivo «lo verá el estudiante».
       db.select({
         id: badges.id, name: badges.name, description: badges.description, icon: badges.icon,
         customImage: badges.customImage, rarity: badges.rarity, unlockedAt: studentBadges.unlockedAt,
+        reason: studentBadges.awardReason, fromTeacher: sql<number>`${studentBadges.awardedBy} IS NOT NULL`,
       })
         .from(studentBadges)
         .innerJoin(badges, eq(badges.id, studentBadges.badgeId))

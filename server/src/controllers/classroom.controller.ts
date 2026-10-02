@@ -1496,7 +1496,7 @@ REGLAS:
         section, context, description, count,
         pointMode, includePositive, includeNegative,
         assignmentMode, types, questionTypes,
-        competencies, behaviors 
+        competencies, behaviors, xpPerLevel
       } = req.body;
 
       if (!section || !context) {
@@ -1585,7 +1585,7 @@ REGLAS:
           const badgeFirstCompetencyId = badgeHasCompetencies ? competencies[0].id : '';
           
           const badgeCompetenciesContext = badgeHasCompetencies
-            ? `\n\nCOMPETENCIAS CURRICULARES DISPONIBLES:\n${competencies.map((c: any, i: number) => `${i + 1}. "${c.name}" (ID: ${c.id})`).join('\n')}\n\nIMPORTANTE: Cada insignia DEBE estar ligada a una de estas competencias usando el campo "competencyId" con el ID EXACTO.`
+            ? `\n\nCOMPETENCIAS CURRICULARES DISPONIBLES:\n${competencies.map((c: any, i: number) => `${i + 1}. "${c.name}" (ID: ${c.id})`).join('\n')}\n\nUna insignia ligada a una competencia cuenta para su nota: liga "competencyId" (ID EXACTO) solo si la insignia reconoce un logro de esa competencia; si no, usa null.`
             : '';
           
           const competencyBadgeField = badgeHasCompetencies
@@ -1593,8 +1593,11 @@ REGLAS:
             : '';
           
           const competencyBadgeRule = badgeHasCompetencies
-            ? `\n7. OBLIGATORIO: Usa el campo "competencyId" con el ID EXACTO de una competencia de la lista (ej: "${badgeFirstCompetencyId}"). NO inventes IDs.`
+            ? `\n7. "competencyId": ID EXACTO de una competencia de la lista (ej: "${badgeFirstCompetencyId}") solo si la insignia reconoce un logro de esa competencia; si no, null. NO inventes IDs.`
             : '';
+          // Recompensas en proporción al XP por nivel de la clase (100 por defecto).
+          const badgeLevelXp = Number(xpPerLevel) > 0 ? Number(xpPerLevel) : 100;
+          const badgeXp = (from: number, to: number) => `${Math.max(1, Math.round(badgeLevelXp * from))}-${Math.max(1, Math.round(badgeLevelXp * to))}`;
 
           // Para modo AUTOMATIC, forzar uso exclusivo de comportamientos existentes
           const hasBehaviors = behaviors && behaviors.length > 0;
@@ -1629,7 +1632,7 @@ Responde ÚNICAMENTE con un array JSON válido:
 [
   {
     "name": "Nombre de la insignia",
-    "description": "Qué logro reconoce",
+    "description": "Cuándo se gana, en tuteo (ej.: Cuando explicas a un compañero cómo lo resolviste)",
     "icon": "🏆",
     "rarity": "COMMON",
     "assignmentMode": "${badgeMode}",
@@ -1641,15 +1644,16 @@ Responde ÚNICAMENTE con un array JSON válido:
 
 REGLAS:
 1. Rarezas: COMMON (50%), RARE (30%), EPIC (15%), LEGENDARY (5%)
-2. Recompensas según rareza:
-   - COMMON: XP 20-50, GP 10-20 (requiere 3-5 veces el comportamiento)
-   - RARE: XP 50-100, GP 20-50 (requiere 5-8 veces)
-   - EPIC: XP 100-200, GP 50-100 (requiere 8-12 veces)
-   - LEGENDARY: XP 200-500, GP 100-200 (requiere 15+ veces)
+2. Recompensas según rareza (en proporción a ${badgeLevelXp} XP por nivel):
+   - COMMON: XP ${badgeXp(0.1, 0.2)}, GP 5-10 (requiere 3-5 veces el comportamiento)
+   - RARE: XP ${badgeXp(0.25, 0.4)}, GP 15-25 (requiere 5-8 veces)
+   - EPIC: XP ${badgeXp(0.5, 0.75)}, GP 30-45 (requiere 8-12 veces)
+   - LEGENDARY: XP ${badgeXp(1, 1.5)}, GP 50-75 (requiere 15+ veces)
 3. Iconos: 🏆⭐🎖️💎👑🎯🔥💪📚✨🎓🚀🌟💡🎨🔬🏅🥇🥈🥉
 4. Nombres creativos en español relacionados con el comportamiento
 5. SIEMPRE incluir "assignmentMode": "${badgeMode}" en cada insignia
-6. Para AUTOMATIC/BOTH: triggerCondition DEBE usar EXACTAMENTE un nombre de comportamiento de la lista proporcionada. NO INVENTES condiciones.${competencyBadgeRule}`;
+6. Para AUTOMATIC/BOTH: triggerCondition DEBE usar EXACTAMENTE un nombre de comportamiento POSITIVO de la lista proporcionada. NO INVENTES condiciones.${competencyBadgeRule}
+8. PROHIBIDO: insignias por comportamientos negativos o por portarse mal. Las insignias reconocen logros.`;
           break;
 
         case 'missions':

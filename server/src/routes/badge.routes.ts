@@ -18,8 +18,10 @@ import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { createGenAI } from '../utils/aiClient.js';
 import { createUploadFilter, safeUploadFilename, verifyUploadedFile, IMAGE_MIMES } from '../utils/fileValidation.js';
-import { publicErrorMessage } from '../utils/errors.js';
+import { AppError, publicErrorMessage } from '../utils/errors.js';
+import { studentBadgesService } from '../services/studentBadges.service.js';
 import { aiGuard } from '../middleware/security.js';
+import { NEGATIVE_BADGE_MESSAGE, conditionBehaviorIds, isNegativeCondition, parseBadgeCondition } from '../utils/badgeConditions.js';
 import { z } from 'zod';
 
 const router = Router();
@@ -76,16 +78,18 @@ const awardBulkSchema = z.object({
 const sendValidationError = (res: any, error: z.ZodError) =>
   res.status(400).json({ message: error.issues[0]?.message || 'Datos inválidos', errors: error.issues });
 
-// Los comportamientos citados en la condición deben ser de la misma clase.
-const conditionBehaviorsBelongTo = async (condition: unknown, classroomId: string): Promise<boolean> => {
-  if (!condition || typeof condition !== 'object') return true;
-  const parsed = condition as { type: string; behaviorId?: string; conditions?: { behaviorId?: string }[] };
-  const ids = [parsed.behaviorId, ...(parsed.conditions || []).map((c) => c.behaviorId)].filter((id): id is string => !!id);
-  for (const id of ids) {
+// Los comportamientos citados en la condición deben ser de la misma clase y positivos: nunca insignias
+// por lo negativo (la conducta se maneja con la energía). Devuelve el problema o null.
+const conditionProblem = async (condition: unknown, classroomId: string): Promise<string | null> => {
+  const parsed = parseBadgeCondition(condition);
+  if (!parsed) return null;
+  if (isNegativeCondition(parsed)) return NEGATIVE_BADGE_MESSAGE;
+  for (const id of conditionBehaviorIds(parsed)) {
     const behavior = await behaviorService.getById(id);
-    if (!behavior || behavior.classroomId !== classroomId) return false;
+    if (!behavior || behavior.classroomId !== classroomId) return 'El comportamiento de la condición no pertenece a esta clase';
+    if (!behavior.isPositive) return NEGATIVE_BADGE_MESSAGE;
   }
-  return true;
+  return null;
 };
 
 // Configurar directorio de uploads para insignias
@@ -178,7 +182,9 @@ router.get('/classroom/:classroomId', authenticate, async (req, res) => {
     const { classroomId } = req.params;
     if (!(await requireClassroomMember(req, res, classroomId))) return;
     const badges = await badgeService.getClassroomBadges(classroomId);
-    res.json(badges);
+    // Un alumno (o su familia) no ve las secretas: las descubre al ganarlas.
+    const role = req.user?.role;
+    res.json(role === 'TEACHER' || role === 'ADMIN' ? badges : badges.filter((badge) => !badge.isSecret));
   } catch (error: any) {
     console.error('Error getting classroom badges:', error);
     res.status(500).json({ message: publicErrorMessage(error) });
@@ -230,23 +236,25 @@ router.post('/generate-ai', authenticate, ...aiGuard, async (req, res) => {
     if (classroomId && (assignmentMode === 'AUTOMATIC' || assignmentMode === 'BOTH')) {
       const behaviors = await behaviorService.getByClassroom(classroomId);
       
-      if (behaviors.length > 0) {
-        const positiveBehaviors = behaviors.filter(b => b.isPositive);
-        const negativeBehaviors = behaviors.filter(b => !b.isPositive);
-        
+      // Solo los positivos: nunca insignias por lo negativo (la conducta se maneja con la energía).
+      const positiveBehaviors = behaviors.filter(b => b.isPositive);
+      if (positiveBehaviors.length > 0) {
         behaviorsContext = `
-COMPORTAMIENTOS DISPONIBLES EN EL AULA:
-Positivos: ${positiveBehaviors.map(b => `"${b.name}" (id: ${b.id})`).join(', ') || 'Ninguno'}
-Negativos: ${negativeBehaviors.map(b => `"${b.name}" (id: ${b.id})`).join(', ') || 'Ninguno'}`;
+COMPORTAMIENTOS POSITIVOS DISPONIBLES EN EL AULA:
+${positiveBehaviors.map(b => `"${b.name}" (id: ${b.id})`).join(', ')}`;
 
         behaviorsForConditions = `
-   Para BEHAVIOR_COUNT usar:
+   Para BEHAVIOR_COUNT usar (solo con los comportamientos positivos de la lista):
    { "type": "BEHAVIOR_COUNT", "behaviorId": "id-del-comportamiento", "count": número }
-   
+
    Para BEHAVIOR_CATEGORY usar:
-   { "type": "BEHAVIOR_CATEGORY", "category": "positive"|"negative", "count": número }`;
+   { "type": "BEHAVIOR_CATEGORY", "category": "positive", "count": número }`;
       }
     }
+
+    // Recompensas en proporción al XP por nivel de la clase (con 100 XP por nivel: 10-20 / 25-40 / 50-75 / 100-150).
+    const xpPerLevel = classroomId ? await badgeService.getXpPerLevel(String(classroomId)) : 100;
+    const xpRange = (from: number, to: number) => `${Math.max(1, Math.round(xpPerLevel * from))}-${Math.max(1, Math.round(xpPerLevel * to))}`;
 
     // Configurar competencias si existen
     let competenciesInstruction = '';
@@ -286,7 +294,7 @@ Responde SOLO con un array JSON válido, sin texto adicional ni bloques de códi
 [
   {
     "name": "Nombre corto y atractivo (máx 25 chars)",
-    "description": "Descripción del logro que reconoce (máx 80 chars)",
+    "description": "Cuándo se gana, dicho al estudiante en tuteo (máx 80 chars). Ej.: Cuando explicas a un compañero cómo lo resolviste",
     "icon": "emoji",
     "rarity": "COMMON|RARE|EPIC|LEGENDARY",
     "assignmentMode": "${assignmentMode}",
@@ -300,19 +308,20 @@ Responde SOLO con un array JSON válido, sin texto adicional ni bloques de códi
 REGLAS IMPORTANTES:
 1. Iconos permitidos: 🏆⭐🎖️🥇🥈🥉💎👑🎯🔥💪📚✨🌟🎓🏅🦁🐉🎨🔬🎪🎭🚀🌈💡🎵🎮🏰
 2. Distribución de rarezas según ${raritiesStr}:
-   - COMMON: logros básicos, rewardXp: 10-20, rewardGp: 5-10
-   - RARE: logros moderados, rewardXp: 25-40, rewardGp: 15-25
-   - EPIC: logros difíciles, rewardXp: 50-75, rewardGp: 30-45
-   - LEGENDARY: logros excepcionales, rewardXp: 100-150, rewardGp: 50-75
+   - COMMON: logros básicos, rewardXp: ${xpRange(0.1, 0.2)}, rewardGp: 5-10
+   - RARE: logros moderados, rewardXp: ${xpRange(0.25, 0.4)}, rewardGp: 15-25
+   - EPIC: logros difíciles, rewardXp: ${xpRange(0.5, 0.75)}, rewardGp: 30-45
+   - LEGENDARY: logros excepcionales, rewardXp: ${xpRange(1, 1.5)}, rewardGp: 50-75
 3. Si assignmentMode es AUTOMATIC o BOTH, incluir unlockCondition con una de estas estructuras:
    { "type": "XP_TOTAL", "value": número }
    { "type": "LEVEL", "value": número }
    { "type": "ANY_BEHAVIOR", "count": número }${behaviorsForConditions}
 4. Nombres creativos, motivadores y apropiados para el nivel educativo
-5. Descripciones claras de qué logro reconoce cada insignia
+5. La descripción dice CUÁNDO se gana (el criterio que el estudiante puede cumplir), no un elogio genérico
 6. Balancear la cantidad entre las rarezas seleccionadas
 7. Si hay comportamientos disponibles, PRIORIZA usar BEHAVIOR_COUNT con los IDs reales para las condiciones automáticas
-${competencies && competencies.length > 0 ? '8. Asigna competencyId usando los IDs exactos proporcionados (o null si no aplica)' : ''}`;
+8. PROHIBIDO: insignias por comportamientos negativos o por portarse mal. Las insignias reconocen logros.
+${competencies && competencies.length > 0 ? '9. Liga competencyId (ID exacto) solo si la insignia reconoce un logro de esa competencia; si no, null' : ''}`;
 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-lite',
@@ -344,6 +353,12 @@ ${competencies && competencies.length > 0 ? '8. Asigna competencyId usando los I
     if (!Array.isArray(badges)) {
       return res.status(500).json({ message: 'Respuesta de IA inválida' });
     }
+    // Por si la IA no hizo caso: una condición negativa se descarta (la insignia queda manual).
+    badges = badges.map((badge: { assignmentMode?: string; unlockCondition?: unknown }) => (
+      isNegativeCondition(parseBadgeCondition(badge?.unlockCondition))
+        ? { ...badge, assignmentMode: 'MANUAL', unlockCondition: null }
+        : badge
+    ));
 
     res.json({
       success: true,
@@ -369,9 +384,8 @@ router.post('/classroom/:classroomId', authenticate, async (req, res) => {
     if (!parsed.success) return sendValidationError(res, parsed.error);
     const body = parsed.data;
     const unlockCondition = body.assignmentMode === 'MANUAL' ? null : body.unlockCondition ?? null;
-    if (!(await conditionBehaviorsBelongTo(unlockCondition, classroomId))) {
-      return res.status(400).json({ message: 'El comportamiento de la condición no pertenece a esta clase' });
-    }
+    const problem = await conditionProblem(unlockCondition, classroomId);
+    if (problem) return res.status(400).json({ message: problem });
 
     const data: CreateBadgeDto = {
       classroomId,
@@ -437,13 +451,25 @@ router.put('/:badgeId', authenticate, async (req, res) => {
     const changes = pickBadgeFields(parsed.data as Record<string, unknown>);
     if (parsed.data.assignmentMode === 'MANUAL') changes.unlockCondition = null as unknown as CreateBadgeDto['unlockCondition'];
     const info = await badgeScopeAndClassroom(badgeId);
-    if (info?.classroomId && !(await conditionBehaviorsBelongTo(changes.unlockCondition, info.classroomId))) {
-      return res.status(400).json({ message: 'El comportamiento de la condición no pertenece a esta clase' });
-    }
+    const problem = info?.classroomId ? await conditionProblem(changes.unlockCondition, info.classroomId) : null;
+    if (problem) return res.status(400).json({ message: problem });
     await badgeService.updateBadge(badgeId, changes);
     res.json({ message: 'Insignia actualizada' });
   } catch (error: any) {
     console.error('Error updating badge:', error);
+    res.status(500).json({ message: publicErrorMessage(error) });
+  }
+});
+
+// Motivos que el profe ya usó con esta insignia (sus motivos rápidos al otorgarla)
+router.get('/:badgeId/recent-reasons', authenticate, async (req, res) => {
+  try {
+    const info = await badgeScopeAndClassroom(req.params.badgeId);
+    if (!info?.classroomId) return res.status(404).json({ message: 'Insignia no encontrada' });
+    if (!(await requireClassroomTeacher(req, res, info.classroomId))) return;
+    res.json({ success: true, data: await badgeService.getRecentReasons(req.params.badgeId) });
+  } catch (error: any) {
+    console.error('Error getting recent badge reasons:', error);
     res.status(500).json({ message: publicErrorMessage(error) });
   }
 });
@@ -518,7 +544,7 @@ router.put('/student/:studentProfileId/displayed', authenticate, async (req, res
   }
 });
 
-// Obtener progreso hacia insignias
+// Progreso hacia las automáticas (ficha del alumno del profe): mismo cálculo honesto que «Mis insignias»
 router.get('/student/:studentProfileId/progress/:classroomId', authenticate, async (req, res) => {
   try {
     const { studentProfileId, classroomId } = req.params;
@@ -527,11 +553,23 @@ router.get('/student/:studentProfileId/progress/:classroomId', authenticate, asy
     if ((await classroomIdOfStudentProfile(studentProfileId)) !== classroomId) {
       return res.status(404).json({ message: 'Estudiante no encontrado en esta clase' });
     }
-    const progress = await badgeService.getStudentProgress(studentProfileId, classroomId);
-    res.json(progress);
+    res.json(await studentBadgesService.getStaffProgress(studentProfileId));
   } catch (error: any) {
+    if (error instanceof AppError) return res.status(error.statusCode).json({ message: error.message });
     console.error('Error getting badge progress:', error);
     res.status(500).json({ message: publicErrorMessage(error) });
+  }
+});
+
+// «Mis insignias» del alumno: lo ganado, lo que puede ganar y cómo, y cuántas secretas hay (solo el dueño; otro perfil → 404)
+router.get('/student/:studentProfileId/view', authenticate, async (req, res) => {
+  try {
+    const data = await studentBadgesService.getView(req.params.studentProfileId, req.user!.id);
+    res.json({ success: true, data });
+  } catch (error: any) {
+    if (error instanceof AppError) return res.status(error.statusCode).json({ success: false, message: error.message });
+    console.error('Error getting student badge view:', error);
+    res.status(500).json({ success: false, message: 'No se pudieron cargar tus insignias' });
   }
 });
 
@@ -603,7 +641,7 @@ router.delete('/revoke/:studentProfileId/:badgeId', authenticate, async (req, re
     const revokeClassroomId = await classroomIdOfStudentProfile(studentProfileId);
     if (!revokeClassroomId) return res.status(404).json({ message: 'Estudiante no encontrado' });
     if (!(await requireClassroomTeacher(req, res, revokeClassroomId))) return;
-    await badgeService.revokeBadge(studentProfileId, badgeId);
+    await badgeService.revokeBadge(studentProfileId, badgeId, req.user!.id);
     res.json({ message: 'Insignia revocada' });
   } catch (error: any) {
     console.error('Error revoking badge:', error);

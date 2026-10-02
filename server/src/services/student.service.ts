@@ -15,6 +15,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { avatarService } from './avatar.service.js';
 import { clanService } from './clan.service.js';
 import { badgeService } from './badge.service.js';
+import { studentBadgesService } from './studentBadges.service.js';
 import { storyService } from './story.service.js';
 import { prepareForTx } from '../utils/notificationEmitter.js';
 import { generateRandomCode, maskPersonName } from '../utils/helpers.js';
@@ -272,6 +273,8 @@ export class StudentService {
     ]);
     const itemsByClass = new Map(itemRows.map((row) => [row.classroomId, Number(row.count)]));
     const ownedByProfile = new Map(ownedRows.map((row) => [row.studentId, Number(row.count)]));
+    // Insignias: el menú muestra «Mis insignias» si la clase tiene alguna que se pueda ganar o el alumno tiene alguna.
+    const badgeSummaries = await studentBadgesService.getSummaries(profiles.map((profile) => ({ id: profile.id, classroomId: profile.classroomId })));
 
     // Crear mapa de clases
     const classroomMap = new Map(classroomsData.map(c => [c.id, { ...c, hasActiveStory: withStory.has(c.id) }]));
@@ -294,6 +297,7 @@ export class StudentService {
         classroomRank: classroomRanking?.rankByStudentId.get(profile.id) ?? null,
         classroomStudentCount: classroomRanking?.studentCount ?? 0,
         shopSummary: { items: itemsByClass.get(profile.classroomId) ?? 0, owned: ownedByProfile.get(profile.id) ?? 0 },
+        badgeSummary: badgeSummaries.get(profile.id) ?? { available: 0, owned: 0 },
       });
     }
 

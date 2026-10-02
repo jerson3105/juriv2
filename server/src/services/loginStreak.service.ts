@@ -3,6 +3,7 @@ import { loginStreaks, studentProfiles, classrooms, notifications, shopItems, pu
 import { eq, and, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { clanService } from './clan.service.js';
+import { badgeService } from './badge.service.js';
 import { createNotification } from '../utils/notificationEmitter.js';
 import { addXpGp, affectedRows } from '../utils/points.js';
 
@@ -319,6 +320,9 @@ export const loginStreakService = {
           createdAt: now,
         });
       }
+
+      // El XP de la racha puede completar una insignia de XP o de nivel.
+      if (totalXpToAdd > 0) await badgeService.checkXpBadges([studentProfileId]);
     }
 
     return {

@@ -28,6 +28,7 @@ import {
 } from '../db/schema.js';
 import { clanService } from './clan.service.js';
 import { storyService } from './story.service.js';
+import { badgeService } from './badge.service.js';
 import { teacherOwnsClassroom } from '../utils/access.js';
 import { spendGp, addXpGp, affectedRows } from '../utils/points.js';
 
@@ -1714,6 +1715,9 @@ export const jiroExpeditionService = {
       } catch {
         // Silently fail
       }
+
+      // El XP de la expedición puede completar una insignia de XP o de nivel.
+      await badgeService.checkXpBadges([xpSideEffects.studentProfileId]);
     }
   },
 
@@ -1939,6 +1943,8 @@ export const jiroExpeditionService = {
       } catch {
         // Silently fail
       }
+
+      await badgeService.checkXpBadges([xpSideEffects.studentProfileId]);
     }
 
     return result;

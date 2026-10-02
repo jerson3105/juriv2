@@ -12,7 +12,7 @@ import {
   attendanceRecords,
   recoveryMissions,
 } from '../db/schema.js';
-import { eq, desc, and, inArray, sql } from 'drizzle-orm';
+import { eq, desc, and, gte, inArray, like, lte, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { teacherOwnsClassroom } from '../utils/access.js';
 import { affectedRows, revertLevelUpsAbove } from '../utils/points.js';
@@ -702,8 +702,6 @@ class HistoryService {
 
     const [badge] = await db.select().from(badges).where(eq(badges.id, sb.badgeId));
     const badgeName = badge?.name || 'Insignia';
-    const rewardXp = badge?.rewardXp || 0;
-    const rewardGp = badge?.rewardGp || 0;
 
     const [classroom] = await db.select({ xpPerLevel: classrooms.xpPerLevel }).from(classrooms).where(eq(classrooms.id, student.classroomId));
     const xpPerLevel = classroom?.xpPerLevel || 100;
@@ -716,7 +714,29 @@ class HistoryService {
       const removed = await tx.delete(studentBadges).where(eq(studentBadges.id, studentBadgeId));
       if (affectedRows(removed) !== 1) throw new Error('Esta insignia ya fue revertida');
 
-      // 2. Si la insignia tenía recompensas, revertirlas (valores frescos con la fila bloqueada)
+      // 2. Lo que dio ESE otorgamiento (no los valores actuales de la insignia, que el profe pudo
+      //    cambiar): los registros «Insignia: …» del mismo instante. Datos viejos se registraban unos
+      //    segundos después; si no hay del mismo instante, se buscan en esa ventana.
+      const unlockedAt = new Date(sb.unlockedAt);
+      const rewardLogsAt = (from: Date, to: Date) => tx.select({ id: pointLogs.id, pointType: pointLogs.pointType, amount: pointLogs.amount, reason: pointLogs.reason })
+        .from(pointLogs)
+        .where(and(
+          eq(pointLogs.studentId, student.id),
+          eq(pointLogs.action, 'ADD'),
+          eq(pointLogs.isReverted, false),
+          like(pointLogs.reason, 'Insignia:%'),
+          gte(pointLogs.createdAt, from),
+          lte(pointLogs.createdAt, to),
+        ));
+      let rewardLogs = await rewardLogsAt(unlockedAt, unlockedAt);
+      if (rewardLogs.length === 0) rewardLogs = await rewardLogsAt(new Date(unlockedAt.getTime() - 2000), new Date(unlockedAt.getTime() + 5000));
+      // Si en ese instante hubo otra insignia, solo cuentan los de esta (por su nombre, si coincide).
+      const named = rewardLogs.filter((log) => log.reason === `Insignia: ${badgeName}`);
+      const relatedLogs = named.length > 0 ? named : rewardLogs.filter((log) => !rewardLogs.some((other) => other.pointType === log.pointType && other.id !== log.id));
+      const rewardXp = relatedLogs.filter((log) => log.pointType === 'XP').reduce((sum, log) => sum + log.amount, 0);
+      const rewardGp = relatedLogs.filter((log) => log.pointType === 'GP').reduce((sum, log) => sum + log.amount, 0);
+
+      // 3. Revertir esa recompensa (valores frescos con la fila bloqueada)
       if (rewardXp > 0 || rewardGp > 0) {
         const [fresh] = await tx.select({ xp: studentProfiles.xp, gp: studentProfiles.gp, level: studentProfiles.level })
           .from(studentProfiles).where(eq(studentProfiles.id, student.id)).for('update');
@@ -735,22 +755,8 @@ class HistoryService {
         }).where(eq(studentProfiles.id, student.id));
         await revertLevelUpsAbove(tx, student.id, newLevel);
 
-        // Marcar los pointLogs de recompensa relacionados como revertidos
-        // (los que tienen reason = "Insignia: <name>" y fueron creados alrededor del mismo tiempo)
-        // Desde 2026-09 la recompensa se registra con el mismo instante que el student_badge: se
-        // marcan solo esos. Registros antiguos (instante distinto) caen al criterio anterior por motivo.
+        // Marcar como revertidos exactamente los registros de esa recompensa.
         const badgeReason = `Insignia: ${badgeName}`;
-        const sameMoment = await tx.select({ id: pointLogs.id }).from(pointLogs).where(and(
-          eq(pointLogs.studentId, student.id),
-          eq(pointLogs.reason, badgeReason),
-          eq(pointLogs.isReverted, false),
-          eq(pointLogs.createdAt, sb.unlockedAt),
-        ));
-        const relatedLogs = sameMoment.length > 0 ? sameMoment : await tx.select({ id: pointLogs.id }).from(pointLogs).where(and(
-          eq(pointLogs.studentId, student.id),
-          eq(pointLogs.reason, badgeReason),
-          eq(pointLogs.isReverted, false),
-        ));
         if (relatedLogs.length > 0) {
           await tx.update(pointLogs).set({ isReverted: true }).where(
             inArray(pointLogs.id, relatedLogs.map(l => l.id))

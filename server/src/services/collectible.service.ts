@@ -930,7 +930,7 @@ class CollectibleService {
       // Insignia de premio (antes se guardaba pero nunca se entregaba)
       if (album.rewardBadgeId) {
         try {
-          await badgeService.awardBadgeAutomatic(studentProfileId, album.rewardBadgeId);
+          await badgeService.awardBadgeAutomatic(studentProfileId, album.rewardBadgeId, rewardReason);
         } catch (error) {
           logger.warn('No se pudo otorgar la insignia del álbum', { albumId, error: (error as Error).message });
         }
