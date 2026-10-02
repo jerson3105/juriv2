@@ -155,7 +155,8 @@ export const AIBehaviorModal = ({ classroom, onClose, onImport }: AIBehaviorModa
 
   const pills = (b: GeneratedBehavior) => {
     const sign = b.isPositive ? '+' : '−';
-    return (['XP', 'HP', 'GP'] as const)
+    // Un negativo nunca quita oro: el servidor lo guarda en 0.
+    return (b.isPositive ? (['XP', 'HP', 'GP'] as const) : (['XP', 'HP'] as const))
       .map((type) => ({ type, value: type === 'XP' ? b.xpValue : type === 'HP' ? b.hpValue : b.gpValue }))
       .filter((r) => r.value > 0)
       .map((r) => (
@@ -339,7 +340,10 @@ export const AIBehaviorModal = ({ classroom, onClose, onImport }: AIBehaviorModa
                       <input type="text" value={b.description} onChange={(e) => update(index, { description: e.target.value })} aria-label="Descripción" placeholder="Descripción" className={fieldClass} />
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {([['xpValue', 'XP'], ['hpValue', 'HP'], ['gpValue', 'GP']] as const).map(([key, label]) => (
+                      {(b.isPositive
+                        ? ([['xpValue', 'XP'], ['hpValue', 'HP'], ['gpValue', 'GP']] as const)
+                        : ([['xpValue', 'XP'], ['hpValue', 'HP']] as const)
+                      ).map(([key, label]) => (
                         <label key={key} className="flex items-center gap-1.5 text-sm font-semibold text-gray-800 dark:text-gray-100">
                           {label}
                           <input

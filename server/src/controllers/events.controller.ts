@@ -6,6 +6,11 @@ import { requireClassroomTeacher } from '../utils/access.js';
 const ensureTeacherClassroomAccess = async (req: Request, res: Response, classroomId: string): Promise<string | null> =>
   (await requireClassroomTeacher(req, res, classroomId)) ? req.user!.id : null;
 
+// «Tu oro solo baja cuando tú lo gastas»: un evento no puede quitar oro.
+const REMOVES_GOLD_MESSAGE = 'Los eventos no pueden quitar oro: el oro solo baja cuando el alumno lo gasta';
+const removesGold = (effects: unknown) =>
+  Array.isArray(effects) && effects.some((effect) => effect?.type === 'GP' && effect?.action === 'REMOVE');
+
 class EventsController {
   /**
    * Obtener eventos de una clase
@@ -55,6 +60,7 @@ class EventsController {
 
       const userId = await ensureTeacherClassroomAccess(req, res, classroomId);
       if (!userId) return;
+      if (removesGold(eventData?.effects)) return res.status(400).json({ message: REMOVES_GOLD_MESSAGE });
 
       const event = await eventsService.createEvent({
         ...eventData,
@@ -219,6 +225,7 @@ class EventsController {
 
       const userId = await ensureTeacherClassroomAccess(req, res, classroomId);
       if (!userId) return;
+      if (removesGold(updateData?.effects)) return res.status(400).json({ message: REMOVES_GOLD_MESSAGE });
 
       const result = await eventsService.updateEvent(eventId, classroomId, updateData);
 

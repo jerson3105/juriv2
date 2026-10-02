@@ -177,7 +177,8 @@ export class BehaviorService {
     // Si se proporcionan valores combinados, usarlos; sino usar legacy
     const xpValue = data.xpValue ?? (data.pointType === 'XP' ? data.pointValue : 0);
     const hpValue = data.hpValue ?? (data.pointType === 'HP' ? data.pointValue : 0);
-    const gpValue = data.gpValue ?? (data.pointType === 'GP' ? data.pointValue : 0);
+    // Un negativo nunca multa oro: «tu oro solo baja cuando tú lo gastas».
+    const gpValue = data.isPositive ? data.gpValue ?? (data.pointType === 'GP' ? data.pointValue : 0) : 0;
     const assignment = await this.resolveCompetencyAssignment(
       data.classroomId,
       data.competencyId,
@@ -242,6 +243,7 @@ export class BehaviorService {
     const hasCompetencyUpdate = Object.prototype.hasOwnProperty.call(data, 'competencyId');
     const hasIndicatorUpdate = Object.prototype.hasOwnProperty.call(data, 'competencyIndicatorId');
     const payload: Partial<typeof behaviors.$inferInsert> = { ...data };
+    if (!(data.isPositive ?? currentBehavior.isPositive)) payload.gpValue = 0;
 
     if (hasCompetencyUpdate || hasIndicatorUpdate) {
       const assignment = await this.resolveCompetencyAssignment(
@@ -345,7 +347,8 @@ export class BehaviorService {
     const baseGpChange = behavior.gpValue ?? (behavior.pointType === 'GP' ? behavior.pointValue : 0);
     const xpChange = roundPoints(baseXpChange);
     const hpChange = roundPoints(baseHpChange);
-    const gpChange = roundPoints(baseGpChange);
+    // «Tu oro solo baja cuando tú lo gastas»: un comportamiento negativo no multa oro (aunque tenga gpValue guardado).
+    const gpChange = behavior.isPositive ? roundPoints(baseGpChange) : 0;
     const multiplierValue = Math.round(multiplier * 1000);
 
     // Preparar datos para batch inserts
@@ -355,7 +358,7 @@ export class BehaviorService {
     // calculados abajo solo alimentan avisos y la respuesta.
     const signedDeltas = behavior.isPositive
       ? { xp: xpChange, hp: hpChange, gp: gpChange }
-      : { xp: -xpChange, hp: -hpChange, gp: -gpChange };
+      : { xp: -xpChange, hp: -hpChange, gp: 0 };
     const pointRules = {
       xpPerLevel,
       hpMin: 0,
@@ -382,7 +385,6 @@ export class BehaviorService {
       } else {
         newXp -= xpChange;
         newHp = Math.max(0, newHp - hpChange);
-        newGp -= gpChange;
       }
 
       studentUpdates.push({ studentId: student.id });
@@ -465,8 +467,8 @@ export class BehaviorService {
         if (gpChange > 0) parts.push(`🪙${gpChange} Oro`);
         
         const pointsText = parts.join(', ');
-        
-        notificationsBatch.push({
+
+        if (pointsText) notificationsBatch.push({
           id: uuidv4(),
           userId: student.userId,
           type: 'POINTS',
@@ -486,7 +488,7 @@ export class BehaviorService {
         pointLogEntryId,
         xpChange: behavior.isPositive ? xpChange : -xpChange,
         hpChange: behavior.isPositive ? hpChange : -hpChange,
-        gpChange: behavior.isPositive ? gpChange : -gpChange,
+        gpChange,
         newXp,
         newHp,
         newGp,
@@ -722,7 +724,7 @@ export class BehaviorService {
           pointValue: src.pointValue,
           xpValue: src.xpValue,
           hpValue: src.hpValue,
-          gpValue: src.gpValue,
+          gpValue: src.isPositive ? src.gpValue : 0,
           isPositive: src.isPositive,
           icon: src.icon,
           isActive: true,

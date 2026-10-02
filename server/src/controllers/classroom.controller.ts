@@ -1520,7 +1520,7 @@ REGLAS:
       const includePos = includePositive !== false;
       const includeNeg = includeNegative !== false;
       const behaviorMix = includePos && includeNeg ? 'una mezcla de comportamientos POSITIVOS y NEGATIVOS' : includePos ? 'SOLO comportamientos POSITIVOS' : 'SOLO comportamientos NEGATIVOS';
-      const pointModeDesc = pointMode === 'COMBINED' ? 'Usa combinaciones de XP, HP y GP según corresponda' : pointMode === 'XP_ONLY' ? 'Usa SOLO XP (xpValue), deja hpValue y gpValue en 0' : pointMode === 'HP_ONLY' ? 'Usa SOLO HP (hpValue), deja xpValue y gpValue en 0' : 'Usa SOLO GP (gpValue), deja xpValue y hpValue en 0';
+      const pointModeDesc = pointMode === 'COMBINED' ? 'Usa combinaciones de XP, HP y GP según corresponda' : pointMode === 'XP_ONLY' ? 'Usa SOLO XP (xpValue), deja hpValue y gpValue en 0' : pointMode === 'HP_ONLY' ? 'Usa SOLO HP (hpValue), deja xpValue y gpValue en 0' : 'Usa SOLO GP (gpValue) en los positivos, deja xpValue y hpValue en 0. Los negativos nunca quitan oro: si hay negativos, usa hpValue para ellos';
 
       // Preparar contexto de competencias si existen
       const competenciesContext = competencies && competencies.length > 0
@@ -1570,7 +1570,7 @@ Responde ÚNICAMENTE con un array JSON válido:
 
 REGLAS:
 1. Positivos: XP 5-30, GP 0-15, HP generalmente 0
-2. Negativos: HP 5-25 (daño a la vida), XP 0, GP 0-10 (multa opcional)
+2. Negativos: HP 5-25 (daño a la vida), XP 0, GP siempre 0 (el oro nunca se quita: solo baja cuando el alumno lo gasta)
 3. Iconos: ⭐🎯📚✅🏆💪🧠❤️💔⚡🔥❌😴📵🤝👏💡🎨🔬📝✋🙋
 4. Nombres en español, apropiados al nivel
 5. isPositive=true para premiar, isPositive=false para penalizar${competencyRule}`;

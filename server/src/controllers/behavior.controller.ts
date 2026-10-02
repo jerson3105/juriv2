@@ -307,7 +307,7 @@ export class BehaviorController {
           pointsInstruction = 'Solo usa HP (vida/salud). xpValue y gpValue siempre en 0.';
           break;
         case 'GP_ONLY':
-          pointsInstruction = 'Solo usa GP (oro/monedas). xpValue y hpValue siempre en 0.';
+          pointsInstruction = 'Solo usa GP (oro) en los positivos; xpValue y hpValue en 0. Los negativos nunca quitan oro: si hay negativos, usa hpValue para ellos.';
           break;
         case 'COMBINED':
         default:
@@ -370,7 +370,7 @@ REGLAS IMPORTANTES:
 2. Para NEGATIVOS:
    - HP: 5-25 puntos (daño por mal comportamiento)
    - XP: 0 (no se quita experiencia)
-   - GP: 0-10 (multa económica opcional)
+   - GP: siempre 0 (el oro nunca se quita: solo baja cuando el alumno lo gasta)
 
 3. Iconos disponibles: ⭐🎯📚✅🏆💪🧠❤️💔⚡🔥❌😴📵🤝👏💡🎨🔬📝✋🙋
 

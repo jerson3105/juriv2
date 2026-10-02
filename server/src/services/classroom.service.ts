@@ -2275,7 +2275,7 @@ export class ClassroomService {
             pointValue: behavior.pointValue,
             xpValue: behavior.xpValue,
             hpValue: behavior.hpValue,
-            gpValue: behavior.gpValue,
+            gpValue: behavior.isPositive ? behavior.gpValue : 0,
             isPositive: behavior.isPositive,
             icon: behavior.icon,
             isActive: behavior.isActive,

@@ -123,16 +123,6 @@ const SYSTEM_EVENTS: CreateEventData[] = [
   },
   {
     classroomId: '',
-    name: 'Impuesto Real',
-    description: 'El rey cobra impuestos a todos',
-    category: 'CHALLENGE',
-    targetType: 'ALL',
-    effects: [{ type: 'GP', action: 'REMOVE', value: 3 }],
-    icon: '👑',
-    color: 'red',
-  },
-  {
-    classroomId: '',
     name: 'Héroe del Día',
     description: 'El estudiante con más XP recibe un bonus',
     category: 'SPECIAL',
@@ -221,7 +211,7 @@ class EventsService {
         category: data.category,
         targetType: data.targetType,
         targetCount: data.targetCount || 1,
-        effects: data.effects,
+        effects: this.parseEventEffects(data.effects),
         icon: data.icon || '🎲',
         color: data.color || 'violet',
         probability: data.probability || 100,
@@ -281,7 +271,7 @@ class EventsService {
     if (data.category !== undefined) updateData.category = data.category;
     if (data.targetType !== undefined) updateData.targetType = data.targetType;
     if (data.targetCount !== undefined) updateData.targetCount = data.targetCount;
-    if (data.effects !== undefined) updateData.effects = data.effects;
+    if (data.effects !== undefined) updateData.effects = this.parseEventEffects(data.effects);
     if (data.icon !== undefined) updateData.icon = data.icon;
     if (data.color !== undefined) updateData.color = data.color;
     if (data.probability !== undefined) updateData.probability = data.probability;
@@ -814,7 +804,7 @@ class EventsService {
     const affectedStudents: { id: string; name: string; changes?: any }[] = [];
     const pointLogsBatch: typeof pointLogs.$inferInsert[] = [];
     const studentUpdates: { studentId: string; updates: Partial<Record<PointStatField, number>>; effects: EventEffect[] }[] = [];
-    const effectsToApply = effects.filter(
+    const effectsToApply = this.parseEventEffects(effects).filter(
       (effect) =>
         (effect.action === 'REMOVE' && !completed) ||
         (effect.action === 'ADD' && completed)
@@ -976,8 +966,10 @@ class EventsService {
       const isValidType = candidate.type === 'XP' || candidate.type === 'HP' || candidate.type === 'GP';
       const isValidAction = candidate.action === 'ADD' || candidate.action === 'REMOVE';
       const isValidValue = typeof candidate.value === 'number' && Number.isFinite(candidate.value) && candidate.value >= 0;
+      // «Tu oro solo baja cuando tú lo gastas»: ningún evento quita oro (los guardados antes se ignoran).
+      const removesGold = candidate.type === 'GP' && candidate.action === 'REMOVE';
 
-      return isValidType && isValidAction && isValidValue;
+      return isValidType && isValidAction && isValidValue && !removesGold;
     });
   }
 

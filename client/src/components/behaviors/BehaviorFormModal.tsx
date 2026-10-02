@@ -83,7 +83,9 @@ export const BehaviorFormModal = ({ target, classroom, isSaving, onClose, onSubm
   const selectedCompetency = competencies.find((item) => item.id === form.competencyId);
   const indicators = selectedCompetency?.indicators || [];
 
-  const { values } = form;
+  // Un negativo nunca quita oro: «tu oro solo baja cuando tú lo gastas».
+  const values = form.isPositive ? form.values : { ...form.values, gp: 0 };
+  const pointFields = form.isPositive ? POINT_FIELDS : POINT_FIELDS.filter((field) => field.key !== 'gp');
   const hasAnyValue = values.xp > 0 || values.hp > 0 || values.gp > 0;
   const canSave = form.name.trim().length > 0 && hasAnyValue && !isSaving;
   const sign = form.isPositive ? '+' : '−';
@@ -232,7 +234,7 @@ export const BehaviorFormModal = ({ target, classroom, isSaving, onClose, onSubm
               Puntos que {form.isPositive ? 'da' : 'quita'} <span className="font-normal text-gray-600 dark:text-gray-300">(puedes combinar)</span>
             </legend>
             <div className="space-y-2">
-              {POINT_FIELDS.map((field) => {
+              {pointFields.map((field) => {
                 const current = values[field.key];
                 return (
                   <div key={field.key} className="flex flex-wrap items-center gap-2 rounded-xl bg-gray-50 px-3 py-2 dark:bg-gray-900/40">
@@ -275,6 +277,9 @@ export const BehaviorFormModal = ({ target, classroom, isSaving, onClose, onSubm
               })}
             </div>
             <p className="mt-1.5 text-xs text-gray-600 dark:text-gray-300">Toca otra vez un valor marcado para quitarlo.</p>
+            {!form.isPositive && (
+              <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">El oro no se quita: solo baja cuando el alumno lo gasta.</p>
+            )}
           </fieldset>
 
           <div>

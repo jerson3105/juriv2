@@ -423,7 +423,7 @@ export const AIClassroomWizard = ({ isOpen, onClose, onSuccess }: Props) => {
             ? 'XP'
             : behavior.hpValue
               ? 'HP'
-              : behavior.gpValue
+              : behavior.gpValue && behavior.isPositive !== false
                 ? 'GP'
                 : behavior.isPositive
                   ? 'XP'
@@ -1279,7 +1279,7 @@ export const AIClassroomWizard = ({ isOpen, onClose, onSuccess }: Props) => {
                     isPositive: event.target.value === 'positive',
                     pointType: event.target.value === 'positive' && behavior.pointType === 'HP'
                       ? 'XP'
-                      : event.target.value === 'negative' && behavior.pointType === 'XP'
+                      : event.target.value === 'negative' && behavior.pointType !== 'HP'
                         ? 'HP'
                         : behavior.pointType,
                   })}
@@ -1295,7 +1295,8 @@ export const AIClassroomWizard = ({ isOpen, onClose, onSuccess }: Props) => {
                 >
                   <option value="XP">XP</option>
                   <option value="HP">HP</option>
-                  <option value="GP">GP</option>
+                  {/* Un correctivo nunca quita oro: «tu oro solo baja cuando tú lo gastas». */}
+                  {behavior.isPositive && <option value="GP">GP</option>}
                 </select>
                 <input
                   type="number"
