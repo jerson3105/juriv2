@@ -1,9 +1,6 @@
 import { db } from '../db/index.js';
 import {
   avatarItems,
-  classroomAvatarItems,
-  classrooms,
-  pointLogs,
   studentAvatarPurchases,
   studentEquippedItems,
   studentProfiles,
@@ -12,18 +9,9 @@ import {
 } from '../db/schema.js';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
-import { spendGp } from '../utils/points.js';
-import { isInitialLevel } from '../utils/energy.js';
-import { AVATAR_PURCHASE_PREFIX } from '../utils/pointReasons.js';
 
-const RESTING_SHOP_MESSAGE = 'Estás descansando: completa tu misión de recuperación para volver a usar la tienda.';
-
-interface AddToClassroomShopData {
-  classroomId: string;
-  avatarItemId: string;
-  price: number;
-}
-
+// Prendas puestas, prendas iniciales y lecturas del avatar. La tienda (catálogo por clase, precios,
+// compra, equipar y cambio de cuerpo) vive en avatarCatalog.service.
 class AvatarService {
   // ==================== ITEMS POR DEFECTO ====================
 
@@ -48,7 +36,7 @@ class AvatarService {
     for (const item of defaultItems) {
       // Solo equipar un item por slot
       if (equippedSlots.has(item.slot)) continue;
-      
+
       try {
         await db.insert(studentEquippedItems).values({
           id: uuidv4(),
@@ -82,7 +70,7 @@ class AvatarService {
         .select()
         .from(avatarItems)
         .where(and(
-          eq(avatarItems.isActive, true), 
+          eq(avatarItems.isActive, true),
           eq(avatarItems.gender, gender),
           eq(avatarItems.isDefault, false)
         ))
@@ -98,220 +86,7 @@ class AvatarService {
       .orderBy(avatarItems.slot, avatarItems.name);
   }
 
-  // ==================== TIENDA DE CLASE (DOCENTE) ====================
-
-  async addItemToClassroomShop(data: AddToClassroomShopData) {
-    const id = uuidv4();
-    const now = new Date();
-
-    await db.insert(classroomAvatarItems).values({
-      id,
-      classroomId: data.classroomId,
-      avatarItemId: data.avatarItemId,
-      price: data.price,
-      isAvailable: true,
-      createdAt: now,
-    });
-
-    return this.getClassroomShopItem(data.classroomId, data.avatarItemId);
-  }
-
-  async getClassroomShopItem(classroomId: string, avatarItemId: string) {
-    const [item] = await db
-      .select({
-        id: classroomAvatarItems.id,
-        classroomId: classroomAvatarItems.classroomId,
-        avatarItemId: classroomAvatarItems.avatarItemId,
-        price: classroomAvatarItems.price,
-        isAvailable: classroomAvatarItems.isAvailable,
-        createdAt: classroomAvatarItems.createdAt,
-        avatarItem: avatarItems,
-      })
-      .from(classroomAvatarItems)
-      .innerJoin(avatarItems, eq(classroomAvatarItems.avatarItemId, avatarItems.id))
-      .where(and(
-        eq(classroomAvatarItems.classroomId, classroomId),
-        eq(classroomAvatarItems.avatarItemId, avatarItemId)
-      ));
-    return item;
-  }
-
-  async getClassroomShopItems(classroomId: string, gender?: AvatarGender) {
-    // Excluir items por defecto de la tienda
-    const query = db
-      .select({
-        id: classroomAvatarItems.id,
-        classroomId: classroomAvatarItems.classroomId,
-        avatarItemId: classroomAvatarItems.avatarItemId,
-        price: classroomAvatarItems.price,
-        isAvailable: classroomAvatarItems.isAvailable,
-        createdAt: classroomAvatarItems.createdAt,
-        avatarItem: avatarItems,
-      })
-      .from(classroomAvatarItems)
-      .innerJoin(avatarItems, eq(classroomAvatarItems.avatarItemId, avatarItems.id))
-      .where(and(
-        eq(classroomAvatarItems.classroomId, classroomId),
-        eq(classroomAvatarItems.isAvailable, true),
-        eq(avatarItems.isDefault, false),
-        gender ? eq(avatarItems.gender, gender) : undefined
-      ));
-
-    return query;
-  }
-
-  async removeItemFromClassroomShop(classroomId: string, avatarItemId: string) {
-    await db
-      .update(classroomAvatarItems)
-      .set({ isAvailable: false })
-      .where(and(
-        eq(classroomAvatarItems.classroomId, classroomId),
-        eq(classroomAvatarItems.avatarItemId, avatarItemId)
-      ));
-  }
-
-  async updateClassroomItemPrice(classroomId: string, avatarItemId: string, price: number) {
-    await db
-      .update(classroomAvatarItems)
-      .set({ price })
-      .where(and(
-        eq(classroomAvatarItems.classroomId, classroomId),
-        eq(classroomAvatarItems.avatarItemId, avatarItemId)
-      ));
-  }
-
-  async removeShopItemById(shopItemId: string) {
-    await db
-      .delete(classroomAvatarItems)
-      .where(eq(classroomAvatarItems.id, shopItemId));
-  }
-
-  async updateShopItemPrice(shopItemId: string, price: number) {
-    await db
-      .update(classroomAvatarItems)
-      .set({ price })
-      .where(eq(classroomAvatarItems.id, shopItemId));
-
-    // Retornar el item actualizado
-    const [item] = await db
-      .select({
-        id: classroomAvatarItems.id,
-        classroomId: classroomAvatarItems.classroomId,
-        avatarItemId: classroomAvatarItems.avatarItemId,
-        price: classroomAvatarItems.price,
-        isAvailable: classroomAvatarItems.isAvailable,
-        createdAt: classroomAvatarItems.createdAt,
-        avatarItem: avatarItems,
-      })
-      .from(classroomAvatarItems)
-      .innerJoin(avatarItems, eq(classroomAvatarItems.avatarItemId, avatarItems.id))
-      .where(eq(classroomAvatarItems.id, shopItemId));
-
-    return item;
-  }
-
-  // ==================== COMPRAS DE ESTUDIANTES ====================
-
-  async purchaseAvatarItem(studentProfileId: string, classroomId: string | undefined, avatarItemId: string) {
-    const [profile] = await db
-      .select()
-      .from(studentProfiles)
-      .where(eq(studentProfiles.id, studentProfileId));
-
-    if (!profile) {
-      throw new Error('Perfil de estudiante no encontrado');
-    }
-
-    // La tienda es la de la clase del perfil: con perfiles en dos clases se podía comprar con los
-    // precios (o los ítems) de la otra clase.
-    if (classroomId && classroomId !== profile.classroomId) {
-      throw new Error('Solo puedes comprar en la tienda de tu clase');
-    }
-    const classroom = await db.query.classrooms.findFirst({ where: eq(classrooms.id, profile.classroomId) });
-    if (!classroom) {
-      throw new Error('Clase no encontrada');
-    }
-    // Las mismas reglas que la tienda de premios: cerrada y pausa por descanso (en Inicial no hay pausa).
-    if (!classroom.shopEnabled) {
-      throw new Error('Tu profe cerró la tienda por ahora');
-    }
-    if (profile.hp <= 0 && !isInitialLevel(classroom.gradeLevel)) {
-      throw new Error(RESTING_SHOP_MESSAGE);
-    }
-
-    // Verificar que el item está en la tienda de la clase
-    const shopItem = await this.getClassroomShopItem(profile.classroomId, avatarItemId);
-    if (!shopItem || !shopItem.isAvailable) {
-      throw new Error('Item no disponible en esta tienda');
-    }
-    if (shopItem.avatarItem.gender !== profile.avatarGender) {
-      throw new Error('Esta prenda es para el otro cuerpo');
-    }
-
-    if (profile.gp < shopItem.price) {
-      throw new Error('No tienes suficiente oro');
-    }
-
-    // Verificar que no lo haya comprado ya
-    const [existing] = await db
-      .select()
-      .from(studentAvatarPurchases)
-      .where(and(
-        eq(studentAvatarPurchases.studentProfileId, studentProfileId),
-        eq(studentAvatarPurchases.avatarItemId, avatarItemId)
-      ));
-
-    if (existing) {
-      throw new Error('Ya tienes este item');
-    }
-
-    // Cobro atómico + registro en una transacción: con compras simultáneas el oro no se
-    // puede gastar dos veces, y si la compra ya existe (índice único) se deshace el cobro.
-    const purchaseId = uuidv4();
-    const newBalance = await db.transaction(async (tx) => {
-      if (!(await spendGp(tx, studentProfileId, shopItem.price))) {
-        throw new Error('No tienes suficiente oro');
-      }
-      const now = new Date();
-      await tx.insert(studentAvatarPurchases).values({
-        id: purchaseId,
-        studentProfileId,
-        avatarItemId,
-        classroomId: profile.classroomId,
-        pricePaid: shopItem.price,
-        purchasedAt: now,
-      });
-      // El gasto queda en el registro: «Mi progreso» y «Lo nuevo» lo muestran como gasto propio.
-      if (shopItem.price > 0) {
-        await tx.insert(pointLogs).values({
-          id: uuidv4(),
-          studentId: studentProfileId,
-          pointType: 'GP',
-          action: 'REMOVE',
-          amount: shopItem.price,
-          reason: `${AVATAR_PURCHASE_PREFIX}${shopItem.avatarItem.name}`,
-          createdAt: now,
-        });
-      }
-      const [after] = await tx
-        .select({ gp: studentProfiles.gp })
-        .from(studentProfiles)
-        .where(eq(studentProfiles.id, studentProfileId));
-      return after?.gp ?? profile.gp - shopItem.price;
-    }).catch((error: any) => {
-      if (error?.code === 'ER_DUP_ENTRY' || error?.cause?.code === 'ER_DUP_ENTRY') {
-        throw new Error('Ya tienes este item');
-      }
-      throw error;
-    });
-
-    return {
-      purchaseId,
-      item: shopItem.avatarItem,
-      pricePaid: shopItem.price,
-      newBalance,
-    };
-  }
+  // ==================== COMPRAS ====================
 
   async getStudentPurchases(studentProfileId: string) {
     // Excluir items por defecto del inventario
@@ -332,56 +107,7 @@ class AvatarService {
       .orderBy(desc(studentAvatarPurchases.purchasedAt));
   }
 
-  async hasStudentPurchasedItem(studentProfileId: string, avatarItemId: string) {
-    const [purchase] = await db
-      .select()
-      .from(studentAvatarPurchases)
-      .where(and(
-        eq(studentAvatarPurchases.studentProfileId, studentProfileId),
-        eq(studentAvatarPurchases.avatarItemId, avatarItemId)
-      ));
-    return !!purchase;
-  }
-
   // ==================== EQUIPAR ITEMS ====================
-
-  async equipItem(studentProfileId: string, avatarItemId: string) {
-    // Verificar que el estudiante tiene el item
-    const hasPurchased = await this.hasStudentPurchasedItem(studentProfileId, avatarItemId);
-    if (!hasPurchased) {
-      throw new Error('No tienes este item');
-    }
-
-    // Obtener info del item
-    const item = await this.getAvatarItemById(avatarItemId);
-    if (!item) {
-      throw new Error('Item no encontrado');
-    }
-    // Una prenda del otro cuerpo se vería desalineada.
-    const [profile] = await db.select({ avatarGender: studentProfiles.avatarGender }).from(studentProfiles).where(eq(studentProfiles.id, studentProfileId));
-    if (!profile || item.gender !== profile.avatarGender) {
-      throw new Error('Esta prenda es para el otro cuerpo');
-    }
-
-    // Cambiar la prenda de la ranura en una transacción: dos toques seguidos no dejan la ranura vacía.
-    await db.transaction(async (tx) => {
-      await tx
-        .delete(studentEquippedItems)
-        .where(and(
-          eq(studentEquippedItems.studentProfileId, studentProfileId),
-          eq(studentEquippedItems.slot, item.slot)
-        ));
-      await tx.insert(studentEquippedItems).values({
-        id: uuidv4(),
-        studentProfileId,
-        avatarItemId,
-        slot: item.slot,
-        equippedAt: new Date(),
-      });
-    });
-
-    return this.getEquippedItems(studentProfileId);
-  }
 
   async unequipItem(studentProfileId: string, slot: AvatarSlot) {
     // Verificar si el item equipado es un item por defecto

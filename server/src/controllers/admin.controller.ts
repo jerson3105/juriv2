@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { db } from '../db/index.js';
 import {
-  users, classrooms, avatarItems, studentProfiles,
+  users, classrooms, avatarItems, avatarCollections, studentProfiles,
   questionBanks, questions, timedActivities, expeditions
 } from '../db/schema.js';
 import { eq, desc, count, sql, inArray } from 'drizzle-orm';
@@ -319,6 +319,8 @@ export const adminController = {
       if (rarity && !['COMMON', 'RARE', 'LEGENDARY'].includes(rarity)) {
         return res.status(400).json({ success: false, message: 'Rareza inválida' });
       }
+      // Catálogo v2: lo nuevo entra en «Básicos» y llega solo a todas las clases.
+      const [basicos] = await db.select({ id: avatarCollections.id }).from(avatarCollections).where(eq(avatarCollections.slug, 'basicos'));
 
       // Las prendas se superponen al personaje: deben tener su proporción (395×959) para quedar alineadas.
       // Los fondos se recortan para cubrir el recuadro, así que pueden tener cualquier tamaño.
@@ -348,6 +350,7 @@ export const adminController = {
         layerOrder: LAYER_ORDER[slot] || 0,
         basePrice: parseInt(basePrice) || 100,
         rarity: rarity || 'COMMON',
+        collectionId: basicos?.id ?? null,
         isDefault: isDefault === 'true' || isDefault === true,
         isActive: true,
         createdAt: now,

@@ -228,7 +228,14 @@ export const classrooms = mysqlTable('classrooms', {
   shopEnabled: boolean('shop_enabled').notNull().default(true),
   requirePurchaseApproval: boolean('require_purchase_approval').notNull().default(false),
   dailyPurchaseLimit: int('daily_purchase_limit'),
-  
+
+  // Tienda de avatar (catálogo automático): precio = base × semanas por rareza × nivel. La base es el
+  // oro semanal de la clase, calculada la primera vez y fija hasta que el docente la actualiza.
+  avatarShopEnabled: boolean('avatar_shop_enabled').notNull().default(true),
+  avatarPriceLevel: mysqlEnum('avatar_price_level', ['LOW', 'NORMAL', 'HIGH']).notNull().default('NORMAL'),
+  avatarPriceBase: int('avatar_price_base'),
+  avatarPricesAt: datetime('avatar_prices_at'),
+
   // Configuración de clases de personaje
   classAssignmentMode: varchar('class_assignment_mode', { length: 20 }).notNull().default('STUDENT_CHOICE'),
   
@@ -933,6 +940,18 @@ export const notificationsRelations = relations(notifications, ({ one }) => ({
 
 // ==================== SISTEMA DE AVATARES ====================
 
+// Colecciones del catálogo de avatar (las arma el admin; llegan solas a todas las clases)
+export const avatarCollections = mysqlTable('avatar_collections', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  slug: varchar('slug', { length: 50 }).notNull().unique(),
+  name: varchar('name', { length: 100 }).notNull(),
+  description: text('description'),
+  sortOrder: int('sort_order').notNull().default(0),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+});
+
 // Items de avatar globales (creados por Juried/Admin)
 export const avatarItems = mysqlTable('avatar_items', {
   id: varchar('id', { length: 36 }).primaryKey(),
@@ -942,8 +961,11 @@ export const avatarItems = mysqlTable('avatar_items', {
   slot: avatarSlotEnum.notNull(), // HEAD, HAIR, EYES, TOP, etc.
   imagePath: varchar('image_path', { length: 500 }).notNull(), // ruta a la imagen PNG
   layerOrder: int('layer_order').notNull(), // orden de renderizado (mayor = más arriba)
-  basePrice: int('base_price').notNull().default(100), // precio sugerido en GP
+  basePrice: int('base_price').notNull().default(100), // sin uso en el catálogo v2 (el precio sale de la rareza y la clase)
   rarity: itemRarityEnum.notNull().default('COMMON'),
+  collectionId: varchar('collection_id', { length: 36 }),
+  // La misma prenda en el otro cuerpo comparte pair_key: lo comprado pasa al cambiar de cuerpo.
+  pairKey: varchar('pair_key', { length: 36 }),
   isDefault: boolean('is_default').notNull().default(false), // items por defecto al crear cuenta
   isActive: boolean('is_active').notNull().default(true),
   createdAt: datetime('created_at').notNull(),
@@ -956,15 +978,28 @@ export const avatarItemsRelations = relations(avatarItems, ({ many }) => ({
 }));
 
 // Items de avatar disponibles en la tienda de cada clase
+// Excepciones del docente sobre el catálogo automático de su clase (sin fila = visible con el precio
+// calculado): isAvailable = false → oculta en la clase; price → precio propio (null = el calculado).
 export const classroomAvatarItems = mysqlTable('classroom_avatar_items', {
   id: varchar('id', { length: 36 }).primaryKey(),
   classroomId: varchar('classroom_id', { length: 36 }).notNull(),
   avatarItemId: varchar('avatar_item_id', { length: 36 }).notNull(),
-  price: int('price').notNull(), // precio en GP para esta clase
+  price: int('price'),
   isAvailable: boolean('is_available').notNull().default(true),
   createdAt: datetime('created_at').notNull(),
 }, (table) => ({
   uniqueClassroomItem: unique().on(table.classroomId, table.avatarItemId),
+}));
+
+// Colecciones que el docente ocultó en una clase (sin fila = visible).
+export const classroomAvatarCollections = mysqlTable('classroom_avatar_collections', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
+  collectionId: varchar('collection_id', { length: 36 }).notNull(),
+  isHidden: boolean('is_hidden').notNull().default(true),
+  createdAt: datetime('created_at').notNull(),
+}, (table) => ({
+  uniqueClassroomCollection: unique('uniq_classroom_avatar_collection').on(table.classroomId, table.collectionId),
 }));
 
 export const classroomAvatarItemsRelations = relations(classroomAvatarItems, ({ one }) => ({

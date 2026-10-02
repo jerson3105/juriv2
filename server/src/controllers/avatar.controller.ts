@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { avatarService } from '../services/avatar.service.js';
+import { avatarCatalogService } from '../services/avatarCatalog.service.js';
 import { z } from 'zod';
+import { AppError } from '../utils/errors.js';
 import {
   requireStudentProfileOwner,
   requireStudentProfileReadAccess,
@@ -8,18 +10,51 @@ import {
   requireClassroomMember,
   requireResourceMember,
   requireStudentsMember,
-  classroomIdOfShopItem,
   classroomIdOfStudentProfile,
 } from '../utils/access.js';
 
 const MAX_AVATAR_PRICE = 100000;
-
-const addToShopSchema = z.object({
-  avatarItemId: z.string().uuid(),
-  price: z.number().int().min(0).max(MAX_AVATAR_PRICE),
-});
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const slotSchema = z.enum(['HEAD', 'HAIR', 'EYES', 'TOP', 'BOTTOM', 'LEFT_HAND', 'RIGHT_HAND', 'SHOES', 'BACK', 'FLAG', 'BACKGROUND']);
+const idSchema = z.string().regex(UUID, 'Identificador inválido');
+const applyToSchema = z.array(idSchema).max(50).optional();
+
+const purchaseSchema = z.object({
+  studentProfileId: idSchema,
+  avatarItemId: idSchema,
+  classroomId: idSchema.optional(),
+  equip: z.boolean().optional(),
+});
+const bodySchema = z.object({ gender: z.enum(['MALE', 'FEMALE'], { errorMap: () => ({ message: 'Elige chico o chica' }) }) });
+const settingsSchema = z.object({
+  enabled: z.boolean().optional(),
+  priceLevel: z.enum(['LOW', 'NORMAL', 'HIGH']).optional(),
+  refreshPrices: z.boolean().optional(),
+  applyTo: applyToSchema,
+});
+const collectionSchema = z.object({ hidden: z.boolean(), applyTo: applyToSchema });
+const itemSchema = z.object({
+  hidden: z.boolean().optional(),
+  price: z.number().int('El precio debe ser un número entero').min(0, 'El precio no puede ser negativo').max(MAX_AVATAR_PRICE, 'El precio es demasiado alto').nullable().optional(),
+  applyTo: applyToSchema,
+});
+
+// Errores con mensaje para la persona (AppError, Zod) o 500 genérico.
+const fail = (res: Response, error: unknown, fallback: string) => {
+  if (error instanceof AppError) return res.status(error.statusCode).json({ success: false, message: error.message });
+  if (error instanceof z.ZodError) return res.status(400).json({ success: false, message: error.errors[0]?.message || 'Datos inválidos' });
+  console.error(fallback, error);
+  return res.status(500).json({ success: false, message: fallback });
+};
+
+// La clase de la ruta y las de «Aplicar a mis otras clases»: todas del docente.
+const teacherClassrooms = async (req: Request, res: Response, applyTo?: string[]) => {
+  const { classroomId } = req.params;
+  if (!(await requireClassroomTeacher(req, res, classroomId))) return null;
+  if (req.user!.role === 'ADMIN' || !applyTo?.length) return [classroomId];
+  return avatarCatalogService.assertTeacherClassrooms(req.user!.id, [classroomId, ...applyTo]);
+};
 
 export const avatarController = {
   // ==================== ITEMS GLOBALES ====================
@@ -44,163 +79,90 @@ export const avatarController = {
 
   // ==================== TIENDA DE CLASE ====================
 
-  async addToClassroomShop(req: Request, res: Response) {
-    try {
-      const { classroomId } = req.params;
-      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
-      const data = addToShopSchema.parse(req.body);
-
-      const item = await avatarService.addItemToClassroomShop({
-        classroomId,
-        avatarItemId: data.avatarItemId,
-        price: data.price,
-      });
-
-      res.status(201).json({
-        success: true,
-        message: 'Item añadido a la tienda',
-        data: item,
-      });
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({
-          success: false,
-          message: 'Datos inválidos',
-          errors: error.errors,
-        });
-      }
-      console.error('Error adding item to classroom shop:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error al añadir item a la tienda',
-      });
-    }
-  },
-
+  // Lo que ve un alumno en la tienda de avatar de la clase (catálogo automático con precios de la clase).
   async getClassroomShopItems(req: Request, res: Response) {
     try {
       const { classroomId } = req.params;
       if (!(await requireClassroomMember(req, res, classroomId))) return;
-      const gender = req.query.gender as 'MALE' | 'FEMALE' | undefined;
-
-      const items = await avatarService.getClassroomShopItems(classroomId, gender);
-
-      res.json({
-        success: true,
-        data: items,
-      });
+      const gender = req.query.gender === 'MALE' || req.query.gender === 'FEMALE' ? req.query.gender : undefined;
+      res.json({ success: true, data: await avatarCatalogService.getClassroomShopItems(classroomId, gender) });
     } catch (error) {
-      console.error('Error getting classroom shop items:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error al obtener items de la tienda',
-      });
+      fail(res, error, 'Error al obtener la tienda de avatar');
     }
   },
 
-  async removeFromClassroomShop(req: Request, res: Response) {
+  // ==================== DOCENTE: CATÁLOGO DE LA CLASE ====================
+
+  async getTeacherCatalog(req: Request, res: Response) {
     try {
-      const { classroomId, avatarItemId } = req.params;
+      const { classroomId } = req.params;
       if (!(await requireClassroomTeacher(req, res, classroomId))) return;
-
-      await avatarService.removeItemFromClassroomShop(classroomId, avatarItemId);
-
-      res.json({
-        success: true,
-        message: 'Item removido de la tienda',
-      });
+      res.json({ success: true, data: await avatarCatalogService.getTeacherCatalog(classroomId, req.user!.id) });
     } catch (error) {
-      console.error('Error removing item from classroom shop:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error al remover item de la tienda',
-      });
+      fail(res, error, 'No se pudo cargar la tienda de avatar');
     }
   },
 
-  async removeShopItemById(req: Request, res: Response) {
+  async updateSettings(req: Request, res: Response) {
     try {
-      const { shopItemId } = req.params;
-      const classroomId = await classroomIdOfShopItem(shopItemId);
-      if (!classroomId) return res.status(404).json({ success: false, message: 'Ítem no encontrado' });
-      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
-
-      await avatarService.removeShopItemById(shopItemId);
-
-      res.json({
-        success: true,
-        message: 'Item removido de la tienda',
-      });
+      const data = settingsSchema.parse(req.body);
+      const ids = await teacherClassrooms(req, res, data.applyTo);
+      if (!ids) return;
+      await avatarCatalogService.updateSettings(ids, data);
+      res.json({ success: true, data: { classroomIds: ids } });
     } catch (error) {
-      console.error('Error removing shop item:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error al remover item de la tienda',
-      });
+      fail(res, error, 'No se pudo guardar la tienda de avatar');
     }
   },
 
-  async updateShopItemPrice(req: Request, res: Response) {
+  async setCollection(req: Request, res: Response) {
     try {
-      const { shopItemId } = req.params;
-      const { price } = req.body;
-      const priceClassroomId = await classroomIdOfShopItem(shopItemId);
-      if (!priceClassroomId) return res.status(404).json({ success: false, message: 'Ítem no encontrado' });
-      if (!(await requireClassroomTeacher(req, res, priceClassroomId))) return;
+      const data = collectionSchema.parse(req.body);
+      const collectionId = idSchema.parse(req.params.collectionId);
+      const ids = await teacherClassrooms(req, res, data.applyTo);
+      if (!ids) return;
+      await avatarCatalogService.setCollectionHidden(ids, collectionId, data.hidden);
+      res.json({ success: true, data: { classroomIds: ids } });
+    } catch (error) {
+      fail(res, error, 'No se pudo cambiar la colección');
+    }
+  },
 
-      if (typeof price !== 'number' || !Number.isInteger(price) || price < 0 || price > MAX_AVATAR_PRICE) {
-        return res.status(400).json({
-          success: false,
-          message: 'Precio inválido',
-        });
+  async setItem(req: Request, res: Response) {
+    try {
+      const data = itemSchema.parse(req.body);
+      const avatarItemId = idSchema.parse(req.params.avatarItemId);
+      if (data.hidden === undefined && data.price === undefined) {
+        return res.status(400).json({ success: false, message: 'Indica si se oculta o su precio' });
       }
-
-      const item = await avatarService.updateShopItemPrice(shopItemId, price);
-
-      res.json({
-        success: true,
-        message: 'Precio actualizado',
-        data: item,
-      });
+      const ids = await teacherClassrooms(req, res, data.applyTo);
+      if (!ids) return;
+      await avatarCatalogService.setItemException(ids, avatarItemId, { hidden: data.hidden, price: data.price });
+      res.json({ success: true, data: { classroomIds: ids } });
     } catch (error) {
-      console.error('Error updating shop item price:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error al actualizar precio',
-      });
+      fail(res, error, 'No se pudo cambiar la prenda');
     }
   },
 
-  // ==================== COMPRAS DE ESTUDIANTES ====================
+  // ==================== ALUMNO ====================
+
+  // «Mi avatar»: solo el dueño del perfil (otro perfil → 404).
+  async getStudentView(req: Request, res: Response) {
+    try {
+      res.json({ success: true, data: await avatarCatalogService.getStudentView(req.params.studentProfileId, req.user!.id) });
+    } catch (error) {
+      fail(res, error, 'No se pudo cargar tu avatar');
+    }
+  },
 
   async purchaseItem(req: Request, res: Response) {
     try {
-      const { studentProfileId, classroomId, avatarItemId } = req.body;
-      if (!(await requireStudentProfileOwner(req, res, studentProfileId))) return;
-
-      const result = await avatarService.purchaseAvatarItem(
-        studentProfileId,
-        classroomId,
-        avatarItemId
-      );
-
-      res.json({
-        success: true,
-        message: '¡Item comprado!',
-        data: result,
-      });
+      const data = purchaseSchema.parse(req.body);
+      if (!(await requireStudentProfileOwner(req, res, data.studentProfileId))) return;
+      const result = await avatarCatalogService.purchase(data.studentProfileId, data.avatarItemId, { classroomId: data.classroomId, equip: data.equip });
+      res.json({ success: true, message: '¡Comprada!', data: result });
     } catch (error) {
-      if (error instanceof Error) {
-        return res.status(400).json({
-          success: false,
-          message: error.message,
-        });
-      }
-      console.error('Error purchasing avatar item:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error al comprar item',
-      });
+      fail(res, error, 'No se pudo comprar la prenda');
     }
   },
 
@@ -228,28 +190,12 @@ export const avatarController = {
 
   async equipItem(req: Request, res: Response) {
     try {
-      const { studentProfileId, avatarItemId } = req.body;
+      const studentProfileId = idSchema.parse(req.body?.studentProfileId);
+      const avatarItemId = idSchema.parse(req.body?.avatarItemId);
       if (!(await requireStudentProfileOwner(req, res, studentProfileId))) return;
-
-      const equippedItems = await avatarService.equipItem(studentProfileId, avatarItemId);
-
-      res.json({
-        success: true,
-        message: 'Item equipado',
-        data: equippedItems,
-      });
+      res.json({ success: true, message: 'Prenda puesta', data: await avatarCatalogService.equip(studentProfileId, avatarItemId) });
     } catch (error) {
-      if (error instanceof Error) {
-        return res.status(400).json({
-          success: false,
-          message: error.message,
-        });
-      }
-      console.error('Error equipping item:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error al equipar item',
-      });
+      fail(res, error, 'No se pudo poner la prenda');
     }
   },
 
@@ -280,12 +226,29 @@ export const avatarController = {
     }
   },
 
+  // Cambiar de cuerpo: el alumno dueño o el docente de su clase (también para perfiles sin cuenta).
+  async setBody(req: Request, res: Response) {
+    try {
+      const studentProfileId = idSchema.parse(req.params.studentProfileId);
+      const { gender } = bodySchema.parse(req.body);
+      if (req.user!.role === 'TEACHER') {
+        const classroomId = await classroomIdOfStudentProfile(studentProfileId);
+        if (!classroomId) return res.status(404).json({ success: false, message: 'Estudiante no encontrado' });
+        if (!(await requireClassroomTeacher(req, res, classroomId))) return;
+      } else if (!(await requireStudentProfileOwner(req, res, studentProfileId))) {
+        return;
+      }
+      res.json({ success: true, data: await avatarCatalogService.setBody(studentProfileId, gender) });
+    } catch (error) {
+      fail(res, error, 'No se pudo cambiar el cuerpo del avatar');
+    }
+  },
+
   // Items equipados de varios alumnos en una petición (las listas renderizan un mini-avatar por
   // alumno; antes era una petición por alumno).
   async getEquippedItemsBatch(req: Request, res: Response) {
     try {
       const ids = req.body?.studentProfileIds;
-      const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!Array.isArray(ids) || ids.length === 0 || ids.length > 100 || ids.some((id) => typeof id !== 'string' || !UUID.test(id))) {
         return res.status(400).json({ success: false, message: 'studentProfileIds debe ser una lista de 1 a 100 ids' });
       }

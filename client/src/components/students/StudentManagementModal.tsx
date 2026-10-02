@@ -6,6 +6,8 @@ import toast from 'react-hot-toast';
 import type { Student } from '../../lib/classroomApi';
 import { placeholderStudentApi } from '../../lib/placeholderStudentApi';
 import { studentApi } from '../../lib/studentApi';
+import { avatarApi, type AvatarGender } from '../../lib/avatarApi';
+import { BODY_LABEL } from '../avatar/avatarHelpers';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { accessLabel } from '../../lib/studentAccess';
@@ -60,6 +62,7 @@ export const StudentManagementModal = ({
   const queryClient = useQueryClient();
   const [displayName, setDisplayName] = useState('');
   const [characterName, setCharacterName] = useState('');
+  const [body, setBody] = useState<AvatarGender>('MALE');
   const [isDownloadingCard, setIsDownloadingCard] = useState(false);
 
   const status = student ? getStudentAccountStatus(student) : null;
@@ -74,7 +77,20 @@ export const StudentManagementModal = ({
 
     setDisplayName(student.displayName || '');
     setCharacterName(student.characterName || '');
+    setBody(student.avatarGender || 'MALE');
   }, [isOpen, student]);
+
+  // El cuerpo del avatar se guarda al instante (también para alumnos sin cuenta).
+  const bodyMutation = useMutation({
+    mutationFn: (gender: AvatarGender) => avatarApi.setBody(student!.id, gender),
+    onSuccess: (_data, gender) => {
+      setBody(gender);
+      void queryClient.invalidateQueries({ queryKey: ['classroom', classroomId] });
+      void queryClient.invalidateQueries({ queryKey: ['avatar-equipped', student!.id] });
+      toast.success(`Avatar: ${BODY_LABEL[gender].toLowerCase()}`);
+    },
+    onError: (error) => toast.error((error as { response?: { data?: { message?: string } } })?.response?.data?.message || 'No se pudo cambiar el avatar'),
+  });
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -276,6 +292,34 @@ export const StudentManagementModal = ({
                   placeholder="Nombre visible dentro del aula"
                   helperText="Puedes ajustarlo sin tocar los datos reales de la cuenta."
                 />
+
+                <fieldset>
+                  <legend className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Avatar</legend>
+                  <div className="flex gap-2">
+                    {(['MALE', 'FEMALE'] as const).map((value) => (
+                      <label
+                        key={value}
+                        className={`flex min-h-[44px] flex-1 cursor-pointer items-center justify-center rounded-xl border-2 text-sm font-semibold has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary-500 ${
+                          body === value
+                            ? 'border-primary-600 bg-primary-50 text-primary-900 dark:border-primary-400 dark:bg-primary-500/15 dark:text-white'
+                            : 'border-gray-300 text-gray-800 dark:border-gray-600 dark:text-gray-100'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name={`avatar-body-${student.id}`}
+                          value={value}
+                          checked={body === value}
+                          disabled={bodyMutation.isPending}
+                          onChange={() => bodyMutation.mutate(value)}
+                          className="sr-only"
+                        />
+                        {BODY_LABEL[value]}
+                      </label>
+                    ))}
+                  </div>
+                  <p className="mt-1.5 text-xs text-gray-600 dark:text-gray-400">Se guarda al instante. Lo comprado pasa al otro cuerpo si la prenda tiene versión para ambos.</p>
+                </fieldset>
               </div>
             </div>
 

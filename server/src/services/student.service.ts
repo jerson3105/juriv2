@@ -768,6 +768,7 @@ export class StudentService {
     students: Array<{
       displayName: string;
       characterClass?: CharacterClass;
+      avatarGender?: AvatarGender;
     }>;
     teacherId: string;
   }) {
@@ -780,6 +781,7 @@ export class StudentService {
         classroomId: data.classroomId,
         displayName: student.displayName,
         characterClass: student.characterClass || defaultClasses[i % 4],
+        avatarGender: student.avatarGender,
         teacherId: data.teacherId,
       });
       results.push(result);

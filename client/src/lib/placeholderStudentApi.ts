@@ -26,7 +26,7 @@ export const placeholderStudentApi = {
   },
 
   // Crear múltiples estudiantes placeholder
-  createBulk: async (classroomId: string, students: Array<{ displayName: string; characterClass?: string }>) => {
+  createBulk: async (classroomId: string, students: Array<{ displayName: string; characterClass?: string; avatarGender?: 'MALE' | 'FEMALE' }>) => {
     const response = await api.post(`/students/placeholder/${classroomId}/bulk`, { students });
     return response.data;
   },

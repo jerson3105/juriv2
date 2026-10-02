@@ -432,6 +432,10 @@ export class StudentController {
         });
       }
 
+      if (avatarGender !== undefined && avatarGender !== 'MALE' && avatarGender !== 'FEMALE') {
+        return res.status(400).json({ success: false, message: 'Elige chico o chica para el avatar' });
+      }
+
       const result = await studentService.createPlaceholderStudent({
         classroomId,
         displayName: displayName.trim(),
@@ -477,6 +481,11 @@ export class StudentController {
           success: false,
           message: 'Máximo 50 estudiantes a la vez',
         });
+      }
+
+      // El cuerpo del avatar lo elige el docente (antes todos quedaban como chico).
+      if (students.some((student: { avatarGender?: unknown }) => student?.avatarGender !== undefined && student.avatarGender !== 'MALE' && student.avatarGender !== 'FEMALE')) {
+        return res.status(400).json({ success: false, message: 'Elige chico o chica para el avatar' });
       }
 
       const results = await studentService.createBulkPlaceholderStudents({

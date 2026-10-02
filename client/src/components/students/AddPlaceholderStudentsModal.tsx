@@ -24,30 +24,38 @@ interface Props {
   onStudentsCreated: () => void;
 }
 
+type Body = 'MALE' | 'FEMALE';
+
 interface StudentInput {
   id: string;
   displayName: string;
   characterClass: string;
+  /** Cuerpo del avatar (antes todos quedaban como chico). */
+  avatarGender: Body;
 }
+
+const BODY_OPTIONS: [Body, string][] = [['MALE', 'Chico'], ['FEMALE', 'Chica']];
 
 export const AddPlaceholderStudentsModal = ({ isOpen, onClose, classroomId, onStudentsCreated }: Props) => {
   const { classMap } = useCharacterClasses(classroomId);
   const classKeys = Object.keys(classMap);
   const [step, setStep] = useState<'input' | 'result'>('input');
   const [students, setStudents] = useState<StudentInput[]>([
-    { id: '1', displayName: '', characterClass: classKeys[0] || 'GUARDIAN' }
+    { id: '1', displayName: '', characterClass: classKeys[0] || 'GUARDIAN', avatarGender: 'MALE' }
   ]);
   const [isLoading, setIsLoading] = useState(false);
   const [createdStudents, setCreatedStudents] = useState<PlaceholderStudent[]>([]);
   const [bulkInput, setBulkInput] = useState('');
+  const [bulkBody, setBulkBody] = useState<Body>('MALE');
   const [inputMode, setInputMode] = useState<'individual' | 'bulk'>('individual');
 
   const addStudent = () => {
     const classIndex = students.length % classKeys.length;
-    setStudents([...students, { 
-      id: Date.now().toString(), 
-      displayName: '', 
-      characterClass: classKeys[classIndex] || 'GUARDIAN'
+    setStudents([...students, {
+      id: Date.now().toString(),
+      displayName: '',
+      characterClass: classKeys[classIndex] || 'GUARDIAN',
+      avatarGender: 'MALE',
     }]);
   };
 
@@ -64,7 +72,7 @@ export const AddPlaceholderStudentsModal = ({ isOpen, onClose, classroomId, onSt
   };
 
   const handleSubmit = async () => {
-    let studentsToCreate: Array<{ displayName: string; characterClass?: string }> = [];
+    let studentsToCreate: Array<{ displayName: string; characterClass?: string; avatarGender?: Body }> = [];
 
     if (inputMode === 'bulk') {
       // Parsear nombres del textarea (uno por línea)
@@ -80,6 +88,7 @@ export const AddPlaceholderStudentsModal = ({ isOpen, onClose, classroomId, onSt
       studentsToCreate = names.map((name, i) => ({
         displayName: name,
         characterClass: classKeys[i % classKeys.length] || 'GUARDIAN',
+        avatarGender: bulkBody,
       }));
     } else {
       // Modo individual
@@ -92,6 +101,7 @@ export const AddPlaceholderStudentsModal = ({ isOpen, onClose, classroomId, onSt
       studentsToCreate = validStudents.map(s => ({
         displayName: s.displayName.trim(),
         characterClass: s.characterClass,
+        avatarGender: s.avatarGender,
       }));
     }
 
@@ -129,8 +139,9 @@ export const AddPlaceholderStudentsModal = ({ isOpen, onClose, classroomId, onSt
 
   const handleClose = () => {
     setStep('input');
-    setStudents([{ id: '1', displayName: '', characterClass: 'GUARDIAN' }]);
+    setStudents([{ id: '1', displayName: '', characterClass: 'GUARDIAN', avatarGender: 'MALE' }]);
     setBulkInput('');
+    setBulkBody('MALE');
     setCreatedStudents([]);
     onClose();
   };
@@ -234,6 +245,17 @@ export const AddPlaceholderStudentsModal = ({ isOpen, onClose, classroomId, onSt
                           ))}
                         </select>
 
+                        <select
+                          value={student.avatarGender}
+                          onChange={(e) => updateStudent(student.id, 'avatarGender', e.target.value)}
+                          aria-label={`Avatar de ${student.displayName.trim() || `estudiante ${index + 1}`}`}
+                          className="px-3 py-2 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg text-sm"
+                        >
+                          {BODY_OPTIONS.map(([value, label]) => (
+                            <option key={value} value={value}>{label}</option>
+                          ))}
+                        </select>
+
                         <button
                           onClick={() => removeStudent(student.id)}
                           disabled={students.length === 1}
@@ -267,6 +289,24 @@ export const AddPlaceholderStudentsModal = ({ isOpen, onClose, classroomId, onSt
                     <p className="text-xs text-gray-400 mt-2">
                       {bulkInput.split('\n').filter(n => n.trim().length >= 2).length} nombres válidos
                     </p>
+                    <fieldset className="mt-3">
+                      <legend className="text-sm font-medium text-gray-700 dark:text-gray-200">Avatar para todos (luego puedes cambiarlo a cada uno)</legend>
+                      <div className="mt-2 flex gap-2">
+                        {BODY_OPTIONS.map(([value, label]) => (
+                          <label
+                            key={value}
+                            className={`flex min-h-[44px] flex-1 cursor-pointer items-center justify-center rounded-xl border-2 text-sm font-semibold has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-blue-500 ${
+                              bulkBody === value
+                                ? 'border-blue-600 bg-blue-50 text-blue-900 dark:border-blue-400 dark:bg-blue-500/15 dark:text-white'
+                                : 'border-gray-300 text-gray-800 dark:border-gray-600 dark:text-gray-100'
+                            }`}
+                          >
+                            <input type="radio" name="placeholder-bulk-body" value={value} checked={bulkBody === value} onChange={() => setBulkBody(value)} className="sr-only" />
+                            {label}
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
                   </div>
                 )}
               </>

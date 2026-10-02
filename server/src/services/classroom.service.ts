@@ -29,6 +29,7 @@ import {
   loginStreaks,
   notifications,
   classroomAvatarItems,
+  classroomAvatarCollections,
   studentStreaks,
   scrolls,
   scrollReactions,
@@ -59,6 +60,7 @@ import { ConflictError, ValidationError } from '../utils/errors.js';
 import { normalizeBadgeAssignment, parseBadgeCondition, safeBadgeImage, type BadgeConditionShape } from '../utils/badgeConditions.js';
 import { v4 as uuidv4 } from 'uuid';
 import { avatarService } from './avatar.service.js';
+import { avatarCatalogService } from './avatarCatalog.service.js';
 import { characterClassService } from './characterClass.service.js';
 type CompetencyDeleteBlockReason = 'CONFIG_ASSOCIATED' | 'HISTORICAL_RECORDS' | 'CONFIG_AND_HISTORICAL_RECORDS';
 type CompetencyUsageSummary = {
@@ -489,6 +491,8 @@ export class ClassroomService {
         if (useCompetencies && classroom.curriculumAreaId) {
           await this.syncClassroomCompetencies(id, classroom.curriculumAreaId);
         }
+        // La tienda de avatar hereda lo que el docente configuró en su clase más reciente.
+        await avatarCatalogService.inheritFromTeacher(id, data.teacherId);
       }
       return classroom;
     });
@@ -1964,6 +1968,7 @@ export class ClassroomService {
       await tx.delete(loginStreaks).where(eq(loginStreaks.classroomId, classroomId));
       await tx.delete(studentStreaks).where(eq(studentStreaks.classroomId, classroomId));
       await tx.delete(classroomAvatarItems).where(eq(classroomAvatarItems.classroomId, classroomId));
+      await tx.delete(classroomAvatarCollections).where(eq(classroomAvatarCollections.classroomId, classroomId));
 
       // 15. Eliminar competencias del aula
       await tx.delete(classroomCompetencies).where(eq(classroomCompetencies.classroomId, classroomId));
@@ -2351,6 +2356,9 @@ export class ClassroomService {
         }
       }
     }
+
+    // Tienda de avatar: activada y nivel de precios como la original; lo oculto, solo si se copia la tienda.
+    await avatarCatalogService.copySettings(sourceClassroomId, newClassroomId, { exceptions: options.copyShopItems });
 
     // Copiar items de tienda
     if (options.copyShopItems) {
