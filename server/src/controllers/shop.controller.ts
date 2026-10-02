@@ -1,8 +1,12 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { shopService } from '../services/shop.service.js';
+import { studentShopService } from '../services/studentShop.service.js';
 import { requireResourceTeacher, classroomIdOfItemUsage } from '../utils/access.js';
 import { createGenAI } from '../utils/aiClient.js';
+import { AppError } from '../utils/errors.js';
+import { getShopEconomy } from '../utils/shopEconomy.js';
+import { DEFAULT_TZ_OFFSET, GIFT_PHRASES, GIFT_PHRASE_KEYS } from '../utils/shopRules.js';
 
 // Schemas de validación
 // Solo imágenes subidas a la plataforma (POST /shop/upload-image): nada de URLs externas ni base64.
@@ -47,17 +51,41 @@ const giveBulkSchema = z.object({
 
 const firstZodMessage = (error: z.ZodError) => error.errors[0]?.message || 'Datos inválidos';
 
+// tz = getTimezoneOffset() del navegador del alumno: el límite diario cuenta desde su medianoche.
+const tzSchema = z.number().int().min(-840).max(840).default(DEFAULT_TZ_OFFSET);
+
 const purchaseSchema = z.object({
   itemId: z.string().uuid(),
-  quantity: z.number().int().min(1).default(1),
+  quantity: z.number().int().min(1).max(5).default(1),
+  tz: tzSchema,
 });
 
+// Un regalo es de una unidad y su mensaje es una frase predefinida (nada de texto libre entre menores).
 const giftSchema = z.object({
   itemId: z.string().uuid(),
   recipientId: z.string().uuid(),
-  quantity: z.number().int().min(1).default(1),
-  message: z.string().max(500).optional(),
+  phrase: z.enum(GIFT_PHRASE_KEYS, { errorMap: () => ({ message: 'Elige una de las frases del regalo' }) }).nullable().optional(),
+  anonymous: z.boolean().default(false),
+  tz: tzSchema,
 });
+
+const goalSchema = z.object({ itemId: z.string().uuid().nullable() });
+
+const redeemSchema = z.object({
+  itemId: z.string().uuid(),
+  studentIds: z.array(z.string().uuid()).min(1).max(200),
+  useNow: z.boolean().default(true),
+});
+
+const viewQuerySchema = z.object({ tz: z.coerce.number().int().min(-840).max(840).default(DEFAULT_TZ_OFFSET) });
+
+/** Respuesta de error de los endpoints nuevos ({ success, message }). */
+const fail = (res: Response, error: unknown, fallback: string) => {
+  if (error instanceof AppError) return res.status(error.statusCode).json({ success: false, message: error.message });
+  if (error instanceof z.ZodError) return res.status(400).json({ success: false, message: firstZodMessage(error) });
+  console.error(fallback, error);
+  return res.status(500).json({ success: false, message: fallback });
+};
 
 const teacherPurchaseSchema = z.object({
   itemId: z.string().uuid(),
@@ -228,6 +256,7 @@ export class ShopController {
         itemId: data.itemId,
         quantity: data.quantity,
         purchaseType: 'SELF',
+        tz: data.tz,
       });
 
       if (!result.success) {
@@ -252,6 +281,10 @@ export class ShopController {
       const isOwner = await ensureStudentOwnsProfile(req, res, buyerId);
       if (!isOwner) return;
 
+      if (data.recipientId === buyerId) {
+        return res.status(400).json({ message: 'No puedes regalarte un premio a ti' });
+      }
+
       // Verificar que el destinatario está en la misma clase
       const item = await shopService.getItemById(data.itemId);
       if (!item) {
@@ -275,10 +308,12 @@ export class ShopController {
       const result = await shopService.purchaseItem({
         studentId: data.recipientId,
         itemId: data.itemId,
-        quantity: data.quantity,
+        quantity: 1,
         purchaseType: 'GIFT',
         buyerId,
-        giftMessage: data.message,
+        giftMessage: data.phrase ? GIFT_PHRASES[data.phrase] : undefined,
+        giftAnonymous: data.anonymous,
+        tz: data.tz,
       });
 
       if (!result.success) {
@@ -292,6 +327,89 @@ export class ShopController {
       }
       console.error('Error gifting item:', error);
       res.status(500).json({ message: 'Error al enviar el regalo' });
+    }
+  }
+
+  // ==================== VISTA DEL ALUMNO ====================
+
+  // GET /shop/student/:studentId/view?tz= (solo el dueño del perfil; otro perfil → 404)
+  async getStudentView(req: Request, res: Response) {
+    try {
+      const { tz } = viewQuerySchema.parse(req.query);
+      const data = await studentShopService.getView(req.params.studentId, req.user!.id, tz);
+      res.json({ success: true, data });
+    } catch (error) {
+      fail(res, error, 'No se pudo cargar la tienda');
+    }
+  }
+
+  // PUT /shop/student/:studentId/goal { itemId | null }
+  async setGoal(req: Request, res: Response) {
+    try {
+      const { itemId } = goalSchema.parse(req.body);
+      const data = await studentShopService.setGoal(req.params.studentId, req.user!.id, itemId);
+      res.json({ success: true, data });
+    } catch (error) {
+      fail(res, error, 'No se pudo guardar tu meta');
+    }
+  }
+
+  // GET /shop/student/:studentId/classmates (para regalar: nombre y rol, nada más)
+  async getClassmates(req: Request, res: Response) {
+    try {
+      const data = await studentShopService.getClassmates(req.params.studentId, req.user!.id);
+      res.json({ success: true, data });
+    } catch (error) {
+      fail(res, error, 'No se pudo cargar a tus compañeros');
+    }
+  }
+
+  // ==================== CANJE Y ECONOMÍA (PROFESOR) ====================
+
+  // POST /shop/teacher/redeem { itemId, studentIds, useNow }: canjear con el oro del alumno
+  async redeem(req: Request, res: Response) {
+    try {
+      const data = redeemSchema.parse(req.body);
+      const item = await shopService.getItemById(data.itemId);
+      if (!item || !item.isActive) return res.status(404).json({ success: false, message: 'Artículo no encontrado' });
+      if (!(await shopService.verifyTeacherOwnsClassroom(req.user!.id, item.classroomId))) {
+        return res.status(403).json({ success: false, message: 'No tienes permiso para esta clase' });
+      }
+      const ids = [...new Set(data.studentIds)];
+      for (const studentId of ids) {
+        if (!(await shopService.verifyStudentInClassroom(studentId, item.classroomId))) {
+          return res.status(400).json({ success: false, message: 'Hay estudiantes que no son de esta clase' });
+        }
+      }
+      const result = await shopService.redeemForStudents(item.id, ids, data.useNow, req.user!.id);
+      res.status(result.redeemed.length > 0 ? 201 : 400).json({ success: result.redeemed.length > 0, data: result });
+    } catch (error) {
+      fail(res, error, 'No se pudo canjear el premio');
+    }
+  }
+
+  // DELETE /shop/teacher/redeem/:purchaseId
+  async undoRedeem(req: Request, res: Response) {
+    try {
+      const result = await shopService.undoRedeem(req.params.purchaseId, req.user!.id);
+      if (!result.success) return res.status(400).json({ success: false, message: result.message });
+      res.json({ success: true, message: result.message });
+    } catch (error) {
+      fail(res, error, 'No se pudo deshacer el canje');
+    }
+  }
+
+  // GET /shop/classroom/:classroomId/economy: ingreso semanal, bandas de precio y metas de los alumnos
+  async getEconomy(req: Request, res: Response) {
+    try {
+      const { classroomId } = req.params;
+      if (!(await shopService.verifyTeacherOwnsClassroom(req.user!.id, classroomId))) {
+        return res.status(403).json({ success: false, message: 'No tienes permiso para esta clase' });
+      }
+      const [economy, goals] = await Promise.all([getShopEconomy(classroomId), shopService.getGoalCounts(classroomId)]);
+      res.json({ success: true, data: { economy, goals } });
+    } catch (error) {
+      fail(res, error, 'No se pudo calcular la economía de la tienda');
     }
   }
 
@@ -621,7 +739,7 @@ export class ShopController {
 
   async generateWithAI(req: Request, res: Response) {
     try {
-      const { description, level, count, itemType } = req.body;
+      const { description, level, count, itemType, classroomId } = req.body;
 
       if (!description || !level) {
         return res.status(400).json({
@@ -630,20 +748,28 @@ export class ShopController {
         });
       }
 
-      // Instrucciones según el tipo de item
+      // Bandas de precio según lo que gana la clase por semana (si el profesor indica su clase).
+      let bands = { COMMON: { min: 10, max: 20 }, RARE: { min: 30, max: 50 }, LEGENDARY: { min: 80, max: 120 } };
+      if (typeof classroomId === 'string' && /^[0-9a-f-]{36}$/i.test(classroomId)
+        && await shopService.verifyTeacherOwnsClassroom(req.user!.id, classroomId)) {
+        bands = (await getShopEconomy(classroomId)).bands;
+      }
+
+      // Premios con propósito: privilegios, responsabilidades y experiencias. Nada que cambie notas,
+      // plazos, XP o energía, ni comida (la nota refleja lo aprendido; la energía, la convivencia).
       let typeInstruction = '';
       switch (itemType) {
         case 'PRIVILEGES':
-          typeInstruction = 'Genera PRIVILEGIOS que los estudiantes puedan canjear (elegir asiento, tiempo extra, entregar tarde, etc.)';
+          typeInstruction = 'Genera PRIVILEGIOS DE AULA (elegir asiento un día, elegir la música de fondo, elegir el juego de los últimos minutos, sentarse con quien quiera en un trabajo)';
           break;
-        case 'REWARDS':
-          typeInstruction = 'Genera RECOMPENSAS físicas o experiencias (dulces, stickers, ser ayudante, etc.)';
+        case 'RESPONSIBILITIES':
+          typeInstruction = 'Genera RESPONSABILIDADES Y PROTAGONISMO (ayudante del profe por un día, narrar la historia de la clase, elegir la pregunta del día, explicar algo a la clase, moderar un debate)';
           break;
-        case 'POWERS':
-          typeInstruction = 'Genera PODERES especiales del juego (escudo anti-HP, duplicar XP, revivir, etc.)';
+        case 'EXPERIENCES':
+          typeInstruction = 'Genera EXPERIENCIAS Y RECUERDOS (carta del profe a la familia contando algo que hizo bien, elegir el cuento de la semana, diploma, sticker o sello)';
           break;
         default:
-          typeInstruction = 'Genera una mezcla variada de privilegios, recompensas y poderes';
+          typeInstruction = 'Genera una mezcla variada de privilegios de aula, responsabilidades y experiencias';
           break;
       }
 
@@ -673,17 +799,22 @@ REGLAS IMPORTANTES:
    - CONSUMABLE: Se usa una vez y desaparece (privilegios, experiencias)
    - SPECIAL: Items únicos o muy especiales
 
-2. RAREZAS y PRECIOS sugeridos:
-   - COMMON: 10-30 GP (fáciles de conseguir)
-   - RARE: 50-100 GP (requieren más esfuerzo)
-   - LEGENDARY: 150-300 GP (muy difíciles, muy valiosos)
+2. RAREZAS y PRECIOS en oro (según lo que gana esta clase por semana):
+   - COMMON: ${bands.COMMON.min}-${bands.COMMON.max} de oro (se consigue en 1 o 2 semanas)
+   - RARE: ${bands.RARE.min}-${bands.RARE.max} de oro (un mes de esfuerzo)
+   - LEGENDARY: ${bands.LEGENDARY.min}-${bands.LEGENDARY.max} de oro (la meta de un bimestre)
+   Incluye al menos un premio COMMON barato.
 
-3. Iconos disponibles: 🎁⭐💎🏆🎭👑🔮⚡🌟💫🎪🎨🧪💊🗡️🛡️💺⏰📝🎵📱🍬🎮✨🌈🔥❄️
+3. PROHIBIDO generar: puntos o notas extra, tiempo extra en exámenes, entregar tarde o saltarse tareas,
+   duplicar o comprar XP, escudos o pociones que eviten perder energía, comida o dulces, cajas sorpresa,
+   o cualquier cosa que cueste dinero a la familia.
 
-4. Nombres creativos pero claros en español
-5. Apropiados para nivel ${level}
-6. Útiles y motivadores para estudiantes
-7. Realistas de implementar por el profesor
+4. Iconos disponibles: 🎁⭐💎🏆🎭👑🎪🎨💺🎵🎮✨🌈📚🎤🏅📜🗣️🧩🎬🌟
+
+5. Nombres creativos pero claros en español
+6. Apropiados para nivel ${level}
+7. Útiles y motivadores para estudiantes
+8. Realistas de implementar por el profesor
 
 Genera items variados y atractivos:`;
 
@@ -736,11 +867,12 @@ Genera items variados y atractivos:`;
         },
       });
 
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error generating shop items with AI:', error);
+      // Sin el mensaje interno (puede traer datos del proveedor): solo uno genérico.
       res.status(500).json({
         success: false,
-        message: error.message || 'Error al generar items con IA',
+        message: 'No se pudieron generar artículos con IA. Intenta de nuevo.',
       });
     }
   }

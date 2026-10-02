@@ -1,6 +1,6 @@
 import { db } from '../db/index.js';
 import { 
-  studentProfiles, classrooms, users, pointLogs, notifications, classroomCompetencyIndicators,
+  studentProfiles, classrooms, users, pointLogs, notifications, classroomCompetencyIndicators, shopItems,
   studentAvatarPurchases, studentEquippedItems, studentGrades, studentActivityScores,
   badgeProgress, studentBadges, loginStreaks, studentStreaks, attendanceRecords,
   purchases, itemUsages, powerUsages, expeditionSubmissions, expeditionStudentProgress,
@@ -10,7 +10,7 @@ import {
   stories,
   levelUpLogs,
 } from '../db/schema.js';
-import { eq, and, desc, sql, gte, inArray } from 'drizzle-orm';
+import { eq, and, desc, sql, gte, inArray, or, isNull, gt, ne } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { avatarService } from './avatar.service.js';
 import { clanService } from './clan.service.js';
@@ -248,6 +248,31 @@ export class StudentService {
       .where(and(inArray(stories.classroomId, classroomIds), eq(stories.isActive, true)));
     const withStory = new Set(storyRows.map((row) => row.classroomId));
 
+    // Tienda: premios a la venta por clase y premios propios (o pedidos pendientes) por perfil. El menú
+    // muestra "Tienda" solo si hay qué comprar o algo tuyo que ver o usar.
+    const profileIds = profiles.map((profile) => profile.id);
+    const [itemRows, ownedRows] = await Promise.all([
+      db.select({ classroomId: shopItems.classroomId, count: sql<string>`COUNT(*)` })
+        .from(shopItems)
+        .where(and(inArray(shopItems.classroomId, classroomIds), eq(shopItems.isActive, true), or(isNull(shopItems.stock), gt(shopItems.stock, 0))))
+        .groupBy(shopItems.classroomId),
+      db.select({ studentId: purchases.studentId, count: sql<string>`COUNT(*)` })
+        .from(purchases)
+        .innerJoin(shopItems, eq(shopItems.id, purchases.itemId))
+        .where(and(
+          inArray(purchases.studentId, profileIds),
+          or(
+            eq(purchases.status, 'PENDING'),
+            and(eq(purchases.status, 'APPROVED'), or(ne(shopItems.category, 'CONSUMABLE'), sql`${purchases.quantity} > ${purchases.usedQuantity}`)),
+            // Un uso pedido aún es suyo: lo ve «Esperando a tu profe» en la tienda.
+            sql`EXISTS (SELECT 1 FROM ${itemUsages} WHERE ${itemUsages.purchaseId} = ${purchases.id} AND ${itemUsages.status} = 'PENDING')`,
+          ),
+        ))
+        .groupBy(purchases.studentId),
+    ]);
+    const itemsByClass = new Map(itemRows.map((row) => [row.classroomId, Number(row.count)]));
+    const ownedByProfile = new Map(ownedRows.map((row) => [row.studentId, Number(row.count)]));
+
     // Crear mapa de clases
     const classroomMap = new Map(classroomsData.map(c => [c.id, { ...c, hasActiveStory: withStory.has(c.id) }]));
 
@@ -268,6 +293,7 @@ export class StudentService {
         classroom,
         classroomRank: classroomRanking?.rankByStudentId.get(profile.id) ?? null,
         classroomStudentCount: classroomRanking?.studentCount ?? 0,
+        shopSummary: { items: itemsByClass.get(profile.classroomId) ?? 0, owned: ownedByProfile.get(profile.id) ?? 0 },
       });
     }
 

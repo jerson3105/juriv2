@@ -29,7 +29,8 @@ export const itemCategoryEnum = mysqlEnum('category', ['AVATAR', 'ACCESSORY', 'C
 export const itemRarityEnum = mysqlEnum('rarity', ['COMMON', 'RARE', 'LEGENDARY']);
 export const avatarGenderEnum = mysqlEnum('avatar_gender', ['MALE', 'FEMALE']);
 export const avatarSlotEnum = mysqlEnum('avatar_slot', ['HEAD', 'HAIR', 'EYES', 'TOP', 'BOTTOM', 'LEFT_HAND', 'RIGHT_HAND', 'SHOES', 'BACK', 'FLAG', 'BACKGROUND']);
-export const purchaseTypeEnum = mysqlEnum('purchase_type', ['SELF', 'GIFT', 'TEACHER', 'REWARD']);
+// REDEEM: el docente canjea un premio con el oro del alumno.
+export const purchaseTypeEnum = mysqlEnum('purchase_type', ['SELF', 'GIFT', 'TEACHER', 'REWARD', 'REDEEM']);
 export const purchaseStatusEnum = mysqlEnum('purchase_status', ['PENDING', 'APPROVED', 'REJECTED']);
 export const attendanceStatusEnum = mysqlEnum('attendance_status', ['PRESENT', 'ABSENT', 'LATE', 'EXCUSED']);
 
@@ -398,6 +399,7 @@ export const studentProfiles = mysqlTable('student_profiles', {
   isDemo: boolean('is_demo').notNull().default(false), // Estudiante demo para onboarding
   celebratedAt: datetime('celebrated_at'), // hasta dónde vio sus celebraciones (null = aún no)
   homeSeenAt: datetime('home_seen_at'), // hasta dónde vio "Lo nuevo" en su inicio (null = aún no)
+  shopGoalItemId: varchar('shop_goal_item_id', { length: 36 }), // premio que eligió como meta de ahorro (null = sin meta)
   restingSince: datetime('resting_since'), // HP en 0: desde cuándo descansa (null = tiene energía)
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
@@ -841,6 +843,7 @@ export const purchases = mysqlTable('purchases', {
   status: purchaseStatusEnum.notNull().default('APPROVED'), // PENDING, APPROVED, REJECTED
   buyerId: varchar('buyer_id', { length: 36 }), // quien paga (estudiante o null si es profesor)
   giftMessage: text('gift_message'), // mensaje si es regalo
+  giftAnonymous: boolean('gift_anonymous').notNull().default(false), // quien recibe no ve quién regaló (el docente sí)
   purchasedAt: datetime('purchased_at').notNull(),
 }, (table) => ({
   studentIdx: index('idx_purchases_student').on(table.studentId),

@@ -1,16 +1,17 @@
-import { eq, and, desc, gte, sql } from 'drizzle-orm';
+import { eq, and, desc, gte, inArray, ne, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import { badgeService } from './badge.service.js';
-import { countsInBell, createNotification, emitUnreadCount } from '../utils/notificationEmitter.js';
-import { 
-  shopItems, 
-  purchases, 
-  studentProfiles, 
+import { countsInBell, createNotification, createNotifications, emitUnreadCount, type NotificationEntry } from '../utils/notificationEmitter.js';
+import {
+  shopItems,
+  purchases,
+  studentProfiles,
   classrooms,
   itemUsages,
   pointLogs,
   notifications,
+  users,
   type ShopItem,
   type ItemRarity,
   type PurchaseType,
@@ -19,8 +20,12 @@ import {
 import { teacherOwnsClassroom } from '../utils/access.js';
 import { spendGp, affectedRows, applyPointDeltas } from '../utils/points.js';
 import { isInitialLevel } from '../utils/energy.js';
+import { getShopEconomy, rarityForPrice } from '../utils/shopEconomy.js';
+import { DEFAULT_TZ_OFFSET, GIFTS_PER_DAY, classmateName, localDayStart } from '../utils/shopRules.js';
 
 const RESTING_SHOP_MESSAGE = 'Estás descansando: completa tu misión de recuperación para volver a usar la tienda.';
+const restingTeacherMessage = (name: string, what: 'compra' | 'uso') =>
+  `${name} está descansando: podrás aprobar su ${what} cuando vuelva (cuando complete su misión).`;
 
 /** Rechazo de negocio dentro de una transacción de compra (se devuelve como success:false). */
 class PurchaseRejected extends Error {}
@@ -90,9 +95,12 @@ export class ShopService {
   }): Promise<ShopItem> {
     const now = new Date();
     const id = uuidv4();
+    // La rareza sale del precio frente a lo que gana la clase por semana (común 1–2, raro 3–5, legendario más).
+    const { effectiveWeekly } = await getShopEconomy(data.classroomId);
+    const rarity = rarityForPrice(data.price, effectiveWeekly);
 
     // Usar icono predeterminado si no se proporciona
-    const icon = data.icon || DEFAULT_IMAGES[data.category]?.[data.rarity] || '📦';
+    const icon = data.icon || DEFAULT_IMAGES[data.category]?.[rarity] || '📦';
 
     await db.insert(shopItems).values({
       id,
@@ -100,7 +108,7 @@ export class ShopService {
       name: data.name,
       description: data.description || null,
       category: data.category,
-      rarity: data.rarity,
+      rarity,
       price: data.price,
       imageUrl: data.imageUrl || null,
       icon,
@@ -137,10 +145,18 @@ export class ShopService {
       isActive: boolean;
     }>
   ): Promise<ShopItem> {
+    // La rareza no se elige: si cambia el precio, se recalcula con el ingreso semanal de la clase.
+    const { rarity: _ignored, ...rest } = data;
+    let rarity: ItemRarity | undefined;
+    if (data.price !== undefined) {
+      const [current] = await db.select({ classroomId: shopItems.classroomId }).from(shopItems).where(eq(shopItems.id, itemId));
+      if (current) rarity = rarityForPrice(data.price, (await getShopEconomy(current.classroomId)).effectiveWeekly);
+    }
     await db
       .update(shopItems)
       .set({
-        ...data,
+        ...rest,
+        ...(rarity ? { rarity } : {}),
         updatedAt: new Date(),
       })
       .where(eq(shopItems.id, itemId));
@@ -188,10 +204,13 @@ export class ShopService {
     purchaseType: PurchaseType;
     buyerId?: string; // ID del estudiante que paga (para regalos)
     giftMessage?: string;
+    giftAnonymous?: boolean;
+    tz?: number; // getTimezoneOffset() del alumno: el límite diario cuenta desde su medianoche
   }): Promise<{ success: boolean; message: string; purchase?: any; requiresApproval?: boolean }> {
     const quantity = data.quantity || 1;
+    const isStudentPurchase = data.purchaseType === 'SELF' || data.purchaseType === 'GIFT';
 
-    // Obtener el estudiante y su clase para verificar configuración
+    // Quien recibe y su clase (la configuración de la tienda es la de su clase)
     const [student] = await db
       .select()
       .from(studentProfiles)
@@ -209,93 +228,102 @@ export class ShopService {
       return { success: false, message: 'Clase no encontrada' };
     }
 
-    // Verificar si la tienda está habilitada (el profesor puede dar artículos aunque esté cerrada)
+    // Tienda cerrada: el profesor sí puede dar premios.
     if (!classroom.shopEnabled && data.purchaseType !== 'TEACHER') {
-      return { success: false, message: 'La tienda no está habilitada para esta clase' };
+      return { success: false, message: 'Tu profe cerró la tienda por ahora' };
     }
 
-    // Con 0 HP la tienda está en pausa para quien paga (el profesor sí puede dar artículos).
-    if (data.purchaseType !== 'TEACHER' && !isInitialLevel(classroom.gradeLevel)) {
-      const payerId = data.purchaseType === 'GIFT' && data.buyerId ? data.buyerId : data.studentId;
-      const [payer] = payerId === student.id ? [student] : await db.select({ hp: studentProfiles.hp }).from(studentProfiles).where(eq(studentProfiles.id, payerId));
-      if (payer && payer.hp <= 0) return { success: false, message: RESTING_SHOP_MESSAGE };
-    }
-
-    // Verificar límite de compras diarias
-    // 0 o vacío = sin límite (datos antiguos podían guardar 0).
-    if (classroom.dailyPurchaseLimit && data.purchaseType === 'SELF') {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
-      const todayPurchases = await db
-        .select()
-        .from(purchases)
-        .where(and(
-          eq(purchases.studentId, data.studentId),
-          eq(purchases.purchaseType, 'SELF'),
-          gte(purchases.purchasedAt, today)
-        ));
-
-      if (todayPurchases.length >= classroom.dailyPurchaseLimit) {
-        return { success: false, message: `Has alcanzado el límite de ${classroom.dailyPurchaseLimit} compras diarias` };
-      }
-    }
-
-    // Obtener item
     const item = await this.getItemById(data.itemId);
-    if (!item) {
-      return { success: false, message: 'Item no encontrado' };
+    if (!item || !item.isActive) {
+      return { success: false, message: 'Este premio ya no está en la tienda' };
+    }
+    // Solo premios de la clase de quien recibe (con perfiles en dos clases se podía gastar el oro de una en la otra).
+    if (item.classroomId !== student.classroomId) {
+      return { success: false, message: 'Este premio no es de tu clase' };
     }
 
-    if (!item.isActive) {
-      return { success: false, message: 'Item no disponible' };
+    // Quién paga: el alumno al comprar, quien regala al regalar; el profesor no cobra a nadie.
+    const payerId = data.purchaseType === 'SELF' ? data.studentId : data.purchaseType === 'GIFT' ? (data.buyerId || null) : null;
+    if (data.purchaseType === 'GIFT') {
+      if (!payerId || payerId === data.studentId) return { success: false, message: 'No puedes regalarte un premio a ti' };
+      if (!student.isActive || student.isDemo) return { success: false, message: 'No puedes regalarle a ese compañero' };
     }
-
-    // Verificar stock
-    if (item.stock !== null && item.stock < quantity) {
-      return { success: false, message: 'Stock insuficiente' };
-    }
-
-    const totalPrice = item.price * quantity;
-    
-    // Determinar si requiere aprobación
-    const requiresApproval = classroom.requirePurchaseApproval && data.purchaseType === 'SELF';
-    const purchaseStatus = requiresApproval ? 'PENDING' : 'APPROVED';
-
-    // Determinar quién paga
-    let payerId: string | null = null;
-    
-    if (data.purchaseType === 'SELF') {
-      payerId = data.studentId;
-    } else if (data.purchaseType === 'GIFT') {
-      payerId = data.buyerId || null;
-    }
-    // TEACHER: payerId queda null, el profesor paga desde su sistema
 
     let payer: typeof studentProfiles.$inferSelect | null = null;
-
-    // Si hay un pagador estudiante, verificar GP
     if (payerId) {
-      const [payerProfile] = await db
-        .select()
-        .from(studentProfiles)
-        .where(eq(studentProfiles.id, payerId));
-
+      const [payerProfile] = payerId === student.id
+        ? [student]
+        : await db.select().from(studentProfiles).where(eq(studentProfiles.id, payerId));
       if (!payerProfile) {
         return { success: false, message: 'Comprador no encontrado' };
       }
-
+      if (payerProfile.classroomId !== item.classroomId) {
+        return { success: false, message: 'Solo puedes comprar en la tienda de tu clase' };
+      }
       payer = payerProfile;
+      // Con 0 de energía la tienda está en pausa para quien paga (en Inicial no hay pausa).
+      if (payer.hp <= 0 && !isInitialLevel(classroom.gradeLevel)) return { success: false, message: RESTING_SHOP_MESSAGE };
+    }
 
-      if (payer.gp < totalPrice) {
-        return { success: false, message: `GP insuficiente. Necesitas ${totalPrice} GP, tienes ${payer.gp} GP` };
+    // Límite diario y regalos por día: lo que pagó hoy (día local), sin contar lo no aprobado.
+    if (payerId && isStudentPurchase) {
+      const [today] = await db
+        .select({
+          bought: sql<string>`COUNT(*)`,
+          gifts: sql<string>`COALESCE(SUM(${purchases.purchaseType} = 'GIFT'), 0)`,
+        })
+        .from(purchases)
+        .where(and(
+          eq(purchases.buyerId, payerId),
+          inArray(purchases.purchaseType, ['SELF', 'GIFT']),
+          ne(purchases.status, 'REJECTED'),
+          gte(purchases.purchasedAt, localDayStart(data.tz ?? DEFAULT_TZ_OFFSET)),
+        ));
+      // 0 o vacío = sin límite (datos antiguos podían guardar 0).
+      if (classroom.dailyPurchaseLimit && Number(today?.bought ?? 0) >= classroom.dailyPurchaseLimit) {
+        return {
+          success: false,
+          message: classroom.dailyPurchaseLimit === 1
+            ? 'Ya compraste hoy. Mañana puedes comprar otra vez.'
+            : `Hoy ya hiciste las ${classroom.dailyPurchaseLimit} compras que permite tu profe.`,
+        };
+      }
+      if (data.purchaseType === 'GIFT' && Number(today?.gifts ?? 0) >= GIFTS_PER_DAY) {
+        return { success: false, message: 'Hoy ya hiciste un regalo. Mañana puedes regalar otra vez.' };
       }
     }
+
+    if (item.stock !== null && item.stock < quantity) {
+      return { success: false, message: 'Este premio se agotó' };
+    }
+
+    const totalPrice = item.price * quantity;
+
+    // Con aprobación del profesor (compras y regalos) se registra el pedido y se cobra al aprobar.
+    const requiresApproval = classroom.requirePurchaseApproval && isStudentPurchase;
+    const purchaseStatus = requiresApproval ? 'PENDING' : 'APPROVED';
+
+    if (payer) {
+      // No se reserva el oro, pero no se puede pedir más del que alcanza contando lo que ya espera.
+      const pendingGold = requiresApproval ? await this.pendingGoldOf(payer.id) : 0;
+      if (payer.gp - pendingGold < totalPrice) {
+        return {
+          success: false,
+          message: pendingGold > 0
+            ? `No te alcanza: tienes ${payer.gp} de oro y ${pendingGold} ya esperan a tu profe.`
+            : `No te alcanza: tienes ${payer.gp} de oro y «${item.name}» cuesta ${totalPrice}.`,
+        };
+      }
+    }
+
+    const names = await this.namesOf([data.studentId, ...(payerId ? [payerId] : [])], classroom.showCharacterName);
+    const recipientName = names.get(data.studentId) ?? 'tu compañero';
+    const payerName = payerId ? names.get(payerId) ?? 'Un estudiante' : null;
 
     let purchaseId = '';
     const now = new Date();
 
-    // Si requiere aprobación, solo registrar compra pendiente (sin tocar GP/stock)
+    // Si requiere aprobación, solo registrar el pedido (sin tocar oro ni stock)
     if (requiresApproval) {
       purchaseId = uuidv4();
       await db.insert(purchases).values({
@@ -308,6 +336,7 @@ export class ShopService {
         status: purchaseStatus,
         buyerId: payerId,
         giftMessage: data.giftMessage || null,
+        giftAnonymous: data.purchaseType === 'GIFT' && !!data.giftAnonymous,
         purchasedAt: now,
       });
 
@@ -317,8 +346,10 @@ export class ShopService {
           userId: classroom.teacherId,
           classroomId: classroom.id,
           type: 'ANNOUNCEMENT',
-          title: '🛒 Compra por aprobar',
-          message: `${student.characterName || 'Un estudiante'} quiere comprar "${item.name}" (${totalPrice} GP)`,
+          title: data.purchaseType === 'GIFT' ? '🎁 Regalo por aprobar' : '🛒 Compra por aprobar',
+          message: data.purchaseType === 'GIFT'
+            ? `${payerName} quiere regalarle "${item.name}" a ${recipientName} (${totalPrice} de oro)`
+            : `${payerName} quiere comprar "${item.name}" (${totalPrice} de oro)`,
           data: { purchaseId, studentId: data.studentId, itemId: item.id, kind: 'PURCHASE_PENDING' },
         });
       } catch (notifError) {
@@ -330,7 +361,7 @@ export class ShopService {
         if (payerId && payer) {
           // Cobro atómico: con compras simultáneas no se puede gastar el mismo oro dos veces.
           if (!(await spendGp(tx, payerId, totalPrice))) {
-            throw new PurchaseRejected('GP insuficiente');
+            throw new PurchaseRejected(`No te alcanza: «${item.name}» cuesta ${totalPrice} de oro.`);
           }
 
           if (totalPrice > 0) {
@@ -360,35 +391,11 @@ export class ShopService {
             })
             .where(and(eq(shopItems.id, data.itemId), gte(shopItems.stock, quantity)));
           if (affectedRows(stockResult) !== 1) {
-            throw new PurchaseRejected('Stock insuficiente');
+            throw new PurchaseRejected('Este premio se agotó');
           }
         }
 
-        if (data.purchaseType === 'SELF') {
-          const [existingPurchase] = await tx
-            .select()
-            .from(purchases)
-            .where(and(
-              eq(purchases.studentId, data.studentId),
-              eq(purchases.itemId, data.itemId),
-              eq(purchases.purchaseType, 'SELF'),
-              eq(purchases.status, 'APPROVED')
-            ));
-
-          if (existingPurchase) {
-            await tx
-              .update(purchases)
-              .set({
-                quantity: sql`${purchases.quantity} + ${quantity}`,
-                totalPrice: sql`${purchases.totalPrice} + ${totalPrice}`,
-              })
-              .where(eq(purchases.id, existingPurchase.id));
-
-            purchaseId = existingPurchase.id;
-            return;
-          }
-        }
-
+        // Una fila por compra (antes la recompra se sumaba a la fila vieja y el límite diario no la veía).
         purchaseId = uuidv4();
         await tx.insert(purchases).values({
           id: purchaseId,
@@ -400,6 +407,7 @@ export class ShopService {
           status: purchaseStatus,
           buyerId: payerId,
           giftMessage: data.giftMessage || null,
+          giftAnonymous: data.purchaseType === 'GIFT' && !!data.giftAnonymous,
           purchasedAt: now,
         });
       });
@@ -435,23 +443,87 @@ export class ShopService {
       .innerJoin(shopItems, eq(purchases.itemId, shopItems.id))
       .where(eq(purchases.id, purchaseId));
 
-    let message = '¡Compra realizada exitosamente!';
-    if (data.purchaseType === 'GIFT') {
-      message = '¡Regalo enviado exitosamente!';
-    } else if (requiresApproval) {
-      message = 'Compra enviada para aprobación del profesor';
+    const message = data.purchaseType === 'GIFT'
+      ? (requiresApproval ? 'Listo: tu profe revisará tu regalo.' : `¡Le regalaste «${item.name}» a ${recipientName}!`)
+      : data.purchaseType === 'TEACHER'
+        ? `Entregado: ${item.name}`
+        : (requiresApproval ? 'Listo: tu profe revisará tu compra.' : `¡Listo! «${item.name}» ya es tuyo.`);
+
+    // Quien recibe un premio se entera (regalo de un compañero o entrega del profe).
+    if (!requiresApproval && (data.purchaseType === 'GIFT' || data.purchaseType === 'TEACHER')) {
+      await this.notifyReceived({
+        recipientUserId: student.userId,
+        classroomId: classroom.id,
+        itemName: item.name,
+        purchaseId,
+        fromName: data.purchaseType === 'TEACHER' ? null : (data.giftAnonymous ? 'Un compañero o compañera' : payerName),
+        giftMessage: data.giftMessage ?? null,
+      });
     }
 
     if (!requiresApproval && payerId) {
       await this.checkPurchaseBadges(payerId, item.classroomId);
     }
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       message,
       purchase,
       requiresApproval,
     };
+  }
+
+  /** Oro de pedidos que el alumno pagará cuando el profesor los apruebe. */
+  private async pendingGoldOf(payerId: string): Promise<number> {
+    const [row] = await db
+      .select({ total: sql<string>`COALESCE(SUM(${purchases.totalPrice}), 0)` })
+      .from(purchases)
+      .where(and(eq(purchases.buyerId, payerId), eq(purchases.status, 'PENDING')));
+    return Number(row?.total ?? 0);
+  }
+
+  /** Nombres con los que los alumnos se ven entre sí (personaje o nombre real, según la clase). */
+  async namesOf(profileIds: string[], showCharacterName: boolean): Promise<Map<string, string>> {
+    const ids = [...new Set(profileIds)].filter(Boolean);
+    if (ids.length === 0) return new Map();
+    const rows = await db
+      .select({
+        id: studentProfiles.id,
+        characterName: studentProfiles.characterName,
+        displayName: studentProfiles.displayName,
+        firstName: users.firstName,
+        lastName: users.lastName,
+      })
+      .from(studentProfiles)
+      .leftJoin(users, eq(users.id, studentProfiles.userId))
+      .where(inArray(studentProfiles.id, ids));
+    return new Map(rows.map((row) => [row.id, classmateName(row, row.firstName || row.lastName ? row : null, showCharacterName)]));
+  }
+
+  /** Aviso a quien recibe un premio (sin cuenta vinculada no hay a quién avisar). */
+  private async notifyReceived(input: {
+    recipientUserId: string | null;
+    classroomId: string;
+    itemName: string;
+    purchaseId: string;
+    fromName: string | null;
+    giftMessage: string | null;
+  }) {
+    if (!input.recipientUserId) return;
+    try {
+      await createNotification({
+        userId: input.recipientUserId,
+        classroomId: input.classroomId,
+        type: 'GIFT_RECEIVED',
+        title: input.fromName ? '🎁 Te regalaron un premio' : '🎁 Tu profe te dio un premio',
+        message: input.fromName
+          ? `${input.fromName} te regaló "${input.itemName}".${input.giftMessage ? ` «${input.giftMessage}»` : ''} Está en Mis premios.`
+          : `"${input.itemName}" ya está en Mis premios.`,
+        data: { purchaseId: input.purchaseId, kind: input.fromName ? 'GIFT' : 'TEACHER' },
+      });
+    } catch (error) {
+      console.error('Error notifying received prize:', error);
+    }
   }
 
   // Compra por profesor (no descuenta GP de nadie)
@@ -471,16 +543,19 @@ export class ShopService {
   // ==================== APROBACIÓN DE COMPRAS ====================
 
   async getPendingPurchases(classroomId: string) {
-    return db
+    const rows = await db
       .select({
         id: purchases.id,
         quantity: purchases.quantity,
         totalPrice: purchases.totalPrice,
         purchasedAt: purchases.purchasedAt,
+        purchaseType: purchases.purchaseType,
+        buyerId: purchases.buyerId,
         student: {
           id: studentProfiles.id,
           characterName: studentProfiles.characterName,
           gp: studentProfiles.gp,
+          hp: studentProfiles.hp,
         },
         item: {
           id: shopItems.id,
@@ -499,6 +574,20 @@ export class ShopService {
         eq(purchases.status, 'PENDING')
       ))
       .orderBy(desc(purchases.purchasedAt));
+
+    // En un regalo paga quien regala: su oro y su descanso son los que cuentan al aprobar.
+    const buyerIds = [...new Set(rows.filter((row) => row.purchaseType === 'GIFT' && row.buyerId).map((row) => row.buyerId as string))];
+    const buyers = buyerIds.length > 0
+      ? await db
+        .select({ id: studentProfiles.id, characterName: studentProfiles.characterName, gp: studentProfiles.gp, hp: studentProfiles.hp })
+        .from(studentProfiles)
+        .where(inArray(studentProfiles.id, buyerIds))
+      : [];
+    const buyerById = new Map(buyers.map((buyer) => [buyer.id, buyer]));
+    return rows.map(({ buyerId, ...row }) => ({
+      ...row,
+      buyer: row.purchaseType === 'GIFT' && buyerId ? buyerById.get(buyerId) ?? null : null,
+    }));
   }
 
   async approvePurchase(purchaseId: string, teacherId: string): Promise<{ success: boolean; message: string }> {
@@ -534,19 +623,35 @@ export class ShopService {
       return { success: false, message: 'No tienes permiso para aprobar esta compra' };
     }
 
-    // Verificar GP del estudiante
-    if (student.gp < purchase.totalPrice) {
-      return { success: false, message: 'El estudiante ya no tiene suficiente GP' };
+    // Paga quien compró o quien regaló (antes se cobraba siempre a quien recibe).
+    const isGift = purchase.purchaseType === 'GIFT';
+    const payerId = purchase.buyerId || purchase.studentId;
+    const [payer] = payerId === student.id
+      ? [student]
+      : await db.select().from(studentProfiles).where(eq(studentProfiles.id, payerId));
+    if (!payer) {
+      return { success: false, message: 'Estudiante no encontrado' };
+    }
+    const names = await this.namesOf([student.id, payer.id], classroom.showCharacterName);
+    const payerName = names.get(payer.id) ?? 'El estudiante';
+
+    // La tienda está en pausa mientras descansa: el pedido espera a que vuelva (en Inicial no hay pausa).
+    if (payer.hp <= 0 && !isInitialLevel(classroom.gradeLevel)) {
+      return { success: false, message: restingTeacherMessage(payerName, 'compra') };
+    }
+
+    if (payer.gp < purchase.totalPrice) {
+      return { success: false, message: `${payerName} ya no tiene suficiente oro` };
     }
 
     // Obtener item para verificar stock
     const item = await this.getItemById(purchase.itemId);
     if (item && item.stock !== null && item.stock < purchase.quantity) {
-      return { success: false, message: 'Stock insuficiente' };
+      return { success: false, message: 'Ya no quedan unidades de este artículo' };
     }
 
     const now = new Date();
-    const purchaseLabel = item?.name || 'item';
+    const purchaseLabel = item?.name || 'tu premio';
 
     try {
     await db.transaction(async (tx) => {
@@ -559,18 +664,18 @@ export class ShopService {
         throw new PurchaseRejected('Esta compra ya fue procesada');
       }
 
-      if (!(await spendGp(tx, student.id, purchase.totalPrice))) {
-        throw new PurchaseRejected('El estudiante ya no tiene suficiente GP');
+      if (!(await spendGp(tx, payer.id, purchase.totalPrice))) {
+        throw new PurchaseRejected(`${payerName} ya no tiene suficiente oro`);
       }
 
       if (purchase.totalPrice > 0) {
         await tx.insert(pointLogs).values({
           id: uuidv4(),
-          studentId: student.id,
+          studentId: payer.id,
           pointType: 'GP',
           action: 'REMOVE',
           amount: purchase.totalPrice,
-          reason: `Compra aprobada en tienda: ${purchaseLabel}`,
+          reason: isGift ? `Regalo en tienda: ${purchaseLabel}` : `Compra aprobada en tienda: ${purchaseLabel}`,
           createdAt: now,
         });
       }
@@ -584,17 +689,20 @@ export class ShopService {
           })
           .where(and(eq(shopItems.id, purchase.itemId), gte(shopItems.stock, purchase.quantity)));
         if (affectedRows(stockResult) !== 1) {
-          throw new PurchaseRejected('Stock insuficiente');
+          throw new PurchaseRejected('Ya no quedan unidades de este artículo');
         }
       }
 
-      if (student.userId) {
+      if (payer.userId) {
         await tx.insert(notifications).values({
           id: uuidv4(),
-          userId: student.userId,
+          userId: payer.userId,
+          classroomId: classroom.id,
           type: 'PURCHASE_APPROVED',
-          title: '¡Compra aprobada!',
-          message: `Tu compra de ${purchaseLabel} ha sido aprobada`,
+          title: isGift ? 'Tu profe aprobó tu regalo' : 'Tu profe aprobó tu compra',
+          message: isGift
+            ? `"${purchaseLabel}" ya es de ${names.get(student.id) ?? 'tu compañero'}. Se descontaron ${purchase.totalPrice} de oro.`
+            : `"${purchaseLabel}" ya es tuyo. Se descontaron ${purchase.totalPrice} de oro.`,
           isRead: false,
           createdAt: now,
         });
@@ -608,16 +716,23 @@ export class ShopService {
     }
 
     // Emit after tx commit
-    if (student.userId) {
-      await emitUnreadCount(student.userId);
+    if (payer.userId) {
+      await emitUnreadCount(payer.userId);
+    }
+    if (isGift) {
+      await this.notifyReceived({
+        recipientUserId: student.userId,
+        classroomId: classroom.id,
+        itemName: purchaseLabel,
+        purchaseId,
+        fromName: purchase.giftAnonymous ? 'Un compañero o compañera' : payerName,
+        giftMessage: purchase.giftMessage,
+      });
     }
 
-    const purchaserId = purchase.buyerId || purchase.studentId;
-    if (purchaserId) {
-      await this.checkPurchaseBadges(purchaserId, student.classroomId);
-    }
+    await this.checkPurchaseBadges(payer.id, student.classroomId);
 
-    return { success: true, message: 'Compra aprobada exitosamente' };
+    return { success: true, message: 'Compra aprobada' };
   }
 
   async rejectPurchase(purchaseId: string, teacherId: string, reason?: string): Promise<{ success: boolean; message: string }> {
@@ -665,15 +780,20 @@ export class ShopService {
     // Obtener item para el mensaje
     const item = await this.getItemById(purchase.itemId);
 
-    // Notificar al estudiante (solo si tiene cuenta vinculada)
-    if (student.userId) {
+    // Avisar a quien pidió (el que compró o el que regaló); el pedido no cobró nada.
+    const isGift = purchase.purchaseType === 'GIFT';
+    const payerId = purchase.buyerId || purchase.studentId;
+    const [payer] = payerId === student.id
+      ? [student]
+      : await db.select({ userId: studentProfiles.userId }).from(studentProfiles).where(eq(studentProfiles.id, payerId));
+    if (payer?.userId) {
+      const what = isGift ? `tu regalo "${item?.name || 'premio'}"` : `tu compra de "${item?.name || 'premio'}"`;
       await createNotification({
-        userId: student.userId,
+        userId: payer.userId,
+        classroomId: classroom.id,
         type: 'PURCHASE_REJECTED',
-        title: 'Compra rechazada',
-        message: reason 
-          ? `Tu compra de ${item?.name || 'item'} fue rechazada: ${reason}`
-          : `Tu compra de ${item?.name || 'item'} fue rechazada`,
+        title: isGift ? 'Tu profe no aprobó tu regalo' : 'Tu profe no aprobó tu compra',
+        message: `${what.charAt(0).toUpperCase()}${what.slice(1)}: no se descontó tu oro.${reason ? ` ${reason}` : ''}`,
       });
     }
 
@@ -690,6 +810,7 @@ export class ShopService {
         usedQuantity: purchases.usedQuantity,
         totalPrice: purchases.totalPrice,
         purchaseType: purchases.purchaseType,
+        status: purchases.status,
         giftMessage: purchases.giftMessage,
         purchasedAt: purchases.purchasedAt,
         item: {
@@ -758,7 +879,8 @@ export class ShopService {
       .from(purchases)
       .innerJoin(shopItems, eq(purchases.itemId, shopItems.id))
       .innerJoin(studentProfiles, eq(purchases.studentId, studentProfiles.id))
-      .where(eq(purchases.buyerId, studentId))
+      // Las compras propias también guardan buyerId: solo los regalos son "enviados".
+      .where(and(eq(purchases.buyerId, studentId), eq(purchases.purchaseType, 'GIFT')))
       .orderBy(desc(purchases.purchasedAt));
   }
 
@@ -822,20 +944,25 @@ export class ShopService {
         return { success: false, message: 'Compra no encontrada' };
       }
 
+      // Solo se usa lo que ya es tuyo: un pedido pendiente o rechazado no se pagó.
+      if (purchase.status !== 'APPROVED') {
+        return { success: false, message: purchase.status === 'PENDING' ? 'Tu profe todavía no aprueba esta compra' : 'Esta compra no fue aprobada' };
+      }
+
       // Verificar que quedan items por usar
       const remaining = purchase.quantity - (purchase.usedQuantity || 0);
       if (remaining <= 0) {
-        return { success: false, message: 'Ya usaste todos los items de esta compra' };
+        return { success: false, message: 'Ya usaste todos los de esta compra' };
       }
 
       // Obtener el item para verificar que es consumible
       const item = await this.getItemById(purchase.itemId);
       if (!item) {
-        return { success: false, message: 'Item no encontrado' };
+        return { success: false, message: 'Este premio ya no existe' };
       }
 
       if (item.category !== 'CONSUMABLE') {
-        return { success: false, message: 'Solo los items consumibles pueden ser usados' };
+        return { success: false, message: 'Este premio es tuyo para siempre: no se gasta al usarlo' };
       }
 
       // Obtener el estudiante para saber el classroomId
@@ -902,8 +1029,8 @@ export class ShopService {
             userId: classroom.teacherId,
             classroomId: student.classroomId,
             type: 'ITEM_USED',
-            title: '🧪 Item usado',
-            message: `${student.characterName || 'Un estudiante'} ha usado "${item.name}"${item.description ? `: ${item.description}` : ''}`,
+            title: '🎟️ Pidió usar un premio',
+            message: `${(await this.namesOf([studentId], classroom.showCharacterName)).get(studentId) ?? 'Un estudiante'} quiere usar "${item.name}"${item.description ? `: ${item.description}` : ''}`,
             data: {
               usageId,
               studentId,
@@ -922,7 +1049,7 @@ export class ShopService {
 
       return { 
         success: true, 
-        message: `Has usado "${item.name}". El profesor será notificado.`,
+        message: 'Listo: tu profe verá tu pedido.',
         usage: {
           id: usageId,
           itemName: item.name,
@@ -931,7 +1058,7 @@ export class ShopService {
       };
     } catch (error) {
       console.error('Error in useItem:', error);
-      return { success: false, message: 'Error al usar el item' };
+      return { success: false, message: 'No se pudo pedir el uso' };
     }
   }
 
@@ -945,6 +1072,8 @@ export class ShopService {
           id: studentProfiles.id,
           characterName: studentProfiles.characterName,
           characterClass: studentProfiles.characterClass,
+          // Descansando: el uso espera a que vuelva (se ve en la bandeja del profesor).
+          hp: studentProfiles.hp,
         },
         item: {
           id: shopItems.id,
@@ -976,6 +1105,17 @@ export class ShopService {
 
     if (usage.status !== 'PENDING') {
       return { success: false, message: 'Este uso ya fue revisado' };
+    }
+
+    // Mientras descansa la tienda está en pausa: aprobar espera a que vuelva (rechazar sí se puede).
+    if (status === 'APPROVED') {
+      const [owner] = await db.select({ hp: studentProfiles.hp }).from(studentProfiles).where(eq(studentProfiles.id, usage.studentId));
+      const [cls] = await db.select({ gradeLevel: classrooms.gradeLevel, showCharacterName: classrooms.showCharacterName })
+        .from(classrooms).where(eq(classrooms.id, usage.classroomId));
+      if (owner && owner.hp <= 0 && !isInitialLevel(cls?.gradeLevel)) {
+        const name = (await this.namesOf([usage.studentId], cls?.showCharacterName ?? true)).get(usage.studentId) ?? 'El estudiante';
+        return { success: false, message: restingTeacherMessage(name, 'uso') };
+      }
     }
 
     let healed = 0;
@@ -1036,10 +1176,10 @@ export class ShopService {
           userId: student.userId,
           classroomId: usage.classroomId,
           type: status === 'APPROVED' ? 'PURCHASE_APPROVED' : 'PURCHASE_REJECTED',
-          title: status === 'APPROVED' ? '✅ Uso aprobado' : 'Uso no aprobado',
+          title: status === 'APPROVED' ? '✅ Tu profe aprobó tu premio' : 'Hoy no se pudo usar',
           message: status === 'APPROVED'
-            ? `Tu profesor aprobó el uso de "${item?.name ?? 'tu artículo'}"`
-            : `Tu profesor no aprobó el uso de "${item?.name ?? 'tu artículo'}". Lo conservas para otra ocasión.`,
+            ? `"${item?.name ?? 'Tu premio'}": ¡disfrútalo!`
+            : `Tu profe dice que hoy no se puede usar "${item?.name ?? 'tu premio'}". Lo sigues teniendo para otra ocasión.`,
         });
       }
     } catch (notifError) {
@@ -1048,7 +1188,7 @@ export class ShopService {
 
     return {
       success: true,
-      message: status === 'APPROVED' ? (healed > 0 ? `Uso aprobado: +${healed} HP` : 'Uso aprobado') : 'Uso rechazado: se le devolvió el artículo'
+      message: status === 'APPROVED' ? (healed > 0 ? `Uso aprobado: +${healed} de energía` : 'Uso aprobado') : 'Uso rechazado: se le devolvió el artículo'
     };
   }
 
@@ -1094,6 +1234,154 @@ export class ShopService {
       throw error;
     }
     return { success: true, message: 'Entrega deshecha' };
+  }
+
+  /**
+   * Canje con el oro del alumno (clases sin cuentas de alumno, pequeños): el profesor lo hace en clase.
+   * Cobra al alumno, descuenta stock y, si es de un solo uso y se usa ahora, deja el uso aprobado.
+   * El registro de oro lleva el id de la compra para poder marcarlo revertido al deshacer.
+   */
+  async redeemForStudents(itemId: string, studentIds: string[], useNow: boolean, teacherId: string): Promise<{
+    redeemed: { studentId: string; purchaseId: string }[];
+    failed: { studentId: string; message: string }[];
+  }> {
+    const redeemed: { studentId: string; purchaseId: string }[] = [];
+    const failed: { studentId: string; message: string }[] = [];
+    const item = await this.getItemById(itemId);
+    if (!item || !item.isActive) {
+      return { redeemed, failed: studentIds.map((studentId) => ({ studentId, message: 'Artículo no encontrado' })) };
+    }
+    const [classroom] = await db.select({ id: classrooms.id, gradeLevel: classrooms.gradeLevel })
+      .from(classrooms).where(eq(classrooms.id, item.classroomId));
+    const consumeNow = useNow && item.category === 'CONSUMABLE';
+    const toNotify: NotificationEntry[] = [];
+
+    for (const studentId of studentIds) {
+      try {
+        const [student] = await db.select().from(studentProfiles).where(eq(studentProfiles.id, studentId));
+        if (!student || student.classroomId !== item.classroomId) {
+          failed.push({ studentId, message: 'No es de esta clase' });
+          continue;
+        }
+        // La tienda está en pausa mientras descansa (en Inicial no).
+        if (student.hp <= 0 && !isInitialLevel(classroom?.gradeLevel)) {
+          failed.push({ studentId, message: 'está descansando' });
+          continue;
+        }
+        const purchaseId = uuidv4();
+        const now = new Date();
+        await db.transaction(async (tx) => {
+          if (!(await spendGp(tx, studentId, item.price))) throw new PurchaseRejected('no le alcanza el oro');
+          if (item.stock !== null) {
+            const stockResult = await tx
+              .update(shopItems)
+              .set({ stock: sql`${shopItems.stock} - 1`, updatedAt: now })
+              .where(and(eq(shopItems.id, item.id), gte(shopItems.stock, 1)));
+            if (affectedRows(stockResult) !== 1) throw new PurchaseRejected('se agotó');
+          }
+          await tx.insert(purchases).values({
+            id: purchaseId,
+            studentId,
+            itemId: item.id,
+            quantity: 1,
+            usedQuantity: consumeNow ? 1 : 0,
+            totalPrice: item.price,
+            purchaseType: 'REDEEM',
+            status: 'APPROVED',
+            buyerId: studentId,
+            purchasedAt: now,
+          });
+          if (item.price > 0) {
+            await tx.insert(pointLogs).values({
+              id: purchaseId,
+              studentId,
+              pointType: 'GP',
+              action: 'REMOVE',
+              amount: item.price,
+              reason: `Canje con tu profe: ${item.name}`,
+              givenBy: teacherId,
+              createdAt: now,
+            });
+          }
+          if (consumeNow) {
+            await tx.insert(itemUsages).values({
+              id: uuidv4(),
+              purchaseId,
+              studentId,
+              itemId: item.id,
+              classroomId: item.classroomId,
+              status: 'APPROVED',
+              usedAt: now,
+              reviewedAt: now,
+              reviewedBy: teacherId,
+            });
+          }
+        });
+        redeemed.push({ studentId, purchaseId });
+        if (student.userId) {
+          toNotify.push({
+            userId: student.userId,
+            classroomId: item.classroomId,
+            type: 'PURCHASE_APPROVED',
+            title: '🛍️ Canjeaste un premio',
+            message: `Canjeaste "${item.name}" con tu profe por ${item.price} de oro.`,
+            data: { purchaseId, kind: 'REDEEM' },
+          });
+        }
+      } catch (error) {
+        failed.push({ studentId, message: error instanceof PurchaseRejected ? error.message : 'no se pudo canjear' });
+      }
+    }
+
+    if (toNotify.length > 0) {
+      try {
+        await createNotifications(toNotify);
+      } catch (error) {
+        console.error('Error notifying redemptions:', error);
+      }
+    }
+    return { redeemed, failed };
+  }
+
+  /** Deshace un canje del profesor (error al elegir): devuelve el oro y el stock, si el alumno no pidió usarlo después. */
+  async undoRedeem(purchaseId: string, teacherId: string): Promise<{ success: boolean; message: string }> {
+    try {
+      await db.transaction(async (tx) => {
+        const [purchase] = await tx.select().from(purchases).where(eq(purchases.id, purchaseId)).for('update');
+        if (!purchase || purchase.purchaseType !== 'REDEEM') throw new PurchaseRejected('Canje no encontrado');
+        const [student] = await tx.select({ classroomId: studentProfiles.classroomId }).from(studentProfiles).where(eq(studentProfiles.id, purchase.studentId));
+        if (!student || !(await teacherOwnsClassroom(teacherId, student.classroomId))) throw new PurchaseRejected('Canje no encontrado');
+        // Solo el uso creado al canjear (mismo instante) se deshace; si el alumno pidió usarlo después, ya no.
+        const laterUses = await tx.select({ id: itemUsages.id }).from(itemUsages)
+          .where(and(eq(itemUsages.purchaseId, purchaseId), ne(itemUsages.usedAt, purchase.purchasedAt)));
+        if (laterUses.length > 0) throw new PurchaseRejected('El estudiante ya pidió usarlo');
+
+        await tx.delete(itemUsages).where(eq(itemUsages.purchaseId, purchaseId));
+        await tx.delete(purchases).where(eq(purchases.id, purchaseId));
+        if (purchase.totalPrice > 0) {
+          await applyPointDeltas(tx, purchase.studentId, { gp: purchase.totalPrice });
+          await tx.update(pointLogs).set({ isReverted: true }).where(eq(pointLogs.id, purchaseId));
+        }
+        await tx
+          .update(shopItems)
+          .set({ stock: sql`${shopItems.stock} + ${purchase.quantity}`, updatedAt: new Date() })
+          .where(and(eq(shopItems.id, purchase.itemId), sql`${shopItems.stock} IS NOT NULL`));
+      });
+    } catch (error) {
+      if (error instanceof PurchaseRejected) return { success: false, message: error.message };
+      throw error;
+    }
+    return { success: true, message: 'Canje deshecho' };
+  }
+
+  /** Cuántos alumnos tienen cada premio como meta (para que el profesor sepa qué ofrecer). */
+  async getGoalCounts(classroomId: string) {
+    const rows = await db
+      .select({ itemId: studentProfiles.shopGoalItemId, count: sql<string>`COUNT(*)` })
+      .from(studentProfiles)
+      .where(and(eq(studentProfiles.classroomId, classroomId), eq(studentProfiles.isActive, true), sql`${studentProfiles.shopGoalItemId} IS NOT NULL`))
+      .groupBy(studentProfiles.shopGoalItemId);
+    return rows.map((row) => ({ itemId: row.itemId as string, count: Number(row.count) }));
   }
 
   // Quién tiene qué (compras aprobadas) y el historial reciente de usos de la clase.

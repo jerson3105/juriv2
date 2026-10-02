@@ -46,8 +46,20 @@ router.post('/upload-image', authorize('TEACHER'), (req, res, next) => {
 router.post('/teacher/give-bulk', authorize('TEACHER'), (req, res) => shopController.giveBulk(req, res));
 router.delete('/teacher/purchases/:purchaseId', authorize('TEACHER'), (req, res) => shopController.undoGive(req, res));
 
+// Canjear un premio con el oro del alumno y deshacer el canje (profesor)
+router.post('/teacher/redeem', authorize('TEACHER'), (req, res) => shopController.redeem(req, res));
+router.delete('/teacher/redeem/:purchaseId', authorize('TEACHER'), (req, res) => shopController.undoRedeem(req, res));
+
 // Inventario de la clase (profesor)
 router.get('/classroom/:classroomId/inventory', authorize('TEACHER'), (req, res) => shopController.getInventory(req, res));
+
+// Economía de la tienda: ingreso semanal, bandas de precio y metas de los alumnos (profesor)
+router.get('/classroom/:classroomId/economy', authorize('TEACHER'), (req, res) => shopController.getEconomy(req, res));
+
+// Vista completa de la tienda del alumno, su meta y compañeros para regalar (solo el dueño del perfil)
+router.get('/student/:studentId/view', authorize('STUDENT'), (req, res) => shopController.getStudentView(req, res));
+router.put('/student/:studentId/goal', authorize('STUDENT'), (req, res) => shopController.setGoal(req, res));
+router.get('/student/:studentId/classmates', authorize('STUDENT'), (req, res) => shopController.getClassmates(req, res));
 
 // ==================== RUTAS DE ITEMS (PROFESOR) ====================
 
