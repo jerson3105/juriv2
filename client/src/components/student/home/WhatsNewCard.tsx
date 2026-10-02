@@ -146,7 +146,7 @@ export const WhatsNewCard = ({ profileId, news, resting, letters, onOpen }: What
           {hasEnergy && (
             <div className={`${hasMain ? 'mt-3 border-t border-dashed border-gray-300 pt-3 dark:border-gray-600' : 'mt-3'}`}>
               <ul className="space-y-1.5 text-sm text-slate-800 dark:text-slate-100">
-                {resting && energyDown.length > 0 && <Line emoji="🌙" className="font-semibold">Tu energía llegó a 0. Esto no cambia tus notas.</Line>}
+                {resting && energyDown.length > 0 && <Line emoji="🌙" className="font-semibold">Tu energía llegó a 0. La energía no es una nota: descansas y sigues ganando XP.</Line>}
                 {energyDown.map((line) => <Line key={`hp|${line.reason}`} emoji={lossEmoji(line, resting)}>{lossText(line)}</Line>)}
                 {recovered.map((line) => <Line key={`hp+|${line.reason}`} emoji="⚡">Recuperaste {line.amount.toLocaleString('es')} de energía{withReason(line)}</Line>)}
                 {otherDown.map((line) => <Line key={`${line.pointType}-|${line.reason}`} emoji={lossEmoji(line, resting)}>{lossText(line)}</Line>)}

@@ -59,8 +59,9 @@ export const CorreoModal = ({ profileId, onClose }: { profileId: string; onClose
 export const EnergyModal = ({ initial, onClose }: { initial: boolean; onClose: () => void }) => (
   <HomeModal title="❤️ ¿Qué es la energía?" onClose={onClose} footer={closeFooter(onClose, 'Entendido')}>
     <div className="space-y-2 text-sm text-gray-800 dark:text-gray-100">
-      <p>Tu energía muestra cómo va la convivencia en clase. <strong>No cambia tus notas.</strong></p>
+      <p>Tu energía muestra cómo va la convivencia en clase. <strong>Tu energía no es una nota.</strong></p>
       <p>Baja cuando algo no sale bien en clase.</p>
+      <p>Si tu profe une un comportamiento a una competencia, lo bueno y lo que no sale bien también cuentan en esa competencia.</p>
       {initial ? (
         <p>Si llega a 0, descansas un ratito y tu profe te ayuda a volver.</p>
       ) : (

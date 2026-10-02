@@ -87,6 +87,51 @@ export interface GradebookCompetencyColumn {
   indicators: Array<{ id: string; code: string; name: string; weight: number }>;
 }
 
+/** Nivel en la escala de la clase: la letra (o el número en vigesimal) y su balde AD/A/B/C. */
+export interface StudentLevel {
+  label: string;
+  bucket: PerformanceBucket;
+}
+
+export interface StudentGradeSource {
+  kind: 'behaviors' | 'evaluation' | 'activity' | 'expedition' | 'badge' | 'teacher';
+  name: string | null;
+  level: StudentLevel | null;
+  comment?: string | null;
+  positive?: number;
+  negative?: number;
+  /** Comportamientos por nombre; vacío si la clase no muestra los motivos. */
+  items?: Array<{ name: string; isPositive: boolean; count: number }>;
+}
+
+export interface StudentCompetencyView {
+  id: string;
+  name: string | null;
+  shortName: string | null;
+  /** null = aún sin evidencias ("Aún sin nota"). */
+  level: StudentLevel | null;
+  isManual: boolean;
+  lowEvidence: boolean;
+  records: number;
+  evaluations: number;
+  comment: string | null;
+  /** Solo con el bimestre cerrado. */
+  conclusion: string | null;
+  skills: Array<{ id: string; name: string; level: StudentLevel | null; positive: number; negative: number }>;
+  sources: StudentGradeSource[];
+}
+
+/** "Mis calificaciones": sin promedio, porcentajes, pesos ni puntos. */
+export interface StudentGradesView {
+  period: string;
+  isCurrent: boolean;
+  isClosed: boolean;
+  isFuture: boolean;
+  scaleKind: 'letters' | 'vigesimal' | 'number';
+  showReasons: boolean;
+  competencies: StudentCompetencyView[];
+}
+
 export interface StudentGradebookResponse {
   studentProfileId: string;
   studentName: string;
@@ -329,6 +374,12 @@ export const gradeApi = {
   },
 
   // Obtener calificaciones de un estudiante
+  /** Vista del alumno dueño del perfil ("Mis calificaciones"). */
+  getMyGradesView: async (studentProfileId: string, period: string = 'CURRENT'): Promise<StudentGradesView> => {
+    const response = await api.get(`/grades/my/${studentProfileId}`, { params: { period } });
+    return response.data.data;
+  },
+
   getStudentGrades: async (studentProfileId: string, period: string = 'CURRENT'): Promise<StudentGradebookResponse> => {
     const response = await api.get(`/grades/student/${studentProfileId}`, {
       params: { period },

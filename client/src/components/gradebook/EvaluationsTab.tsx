@@ -130,6 +130,7 @@ const EvaluationSheet = ({ book, evaluationId, onBack }: { book: ClassroomGradeb
             Comentarios por alumno
           </label>
         </div>
+        {showNotes && <p className="mb-3 text-sm text-gray-800 dark:text-gray-100">Cada estudiante verá su comentario en «Mis calificaciones».</p>}
         {readOnly && <p className="mb-3 text-sm text-gray-800 dark:text-gray-100">El bimestre está cerrado: esta evaluación es de solo lectura.</p>}
         <ul className="divide-y divide-gray-100 dark:divide-gray-700">
           {students.map((student) => {
@@ -163,7 +164,7 @@ const EvaluationSheet = ({ book, evaluationId, onBack }: { book: ClassroomGradeb
                   <div className="w-full">
                     <label htmlFor={`note-${student.studentProfileId}`} className="sr-only">Comentario para {student.studentName}</label>
                     <input id={`note-${student.studentProfileId}`} value={noteOf(student.studentProfileId, student.note)} maxLength={500} disabled={readOnly}
-                      placeholder="Comentario (opcional)" onChange={(e) => setCell(student.studentProfileId, { note: e.target.value }, student)} className={inputClass} />
+                      placeholder="Comentario para el estudiante (opcional)" onChange={(e) => setCell(student.studentProfileId, { note: e.target.value }, student)} className={inputClass} />
                   </div>
                 )}
               </li>

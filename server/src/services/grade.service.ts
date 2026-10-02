@@ -163,6 +163,51 @@ export interface StudentGradebookResponse {
   grades: GradebookGradeEntry[];
 }
 
+/** Nivel en la escala de la clase (la letra o el número que ve el alumno). */
+type LevelView = { label: string; bucket: PerformanceBucket };
+
+/** Una fuente de la nota, en el lenguaje del alumno (sin porcentajes, pesos ni puntos). */
+export interface StudentGradeSource {
+  kind: 'behaviors' | 'evaluation' | 'activity' | 'expedition' | 'badge' | 'teacher';
+  name: string | null;
+  level: LevelView | null;
+  /** Evaluación: el comentario del docente para el alumno. */
+  comment?: string | null;
+  /** Comportamientos: veces que salió bien y por mejorar, y cuáles (solo si la clase muestra los motivos). */
+  positive?: number;
+  negative?: number;
+  items?: Array<{ name: string; isPositive: boolean; count: number }>;
+}
+
+export interface StudentCompetencyView {
+  id: string;
+  name: string | null;
+  shortName: string | null;
+  /** null = aún sin evidencias en el bimestre ("Aún sin nota"; no es una C). */
+  level: LevelView | null;
+  isManual: boolean;
+  /** Menos de FULL_CONFIDENCE_OBSERVATIONS registros, sin evaluaciones ni nota manual. */
+  lowEvidence: boolean;
+  records: number;
+  evaluations: number;
+  comment: string | null;
+  /** Solo con el bimestre cerrado. */
+  conclusion: string | null;
+  skills: Array<{ id: string; name: string; level: LevelView | null; positive: number; negative: number }>;
+  sources: StudentGradeSource[];
+}
+
+/** "Mis calificaciones": sin promedio, porcentajes, pesos ni la nota calculada detrás de una manual. */
+export interface StudentGradesView {
+  period: string;
+  isCurrent: boolean;
+  isClosed: boolean;
+  isFuture: boolean;
+  scaleKind: 'letters' | 'vigesimal' | 'number';
+  showReasons: boolean;
+  competencies: StudentCompetencyView[];
+}
+
 export interface ClassroomGradebookStudent {
   studentProfileId: string;
   studentName: string;
@@ -1907,6 +1952,164 @@ class GradeService {
       gradeScaleType,
       average: this.buildAverageSummary(grades, gradeScaleType, parsedScaleConfig, weights),
       grades,
+    };
+  }
+
+  /**
+   * Vista del alumno ("Mis calificaciones"): por competencia (en el orden de la clase), su nivel o null si
+   * aún no tiene evidencias, de dónde sale y si hay pocas evidencias. Solo bimestres de los años de la
+   * clase y nunca futuros: un GET del alumno no crea notas de periodos ajenos.
+   */
+  async getStudentGradesView(studentProfileId: string, period: string = 'CURRENT'): Promise<StudentGradesView> {
+    const classroomId = await this.getClassroomIdByStudentProfile(studentProfileId);
+    if (!classroomId) throw new Error('Estudiante no encontrado');
+
+    const resolved = await this.resolveClassroomPeriod(classroomId, period);
+    const status = await this.getBimesterStatus(classroomId);
+    if (!status.availableYears.includes(Number(resolved.slice(0, 4)))) {
+      throw new Error('Periodo invalido para esta clase');
+    }
+
+    const [{ gradeScaleType, gradeScaleConfig }, [settings], competencies, isFuture, isClosed] = await Promise.all([
+      this.getClassroomScaleSettings(classroomId),
+      db.select({ showReasonToStudent: classrooms.showReasonToStudent }).from(classrooms).where(eq(classrooms.id, classroomId)),
+      this.getClassroomCompetencyColumns(classroomId),
+      this.isFuturePeriod(classroomId, resolved),
+      this.isPeriodClosed(classroomId, resolved),
+    ]);
+    const parsedScaleConfig = this.parseGradeScaleConfig(gradeScaleConfig);
+    const showReasons = settings?.showReasonToStudent ?? true;
+    const base = {
+      period: resolved,
+      isCurrent: resolved === status.currentBimester,
+      isClosed,
+      isFuture,
+      scaleKind: gradeScaleType === 'PERU_VIGESIMAL'
+        ? 'vigesimal' as const
+        : scaleOptions(gradeScaleType, parsedScaleConfig).kind === 'letters' ? 'letters' as const : 'number' as const,
+      showReasons,
+    };
+    const withoutGrade = (c: GradebookCompetencyColumn): StudentCompetencyView => ({
+      id: c.id, name: c.name, shortName: c.shortName ?? null, level: null, isManual: false, lowEvidence: false,
+      records: 0, evaluations: 0, comment: null, conclusion: null, skills: [], sources: [],
+    });
+    if (isFuture || competencies.length === 0) return { ...base, competencies: competencies.map(withoutGrade) };
+
+    const gradebook = await this.getStudentGrades(studentProfileId, resolved, { includePrivate: false });
+    const gradeByCompetency = new Map(gradebook.grades.map((grade) => [grade.competencyId, grade]));
+    const dateRange = await this.getBimesterDateRange(classroomId, resolved);
+    const competencyIds = competencies.map((c) => c.id);
+    const [behaviorRows, evaluationRows] = await Promise.all([
+      // Mismo criterio que getBehaviorScores: comportamientos activos de la competencia, una vez por registro.
+      db.select({
+        competencyId: behaviors.competencyId,
+        name: behaviors.name,
+        isPositive: behaviors.isPositive,
+        xpValue: behaviors.xpValue,
+        hpValue: behaviors.hpValue,
+        count: sql<number>`COUNT(DISTINCT ${pointLogs.createdAt})`,
+      })
+        .from(pointLogs)
+        .innerJoin(behaviors, eq(pointLogs.behaviorId, behaviors.id))
+        .where(and(
+          eq(pointLogs.studentId, studentProfileId),
+          eq(pointLogs.isReverted, false),
+          eq(behaviors.classroomId, classroomId),
+          eq(behaviors.isActive, true),
+          inArray(behaviors.competencyId, competencyIds),
+          gte(pointLogs.createdAt, dateRange.startDate),
+          lte(pointLogs.createdAt, dateRange.endDate),
+        ))
+        .groupBy(behaviors.id, behaviors.competencyId, behaviors.name, behaviors.isPositive, behaviors.xpValue, behaviors.hpValue),
+      db.select({
+        competencyId: gradeEvaluations.competencyId,
+        title: gradeEvaluations.title,
+        label: gradeEvaluationScores.label,
+        score: gradeEvaluationScores.score,
+        note: gradeEvaluationScores.note,
+      })
+        .from(gradeEvaluationScores)
+        .innerJoin(gradeEvaluations, eq(gradeEvaluationScores.evaluationId, gradeEvaluations.id))
+        .where(and(
+          eq(gradeEvaluationScores.studentProfileId, studentProfileId),
+          eq(gradeEvaluations.classroomId, classroomId),
+          eq(gradeEvaluations.period, resolved),
+        )),
+    ]);
+
+    const levelOf = (score: number): LevelView => {
+      const label = this.convertToGradeLabel(score, gradeScaleType, parsedScaleConfig);
+      return { label, bucket: performanceBucket(score, gradeScaleType, label) };
+    };
+    // "Revisó la tarea (+5 XP)" → "Revisó la tarea"; sin motivo ("Punto manual +5 XP") no hay nombre.
+    const teacherReason = (name: string) => (name.startsWith('Punto manual') ? null : name.replace(/\s*\([+-]\d+ [A-Z]+\)$/, '').trim() || null);
+    const OTHER_SOURCES: Record<string, StudentGradeSource['kind']> = {
+      TIMED: 'activity', EXPEDITION: 'expedition', JIRO_EXPEDITION: 'expedition', BADGE: 'badge', MANUAL_POINTS: 'teacher',
+    };
+
+    return {
+      ...base,
+      competencies: competencies.map((competency) => {
+        const grade = gradeByCompetency.get(competency.id);
+        if (!grade || (grade.activitiesCount <= 0 && !grade.isManualOverride)) return withoutGrade(competency);
+
+        const activities = grade.calculationDetails?.activities ?? [];
+        const usesBehaviors = activities.some((activity) => activity.type === 'BEHAVIOR');
+        const usesSkills = activities.some((activity) => activity.type === 'INDICATOR');
+        const behaviorItems = usesBehaviors
+          ? behaviorRows
+            .filter((row) => row.competencyId === competency.id && Number(row.count) > 0 && Math.abs(row.xpValue || 0) + Math.abs(row.hpValue || 0) > 0)
+            .map((row) => ({ name: row.name, isPositive: row.isPositive ?? true, count: Number(row.count) }))
+          : [];
+        const positive = behaviorItems.filter((item) => item.isPositive).reduce((sum, item) => sum + item.count, 0);
+        const negative = behaviorItems.filter((item) => !item.isPositive).reduce((sum, item) => sum + item.count, 0);
+        const skills = grade.indicatorBreakdownStatus === 'AVAILABLE'
+          ? grade.indicatorBreakdown.map((indicator) => ({
+            id: indicator.id,
+            name: indicator.name,
+            level: indicator.hasEvidence && indicator.gradeLabel && indicator.bucket ? { label: indicator.gradeLabel, bucket: indicator.bucket } : null,
+            positive: indicator.positiveObservations,
+            negative: indicator.negativeObservations,
+          }))
+          : [];
+        const evaluations = evaluationRows.filter((row) => row.competencyId === competency.id);
+
+        const sources: StudentGradeSource[] = [];
+        if (usesBehaviors) sources.push({ kind: 'behaviors', name: null, level: null, positive, negative, items: showReasons ? behaviorItems : [] });
+        evaluations.forEach((row) => sources.push({
+          kind: 'evaluation',
+          name: row.title,
+          level: { label: row.label, bucket: performanceBucket(this.toNumericScore(row.score), gradeScaleType, row.label) },
+          comment: row.note || null,
+        }));
+        const others = activities.filter((activity) => OTHER_SOURCES[activity.type]);
+        others.forEach((activity) => {
+          const kind = OTHER_SOURCES[activity.type];
+          sources.push({
+            kind,
+            name: kind === 'teacher' ? (showReasons ? teacherReason(activity.name) : null) : activity.name,
+            level: kind === 'badge' ? null : levelOf(activity.score),
+          });
+        });
+
+        const records = positive + negative
+          + (usesSkills ? skills.reduce((sum, skill) => sum + skill.positive + skill.negative, 0) : 0)
+          + others.length;
+        return {
+          id: competency.id,
+          name: competency.name,
+          shortName: competency.shortName ?? null,
+          level: { label: grade.gradeLabel, bucket: grade.bucket },
+          isManual: grade.isManualOverride,
+          lowEvidence: !grade.isManualOverride && evaluations.length === 0 && records < FULL_CONFIDENCE_OBSERVATIONS,
+          records,
+          evaluations: evaluations.length,
+          comment: grade.manualNote ?? null,
+          conclusion: isClosed ? grade.conclusion ?? null : null,
+          skills,
+          sources,
+        };
+      }),
     };
   }
 

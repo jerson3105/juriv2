@@ -297,6 +297,32 @@ export class GradeController {
   }
 
   /**
+   * "Mis calificaciones": la vista del alumno (sin porcentajes, pesos, puntos ni nota calculada detrás de
+   * una manual). Solo el dueño del perfil.
+   * GET /api/grades/my/:studentProfileId?period=
+   */
+  async getMyGradesView(req: Request, res: Response) {
+    try {
+      const paramsValidation = studentProfileParamsSchema.safeParse(req.params);
+      if (!paramsValidation.success) {
+        return handleValidationError(res, paramsValidation.error);
+      }
+      const queryValidation = periodQuerySchema.safeParse(req.query);
+      if (!queryValidation.success) {
+        return handleValidationError(res, queryValidation.error);
+      }
+      const { studentProfileId } = paramsValidation.data;
+      if (!(await gradeService.verifyStudentOwnsProfile(req.user!.id, studentProfileId))) {
+        return res.status(404).json({ success: false, message: 'Perfil no encontrado' });
+      }
+      const view = await gradeService.getStudentGradesView(studentProfileId, queryValidation.data.period);
+      res.json({ success: true, data: view });
+    } catch (error) {
+      handleControllerError(res, error, 'Error al obtener tus calificaciones');
+    }
+  }
+
+  /**
    * Obtiene las calificaciones de toda una clase
    * GET /api/grades/classroom/:classroomId
    */

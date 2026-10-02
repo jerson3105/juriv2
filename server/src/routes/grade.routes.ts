@@ -12,6 +12,9 @@ router.use(authenticate);
 // Obtener calificaciones de un estudiante (estudiante o profesor)
 router.get('/student/:studentProfileId', gradeController.getStudentGrades);
 
+// "Mis calificaciones": vista del alumno dueño del perfil
+router.get('/my/:studentProfileId', authorize('STUDENT'), gradeController.getMyGradesView);
+
 // Obtener calificaciones de toda una clase (solo profesor)
 router.get('/classroom/:classroomId', authorize('TEACHER'), gradeController.getClassroomGrades);
 

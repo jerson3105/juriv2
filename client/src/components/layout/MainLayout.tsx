@@ -224,14 +224,14 @@ export const MainLayout = () => {
         },
         ...(currentProfile.classroom?.useCompetencies ? [{
           path: '/my-grades',
-          label: 'Mis Calificaciones',
+          label: 'Mis calificaciones',
           icon: <BookOpen size={14} />,
           gradient: 'from-purple-500 to-indigo-500',
           isActive: matchesPath('/my-grades'),
         }] : []),
         {
           path: '/my-progress',
-          label: 'Mi Progreso',
+          label: 'Mi progreso',
           icon: <BarChart3 size={14} />,
           gradient: 'from-emerald-500 to-teal-500',
           isActive: matchesPath('/my-progress'),
