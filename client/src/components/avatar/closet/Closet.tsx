@@ -1,6 +1,6 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AnimatePresence } from 'framer-motion';
-import { Gift, Lock, Shirt } from 'lucide-react';
+import { Gift, Lock, Shirt, X } from 'lucide-react';
 import type { StudentAvatarItem, StudentAvatarView } from '../../../lib/avatarApi';
 import { cardText, cardTitle, homeCard } from '../../student/home/studentHomeHelpers';
 import type { EquippedItem } from '../AvatarRenderer';
@@ -10,15 +10,46 @@ import { BodyModal, BuyModal, GiftModal } from './ClosetModals';
 import { isForSale, isGiftable, zoneOfSlot, type ClosetFilter, type ZoneKey } from './closetHelpers';
 import { useCloset } from './useCloset';
 
-const Notice = ({ icon, tone, title, text }: { icon: ReactNode; tone: string; title: string; text: string }) => (
-  <section className={`${homeCard} flex gap-3`}>
+interface NoticeProps {
+  icon: ReactNode;
+  tone: string;
+  title: string;
+  text: string;
+  /** Con onClose, el aviso lleva una ✕ en la esquina para quitarlo. */
+  onClose?: () => void;
+  closeLabel?: string;
+}
+
+const Notice = ({ icon, tone, title, text, onClose, closeLabel }: NoticeProps) => (
+  <section className={`${homeCard} relative flex gap-3 ${onClose ? 'pr-12 sm:pr-14' : ''}`}>
     <span className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl ${tone}`} aria-hidden="true">{icon}</span>
     <div className="min-w-0">
       <h2 className={cardTitle}>{title}</h2>
       <p className={cardText}>{text}</p>
     </div>
+    {onClose && (
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label={closeLabel ?? 'Cerrar aviso'}
+        className="absolute right-1.5 top-1.5 flex h-11 w-11 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white"
+      >
+        <X size={18} aria-hidden="true" />
+      </button>
+    )}
   </section>
 );
+
+// El aviso del regalo se puede quitar; se recuerda por perfil en este equipo. El regalo sigue disponible
+// (las comunes dicen «Gratis» y el espejo ofrece «Elegir de regalo»).
+const giftNoticeKey = (profileId: string) => `closet-gift-notice-hidden-${profileId}`;
+const readGiftNoticeHidden = (profileId: string) => {
+  try {
+    return localStorage.getItem(giftNoticeKey(profileId)) === '1';
+  } catch {
+    return false;
+  }
+};
 
 /**
  * «Mi personaje»: el espejo (fijo a la vista) y el clóset con la tienda de prendas adentro. Lo suyo se pone
@@ -31,9 +62,22 @@ export const Closet = ({ view }: { view: StudentAvatarView }) => {
   const [buying, setBuying] = useState<StudentAvatarItem | null>(null);
   const [gifting, setGifting] = useState<StudentAvatarItem | null>(null);
   const [bodyOpen, setBodyOpen] = useState(false);
+  const [giftNoticeHidden, setGiftNoticeHidden] = useState(() => readGiftNoticeHidden(view.profile.id));
+  const wardrobeRef = useRef<HTMLDivElement>(null);
   const { young, shop } = view;
   const forSale = view.items.filter((item) => isForSale(item, view));
   const giftReady = view.giftAvailable && shop.open && forSale.some((item) => isGiftable(item, view));
+
+  const hideGiftNotice = () => {
+    setGiftNoticeHidden(true);
+    try {
+      localStorage.setItem(giftNoticeKey(view.profile.id), '1');
+    } catch {
+      // Sin almacenamiento (ventana privada): se oculta solo hasta salir de la página.
+    }
+    // El botón desaparece: el foco pasa al clóset en vez de perderse.
+    wardrobeRef.current?.querySelector<HTMLElement>('#closet-title')?.focus();
+  };
 
   // Tras comprar, la tarjeta cambia de lugar (pasa a «lo tuyo»): se ve su compartimento y el foco va a ella.
   const { focusItem, clearFocus } = closet;
@@ -62,8 +106,8 @@ export const Closet = ({ view }: { view: StudentAvatarView }) => {
       <div className="flex flex-col gap-5 md:grid md:grid-cols-[17rem_minmax(0,1fr)] md:items-start xl:grid-cols-[20rem_minmax(0,1fr)]">
         <ClosetMirror view={view} closet={closet} onBuy={setBuying} onGift={setGifting} onChangeBody={() => setBodyOpen(true)} />
 
-        <div className="min-w-0 space-y-4">
-          {giftReady && (
+        <div ref={wardrobeRef} className="min-w-0 space-y-4">
+          {giftReady && !giftNoticeHidden && (
             <Notice
               icon={<Gift size={22} />}
               tone="bg-fuchsia-50 text-fuchsia-800 dark:bg-fuchsia-900/30 dark:text-fuchsia-200"
@@ -71,6 +115,8 @@ export const Closet = ({ view }: { view: StudentAvatarView }) => {
               text={young
                 ? 'Elige una prenda que diga «Gratis». Es tuya sin gastar oro.'
                 : 'Elige una prenda común (las que dicen «Gratis»): pruébatela y es tuya sin gastar oro. Solo hay un regalo.'}
+              onClose={hideGiftNotice}
+              closeLabel="Cerrar el aviso del regalo"
             />
           )}
           {shop.reason === 'SHOP_CLOSED' && (

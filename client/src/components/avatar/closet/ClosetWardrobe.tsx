@@ -58,7 +58,7 @@ export const ClosetWardrobe = ({ view, closet, filter, onFilter, zone, onZone }:
 
       <div className="rounded-3xl bg-amber-800 p-1.5 shadow-md dark:bg-amber-900 sm:p-2.5">
         <div className="flex justify-center pb-2 pt-1">
-          <h2 id="closet-title" className={`${plaque} text-base`}>Tu clóset</h2>
+          <h2 id="closet-title" tabIndex={-1} className={`${plaque} text-base outline-none`}>Tu clóset</h2>
         </div>
         <div className="rounded-2xl bg-stone-50 p-2.5 dark:bg-gray-900 sm:p-4">
           {(showFilter || zones.length > 1) && (
