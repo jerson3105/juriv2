@@ -12,7 +12,8 @@ interface Tile {
 }
 
 interface AccessTilesProps {
-  shop: { visible: boolean; paused: boolean; prices: number[]; gold: number };
+  /** Se ve si hay premios a la venta o premios suyos (con la tienda cerrada puede usar los que tiene). */
+  shop: { visible: boolean; enabled: boolean; paused: boolean; prices: number[]; gold: number; owned: number };
   badges: { visible: boolean; count: number; near: string | null };
   /** La clase tiene ropa para el personaje (el rol se cambia desde el bloque del personaje). */
   avatar: boolean;
@@ -29,11 +30,13 @@ export const AccessTiles = ({ shop, badges, avatar, scrolls }: AccessTilesProps)
     const affordable = shop.prices.filter((price) => price <= shop.gold).length;
     tiles.push({
       key: 'shop', icon: ShoppingBag, tint: 'bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200', title: 'Tienda', to: '/my-shop',
-      state: shop.paused
-        ? 'En pausa mientras descansas'
-        : affordable > 0
-          ? `Te alcanza para ${plural(affordable, 'premio', 'premios')}`
-          : `El más barato cuesta ${Math.min(...shop.prices).toLocaleString('es')} de oro`,
+      state: !shop.enabled || shop.prices.length === 0
+        ? `Tienes ${plural(shop.owned, 'premio', 'premios')}`
+        : shop.paused
+          ? 'En pausa mientras descansas'
+          : affordable > 0
+            ? `Te alcanza para ${plural(affordable, 'premio', 'premios')}`
+            : `El más barato cuesta ${Math.min(...shop.prices).toLocaleString('es')} de oro`,
     });
   }
   if (badges.visible) {

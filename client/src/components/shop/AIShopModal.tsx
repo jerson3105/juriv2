@@ -2,9 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { motion, useIsPresent } from 'framer-motion';
 import { Check, Pencil, Sparkles, Trash2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { CATEGORY_CONFIG, shopApi, type ItemCategory, type ItemRarity } from '../../lib/shopApi';
+import { CATEGORY_CONFIG, rarityForPrice, shopApi, type ItemCategory, type ItemRarity } from '../../lib/shopApi';
 import { PriceTag } from './ShopDisplay';
-import { SHOP_RARITY_ORDER, SHOP_RARITY_STYLE } from './shopHelpers';
+import { SHOP_RARITY_STYLE, weeksText } from './shopHelpers';
 
 export interface GeneratedShopItem {
   name: string;
@@ -16,26 +16,31 @@ export interface GeneratedShopItem {
 }
 
 interface AIShopModalProps {
+  /** Con la clase, la IA pone precios según lo que ganan sus estudiantes en una semana. */
+  classroomId: string;
+  /** Oro semanal de la clase: la rareza sale del precio. */
+  weekly: number;
   onClose: () => void;
   onImport: (items: GeneratedShopItem[]) => Promise<void>;
 }
 
-type ItemType = 'MIXED' | 'PRIVILEGES' | 'REWARDS' | 'POWERS';
+type ItemType = 'MIXED' | 'PRIVILEGES' | 'RESPONSIBILITIES' | 'EXPERIENCES';
 
+// Premios con propósito: nada que cambie notas, plazos, XP o energía, ni golosinas.
 const EXAMPLES = [
-  { emoji: '💺', title: 'Privilegios', desc: 'Elegir asiento, tiempo extra en exámenes, entregar tarde, ser ayudante del día' },
-  { emoji: '🎁', title: 'Recompensas', desc: 'Stickers, certificados, tiempo libre, poner música en clase' },
-  { emoji: '⚡', title: 'Poderes', desc: 'Poción de energía (cura HP), duplicar XP del día, escudo contra un negativo' },
-  { emoji: '🎮', title: 'Temática gamer', desc: 'Pociones, escudos mágicos, power-ups, monedas doradas' },
-  { emoji: '⚔️', title: 'Aventura medieval', desc: 'Pergamino del conocimiento, poción de sabiduría, escudo del guardián, amuleto de la suerte' },
-  { emoji: '🚀', title: 'Espacial', desc: 'Combustible extra, escudo de energía, teletransporte, visión de rayos X' },
+  { emoji: '💺', title: 'Privilegios', desc: 'Elegir asiento por un día, elegir la música de fondo, elegir el juego de los últimos minutos' },
+  { emoji: '🧑‍🏫', title: 'Responsabilidades', desc: 'Ayudante del profe por un día, narrar la historia de la clase, elegir la pregunta del día' },
+  { emoji: '💌', title: 'Experiencias', desc: 'Carta del profe a la familia, elegir el cuento de la semana, diploma o sello especial' },
+  { emoji: '🎮', title: 'Temática gamer', desc: 'Privilegios con nombres de videojuego: pase para elegir asiento, misión de ayudante, modo DJ' },
+  { emoji: '⚔️', title: 'Aventura medieval', desc: 'Privilegios con nombres medievales: trono del día (elegir asiento), heraldo (dar los avisos), juglar (elegir la música)' },
+  { emoji: '🚀', title: 'Espacial', desc: 'Privilegios con nombres espaciales: comandante del día, control de misión (elegir el juego), bitácora de a bordo (narrar la clase)' },
 ];
 
 const TYPES: { value: ItemType; label: string }[] = [
   { value: 'MIXED', label: 'Variado' },
   { value: 'PRIVILEGES', label: 'Privilegios' },
-  { value: 'REWARDS', label: 'Recompensas' },
-  { value: 'POWERS', label: 'Poderes' },
+  { value: 'RESPONSIBILITIES', label: 'Responsabilidades' },
+  { value: 'EXPERIENCES', label: 'Experiencias' },
 ];
 
 const LEVELS = ['Primaria (6-11 años)', 'Secundaria (12-16 años)', 'Preparatoria/Bachillerato', 'Universidad'];
@@ -48,7 +53,7 @@ const chip = (active: boolean) =>
 const labelClass = 'mb-1.5 block text-sm font-semibold text-gray-800 dark:text-gray-100';
 const fieldClass = 'h-11 w-full rounded-xl border border-gray-300 bg-white px-3 text-sm text-gray-900 outline-none placeholder:text-gray-500 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-400';
 
-export const AIShopModal = ({ onClose, onImport }: AIShopModalProps) => {
+export const AIShopModal = ({ classroomId, weekly, onClose, onImport }: AIShopModalProps) => {
   const [description, setDescription] = useState('');
   const [level, setLevel] = useState('');
   const [count, setCount] = useState(8);
@@ -73,15 +78,18 @@ export const AIShopModal = ({ onClose, onImport }: AIShopModalProps) => {
   const generate = async () => {
     setIsGenerating(true);
     try {
-      const result = await shopApi.generateWithAI({ description, level, count: clampCount(count), itemType });
-      const items = (result.data?.items ?? []).map((item) => ({
-        name: String(item.name ?? '').slice(0, 100),
-        description: String(item.description ?? '').slice(0, 500),
-        category: (item.category === 'SPECIAL' ? 'SPECIAL' : 'CONSUMABLE') as ItemCategory,
-        rarity: (SHOP_RARITY_ORDER.includes(item.rarity) ? item.rarity : 'COMMON') as ItemRarity,
-        price: clampPrice(item.price),
-        icon: String(item.icon || '🎁').slice(0, 50),
-      })).filter((item) => item.name.trim());
+      const result = await shopApi.generateWithAI({ description, level, count: clampCount(count), itemType, classroomId });
+      const items = (result.data?.items ?? []).map((item) => {
+        const price = clampPrice(item.price);
+        return {
+          name: String(item.name ?? '').slice(0, 100),
+          description: String(item.description ?? '').slice(0, 500),
+          category: (item.category === 'SPECIAL' ? 'SPECIAL' : 'CONSUMABLE') as ItemCategory,
+          rarity: rarityForPrice(price, weekly),
+          price,
+          icon: String(item.icon || '🎁').slice(0, 50),
+        };
+      }).filter((item) => item.name.trim());
       if (items.length === 0) {
         toast.error(result.message || 'La IA no devolvió artículos');
         return;
@@ -97,8 +105,13 @@ export const AIShopModal = ({ onClose, onImport }: AIShopModalProps) => {
     }
   };
 
+  // La rareza sigue al precio (igual que en el servidor).
   const update = (index: number, changes: Partial<GeneratedShopItem>) =>
-    setGenerated((prev) => prev.map((item, i) => (i === index ? { ...item, ...changes } : item)));
+    setGenerated((prev) => prev.map((item, i) => {
+      if (i !== index) return item;
+      const next = { ...item, ...changes };
+      return { ...next, rarity: rarityForPrice(next.price, weekly) };
+    }));
 
   const remove = (index: number) => {
     setGenerated((prev) => prev.filter((_, i) => i !== index));
@@ -218,9 +231,6 @@ export const AIShopModal = ({ onClose, onImport }: AIShopModalProps) => {
                         <input type="text" value={item.description} maxLength={500} onChange={(e) => update(index, { description: e.target.value })} aria-label="Descripción" className={fieldClass} />
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <select value={item.rarity} onChange={(e) => update(index, { rarity: e.target.value as ItemRarity })} aria-label="Rareza" className={`${fieldClass} story-select w-auto`}>
-                          {SHOP_RARITY_ORDER.map((r) => <option key={r} value={r}>{SHOP_RARITY_STYLE[r].label}</option>)}
-                        </select>
                         <select value={item.category} onChange={(e) => update(index, { category: e.target.value as ItemCategory })} aria-label="Tipo" className={`${fieldClass} story-select w-auto`}>
                           {(['CONSUMABLE', 'SPECIAL'] as ItemCategory[]).map((c) => <option key={c} value={c}>{CATEGORY_CONFIG[c].label}</option>)}
                         </select>
@@ -228,6 +238,7 @@ export const AIShopModal = ({ onClose, onImport }: AIShopModalProps) => {
                           Precio
                           <input type="number" min={0} value={item.price} onChange={(e) => update(index, { price: clampPrice(parseInt(e.target.value)) })} className="h-9 w-24 rounded-lg border border-gray-300 bg-white text-center text-sm font-bold text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white" />
                         </label>
+                        <span className="text-sm text-gray-700 dark:text-gray-300">{weeksText(item.price, weekly)} · {SHOP_RARITY_STYLE[item.rarity].label}</span>
                       </div>
                       <button type="button" onClick={() => setEditingIndex(null)} className="flex min-h-[40px] w-full items-center justify-center gap-1.5 rounded-lg bg-primary-600 text-sm font-semibold text-white hover:bg-primary-700">
                         <Check size={16} aria-hidden="true" /> Listo

@@ -245,14 +245,15 @@ export const MainLayout = () => {
       gradient: 'from-amber-500 to-orange-500',
       activeGradient: 'from-amber-700 to-orange-700',
       subItems: [
-        {
+        // «Tienda» solo si hay qué comprar o algo tuyo que ver o usar (cerrada o vacía, no lleva a nada).
+        ...((currentProfile.classroom?.shopEnabled && (currentProfile.shopSummary?.items ?? 0) > 0) || (currentProfile.shopSummary?.owned ?? 0) > 0 ? [{
           path: '/my-shop',
-          label: 'Tienda de ítems',
+          label: 'Tienda',
           icon: <ShoppingBag size={14} />,
           gradient: 'from-amber-500 to-orange-500',
           isActive: matchesPath('/my-shop'),
           meta: `${currentProfile.gp} de oro`,
-        },
+        }] : []),
         {
           path: '/my-badges',
           label: 'Mis insignias',

@@ -145,7 +145,7 @@ export const ProfileHeader = ({
                     </span>
                     <RestingPill compact />
                   </div>
-                  <p className="mt-1 text-sm text-slate-800 dark:text-slate-100">{initial ? 'Sin energía: recupéralo cuando esté listo.' : 'Sin energía: la tienda está en pausa.'}</p>
+                  <p className="mt-1 text-sm text-slate-800 dark:text-slate-100">{initial ? 'Sin energía: recupéralo cuando esté listo.' : 'Sin energía: la tienda de premios está en pausa.'}</p>
                   <button type="button" onClick={() => setShowRecovery(true)}
                     className="mt-2 inline-flex min-h-[40px] items-center gap-1.5 rounded-lg bg-slate-700 px-3 text-sm font-semibold text-white hover:bg-slate-800 dark:bg-slate-200 dark:text-slate-900 dark:hover:bg-white">
                     <Moon size={14} aria-hidden="true" /> {initial ? 'Recuperar energía' : 'Misión de recuperación'}

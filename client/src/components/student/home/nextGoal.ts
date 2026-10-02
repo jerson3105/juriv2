@@ -39,7 +39,8 @@ export interface HomeInput {
   correo: CorreoItem | null;
   role: { needsChoice: boolean; current: string; others: string[] };
   badgeProgress: BadgeProgress[];
-  shop: { enabled: boolean; items: { name: string; price: number }[] };
+  /** goalItemId: el premio que el alumno eligió como meta en la tienda. */
+  shop: { enabled: boolean; items: { id: string; name: string; price: number }[]; goalItemId: string | null };
   gold: number;
   level: { level: number; remaining: number };
 }
@@ -96,8 +97,8 @@ export const nextGoal = (input: HomeInput): Goal => {
       return { key: 'rest', emoji: '🌙', title: 'Estás descansando', body: 'Tu profe te ayudará a volver cuando te sientas bien.', secondary: energy, resting: true };
     }
     return input.mission
-      ? { key: 'rest', emoji: '🌙', title: 'Estás descansando', body: `Tu misión: «${input.mission}»`, detail: 'Al cumplirla vuelves con la mitad de tu energía. Mientras tanto sigues ganando XP. La tienda está en pausa.', secondary: energy, resting: true }
-      : { key: 'rest', emoji: '🌙', title: 'Estás descansando', body: 'Pídele a tu profe tu misión. Al cumplirla vuelves con la mitad de tu energía.', detail: 'Mientras tanto sigues ganando XP. La tienda está en pausa.', secondary: energy, resting: true };
+      ? { key: 'rest', emoji: '🌙', title: 'Estás descansando', body: `Tu misión: «${input.mission}»`, detail: 'Al cumplirla vuelves con la mitad de tu energía. Mientras tanto sigues ganando XP y oro. La tienda de premios está en pausa.', secondary: energy, resting: true }
+      : { key: 'rest', emoji: '🌙', title: 'Estás descansando', body: 'Pídele a tu profe tu misión. Al cumplirla vuelves con la mitad de tu energía.', detail: 'Mientras tanto sigues ganando XP y oro. La tienda de premios está en pausa.', secondary: energy, resting: true };
   }
 
   // 2. Algo vence hoy: primero una expedición (se puede hacer aquí), después un aviso.
@@ -144,8 +145,14 @@ export const nextGoal = (input: HomeInput): Goal => {
     return { key: `badge:${badge.badge.id}`, emoji: '🏅', title: 'Estás cerca de una insignia', body: `«${badge.badge.name}» · ${badge.currentValue} de ${badge.targetValue}`, detail: badge.badge.description || undefined, primary: { kind: 'link', to: '/my-badges', label: 'Ver mis insignias' } };
   }
 
-  // 6. Un premio que ya alcanza (o casi)
+  // 6. Su meta de la tienda (si eligió una) o un premio que ya alcanza (o casi)
   if (input.shop.enabled && input.shop.items.length > 0) {
+    const chosen = input.shop.goalItemId ? input.shop.items.find((i) => i.id === input.shop.goalItemId) : undefined;
+    if (chosen) {
+      return chosen.price <= input.gold
+        ? { key: 'shop', emoji: '🛍️', title: '¡Ya te alcanza tu meta!', body: `«${chosen.name}» · ${chosen.price.toLocaleString('es')} de oro`, primary: { kind: 'link', to: '/my-shop', label: 'Ir a la tienda' } }
+        : { key: 'shop', emoji: '🛍️', title: `Te faltan ${(chosen.price - input.gold).toLocaleString('es')} de oro para tu meta`, body: `«${chosen.name}»`, primary: { kind: 'link', to: '/my-shop', label: 'Ver la tienda' } };
+    }
     const affordable = input.shop.items.filter((i) => i.price <= input.gold).sort((a, b) => b.price - a.price)[0];
     if (affordable) {
       return { key: 'shop', emoji: '🛍️', title: 'Ya te alcanza', body: `«${affordable.name}» · ${affordable.price.toLocaleString('es')} de oro`, primary: { kind: 'link', to: '/my-shop', label: 'Ir a la tienda' } };

@@ -37,17 +37,36 @@ export const SHOP_RARITY_STYLE: Record<ItemRarity, {
   },
 };
 
-// Precio sugerido al elegir rareza (el profesor puede cambiarlo).
-export const PRICE_PRESETS: Record<ItemRarity, number> = { COMMON: 25, RARE: 75, LEGENDARY: 200 };
-export const PRICE_CHIPS = [10, 25, 50, 100, 200];
-
 export const shopInventoryKey = (classroomId: string) => ['shop-inventory', classroomId] as const;
+export const shopEconomyKey = (classroomId: string) => ['shop-economy', classroomId] as const;
 
-export const ITEM_EXAMPLES: { icon: string; name: string; description: string; category: ShopItem['category']; rarity: ItemRarity; price: number }[] = [
-  { icon: '💺', name: 'Elegir asiento', description: 'Elige dónde sentarte por un día', category: 'CONSUMABLE', rarity: 'COMMON', price: 25 },
-  { icon: '🎵', name: 'DJ por un día', description: 'Elige la música de fondo durante el trabajo', category: 'CONSUMABLE', rarity: 'COMMON', price: 30 },
-  { icon: '📝', name: 'Entregar tarde', description: 'Entrega una tarea con 1 día de retraso sin penalización', category: 'CONSUMABLE', rarity: 'RARE', price: 75 },
-  { icon: '⏰', name: '+5 min en examen', description: '5 minutos extra en cualquier evaluación', category: 'CONSUMABLE', rarity: 'RARE', price: 100 },
-  { icon: '🛡️', name: 'Escudo protector', description: 'Tu profesor anula tu próxima pérdida de HP', category: 'CONSUMABLE', rarity: 'LEGENDARY', price: 150 },
-  { icon: '⭐', name: 'Punto extra', description: '+1 punto en una tarea o examen', category: 'CONSUMABLE', rarity: 'LEGENDARY', price: 200 },
+/** Sin datos de ingreso, el servidor calcula con 10 de oro por semana (DEFAULT_WEEKLY_GOLD). */
+export const DEFAULT_WEEKLY_GOLD = 10;
+
+/** Precio de «N semanas de oro» de la clase. */
+export const weeksPrice = (weeks: number, weekly: number) => Math.max(1, Math.round(weeks * weekly));
+
+/** «menos de una semana», «≈ 1 semana», «≈ 3 semanas». */
+export const weeksText = (price: number, weekly: number) => {
+  const weeks = price / Math.max(0.1, weekly);
+  if (weeks < 0.75) return 'menos de una semana';
+  const rounded = Math.max(1, Math.round(weeks));
+  return `≈ ${rounded} ${rounded === 1 ? 'semana' : 'semanas'}`;
+};
+
+// Ideas con propósito: privilegios, responsabilidades y experiencias. Nada que cambie notas, plazos,
+// XP o energía, ni golosinas. El precio sale de lo que gana la clase en una semana.
+export const ITEM_EXAMPLES: { icon: string; name: string; description: string; category: ShopItem['category']; weeks: number }[] = [
+  { icon: '💺', name: 'Elegir asiento', description: 'Elige dónde sentarte por un día', category: 'CONSUMABLE', weeks: 1 },
+  { icon: '🎵', name: 'DJ por un día', description: 'Elige la música de fondo durante el trabajo', category: 'CONSUMABLE', weeks: 1.5 },
+  { icon: '🎲', name: 'Elegir el juego', description: 'Elige el juego de los últimos minutos de clase', category: 'CONSUMABLE', weeks: 2 },
+  { icon: '🧑‍🏫', name: 'Ayudante del profe', description: 'Sé el ayudante del profe por un día', category: 'CONSUMABLE', weeks: 3 },
+  { icon: '📖', name: 'Elegir el cuento', description: 'Elige el cuento o la lectura de la semana', category: 'CONSUMABLE', weeks: 4 },
+  { icon: '💌', name: 'Carta a tu familia', description: 'Tu profe le escribe a tu familia contando algo que hiciste bien', category: 'CONSUMABLE', weeks: 8 },
 ];
+
+/**
+ * Palabras de premios que mandan otro mensaje (notas, plazos, XP, energía o golosinas). Solo avisa:
+ * el docente decide.
+ */
+export const OFF_MESSAGE_PATTERN = /\b(notas?|calificaci\w*|puntos? extra|ex[aá]men(es)?|evaluaci\w*|entreg\w* tarde|plazos?|xp|energ[ií]a|hp|escudo|dulces?|golosinas?|caramelos?|chocolates?|chicles?|snacks?|comida)\b/i;

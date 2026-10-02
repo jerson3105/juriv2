@@ -1,13 +1,14 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useOutletContext } from 'react-router-dom';
+import { Link, useOutletContext } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
-import { Backpack, Plus, Search, Shirt, ShoppingBag, Sparkles } from 'lucide-react';
+import { Backpack, Coins, Plus, Search, Shirt, ShoppingBag, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { AvatarShopManager } from '../../components/classroom/AvatarShopManager';
 import { classroomApi, type Classroom } from '../../lib/classroomApi';
-import { shopApi, type ItemCategory, type ItemRarity, type ShopItem } from '../../lib/shopApi';
+import { rarityForPrice, shopApi, type ItemCategory, type ItemRarity, type ShopItem } from '../../lib/shopApi';
 import { studentLabel } from '../../components/badges/badgeHelpers';
+import { isInitialLevel } from '../../components/energy/energyHelpers';
 import { ShopItemCard } from '../../components/shop/ShopItemCard';
 import { ShopItemFormModal, type ShopFormTarget, type ShopItemFormData } from '../../components/shop/ShopItemFormModal';
 import { GiveItemModal } from '../../components/shop/GiveItemModal';
@@ -15,7 +16,7 @@ import { PendingTray } from '../../components/shop/PendingTray';
 import { ShopSettingsBar } from '../../components/shop/ShopSettingsBar';
 import { InventoryPanel } from '../../components/shop/InventoryPanel';
 import { AIShopModal, type GeneratedShopItem } from '../../components/shop/AIShopModal';
-import { ITEM_EXAMPLES, SHOP_RARITY_ORDER, SHOP_RARITY_STYLE, shopInventoryKey } from '../../components/shop/shopHelpers';
+import { DEFAULT_WEEKLY_GOLD, ITEM_EXAMPLES, SHOP_RARITY_ORDER, SHOP_RARITY_STYLE, shopEconomyKey, shopInventoryKey, weeksPrice } from '../../components/shop/shopHelpers';
 
 type SortKey = 'rarity' | 'price' | 'sold' | 'name';
 const SORT_KEY = 'juried:shop-sort';
@@ -62,6 +63,14 @@ export const ShopPage = () => {
     queryKey: shopInventoryKey(classroom.id),
     queryFn: () => shopApi.getInventory(classroom.id),
   });
+  // Ingreso semanal de la clase (precios por semanas) y metas de los estudiantes («N lo quieren»).
+  const { data: economyData } = useQuery({
+    queryKey: shopEconomyKey(classroom.id),
+    queryFn: () => shopApi.getEconomy(classroom.id),
+  });
+  const economy = economyData?.economy ?? null;
+  const weekly = economy?.effectiveWeekly ?? DEFAULT_WEEKLY_GOLD;
+  const wantedByItem = useMemo(() => new Map((economyData?.goals ?? []).map((goal) => [goal.itemId, goal.count])), [economyData]);
 
   const showCharacterName = classroom.showCharacterName ?? true;
   const studentsById = useMemo(() => new Map((classroomData?.students ?? []).map((s) => [s.id, s])), [classroomData]);
@@ -70,11 +79,11 @@ export const ShopPage = () => {
     return student ? studentLabel(student, showCharacterName) : fallback || 'Estudiante';
   }, [studentsById, showCharacterName]);
 
-  // Unidades vendidas (compras y regalos entre estudiantes; no cuenta lo que diste tú).
+  // Unidades vendidas (compras, regalos y canjes con oro; no cuenta lo que diste tú ni los premios de racha).
   const soldByItem = useMemo(() => {
     const map = new Map<string, number>();
     for (const row of inventory?.owned ?? []) {
-      if (row.purchaseType === 'TEACHER') continue;
+      if (row.purchaseType === 'TEACHER' || row.purchaseType === 'REWARD') continue;
       map.set(row.item.id, (map.get(row.item.id) ?? 0) + row.quantity);
     }
     return map;
@@ -96,7 +105,21 @@ export const ShopPage = () => {
     });
   }, [items, search, rarityFilter, categoryFilter, sort, soldByItem]);
 
-  const refreshItems = () => queryClient.invalidateQueries({ queryKey: itemsKey });
+  const refreshItems = () => {
+    void queryClient.invalidateQueries({ queryKey: itemsKey });
+    void queryClient.invalidateQueries({ queryKey: shopEconomyKey(classroom.id) });
+  };
+
+  // Avisos de economía: sin ingreso de oro, sin un primer premio barato o con premios de más de un bimestre.
+  const activeItems = items.filter((item) => item.isActive !== false);
+  const hasFirstPrize = !economy || activeItems.some((item) => item.price <= economy.firstPrizeMax && (item.stock === null || item.stock > 0));
+  const overBimester = economy ? activeItems.filter((item) => item.price > economy.maxPrice).length : 0;
+  const economyHints = economy && activeItems.length > 0 ? [
+    !economy.behaviorsGiveGold && 'Tus comportamientos positivos no dan oro: sin oro, nadie puede comprar.',
+    economy.behaviorsGiveGold && economy.weeklyGold === 0 && 'En las últimas 4 semanas tus estudiantes no ganaron oro.',
+    !hasFirstPrize && `Agrega un primer premio de ${economy.firstPrizeMax} de oro o menos: así todos llegan pronto a uno.`,
+    overBimester > 0 && `${overBimester === 1 ? 'Un premio cuesta' : `${overBimester} premios cuestan`} más de un bimestre de ahorro (${economy.maxPrice} de oro): pocos llegarán.`,
+  ].filter((hint): hint is string => !!hint) : [];
 
   const saveMutation = useMutation({
     mutationFn: async ({ data, id }: { data: ShopItemFormData; id?: string }) => {
@@ -262,7 +285,37 @@ export const ShopPage = () => {
       ) : (
         <>
           <ShopSettingsBar key={`${classroom.dailyPurchaseLimit ?? 'none'}`} classroom={classroom} onSaved={refetch} />
-          <PendingTray classroomId={classroom.id} nameOf={nameOf} />
+          <PendingTray classroomId={classroom.id} nameOf={nameOf} initial={isInitialLevel(classroom.gradeLevel)} />
+
+          {economy && activeItems.length > 0 && (
+            <section aria-labelledby="shop-economy-title" className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+              <div className="flex items-start gap-3">
+                <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" aria-hidden="true">
+                  <Coins size={20} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h2 id="shop-economy-title" className="text-sm font-bold text-gray-900 dark:text-white">Economía de la tienda</h2>
+                  <p className="text-sm text-gray-700 dark:text-gray-300">
+                    {economy.weeklyGold > 0
+                      ? `Tus estudiantes ganan unos ${economy.weeklyGold.toLocaleString('es')} de oro por semana. Común: ${economy.bands.COMMON.min}–${economy.bands.COMMON.max} · raro: ${economy.bands.RARE.min}–${economy.bands.RARE.max} · legendario: ${economy.bands.LEGENDARY.min}–${economy.bands.LEGENDARY.max} de oro.`
+                      : `Aún no hay ingreso de oro: los precios sugeridos usan ${DEFAULT_WEEKLY_GOLD} de oro por semana.`}
+                  </p>
+                  {economyHints.length > 0 && (
+                    <ul className="mt-2 space-y-1">
+                      {economyHints.map((hint) => (
+                        <li key={hint} className="text-sm font-semibold text-amber-900 dark:text-amber-100">• {hint}</li>
+                      ))}
+                    </ul>
+                  )}
+                  {!economy.behaviorsGiveGold && (
+                    <Link to={`/classroom/${classroom.id}/behaviors`} className="mt-1 inline-flex min-h-[44px] items-center text-sm font-semibold text-primary-700 hover:underline dark:text-primary-300">
+                      Ir a comportamientos
+                    </Link>
+                  )}
+                </div>
+              </div>
+            </section>
+          )}
 
           {isLoading ? (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
@@ -280,7 +333,17 @@ export const ShopPage = () => {
                   <button
                     key={example.name}
                     type="button"
-                    onClick={() => setFormTarget({ kind: 'create', template: { ...example, id: '', classroomId: classroom.id, imageUrl: null, effectType: null, effectValue: null, stock: null, isActive: true, createdAt: '', updatedAt: '', name: example.name } as ShopItem })}
+                    onClick={() => {
+                      const price = weeksPrice(example.weeks, weekly);
+                      setFormTarget({
+                        kind: 'create',
+                        template: {
+                          id: '', classroomId: classroom.id, name: example.name, description: example.description, category: example.category,
+                          rarity: rarityForPrice(price, weekly), price, icon: example.icon, imageUrl: null, effectType: null, effectValue: null,
+                          stock: null, isActive: true, createdAt: '', updatedAt: '',
+                        },
+                      });
+                    }}
                     className="inline-flex min-h-[40px] items-center gap-1.5 rounded-full border border-gray-300 bg-white px-3 text-sm font-medium text-gray-800 hover:border-primary-400 hover:bg-primary-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-primary-900/30"
                   >
                     <span aria-hidden="true">{example.icon}</span>
@@ -351,6 +414,7 @@ export const ShopPage = () => {
                         item={item}
                         index={index}
                         sold={soldByItem.get(item.id) ?? 0}
+                        wanted={wantedByItem.get(item.id) ?? 0}
                         onGive={() => setGiveItem(item)}
                         onEdit={() => setFormTarget({ kind: 'edit', item })}
                         onDuplicate={() => setFormTarget({ kind: 'create', template: item })}
@@ -370,6 +434,7 @@ export const ShopPage = () => {
           <ShopItemFormModal
             key={formTarget.kind === 'edit' ? `edit-${formTarget.item.id}` : `create-${formTarget.template?.name ?? 'new'}`}
             target={formTarget}
+            economy={economy}
             isSaving={saveMutation.isPending}
             onClose={() => setFormTarget(null)}
             onSubmit={handleSave}
@@ -378,14 +443,14 @@ export const ShopPage = () => {
       </AnimatePresence>
       <AnimatePresence>
         {giveItem && (
-          <GiveItemModal key={giveItem.id} item={giveItem} classroomId={classroom.id} showCharacterName={showCharacterName} onClose={() => setGiveItem(null)} />
+          <GiveItemModal key={giveItem.id} item={giveItem} classroomId={classroom.id} showCharacterName={showCharacterName} initial={isInitialLevel(classroom.gradeLevel)} onClose={() => setGiveItem(null)} />
         )}
       </AnimatePresence>
       <AnimatePresence>
         {showInventory && <InventoryPanel key="inventory" classroomId={classroom.id} nameOf={nameOf} onClose={() => setShowInventory(false)} />}
       </AnimatePresence>
       <AnimatePresence>
-        {showAI && <AIShopModal key="ai" onClose={() => setShowAI(false)} onImport={handleImport} />}
+        {showAI && <AIShopModal key="ai" classroomId={classroom.id} weekly={weekly} onClose={() => setShowAI(false)} onImport={handleImport} />}
       </AnimatePresence>
     </div>
   );

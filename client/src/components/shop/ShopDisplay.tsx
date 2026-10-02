@@ -62,6 +62,6 @@ export const PriceTag = ({ price, large = false }: { price: number; large?: bool
     <span className="absolute left-1.5 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-amber-950/40" aria-hidden="true" />
     <Coins size={large ? 18 : 16} aria-hidden="true" />
     {price}
-    <span className="text-xs font-bold">GP</span>
+    <span className="text-xs font-bold">oro</span>
   </span>
 );

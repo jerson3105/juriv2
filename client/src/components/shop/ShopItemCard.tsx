@@ -8,6 +8,8 @@ interface ShopItemCardProps {
   item: ShopItem;
   index: number;
   sold: number;
+  /** Estudiantes que lo eligieron como meta. */
+  wanted: number;
   onGive: () => void;
   onEdit: () => void;
   onDuplicate: () => void;
@@ -18,7 +20,7 @@ const iconButton =
   'flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white';
 
 // Producto en la vitrina de la tienda: precio a la vista, stock y cuántos se vendieron.
-export const ShopItemCard = ({ item, index, sold, onGive, onEdit, onDuplicate, onDelete }: ShopItemCardProps) => {
+export const ShopItemCard = ({ item, index, sold, wanted, onGive, onEdit, onDuplicate, onDelete }: ShopItemCardProps) => {
   const style = SHOP_RARITY_STYLE[item.rarity];
   const soldOut = item.stock !== null && item.stock <= 0;
   const fewLeft = item.stock !== null && item.stock > 0 && item.stock <= 3;
@@ -67,6 +69,14 @@ export const ShopItemCard = ({ item, index, sold, onGive, onEdit, onDuplicate, o
           <span className={sold > 0 ? 'font-semibold text-gray-900 dark:text-gray-100' : 'italic'}>
             {sold > 0 ? `${sold} ${sold === 1 ? 'vendido' : 'vendidos'}` : 'Sin ventas'}
           </span>
+          {wanted > 0 && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span className="font-semibold text-gray-900 dark:text-gray-100" title="Estudiantes que lo eligieron como meta">
+                🎯 {wanted} {wanted === 1 ? 'lo quiere' : 'lo quieren'}
+              </span>
+            </>
+          )}
         </p>
 
         <div className="mt-auto space-y-2 pt-3">
@@ -77,7 +87,7 @@ export const ShopItemCard = ({ item, index, sold, onGive, onEdit, onDuplicate, o
             className="inline-flex min-h-[40px] w-full items-center justify-center gap-1.5 rounded-xl bg-primary-600 px-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600 dark:disabled:bg-gray-700 dark:disabled:text-gray-300"
           >
             <Gift size={16} aria-hidden="true" />
-            Dar a estudiantes
+            Dar o canjear
           </button>
           <div className="flex justify-center gap-1">
             <button type="button" onClick={onEdit} aria-label={`Editar ${item.name}`} title="Editar" className={iconButton}>

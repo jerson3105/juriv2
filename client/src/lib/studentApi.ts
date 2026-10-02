@@ -249,7 +249,8 @@ export const studentApi = {
   },
 
   // Obtener mis clases como estudiante
-  getMyClasses: async (): Promise<(StudentProfile & { classroom: { id: string; name: string; code: string; clansEnabled?: boolean; scrollsEnabled?: boolean; scrollsOpen?: boolean; scrollsRequireApproval?: boolean; useCompetencies?: boolean; hasActiveStory?: boolean; themeConfig?: { colors?: { primary?: string; secondary?: string; accent?: string; background?: string; sidebar?: string }; particles?: { type?: string; color?: string; speed?: string; density?: string }; decorations?: Array<{ type: string; position: string; asset: string }>; banner?: { emoji?: string; title?: string } } | null } })[]> => {
+  // shopSummary: premios a la venta en la clase y premios propios o pedidos (el menú «Tienda» se ve si hay alguno).
+  getMyClasses: async (): Promise<(StudentProfile & { shopGoalItemId?: string | null; shopSummary?: { items: number; owned: number }; classroom: { id: string; name: string; code: string; shopEnabled?: boolean; clansEnabled?: boolean; scrollsEnabled?: boolean; scrollsOpen?: boolean; scrollsRequireApproval?: boolean; useCompetencies?: boolean; hasActiveStory?: boolean; themeConfig?: { colors?: { primary?: string; secondary?: string; accent?: string; background?: string; sidebar?: string }; particles?: { type?: string; color?: string; speed?: string; density?: string }; decorations?: Array<{ type: string; position: string; asset: string }>; banner?: { emoji?: string; title?: string } } | null } })[]> => {
     const response = await api.get('/students/my-classes');
     return response.data.data;
   },

@@ -9,6 +9,8 @@ import { shopInventoryKey } from './shopHelpers';
 interface PendingTrayProps {
   classroomId: string;
   nameOf: (studentId: string, fallback: string | null) => string;
+  /** Inicial: sin pausa por descanso. */
+  initial: boolean;
 }
 
 type Entry =
@@ -34,8 +36,12 @@ const ItemIcon = ({ icon, imageUrl }: { icon: string | null; imageUrl?: string |
     <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-100 text-2xl dark:bg-amber-900/40" aria-hidden="true">{icon || '🎁'}</span>
   );
 
-// Todo lo que espera al profesor en la tienda: compras por aprobar y usos por canjear.
-export const PendingTray = ({ classroomId, nameOf }: PendingTrayProps) => {
+// Quien paga (en un regalo, quien regala) o quien usa: con 0 de energía la aprobación espera a que vuelva.
+const payerOf = (entry: Entry) =>
+  entry.kind === 'purchase' && entry.data.purchaseType === 'GIFT' && entry.data.buyer ? entry.data.buyer : entry.data.student;
+
+// Todo lo que espera al profesor en la tienda: compras y regalos por aprobar y usos por canjear.
+export const PendingTray = ({ classroomId, nameOf, initial }: PendingTrayProps) => {
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -86,15 +92,20 @@ export const PendingTray = ({ classroomId, nameOf }: PendingTrayProps) => {
     }
   };
 
+  const resting = (entry: Entry) => !initial && (payerOf(entry).hp ?? 1) <= 0;
+
   const approveAll = async () => {
+    const ready = entries.filter((entry) => !resting(entry));
+    const waiting = entries.length - ready.length;
     setBulkBusy(true);
-    const outcomes = await Promise.allSettled(entries.map((entry) => run(entry, true)));
+    const outcomes = await Promise.allSettled(ready.map((entry) => run(entry, true)));
     const failed = outcomes.filter((o) => o.status === 'rejected').length;
-    const done = entries.length - failed;
+    const done = ready.length - failed;
     refresh();
     setBulkBusy(false);
-    if (failed === 0) toast.success(`Aprobado todo (${done})`);
-    else toast.error(`Aprobados ${done} de ${entries.length}; ${failed} no se pudieron (p. ej. sin oro suficiente)`);
+    const rest = waiting > 0 ? ` · ${waiting} esperan a que vuelvan de su descanso` : '';
+    if (failed === 0) toast.success(`Aprobado (${done})${rest}`);
+    else toast.error(`Aprobados ${done} de ${ready.length}; ${failed} no se pudieron (p. ej. sin oro suficiente)${rest}`);
   };
 
   if (entries.length === 0) return null;
@@ -107,7 +118,7 @@ export const PendingTray = ({ classroomId, nameOf }: PendingTrayProps) => {
             <ShoppingCart size={16} />
           </span>
           Por atender
-          <span className="rounded-full bg-amber-600 px-2 py-0.5 text-xs font-black text-white">{entries.length}</span>
+          <span className="rounded-full bg-amber-700 px-2 py-0.5 text-xs font-black text-white">{entries.length}</span>
         </h2>
         {entries.length > 1 && (
           <button
@@ -127,7 +138,12 @@ export const PendingTray = ({ classroomId, nameOf }: PendingTrayProps) => {
             const name = nameOf(entry.data.student.id, entry.data.student.characterName);
             const isBusy = busy.has(entry.id) || bulkBusy;
             const purchase = entry.kind === 'purchase' ? entry.data : null;
-            const shortOfGold = purchase && purchase.student.gp !== undefined && purchase.student.gp < purchase.totalPrice;
+            const isGift = purchase?.purchaseType === 'GIFT' && !!purchase.buyer;
+            const payer = payerOf(entry);
+            const payerName = isGift ? nameOf(purchase!.buyer!.id, purchase!.buyer!.characterName) : name;
+            const payerGold = 'gp' in payer ? payer.gp : undefined;
+            const shortOfGold = !!purchase && payerGold !== undefined && payerGold < purchase.totalPrice;
+            const isResting = resting(entry);
             return (
               <motion.li
                 key={`${entry.kind}-${entry.id}`}
@@ -140,18 +156,36 @@ export const PendingTray = ({ classroomId, nameOf }: PendingTrayProps) => {
                 <ItemIcon icon={entry.data.item.icon} imageUrl={entry.data.item.imageUrl} />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm text-gray-900 dark:text-white">
-                    <span className="font-bold">{name}</span>{' '}
-                    {entry.kind === 'purchase' ? 'quiere comprar' : 'quiere usar'}{' '}
-                    <span className="font-bold">{entry.data.item.name}</span>
+                    {isGift ? (
+                      <>
+                        <span className="font-bold">{payerName}</span> quiere regalarle{' '}
+                        <span className="font-bold">{entry.data.item.name}</span> a <span className="font-bold">{name}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="font-bold">{name}</span>{' '}
+                        {entry.kind === 'purchase' ? 'quiere comprar' : 'quiere usar'}{' '}
+                        <span className="font-bold">{entry.data.item.name}</span>
+                      </>
+                    )}
                     {purchase && purchase.quantity > 1 && <span className="font-semibold"> ×{purchase.quantity}</span>}
                   </p>
                   <p className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
                     <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-bold ${entry.kind === 'purchase' ? 'bg-amber-200 text-amber-950 dark:bg-amber-800 dark:text-amber-50' : 'bg-violet-100 text-violet-900 dark:bg-violet-900/60 dark:text-violet-100'}`}>
                       {entry.kind === 'purchase' ? <Coins size={12} aria-hidden="true" /> : <Sparkles size={12} aria-hidden="true" />}
-                      {entry.kind === 'purchase' ? `Compra · ${purchase!.totalPrice} GP` : 'Uso'}
+                      {entry.kind === 'purchase' ? `${isGift ? 'Regalo' : 'Compra'} · ${purchase!.totalPrice} de oro` : 'Uso'}
                     </span>
                     <span>{timeAgo(entry.at)}</span>
-                    {shortOfGold && <span className="font-semibold text-red-700 dark:text-red-300">Ya no tiene oro suficiente ({purchase!.student.gp} GP)</span>}
+                    {shortOfGold && (
+                      <span className="font-semibold text-red-700 dark:text-red-300">
+                        {isGift ? `${payerName} ya no tiene oro suficiente` : 'Ya no tiene oro suficiente'} ({payerGold} de oro)
+                      </span>
+                    )}
+                    {isResting && (
+                      <span className="font-semibold text-slate-800 dark:text-slate-100">
+                        {isGift ? `${payerName} está descansando` : 'Está descansando'}: podrás aprobarlo cuando vuelva
+                      </span>
+                    )}
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -168,7 +202,7 @@ export const PendingTray = ({ classroomId, nameOf }: PendingTrayProps) => {
                   <button
                     type="button"
                     onClick={() => void act(entry, true)}
-                    disabled={isBusy}
+                    disabled={isBusy || isResting}
                     aria-label={`Aprobar: ${name}, ${entry.data.item.name}`}
                     className="inline-flex min-h-[40px] items-center gap-1 rounded-xl bg-green-700 px-3 text-sm font-bold text-white hover:bg-green-800 disabled:opacity-60"
                   >

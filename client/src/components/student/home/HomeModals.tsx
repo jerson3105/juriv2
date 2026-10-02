@@ -66,7 +66,7 @@ export const EnergyModal = ({ initial, onClose }: { initial: boolean; onClose: (
         <p>Si llega a 0, descansas un ratito y tu profe te ayuda a volver.</p>
       ) : (
         <>
-          <p>Si llega a 0, descansas: la tienda se pausa, pero sigues ganando XP.</p>
+          <p>Si llega a 0, descansas: la tienda de premios se pausa, pero sigues ganando XP y oro.</p>
           <p>Para volver, cumples una misión con tu profe y regresas con la mitad de tu energía.</p>
         </>
       )}

@@ -115,7 +115,7 @@ export const StudentHome = ({ profile, firstName, storyAccent }: StudentHomeProp
       others: roles.filter((role) => role.isActive && role.name !== roleName).map((role) => role.name),
     },
     badgeProgress,
-    shop: { enabled: !!classroom.shopEnabled && !resting, items: prizes },
+    shop: { enabled: !!classroom.shopEnabled && !resting, items: prizes, goalItemId: profile.shopGoalItemId ?? null },
     gold: profile.gp,
     level: { level: profile.level, remaining },
   };
@@ -216,7 +216,15 @@ export const StudentHome = ({ profile, firstName, storyAccent }: StudentHomeProp
       </div>
 
       <AccessTiles
-        shop={{ visible: !!classroom.shopEnabled && prizes.length > 0, paused: resting && !initial, prices: prizes.map((item) => item.price), gold: profile.gp }}
+        shop={{
+          // Igual que el menú: hay qué comprar o algo tuyo que ver o usar.
+          visible: (!!classroom.shopEnabled && prizes.length > 0) || (profile.shopSummary?.owned ?? 0) > 0,
+          enabled: !!classroom.shopEnabled,
+          paused: resting && !initial,
+          prices: prizes.map((item) => item.price),
+          gold: profile.gp,
+          owned: profile.shopSummary?.owned ?? 0,
+        }}
         badges={{ visible: myBadges.length > 0 || badgeProgress.length > 0, count: myBadges.length, near: near?.badge.name ?? null }}
         avatar={avatarItems > 0}
         scrolls={!!classroom.scrollsEnabled && !!classroom.scrollsOpen}

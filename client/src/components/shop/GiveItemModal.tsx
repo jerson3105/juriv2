@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion, useIsPresent } from 'framer-motion';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Gift, Search, UserCheck, Users, X } from 'lucide-react';
+import { Check, Coins, Gift, Search, UserCheck, Users, X } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { shopApi, type GiveBulkResult, type ShopItem } from '../../lib/shopApi';
+import { shopApi, type GiveBulkResult, type RedeemResult, type ShopItem } from '../../lib/shopApi';
 import { classroomApi } from '../../lib/classroomApi';
 import { attendanceApi, type AttendanceRecord } from '../../lib/attendanceApi';
 import { studentLabel } from '../badges/badgeHelpers';
@@ -14,8 +14,12 @@ interface GiveItemModalProps {
   item: ShopItem;
   classroomId: string;
   showCharacterName: boolean;
+  /** Inicial: sin pausa de tienda por descanso. */
+  initial: boolean;
   onClose: () => void;
 }
+
+type Mode = 'free' | 'redeem';
 
 const localToday = () => {
   const now = new Date();
@@ -25,9 +29,14 @@ const localToday = () => {
 const errorMessage = (error: unknown, fallback: string) =>
   (error as { response?: { data?: { message?: string } } })?.response?.data?.message || fallback;
 
-// Regalar un artículo (gratis) a uno o varios estudiantes, con Deshacer mientras no lo usen.
-export const GiveItemModal = ({ item, classroomId, showCharacterName, onClose }: GiveItemModalProps) => {
+/**
+ * Dar un artículo a uno o varios estudiantes: gratis, o canjeado con su oro (clases sin cuentas de
+ * alumno y pequeños: el canje se hace en clase). Con Deshacer mientras no lo usen.
+ */
+export const GiveItemModal = ({ item, classroomId, showCharacterName, initial, onClose }: GiveItemModalProps) => {
   const queryClient = useQueryClient();
+  const [mode, setMode] = useState<Mode>('free');
+  const [useNow, setUseNow] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
   const [isGiving, setIsGiving] = useState(false);
@@ -76,6 +85,27 @@ export const GiveItemModal = ({ item, classroomId, showCharacterName, onClose }:
   };
   const stockLeft = item.stock;
   const overStock = stockLeft !== null && selected.size > stockLeft;
+  // Al canjear: no le alcanza el oro o descansa (la tienda está en pausa, salvo en Inicial).
+  const blockedReason = (student: { gp: number; hp: number }) => {
+    if (mode !== 'redeem') return null;
+    if (student.hp <= 0 && !initial) return 'Descansando';
+    if (student.gp < item.price) return `Le faltan ${(item.price - student.gp).toLocaleString('es')} de oro`;
+    return null;
+  };
+  const selectable = (id: string) => {
+    const student = students.find((s) => s.id === id);
+    return !!student && !blockedReason(student);
+  };
+  const changeMode = (next: Mode) => {
+    setMode(next);
+    // Al pasar a canje se quitan quienes no pueden canjear.
+    if (next === 'redeem') {
+      setSelected((prev) => new Set([...prev].filter((id) => {
+        const student = students.find((s) => s.id === id);
+        return !!student && student.gp >= item.price && (student.hp > 0 || initial);
+      })));
+    }
+  };
 
   const handleKey = useCallback((event: KeyboardEvent) => {
     if (event.key === 'Escape' && isPresent && !event.defaultPrevented) onClose();
@@ -88,6 +118,56 @@ export const GiveItemModal = ({ item, classroomId, showCharacterName, onClose }:
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: shopInventoryKey(classroomId) });
     queryClient.invalidateQueries({ queryKey: ['shop-items', classroomId] });
+    // El canje cambia el oro de los estudiantes.
+    queryClient.invalidateQueries({ queryKey: ['classroom', classroomId] });
+  };
+
+  const undoRedeem = async (result: RedeemResult) => {
+    const toastId = toast.loading('Deshaciendo...');
+    const outcomes = await Promise.allSettled(result.redeemed.map((r) => shopApi.undoRedeem(r.purchaseId)));
+    const failed = outcomes.filter((o) => o.status === 'rejected').length;
+    refresh();
+    if (failed === 0) toast.success(`Canje deshecho: se devolvió el oro de ${item.name}`, { id: toastId });
+    else toast.error(`No se pudo deshacer en ${failed} de ${result.redeemed.length} (ya pidieron usarlo)`, { id: toastId });
+  };
+
+  const redeem = async () => {
+    const ids = Array.from(selected).filter(selectable);
+    if (ids.length === 0 || isGiving) return;
+    setIsGiving(true);
+    try {
+      const result = await shopApi.redeem(item.id, ids, item.category === 'CONSUMABLE' && useNow);
+      refresh();
+      if (result.redeemed.length === 0) {
+        toast.error(result.failed[0] ? `${nameOf(result.failed[0].studentId)}: ${result.failed[0].message}` : 'No se pudo canjear');
+        return;
+      }
+      const who = result.redeemed.length === 1 ? nameOf(result.redeemed[0].studentId) : `${result.redeemed.length} estudiantes`;
+      const skipped = result.failed.length > 0 ? ` · ${result.failed.length} sin canjear (${result.failed[0].message})` : '';
+      toast.success(
+        (t) => (
+          <span className="flex items-center gap-3">
+            <span>{item.icon} {item.name} canjeado por {who}{skipped}</span>
+            <button
+              type="button"
+              onClick={() => {
+                toast.dismiss(t.id);
+                void undoRedeem(result);
+              }}
+              className="shrink-0 min-h-[36px] rounded-lg border border-white/40 px-3 text-sm font-semibold text-white hover:bg-white/15"
+            >
+              Deshacer
+            </button>
+          </span>
+        ),
+        { duration: 8000 },
+      );
+      onClose();
+    } catch (error) {
+      toast.error(errorMessage(error, 'No se pudo canjear el artículo'));
+    } finally {
+      setIsGiving(false);
+    }
   };
 
   const undo = async (result: GiveBulkResult) => {
@@ -137,11 +217,12 @@ export const GiveItemModal = ({ item, classroomId, showCharacterName, onClose }:
     }
   };
 
+  // Siempre se puede quitar; solo se agrega a quien puede recibirlo.
   const toggle = (id: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
-      else next.add(id);
+      else if (selectable(id)) next.add(id);
       return next;
     });
 
@@ -170,7 +251,7 @@ export const GiveItemModal = ({ item, classroomId, showCharacterName, onClose }:
             <ShopDisplay item={item} size="sm" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">Dar gratis a estudiantes</p>
+            <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">{mode === 'free' ? 'Dar gratis a estudiantes' : 'Canjear con el oro de cada estudiante'}</p>
             <h2 id="give-item-title" className="truncate text-xl font-black text-gray-900 dark:text-white">{item.name}</h2>
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <PriceTag price={item.price} />
@@ -181,6 +262,34 @@ export const GiveItemModal = ({ item, classroomId, showCharacterName, onClose }:
           <button type="button" onClick={onClose} aria-label="Cerrar" className="flex h-11 w-11 flex-shrink-0 items-center justify-center self-start rounded-lg text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700">
             <X size={20} aria-hidden="true" />
           </button>
+        </div>
+
+        <div className="space-y-2 border-b border-gray-200 px-5 py-3 dark:border-gray-700">
+          <div className="grid grid-cols-2 gap-1 rounded-xl border border-gray-300 bg-white p-1 sm:inline-grid dark:border-gray-600 dark:bg-gray-800" role="group" aria-label="Cómo lo recibe">
+            {([['free', 'Gratis', Gift], ['redeem', 'Con su oro (canje)', Coins]] as const).map(([value, label, Icon]) => (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={mode === value}
+                onClick={() => changeMode(value)}
+                className={`inline-flex min-h-[40px] items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors ${mode === value ? 'bg-primary-600 text-white' : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700'}`}
+              >
+                <Icon size={16} aria-hidden="true" />
+                {label}
+              </button>
+            ))}
+          </div>
+          {mode === 'redeem' && (
+            <p className="text-sm text-gray-700 dark:text-gray-300">
+              Para canjear en clase: a cada uno se le descuentan {item.price.toLocaleString('es')} de oro y lo verá en su historial.
+            </p>
+          )}
+          {mode === 'redeem' && item.category === 'CONSUMABLE' && (
+            <label className="flex min-h-[40px] cursor-pointer items-center gap-2 text-sm font-medium text-gray-800 dark:text-gray-100">
+              <input type="checkbox" checked={useNow} onChange={(e) => setUseNow(e.target.checked)} className="h-4 w-4 accent-primary-600" />
+              Usar ahora (queda registrado como usado)
+            </label>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 px-5 py-3 dark:border-gray-700">
@@ -199,7 +308,7 @@ export const GiveItemModal = ({ item, classroomId, showCharacterName, onClose }:
             type="button"
             onClick={() => setSelected((prev) => {
               const next = new Set(prev);
-              visible.forEach((s) => (allVisibleSelected ? next.delete(s.id) : next.add(s.id)));
+              visible.forEach((s) => (allVisibleSelected ? next.delete(s.id) : !blockedReason(s) && next.add(s.id)));
               return next;
             })}
             aria-pressed={allVisibleSelected}
@@ -209,7 +318,7 @@ export const GiveItemModal = ({ item, classroomId, showCharacterName, onClose }:
             {allVisibleSelected ? 'Ninguno' : 'Todos'}
           </button>
           {presentIds && (
-            <button type="button" onClick={() => setSelected(new Set(students.filter((s) => presentIds.has(s.id)).map((s) => s.id)))} className={secondary}>
+            <button type="button" onClick={() => setSelected(new Set(students.filter((s) => presentIds.has(s.id) && !blockedReason(s)).map((s) => s.id)))} className={secondary}>
               <UserCheck size={16} aria-hidden="true" />
               Solo presentes
             </button>
@@ -227,16 +336,20 @@ export const GiveItemModal = ({ item, classroomId, showCharacterName, onClose }:
                 const isSelected = selected.has(student.id);
                 const has = owned.get(student.id) ?? 0;
                 const name = studentLabel(student, showCharacterName);
+                const blocked = blockedReason(student);
                 return (
                   <li key={student.id}>
                     <button
                       type="button"
                       onClick={() => toggle(student.id)}
                       aria-pressed={isSelected}
+                      aria-disabled={!!blocked}
                       className={`flex w-full items-center gap-3 rounded-xl border-2 p-2.5 text-left transition-colors ${
-                        isSelected
-                          ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-900/30'
-                          : 'border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600'
+                        blocked
+                          ? 'cursor-not-allowed border-dashed border-gray-300 bg-gray-50 dark:border-gray-600 dark:bg-gray-900/40'
+                          : isSelected
+                            ? 'border-primary-500 bg-primary-50 dark:border-primary-400 dark:bg-primary-900/30'
+                            : 'border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600'
                       }`}
                     >
                       <span className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-sm font-bold ${isSelected ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-100'}`} aria-hidden="true">
@@ -244,7 +357,9 @@ export const GiveItemModal = ({ item, classroomId, showCharacterName, onClose }:
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-semibold text-gray-900 dark:text-white">{name}</span>
-                        <span className="block text-xs text-gray-700 dark:text-gray-300">{student.gp} GP</span>
+                        <span className="block text-xs text-gray-700 dark:text-gray-300">
+                          {student.gp.toLocaleString('es')} de oro{blocked ? ` · ${blocked}` : ''}
+                        </span>
                       </span>
                       {has > 0 && (
                         <span className="flex-shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-900 dark:bg-amber-900/50 dark:text-amber-100">
@@ -261,7 +376,9 @@ export const GiveItemModal = ({ item, classroomId, showCharacterName, onClose }:
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 bg-gray-50 px-5 py-3 dark:border-gray-700 dark:bg-gray-900/40">
           <p className={`text-sm ${overStock ? 'font-semibold text-red-700 dark:text-red-300' : 'text-gray-700 dark:text-gray-300'}`} role="status">
-            {overStock ? `Solo quedan ${stockLeft}: algunos no lo recibirán` : 'No les cuesta oro.'}
+            {overStock
+              ? `Solo quedan ${stockLeft}: algunos no lo recibirán`
+              : mode === 'free' ? 'No les cuesta oro.' : `Se descuentan ${item.price.toLocaleString('es')} de oro a cada uno.`}
           </p>
           <div className="flex gap-2">
             <button type="button" onClick={onClose} className="min-h-[44px] rounded-xl px-4 text-sm font-semibold text-gray-700 hover:bg-gray-200 dark:text-gray-200 dark:hover:bg-gray-700">
@@ -269,12 +386,14 @@ export const GiveItemModal = ({ item, classroomId, showCharacterName, onClose }:
             </button>
             <button
               type="button"
-              onClick={() => void give()}
+              onClick={() => void (mode === 'free' ? give() : redeem())}
               disabled={selected.size === 0 || isGiving}
               className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-primary-600 px-5 text-sm font-bold text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600 dark:disabled:bg-gray-700 dark:disabled:text-gray-300"
             >
-              <Gift size={16} aria-hidden="true" />
-              {isGiving ? 'Dando...' : selected.size === 0 ? 'Elige estudiantes' : `Dar a ${selected.size}`}
+              {mode === 'free' ? <Gift size={16} aria-hidden="true" /> : <Coins size={16} aria-hidden="true" />}
+              {isGiving
+                ? (mode === 'free' ? 'Dando...' : 'Canjeando...')
+                : selected.size === 0 ? 'Elige estudiantes' : `${mode === 'free' ? 'Dar' : 'Canjear'} a ${selected.size}`}
             </button>
           </div>
         </div>
