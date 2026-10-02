@@ -264,7 +264,7 @@ export const MainLayout = () => {
         }] : []),
         {
           path: '/my-avatar',
-          label: 'Personalizar avatar',
+          label: 'Mi personaje',
           icon: <Shirt size={14} />,
           gradient: 'from-fuchsia-500 to-pink-500',
           isActive: matchesPath('/my-avatar'),

@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { Check, Moon, PackageX, PiggyBank, Target } from 'lucide-react';
 import type { StudentShopItem, StudentShopView } from '../../../lib/shopApi';
@@ -45,6 +46,9 @@ export const YoungShop = ({ view, spendable, goal, goalBusy, onToggleGoal }: You
               {target.price <= spendable ? `¡Ya te alcanza para «${target.name}»!` : `Te faltan ${gold(target.price - spendable)} para «${target.name}»`}
             </p>
             <div className="mt-2"><SavingsBar have={spendable} price={target.price} label={`Oro para «${target.name}»`} /></div>
+            {goal?.kind === 'avatar' && (
+              <Link to="/my-avatar" className={`${rowButton} mt-3`}>Es una prenda: ir a mi clóset</Link>
+            )}
           </div>
         )}
         <p className={`${cardText} mt-3`}>Ganas oro cuando participas y ayudas en clase.</p>

@@ -1,5 +1,8 @@
+import { Link } from 'react-router-dom';
 import { ArrowDown, Clock3, Coins, Moon, ShoppingBag } from 'lucide-react';
 import type { StudentShopView } from '../../../lib/shopApi';
+import { avatarImageUrl } from '../../../lib/avatarApi';
+import { SHOP_RARITY_STYLE } from '../../shop/shopHelpers';
 import { primaryButton } from '../../home/homeHelpers';
 import { cardLink, cardText, cardTitle, homeCard, plural } from '../home/studentHomeHelpers';
 import { SavingsBar } from './ShopBits';
@@ -104,6 +107,26 @@ export const GoldCard = ({ view, spendable, goal, affordable, inStock, canBuyGoa
               <p className="mt-1 text-base font-bold text-gray-900 dark:text-white">Tu meta ya no está a la venta</p>
               <p className={`${cardText} mt-1`}>Elige otra con «Elegir como meta» en un premio.</p>
               <button type="button" onClick={onClearGoal} disabled={goalBusy} className={`${clearButton} mt-2 -ml-3`}>Quitar meta</button>
+            </>
+          ) : goal.kind === 'avatar' ? (
+            <>
+              <p className={goalLabel}>Tu meta</p>
+              <div className="mt-1 flex items-center gap-3">
+                <span className={`flex h-14 w-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-b ${SHOP_RARITY_STYLE[goal.item.rarity].window}`} aria-hidden="true">
+                  <img src={avatarImageUrl(goal.item.imagePath, 'thumb')} alt="" loading="lazy" decoding="async" className="max-h-12 max-w-[85%] object-contain" />
+                </span>
+                <div className="min-w-0">
+                  <p className="break-words text-base font-bold text-gray-900 dark:text-white">
+                    {goal.reached ? '¡Ya te alcanza tu meta!' : `Te faltan ${gold(goal.item.price - spendable)} para «${goal.item.name}»`}
+                  </p>
+                  <p className={cardText}>{goal.reached ? `«${goal.item.name}» · ${gold(goal.item.price)}. ` : ''}Es una prenda para tu personaje.</p>
+                </div>
+              </div>
+              {!goal.reached && progress(goal.item.price, goal.item.name)}
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Link to="/my-avatar" className={goal.reached ? primaryButton : `${cardLink} -ml-1`}>Ir a mi clóset</Link>
+                <button type="button" onClick={onClearGoal} disabled={goalBusy} className={clearButton}>Quitar meta</button>
+              </div>
             </>
           ) : goal.kind === 'chosen' && goal.reached ? (
             <>

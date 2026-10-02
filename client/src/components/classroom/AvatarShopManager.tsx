@@ -47,7 +47,6 @@ export const AvatarShopManager = ({ classroomId }: { classroomId: string }) => {
   const alsoText = applyTo.length ? ` (y en ${applyTo.length === 1 ? 'tu otra clase' : `tus otras ${applyTo.length} clases`})` : '';
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: ['avatar-catalog'] });
-    void queryClient.invalidateQueries({ queryKey: ['avatar-shop'] });
   };
 
   const settings = useMutation({

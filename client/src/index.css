@@ -358,6 +358,19 @@
 .celebrate-ring { animation: celebrate-ring 700ms ease-out 1 both; }
 .celebrate-row { animation: celebrate-row 180ms cubic-bezier(.2, .8, .2, 1) 1 both; }
 
+/* «Mi personaje»: la prenda nueva cae en su lugar y la anterior se desvanece (los fondos solo se funden);
+   la cortina fucsia cierra el espejo, se cambia detrás y se abre (estreno y cambio de cuerpo). */
+@keyframes closet-drop { 0% { transform: translateY(-12px); opacity: 0; } 40% { opacity: 1; } 100% { transform: none; opacity: 1; } }
+@keyframes closet-fade { from { opacity: 0; } }
+@keyframes closet-out { to { opacity: 0; } }
+@keyframes closet-curtain-left { 0% { transform: translateX(-101%); } 35%, 62% { transform: translateX(0); } 100% { transform: translateX(-101%); } }
+@keyframes closet-curtain-right { 0% { transform: translateX(101%); } 35%, 62% { transform: translateX(0); } 100% { transform: translateX(101%); } }
+.closet-drop { animation: closet-drop 260ms cubic-bezier(.34, 1.56, .64, 1) 1 both; }
+.closet-fade { animation: closet-fade 260ms ease-out 1 both; }
+.closet-out { animation: closet-out 200ms ease-out 1 forwards; }
+.closet-curtain-left { animation: closet-curtain-left 900ms cubic-bezier(.65, 0, .35, 1) 1 both; }
+.closet-curtain-right { animation: closet-curtain-right 900ms cubic-bezier(.65, 0, .35, 1) 1 both; }
+
 /* ── Observatorio de Jiro: escenario proyectado (legible a 6 m, sin desenfoques) ── */
 .stage-body { font-size: clamp(28px, 4.4vh, 52px); line-height: 1.25; }
 .stage-title { font-size: clamp(36px, 6.5vh, 78px); line-height: 1.1; }

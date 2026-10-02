@@ -19,6 +19,7 @@ import { MyPrizesCard, WaitingCard } from '../../components/student/shop/MyPrize
 import { PrizeCard } from '../../components/student/shop/PrizeCard';
 import { PurchaseDoneModal, PurchaseModal, UsePrizeModal, type PurchaseDone } from '../../components/student/shop/ShopModals';
 import { YoungShop } from '../../components/student/shop/YoungShop';
+import { myAvatarKey } from '../../components/avatar/avatarHelpers';
 import { groupPrizes, groupTitle, myShopKey, nextShopGoal, prizeState, spendableGold, type PrizeContext } from '../../components/student/shop/shopStudentHelpers';
 
 type MyClass = Awaited<ReturnType<typeof studentApi.getMyClasses>>[number];
@@ -59,9 +60,11 @@ const ShopContent = ({ profile, storyAccent }: { profile: MyClass; storyAccent: 
   const goalMutation = useMutation({
     mutationFn: (itemId: string | null) => shopApi.setGoal(profile.id, itemId),
     onSuccess: ({ goalItemId }) => {
-      queryClient.setQueryData<StudentShopView>(myShopKey(profile.id), (old) => (old ? { ...old, goalItemId } : old));
-      // «Tu próxima meta» del inicio lee la meta de my-classes.
+      // Hay una sola meta: elegir un premio reemplaza a la prenda que fuera su meta.
+      queryClient.setQueryData<StudentShopView>(myShopKey(profile.id), (old) => (old ? { ...old, goalItemId, goalKind: goalItemId ? 'ITEM' : null, avatarGoal: null } : old));
+      // «Tu próxima meta» del inicio lee la meta de my-classes; «Mi personaje», la suya.
       void queryClient.invalidateQueries({ queryKey: ['my-classes'] });
+      void queryClient.invalidateQueries({ queryKey: myAvatarKey(profile.id) });
     },
     onError: (error) => toast.error(errorMessage(error, 'No se pudo guardar tu meta')),
   });
@@ -89,7 +92,7 @@ const ShopContent = ({ profile, storyAccent }: { profile: MyClass; storyAccent: 
   const young = isYoungLevel(shop.gradeLevel ?? classroom.gradeLevel);
   const spendable = spendableGold(view);
   const groups = groupPrizes(view.items, spendable);
-  const goal = nextShopGoal(view.items, spendable, view.goalItemId);
+  const goal = nextShopGoal(view, spendable);
   const ctx: PrizeContext = {
     enabled: shop.enabled,
     paused: shop.paused,

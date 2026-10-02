@@ -28,29 +28,11 @@ export interface AvatarItem {
   isActive: boolean;
 }
 
-export interface ClassroomShopItem {
-  id: string;
-  classroomId: string;
-  avatarItemId: string;
-  price: number;
-  isAvailable: boolean;
-  avatarItem: AvatarItem;
-}
-
 export interface EquippedItem {
   id: string;
   slot: AvatarSlot;
   equippedAt: string;
   avatarItem: AvatarItem;
-}
-
-export interface StudentAvatarData {
-  gender: AvatarGender;
-  equippedItems: {
-    slot: AvatarSlot;
-    imagePath: string;
-    layerOrder: number;
-  }[];
 }
 
 /** Nivel de precios de la tienda de avatar de una clase: la mitad, normal o el doble. */
@@ -117,15 +99,37 @@ export interface StudentAvatarItem {
   isNew: boolean;
 }
 
+export type AvatarShopReason = 'SHOP_CLOSED' | 'AVATAR_OFF' | 'RESTING';
+
+/** La única meta de ahorro del alumno: una prenda (está en items) o un premio de la Tienda. */
+export type StudentGoal =
+  | { kind: 'AVATAR'; itemId: string }
+  | { kind: 'ITEM'; itemId: string; name: string; price: number };
+
+export interface StudentEquipped {
+  slot: AvatarSlot;
+  itemId: string;
+  name: string;
+  imagePath: string;
+  layerOrder: number;
+  isDefault: boolean;
+}
+
 export interface StudentAvatarView {
   /** pendingGold: oro que espera a su profe en la tienda de premios (no se puede gastar en ropa). */
   profile: { id: string; gender: AvatarGender; gold: number; pendingGold: number };
   classroomName: string;
   gradeLevel: string | null;
+  /** Inicial a 2.º: vista sencilla; el cuerpo lo cambia su profe. */
+  young: boolean;
+  canChangeBody: boolean;
   /** Comprar: cerrada por la tienda de la clase, desactivada la de avatar o en descanso. Vestirse siempre se puede. */
-  shop: { open: boolean; reason: 'SHOP_CLOSED' | 'AVATAR_OFF' | 'RESTING' | null };
+  shop: { open: boolean; reason: AvatarShopReason | null };
+  /** Aún puede elegir su prenda de regalo (una común, una vez). */
+  giftAvailable: boolean;
+  goal: StudentGoal | null;
   items: StudentAvatarItem[];
-  equipped: { slot: AvatarSlot; itemId: string; name: string; imagePath: string; layerOrder: number; isDefault: boolean }[];
+  equipped: StudentEquipped[];
 }
 
 export interface AvatarPurchaseResult {
@@ -133,6 +137,9 @@ export interface AvatarPurchaseResult {
   pricePaid: number;
   newBalance: number;
   equipped: boolean;
+  /** La prenda era su meta de ahorro (ya se liberó). */
+  goalReached: boolean;
+  gift: boolean;
 }
 
 // ==================== AGRUPADOR DE ITEMS EQUIPADOS ====================
@@ -173,22 +180,6 @@ const loadEquippedItems = (studentProfileId: string): Promise<EquippedItem[]> =>
   });
 
 export const avatarApi = {
-  // ==================== ITEMS GLOBALES ====================
-
-  getAllItems: async (gender?: AvatarGender): Promise<AvatarItem[]> => {
-    const params = gender ? { gender } : {};
-    const response = await api.get('/avatars/items', { params });
-    return response.data.data;
-  },
-
-  // ==================== TIENDA DE CLASE ====================
-
-  getClassroomShopItems: async (classroomId: string, gender?: AvatarGender): Promise<ClassroomShopItem[]> => {
-    const params = gender ? { gender } : {};
-    const response = await api.get(`/avatars/classroom/${classroomId}/shop`, { params });
-    return response.data.data;
-  },
-
   // ==================== DOCENTE: CATÁLOGO AUTOMÁTICO DE LA CLASE ====================
   // applyTo: otras clases del docente donde se aplica el mismo cambio («Aplicar a mis otras clases»).
 
@@ -231,25 +222,21 @@ export const avatarApi = {
     return response.data.data;
   },
 
+  /** La prenda de regalo: una común, gratis, una vez por perfil. */
+  claimGift: async (studentProfileId: string, avatarItemId: string, equip = false): Promise<AvatarPurchaseResult> => {
+    const response = await api.post('/avatars/gift', { studentProfileId, avatarItemId, equip });
+    return response.data.data;
+  },
+
+  /** Meta de ahorro con una prenda (reemplaza a la de premios); null la quita. */
+  setGoal: async (studentProfileId: string, avatarItemId: string | null): Promise<{ goalItemId: string | null; goalKind: 'AVATAR' | null }> => {
+    const response = await api.put(`/avatars/student/${studentProfileId}/goal`, { avatarItemId });
+    return response.data.data;
+  },
+
   /** Cambiar de cuerpo (el alumno o el docente de su clase): lo comprado pasa a su par si lo tiene. */
   setBody: async (studentProfileId: string, gender: AvatarGender): Promise<EquippedItem[]> => {
     const response = await api.put(`/avatars/student/${studentProfileId}/body`, { gender });
-    return response.data.data;
-  },
-
-  // ==================== COMPRAS ====================
-
-  purchaseItem: async (studentProfileId: string, classroomId: string, avatarItemId: string) => {
-    const response = await api.post('/avatars/purchase', {
-      studentProfileId,
-      classroomId,
-      avatarItemId,
-    });
-    return response.data.data;
-  },
-
-  getStudentPurchases: async (studentProfileId: string) => {
-    const response = await api.get(`/avatars/student/${studentProfileId}/purchases`);
     return response.data.data;
   },
 
@@ -268,45 +255,4 @@ export const avatarApi = {
   // Agrupa las peticiones hechas en el mismo instante (p. ej. una lista de mini-avatares) en
   // una sola llamada al servidor. Misma firma y mismo resultado por alumno que antes.
   getEquippedItems: (studentProfileId: string): Promise<EquippedItem[]> => loadEquippedItems(studentProfileId),
-
-  getStudentAvatarData: async (studentProfileId: string): Promise<StudentAvatarData> => {
-    const response = await api.get(`/avatars/student/${studentProfileId}/avatar`);
-    return response.data.data;
-  },
-};
-
-// Constantes útiles
-export const SLOT_LABELS: Record<AvatarSlot, string> = {
-  HEAD: 'Cabeza',
-  HAIR: 'Pelo',
-  EYES: 'Ojos',
-  TOP: 'Superior',
-  BOTTOM: 'Inferior',
-  LEFT_HAND: 'Mano Izquierda',
-  RIGHT_HAND: 'Mano Derecha',
-  SHOES: 'Zapatos',
-  BACK: 'Espalda',
-  FLAG: 'Bandera',
-  BACKGROUND: 'Fondo',
-};
-
-// Orden de renderizado (de atrás hacia adelante)
-export const SLOT_ORDER: AvatarSlot[] = [
-  'BACKGROUND', // Fondo va primero (más atrás)
-  'FLAG',
-  'BACK',
-  'SHOES',
-  'BOTTOM',
-  'TOP',
-  'LEFT_HAND',
-  'RIGHT_HAND',
-  'EYES',
-  'HEAD',
-  'HAIR',
-];
-
-export const RARITY_COLORS: Record<ItemRarity, string> = {
-  COMMON: 'text-gray-600 bg-gray-100',
-  RARE: 'text-blue-600 bg-blue-100',
-  LEGENDARY: 'text-amber-600 bg-amber-100',
 };

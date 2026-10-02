@@ -1,4 +1,4 @@
-import type { ItemRarity, PurchaseType, StudentShopItem, StudentShopView } from '../../../lib/shopApi';
+import type { ItemRarity, PurchaseType, StudentAvatarGoal, StudentShopItem, StudentShopView } from '../../../lib/shopApi';
 
 // Estilos de la tienda del alumno: el ámbar del oro de la barra superior y del inicio (sin escalas nuevas).
 export const goldTile = 'flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300';
@@ -39,21 +39,26 @@ export const groupPrizes = (items: StudentShopItem[], spendable: number) => ({
 
 export type ShopGoal =
   | { kind: 'chosen'; item: StudentShopItem; reached: boolean }
+  /** Su meta es una prenda de «Mi personaje» (hay una sola meta para premios y prendas). */
+  | { kind: 'avatar'; item: StudentAvatarGoal; reached: boolean }
   | { kind: 'nearest'; item: StudentShopItem }
   | { kind: 'gone' }
   | null;
 
 /**
- * La meta de «Tu oro»: la que eligió el alumno; si no eligió, el premio con stock al que menos le falta.
- * Si su meta ya no está a la venta, se le avisa para que elija otra.
+ * La meta de «Tu oro»: la que eligió el alumno (un premio o una prenda); si no eligió, el premio con stock al
+ * que menos le falta. Si su meta ya no está a la venta, se le avisa para que elija otra.
  */
-export const nextShopGoal = (items: StudentShopItem[], spendable: number, goalItemId: string | null): ShopGoal => {
-  if (goalItemId) {
-    const chosen = items.find((item) => item.id === goalItemId);
+export const nextShopGoal = (view: Pick<StudentShopView, 'items' | 'goalItemId' | 'goalKind' | 'avatarGoal'>, spendable: number): ShopGoal => {
+  if (view.goalKind === 'AVATAR') {
+    return view.avatarGoal ? { kind: 'avatar', item: view.avatarGoal, reached: view.avatarGoal.price <= spendable } : { kind: 'gone' };
+  }
+  if (view.goalItemId) {
+    const chosen = view.items.find((item) => item.id === view.goalItemId);
     if (!chosen || !inStock(chosen)) return { kind: 'gone' };
     return { kind: 'chosen', item: chosen, reached: chosen.price <= spendable };
   }
-  const nearest = groupPrizes(items, spendable).saving[0];
+  const nearest = groupPrizes(view.items, spendable).saving[0];
   return nearest ? { kind: 'nearest', item: nearest } : null;
 };
 

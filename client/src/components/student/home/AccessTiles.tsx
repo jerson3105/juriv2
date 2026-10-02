@@ -15,8 +15,11 @@ interface AccessTilesProps {
   /** Se ve si hay premios a la venta o premios suyos (con la tienda cerrada puede usar los que tiene). */
   shop: { visible: boolean; enabled: boolean; paused: boolean; prices: number[]; gold: number; owned: number };
   badges: { visible: boolean; count: number; toEarn: number; near: string | null };
-  /** La clase tiene ropa para el personaje (el rol se cambia desde el bloque del personaje). */
-  avatar: boolean;
+  /**
+   * «Mi personaje» siempre está (vestirse se puede aunque el profe apague la tienda de prendas). Su estado:
+   * el regalo, su meta de prenda, las prendas nuevas o «Viste a tu personaje».
+   */
+  avatar: { gift: boolean; goal: { name: string; missing: number } | null; fresh: number };
   scrolls: boolean;
 }
 
@@ -49,9 +52,16 @@ export const AccessTiles = ({ shop, badges, avatar, scrolls }: AccessTilesProps)
           : badges.toEarn > 0 ? `${plural(badges.toEarn, 'insignia', 'insignias')} por ganar` : 'Aún no tienes',
     });
   }
-  if (avatar) {
-    tiles.push({ key: 'avatar', icon: Shirt, tint: 'bg-fuchsia-50 text-fuchsia-800 dark:bg-fuchsia-900/30 dark:text-fuchsia-200', title: 'Mi personaje', state: 'Viste a tu personaje', to: '/my-avatar' });
-  }
+  tiles.push({
+    key: 'avatar', icon: Shirt, tint: 'bg-fuchsia-50 text-fuchsia-800 dark:bg-fuchsia-900/30 dark:text-fuchsia-200', title: 'Mi personaje', to: '/my-avatar',
+    state: avatar.gift
+      ? 'Tienes una prenda de regalo'
+      : avatar.goal
+        ? avatar.goal.missing > 0 ? `Te faltan ${avatar.goal.missing.toLocaleString('es')} de oro para «${avatar.goal.name}»` : `¡Ya te alcanza «${avatar.goal.name}»!`
+        : avatar.fresh > 0
+          ? plural(avatar.fresh, 'prenda nueva', 'prendas nuevas')
+          : 'Viste a tu personaje',
+  });
   if (scrolls) {
     tiles.push({ key: 'scrolls', icon: ScrollText, tint: 'bg-emerald-50 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200', title: 'Pergaminos', state: 'Escribe a un compañero', to: '/scrolls' });
   }

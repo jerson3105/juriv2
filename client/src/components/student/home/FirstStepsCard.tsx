@@ -5,16 +5,16 @@ import { cardLink, cardText, cardTitle, homeCard, plural, rowButton } from './st
 interface FirstStepsCardProps {
   /** Elegir rol (si la clase deja elegir y aún no lo hizo, y no es ya la meta). */
   role: boolean;
-  /** Vestir al personaje (si la clase tiene ropa y aún no se puso nada). */
-  dress: boolean;
+  /** Elegir su prenda de regalo (si aún no la eligió, la tienda de prendas está abierta y no es ya la meta). */
+  gift: boolean;
   /** Aún no ganó XP. */
   firstXp: boolean;
   onOpen: (kind: HomeModalKind) => void;
 }
 
 /** "Primeros pasos" del recién llegado: se calcula con los datos y desaparece al completarlos. */
-export const FirstStepsCard = ({ role, dress, firstXp, onOpen }: FirstStepsCardProps) => {
-  const pending = [role, dress, firstXp].filter(Boolean).length;
+export const FirstStepsCard = ({ role, gift, firstXp, onOpen }: FirstStepsCardProps) => {
+  const pending = [role, gift, firstXp].filter(Boolean).length;
   if (pending === 0) return null;
 
   return (
@@ -28,10 +28,10 @@ export const FirstStepsCard = ({ role, dress, firstXp, onOpen }: FirstStepsCardP
             <button type="button" onClick={() => onOpen('role')} aria-haspopup="dialog" className={rowButton}>Elegir</button>
           </li>
         )}
-        {dress && (
+        {gift && (
           <li className="flex min-h-[56px] items-center justify-between gap-3 py-2">
-            <p className="text-sm font-semibold text-gray-900 dark:text-white"><span aria-hidden="true">👕 </span>Viste a tu personaje</p>
-            <Link to="/my-avatar" className={rowButton}>Ir</Link>
+            <p className="text-sm font-semibold text-gray-900 dark:text-white"><span aria-hidden="true">🎁 </span>Elige tu prenda de regalo</p>
+            <Link to="/my-avatar" className={rowButton}>Elegir</Link>
           </li>
         )}
         {firstXp && (

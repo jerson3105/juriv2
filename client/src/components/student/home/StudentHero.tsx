@@ -30,7 +30,6 @@ interface StudentHeroProps {
   goal: Goal;
   glow: string;
   storyTitle: string | null;
-  canDress: boolean;
   canChangeRole: boolean;
   onOpen: (kind: HomeModalKind | 'streak') => void;
 }
@@ -153,22 +152,19 @@ export const StudentHero = (props: StudentHeroProps) => {
               </li>
             )}
           </ul>
-          {(props.canDress || (props.canChangeRole && goal.key !== 'role')) && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {props.canDress && (
-                <Link to="/my-avatar" className={nightLink}>
-                  <Shirt size={16} aria-hidden="true" />
-                  Vestir a mi personaje
-                </Link>
-              )}
-              {props.canChangeRole && goal.key !== 'role' && (
-                <button type="button" onClick={() => onOpen('role')} aria-haspopup="dialog" className={nightLink}>
-                  <Sparkles size={16} aria-hidden="true" />
-                  Cambiar mi rol
-                </button>
-              )}
-            </div>
-          )}
+          {/* Vestirse siempre se puede (aunque el profe apague la tienda de prendas). */}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link to="/my-avatar" className={nightLink}>
+              <Shirt size={16} aria-hidden="true" />
+              Vestir a mi personaje
+            </Link>
+            {props.canChangeRole && goal.key !== 'role' && (
+              <button type="button" onClick={() => onOpen('role')} aria-haspopup="dialog" className={nightLink}>
+                <Sparkles size={16} aria-hidden="true" />
+                Cambiar mi rol
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Tu próxima meta */}

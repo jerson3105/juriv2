@@ -32,6 +32,7 @@ import { nextGoal, todoItems, type HomeInput } from './nextGoal';
 import type { HomeModalKind } from './HomeActionButton';
 import { homeCard, localDateKey } from './studentHomeHelpers';
 import { myBadgesKey, progressText } from '../badges/badgeStudentHelpers';
+import { myAvatarKey } from '../../avatar/avatarHelpers';
 
 type MyClass = Awaited<ReturnType<typeof studentApi.getMyClasses>>[number];
 // my-classes trae la configuración de la clase completa; aquí se usa solo esto.
@@ -70,7 +71,8 @@ export const StudentHome = ({ profile, firstName, storyAccent }: StudentHomeProp
   const roleInfo = classMap[profile.characterClassId ?? ''] || classMap[profile.characterClass];
   const canChooseRole = classroom.classAssignmentMode === 'STUDENT_CHOICE';
 
-  const { data: equipped = [] } = useQuery({ queryKey: ['avatar-equipped', id], queryFn: () => avatarApi.getEquippedItems(id) });
+  // «Mi personaje» en una carga: lo puesto (el héroe), su meta de prenda, el regalo y lo nuevo (la baldosa).
+  const { data: avatarView } = useQuery({ queryKey: myAvatarKey(id), queryFn: () => avatarApi.getStudentView(id) });
   // Foto de "Lo nuevo" para toda la sesión: al marcarla como vista no se vacía mientras el alumno la mira.
   const { data: news } = useQuery({ queryKey: ['student-news', id], queryFn: () => studentApi.getNews(id), staleTime: Infinity, gcTime: Infinity });
   const { data: notes = [] } = useQuery({ queryKey: ['class-notes', classroomId], queryFn: () => classNoteApi.list(classroomId) });
@@ -85,10 +87,6 @@ export const StudentHome = ({ profile, firstName, storyAccent }: StudentHomeProp
     enabled: (profile.badgeSummary?.available ?? 0) > 0 || (profile.badgeSummary?.owned ?? 0) > 0,
   });
   const { data: shopItems = [] } = useQuery({ queryKey: ['shop-items', classroomId], queryFn: () => shopApi.getItems(classroomId), enabled: !!classroom.shopEnabled });
-  const { data: avatarShop = [] } = useQuery({
-    queryKey: ['avatar-shop', classroomId, profile.avatarGender],
-    queryFn: () => avatarApi.getClassroomShopItems(classroomId, profile.avatarGender),
-  });
   const { data: clan } = useQuery({ queryKey: ['my-clan-info', id], queryFn: () => clanApi.getStudentClanInfo(id), enabled: !!classroom.clansEnabled });
   const { data: streak } = useStreakStatus(classroomId);
 
@@ -96,7 +94,13 @@ export const StudentHome = ({ profile, firstName, storyAccent }: StudentHomeProp
   const progress = levelProgress(profile.xp, profile.level, xpPerLevel);
   const remaining = Math.max(progress.needed - progress.inLevel, 0);
   const prizes = shopItems.filter((item) => item.isActive !== false && (item.stock === null || item.stock > 0));
-  const avatarItems = avatarShop.filter((item) => item.isAvailable).length;
+  // Ropa: el oro que espera a su profe no se gasta en prendas. La ropa solo sube a «Tu próxima meta» si es su meta o su regalo.
+  const avatarSpendable = avatarView ? Math.max(0, avatarView.profile.gold - avatarView.profile.pendingGold) : 0;
+  const garmentForSale = (avatarView?.items ?? []).filter((item) => item.inShop && !item.owned && item.price !== null && avatarView?.shop.reason !== 'AVATAR_OFF');
+  const garmentGoal = avatarView?.goal?.kind === 'AVATAR' ? garmentForSale.find((item) => item.id === avatarView.goal!.itemId) : undefined;
+  const giftReady = !!avatarView?.giftAvailable && !!avatarView.shop.open && garmentForSale.some((item) => item.rarity === 'COMMON');
+  const prizeGoalId = profile.shopGoalKind === 'AVATAR' ? null : profile.shopGoalItemId ?? null;
+  const prizeGoal = prizeGoalId ? prizes.find((item) => item.id === prizeGoalId) : undefined;
   const current = correo?.current;
   const correoItem = current && (!current.sent || current.sent.status === 'REJECTED')
     ? { prompt: current.prompt, rejected: current.sent?.status === 'REJECTED' }
@@ -120,7 +124,13 @@ export const StudentHome = ({ profile, firstName, storyAccent }: StudentHomeProp
       others: roles.filter((role) => role.isActive && role.name !== roleName).map((role) => role.name),
     },
     badgeNear: badgeView?.near ? { id: badgeView.near.id, name: badgeView.near.name, progress: progressText(badgeView.near.progress) } : null,
-    shop: { enabled: !!classroom.shopEnabled && !resting, items: prizes, goalItemId: profile.shopGoalItemId ?? null },
+    shop: { enabled: !!classroom.shopEnabled && !resting, items: prizes },
+    goal: garmentGoal && avatarView?.shop.open
+      ? { kind: 'AVATAR', name: garmentGoal.name, price: garmentGoal.price!, have: avatarSpendable }
+      : prizeGoal && classroom.shopEnabled && !resting
+        ? { kind: 'ITEM', name: prizeGoal.name, price: prizeGoal.price, have: profile.gp }
+        : null,
+    gift: giftReady,
     gold: profile.gp,
     level: { level: profile.level, remaining },
   };
@@ -142,7 +152,7 @@ export const StudentHome = ({ profile, firstName, storyAccent }: StudentHomeProp
   };
 
   const date = new Date().toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long' });
-  const equippedForRenderer: EquippedItem[] = equipped.map((item) => ({ slot: item.slot, imagePath: item.avatarItem.imagePath, layerOrder: item.avatarItem.layerOrder }));
+  const equippedForRenderer: EquippedItem[] = (avatarView?.equipped ?? []).map((item) => ({ slot: item.slot, imagePath: item.imagePath, layerOrder: item.layerOrder }));
 
   return (
     <div className="space-y-5">
@@ -189,7 +199,6 @@ export const StudentHome = ({ profile, firstName, storyAccent }: StudentHomeProp
         goal={goal}
         glow={storyAccent?.primary ?? '#6366f1'}
         storyTitle={storyAccent?.title ?? null}
-        canDress={avatarItems > 0}
         canChangeRole={canChooseRole && roles.length > 1 && !!profile.characterClassId}
         onOpen={setModal}
       />
@@ -198,7 +207,7 @@ export const StudentHome = ({ profile, firstName, storyAccent }: StudentHomeProp
         <div className="space-y-5">
           <FirstStepsCard
             role={canChooseRole && !profile.characterClassId && goal.key !== 'role'}
-            dress={avatarItems > 0 && equipped.length === 0}
+            gift={giftReady && goal.key !== 'gift'}
             firstXp={news ? !news.everEarned : false}
             onOpen={setModal}
           />
@@ -237,7 +246,11 @@ export const StudentHome = ({ profile, firstName, storyAccent }: StudentHomeProp
           toEarn: badgeView?.toEarn.length ?? 0,
           near: badgeView?.near?.name ?? null,
         }}
-        avatar={avatarItems > 0}
+        avatar={{
+          gift: giftReady,
+          goal: garmentGoal ? { name: garmentGoal.name, missing: Math.max(0, garmentGoal.price! - avatarSpendable) } : null,
+          fresh: garmentForSale.filter((item) => item.isNew).length,
+        }}
         scrolls={!!classroom.scrollsEnabled && !!classroom.scrollsOpen}
       />
 

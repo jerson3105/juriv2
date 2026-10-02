@@ -196,10 +196,21 @@ export interface StudentShopView {
   };
   gold: number;
   pendingGold: number;
+  /** Su única meta de ahorro: un premio (goalItemId) o una prenda de «Mi personaje» (avatarGoal; null si ya no se vende). */
+  goalKind: 'ITEM' | 'AVATAR' | null;
   goalItemId: string | null;
+  avatarGoal: StudentAvatarGoal | null;
   items: StudentShopItem[];
   waiting: StudentShopWaiting[];
   mine: StudentShopOwned[];
+}
+
+export interface StudentAvatarGoal {
+  id: string;
+  name: string;
+  price: number;
+  imagePath: string;
+  rarity: ItemRarity;
 }
 
 export interface ShopClassmate {
