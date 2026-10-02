@@ -12,7 +12,13 @@ interface HomeModalProps {
   header?: ReactNode; // cabecera propia (p. ej. con imagen); sustituye al título estándar
 }
 
-// Marco de los modales de Inicio: Esc cierra, el foco entra al abrir y vuelve al cerrar.
+/**
+ * Marco de los modales de Inicio: Esc cierra, el foco entra al abrir y vuelve al cerrar.
+ * Al abrir, el fondo se desvanece y el panel entra opaco con un leve "pop" (CSS, home-modal-* en
+ * index.css); al cerrar, el panel se va al instante y solo el fondo se desvanece. El panel nunca es
+ * translúcido y el fondo no lleva desenfoque: antes se veía la página a través del panel y el modal
+ * parpadeaba al abrir y al cerrar.
+ */
 export const HomeModal = ({ title, subtitle, onClose, footer, children, size = 'md', header }: HomeModalProps) => {
   const isPresent = useIsPresent();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -43,17 +49,27 @@ export const HomeModal = ({ title, subtitle, onClose, footer, children, size = '
   }, []);
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={onClose}>
+    // !m-0: dentro de un contenedor space-y-* el margen bajaba el fondo y dejaba una franja sin cubrir.
+    <div className="fixed inset-0 z-[60] !m-0 flex items-center justify-center p-4">
+      <motion.div
+        aria-hidden="true"
+        className="home-modal-fade absolute inset-0 bg-black/60"
+        initial={false}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.15 }}
+        onClick={onClose}
+      />
       <motion.div
         ref={panelRef}
-        initial={{ scale: 0.96, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.96, opacity: 0 }}
+        initial={false}
+        // Al cerrar, el panel se va de inmediato y solo el fondo se desvanece.
+        exit={{ opacity: 0, transition: { duration: 0 } }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`flex max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-800 ${size === 'lg' ? 'max-w-2xl' : 'max-w-lg'}`}
+        className={`home-modal-pop relative flex max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-800 ${size === 'lg' ? 'max-w-2xl' : 'max-w-lg'}`}
       >
         {header ?? (
           <div className="flex items-start justify-between gap-3 border-b border-gray-200 px-5 py-4 dark:border-gray-700">
@@ -69,6 +85,6 @@ export const HomeModal = ({ title, subtitle, onClose, footer, children, size = '
         <div className="flex-1 space-y-4 overflow-y-auto p-5">{children}</div>
         {footer && <div className="flex items-center justify-end gap-2 border-t border-gray-200 bg-gray-50 px-5 py-3 dark:border-gray-700 dark:bg-gray-900/40">{footer}</div>}
       </motion.div>
-    </motion.div>
+    </div>
   );
 };
