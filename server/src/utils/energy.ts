@@ -38,6 +38,12 @@ export const parseTemplates = (raw: unknown): string[] | null => {
 /** La clase es de inicial: corazones sin números, recuperación inmediata, sin pausa de tienda. */
 export const isInitialLevel = (gradeLevel: string | null | undefined) => !!gradeLevel && gradeLevel.toUpperCase().startsWith('INICIAL');
 
+/** Pequeños (inicial a 2.º de primaria), como isYoungLevel del cliente: ropa a mitad de precio y el cuerpo lo cambia su profe. */
+export const isYoungLevel = (gradeLevel: string | null | undefined) => {
+  const level = gradeLevel?.toUpperCase() ?? '';
+  return level.startsWith('INICIAL') || level === 'PRIMARIA_1' || level === 'PRIMARIA_2';
+};
+
 /**
  * Pone al día "Descansando" tras cualquier cambio de HP: marca a quien llegó a 0 (y avisa al
  * profesor) y libera a quien volvió a tener energía (cancela su misión pendiente).

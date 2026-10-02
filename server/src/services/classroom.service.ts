@@ -57,6 +57,7 @@ import { eq, and, desc, inArray, sql, count, asc, or, gt } from 'drizzle-orm';
 import { calculateLevel, generateClassCode } from '../utils/helpers.js';
 import { revertLevelUpsAbove } from '../utils/points.js';
 import { ConflictError, ValidationError } from '../utils/errors.js';
+import { isYoungLevel } from '../utils/energy.js';
 import { normalizeBadgeAssignment, parseBadgeCondition, safeBadgeImage, type BadgeConditionShape } from '../utils/badgeConditions.js';
 import { v4 as uuidv4 } from 'uuid';
 import { avatarService } from './avatar.service.js';
@@ -491,7 +492,8 @@ export class ClassroomService {
         if (useCompetencies && classroom.curriculumAreaId) {
           await this.syncClassroomCompetencies(id, classroom.curriculumAreaId);
         }
-        // La tienda de avatar hereda lo que el docente configuró en su clase más reciente.
+        // La tienda de avatar hereda lo que el docente configuró en su clase más reciente
+        // (en inicial a 2.º, con la ropa «Más barata»).
         await avatarCatalogService.inheritFromTeacher(id, data.teacherId);
       }
       return classroom;
@@ -614,6 +616,10 @@ export class ClassroomService {
         await this.recalculateLevels(tx, classroomId, data.xpPerLevel!);
       }
     });
+    // Pasó a inicial–2.º: la ropa del avatar pasa a «Más barata» si seguía en «Normal».
+    if (data.gradeLevel !== undefined && isYoungLevel(data.gradeLevel) && !isYoungLevel(classroom.gradeLevel)) {
+      await avatarCatalogService.applyYoungPrices(classroomId, { onlyIfNormal: true });
+    }
 
     return this.getById(classroomId);
   }

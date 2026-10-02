@@ -1374,12 +1374,17 @@ export class ShopService {
     return { success: true, message: 'Canje deshecho' };
   }
 
-  /** Cuántos alumnos tienen cada premio como meta (para que el profesor sepa qué ofrecer). */
+  /** Cuántos alumnos tienen cada premio como meta (para que el profesor sepa qué ofrecer). Las metas de prenda no cuentan. */
   async getGoalCounts(classroomId: string) {
     const rows = await db
       .select({ itemId: studentProfiles.shopGoalItemId, count: sql<string>`COUNT(*)` })
       .from(studentProfiles)
-      .where(and(eq(studentProfiles.classroomId, classroomId), eq(studentProfiles.isActive, true), sql`${studentProfiles.shopGoalItemId} IS NOT NULL`))
+      .where(and(
+        eq(studentProfiles.classroomId, classroomId),
+        eq(studentProfiles.isActive, true),
+        sql`${studentProfiles.shopGoalItemId} IS NOT NULL`,
+        sql`(${studentProfiles.shopGoalKind} IS NULL OR ${studentProfiles.shopGoalKind} = 'ITEM')`,
+      ))
       .groupBy(studentProfiles.shopGoalItemId);
     return rows.map((row) => ({ itemId: row.itemId as string, count: Number(row.count) }));
   }

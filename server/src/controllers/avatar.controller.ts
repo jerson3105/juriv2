@@ -26,6 +26,8 @@ const purchaseSchema = z.object({
   classroomId: idSchema.optional(),
   equip: z.boolean().optional(),
 });
+const giftSchema = z.object({ studentProfileId: idSchema, avatarItemId: idSchema, equip: z.boolean().optional() });
+const goalSchema = z.object({ avatarItemId: idSchema.nullable() });
 const bodySchema = z.object({ gender: z.enum(['MALE', 'FEMALE'], { errorMap: () => ({ message: 'Elige chico o chica' }) }) });
 const settingsSchema = z.object({
   enabled: z.boolean().optional(),
@@ -166,6 +168,30 @@ export const avatarController = {
     }
   },
 
+  // La prenda de regalo: una común, gratis, una vez por perfil.
+  async claimGift(req: Request, res: Response) {
+    try {
+      const data = giftSchema.parse(req.body);
+      if (!(await requireStudentProfileOwner(req, res, data.studentProfileId))) return;
+      const result = await avatarCatalogService.claimGift(data.studentProfileId, data.avatarItemId, { equip: data.equip });
+      res.json({ success: true, message: '¡Es tuya!', data: result });
+    } catch (error) {
+      fail(res, error, 'No se pudo elegir tu regalo');
+    }
+  },
+
+  // Meta de ahorro con una prenda (la única meta: reemplaza a la de premios); null la quita.
+  async setGoal(req: Request, res: Response) {
+    try {
+      const studentProfileId = idSchema.parse(req.params.studentProfileId);
+      const { avatarItemId } = goalSchema.parse(req.body);
+      if (!(await requireStudentProfileOwner(req, res, studentProfileId))) return;
+      res.json({ success: true, data: await avatarCatalogService.setGoal(studentProfileId, avatarItemId) });
+    } catch (error) {
+      fail(res, error, 'No se pudo guardar tu meta');
+    }
+  },
+
   async getStudentPurchases(req: Request, res: Response) {
     try {
       const { studentProfileId } = req.params;
@@ -226,11 +252,12 @@ export const avatarController = {
     }
   },
 
-  // Cambiar de cuerpo: el alumno dueño o el docente de su clase (también para perfiles sin cuenta).
+  // Cambiar de cuerpo: el alumno dueño (salvo de inicial a 2.º) o el docente de su clase (también para perfiles sin cuenta).
   async setBody(req: Request, res: Response) {
     try {
       const studentProfileId = idSchema.parse(req.params.studentProfileId);
       const { gender } = bodySchema.parse(req.body);
+      const byStudent = req.user!.role === 'STUDENT';
       if (req.user!.role === 'TEACHER') {
         const classroomId = await classroomIdOfStudentProfile(studentProfileId);
         if (!classroomId) return res.status(404).json({ success: false, message: 'Estudiante no encontrado' });
@@ -238,7 +265,7 @@ export const avatarController = {
       } else if (!(await requireStudentProfileOwner(req, res, studentProfileId))) {
         return;
       }
-      res.json({ success: true, data: await avatarCatalogService.setBody(studentProfileId, gender) });
+      res.json({ success: true, data: await avatarCatalogService.setBody(studentProfileId, gender, { byStudent }) });
     } catch (error) {
       fail(res, error, 'No se pudo cambiar el cuerpo del avatar');
     }

@@ -9,6 +9,7 @@ import {
   classrooms,
   pointLogs,
   purchases,
+  shopItems,
   studentAvatarPurchases,
   studentEquippedItems,
   studentProfiles,
@@ -18,8 +19,8 @@ import {
 } from '../db/schema.js';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../utils/errors.js';
 import { getShopEconomy } from '../utils/shopEconomy.js';
-import { spendGp } from '../utils/points.js';
-import { isInitialLevel } from '../utils/energy.js';
+import { affectedRows, spendGp } from '../utils/points.js';
+import { isInitialLevel, isYoungLevel } from '../utils/energy.js';
 import { AVATAR_PURCHASE_PREFIX } from '../utils/pointReasons.js';
 import { avatarService } from './avatar.service.js';
 
@@ -193,11 +194,15 @@ const loadProfile = async (profileId: string) => {
       gender: studentProfiles.avatarGender,
       gp: studentProfiles.gp,
       hp: studentProfiles.hp,
+      goalItemId: studentProfiles.shopGoalItemId,
+      goalKind: studentProfiles.shopGoalKind,
+      giftAt: studentProfiles.avatarGiftAt,
     })
     .from(studentProfiles)
     .where(eq(studentProfiles.id, profileId));
   return profile ?? null;
 };
+type Profile = NonNullable<Awaited<ReturnType<typeof loadProfile>>>;
 
 const shopState = (classroom: NonNullable<ClassroomRow>, hp: number) => {
   if (!classroom.shopEnabled) return { open: false, reason: 'SHOP_CLOSED' as const };
@@ -206,10 +211,51 @@ const shopState = (classroom: NonNullable<ClassroomRow>, hp: number) => {
   return { open: true, reason: null };
 };
 
+const assertShopOpen = (classroom: NonNullable<ClassroomRow>, hp: number) => {
+  const shop = shopState(classroom, hp);
+  if (shop.open) return;
+  throw new ValidationError(
+    shop.reason === 'SHOP_CLOSED' ? 'Tu profe cerró la tienda por ahora'
+      : shop.reason === 'AVATAR_OFF' ? 'Tu profe desactivó la tienda de avatar'
+        : RESTING_SHOP_MESSAGE,
+  );
+};
+
+/** Una prenda con su entrada en la tienda de la clase (null si no se vende ahí) y si ya es del alumno. */
+const lookupItem = async (profile: Profile, classroom: NonNullable<ClassroomRow>, itemId: string) => {
+  const [item] = await db.select().from(avatarItems).where(eq(avatarItems.id, itemId));
+  if (!item) return null;
+  const [catalog, exceptions, base, owned] = await Promise.all([
+    loadCatalog(),
+    loadExceptions(classroom.id),
+    ensurePriceBase(classroom),
+    ownedFor(profile.id, profile.gender as AvatarGender),
+  ]);
+  const entry = buildEntries(catalog, exceptions, base, classroom.avatarPriceLevel).find((candidate) => candidate.item.id === item.id);
+  return { item, entry: entry && isVisible(entry) ? entry : null, owned: owned.has(item.id) };
+};
+
+/** La prenda que el alumno puede comprar (o elegir de regalo o como meta): de su cuerpo, a la venta en su clase y aún no suya. */
+const sellableEntry = async (profile: Profile, classroom: NonNullable<ClassroomRow>, itemId: string) => {
+  const found = await lookupItem(profile, classroom, itemId);
+  if (!found || !found.item.isActive || found.item.isDefault) throw new ValidationError('Esta prenda no está en la tienda');
+  if (found.item.gender !== profile.gender) throw new ValidationError('Esta prenda es para el otro cuerpo');
+  if (!found.entry) throw new ValidationError('Esta prenda no está en la tienda');
+  if (found.owned) throw new ConflictError('Ya tienes esta prenda');
+  return found.entry;
+};
+
 const replaceSlot = async (exec: Pick<typeof db, 'delete' | 'insert'>, profileId: string, itemId: string, slot: AvatarSlot) => {
   await exec.delete(studentEquippedItems).where(and(eq(studentEquippedItems.studentProfileId, profileId), eq(studentEquippedItems.slot, slot)));
   await exec.insert(studentEquippedItems).values({ id: uuidv4(), studentProfileId: profileId, avatarItemId: itemId, slot, equippedAt: new Date() });
 };
+
+/** Si la prenda era su meta de ahorro, ya la cumplió: la meta se libera. Devuelve si lo era. */
+const clearReachedGoal = async (exec: Pick<typeof db, 'update'>, profileId: string, itemId: string) => affectedRows(
+  await exec.update(studentProfiles)
+    .set({ shopGoalItemId: null, shopGoalKind: null })
+    .where(and(eq(studentProfiles.id, profileId), eq(studentProfiles.shopGoalKind, 'AVATAR'), eq(studentProfiles.shopGoalItemId, itemId))),
+) === 1;
 
 class AvatarCatalogService {
   // ==================== ALUMNO ====================
@@ -221,14 +267,19 @@ class AvatarCatalogService {
     const classroom = await loadClassroom(profile.classroomId);
     if (!classroom) throw new NotFoundError('Clase no encontrada');
     const gender = profile.gender as AvatarGender;
+    const young = isYoungLevel(classroom.gradeLevel);
+    const prizeGoalId = profile.goalItemId && profile.goalKind !== 'AVATAR' ? profile.goalItemId : null;
 
-    const [catalog, exceptions, base, owned, equippedRows, pendingGold] = await Promise.all([
+    const [catalog, exceptions, base, owned, equippedRows, pendingGold, [prizeGoal]] = await Promise.all([
       loadCatalog(),
       loadExceptions(classroom.id),
       ensurePriceBase(classroom),
       ownedFor(profile.id, gender),
       avatarService.getEquippedItems(profile.id),
       pendingGoldOf(profile.id),
+      prizeGoalId
+        ? db.select({ name: shopItems.name, price: shopItems.price, isActive: shopItems.isActive, classroomId: shopItems.classroomId }).from(shopItems).where(eq(shopItems.id, prizeGoalId))
+        : Promise.resolve([]),
     ]);
     const entries = buildEntries(catalog, exceptions, base, classroom.avatarPriceLevel).filter((entry) => entry.item.gender === gender);
     const shop = shopState(classroom, profile.hp);
@@ -254,16 +305,29 @@ class AvatarCatalogService {
       isNew: isNew(item),
     });
 
-    const shopItems = entries.filter((entry) => isVisible(entry) || owned.has(entry.item.id)).map((entry) => itemView(entry.item, entry));
+    const forSale = entries.filter((entry) => isVisible(entry) || owned.has(entry.item.id)).map((entry) => itemView(entry.item, entry));
     const defaults = catalog.items.filter((item) => item.isDefault && item.gender === gender).map((item) => itemView(item, null));
+
+    // Una sola meta de ahorro: una prenda (está en items) o un premio de la tienda (al elegir una prenda se reemplaza).
+    const goal = profile.goalItemId && profile.goalKind === 'AVATAR'
+      ? { kind: 'AVATAR' as const, itemId: profile.goalItemId }
+      : prizeGoal && prizeGoal.isActive && prizeGoal.classroomId === classroom.id
+        ? { kind: 'ITEM' as const, itemId: prizeGoalId!, name: prizeGoal.name, price: prizeGoal.price }
+        : null;
 
     return {
       // pendingGold: lo que espera a su profe en la tienda de premios (no se puede gastar en ropa).
       profile: { id: profile.id, gender, gold: profile.gp, pendingGold },
       classroomName: classroom.name,
       gradeLevel: classroom.gradeLevel,
+      // Inicial a 2.º: vista sencilla, y el cuerpo lo cambia su profe.
+      young,
+      canChangeBody: !young,
       shop,
-      items: [...defaults, ...shopItems, ...retired.map((item) => itemView(item, null))],
+      // Una prenda común gratis, una vez (se elige con la tienda abierta).
+      giftAvailable: !profile.giftAt,
+      goal,
+      items: [...defaults, ...forSale, ...retired.map((item) => itemView(item, null))],
       equipped: equippedRows.map((row) => ({
         slot: row.slot,
         itemId: row.avatarItem.id,
@@ -284,30 +348,9 @@ class AvatarCatalogService {
     }
     const classroom = await loadClassroom(profile.classroomId);
     if (!classroom) throw new NotFoundError('Clase no encontrada');
-    const shop = shopState(classroom, profile.hp);
-    if (!shop.open) {
-      throw new ValidationError(
-        shop.reason === 'SHOP_CLOSED' ? 'Tu profe cerró la tienda por ahora'
-          : shop.reason === 'AVATAR_OFF' ? 'Tu profe desactivó la tienda de avatar'
-            : RESTING_SHOP_MESSAGE,
-      );
-    }
+    assertShopOpen(classroom, profile.hp);
+    const { item, price } = await sellableEntry(profile, classroom, itemId);
 
-    const [item] = await db.select().from(avatarItems).where(eq(avatarItems.id, itemId));
-    if (!item || !item.isActive || item.isDefault) throw new ValidationError('Esta prenda no está en la tienda');
-    if (item.gender !== profile.gender) throw new ValidationError('Esta prenda es para el otro cuerpo');
-
-    const [catalog, exceptions, base, owned] = await Promise.all([
-      loadCatalog(),
-      loadExceptions(classroom.id),
-      ensurePriceBase(classroom),
-      ownedFor(profile.id, profile.gender as AvatarGender),
-    ]);
-    const entry = buildEntries(catalog, exceptions, base, classroom.avatarPriceLevel).find((candidate) => candidate.item.id === item.id);
-    if (!entry || !isVisible(entry)) throw new ValidationError('Esta prenda no está en la tienda');
-    if (owned.has(item.id)) throw new ConflictError('Ya tienes esta prenda');
-
-    const price = entry.price;
     // Como en la tienda de premios: el oro que espera a su profe no se puede gastar.
     const pendingGold = await pendingGoldOf(profile.id);
     if (profile.gp - pendingGold < price) {
@@ -316,6 +359,7 @@ class AvatarCatalogService {
         : `No te alcanza: «${item.name}» cuesta ${price} de oro.`);
     }
     const now = new Date();
+    let goalReached = false;
     try {
       await db.transaction(async (tx) => {
         // Cobro atómico: con compras simultáneas el oro no se gasta dos veces.
@@ -343,6 +387,7 @@ class AvatarCatalogService {
           });
         }
         if (options.equip) await replaceSlot(tx, profile.id, item.id, item.slot);
+        goalReached = await clearReachedGoal(tx, profile.id, item.id);
       });
     } catch (error: any) {
       if (error?.code === 'ER_DUP_ENTRY' || error?.cause?.code === 'ER_DUP_ENTRY') throw new ConflictError('Ya tienes esta prenda');
@@ -350,7 +395,91 @@ class AvatarCatalogService {
     }
 
     const [after] = await db.select({ gp: studentProfiles.gp }).from(studentProfiles).where(eq(studentProfiles.id, profile.id));
-    return { item: { id: item.id, name: item.name, slot: item.slot }, pricePaid: price, newBalance: after?.gp ?? profile.gp - price, equipped: !!options.equip };
+    return {
+      item: { id: item.id, name: item.name, slot: item.slot },
+      pricePaid: price,
+      newBalance: after?.gp ?? profile.gp - price,
+      equipped: !!options.equip,
+      goalReached,
+      gift: false,
+    };
+  }
+
+  /**
+   * La prenda de regalo: una común de la tienda de su clase, gratis y una sola vez por perfil. La marca es
+   * una escritura condicional: dos pestañas a la vez no se llevan dos regalos.
+   */
+  async claimGift(profileId: string, itemId: string, options: { equip?: boolean } = {}) {
+    const profile = await loadProfile(profileId);
+    if (!profile) throw new NotFoundError('Perfil no encontrado');
+    if (profile.giftAt) throw new ConflictError('Ya elegiste tu prenda de regalo');
+    const classroom = await loadClassroom(profile.classroomId);
+    if (!classroom) throw new NotFoundError('Clase no encontrada');
+    assertShopOpen(classroom, profile.hp);
+    const { item } = await sellableEntry(profile, classroom, itemId);
+    if (item.rarity !== 'COMMON') throw new ValidationError('Tu regalo es una prenda común');
+
+    const now = new Date();
+    let goalReached = false;
+    try {
+      await db.transaction(async (tx) => {
+        const claimed = await tx.update(studentProfiles)
+          .set({ avatarGiftAt: now, updatedAt: now })
+          .where(and(eq(studentProfiles.id, profile.id), isNull(studentProfiles.avatarGiftAt)));
+        if (affectedRows(claimed) !== 1) throw new ConflictError('Ya elegiste tu prenda de regalo');
+        await tx.insert(studentAvatarPurchases).values({
+          id: uuidv4(),
+          studentProfileId: profile.id,
+          avatarItemId: item.id,
+          classroomId: profile.classroomId,
+          pricePaid: 0,
+          purchasedAt: now,
+        });
+        if (options.equip) await replaceSlot(tx, profile.id, item.id, item.slot);
+        goalReached = await clearReachedGoal(tx, profile.id, item.id);
+      });
+    } catch (error: any) {
+      if (error?.code === 'ER_DUP_ENTRY' || error?.cause?.code === 'ER_DUP_ENTRY') throw new ConflictError('Ya tienes esta prenda');
+      throw error;
+    }
+    return {
+      item: { id: item.id, name: item.name, slot: item.slot },
+      pricePaid: 0,
+      newBalance: profile.gp,
+      equipped: !!options.equip,
+      goalReached,
+      gift: true,
+    };
+  }
+
+  /**
+   * Meta de ahorro: una prenda a la venta en su clase. Hay una sola meta para premios y prendas, así que
+   * reemplaza a la que tuviera. Con null, la quita (sea del tipo que sea).
+   */
+  async setGoal(profileId: string, itemId: string | null) {
+    const profile = await loadProfile(profileId);
+    if (!profile) throw new NotFoundError('Perfil no encontrado');
+    if (itemId) {
+      const classroom = await loadClassroom(profile.classroomId);
+      if (!classroom) throw new NotFoundError('Clase no encontrada');
+      if (!classroom.avatarShopEnabled) throw new ValidationError('Tu profe desactivó la tienda de avatar');
+      await sellableEntry(profile, classroom, itemId);
+    }
+    await db.update(studentProfiles)
+      .set({ shopGoalItemId: itemId, shopGoalKind: itemId ? 'AVATAR' : null, updatedAt: new Date() })
+      .where(eq(studentProfiles.id, profile.id));
+    return { goalItemId: itemId, goalKind: itemId ? ('AVATAR' as const) : null };
+  }
+
+  /** La prenda que el alumno tiene como meta, con su precio en la clase (para la Tienda); null si ya no se puede comprar. */
+  async goalSummary(profileId: string) {
+    const profile = await loadProfile(profileId);
+    if (!profile || profile.goalKind !== 'AVATAR' || !profile.goalItemId) return null;
+    const classroom = await loadClassroom(profile.classroomId);
+    if (!classroom || !classroom.avatarShopEnabled) return null;
+    const found = await lookupItem(profile, classroom, profile.goalItemId);
+    if (!found?.entry || found.owned || found.item.gender !== profile.gender) return null;
+    return { id: found.item.id, name: found.item.name, price: found.entry.price, imagePath: found.item.imagePath, rarity: found.item.rarity };
   }
 
   /** Ponerse una prenda propia (comprada, su par o una inicial) del cuerpo actual. Siempre se puede, aunque la tienda esté cerrada. */
@@ -369,12 +498,19 @@ class AvatarCatalogService {
   }
 
   /**
-   * Cambiar de cuerpo (el alumno o su docente). Cada prenda puesta pasa a su par en el otro cuerpo si lo
-   * tiene; si no, vuelve la inicial de esa ranura. Lo comprado sin par se conserva para cuando regrese.
+   * Cambiar de cuerpo (el alumno o su docente; en inicial a 2.º, solo el docente). Cada prenda puesta pasa a
+   * su par en el otro cuerpo si lo tiene; si no, vuelve la inicial de esa ranura. Lo comprado sin par se
+   * conserva para cuando regrese. Una meta de prenda pasa a su par o se quita.
    */
-  async setBody(profileId: string, gender: AvatarGender) {
+  async setBody(profileId: string, gender: AvatarGender, options: { byStudent?: boolean } = {}) {
     const profile = await loadProfile(profileId);
     if (!profile) throw new NotFoundError('Perfil no encontrado');
+    if (options.byStudent) {
+      const classroom = await loadClassroom(profile.classroomId);
+      if (classroom && isYoungLevel(classroom.gradeLevel)) {
+        throw new ForbiddenError('Pídele a tu profe que cambie el cuerpo de tu personaje');
+      }
+    }
     if (profile.gender === gender) return avatarService.getEquippedItems(profile.id);
 
     const [equipped, owned, defaults] = await Promise.all([
@@ -397,8 +533,19 @@ class AvatarCatalogService {
       if (counterpart && (counterpart.isDefault || owned.has(counterpart.id))) next.set(row.slot, counterpart.id);
     }
 
+    // La meta de prenda sigue a su par en el nuevo cuerpo (si existe y aún no es suya); si no, se quita.
+    let goal: { shopGoalItemId: string | null; shopGoalKind: 'AVATAR' | null } | null = null;
+    if (profile.goalKind === 'AVATAR' && profile.goalItemId) {
+      const [goalItem] = await db.select({ pairKey: avatarItems.pairKey }).from(avatarItems).where(eq(avatarItems.id, profile.goalItemId));
+      const [pair] = goalItem?.pairKey
+        ? await db.select({ id: avatarItems.id }).from(avatarItems)
+          .where(and(eq(avatarItems.pairKey, goalItem.pairKey), eq(avatarItems.gender, gender), eq(avatarItems.isActive, true), eq(avatarItems.isDefault, false)))
+        : [];
+      goal = pair && !owned.has(pair.id) ? { shopGoalItemId: pair.id, shopGoalKind: 'AVATAR' } : { shopGoalItemId: null, shopGoalKind: null };
+    }
+
     await db.transaction(async (tx) => {
-      await tx.update(studentProfiles).set({ avatarGender: gender, updatedAt: new Date() }).where(eq(studentProfiles.id, profile.id));
+      await tx.update(studentProfiles).set({ avatarGender: gender, ...goal, updatedAt: new Date() }).where(eq(studentProfiles.id, profile.id));
       await tx.delete(studentEquippedItems).where(eq(studentEquippedItems.studentProfileId, profile.id));
       const now = new Date();
       const rows = [...next].map(([slot, avatarItemId]) => ({ id: uuidv4(), studentProfileId: profile.id, avatarItemId, slot, equippedAt: now }));
@@ -558,12 +705,15 @@ class AvatarCatalogService {
 
   // ==================== CLASES NUEVAS, COPIAS Y BORRADO ====================
 
-  /** Copia la configuración de una clase a otra: activada y nivel; con `exceptions`, también lo oculto (sin precios propios). */
-  async copySettings(sourceClassroomId: string, targetClassroomId: string, options: { exceptions: boolean }) {
+  /**
+   * Copia la configuración de una clase a otra: activada y nivel (salvo `priceLevel: false`); con
+   * `exceptions`, también lo oculto (sin precios propios).
+   */
+  async copySettings(sourceClassroomId: string, targetClassroomId: string, options: { exceptions: boolean; priceLevel?: boolean }) {
     const source = await loadClassroom(sourceClassroomId);
     if (!source) return;
     await db.update(classrooms)
-      .set({ avatarShopEnabled: source.avatarShopEnabled, avatarPriceLevel: source.avatarPriceLevel })
+      .set({ avatarShopEnabled: source.avatarShopEnabled, ...(options.priceLevel === false ? {} : { avatarPriceLevel: source.avatarPriceLevel }) })
       .where(eq(classrooms.id, targetClassroomId));
     if (!options.exceptions) return;
     const [hiddenCollections, hiddenItems] = await Promise.all([
@@ -585,13 +735,32 @@ class AvatarCatalogService {
     }
   }
 
-  /** Una clase nueva hereda la configuración de la clase más reciente del mismo docente. */
+  /**
+   * Inicial a 2.º: ropa «Más barata» por defecto (seis semanas de oro son una eternidad a esa edad). Al crear
+   * la clase se aplica siempre; al pasar una clase a esos grados, solo si seguía en «Normal». El docente puede cambiarla.
+   */
+  async applyYoungPrices(classroomId: string, options: { onlyIfNormal?: boolean } = {}) {
+    await db.update(classrooms)
+      .set({ avatarPriceLevel: 'LOW' })
+      .where(options.onlyIfNormal
+        ? and(eq(classrooms.id, classroomId), eq(classrooms.avatarPriceLevel, 'NORMAL'))
+        : eq(classrooms.id, classroomId));
+  }
+
+  /**
+   * Una clase nueva hereda la configuración de la clase más reciente del mismo docente. El nivel de precios
+   * solo pasa entre clases de la misma edad: una de 5.º no hereda la ropa «Más barata» de una de 1.º, y una
+   * de inicial a 2.º empieza siempre en «Más barata».
+   */
   async inheritFromTeacher(classroomId: string, teacherId: string) {
-    const [source] = await db.select({ id: classrooms.id }).from(classrooms)
+    const [target] = await db.select({ gradeLevel: classrooms.gradeLevel }).from(classrooms).where(eq(classrooms.id, classroomId));
+    const young = isYoungLevel(target?.gradeLevel);
+    const [source] = await db.select({ id: classrooms.id, gradeLevel: classrooms.gradeLevel }).from(classrooms)
       .where(and(eq(classrooms.teacherId, teacherId), eq(classrooms.isActive, true), ne(classrooms.id, classroomId)))
       .orderBy(desc(classrooms.createdAt))
       .limit(1);
-    if (source) await this.copySettings(source.id, classroomId, { exceptions: true });
+    if (source) await this.copySettings(source.id, classroomId, { exceptions: true, priceLevel: isYoungLevel(source.gradeLevel) === young });
+    if (young) await this.applyYoungPrices(classroomId);
   }
 }
 

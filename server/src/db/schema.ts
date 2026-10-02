@@ -406,7 +406,9 @@ export const studentProfiles = mysqlTable('student_profiles', {
   isDemo: boolean('is_demo').notNull().default(false), // Estudiante demo para onboarding
   celebratedAt: datetime('celebrated_at'), // hasta dónde vio sus celebraciones (null = aún no)
   homeSeenAt: datetime('home_seen_at'), // hasta dónde vio "Lo nuevo" en su inicio (null = aún no)
-  shopGoalItemId: varchar('shop_goal_item_id', { length: 36 }), // premio que eligió como meta de ahorro (null = sin meta)
+  shopGoalItemId: varchar('shop_goal_item_id', { length: 36 }), // meta de ahorro: un premio o una prenda (null = sin meta)
+  shopGoalKind: mysqlEnum('shop_goal_kind', ['ITEM', 'AVATAR']), // ITEM = premio de la tienda; AVATAR = prenda
+  avatarGiftAt: datetime('avatar_gift_at'), // cuándo eligió su prenda de regalo (null = aún la tiene)
   restingSince: datetime('resting_since'), // HP en 0: desde cuándo descansa (null = tiene energía)
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),

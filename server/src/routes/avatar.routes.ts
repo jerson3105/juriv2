@@ -31,6 +31,12 @@ router.get('/student/:studentProfileId/view', authorize('STUDENT'), avatarContro
 // Comprar un item (y, si se pide, ponérselo)
 router.post('/purchase', authorize('STUDENT'), avatarController.purchaseItem);
 
+// La prenda de regalo (una común, una vez por perfil)
+router.post('/gift', authorize('STUDENT'), avatarController.claimGift);
+
+// Meta de ahorro con una prenda (la única meta del alumno: reemplaza a la de premios)
+router.put('/student/:studentProfileId/goal', authorize('STUDENT'), avatarController.setGoal);
+
 // Obtener compras de un estudiante
 router.get('/student/:studentProfileId/purchases', avatarController.getStudentPurchases);
 

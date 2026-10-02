@@ -5,6 +5,7 @@ import { NotFoundError, ValidationError } from '../utils/errors.js';
 import { isInitialLevel } from '../utils/energy.js';
 import { GIFTS_PER_DAY, classmateName, localDayStart } from '../utils/shopRules.js';
 import { shopService } from './shop.service.js';
+import { avatarCatalogService } from './avatarCatalog.service.js';
 
 type Origin = 'SELF' | 'GIFT' | 'TEACHER' | 'REWARD' | 'REDEEM';
 
@@ -22,6 +23,7 @@ class StudentShopService {
         gp: studentProfiles.gp,
         hp: studentProfiles.hp,
         goalItemId: studentProfiles.shopGoalItemId,
+        goalKind: studentProfiles.shopGoalKind,
         shopEnabled: classrooms.shopEnabled,
         requiresApproval: classrooms.requirePurchaseApproval,
         dailyLimit: classrooms.dailyPurchaseLimit,
@@ -172,21 +174,26 @@ class StudentShopService {
       },
       gold: profile.gp,
       pendingGold,
-      goalItemId: profile.goalItemId,
+      // Una sola meta: un premio (goalItemId) o una prenda de «Mi personaje» (avatarGoal; null si ya no se vende).
+      goalKind: profile.goalItemId ? (profile.goalKind ?? 'ITEM') : null,
+      goalItemId: profile.goalKind === 'AVATAR' ? null : profile.goalItemId,
+      avatarGoal: profile.goalKind === 'AVATAR' ? await avatarCatalogService.goalSummary(profileId) : null,
       items: catalog.map(({ isActive: _active, ...item }) => item),
       waiting,
       mine,
     };
   }
 
-  /** El alumno elige (o quita) su meta: un premio activo de su clase. */
+  /** El alumno elige (o quita) su meta: un premio activo de su clase. Es la única meta: reemplaza a una prenda. */
   async setGoal(profileId: string, userId: string, itemId: string | null) {
     const profile = await this.ownProfile(profileId, userId);
     if (itemId) {
       const [item] = await db.select({ classroomId: shopItems.classroomId, isActive: shopItems.isActive }).from(shopItems).where(eq(shopItems.id, itemId));
       if (!item || !item.isActive || item.classroomId !== profile.classroomId) throw new ValidationError('Ese premio no está en tu tienda');
     }
-    await db.update(studentProfiles).set({ shopGoalItemId: itemId, updatedAt: new Date() }).where(eq(studentProfiles.id, profileId));
+    await db.update(studentProfiles)
+      .set({ shopGoalItemId: itemId, shopGoalKind: itemId ? 'ITEM' : null, updatedAt: new Date() })
+      .where(eq(studentProfiles.id, profileId));
     return { goalItemId: itemId };
   }
 
