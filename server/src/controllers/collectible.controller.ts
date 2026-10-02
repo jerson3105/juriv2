@@ -1,15 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { eq, and } from 'drizzle-orm';
 import { collectibleService } from '../services/collectible.service.js';
-import { db } from '../db/index.js';
-import { studentProfiles, collectibleAlbums } from '../db/schema.js';
-import type { CardRarity, PackType, ImageStyle } from '../db/schema.js';
+import { collectibleStudentService } from '../services/collectibleStudent.service.js';
+import type { CardRarity } from '../db/schema.js';
+import { AppError } from '../utils/errors.js';
+import { DEFAULT_TZ_OFFSET } from '../utils/shopRules.js';
 import {
   requireClassroomTeacher,
-  requireClassroomMember,
   requireResourceTeacher,
-  requireResourceMember,
   requireStudentProfileReadAccess,
   classroomIdOfAlbum,
   classroomIdOfCard,
@@ -18,11 +16,11 @@ import {
   pickFields,
 } from '../utils/access.js';
 
-// Campos que el profesor puede fijar en álbumes y cartas (classroomId/albumId salen de la ruta).
+// Campos que el profesor puede fijar en álbumes y cartas (classroomId/albumId salen de la ruta). El precio de los
+// sobres sale del oro semanal de la clase (solo se elige el nivel) y el premio no lleva XP (coleccionables v2).
 const ALBUM_FIELDS = [
-  'name', 'description', 'coverImage', 'theme', 'imageStyle',
-  'singlePackPrice', 'fivePackPrice', 'tenPackPrice',
-  'rewardXp', 'rewardHp', 'rewardGp', 'rewardBadgeId', 'allowTrades',
+  'name', 'description', 'coverImage', 'theme', 'imageStyle', 'priceLevel',
+  'rewardHp', 'rewardGp', 'rewardBadgeId', 'allowTrades',
 ] as const;
 const ALBUM_UPDATE_FIELDS = [...ALBUM_FIELDS, 'isActive'] as const;
 // La insignia de premio debe ser del sistema o de la misma clase del álbum.
@@ -37,7 +35,6 @@ const CARD_FIELDS = ['name', 'description', 'imageUrl', 'icon', 'rarity', 'slotN
 
 // Imágenes solo subidas a la plataforma (POST /collectibles/upload-image): nada de URLs externas.
 const imageRef = z.string().regex(/^\/api\/uploads\/collectibles\/[\w.-]+$/, 'Imagen no válida');
-const gp = z.number().int().min(0, 'El precio no puede ser negativo').max(100000, 'El precio es demasiado alto');
 const reward = z.number().int().min(0, 'La recompensa no puede ser negativa').max(1000, 'La recompensa es demasiado alta');
 const albumSchema = z.object({
   name: z.string().trim().min(1, 'Escribe un nombre').max(100, 'El nombre es demasiado largo'),
@@ -45,10 +42,7 @@ const albumSchema = z.object({
   coverImage: imageRef.nullable().optional(),
   theme: z.string().trim().max(255).nullable().optional(),
   imageStyle: z.enum(['CARTOON', 'REALISTIC', 'PIXEL_ART', 'ANIME', 'WATERCOLOR', 'MINIMALIST']).optional(),
-  singlePackPrice: gp.optional(),
-  fivePackPrice: gp.optional(),
-  tenPackPrice: gp.optional(),
-  rewardXp: reward.optional(),
+  priceLevel: z.enum(['LOW', 'NORMAL', 'HIGH']).optional(),
   rewardHp: reward.optional(),
   rewardGp: reward.optional(),
   rewardBadgeId: z.string().uuid().nullable().optional(),
@@ -66,6 +60,18 @@ const cardSchema = z.object({
 const cardBatchSchema = z.object({ cards: z.array(cardSchema.omit({ slotNumber: true })).min(1).max(60) });
 const invalid = (res: Response, error: z.ZodError) =>
   res.status(400).json({ message: error.errors[0]?.message || 'Datos inválidos', errors: error.errors });
+
+// Alumno: el desfase horario del navegador (getTimezoneOffset) para contar los sobres de «hoy».
+const tzSchema = z.coerce.number().int().min(-840).max(840).default(DEFAULT_TZ_OFFSET);
+const viewQuerySchema = z.object({ tz: tzSchema });
+const openSchema = z.object({ tz: tzSchema });
+const pricingQuerySchema = z.object({ cards: z.coerce.number().int().min(0).max(1000).default(0) });
+const fail = (res: Response, error: unknown, fallback: string) => {
+  if (error instanceof AppError) return res.status(error.statusCode).json({ success: false, message: error.message });
+  if (error instanceof z.ZodError) return res.status(400).json({ success: false, message: error.errors[0]?.message || 'Datos inválidos' });
+  console.error(fallback, error);
+  return res.status(500).json({ success: false, message: fallback });
+};
 
 export const collectibleController = {
   // ==================== ÁLBUMES ====================
@@ -95,11 +101,23 @@ export const collectibleController = {
   async getAlbums(req: Request, res: Response, next: NextFunction) {
     try {
       const { classroomId } = req.params;
-      if (!(await requireClassroomMember(req, res, classroomId))) return;
-      const albums = await collectibleService.getAlbumsByClassroom(classroomId);
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
+      const albums = await collectibleService.getAlbumsByClassroom(classroomId, { pricing: true });
       res.json(albums);
     } catch (error) {
       next(error);
+    }
+  },
+
+  // GET /collectibles/classroom/:classroomId/pricing?cards=N: los tres niveles de precio con el oro de la clase.
+  async getPricingPreview(req: Request, res: Response) {
+    try {
+      const { classroomId } = req.params;
+      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
+      const { cards } = pricingQuerySchema.parse(req.query);
+      res.json({ success: true, data: await collectibleService.getPricingPreview(classroomId, cards) });
+    } catch (error) {
+      fail(res, error, 'No se pudieron calcular los precios');
     }
   },
 
@@ -126,8 +144,8 @@ export const collectibleController = {
   async getAlbumById(req: Request, res: Response, next: NextFunction) {
     try {
       const { albumId } = req.params;
-      if (!(await requireResourceMember(req, res, classroomIdOfAlbum, albumId, 'Álbum no encontrado'))) return;
-      const album = await collectibleService.getAlbumById(albumId);
+      if (!(await requireResourceTeacher(req, res, classroomIdOfAlbum, albumId, 'Álbum no encontrado'))) return;
+      const album = await collectibleService.getAlbumWithPricing(albumId);
 
       if (!album) {
         return res.status(404).json({ message: 'Álbum no encontrado' });
@@ -318,106 +336,52 @@ export const collectibleController = {
     }
   },
 
-  // ==================== COMPRAS (ESTUDIANTE) ====================
+  // ==================== COLECCIONABLES (ALUMNO) ====================
 
-  async purchasePack(req: Request, res: Response, next: NextFunction) {
+  // GET /collectibles/student/:studentProfileId/view?tz= (solo el dueño del perfil; otro perfil → 404)
+  async getStudentView(req: Request, res: Response) {
     try {
-      const { albumId } = req.params;
-      const { packType } = req.body;
-      const userId = req.user?.id;
-
-      if (!userId) {
-        return res.status(401).json({ message: 'No autenticado' });
-      }
-
-      // Obtener el álbum para saber a qué classroom pertenece
-      const [album] = await db
-        .select({ classroomId: collectibleAlbums.classroomId })
-        .from(collectibleAlbums)
-        .where(eq(collectibleAlbums.id, albumId));
-
-      if (!album) {
-        return res.status(404).json({ message: 'Álbum no encontrado' });
-      }
-
-      // Buscar el perfil del estudiante en esa clase
-      const [studentProfile] = await db
-        .select({ id: studentProfiles.id })
-        .from(studentProfiles)
-        .where(
-          and(
-            eq(studentProfiles.userId, userId),
-            eq(studentProfiles.classroomId, album.classroomId)
-          )
-        );
-
-      if (!studentProfile) {
-        return res.status(400).json({ message: 'No tienes un perfil en esta clase' });
-      }
-
-      const studentProfileId = studentProfile.id;
-
-      const result = await collectibleService.purchasePack(
-        studentProfileId,
-        albumId,
-        packType as PackType
-      );
-
-      res.json(result);
-    } catch (error: any) {
-      if (error.message === 'No tienes suficiente oro' || 
-          error.message === 'Álbum no disponible' ||
-          error.message === 'La tienda está cerrada' ||
-          error.message?.includes('necesita al menos')) {
-        return res.status(400).json({ message: error.message });
-      }
-      next(error);
+      const { tz } = viewQuerySchema.parse(req.query);
+      const data = await collectibleStudentService.getView(req.params.studentProfileId, req.user!.id, tz);
+      res.json({ success: true, data });
+    } catch (error) {
+      fail(res, error, 'No se pudo cargar tu álbum');
     }
   },
 
-  // ==================== COLECCIÓN DEL ESTUDIANTE ====================
+  // POST /collectibles/student/:studentProfileId/albums/:albumId/open { tz }
+  async openPack(req: Request, res: Response) {
+    try {
+      const { tz } = openSchema.parse(req.body ?? {});
+      const data = await collectibleStudentService.openPack(req.params.studentProfileId, req.user!.id, req.params.albumId, tz);
+      res.json({ success: true, data });
+    } catch (error) {
+      fail(res, error, 'No se pudo abrir el sobre');
+    }
+  },
+
+  // POST /collectibles/student/:studentProfileId/albums/:albumId/welcome
+  async openWelcome(req: Request, res: Response) {
+    try {
+      const data = await collectibleStudentService.openWelcome(req.params.studentProfileId, req.user!.id, req.params.albumId);
+      res.json({ success: true, data });
+    } catch (error) {
+      fail(res, error, 'No se pudo abrir tu sobre de bienvenida');
+    }
+  },
+
+  // ==================== COLECCIÓN DE UN ESTUDIANTE (PROFESOR) ====================
 
   async getStudentCollection(req: Request, res: Response, next: NextFunction) {
     try {
-      const { albumId, studentProfileId: paramStudentProfileId } = req.params;
-      const userId = req.user?.id;
-      
-      let studentProfileId = paramStudentProfileId;
-
-      if (paramStudentProfileId) {
-        if (!(await requireStudentProfileReadAccess(req, res, paramStudentProfileId))) return;
-        const [albumClassroomId, studentClassroomId] = await Promise.all([
-          classroomIdOfAlbum(albumId),
-          classroomIdOfStudentProfile(paramStudentProfileId),
-        ]);
-        if (!albumClassroomId || albumClassroomId !== studentClassroomId) {
-          return res.status(404).json({ message: 'Álbum no encontrado' });
-        }
-      }
-
-      // Si no viene por params, buscar el perfil del usuario logueado
-      if (!studentProfileId && userId) {
-        const [album] = await db
-          .select({ classroomId: collectibleAlbums.classroomId })
-          .from(collectibleAlbums)
-          .where(eq(collectibleAlbums.id, albumId));
-
-        if (album) {
-          const [studentProfile] = await db
-            .select({ id: studentProfiles.id })
-            .from(studentProfiles)
-            .where(
-              and(
-                eq(studentProfiles.userId, userId),
-                eq(studentProfiles.classroomId, album.classroomId)
-              )
-            );
-          studentProfileId = studentProfile?.id;
-        }
-      }
-
-      if (!studentProfileId) {
-        return res.status(400).json({ message: 'Se requiere perfil de estudiante' });
+      const { albumId, studentProfileId } = req.params;
+      if (!(await requireStudentProfileReadAccess(req, res, studentProfileId))) return;
+      const [albumClassroomId, studentClassroomId] = await Promise.all([
+        classroomIdOfAlbum(albumId),
+        classroomIdOfStudentProfile(studentProfileId),
+      ]);
+      if (!albumClassroomId || albumClassroomId !== studentClassroomId) {
+        return res.status(404).json({ message: 'Álbum no encontrado' });
       }
 
       const collection = await collectibleService.getStudentCollection(studentProfileId, albumId);
@@ -506,39 +470,6 @@ export const collectibleController = {
       if (error.message === 'GEMINI_API_KEY no configurada') {
         return res.status(503).json({ message: 'Servicio de IA no disponible' });
       }
-      next(error);
-    }
-  },
-
-  // ==================== PROGRESO DE ESTUDIANTE (TODOS LOS ÁLBUMES) ====================
-
-  async getStudentAlbumsProgress(req: Request, res: Response, next: NextFunction) {
-    try {
-      const { classroomId } = req.params;
-      const userId = req.user?.id;
-
-      if (!userId) {
-        return res.status(401).json({ message: 'No autenticado' });
-      }
-
-      // Buscar el perfil del estudiante en esa clase
-      const [studentProfile] = await db
-        .select({ id: studentProfiles.id })
-        .from(studentProfiles)
-        .where(
-          and(
-            eq(studentProfiles.userId, userId),
-            eq(studentProfiles.classroomId, classroomId)
-          )
-        );
-
-      if (!studentProfile) {
-        return res.status(400).json({ message: 'No tienes un perfil en esta clase' });
-      }
-
-      const progress = await collectibleService.getStudentAlbumsProgress(studentProfile.id, classroomId);
-      res.json(progress);
-    } catch (error) {
       next(error);
     }
   },

@@ -54,11 +54,18 @@ router.post(
   collectibleController.createAlbum
 );
 
-// Listar álbumes de una clase
+// Listar álbumes de una clase (el alumno ve los suyos en /student/:id/view, sin spoilers)
 router.get(
   '/classroom/:classroomId/albums',
-  authorize('TEACHER', 'STUDENT'),
+  authorize('TEACHER'),
   collectibleController.getAlbums
+);
+
+// Precio de los sobres en los tres niveles, con el oro semanal de la clase (formulario del álbum)
+router.get(
+  '/classroom/:classroomId/pricing',
+  authorize('TEACHER'),
+  collectibleController.getPricingPreview
 );
 
 // Listar álbumes importables desde otras clases del profesor
@@ -71,7 +78,7 @@ router.get(
 // Obtener álbum con cartas
 router.get(
   '/albums/:albumId',
-  authorize('TEACHER', 'STUDENT'),
+  authorize('TEACHER'),
   collectibleController.getAlbumById
 );
 
@@ -133,23 +140,16 @@ router.delete(
   collectibleController.deleteCard
 );
 
-// ==================== COMPRAS (ESTUDIANTE) ====================
+// ==================== COLECCIONABLES (ALUMNO) ====================
 
-// Comprar sobre
-router.post(
-  '/albums/:albumId/purchase',
-  authorize('STUDENT'),
-  collectibleController.purchasePack
-);
+// Sus álbumes con sus figuritas, el sobre del día y el de bienvenida (solo el dueño del perfil)
+router.get('/student/:studentProfileId/view', authorize('STUDENT'), collectibleController.getStudentView);
 
-// ==================== COLECCIÓN (ESTUDIANTE) ====================
+// Abrir el sobre de un álbum (cobra y sortea en el servidor)
+router.post('/student/:studentProfileId/albums/:albumId/open', authorize('STUDENT'), collectibleController.openPack);
 
-// Ver mi colección de un álbum
-router.get(
-  '/albums/:albumId/my-collection',
-  authorize('STUDENT'),
-  collectibleController.getStudentCollection
-);
+// Abrir el sobre de bienvenida (gratis, uno por álbum)
+router.post('/student/:studentProfileId/albums/:albumId/welcome', authorize('STUDENT'), collectibleController.openWelcome);
 
 // Ver colección de un estudiante específico (profesor)
 router.get(
@@ -183,15 +183,6 @@ router.post(
   authorize('TEACHER'),
   ...aiGuard,
   collectibleController.generateCardWithAI
-);
-
-// ==================== PROGRESO DE ESTUDIANTE (TODOS LOS ÁLBUMES) ====================
-
-// Ver progreso del estudiante en todos los álbumes de una clase
-router.get(
-  '/classroom/:classroomId/my-progress',
-  authorize('STUDENT'),
-  collectibleController.getStudentAlbumsProgress
 );
 
 export default router;

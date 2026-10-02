@@ -39,7 +39,7 @@ const NEW_DAYS = 14;
 const RESTING_SHOP_MESSAGE = 'Estás descansando: completa tu misión de recuperación para volver a usar la tienda.';
 
 // Precios redondos: hasta 20 de uno en uno, hasta 100 de cinco en cinco, después de diez en diez.
-const niceRound = (value: number) => {
+export const niceRound = (value: number) => {
   if (value < 20) return Math.max(1, Math.round(value));
   if (value < 100) return Math.round(value / 5) * 5;
   return Math.round(value / 10) * 10;
@@ -134,7 +134,7 @@ const ensurePriceBase = async (classroom: NonNullable<ClassroomRow>): Promise<nu
 };
 
 /** Oro que ya espera a su profe (pedidos de la tienda por aprobar): no se puede gastar en ropa. */
-const pendingGoldOf = async (profileId: string) => {
+export const pendingGoldOf = async (profileId: string) => {
   const [row] = await db
     .select({ total: sql<string>`COALESCE(SUM(${purchases.totalPrice}), 0)` })
     .from(purchases)
@@ -570,6 +570,13 @@ class AvatarCatalogService {
         createdAt: entry.item.createdAt,
         avatarItem: entry.item,
       }));
+  }
+
+  /** El oro semanal con el que la clase pone precios (los coleccionables lo usan también). */
+  async classWeeklyBase(classroomId: string) {
+    const classroom = await loadClassroom(classroomId);
+    if (!classroom) throw new NotFoundError('Clase no encontrada');
+    return ensurePriceBase(classroom);
   }
 
   // ==================== DOCENTE ====================

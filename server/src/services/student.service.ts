@@ -6,7 +6,7 @@ import {
   purchases, itemUsages, powerUsages, expeditionSubmissions, expeditionStudentProgress,
   jiroStudentExpeditions, jiroQuestionAnswers, jiroDeliveries,
   studentCollectibles, scrolls, scrollReactions,
-  collectibleCards, collectibleAlbums, classroomCharacterClasses,
+  collectibleCards, collectibleAlbums, collectiblePurchases, collectibleWelcomePacks, completedAlbums, classroomCharacterClasses,
   stories,
   levelUpLogs,
 } from '../db/schema.js';
@@ -273,6 +273,21 @@ export class StudentService {
     ]);
     const itemsByClass = new Map(itemRows.map((row) => [row.classroomId, Number(row.count)]));
     const ownedByProfile = new Map(ownedRows.map((row) => [row.studentId, Number(row.count)]));
+    // Coleccionables: el menú aparece si la clase tiene un álbum activo con figuritas o el alumno tiene alguna
+    // (un álbum archivado se sigue mirando).
+    const [albumRows, cardRows] = await Promise.all([
+      db.select({ classroomId: collectibleAlbums.classroomId, count: sql<string>`COUNT(DISTINCT ${collectibleAlbums.id})` })
+        .from(collectibleAlbums)
+        .innerJoin(collectibleCards, eq(collectibleCards.albumId, collectibleAlbums.id))
+        .where(and(inArray(collectibleAlbums.classroomId, classroomIds), eq(collectibleAlbums.isActive, true)))
+        .groupBy(collectibleAlbums.classroomId),
+      db.select({ studentId: studentCollectibles.studentProfileId, count: sql<string>`COUNT(DISTINCT ${studentCollectibles.cardId})` })
+        .from(studentCollectibles)
+        .where(inArray(studentCollectibles.studentProfileId, profileIds))
+        .groupBy(studentCollectibles.studentProfileId),
+    ]);
+    const albumsByClass = new Map(albumRows.map((row) => [row.classroomId, Number(row.count)]));
+    const cardsByProfile = new Map(cardRows.map((row) => [row.studentId, Number(row.count)]));
     // Insignias: el menú muestra «Mis insignias» si la clase tiene alguna que se pueda ganar o el alumno tiene alguna.
     const badgeSummaries = await studentBadgesService.getSummaries(profiles.map((profile) => ({ id: profile.id, classroomId: profile.classroomId })));
 
@@ -298,6 +313,7 @@ export class StudentService {
         classroomStudentCount: classroomRanking?.studentCount ?? 0,
         shopSummary: { items: itemsByClass.get(profile.classroomId) ?? 0, owned: ownedByProfile.get(profile.id) ?? 0 },
         badgeSummary: badgeSummaries.get(profile.id) ?? { available: 0, owned: 0 },
+        collectibleSummary: { albums: albumsByClass.get(profile.classroomId) ?? 0, owned: cardsByProfile.get(profile.id) ?? 0 },
       });
     }
 
@@ -1087,8 +1103,11 @@ export class StudentService {
       }
       await tx.delete(jiroStudentExpeditions).where(eq(jiroStudentExpeditions.studentProfileId, studentId));
 
-      // 12. Collectibles
+      // 12. Collectibles (figuritas, sobres abiertos, bienvenida y álbumes completados)
       await tx.delete(studentCollectibles).where(eq(studentCollectibles.studentProfileId, studentId));
+      await tx.delete(collectiblePurchases).where(eq(collectiblePurchases.studentProfileId, studentId));
+      await tx.delete(collectibleWelcomePacks).where(eq(collectibleWelcomePacks.studentProfileId, studentId));
+      await tx.delete(completedAlbums).where(eq(completedAlbums.studentProfileId, studentId));
 
       // 13. Scrolls
       const studentScrolls = await tx.query.scrolls.findMany({

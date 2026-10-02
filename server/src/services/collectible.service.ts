@@ -1,44 +1,29 @@
 import type { GoogleGenAI } from '@google/genai';
 import { createGenAI } from '../utils/aiClient.js';
 import { db } from '../db/index.js';
-import { 
-  collectibleAlbums, 
-  collectibleCards, 
-  studentCollectibles, 
+import {
+  collectibleAlbums,
+  collectibleCards,
+  studentCollectibles,
   collectiblePurchases,
   completedAlbums,
   studentProfiles,
-  badges,
   classrooms,
   type CardRarity,
-  type PackType,
   type ImageStyle,
 } from '../db/schema.js';
 import { eq, and, sql, desc, asc, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
-import { studentService } from './student.service.js';
 import { logger } from '../utils/logger.js';
-import { spendGp } from '../utils/points.js';
-import { badgeService } from './badge.service.js';
+import { isYoungLevel } from '../utils/energy.js';
+import { albumPricing, welcomeCards } from '../utils/collectibleRules.js';
+import { avatarCatalogService, type AvatarPriceLevel } from './avatarCatalog.service.js';
 
-// Probabilidades de rareza
-const RARITY_PROBABILITIES: Record<CardRarity, number> = {
-  COMMON: 50,
-  UNCOMMON: 30,
-  RARE: 15,
-  EPIC: 4,
-  LEGENDARY: 1,
-};
+// Álbumes y figuritas del docente. Lo del alumno (su álbum, los sobres y el completado) está en
+// collectibleStudent.service.ts, y las reglas de precio y sorteo en utils/collectibleRules.ts.
 
-// Probabilidad de obtener versión brillante (shiny)
-const SHINY_PROBABILITY = 5; // 5%
-
-// Cantidad de cartas por tipo de paquete
-const PACK_SIZES: Record<PackType, number> = {
-  SINGLE: 1,
-  PACK_5: 5,
-  PACK_10: 10,
-};
+const PRICE_LEVELS: AvatarPriceLevel[] = ['LOW', 'NORMAL', 'HIGH'];
+type PricingContext = { weekly: number; young: boolean };
 
 export interface GenerateAlbumRequest {
   classroomId: string;
@@ -127,6 +112,46 @@ class CollectibleService {
     }
   }
 
+  // ==================== PRECIOS (ORO SEMANAL DE LA CLASE) ====================
+
+  private async pricingContext(classroomId: string): Promise<PricingContext> {
+    const [classroom] = await db.select({ gradeLevel: classrooms.gradeLevel }).from(classrooms).where(eq(classrooms.id, classroomId));
+    return { weekly: await avatarCatalogService.classWeeklyBase(classroomId), young: isYoungLevel(classroom?.gradeLevel) };
+  }
+
+  /** Lo que el docente ve del precio de un álbum: el sobre, cuántos al día y lo que cuesta completarlo. */
+  private pricingFor(context: PricingContext, level: AvatarPriceLevel, totalCards: number) {
+    const pricing = albumPricing(context.weekly, level, totalCards, context.young);
+    return {
+      weeklyGold: context.weekly,
+      young: context.young,
+      packCards: pricing.packCards,
+      packPrice: pricing.packPrice,
+      dailyPacks: pricing.dailyPacks,
+      duplicatePercent: Math.round(pricing.duplicateChance * 100),
+      welcomeCards: welcomeCards(context.young, totalCards, totalCards),
+      completeCost: pricing.completeCost,
+      completeWeeks: Math.round(pricing.completeWeeks * 10) / 10,
+    };
+  }
+
+  /** Los tres niveles de precio de un álbum de `totalCards` figuritas en esta clase (para elegir en el formulario). */
+  async getPricingPreview(classroomId: string, totalCards: number) {
+    const context = await this.pricingContext(classroomId);
+    return {
+      weeklyGold: context.weekly,
+      young: context.young,
+      levels: Object.fromEntries(PRICE_LEVELS.map((level) => [level, this.pricingFor(context, level, totalCards)])) as Record<AvatarPriceLevel, ReturnType<CollectibleService['pricingFor']>>,
+    };
+  }
+
+  async getAlbumWithPricing(albumId: string) {
+    const album = await this.getAlbumById(albumId);
+    if (!album) return null;
+    const context = await this.pricingContext(album.classroomId);
+    return { ...album, pricing: this.pricingFor(context, album.priceLevel, album.totalCards) };
+  }
+
   // ==================== ÁLBUMES ====================
 
   async createAlbum(data: {
@@ -136,16 +161,15 @@ class CollectibleService {
     coverImage?: string;
     theme?: string;
     imageStyle?: ImageStyle;
-    singlePackPrice?: number;
-    fivePackPrice?: number;
-    tenPackPrice?: number;
-    rewardXp?: number;
+    priceLevel?: AvatarPriceLevel;
     rewardHp?: number;
     rewardGp?: number;
     rewardBadgeId?: string;
     allowTrades?: boolean;
   }) {
     const now = new Date();
+    // Inicial a 2.º: «Más barato» por defecto, como la ropa del avatar.
+    const [classroom] = await db.select({ gradeLevel: classrooms.gradeLevel }).from(classrooms).where(eq(classrooms.id, data.classroomId));
     const album = {
       id: uuidv4(),
       classroomId: data.classroomId,
@@ -154,10 +178,7 @@ class CollectibleService {
       coverImage: data.coverImage || null,
       theme: data.theme || null,
       imageStyle: data.imageStyle || 'CARTOON' as ImageStyle,
-      singlePackPrice: data.singlePackPrice ?? 10,
-      fivePackPrice: data.fivePackPrice ?? 45,
-      tenPackPrice: data.tenPackPrice ?? 80,
-      rewardXp: data.rewardXp ?? 0,
+      priceLevel: data.priceLevel ?? (isYoungLevel(classroom?.gradeLevel) ? 'LOW' as const : 'NORMAL' as const),
       rewardHp: data.rewardHp ?? 0,
       rewardGp: data.rewardGp ?? 0,
       rewardBadgeId: data.rewardBadgeId || null,
@@ -171,7 +192,7 @@ class CollectibleService {
     return album;
   }
 
-  async getAlbumsByClassroom(classroomId: string) {
+  async getAlbumsByClassroom(classroomId: string, options: { pricing?: boolean } = {}) {
     const albums = await db
       .select()
       .from(collectibleAlbums)
@@ -185,15 +206,17 @@ class CollectibleService {
           .select({ count: sql<number>`count(*)` })
           .from(collectibleCards)
           .where(eq(collectibleCards.albumId, album.id));
-        
+
         return {
           ...album,
-          totalCards: cards[0]?.count || 0,
+          totalCards: Number(cards[0]?.count || 0),
         };
       })
     );
 
-    return albumsWithCount;
+    if (!options.pricing || albumsWithCount.length === 0) return albumsWithCount;
+    const context = await this.pricingContext(classroomId);
+    return albumsWithCount.map((album) => ({ ...album, pricing: this.pricingFor(context, album.priceLevel, album.totalCards) }));
   }
 
   async getImportableAlbumsForTeacher(teacherId: string, currentClassroomId: string) {
@@ -244,10 +267,7 @@ class CollectibleService {
     coverImage: string;
     theme: string;
     imageStyle: ImageStyle;
-    singlePackPrice: number;
-    fivePackPrice: number;
-    tenPackPrice: number;
-    rewardXp: number;
+    priceLevel: AvatarPriceLevel;
     rewardHp: number;
     rewardGp: number;
     rewardBadgeId: string | null;
@@ -259,7 +279,7 @@ class CollectibleService {
       .set({ ...data, updatedAt: new Date() })
       .where(eq(collectibleAlbums.id, albumId));
 
-    return this.getAlbumById(albumId);
+    return this.getAlbumWithPricing(albumId);
   }
 
   async cloneAlbumToClassrooms(teacherId: string, albumId: string, targetClassroomIds: string[]) {
@@ -288,9 +308,14 @@ class CollectibleService {
     }
 
     const targetClassrooms = await db
-      .select({ id: classrooms.id, name: classrooms.name })
+      .select({ id: classrooms.id, name: classrooms.name, gradeLevel: classrooms.gradeLevel })
       .from(classrooms)
       .where(and(eq(classrooms.teacherId, teacherId), inArray(classrooms.id, uniqueTargetIds)));
+    // El nivel de precio pasa solo entre clases de la misma edad; inicial a 2.º, siempre «Más barato».
+    const [sourceGrade] = await db.select({ gradeLevel: classrooms.gradeLevel }).from(classrooms).where(eq(classrooms.id, sourceAlbum.classroomId));
+    const sourceYoung = isYoungLevel(sourceGrade?.gradeLevel);
+    const priceLevelFor = (gradeLevel: string | null) => isYoungLevel(gradeLevel) ? 'LOW' as const
+      : sourceYoung ? 'NORMAL' as const : sourceAlbum.priceLevel;
 
     if (targetClassrooms.length !== uniqueTargetIds.length) {
       throw new Error('Hay clases destino no válidas');
@@ -311,10 +336,7 @@ class CollectibleService {
           coverImage: sourceAlbum.coverImage,
           theme: sourceAlbum.theme,
           imageStyle: sourceAlbum.imageStyle,
-          singlePackPrice: sourceAlbum.singlePackPrice,
-          fivePackPrice: sourceAlbum.fivePackPrice,
-          tenPackPrice: sourceAlbum.tenPackPrice,
-          rewardXp: sourceAlbum.rewardXp,
+          priceLevel: priceLevelFor(targetClassroom.gradeLevel),
           rewardHp: sourceAlbum.rewardHp,
           rewardGp: sourceAlbum.rewardGp,
           rewardBadgeId: null,
@@ -614,197 +636,7 @@ class CollectibleService {
     return rows.map((row) => ({ cardId: row.cardId, owners: Number(row.owners) }));
   }
 
-  // ==================== COMPRA DE SOBRES ====================
-
-  async purchasePack(studentProfileId: string, albumId: string, packType: PackType) {
-    // Obtener álbum y cartas
-    const album = await this.getAlbumById(albumId);
-    if (!album || !album.isActive) {
-      throw new Error('Álbum no disponible');
-    }
-
-    // Los sobres se venden en la tienda: con la tienda cerrada no se pueden comprar.
-    const [albumClassroom] = await db
-      .select({ shopEnabled: classrooms.shopEnabled })
-      .from(classrooms)
-      .where(eq(classrooms.id, album.classroomId));
-    if (albumClassroom && !albumClassroom.shopEnabled) {
-      throw new Error('La tienda está cerrada');
-    }
-
-    const packSize = PACK_SIZES[packType];
-    
-    // Verificar que hay suficientes cartas
-    if (album.totalCards < packSize) {
-      throw new Error(`El álbum necesita al menos ${packSize} cromos para este paquete`);
-    }
-
-    // Obtener precio
-    const price = packType === 'SINGLE' 
-      ? album.singlePackPrice 
-      : packType === 'PACK_5' 
-        ? album.fivePackPrice 
-        : album.tenPackPrice;
-
-    // Seleccionar cartas aleatorias según rareza
-    const obtainedCards = this.selectRandomCards(album.cards, packSize);
-
-    const cardsObtained: Array<{
-      cardId: string;
-      cardName: string;
-      rarity: string;
-      imageUrl: string | null;
-      isShiny: boolean;
-      isNew: boolean;
-    }> = [];
-
-    const now = new Date();
-    const purchase = {
-      id: uuidv4(),
-      studentProfileId,
-      albumId,
-      packType,
-      gpSpent: price,
-      cardsObtained,
-      purchasedAt: now,
-    };
-
-    // Cobro atómico primero y entrega en la misma transacción: con compras simultáneas
-    // no se puede abrir varios sobres pagando uno, y si algo falla no se cobra.
-    const newGpBalance = await db.transaction(async (tx) => {
-      if (!(await spendGp(tx, studentProfileId, price))) {
-        throw new Error('No tienes suficiente oro');
-      }
-
-      for (const card of obtainedCards) {
-        const isShiny = Math.random() * 100 < SHINY_PROBABILITY;
-
-        const [existing] = await tx
-          .select({ id: studentCollectibles.id })
-          .from(studentCollectibles)
-          .where(and(
-            eq(studentCollectibles.studentProfileId, studentProfileId),
-            eq(studentCollectibles.cardId, card.id),
-            eq(studentCollectibles.isShiny, isShiny)
-          ));
-
-        const isNew = !existing;
-
-        if (existing) {
-          await tx
-            .update(studentCollectibles)
-            .set({
-              quantity: sql`${studentCollectibles.quantity} + 1`,
-              updatedAt: now,
-            })
-            .where(eq(studentCollectibles.id, existing.id));
-        } else {
-          await tx.insert(studentCollectibles).values({
-            id: uuidv4(),
-            studentProfileId,
-            cardId: card.id,
-            quantity: 1,
-            isShiny,
-            obtainedAt: now,
-            updatedAt: now,
-          });
-        }
-
-        cardsObtained.push({
-          cardId: card.id,
-          cardName: card.name,
-          rarity: card.rarity,
-          imageUrl: card.imageUrl,
-          isShiny,
-          isNew,
-        });
-      }
-
-      await tx.insert(collectiblePurchases).values(purchase);
-
-      const [after] = await tx
-        .select({ gp: studentProfiles.gp })
-        .from(studentProfiles)
-        .where(eq(studentProfiles.id, studentProfileId));
-      return after?.gp ?? 0;
-    });
-
-    // Verificar si completó el álbum
-    await this.checkAlbumCompletion(studentProfileId, albumId);
-
-    return {
-      purchase,
-      cards: cardsObtained,
-      newGpBalance,
-    };
-  }
-
-  private selectRandomCards(cards: typeof collectibleCards.$inferSelect[], count: number) {
-    const selected: typeof cards = [];
-    
-    // Agrupar cartas por rareza
-    const cardsByRarity: Record<CardRarity, typeof cards> = {
-      COMMON: [],
-      UNCOMMON: [],
-      RARE: [],
-      EPIC: [],
-      LEGENDARY: [],
-    };
-    
-    for (const card of cards) {
-      cardsByRarity[card.rarity as CardRarity].push(card);
-    }
-    
-    for (let i = 0; i < count; i++) {
-      // Seleccionar rareza según probabilidades
-      const rarityRoll = Math.random() * 100;
-      let cumulative = 0;
-      let selectedRarity: CardRarity = 'COMMON';
-      
-      for (const [rarity, prob] of Object.entries(RARITY_PROBABILITIES)) {
-        cumulative += prob;
-        if (rarityRoll < cumulative) {
-          selectedRarity = rarity as CardRarity;
-          break;
-        }
-      }
-
-      // Obtener cartas de esa rareza
-      let eligibleCards = cardsByRarity[selectedRarity];
-      
-      // Si no hay cartas de esa rareza, buscar en rarezas adyacentes
-      if (eligibleCards.length === 0) {
-        const rarityOrder: CardRarity[] = ['COMMON', 'UNCOMMON', 'RARE', 'EPIC', 'LEGENDARY'];
-        const currentIndex = rarityOrder.indexOf(selectedRarity);
-        
-        // Buscar hacia abajo primero, luego hacia arriba
-        for (let offset = 1; offset < rarityOrder.length; offset++) {
-          if (currentIndex - offset >= 0 && cardsByRarity[rarityOrder[currentIndex - offset]].length > 0) {
-            eligibleCards = cardsByRarity[rarityOrder[currentIndex - offset]];
-            break;
-          }
-          if (currentIndex + offset < rarityOrder.length && cardsByRarity[rarityOrder[currentIndex + offset]].length > 0) {
-            eligibleCards = cardsByRarity[rarityOrder[currentIndex + offset]];
-            break;
-          }
-        }
-        
-        // Fallback: usar todas las cartas
-        if (eligibleCards.length === 0) {
-          eligibleCards = cards;
-        }
-      }
-
-      // Seleccionar carta COMPLETAMENTE aleatoria de las elegibles
-      // Esto permite repetidos naturalmente
-      const randomIndex = Math.floor(Math.random() * eligibleCards.length);
-      selected.push(eligibleCards[randomIndex]);
-    }
-
-    return selected;
-  }
-
-  // ==================== PROGRESO Y COMPLETADO ====================
+  // ==================== COLECCIÓN DE UN ESTUDIANTE (VISTA PROFESOR) ====================
 
   async getStudentCollection(studentProfileId: string, albumId: string) {
     const album = await this.getAlbumById(albumId);
@@ -839,7 +671,8 @@ class CollectibleService {
       hasShiny: collected.some(c => c.cardId === card.id && c.isShiny),
     }));
 
-    const uniqueCollected = new Set(collected.filter(c => !c.isShiny).map(c => c.cardId)).size;
+    // Normal o brillante: cualquier copia cuenta como tener la figurita (igual que al completar).
+    const uniqueCollected = new Set(collected.map(c => c.cardId)).size;
     const progress = album.totalCards > 0 ? (uniqueCollected / album.totalCards) * 100 : 0;
 
     // Verificar si está completado
@@ -860,95 +693,6 @@ class CollectibleService {
       isCompleted: !!completed,
       completedAt: completed?.completedAt,
     };
-  }
-
-  async checkAlbumCompletion(studentProfileId: string, albumId: string) {
-    const collection = await this.getStudentCollection(studentProfileId, albumId);
-    if (!collection || collection.isCompleted) return false;
-
-    // Verificar si tiene todas las cartas (no shiny, al menos 1 de cada una)
-    const hasAllCards = collection.uniqueCollected >= collection.totalCards;
-    
-    if (hasAllCards) {
-      const now = new Date();
-      const album = collection.album;
-      
-      // Obtener teacherId del classroom
-      const [classroom] = await db
-        .select({ teacherId: classrooms.teacherId })
-        .from(classrooms)
-        .where(eq(classrooms.id, album.classroomId));
-      
-      const teacherId = classroom?.teacherId || '';
-      
-      // Registrar completado. El índice único (alumno, álbum) hace que, con dos compras
-      // simultáneas que completan el álbum, solo una pase de aquí y cobre las recompensas.
-      try {
-        await db.insert(completedAlbums).values({
-          id: uuidv4(),
-          studentProfileId,
-          albumId,
-          rewardsGiven: false,
-          completedAt: now,
-        });
-      } catch (error: any) {
-        if (error?.code === 'ER_DUP_ENTRY' || error?.cause?.code === 'ER_DUP_ENTRY') return false;
-        throw error;
-      }
-
-      // Dar recompensas
-      const rewardReason = `Álbum completado: ${album.name}`;
-      
-      if (album.rewardXp > 0) {
-        await studentService.updatePoints({
-          studentId: studentProfileId,
-          pointType: 'XP',
-          amount: album.rewardXp,
-          reason: rewardReason,
-          teacherId,
-        });
-      }
-      if (album.rewardHp > 0) {
-        await studentService.updatePoints({
-          studentId: studentProfileId,
-          pointType: 'HP',
-          amount: album.rewardHp,
-          reason: rewardReason,
-          teacherId,
-        });
-      }
-      if (album.rewardGp > 0) {
-        await studentService.updatePoints({
-          studentId: studentProfileId,
-          pointType: 'GP',
-          amount: album.rewardGp,
-          reason: rewardReason,
-          teacherId,
-        });
-      }
-
-      // Insignia de premio (antes se guardaba pero nunca se entregaba)
-      if (album.rewardBadgeId) {
-        try {
-          await badgeService.awardBadgeAutomatic(studentProfileId, album.rewardBadgeId, rewardReason);
-        } catch (error) {
-          logger.warn('No se pudo otorgar la insignia del álbum', { albumId, error: (error as Error).message });
-        }
-      }
-
-      // Marcar recompensas como dadas
-      await db
-        .update(completedAlbums)
-        .set({ rewardsGiven: true })
-        .where(and(
-          eq(completedAlbums.studentProfileId, studentProfileId),
-          eq(completedAlbums.albumId, albumId)
-        ));
-
-      return true;
-    }
-
-    return false;
   }
 
   // ==================== PROGRESO DE CLASE (VISTA PROFESOR) ====================
@@ -1152,8 +896,6 @@ class CollectibleService {
 
         previewCardsByStudent.set(row.studentProfileId, existingPreviewCards);
 
-        if (row.isShiny) continue;
-
         const existing = uniqueCollectedByStudent.get(row.studentProfileId) || new Set<string>();
         existing.add(row.cardId);
         uniqueCollectedByStudent.set(row.studentProfileId, existing);
@@ -1213,27 +955,6 @@ class CollectibleService {
 
       throw error;
     }
-  }
-
-  // ==================== PROGRESO DE ESTUDIANTE (TODOS LOS ÁLBUMES) ====================
-
-  async getStudentAlbumsProgress(studentProfileId: string, classroomId: string) {
-    const albums = await this.getAlbumsByClassroom(classroomId);
-    
-    const albumsWithProgress = await Promise.all(
-      albums.filter(a => a.isActive).map(async (album) => {
-        const collection = await this.getStudentCollection(studentProfileId, album.id);
-        return {
-          albumId: album.id,
-          progress: collection?.progress || 0,
-          uniqueCollected: collection?.uniqueCollected || 0,
-          totalCards: album.totalCards || 0,
-          isCompleted: collection?.isCompleted || false,
-        };
-      })
-    );
-
-    return albumsWithProgress;
   }
 
   // ==================== GENERACIÓN CON IA ====================

@@ -2200,7 +2200,8 @@ export type ScoreActivityType = 'TOURNAMENT' | 'EXPEDITION' | 'TIMED' | 'MISSION
 
 // Enums para Coleccionables
 export const cardRarityEnum = mysqlEnum('card_rarity', ['COMMON', 'UNCOMMON', 'RARE', 'EPIC', 'LEGENDARY']);
-export const packTypeEnum = mysqlEnum('pack_type', ['SINGLE', 'PACK_5', 'PACK_10']);
+// PACK: el sobre único de v2; WELCOME: el de bienvenida. SINGLE/PACK_5/PACK_10 quedan del historial (migrations/collectibles_v2.sql).
+export const packTypeEnum = mysqlEnum('pack_type', ['SINGLE', 'PACK_5', 'PACK_10', 'PACK', 'WELCOME']);
 export const imageStyleEnum = mysqlEnum('image_style', ['CARTOON', 'REALISTIC', 'PIXEL_ART', 'ANIME', 'WATERCOLOR', 'MINIMALIST']);
 
 // Álbumes de coleccionables
@@ -2213,10 +2214,12 @@ export const collectibleAlbums = mysqlTable('collectible_albums', {
   theme: varchar('theme', { length: 255 }), // Temática para generación IA
   imageStyle: imageStyleEnum.default('CARTOON'),
   
-  // Precios de sobres (en GP)
+  // Precios manuales de sobres (sin uso desde coleccionables v2: el precio sale del oro semanal de la clase)
   singlePackPrice: int('single_pack_price').notNull().default(10),
   fivePackPrice: int('five_pack_price').notNull().default(45),
   tenPackPrice: int('ten_pack_price').notNull().default(80),
+  // Nivel de precio sobre la base semanal de la clase: LOW la mitad, NORMAL, HIGH el doble (migrations/collectibles_v2.sql)
+  priceLevel: mysqlEnum('price_level', ['LOW', 'NORMAL', 'HIGH']).notNull().default('NORMAL'),
   
   // Recompensas por completar
   rewardXp: int('reward_xp').notNull().default(0),
@@ -2346,6 +2349,17 @@ export const completedAlbums = mysqlTable('completed_albums', {
   uniqueStudentAlbum: unique('unique_student_album').on(table.studentProfileId, table.albumId),
 }));
 
+// Sobre de bienvenida: uno por alumno y álbum (migrations/collectibles_v2.sql).
+export const collectibleWelcomePacks = mysqlTable('collectible_welcome_packs', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),
+  albumId: varchar('album_id', { length: 36 }).notNull(),
+  openedAt: datetime('opened_at').notNull(),
+}, (table) => ({
+  uniqueStudentAlbum: unique('uniq_collectible_welcome').on(table.studentProfileId, table.albumId),
+  albumIdx: index('idx_collectible_welcome_album').on(table.albumId),
+}));
+
 export const completedAlbumsRelations = relations(completedAlbums, ({ one }) => ({
   studentProfile: one(studentProfiles, {
     fields: [completedAlbums.studentProfileId],
@@ -2369,7 +2383,7 @@ export type NewCollectiblePurchase = typeof collectiblePurchases.$inferInsert;
 export type CompletedAlbum = typeof completedAlbums.$inferSelect;
 export type NewCompletedAlbum = typeof completedAlbums.$inferInsert;
 export type CardRarity = 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
-export type PackType = 'SINGLE' | 'PACK_5' | 'PACK_10';
+export type PackType = 'SINGLE' | 'PACK_5' | 'PACK_10' | 'PACK' | 'WELCOME';
 export type ImageStyle = 'CARTOON' | 'REALISTIC' | 'PIXEL_ART' | 'ANIME' | 'WATERCOLOR' | 'MINIMALIST';
 
 // ==================== EXPEDICIONES DE JIRO ====================
