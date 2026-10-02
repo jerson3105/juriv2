@@ -89,17 +89,6 @@ export const avatarApi = {
     return response.data.data;
   },
 
-  getItemsBySlot: async (slot: AvatarSlot, gender?: AvatarGender): Promise<AvatarItem[]> => {
-    const params = gender ? { gender } : {};
-    const response = await api.get(`/avatars/items/slot/${slot}`, { params });
-    return response.data.data;
-  },
-
-  createItem: async (data: Omit<AvatarItem, 'id' | 'isActive'>): Promise<AvatarItem> => {
-    const response = await api.post('/avatars/items', data);
-    return response.data.data;
-  },
-
   // ==================== TIENDA DE CLASE ====================
 
   getClassroomShopItems: async (classroomId: string, gender?: AvatarGender): Promise<ClassroomShopItem[]> => {

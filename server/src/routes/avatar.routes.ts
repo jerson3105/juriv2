@@ -9,14 +9,8 @@ router.use(authenticate);
 
 // ==================== ITEMS GLOBALES (ADMIN/TEACHER) ====================
 
-// Obtener todos los items de avatar
+// Obtener todos los items de avatar (el catálogo lo crea el admin en /admin/avatar-items)
 router.get('/items', avatarController.getAllItems);
-
-// Obtener items por slot
-router.get('/items/slot/:slot', avatarController.getItemsBySlot);
-
-// Crear item de avatar (solo admin/teacher por ahora)
-router.post('/items', authorize('TEACHER'), avatarController.createItem);
 
 // ==================== TIENDA DE CLASE ====================
 

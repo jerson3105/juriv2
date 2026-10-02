@@ -12,50 +12,17 @@ import {
   classroomIdOfStudentProfile,
 } from '../utils/access.js';
 
-const createAvatarItemSchema = z.object({
-  name: z.string().min(1).max(100),
-  description: z.string().optional(),
-  gender: z.enum(['MALE', 'FEMALE']),
-  slot: z.enum(['HEAD', 'HAIR', 'EYES', 'TOP', 'BOTTOM', 'LEFT_HAND', 'RIGHT_HAND', 'SHOES', 'BACK', 'FLAG']),
-  imagePath: z.string().min(1),
-  layerOrder: z.number().int(),
-  basePrice: z.number().int().min(0),
-  rarity: z.enum(['COMMON', 'RARE', 'LEGENDARY']).optional(),
-});
+const MAX_AVATAR_PRICE = 100000;
 
 const addToShopSchema = z.object({
   avatarItemId: z.string().uuid(),
-  price: z.number().int().min(0),
+  price: z.number().int().min(0).max(MAX_AVATAR_PRICE),
 });
+
+const slotSchema = z.enum(['HEAD', 'HAIR', 'EYES', 'TOP', 'BOTTOM', 'LEFT_HAND', 'RIGHT_HAND', 'SHOES', 'BACK', 'FLAG', 'BACKGROUND']);
 
 export const avatarController = {
   // ==================== ITEMS GLOBALES ====================
-
-  async createItem(req: Request, res: Response) {
-    try {
-      const data = createAvatarItemSchema.parse(req.body);
-      const item = await avatarService.createAvatarItem(data);
-
-      res.status(201).json({
-        success: true,
-        message: 'Item de avatar creado',
-        data: item,
-      });
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({
-          success: false,
-          message: 'Datos inválidos',
-          errors: error.errors,
-        });
-      }
-      console.error('Error creating avatar item:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error al crear item de avatar',
-      });
-    }
-  },
 
   async getAllItems(req: Request, res: Response) {
     try {
@@ -68,34 +35,6 @@ export const avatarController = {
       });
     } catch (error) {
       console.error('Error getting avatar items:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error al obtener items de avatar',
-      });
-    }
-  },
-
-  async getItemsBySlot(req: Request, res: Response) {
-    try {
-      const { slot } = req.params;
-      const gender = req.query.gender as 'MALE' | 'FEMALE' | undefined;
-      
-      const validSlots = ['HEAD', 'FACE', 'TOP', 'BOTTOM', 'LEFT_HAND', 'RIGHT_HAND', 'SHOES', 'BACK', 'PETS'];
-      if (!validSlots.includes(slot)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Slot inválido',
-        });
-      }
-
-      const items = await avatarService.getAvatarItemsBySlot(slot as any, gender);
-
-      res.json({
-        success: true,
-        data: items,
-      });
-    } catch (error) {
-      console.error('Error getting avatar items by slot:', error);
       res.status(500).json({
         success: false,
         message: 'Error al obtener items de avatar',
@@ -209,7 +148,7 @@ export const avatarController = {
       if (!priceClassroomId) return res.status(404).json({ success: false, message: 'Ítem no encontrado' });
       if (!(await requireClassroomTeacher(req, res, priceClassroomId))) return;
 
-      if (typeof price !== 'number' || price < 0) {
+      if (typeof price !== 'number' || !Number.isInteger(price) || price < 0 || price > MAX_AVATAR_PRICE) {
         return res.status(400).json({
           success: false,
           message: 'Precio inválido',
@@ -316,10 +255,12 @@ export const avatarController = {
 
   async unequipItem(req: Request, res: Response) {
     try {
-      const { studentProfileId, slot } = req.body;
+      const { studentProfileId } = req.body;
       if (!(await requireStudentProfileOwner(req, res, studentProfileId))) return;
+      const slot = slotSchema.safeParse(req.body?.slot);
+      if (!slot.success) return res.status(400).json({ success: false, message: 'Ranura inválida' });
 
-      const equippedItems = await avatarService.unequipItem(studentProfileId, slot);
+      const equippedItems = await avatarService.unequipItem(studentProfileId, slot.data);
 
       res.json({
         success: true,
@@ -327,6 +268,10 @@ export const avatarController = {
         data: equippedItems,
       });
     } catch (error) {
+      // «No puedes desequipar items por defecto…» es un mensaje para el alumno, no un fallo.
+      if (error instanceof Error && error.message.startsWith('No puedes')) {
+        return res.status(400).json({ success: false, message: error.message });
+      }
       console.error('Error unequipping item:', error);
       res.status(500).json({
         success: false,

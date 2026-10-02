@@ -1,7 +1,10 @@
 // Motivos que el sistema escribe en point_logs. Los usan «Lo nuevo» del inicio y «Mi progreso».
 
-/** Lo que el alumno gastó por su cuenta (tienda, regalos, canje con su profe, energía de expedición): lo decidió él. */
-export const SELF_SPEND_PREFIXES = ['Compra en tienda', 'Regalo en tienda', 'Compra aprobada en tienda', 'Canje con tu profe', 'Compra de energía'];
+/** Compra de una prenda en la tienda de avatar: «Compra de avatar: <prenda>». */
+export const AVATAR_PURCHASE_PREFIX = 'Compra de avatar: ';
+
+/** Lo que el alumno gastó por su cuenta (tienda, regalos, canje con su profe, energía de expedición, avatar): lo decidió él. */
+export const SELF_SPEND_PREFIXES = ['Compra en tienda', 'Regalo en tienda', 'Compra aprobada en tienda', 'Canje con tu profe', 'Compra de energía', 'Compra de avatar'];
 export const isSelfSpend = (reason: string | null | undefined) =>
   !!reason && SELF_SPEND_PREFIXES.some((prefix) => reason.startsWith(prefix));
 
@@ -11,6 +14,7 @@ const SELF_SPEND_TEXT: [prefix: string, verb: string][] = [
   ['Regalo en tienda: ', 'Regalaste'],
   ['Canje con tu profe: ', 'Canjeaste con tu profe'],
   ['Compra de energía - Expedición: ', 'Energía para la expedición'],
+  [AVATAR_PURCHASE_PREFIX, 'Compraste para tu avatar'],
 ];
 /** El gasto propio en tuteo: «Compraste «Lápiz mágico»». */
 export const selfSpendText = (reason: string) => {

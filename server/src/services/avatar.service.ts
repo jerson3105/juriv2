@@ -1,27 +1,22 @@
 import { db } from '../db/index.js';
-import { 
-  avatarItems, 
-  classroomAvatarItems, 
-  studentAvatarPurchases, 
+import {
+  avatarItems,
+  classroomAvatarItems,
+  classrooms,
+  pointLogs,
+  studentAvatarPurchases,
   studentEquippedItems,
   studentProfiles,
   AvatarGender,
-  AvatarSlot 
+  AvatarSlot
 } from '../db/schema.js';
 import { eq, and, desc, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { spendGp } from '../utils/points.js';
+import { isInitialLevel } from '../utils/energy.js';
+import { AVATAR_PURCHASE_PREFIX } from '../utils/pointReasons.js';
 
-interface CreateAvatarItemData {
-  name: string;
-  description?: string;
-  gender: AvatarGender;
-  slot: AvatarSlot;
-  imagePath: string;
-  layerOrder: number;
-  basePrice: number;
-  rarity?: 'COMMON' | 'RARE' | 'LEGENDARY';
-}
+const RESTING_SHOP_MESSAGE = 'Estás descansando: completa tu misión de recuperación para volver a usar la tienda.';
 
 interface AddToClassroomShopData {
   classroomId: string;
@@ -70,29 +65,7 @@ class AvatarService {
     }
   }
 
-  // ==================== ITEMS GLOBALES (ADMIN) ====================
-
-  async createAvatarItem(data: CreateAvatarItemData) {
-    const id = uuidv4();
-    const now = new Date();
-
-    await db.insert(avatarItems).values({
-      id,
-      name: data.name,
-      description: data.description || null,
-      gender: data.gender,
-      slot: data.slot,
-      imagePath: data.imagePath,
-      layerOrder: data.layerOrder,
-      basePrice: data.basePrice,
-      rarity: data.rarity || 'COMMON',
-      isActive: true,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    return this.getAvatarItemById(id);
-  }
+  // ==================== ITEMS GLOBALES (los crea el admin en /admin/avatar-items) ====================
 
   async getAvatarItemById(id: string) {
     const [item] = await db
@@ -123,25 +96,6 @@ class AvatarService {
         eq(avatarItems.isDefault, false)
       ))
       .orderBy(avatarItems.slot, avatarItems.name);
-  }
-
-  async getAvatarItemsBySlot(slot: AvatarSlot, gender?: AvatarGender) {
-    if (gender) {
-      return db
-        .select()
-        .from(avatarItems)
-        .where(and(
-          eq(avatarItems.isActive, true),
-          eq(avatarItems.slot, slot),
-          eq(avatarItems.gender, gender)
-        ))
-        .orderBy(avatarItems.name);
-    }
-    return db
-      .select()
-      .from(avatarItems)
-      .where(and(eq(avatarItems.isActive, true), eq(avatarItems.slot, slot)))
-      .orderBy(avatarItems.name);
   }
 
   // ==================== TIENDA DE CLASE (DOCENTE) ====================
@@ -258,14 +212,7 @@ class AvatarService {
 
   // ==================== COMPRAS DE ESTUDIANTES ====================
 
-  async purchaseAvatarItem(studentProfileId: string, classroomId: string, avatarItemId: string) {
-    // Verificar que el item está en la tienda de la clase
-    const shopItem = await this.getClassroomShopItem(classroomId, avatarItemId);
-    if (!shopItem || !shopItem.isAvailable) {
-      throw new Error('Item no disponible en esta tienda');
-    }
-
-    // Verificar que el estudiante tiene suficiente GP
+  async purchaseAvatarItem(studentProfileId: string, classroomId: string | undefined, avatarItemId: string) {
     const [profile] = await db
       .select()
       .from(studentProfiles)
@@ -273,6 +220,32 @@ class AvatarService {
 
     if (!profile) {
       throw new Error('Perfil de estudiante no encontrado');
+    }
+
+    // La tienda es la de la clase del perfil: con perfiles en dos clases se podía comprar con los
+    // precios (o los ítems) de la otra clase.
+    if (classroomId && classroomId !== profile.classroomId) {
+      throw new Error('Solo puedes comprar en la tienda de tu clase');
+    }
+    const classroom = await db.query.classrooms.findFirst({ where: eq(classrooms.id, profile.classroomId) });
+    if (!classroom) {
+      throw new Error('Clase no encontrada');
+    }
+    // Las mismas reglas que la tienda de premios: cerrada y pausa por descanso (en Inicial no hay pausa).
+    if (!classroom.shopEnabled) {
+      throw new Error('Tu profe cerró la tienda por ahora');
+    }
+    if (profile.hp <= 0 && !isInitialLevel(classroom.gradeLevel)) {
+      throw new Error(RESTING_SHOP_MESSAGE);
+    }
+
+    // Verificar que el item está en la tienda de la clase
+    const shopItem = await this.getClassroomShopItem(profile.classroomId, avatarItemId);
+    if (!shopItem || !shopItem.isAvailable) {
+      throw new Error('Item no disponible en esta tienda');
+    }
+    if (shopItem.avatarItem.gender !== profile.avatarGender) {
+      throw new Error('Esta prenda es para el otro cuerpo');
     }
 
     if (profile.gp < shopItem.price) {
@@ -299,14 +272,27 @@ class AvatarService {
       if (!(await spendGp(tx, studentProfileId, shopItem.price))) {
         throw new Error('No tienes suficiente oro');
       }
+      const now = new Date();
       await tx.insert(studentAvatarPurchases).values({
         id: purchaseId,
         studentProfileId,
         avatarItemId,
-        classroomId,
+        classroomId: profile.classroomId,
         pricePaid: shopItem.price,
-        purchasedAt: new Date(),
+        purchasedAt: now,
       });
+      // El gasto queda en el registro: «Mi progreso» y «Lo nuevo» lo muestran como gasto propio.
+      if (shopItem.price > 0) {
+        await tx.insert(pointLogs).values({
+          id: uuidv4(),
+          studentId: studentProfileId,
+          pointType: 'GP',
+          action: 'REMOVE',
+          amount: shopItem.price,
+          reason: `${AVATAR_PURCHASE_PREFIX}${shopItem.avatarItem.name}`,
+          createdAt: now,
+        });
+      }
       const [after] = await tx
         .select({ gp: studentProfiles.gp })
         .from(studentProfiles)
@@ -371,23 +357,27 @@ class AvatarService {
     if (!item) {
       throw new Error('Item no encontrado');
     }
+    // Una prenda del otro cuerpo se vería desalineada.
+    const [profile] = await db.select({ avatarGender: studentProfiles.avatarGender }).from(studentProfiles).where(eq(studentProfiles.id, studentProfileId));
+    if (!profile || item.gender !== profile.avatarGender) {
+      throw new Error('Esta prenda es para el otro cuerpo');
+    }
 
-    // Desequipar item anterior del mismo slot (si existe)
-    await db
-      .delete(studentEquippedItems)
-      .where(and(
-        eq(studentEquippedItems.studentProfileId, studentProfileId),
-        eq(studentEquippedItems.slot, item.slot)
-      ));
-
-    // Equipar nuevo item
-    const id = uuidv4();
-    await db.insert(studentEquippedItems).values({
-      id,
-      studentProfileId,
-      avatarItemId,
-      slot: item.slot,
-      equippedAt: new Date(),
+    // Cambiar la prenda de la ranura en una transacción: dos toques seguidos no dejan la ranura vacía.
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(studentEquippedItems)
+        .where(and(
+          eq(studentEquippedItems.studentProfileId, studentProfileId),
+          eq(studentEquippedItems.slot, item.slot)
+        ));
+      await tx.insert(studentEquippedItems).values({
+        id: uuidv4(),
+        studentProfileId,
+        avatarItemId,
+        slot: item.slot,
+        equippedAt: new Date(),
+      });
     });
 
     return this.getEquippedItems(studentProfileId);
@@ -420,14 +410,6 @@ class AvatarService {
       throw new Error('Perfil no encontrado');
     }
 
-    // Eliminar item actual
-    await db
-      .delete(studentEquippedItems)
-      .where(and(
-        eq(studentEquippedItems.studentProfileId, studentProfileId),
-        eq(studentEquippedItems.slot, slot)
-      ));
-
     // Buscar item default para este slot y género
     const defaultItem = await db
       .select()
@@ -440,16 +422,24 @@ class AvatarService {
       ))
       .limit(1);
 
-    // Si existe un item default, equiparlo automáticamente
-    if (defaultItem.length > 0) {
-      await db.insert(studentEquippedItems).values({
-        id: uuidv4(),
-        studentProfileId,
-        avatarItemId: defaultItem[0].id,
-        slot,
-        equippedAt: new Date(),
-      });
-    }
+    // Quitar y, si hay prenda inicial para la ranura, volver a ella (en una transacción).
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(studentEquippedItems)
+        .where(and(
+          eq(studentEquippedItems.studentProfileId, studentProfileId),
+          eq(studentEquippedItems.slot, slot)
+        ));
+      if (defaultItem.length > 0) {
+        await tx.insert(studentEquippedItems).values({
+          id: uuidv4(),
+          studentProfileId,
+          avatarItemId: defaultItem[0].id,
+          slot,
+          equippedAt: new Date(),
+        });
+      }
+    });
 
     return this.getEquippedItems(studentProfileId);
   }
