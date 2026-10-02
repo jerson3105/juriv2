@@ -131,7 +131,9 @@ export interface Notification {
   id: string;
   userId: string;
   classroomId: string | null;
-  type: 'ITEM_USED' | 'GIFT_RECEIVED' | 'BATTLE_STARTED' | 'LEVEL_UP';
+  // Igual que el enum notification_type del servidor (server/src/db/schema.ts).
+  type: 'ITEM_USED' | 'GIFT_RECEIVED' | 'BATTLE_STARTED' | 'LEVEL_UP' | 'POINTS' | 'PURCHASE_APPROVED' | 'PURCHASE_REJECTED'
+    | 'BADGE' | 'SCROLL_RECEIVED' | 'SCROLL_APPROVED' | 'SCROLL_REJECTED' | 'ANNOUNCEMENT';
   title: string;
   message: string;
   data: string | null;
