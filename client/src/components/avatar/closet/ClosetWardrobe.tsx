@@ -14,9 +14,8 @@ interface ClosetWardrobeProps {
   onZone: (zone: ZoneKey) => void;
 }
 
-// Madera cálida: marco, repisas y placas; interior claro (en oscuro, gris). La placa: 14:1 y 13:1.
+// Madera cálida: marco y placa; interior claro (en oscuro, gris). La placa: 14:1 y 13:1.
 const plaque = 'inline-flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-1 font-black text-amber-950 shadow-sm ring-1 ring-amber-950/15 dark:bg-amber-950 dark:text-amber-100 dark:ring-amber-100/20';
-const shelf = 'my-4 h-2.5 rounded-full bg-amber-800 shadow-[0_2px_0_rgba(0,0,0,0.15)] dark:bg-amber-900';
 const tab = 'inline-flex min-h-[44px] items-center gap-1.5 rounded-xl border-2 px-3 text-sm font-bold transition-colors';
 const youngTab = 'flex min-h-[64px] min-w-[64px] flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl border-2 px-2 text-sm font-bold transition-colors';
 const tabOn = 'border-amber-800 bg-amber-800 text-white dark:border-amber-500 dark:bg-amber-500 dark:text-amber-950';
@@ -25,9 +24,9 @@ const tabOff = 'border-gray-300 bg-white text-gray-800 hover:bg-gray-50 dark:bor
 const door = 'pointer-events-none absolute inset-y-8 hidden w-8 bg-amber-700 dark:bg-amber-900 lg:block';
 
 /**
- * El clóset: compartimentos que siguen al cuerpo (cabeza en la repisa alta, ropa colgada, zapatero, cajones
- * de accesorios y el telón de los fondos). Lo que se vende cuelga junto a lo suyo con su etiqueta de precio.
- * En 375 px (y siempre para los pequeños) se ve un compartimento a la vez.
+ * El clóset: compartimentos que siguen al cuerpo (cabeza, ropa colgada, zapatero, cajones de accesorios y el
+ * telón de los fondos). Lo que se vende cuelga junto a lo suyo con su etiqueta de precio. Se abre un
+ * compartimento a la vez (pestañas) con tarjetas compactas: el alto no crece con todo el catálogo.
  */
 export const ClosetWardrobe = ({ view, closet, filter, onFilter, zone, onZone }: ClosetWardrobeProps) => {
   const { young } = view;
@@ -65,7 +64,7 @@ export const ClosetWardrobe = ({ view, closet, filter, onFilter, zone, onZone }:
           {(showFilter || zones.length > 1) && (
             <div className="flex flex-wrap items-center justify-between gap-3">
               {zones.length > 1 && (
-                <div role="group" aria-label="Partes del clóset" className={`flex flex-wrap gap-2 ${young ? 'w-full' : 'md:hidden'}`}>
+                <div role="group" aria-label="Partes del clóset" className={`flex flex-wrap gap-2 ${young ? 'w-full' : ''}`}>
                   {zones.map(({ zone: entry }) => (
                     <button
                       key={entry.key}
@@ -111,32 +110,29 @@ export const ClosetWardrobe = ({ view, closet, filter, onFilter, zone, onZone }:
             </div>
           )}
 
-          {zones.map(({ zone: entry, groups }, index) => (
-            <div key={entry.key} className={entry.key === active ? '' : young ? 'hidden' : 'hidden md:block'}>
-              {index > 0 && <div className={young ? 'hidden' : `${shelf} hidden md:block`} aria-hidden="true" />}
-              <section aria-labelledby={`zone-${entry.key}`} className={index === 0 || young ? 'mt-4' : 'mt-4 md:mt-0'}>
+          {zones.map(({ zone: entry, groups }) => (
+            <div key={entry.key} className={entry.key === active ? '' : 'hidden'}>
+              <section aria-labelledby={`zone-${entry.key}`} className="mt-3">
                 {entry.key === 'backgrounds' && (
                   // Telón de los fondos
                   <div className="mb-2 h-3 rounded-t-lg bg-[repeating-linear-gradient(90deg,#a21caf_0_8px,#86198f_8px_16px)]" aria-hidden="true" />
                 )}
-                <h3 id={`zone-${entry.key}`} className={`${plaque} text-sm`}>
-                  <span aria-hidden="true">{entry.emoji}</span>
-                  {entry.label}
-                </h3>
-                {groups.map(({ group, none, items }) => {
+                {/* La pestaña ya dice qué compartimento está abierto: el título queda para el lector. */}
+                <h3 id={`zone-${entry.key}`} className="sr-only">{entry.label}</h3>
+                {groups.map(({ group, none, items }, index) => {
                   const drawer = entry.key === 'extras';
                   const count = items.length;
                   return (
                     <div
                       key={group.key}
                       className={drawer
-                        ? 'relative mt-4 rounded-2xl border-2 border-amber-800/30 bg-amber-100/50 p-2.5 pt-5 dark:border-amber-700/40 dark:bg-amber-950/30'
-                        : 'mt-4'}
+                        ? `relative rounded-2xl border-2 border-amber-800/30 bg-amber-100/50 p-2 pt-4 dark:border-amber-700/40 dark:bg-amber-950/30 ${index > 0 ? 'mt-3' : ''}`
+                        : index > 0 ? 'mt-3' : ''}
                     >
                       {drawer && <span className="absolute left-1/2 top-1.5 h-1.5 w-12 -translate-x-1/2 rounded-full bg-amber-800/70 dark:bg-amber-600/70" aria-hidden="true" />}
                       <h4 className={groupTitle}>{group.label}{count > 0 ? ` · ${count}` : ''}</h4>
-                      {entry.key === 'clothes' && <div className="mt-2 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500" aria-hidden="true" />}
-                      <ul className={`mt-2 grid gap-3 ${young ? 'grid-cols-2 sm:grid-cols-3 xl:grid-cols-4' : 'grid-cols-2 sm:grid-cols-[repeat(auto-fill,minmax(10rem,1fr))]'}`}>
+                      {entry.key === 'clothes' && <div className="mt-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500" aria-hidden="true" />}
+                      <ul className={`mt-1.5 grid ${young ? 'grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))]' : 'grid-cols-3 gap-2 sm:grid-cols-[repeat(auto-fill,minmax(6.75rem,1fr))] sm:gap-2.5'}`}>
                         {none && (
                           <NoneCard
                             label={group.none!}

@@ -54,7 +54,7 @@ export const ZONES: ClosetZone[] = [
     key: 'extras', label: 'Accesorios', short: 'Cosas', emoji: '🎒',
     groups: [
       { key: 'HANDS', label: 'En las manos', slots: ['LEFT_HAND', 'RIGHT_HAND'], none: 'Manos libres' },
-      { key: 'BACK', label: 'En la espalda', slots: ['BACK'], none: 'Nada en la espalda' },
+      { key: 'BACK', label: 'En la espalda', slots: ['BACK'], none: 'Espalda libre' },
       { key: 'FLAG', label: 'Banderas', slots: ['FLAG'], none: 'Sin bandera' },
     ],
   },
