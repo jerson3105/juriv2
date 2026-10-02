@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useMemo, type SyntheticEvent } from 'react';
+import { avatarImageUrl, type AvatarImageVariant } from '../../lib/avatarApi';
 
 // Orden de las capas (de abajo hacia arriba)
 // Valores negativos = detrás del personaje base (zIndex 10)
@@ -29,24 +30,33 @@ export interface EquippedItem {
   layerOrder?: number;
 }
 
+type AvatarSize = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'hero';
+
 interface AvatarRendererProps {
   gender: AvatarGender;
   equippedItems?: EquippedItem[];
-  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'hero';
+  size?: AvatarSize;
   className?: string;
   showBase?: boolean;
-  /** Nombre accesible del personaje: el lector lo lee como una imagen, no capa por capa. */
+  /** Nombre accesible del personaje: el lector lo lee como una imagen, no capa por capa. Sin nombre, es decorativo. */
   label?: string;
+  /** Resolución de las capas: low para miniaturas (aunque se dibujen con un tamaño grande escalado). */
+  detail?: 'low' | 'high';
 }
 
 // Proporción original: 255x444 (ratio ~1:1.74)
-const SIZE_CLASSES = {
+const SIZE_CLASSES: Record<AvatarSize, string> = {
   xs: 'w-[58px] h-[100px]',  // Mini avatar para listas (escalado)
   sm: 'w-16 h-[112px]',      // 64x112
   md: 'w-32 h-[224px]',      // 128x224
   lg: 'w-48 h-[336px]',      // 192x336
   xl: 'w-[255px] h-[444px]', // Tamaño exacto 255x444
   hero: 'w-32 h-[224px] xl:w-48 xl:h-[336px]', // Inicio del alumno: md y, en pantallas anchas, lg
+};
+
+// Una capa que no carga se oculta (mejor sin esa prenda que con el ícono de imagen rota).
+const hideBroken = (event: SyntheticEvent<HTMLImageElement>) => {
+  event.currentTarget.style.visibility = 'hidden';
 };
 
 export const AvatarRenderer = ({
@@ -56,9 +66,13 @@ export const AvatarRenderer = ({
   className = '',
   showBase = true,
   label,
+  detail,
 }: AvatarRendererProps) => {
-  // Con nombre accesible, las capas son decorativas (alt vacío).
-  const alt = (text: string) => (label ? '' : text);
+  const variant: AvatarImageVariant = (detail ?? (size === 'xs' || size === 'sm' ? 'low' : 'high')) === 'low' ? 'sm' : 'md';
+  const src = (path: string) => avatarImageUrl(path, variant);
+  // Las miniaturas de las listas cargan al acercarse a la pantalla; el personaje grande, de inmediato.
+  const layer = { alt: '', loading: variant === 'sm' ? 'lazy' as const : 'eager' as const, decoding: 'async' as const, draggable: false, onError: hideBroken };
+
   // Ordenar items por capa
   const sortedItems = useMemo(() => {
     return [...equippedItems].sort((a, b) => {
@@ -71,7 +85,10 @@ export const AvatarRenderer = ({
   const basePath = `/avatars/base/${gender.toLowerCase()}.png`;
 
   return (
-    <div className={`relative ${SIZE_CLASSES[size]} ${className}`} {...(label ? { role: 'img', 'aria-label': label } : {})}>
+    <div
+      className={`relative ${SIZE_CLASSES[size]} ${className}`}
+      {...(label ? { role: 'img', 'aria-label': label } : { 'aria-hidden': true })}
+    >
       {/* Fondo (BACKGROUND) - cubre todo el área, detrás de todo */}
       {sortedItems
         .filter(item => item.slot === 'BACKGROUND')
@@ -81,11 +98,7 @@ export const AvatarRenderer = ({
             className="absolute inset-0 w-full h-full overflow-hidden"
             style={{ zIndex: 1 }}
           >
-            <img
-              src={item.imagePath}
-              alt={alt('Fondo')}
-              className="w-full h-full object-cover"
-            />
+            <img {...layer} src={src(item.imagePath)} className="w-full h-full object-cover" />
           </div>
         ))}
 
@@ -94,9 +107,9 @@ export const AvatarRenderer = ({
         .filter(item => item.slot !== 'BACKGROUND' && (item.layerOrder ?? LAYER_ORDER[item.slot] ?? 0) < 0)
         .map((item, index) => (
           <img
+            {...layer}
             key={`back-${item.slot}-${index}`}
-            src={item.imagePath}
-            alt={alt(item.slot)}
+            src={src(item.imagePath)}
             className="absolute inset-0 w-full h-full object-contain"
             style={{ zIndex: BASE_Z_INDEX + (item.layerOrder ?? LAYER_ORDER[item.slot] ?? 0) }}
           />
@@ -105,8 +118,8 @@ export const AvatarRenderer = ({
       {/* Personaje base */}
       {showBase && (
         <img
-          src={basePath}
-          alt={alt('Avatar base')}
+          {...layer}
+          src={src(basePath)}
           className="absolute inset-0 w-full h-full object-contain"
           style={{ zIndex: BASE_Z_INDEX }}
         />
@@ -117,9 +130,9 @@ export const AvatarRenderer = ({
         .filter(item => item.slot !== 'BACKGROUND' && (item.layerOrder ?? LAYER_ORDER[item.slot] ?? 0) >= 0)
         .map((item, index) => (
           <img
+            {...layer}
             key={`front-${item.slot}-${index}`}
-            src={item.imagePath}
-            alt={alt(item.slot)}
+            src={src(item.imagePath)}
             className="absolute inset-0 w-full h-full object-contain"
             style={{ zIndex: BASE_Z_INDEX + (item.layerOrder ?? LAYER_ORDER[item.slot] ?? 0) }}
           />
@@ -147,7 +160,7 @@ export const AvatarPreview = ({
   // Si hay item de preview, reemplazar el del mismo slot
   const itemsWithPreview = useMemo(() => {
     if (!previewItem) return currentItems;
-    
+
     const filtered = currentItems.filter(item => item.slot !== previewItem.slot);
     return [...filtered, previewItem];
   }, [currentItems, previewItem]);
@@ -159,7 +172,7 @@ export const AvatarPreview = ({
         equippedItems={itemsWithPreview}
         size={size}
       />
-      
+
       {/* Indicador de preview */}
       {previewItem && (
         <div className="absolute -top-2 -right-2 bg-yellow-400 text-yellow-900 text-xs font-bold px-2 py-0.5 rounded-full">

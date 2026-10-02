@@ -1838,6 +1838,7 @@ export const StudentsPage = () => {
                                   studentProfileId={student.id}
                                   gender={student.avatarGender || 'MALE'}
                                   size="xl"
+                                  detail="low"
                                   className="scale-[0.22] origin-top"
                                 />
                               </div>

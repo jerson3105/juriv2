@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { db } from '../db/index.js';
-import { 
+import {
   users, classrooms, avatarItems, studentProfiles,
   questionBanks, questions, timedActivities, expeditions
 } from '../db/schema.js';
@@ -11,30 +11,10 @@ import { cache, CACHE_KEYS } from '../utils/cache.js';
 import { revokeAllUserTokens } from '../utils/jwt.js';
 import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
 import { teacherVerificationService } from '../services/teacherVerification.service.js';
 import { AppError } from '../utils/errors.js';
+import { AVATAR_RATIO, AVATAR_UPLOAD_DIR, AVATAR_UPLOAD_PATH, avatarImageRatio } from '../utils/avatarImages.js';
 import { z } from 'zod';
-
-// Obtener __dirname en ES modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Ruta base al directorio de avatars
-const AVATARS_DIR = path.resolve(__dirname, '..', '..', '..', 'client', 'public', 'avatars');
-
-const SLOT_FOLDERS: Record<string, string> = {
-  HEAD: 'Cabeza',
-  HAIR: 'Pelo',
-  EYES: 'Ojos',
-  TOP: 'Superior',
-  BOTTOM: 'Inferior',
-  LEFT_HAND: 'Mano izquierda',
-  RIGHT_HAND: 'Mano derecha',
-  SHOES: 'Zapatos',
-  BACK: 'Espalda',
-  FLAG: 'Bandera',
-};
 
 const LAYER_ORDER: Record<string, number> = {
   FLAG: -2,     // Detrás del personaje
@@ -330,23 +310,33 @@ export const adminController = {
       if (!name || !gender || !slot) {
         return res.status(400).json({ success: false, message: 'Faltan campos requeridos' });
       }
-
-      const folder = SLOT_FOLDERS[slot] || 'Cabeza';
-      const destDir = path.join(AVATARS_DIR, gender.toLowerCase(), folder);
-      
-      // Crear directorio si no existe
-      if (!fs.existsSync(destDir)) {
-        fs.mkdirSync(destDir, { recursive: true });
+      if (gender !== 'MALE' && gender !== 'FEMALE') {
+        return res.status(400).json({ success: false, message: 'El cuerpo debe ser MALE o FEMALE' });
+      }
+      if (!(slot in LAYER_ORDER) && slot !== 'BACKGROUND') {
+        return res.status(400).json({ success: false, message: 'Ranura inválida' });
+      }
+      if (rarity && !['COMMON', 'RARE', 'LEGENDARY'].includes(rarity)) {
+        return res.status(400).json({ success: false, message: 'Rareza inválida' });
       }
 
-      // Mover archivo del directorio temporal al destino final
-      const destPath = path.join(destDir, file.filename);
-      fs.renameSync(file.path, destPath);
-      
+      // Las prendas se superponen al personaje: deben tener su proporción (395×959) para quedar alineadas.
+      // Los fondos se recortan para cubrir el recuadro, así que pueden tener cualquier tamaño.
+      if (slot !== 'BACKGROUND') {
+        const ratio = await avatarImageRatio(file.path);
+        if (!ratio || Math.abs(ratio - AVATAR_RATIO) / AVATAR_RATIO > 0.03) {
+          fs.unlinkSync(file.path);
+          return res.status(400).json({ success: false, message: 'La imagen debe tener la proporción del personaje (395×959 px)' });
+        }
+      }
+
+      // Fuera del repositorio (carpeta de subidas): se ve al instante y sobrevive a los despliegues.
+      fs.mkdirSync(AVATAR_UPLOAD_DIR, { recursive: true });
+      fs.renameSync(file.path, path.join(AVATAR_UPLOAD_DIR, file.filename));
 
       const id = uuidv4();
       const now = new Date();
-      const imagePath = `/avatars/${gender.toLowerCase()}/${folder}/${file.filename}`;
+      const imagePath = `${AVATAR_UPLOAD_PATH}${file.filename}`;
 
       await db.insert(avatarItems).values({
         id,

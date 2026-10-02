@@ -14,6 +14,7 @@ import { logger, replaceConsole } from './utils/logger.js';
 import { AppError } from './utils/errors.js';
 import { setIO } from './utils/notificationEmitter.js';
 import { serveUploads } from './utils/fileValidation.js';
+import { AVATAR_UPLOAD_DIR, serveAvatarImage } from './utils/avatarImages.js';
 import { PERF_TRACE, perfMiddleware } from './utils/perfTrace.js';
 import { userCanAccessClassroom } from './utils/access.js';
 import { eq } from 'drizzle-orm';
@@ -65,6 +66,9 @@ app.use('/api/uploads/maps', cors(corsOptions), ...serveUploads(path.join(upload
 app.use('/api/uploads/collectibles', cors(corsOptions), ...serveUploads(path.join(uploadsBaseDir, 'collectibles')));
 app.use('/api/uploads/shop-items', cors(corsOptions), ...serveUploads(path.join(uploadsBaseDir, 'shop-items')));
 app.use('/api/uploads/jiro-deliveries', cors(corsOptions), ...serveUploads(path.join(uploadsBaseDir, 'jiro-deliveries')));
+// Avatar: prendas que sube el admin (nombre único → caché larga) y capas en WebP del tamaño que se muestran.
+app.use('/api/uploads/avatar-items', cors(corsOptions), ...serveUploads(AVATAR_UPLOAD_DIR, { immutable: true }));
+app.get('/api/avatar-img/:variant', cors(corsOptions), serveAvatarImage);
 // También mantener rutas sin /api para desarrollo local
 app.use('/badges', cors(corsOptions), ...serveUploads(path.join(process.cwd(), 'public', 'badges')));
 app.use('/avatars', cors(corsOptions), ...serveUploads(path.join(uploadsBaseDir, 'avatars')));

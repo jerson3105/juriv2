@@ -1,6 +1,16 @@
 // Instancia común: token en memoria y renovación de la sesión.
 import api from './api';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+
+/**
+ * Capa del avatar en WebP del tamaño en que se muestra (el servidor la genera una vez y la guarda):
+ * sm para listas y miniaturas del personaje, md para el personaje grande, thumb para la prenda sola.
+ */
+export type AvatarImageVariant = 'sm' | 'md' | 'thumb';
+export const avatarImageUrl = (path: string, variant: AvatarImageVariant) =>
+  `${API_URL}/avatar-img/${variant}?src=${encodeURIComponent(path)}`;
+
 export type AvatarGender = 'MALE' | 'FEMALE';
 export type AvatarSlot = 'HEAD' | 'HAIR' | 'EYES' | 'TOP' | 'BOTTOM' | 'LEFT_HAND' | 'RIGHT_HAND' | 'SHOES' | 'BACK' | 'FLAG' | 'BACKGROUND';
 export type ItemRarity = 'COMMON' | 'RARE' | 'LEGENDARY';

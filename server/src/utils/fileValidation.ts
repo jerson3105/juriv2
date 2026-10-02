@@ -118,10 +118,12 @@ export const verifyUploadedFile: RequestHandler = async (req: Request, res: Resp
  * con `next()`. No se responde 404 aquí porque algunos prefijos se comparten con la API
  * (p. ej. `/api/badges` sirve imágenes y también es la ruta de la API de insignias).
  */
-export const serveUploads = (dir: string): RequestHandler[] => {
+export const serveUploads = (dir: string, options: { immutable?: boolean } = {}): RequestHandler[] => {
   const serveStatic = express.static(dir, {
     dotfiles: 'deny',
     index: false,
+    // Archivos con nombre único (uuid) que nunca cambian: el navegador no vuelve a preguntar.
+    ...(options.immutable ? { maxAge: '365d', immutable: true } : {}),
     setHeaders: (res, filePath) => {
       const ext = path.extname(filePath).toLowerCase();
       res.setHeader('X-Content-Type-Options', 'nosniff');

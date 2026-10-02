@@ -7,13 +7,16 @@ interface StudentAvatarMiniProps {
   gender: AvatarGender;
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
+  /** low: capas pequeñas aunque se dibuje con un tamaño grande escalado (p. ej. la Lista). */
+  detail?: 'low' | 'high';
 }
 
-export const StudentAvatarMini = ({ 
-  studentProfileId, 
+export const StudentAvatarMini = ({
+  studentProfileId,
   gender,
   size = 'xs',
-  className = ''
+  className = '',
+  detail,
 }: StudentAvatarMiniProps) => {
   const { data: equippedItems = [] } = useQuery({
     queryKey: ['avatar-equipped', studentProfileId],
@@ -22,10 +25,10 @@ export const StudentAvatarMini = ({
   });
 
   // Formatear items para el renderer
-  const equippedForRenderer = equippedItems.map((item: any) => ({
+  const equippedForRenderer = equippedItems.map((item) => ({
     slot: item.slot,
-    imagePath: item.avatarItem?.imagePath || item.imagePath,
-    layerOrder: item.avatarItem?.layerOrder || item.layerOrder || 0,
+    imagePath: item.avatarItem.imagePath,
+    layerOrder: item.avatarItem.layerOrder ?? 0,
   }));
 
   return (
@@ -34,6 +37,7 @@ export const StudentAvatarMini = ({
         gender={gender}
         size={size}
         equippedItems={equippedForRenderer}
+        detail={detail}
       />
     </div>
   );
