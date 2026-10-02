@@ -38,7 +38,7 @@ export const StudentEntryEffects = ({ profile, storyAccent }: { profile: MyClass
 
   // ===== Historia: escenas nuevas, una vez al entrar (hasta que el alumno cierra) =====
   const [storyDismissed, setStoryDismissed] = useState(false);
-  const { data: storyData } = useQuery({
+  const { data: storyData, isPending: storyLoading } = useQuery({
     queryKey: ['student-story', profile.classroomId, profile.id],
     queryFn: () => storyApi.getStudentStoryData(profile.classroomId),
   });
@@ -57,6 +57,9 @@ export const StudentEntryEffects = ({ profile, storyAccent }: { profile: MyClass
     () => (storyData && !storyDismissed ? buildAutoplayItems(storyData) : []),
     [storyData, storyDismissed],
   );
+  // La historia va primero: mientras carga no se muestra nada más (si no, la racha o la celebración
+  // salían debajo del reproductor, con su sonido y confeti escondidos).
+  const storyFirst = storyLoading || storyItems.length > 0;
 
   // ===== Celebraciones desde la última visita (subidas de nivel e insignias) =====
   const { data: notifications = [] } = useQuery({
@@ -89,7 +92,7 @@ export const StudentEntryEffects = ({ profile, storyAccent }: { profile: MyClass
 
   // Una sola celebración personal, después de la historia; se marca como vista al mostrarse.
   useEffect(() => {
-    if (!pendingCelebration || storyItems.length > 0 || !streakSettled) return;
+    if (!pendingCelebration || storyFirst || !streakSettled) return;
     if (shownUntil.current === pendingCelebration.until) return;
     shownUntil.current = pendingCelebration.until;
     const { fromLevel, toLevel, badges: newBadges, until } = pendingCelebration;
@@ -110,14 +113,14 @@ export const StudentEntryEffects = ({ profile, storyAccent }: { profile: MyClass
       action: newBadges.length > 0 ? { label: 'Ver mis insignias', run: () => navigate('/my-badges') } : undefined,
     });
     void studentApi.markCelebrationsSeen(profile.id, until).catch(() => undefined);
-  }, [pendingCelebration, profile, storyItems.length, streakSettled, celebrate, navigate]);
+  }, [pendingCelebration, profile, storyFirst, streakSettled, celebrate, navigate]);
 
   // Nada abierto ni por abrir. Va después del efecto anterior: si en este mismo paso se lanzó la
   // celebración, el estado del store ya la tiene.
   useEffect(() => {
     const celebrationsChecked = pendingCelebration !== undefined || celebrationsFailed;
-    setEntrySettled(storyItems.length === 0 && streakSettled && celebrationsChecked && !useCelebrationStore.getState().current);
-  }, [storyItems.length, streakSettled, pendingCelebration, celebrationsFailed, celebrationOpen, setEntrySettled]);
+    setEntrySettled(!storyFirst && streakSettled && celebrationsChecked && !useCelebrationStore.getState().current);
+  }, [storyFirst, streakSettled, pendingCelebration, celebrationsFailed, celebrationOpen, setEntrySettled]);
   useEffect(() => () => setEntrySettled(false), [setEntrySettled]);
 
   return (
@@ -126,7 +129,7 @@ export const StudentEntryEffects = ({ profile, storyAccent }: { profile: MyClass
       <LoginStreakWidget
         classroomId={profile.classroomId}
         variant="recorder"
-        paused={storyItems.length > 0}
+        paused={storyFirst}
         onSettledChange={setStreakSettled}
       />
 
