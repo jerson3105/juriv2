@@ -113,34 +113,44 @@ export interface PointLog {
   createdAt: string;
 }
 
-export interface StudentStats {
-  summary: {
-    totalXpGained: number;
-    totalXpLost: number;
-    netXp: number;
-    totalGpGained: number;
-    totalGpSpent: number;
-    totalHpLost: number;
-    totalHpRecovered: number;
-    xpThisWeek: number;
-    xpThisMonth: number;
-    totalActions: number;
-    streak: number;
+// «Mi progreso» del alumno (GET /students/profiles/:id/progress). Sin reversiones; nombres solo si la clase muestra motivos.
+export type ProgressPeriod = 'bimester' | 'all';
+export type ProgressHistoryType = 'ALL' | 'XP' | 'GP' | 'HP';
+
+export interface StudentProgress {
+  /** canSplit: la clase tiene un corte real de bimestre (si no, solo hay «todo»). */
+  period: { kind: ProgressPeriod; canSplit: boolean; bimester: number | null; from: string | null };
+  /** Tiene algún registro válido en la clase (en cualquier periodo). */
+  hasAny: boolean;
+  totals: { xpGained: number; gpGained: number; gpSpent: number; hpLost: number; hpRecovered: number };
+  behaviors: {
+    namesVisible: boolean;
+    positiveTimes: number;
+    negativeTimes: number;
+    strengths: { name: string; times: number }[];
+    toImprove: { name: string; times: number }[];
   };
-  strengths: Array<{ id: string; name: string; count: number; isPositive: boolean }>;
-  areasToImprove: Array<{ id: string; name: string; count: number; isPositive: boolean }>;
-  activityByDay: number[];
-  recentHistory: Array<{
-    id: string;
-    type: PointType;
-    action: 'ADD' | 'REMOVE';
-    amount: number;
-    reason: string;
-    date: string;
-    xpAmount?: number;
-    gpAmount?: number;
-    hpAmount?: number;
-  }>;
+  /** XP ganado por semana (lunes) o por mes, en la hora del alumno; start = AAAA-MM-DD. */
+  series: { bucket: 'week' | 'month'; points: { start: string; xp: number }[]; truncated: boolean };
+  badges: { count: number; latest: { name: string; at: string } | null };
+}
+
+export interface ProgressHistoryItem {
+  id: string;
+  at: string;
+  kind: 'behavior' | 'badge' | 'shop' | 'other';
+  /** Solo en comportamientos. */
+  positive: boolean | null;
+  /** null si la clase no muestra motivos (las insignias y compras propias siempre traen texto). */
+  label: string | null;
+  xp: number;
+  gp: number;
+  hp: number;
+}
+
+export interface ProgressHistoryPage {
+  items: ProgressHistoryItem[];
+  nextCursor: string | null;
 }
 
 export const CHARACTER_CLASSES = {
@@ -297,9 +307,21 @@ export const studentApi = {
     return response.data.data.hasDemo;
   },
 
-  // Obtener estadísticas detalladas del estudiante
-  getStudentStats: async (studentId: string): Promise<StudentStats> => {
-    const response = await api.get(`/students/stats/${studentId}`);
+  // «Mi progreso»: tz para agrupar por semana o mes en la hora del alumno.
+  getMyProgress: async (profileId: string, period: ProgressPeriod): Promise<StudentProgress> => {
+    const response = await api.get(`/students/profiles/${profileId}/progress`, {
+      params: { period, tz: new Date().getTimezoneOffset() },
+    });
+    return response.data.data;
+  },
+
+  getMyProgressHistory: async (
+    profileId: string,
+    { period, type, cursor }: { period: ProgressPeriod; type: ProgressHistoryType; cursor: string | null },
+  ): Promise<ProgressHistoryPage> => {
+    const response = await api.get(`/students/profiles/${profileId}/progress/history`, {
+      params: { period, type, ...(cursor ? { cursor } : {}) },
+    });
     return response.data.data;
   },
 

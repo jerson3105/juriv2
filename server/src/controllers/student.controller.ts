@@ -308,53 +308,6 @@ export class StudentController {
     }
   }
 
-  // Obtener estadísticas detalladas del estudiante
-  async getStudentStats(req: Request, res: Response) {
-    try {
-      const { studentId } = req.params;
-      const requester = req.user;
-
-      if (!requester) {
-        return res.status(401).json({
-          success: false,
-          message: 'No autorizado',
-        });
-      }
-
-      const stats = await studentService.getStudentStatsForRequester(
-        studentId,
-        requester.id,
-        requester.role as 'ADMIN' | 'TEACHER' | 'STUDENT'
-      );
-
-      res.json({
-        success: true,
-        data: stats,
-      });
-    } catch (error: any) {
-      console.error('Error getting student stats:', error);
-
-      if (error.message?.includes('No autorizado')) {
-        return res.status(403).json({
-          success: false,
-          message: error.message,
-        });
-      }
-
-      if (error.message?.includes('no encontrado')) {
-        return res.status(404).json({
-          success: false,
-          message: error.message,
-        });
-      }
-
-      res.status(500).json({
-        success: false,
-        message: 'Error al obtener estadísticas',
-      });
-    }
-  }
-
   // Actualizar perfil del estudiante
   async updateProfile(req: Request, res: Response) {
     try {

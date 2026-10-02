@@ -159,7 +159,7 @@ export const WhatsNewCard = ({ profileId, news, resting, letters, onOpen }: What
             </div>
           )}
 
-          <Link to="/my-progress" className={`${cardLink} mt-1`}>
+          <Link to="/my-progress#historial" className={`${cardLink} mt-1`}>
             Ver todo en Mi progreso
             <ArrowRight size={14} aria-hidden="true" />
           </Link>

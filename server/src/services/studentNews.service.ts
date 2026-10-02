@@ -4,6 +4,7 @@ import { db } from '../db/index.js';
 import { badges, classrooms, levelUpLogs, notifications, pointLogs, studentBadges, studentProfiles } from '../db/schema.js';
 import { NotFoundError } from '../utils/errors.js';
 import { emitUnreadCount } from '../utils/notificationEmitter.js';
+import { isBadgeReward, isSelfSpend } from '../utils/pointReasons.js';
 
 type PointType = 'XP' | 'HP' | 'GP';
 
@@ -15,11 +16,8 @@ export interface NewsLine {
   reason: string | null;
 }
 
-// Lo que el alumno gastó por su cuenta no es una novedad (lo decidió él).
-const SELF_SPEND = ['Compra en tienda', 'Regalo en tienda', 'Compra aprobada en tienda', 'Compra de energía'];
-const isSelfSpend = (reason: string | null) => !!reason && SELF_SPEND.some((prefix) => reason.startsWith(prefix));
-// La recompensa de una insignia va en la línea de la insignia, no repetida como motivo.
-const isBadgeReward = (reason: string | null) => !!reason && reason.startsWith('Insignia: ');
+// Lo que el alumno gastó por su cuenta no es una novedad (lo decidió él) y la recompensa de una insignia
+// va en la línea de la insignia, no repetida como motivo (isSelfSpend / isBadgeReward).
 // Notificaciones que "Lo nuevo" ya le mostró al alumno.
 const NEWS_NOTIFICATION_TYPES = ['POINTS', 'BADGE', 'LEVEL_UP'] as const;
 const MAX_LINES = 30;
