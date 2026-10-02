@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import {
@@ -8,6 +8,7 @@ import {
   classroomAvatarItems,
   classrooms,
   pointLogs,
+  purchases,
   studentAvatarPurchases,
   studentEquippedItems,
   studentProfiles,
@@ -89,16 +90,55 @@ const loadExceptions = async (classroomId: string) => {
 };
 type Exceptions = Awaited<ReturnType<typeof loadExceptions>>;
 
-/** La base de precios es el oro semanal de la clase la primera vez; después queda fija hasta que el docente la actualiza. */
+/** Días de actividad que necesita una clase para fijar sus precios (antes siguen su economía). */
+const MATURE_DAYS = 21;
+const weeklyCache = new Map<string, { at: number; value: { base: number; mature: boolean } }>();
+
+/**
+ * Oro semanal para los precios: el W de la tienda, corregido en clases con menos de 4 semanas de
+ * historia (W reparte 28 días; con una semana de actividad saldría cuatro veces menor).
+ */
+const avatarWeekly = async (classroomId: string) => {
+  const [economy, [first]] = await Promise.all([
+    getShopEconomy(classroomId),
+    db.select({ at: sql<string | null>`MIN(${pointLogs.createdAt})` })
+      .from(pointLogs)
+      .innerJoin(studentProfiles, eq(studentProfiles.id, pointLogs.studentId))
+      .where(eq(studentProfiles.classroomId, classroomId)),
+  ]);
+  const days = first?.at ? (Date.now() - new Date(first.at).getTime()) / 86_400_000 : 0;
+  const window = Math.min(28, Math.max(7, days));
+  const weekly = economy.weeklyGold > 0 ? economy.weeklyGold * (28 / window) : economy.effectiveWeekly;
+  return { base: Math.max(1, Math.round(weekly)), mature: economy.activeStudents > 0 && days >= MATURE_DAYS };
+};
+
+/**
+ * La base de precios: fija desde que la clase tiene datos de verdad (3 semanas de actividad) hasta que
+ * el docente la actualiza; antes sigue la economía de la clase (calculada como mucho cada 10 minutos).
+ */
 const ensurePriceBase = async (classroom: NonNullable<ClassroomRow>): Promise<number> => {
   if (classroom.avatarPriceBase) return classroom.avatarPriceBase;
-  const economy = await getShopEconomy(classroom.id);
-  const base = Math.max(1, Math.round(economy.effectiveWeekly));
+  const cached = weeklyCache.get(classroom.id);
+  const current = cached && Date.now() - cached.at < 600_000 ? cached.value : await avatarWeekly(classroom.id);
+  if (!current.mature) {
+    weeklyCache.set(classroom.id, { at: Date.now(), value: current });
+    return current.base;
+  }
+  weeklyCache.delete(classroom.id);
   await db.update(classrooms)
-    .set({ avatarPriceBase: base, avatarPricesAt: new Date() })
+    .set({ avatarPriceBase: current.base, avatarPricesAt: new Date() })
     .where(and(eq(classrooms.id, classroom.id), isNull(classrooms.avatarPriceBase)));
   const [fresh] = await db.select({ base: classrooms.avatarPriceBase }).from(classrooms).where(eq(classrooms.id, classroom.id));
-  return fresh?.base ?? base;
+  return fresh?.base ?? current.base;
+};
+
+/** Oro que ya espera a su profe (pedidos de la tienda por aprobar): no se puede gastar en ropa. */
+const pendingGoldOf = async (profileId: string) => {
+  const [row] = await db
+    .select({ total: sql<string>`COALESCE(SUM(${purchases.totalPrice}), 0)` })
+    .from(purchases)
+    .where(and(eq(purchases.buyerId, profileId), eq(purchases.status, 'PENDING')));
+  return Number(row?.total ?? 0);
 };
 
 interface Entry {
@@ -182,12 +222,13 @@ class AvatarCatalogService {
     if (!classroom) throw new NotFoundError('Clase no encontrada');
     const gender = profile.gender as AvatarGender;
 
-    const [catalog, exceptions, base, owned, equippedRows] = await Promise.all([
+    const [catalog, exceptions, base, owned, equippedRows, pendingGold] = await Promise.all([
       loadCatalog(),
       loadExceptions(classroom.id),
       ensurePriceBase(classroom),
       ownedFor(profile.id, gender),
       avatarService.getEquippedItems(profile.id),
+      pendingGoldOf(profile.id),
     ]);
     const entries = buildEntries(catalog, exceptions, base, classroom.avatarPriceLevel).filter((entry) => entry.item.gender === gender);
     const shop = shopState(classroom, profile.hp);
@@ -217,7 +258,8 @@ class AvatarCatalogService {
     const defaults = catalog.items.filter((item) => item.isDefault && item.gender === gender).map((item) => itemView(item, null));
 
     return {
-      profile: { id: profile.id, gender, gold: profile.gp },
+      // pendingGold: lo que espera a su profe en la tienda de premios (no se puede gastar en ropa).
+      profile: { id: profile.id, gender, gold: profile.gp, pendingGold },
       classroomName: classroom.name,
       gradeLevel: classroom.gradeLevel,
       shop,
@@ -266,6 +308,13 @@ class AvatarCatalogService {
     if (owned.has(item.id)) throw new ConflictError('Ya tienes esta prenda');
 
     const price = entry.price;
+    // Como en la tienda de premios: el oro que espera a su profe no se puede gastar.
+    const pendingGold = await pendingGoldOf(profile.id);
+    if (profile.gp - pendingGold < price) {
+      throw new ValidationError(pendingGold > 0
+        ? `No te alcanza: tienes ${profile.gp} de oro y ${pendingGold} ya esperan a tu profe.`
+        : `No te alcanza: «${item.name}» cuesta ${price} de oro.`);
+    }
     const now = new Date();
     try {
       await db.transaction(async (tx) => {
@@ -390,11 +439,12 @@ class AvatarCatalogService {
   async getTeacherCatalog(classroomId: string, teacherId: string) {
     const classroom = await loadClassroom(classroomId);
     if (!classroom) throw new NotFoundError('Clase no encontrada');
-    const [catalog, exceptions, base, economy, others] = await Promise.all([
+    const [catalog, exceptions, base, economy, weeklyNow, others] = await Promise.all([
       loadCatalog(),
       loadExceptions(classroomId),
       ensurePriceBase(classroom),
       getShopEconomy(classroomId),
+      avatarWeekly(classroomId),
       db.select({ id: classrooms.id, name: classrooms.name })
         .from(classrooms)
         .where(and(eq(classrooms.teacherId, teacherId), eq(classrooms.isActive, true), ne(classrooms.id, classroomId)))
@@ -436,12 +486,14 @@ class AvatarCatalogService {
         enabled: classroom.avatarShopEnabled,
         priceLevel: level,
         priceBase: base,
-        pricesAt: classroom.avatarPricesAt,
+        // Sin fecha: la clase aún no tiene 3 semanas de actividad y los precios siguen su economía.
+        pricesAt: classroom.avatarPriceBase ? classroom.avatarPricesAt : null,
         shopEnabled: classroom.shopEnabled,
       },
       economy: {
         weeklyGold: economy.weeklyGold,
-        effectiveWeekly: economy.effectiveWeekly,
+        /** Oro semanal de ahora (corregido en clases nuevas): con él se actualizarían los precios. */
+        weeklyNow: weeklyNow.base,
         activeStudents: economy.activeStudents,
         behaviorsGiveGold: economy.behaviorsGiveGold,
       },
@@ -462,9 +514,10 @@ class AvatarCatalogService {
       if (patch.enabled !== undefined) set.avatarShopEnabled = patch.enabled;
       if (patch.priceLevel) set.avatarPriceLevel = patch.priceLevel;
       if (patch.refreshPrices) {
-        const economy = await getShopEconomy(classroomId);
-        set.avatarPriceBase = Math.max(1, Math.round(economy.effectiveWeekly));
+        // El docente decide fijarlos con el oro de ahora (aunque la clase sea nueva).
+        set.avatarPriceBase = (await avatarWeekly(classroomId)).base;
         set.avatarPricesAt = new Date();
+        weeklyCache.delete(classroomId);
       }
       if (Object.keys(set).length) await db.update(classrooms).set(set).where(eq(classrooms.id, classroomId));
     }

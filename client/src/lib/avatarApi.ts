@@ -92,7 +92,8 @@ export interface TeacherAvatarCatalog {
     /** La tienda de la clase (premios); cerrada, tampoco se compra avatar. */
     shopEnabled: boolean;
   };
-  economy: { weeklyGold: number; effectiveWeekly: number; activeStudents: number; behaviorsGiveGold: boolean };
+  /** weeklyNow: oro semanal de ahora (corregido en clases nuevas), con el que se actualizarían los precios. */
+  economy: { weeklyGold: number; weeklyNow: number; activeStudents: number; behaviorsGiveGold: boolean };
   /** Precio actual por rareza (1, 3 y 6 semanas de oro, según el nivel). */
   prices: Record<ItemRarity, number>;
   collections: TeacherCatalogCollection[];
@@ -117,7 +118,8 @@ export interface StudentAvatarItem {
 }
 
 export interface StudentAvatarView {
-  profile: { id: string; gender: AvatarGender; gold: number };
+  /** pendingGold: oro que espera a su profe en la tienda de premios (no se puede gastar en ropa). */
+  profile: { id: string; gender: AvatarGender; gold: number; pendingGold: number };
   classroomName: string;
   gradeLevel: string | null;
   /** Comprar: cerrada por la tienda de la clase, desactivada la de avatar o en descanso. Vestirse siempre se puede. */

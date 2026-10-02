@@ -100,7 +100,8 @@ export const AvatarShopManager = ({ classroomId }: { classroomId: string }) => {
   }
 
   const { settings: current, prices, economy } = catalog;
-  const nowWeekly = Math.max(1, Math.round(economy.effectiveWeekly));
+  const nowWeekly = economy.weeklyNow;
+  const fixed = !!current.pricesAt;
   const busy = settings.isPending;
 
   return (
@@ -151,10 +152,11 @@ export const AvatarShopManager = ({ classroomId }: { classroomId: string }) => {
               <span>· Legendaria <strong>{gold(prices.LEGENDARY)}</strong></span>
             </p>
             <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
-              Calculados con {gold(current.priceBase)} por semana{current.pricesAt ? ` (${new Date(current.pricesAt).toLocaleDateString('es', { day: 'numeric', month: 'short' })})` : ''}
-              {nowWeekly !== current.priceBase ? `. Ahora ganan unos ${gold(nowWeekly)} por semana.` : '.'}
+              {fixed
+                ? `Calculados con ${gold(current.priceBase)} por semana (${new Date(current.pricesAt!).toLocaleDateString('es', { day: 'numeric', month: 'short' })})${nowWeekly !== current.priceBase ? `. Ahora ganan unos ${gold(nowWeekly)} por semana.` : '.'}`
+                : `Según lo que ganan ahora: unos ${gold(current.priceBase)} por semana. Siguen el oro de la clase hasta que tenga 3 semanas de actividad; después quedan fijos.`}
             </p>
-            {nowWeekly !== current.priceBase && (
+            {fixed && nowWeekly !== current.priceBase && (
               <button type="button" onClick={() => settings.mutate({ refreshPrices: true })} disabled={busy} className={`${smallButton} mt-2`}>
                 <RefreshCw size={16} aria-hidden="true" />
                 Actualizar precios
