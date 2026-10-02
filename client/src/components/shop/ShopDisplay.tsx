@@ -56,6 +56,11 @@ export const ShopDisplay = ({ item, size = 'md', soldOut = false, animated = tru
   );
 };
 
+// Toldo de tienda (franja azul y blanca) sobre las tarjetas y vitrinas de la tienda.
+export const ShopAwning = () => (
+  <div className="h-2.5 w-full bg-[repeating-linear-gradient(90deg,#2563eb_0_16px,#ffffff_16px_32px)] dark:bg-[repeating-linear-gradient(90deg,#3b82f6_0_16px,#1f2937_16px_32px)]" aria-hidden="true" />
+);
+
 // Etiqueta de precio con agujero de cuerda; se balancea al pasar el ratón por la tarjeta.
 export const PriceTag = ({ price, large = false }: { price: number; large?: boolean }) => (
   <span className={`shop-swing relative inline-flex items-center gap-1.5 rounded-lg bg-amber-400 font-black text-amber-950 shadow-md ring-1 ring-amber-500/60 ${large ? 'py-1.5 pl-5 pr-3 text-lg' : 'py-1 pl-4 pr-2.5 text-base'}`}>

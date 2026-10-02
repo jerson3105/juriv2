@@ -1,8 +1,6 @@
 import type { ItemRarity, PurchaseType, StudentShopItem, StudentShopView } from '../../../lib/shopApi';
 
 // Estilos de la tienda del alumno: el ámbar del oro de la barra superior y del inicio (sin escalas nuevas).
-export const goldChip = 'inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2 py-0.5 text-sm font-bold tabular-nums text-amber-900 ring-1 ring-amber-200 dark:bg-amber-900/30 dark:text-amber-100 dark:ring-amber-700/60';
-export const goldIcon = 'text-amber-700 dark:text-amber-300';
 export const goldTile = 'flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300';
 export const savingsTrack = 'h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700';
 // amber-700: con amber-600 la barra no se distingue del riel.

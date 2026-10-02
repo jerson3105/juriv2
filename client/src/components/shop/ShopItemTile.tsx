@@ -14,36 +14,22 @@ interface ShopItemTileProps {
   category: ItemCategory;
   rarity: ItemRarity;
   size?: keyof typeof SIZES;
-  /** Con el tinte estático de su rareza; sin él, neutra. */
-  tinted?: boolean;
-  /** Festejo de compra: el ícono hace un «pop» una sola vez (con menos movimiento queda quieto). */
-  pop?: boolean;
 }
 
 /**
- * Imagen o ícono de un premio, con respaldo si la imagen no carga (nunca una imagen rota).
- * Decorativa: el nombre del premio siempre va al lado en texto.
+ * Imagen o ícono de un premio en filas compactas, con el tinte de su rareza y respaldo si la imagen
+ * no carga (nunca una imagen rota). Decorativa: el nombre del premio siempre va al lado en texto.
  */
-export const ShopItemTile = ({ icon, imageUrl, category, rarity, size = 'md', tinted = true, pop = false }: ShopItemTileProps) => {
+export const ShopItemTile = ({ icon, imageUrl, category, rarity, size = 'md' }: ShopItemTileProps) => {
   const [broken, setBroken] = useState(false);
   const fallback = icon || CATEGORY_CONFIG[category]?.icon || '🎁';
-  const tint = tinted
-    ? `bg-gradient-to-b ${SHOP_RARITY_STYLE[rarity].window}`
-    : 'bg-gray-50 ring-1 ring-gray-200 dark:bg-gray-900/40 dark:ring-gray-700';
 
   return (
-    <span aria-hidden="true" className={`flex flex-shrink-0 items-center justify-center overflow-hidden rounded-xl ${SIZES[size]} ${tint}`}>
+    <span aria-hidden="true" className={`flex flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-b ${SHOP_RARITY_STYLE[rarity].window} ${SIZES[size]}`}>
       {imageUrl && !broken ? (
-        <img
-          src={shopImageUrl(imageUrl)}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          onError={() => setBroken(true)}
-          className={`h-full w-full object-cover ${pop ? 'celebrate-pop' : ''}`}
-        />
+        <img src={shopImageUrl(imageUrl)} alt="" loading="lazy" decoding="async" onError={() => setBroken(true)} className="h-full w-full object-cover" />
       ) : (
-        <span className={`leading-none ${pop ? 'celebrate-pop' : ''}`}>{fallback}</span>
+        <span className="leading-none">{fallback}</span>
       )}
     </span>
   );

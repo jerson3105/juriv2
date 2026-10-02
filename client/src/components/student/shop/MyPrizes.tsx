@@ -1,6 +1,7 @@
 import { forwardRef, useState } from 'react';
 import { Check, Clock3, Infinity as InfinityIcon, Moon } from 'lucide-react';
 import type { StudentShopOwned, StudentShopWaiting } from '../../../lib/shopApi';
+import { ShopDisplay } from '../../shop/ShopDisplay';
 import { ShopItemTile } from '../../shop/ShopItemTile';
 import { noteChip } from '../grades/gradesHelpers';
 import { cardText, cardTitle, homeCard, rowButton } from '../home/studentHomeHelpers';
@@ -68,7 +69,10 @@ export const MyPrizesCard = forwardRef<HTMLHeadingElement, MyPrizesCardProps>(({
           return (
             <li key={prize.itemId} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 py-3">
               <div className="flex min-w-0 flex-1 items-center gap-3">
-                <ShopItemTile icon={prize.icon} imageUrl={prize.imageUrl} category={prize.category} rarity={prize.rarity} size="sm" />
+                {/* Su premio en una vitrina pequeña, como en la tienda. */}
+                <div className="w-20 flex-shrink-0">
+                  <ShopDisplay item={prize} size="sm" soldOut={prize.consumable && prize.available === 0 && prize.waitingUses === 0} />
+                </div>
                 <div className="min-w-0">
                   <p className={rowName}>{prize.name}</p>
                   <p className={cardText}>

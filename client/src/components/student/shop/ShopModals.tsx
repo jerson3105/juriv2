@@ -5,7 +5,8 @@ import { GIFT_PHRASES, shopApi, type GiftPhraseKey, type StudentShopItem, type S
 import { useCharacterClasses } from '../../../hooks/useCharacterClasses';
 import { HomeModal } from '../../home/HomeModal';
 import { cancelButton, errorMessage, inputClass, labelClass, primaryButton } from '../../home/homeHelpers';
-import { ShopItemTile } from '../../shop/ShopItemTile';
+import { PriceTag, ShopAwning, ShopDisplay } from '../../shop/ShopDisplay';
+import { SHOP_RARITY_STYLE } from '../../shop/shopHelpers';
 import { cardText, rowButton } from '../home/studentHomeHelpers';
 import { KindChip, RarityChip } from './ShopBits';
 import { gold } from './shopStudentHelpers';
@@ -19,17 +20,26 @@ const choiceRow = 'flex min-h-[48px] cursor-pointer items-center gap-3 rounded-x
 const choiceOn = 'border-primary-600 bg-primary-50 dark:border-primary-300 dark:bg-primary-900/30';
 const choiceOff = 'border-gray-200 hover:border-gray-400 dark:border-gray-600 dark:hover:border-gray-500';
 
-const ItemHeader = ({ item }: { item: Pick<StudentShopItem, 'name' | 'icon' | 'imageUrl' | 'category' | 'rarity' | 'description'> }) => (
-  <div className="flex gap-3">
-    <ShopItemTile icon={item.icon} imageUrl={item.imageUrl} category={item.category} rarity={item.rarity} size="lg" />
-    <div className="min-w-0">
-      <p className="break-words text-base font-bold text-gray-900 dark:text-white">{item.name}</p>
-      <div className="mt-1 flex flex-wrap gap-1.5">
-        <RarityChip rarity={item.rarity} />
-        <KindChip category={item.category} />
+type ShowcaseItem = Pick<StudentShopItem, 'name' | 'icon' | 'imageUrl' | 'category' | 'rarity'> & { description?: string | null; price?: number };
+
+/** El premio en su vitrina, como en la tienda del profe: toldo, vitrina, nombre, rareza y etiqueta de precio. */
+const ItemShowcase = ({ item }: { item: ShowcaseItem }) => (
+  <div className={`group overflow-hidden rounded-xl border-2 bg-white dark:bg-gray-800 ${SHOP_RARITY_STYLE[item.rarity].card}`}>
+    <ShopAwning />
+    <div className="flex items-center gap-4 p-3">
+      <div className="w-28 flex-shrink-0 sm:w-32">
+        <ShopDisplay item={item} size="sm" />
       </div>
-      {item.description && <p className={`${cardText} mt-2`}>{item.description}</p>}
+      <div className="min-w-0 flex-1">
+        <p className="break-words text-base font-bold text-gray-900 dark:text-white">{item.name}</p>
+        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+          {item.price !== undefined && <PriceTag price={item.price} />}
+          <RarityChip rarity={item.rarity} />
+          <KindChip category={item.category} />
+        </div>
+      </div>
     </div>
+    {item.description && <p className={`${cardText} px-3 pb-3`}>{item.description}</p>}
   </div>
 );
 
@@ -104,7 +114,7 @@ export const PurchaseModal = ({ profileId, classroomId, item, view, spendable, c
 
   return (
     <HomeModal title={mode === 'self' ? `¿Comprar «${item.name}»?` : `Regalar «${item.name}»`} onClose={onClose} footer={footer}>
-      <ItemHeader item={item} />
+      <ItemShowcase item={item} />
 
       {canGift && (
         <div className="grid grid-cols-2 gap-1 rounded-2xl border border-gray-200 bg-white p-1 dark:border-gray-700 dark:bg-gray-800" role="group" aria-label="¿Para quién?">
@@ -250,10 +260,16 @@ export const PurchaseDoneModal = ({ done, onClose, onShowMine }: { done: Purchas
   return (
     <HomeModal title={title} onClose={onClose} footer={footer}>
       <div className="flex flex-col items-center text-center">
-        <span className="relative flex">
-          <span className="celebrate-ring absolute inset-0 rounded-2xl border-2 border-amber-500" aria-hidden="true" />
-          <ShopItemTile icon={item.icon} imageUrl={item.imageUrl} category={item.category} rarity={item.rarity} size="lg" pop />
-        </span>
+        {/* Festejo pequeño: la vitrina hace «pop» y un anillo dorado se expande una vez. */}
+        <div className="relative w-full max-w-xs">
+          <span className="celebrate-ring pointer-events-none absolute inset-0 rounded-2xl border-4 border-amber-400" aria-hidden="true" />
+          <div className={`celebrate-pop !block w-full overflow-hidden rounded-2xl border-2 bg-white dark:bg-gray-800 ${SHOP_RARITY_STYLE[item.rarity].card}`}>
+            <ShopAwning />
+            <div className="p-3">
+              <ShopDisplay item={item} size="lg" />
+            </div>
+          </div>
+        </div>
         <p className="mt-3 break-words text-lg font-bold text-gray-900 dark:text-white">{item.name}</p>
         <p className={`${cardText} mt-1 max-w-sm`}>{text}</p>
       </div>
@@ -298,12 +314,10 @@ export const UsePrizeModal = ({ profileId, prize, onClose, onDone }: UseModalPro
 
   return (
     <HomeModal title={`¿Usar «${prize.name}»?`} onClose={onClose} footer={footer}>
-      <div className="flex items-center gap-3">
-        <ShopItemTile icon={prize.icon} imageUrl={prize.imageUrl} category={prize.category} rarity={prize.rarity} size="lg" />
-        <p className="text-sm text-gray-900 dark:text-white">
-          {prize.available === 1 ? 'Te queda 1.' : `Te quedan ${prize.available}.`} {after === 0 ? 'Al usarlo ya no te quedará.' : `Al usarlo te ${after === 1 ? 'quedará 1' : `quedarán ${after}`}.`}
-        </p>
-      </div>
+      <ItemShowcase item={prize} />
+      <p className="text-sm text-gray-900 dark:text-white">
+        {prize.available === 1 ? 'Te queda 1.' : `Te quedan ${prize.available}.`} {after === 0 ? 'Al usarlo ya no te quedará.' : `Al usarlo te ${after === 1 ? 'quedará 1' : `quedarán ${after}`}.`}
+      </p>
       <p className={cardText}>Tu profe verá tu pedido y lo aprobará en clase. Si hoy no se puede, lo sigues teniendo para otra ocasión.</p>
       {error && <p role="alert" className={alertClass}>{error}</p>}
     </HomeModal>

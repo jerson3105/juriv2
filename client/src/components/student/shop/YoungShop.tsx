@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Check, Moon, PackageX, PiggyBank, Target } from 'lucide-react';
 import type { StudentShopItem, StudentShopView } from '../../../lib/shopApi';
-import { ShopItemTile } from '../../shop/ShopItemTile';
+import { PriceTag, ShopAwning, ShopDisplay } from '../../shop/ShopDisplay';
+import { SHOP_RARITY_STYLE } from '../../shop/shopHelpers';
 import { cardText, cardTitle, homeCard, rowButton } from '../home/studentHomeHelpers';
-import { GoldChip, SavingsBar } from './ShopBits';
+import { SavingsBar } from './ShopBits';
 import { gold, goalButton, goalButtonOff, goalButtonOn, goldTile, statusLine, statusTone, type ShopGoal } from './shopStudentHelpers';
 
 const FIRST = 6;
@@ -59,17 +60,25 @@ export const YoungShop = ({ view, spendable, goal, goalBusy, onToggleGoal }: You
               const isGoal = view.goalItemId === item.id;
               return (
                 <li key={item.id}>
-                  <article aria-labelledby={`young-${item.id}`} className={`${homeCard} flex flex-wrap items-center gap-4`}>
-                    <ShopItemTile icon={item.icon} imageUrl={item.imageUrl} category={item.category} rarity={item.rarity} size="lg" tinted={false} />
-                    <div className="min-w-0 flex-1">
-                      <h3 id={`young-${item.id}`} className="break-words text-lg font-bold text-gray-900 dark:text-white">{item.name}</h3>
-                      <div className="mt-1"><GoldChip amount={item.price} /></div>
-                      {shop.enabled && !soldOut && !shop.paused && !reached && (
-                        <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">Te faltan {gold(item.price - spendable)}</p>
-                      )}
+                  <article
+                    aria-labelledby={`young-${item.id}`}
+                    className={`group overflow-hidden rounded-2xl border-2 bg-white shadow-sm transition-[transform,box-shadow] duration-200 hover:shadow-lg motion-safe:hover:-translate-y-1 dark:bg-gray-800 ${SHOP_RARITY_STYLE[item.rarity].card}`}
+                  >
+                    <ShopAwning />
+                    <div className="flex flex-wrap items-center gap-4 p-4">
+                      <div className="w-40 flex-shrink-0">
+                        <ShopDisplay item={item} soldOut={soldOut} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 id={`young-${item.id}`} className="break-words text-lg font-bold text-gray-900 dark:text-white">{item.name}</h3>
+                        <div className="mt-2"><PriceTag price={item.price} large /></div>
+                        {shop.enabled && !soldOut && !shop.paused && !reached && (
+                          <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">Te faltan {gold(item.price - spendable)}</p>
+                        )}
+                      </div>
                     </div>
                     {shop.enabled && (
-                      <div className="w-full sm:w-auto">
+                      <div className="px-4 pb-4">
                         {soldOut ? (
                           <p className={`${statusLine} !mt-0 ${statusTone.neutral}`}><PackageX size={16} aria-hidden="true" />Agotado por ahora</p>
                         ) : shop.paused ? (

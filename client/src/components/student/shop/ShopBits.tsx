@@ -1,8 +1,8 @@
-import { Coins, Gem, Infinity as InfinityIcon, Ticket } from 'lucide-react';
+import { Gem, Infinity as InfinityIcon, Ticket } from 'lucide-react';
 import type { ItemCategory, ItemRarity } from '../../../lib/shopApi';
 import { SHOP_RARITY_STYLE } from '../../shop/shopHelpers';
 import { noteChip } from '../grades/gradesHelpers';
-import { RARITY_GEMS, gold, goldChip, goldIcon, rarityChip, savingsFill, savingsTrack } from './shopStudentHelpers';
+import { RARITY_GEMS, rarityChip, savingsFill, savingsTrack } from './shopStudentHelpers';
 
 /** Rareza con su nombre y 1 a 3 gemas: se entiende sin color. */
 export const RarityChip = ({ rarity }: { rarity: ItemRarity }) => (
@@ -21,13 +21,6 @@ export const KindChip = ({ category }: { category: ItemCategory }) =>
   ) : (
     <span className={noteChip}><InfinityIcon size={12} aria-hidden="true" />Para siempre</span>
   );
-
-export const GoldChip = ({ amount }: { amount: number }) => (
-  <span className={goldChip}>
-    <Coins size={14} className={goldIcon} aria-hidden="true" />
-    {gold(amount)}
-  </span>
-);
 
 /** Barra de ahorro dorada: se pinta con su ancho final (nada se anima solo). */
 export const SavingsBar = ({ have, price, label }: { have: number; price: number; label: string }) => {

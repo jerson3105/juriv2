@@ -4,7 +4,7 @@ import { AlertTriangle, Gem, ImagePlus, Info, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { EmojiPicker } from '../ui/EmojiPicker';
 import { CATEGORY_CONFIG, rarityForPrice, shopApi, type ItemCategory, type ItemRarity, type ShopEconomy, type ShopItem } from '../../lib/shopApi';
-import { PriceTag, ShopDisplay } from './ShopDisplay';
+import { PriceTag, ShopAwning, ShopDisplay } from './ShopDisplay';
 import { DEFAULT_WEEKLY_GOLD, ITEM_EXAMPLES, OFF_MESSAGE_PATTERN, SHOP_RARITY_STYLE, weeksPrice, weeksText } from './shopHelpers';
 
 export type ShopFormTarget = { kind: 'create'; template?: ShopItem } | { kind: 'edit'; item: ShopItem };
@@ -167,7 +167,7 @@ export const ShopItemFormModal = ({ target, economy, isSaving, onClose, onSubmit
       >
         {/* Vista previa en vivo, como se verá en la tienda */}
         <div className="border-b border-gray-200 dark:border-gray-700">
-          <div className="h-2.5 w-full bg-[repeating-linear-gradient(90deg,#2563eb_0_16px,#ffffff_16px_32px)] dark:bg-[repeating-linear-gradient(90deg,#3b82f6_0_16px,#1f2937_16px_32px)]" aria-hidden="true" />
+          <ShopAwning />
           <div className="flex items-center gap-4 px-5 py-3">
             <div className="w-32 flex-shrink-0">
               <ShopDisplay item={preview} size="sm" />

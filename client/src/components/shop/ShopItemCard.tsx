@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import { Copy, Gift, Pencil, Trash2 } from 'lucide-react';
 import { CATEGORY_CONFIG, type ShopItem } from '../../lib/shopApi';
-import { PriceTag, ShopDisplay } from './ShopDisplay';
+import { PriceTag, ShopAwning, ShopDisplay } from './ShopDisplay';
 import { SHOP_RARITY_STYLE } from './shopHelpers';
 
 interface ShopItemCardProps {
@@ -35,8 +35,7 @@ export const ShopItemCard = ({ item, index, sold, wanted, onGive, onEdit, onDupl
       whileHover={{ y: -4 }}
       className={`group relative flex flex-col overflow-hidden rounded-2xl border-2 bg-white shadow-sm transition-shadow hover:shadow-lg dark:bg-gray-800 ${style.card}`}
     >
-      {/* Toldo de tienda */}
-      <div className="h-2.5 w-full bg-[repeating-linear-gradient(90deg,#2563eb_0_16px,#ffffff_16px_32px)] dark:bg-[repeating-linear-gradient(90deg,#3b82f6_0_16px,#1f2937_16px_32px)]" aria-hidden="true" />
+      <ShopAwning />
 
       <div className="relative p-3 pb-0">
         <ShopDisplay item={item} soldOut={soldOut} />
