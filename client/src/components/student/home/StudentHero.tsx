@@ -4,14 +4,12 @@ import { ChevronRight, Coins, Flame, Heart, Moon, Shirt, Sparkles } from 'lucide
 import { AvatarRenderer, type AvatarGender, type EquippedItem } from '../../avatar/AvatarRenderer';
 import { Starfield } from '../../auth/SpaceScene';
 import { ConstellationSky } from '../../observatorio/descanso/ConstellationSky';
-import { CONSTELLATIONS } from '../../observatorio/descanso/constellations';
 import { Hearts } from '../../energy/EnergyMeter';
 import { nextGiftOf, type StreakStatus } from '../loginStreak';
 import { HomeActionButton, type HomeModalKind } from './HomeActionButton';
 import type { Goal } from './nextGoal';
 import { nightLink, nightPrimary, plural, seedOf } from './studentHomeHelpers';
-
-const SMALL_SKIES = CONSTELLATIONS.filter((c) => c.small);
+import { classSkyFor, litStarsFor } from './classSky';
 
 interface StudentHeroProps {
   classroomId: string;
@@ -44,9 +42,8 @@ const chip = 'inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-
 export const StudentHero = (props: StudentHeroProps) => {
   const { goal, xp, onOpen } = props;
   const seed = seedOf(props.classroomId);
-  const sky = SMALL_SKIES[seed % SMALL_SKIES.length];
-  // La quinta estrella se enciende al subir de nivel.
-  const lit = Math.min(4, 1 + Math.floor(xp.percent / 25));
+  const sky = classSkyFor(props.classroomId);
+  const lit = litStarsFor(xp.percent);
   const resting = props.hp <= 0;
   const gift = nextGiftOf(props.streak);
   const streakDays = props.streak?.streak?.currentStreak ?? 0;

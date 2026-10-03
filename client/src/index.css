@@ -161,10 +161,10 @@
   background-color: rgba(var(--story-rgb, 99, 102, 241), 0.22);
 }
 
-/* Brillos de fondo del aula con tema: sustituyen a las partículas en las vistas del profesor */
+/* Brillos de fondo del aula con tema: sustituyen a las partículas en las vistas del profesor. Sin
+   filter: blur (se recalculaba en cada cuadro de la deriva); el degradado radial ya es suave. */
 .story-glow {
   background: radial-gradient(circle, rgba(var(--story-rgb, 99, 102, 241), 0.22), transparent 70%);
-  filter: blur(40px);
 }
 .dark .story-glow {
   background: radial-gradient(circle, rgba(var(--story-rgb, 99, 102, 241), 0.3), transparent 70%);
@@ -460,4 +460,207 @@
 .home-modal-fade.home-modal-out { animation: home-modal-fade-out 150ms ease-in forwards; }
 @media (prefers-reduced-motion: no-preference) {
   .home-modal-pop { animation: home-modal-pop 150ms ease-out backwards; }
+}
+
+/* ── Sidebar (AppSidebar) ──────────────────────────────────────────────────────────────────────────
+   Colores por superficie en variables (antes, 65 ternarios por tema): `data-sb` = light (claro; oscuro
+   bajo .dark), theme (color del tema de la clase, texto blanco ≥ 7:1) o night (la banda del
+   Observatorio). Contrastes AA medidos; el anillo de foco cambia con la superficie (≥ 3:1).
+   Movimiento: solo transform y opacity, de una vez; nada se mueve en reposo. */
+[data-sb] {
+  --sb-bg: #ffffff;
+  --sb-fg: #374151;
+  --sb-fg2: #4b5563;
+  --sb-muted: #6b7280;
+  --sb-line: #e5e7eb;
+  --sb-hover: #f3f4f6;
+  --sb-active: #eff6ff;
+  --sb-active-fg: #1e40af;
+  --sb-tile: #f3f4f6;
+  --sb-tile-fg: #374151;
+  --sb-ring: #2563eb;
+  --sb-star: #fbbf24;
+  --sb-star-edge: #b45309;
+  --sb-star-off: #9ca3af;
+  --sb-guide: #e5e7eb;
+  --sb-gold-bg: #fef3c7;
+  --sb-gold-fg: #78350f;
+  --sb-count-bg: #dc2626;
+  --sb-count-fg: #ffffff;
+  --sb-dot: #059669;
+  --sb-chip-bg: #fcd34d;
+  --sb-chip-fg: #451a03;
+}
+.dark [data-sb='light'] {
+  --sb-bg: #1f2937;
+  --sb-fg: #e5e7eb;
+  --sb-fg2: #d1d5db;
+  --sb-muted: #9ca3af;
+  --sb-line: #374151;
+  --sb-hover: rgba(255, 255, 255, 0.06);
+  --sb-active: rgba(59, 130, 246, 0.22);
+  --sb-active-fg: #ffffff;
+  --sb-tile: rgba(255, 255, 255, 0.07);
+  --sb-tile-fg: #e5e7eb;
+  --sb-ring: #fcd34d;
+  --sb-star: #fcd34d;
+  --sb-star-edge: transparent;
+  --sb-star-off: #6b7280;
+  --sb-guide: #374151;
+  --sb-gold-bg: rgba(120, 53, 15, 0.45);
+  --sb-gold-fg: #fef3c7;
+  --sb-dot: #6ee7b7;
+}
+[data-sb='theme'],
+[data-sb='night'] {
+  --sb-fg: #ffffff;
+  --sb-fg2: rgba(255, 255, 255, 0.86);
+  --sb-muted: rgba(255, 255, 255, 0.8);
+  --sb-line: rgba(255, 255, 255, 0.12);
+  --sb-hover: rgba(255, 255, 255, 0.1);
+  --sb-active: rgba(255, 255, 255, 0.16);
+  --sb-active-fg: #ffffff;
+  --sb-tile: rgba(255, 255, 255, 0.1);
+  --sb-tile-fg: #ffffff;
+  --sb-ring: #fcd34d;
+  --sb-star: #fcd34d;
+  --sb-star-edge: transparent;
+  --sb-star-off: rgba(255, 255, 255, 0.42);
+  --sb-guide: rgba(255, 255, 255, 0.18);
+  --sb-gold-bg: rgba(255, 255, 255, 0.16);
+  --sb-gold-fg: #ffffff;
+  /* La pastilla roja se fundía con Navidad u Océano (1,5:1): blanca con número rojo. */
+  --sb-count-bg: #ffffff;
+  --sb-count-fg: #b91c1c;
+  --sb-dot: #6ee7b7;
+}
+[data-sb='theme'] { --sb-bg: var(--sb-theme-bg, #1e3a8a); }
+/* Sobre el ítem activo (ya aclarado), el chip de oro blanco al 16 % bajaba a 3,8:1: se oscurece. */
+[data-sb='theme'] .sb-item[aria-current='page'],
+[data-sb='night'] .sb-item[aria-current='page'] { --sb-gold-bg: rgba(0, 0, 0, 0.24); }
+[data-sb='night'] { --sb-bg: var(--sb-night-bg, #0b1026); --sb-fg2: #e0e7ff; --sb-muted: #cbd5e1; }
+
+[data-sb] { --sb-danger: #b91c1c; }
+.dark [data-sb='light'] { --sb-danger: #fca5a5; }
+[data-sb='theme'], [data-sb='night'] { --sb-danger: #fecaca; }
+/* Clases del sidebar en la capa de componentes: las utilidades de Tailwind (px-0, font-semibold…) mandan. */
+@layer components {
+  .sb-item.sb-danger, .sb-item.sb-danger .sb-icon { color: var(--sb-danger); }
+  .sb-surface { background-color: var(--sb-bg); color: var(--sb-fg); }
+  .sb-line { border-color: var(--sb-line); }
+  .sb-scroll { scrollbar-width: thin; scrollbar-color: var(--sb-guide) transparent; }
+  .sb-muted { color: var(--sb-muted); }
+  .sb-fg2 { color: var(--sb-fg2); }
+  .sb-focus:focus-visible { outline: 2px solid var(--sb-ring); outline-offset: -2px; }
+
+  /* Ítems: 44 px, el activo se pinta desde aria-current (una sola fuente para estilo y lector). */
+  .sb-item {
+    position: relative;
+    display: flex;
+    min-height: 2.75rem;
+    width: 100%;
+    align-items: center;
+    gap: 0.75rem;
+    border-radius: 0.75rem;
+    padding: 0.375rem 0.75rem;
+    color: var(--sb-fg);
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.25rem;
+    text-align: left;
+    transition: background-color 120ms ease-out, color 120ms ease-out, transform 80ms ease-out;
+  }
+  @media (hover: hover) {
+    .sb-item:hover { background-color: var(--sb-hover); }
+    .sb-item:hover .sb-icon { transform: translateX(2px); }
+  }
+  .sb-item:active { transform: scale(0.98); }
+  .sb-item:focus-visible { outline: 2px solid var(--sb-ring); outline-offset: -2px; }
+  .sb-item[aria-current='page'] { background-color: var(--sb-active); color: var(--sb-active-fg); font-weight: 600; }
+  .sb-icon { display: inline-flex; flex-shrink: 0; transition: transform 120ms ease-out; }
+  .sb-tile {
+    display: inline-flex;
+    height: 1.75rem;
+    width: 1.75rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+    background-color: var(--sb-tile);
+    color: var(--sb-tile-fg);
+  }
+  .sb-item[data-has-active='true'] .sb-tile { background-color: var(--sb-active); color: var(--sb-active-fg); }
+  .sb-section-title {
+    padding: 0.75rem 0.75rem 0.25rem;
+    color: var(--sb-muted);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .sb-chevron { color: var(--sb-fg2); transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .sb-chevron[data-open='true'] { transform: rotate(180deg); }
+
+  /* Indicadores (12 px, con texto para el lector): número = te espera una acción; chip = estado; punto =
+     hay algo nuevo. Un solo «pop» al aparecer o cambiar; ningún pulso infinito. */
+  .sb-count { min-width: 1.25rem; border-radius: 9999px; background: var(--sb-count-bg); color: var(--sb-count-fg); padding: 0.125rem 0.375rem; font-size: 0.75rem; font-weight: 700; line-height: 1rem; text-align: center; }
+  .sb-chip { border-radius: 9999px; background: var(--sb-chip-bg); color: var(--sb-chip-fg); padding: 0.125rem 0.5rem; font-size: 0.75rem; font-weight: 700; line-height: 1rem; }
+  .sb-gold { border-radius: 9999px; background: var(--sb-gold-bg); color: var(--sb-gold-fg); padding: 0.125rem 0.5rem; font-size: 0.75rem; font-weight: 700; line-height: 1rem; white-space: nowrap; }
+  .sb-dot { height: 0.5rem; width: 0.5rem; flex-shrink: 0; border-radius: 9999px; background: var(--sb-dot); }
+  @keyframes sb-pop { 0% { scale: 0.6; opacity: 0; } 60% { scale: 1.2; opacity: 1; } 100% { scale: 1; } }
+  .sb-pop { animation: sb-pop 280ms cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+  /* Grupos: se abren con grid-template-rows (sin medir alturas, solo dentro del sidebar) y los hijos
+     entran en cascada. Cerrado, el panel queda inert (ni foco ni lector). */
+  .sb-panel { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 140ms cubic-bezier(0.4, 0, 1, 1); }
+  .sb-panel[data-open='true'] { grid-template-rows: 1fr; transition-duration: 180ms; transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .sb-panel > * { min-height: 0; overflow: hidden; }
+  @keyframes sb-rise { from { opacity: 0; transform: translateY(-4px); } }
+  .sb-panel[data-open='true'][data-cascade='true'] li { animation: sb-rise 160ms cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: calc(var(--i, 0) * 20ms); }
+
+  /* La constelación de cada lista: una guía tenue, una estrella apagada por página y el destello dorado
+     («estás aquí») que se desliza al navegar. */
+  .sb-list { position: relative; --sb-star-x: 1.125rem; }
+  .sb-list[data-in-group='true'] { --sb-star-x: 1.625rem; }
+  .sb-list .sb-item { padding-left: calc(var(--sb-star-x) - 0.375rem); }
+  .sb-guide { position: absolute; top: 0.75rem; bottom: 0.75rem; left: calc(var(--sb-star-x) - 0.5px); width: 1px; background: var(--sb-guide); pointer-events: none; }
+  .sb-item .sb-icon { color: var(--sb-fg2); }
+  .sb-item[aria-current='page'] .sb-icon { color: inherit; }
+  .sb-item[aria-current='page'] .sb-tile { background-color: var(--sb-bg); color: var(--sb-active-fg); }
+  .sb-tile-star { position: absolute; top: -0.4375rem; right: -0.4375rem; height: 0.875rem; width: 0.875rem; overflow: visible; }
+  .sb-tile-star path { fill: var(--sb-star); stroke: var(--sb-star-edge); stroke-width: 1.2; stroke-linejoin: round; }
+  .sb-star-off { position: relative; z-index: 1; display: inline-flex; height: 0.75rem; width: 0.75rem; flex-shrink: 0; align-items: center; justify-content: center; }
+  .sb-star-off::before { content: ''; height: 0.3125rem; width: 0.3125rem; border-radius: 9999px; background: var(--sb-star-off); transition: opacity 150ms ease-out, scale 150ms ease-out; }
+  .sb-item[aria-current='page'] .sb-star-off::before { opacity: 0; }
+  @media (hover: hover) { .sb-item:hover .sb-star-off::before { scale: 1.4; } }
+  .sb-marker { position: absolute; top: 0; left: calc(var(--sb-star-x) - 0.4375rem); z-index: 2; height: 0.875rem; width: 0.875rem; margin-top: -0.4375rem; opacity: 0; pointer-events: none; transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .sb-marker[data-speed='fast'] { transition-duration: 150ms; }
+  .sb-marker svg { overflow: visible; }
+  .sb-marker path { fill: var(--sb-star); stroke: var(--sb-star-edge); stroke-width: 1.2; stroke-linejoin: round; }
+  @keyframes sb-marker-pop { 0% { scale: 0.4; opacity: 0; } 70% { scale: 1.15; opacity: 1; } 100% { scale: 1; opacity: 1; } }
+  .sb-marker-pop { animation: sb-marker-pop 280ms cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+  /* Banda de noche: el cielo pintado del Observatorio (obs-sky, sin animación); con tema, teñida. */
+  .obs-sky.sb-band { background-color: var(--sb-night-bg, #0b1026); }
+  .sb-twinkle { position: absolute; height: var(--s, 2px); width: var(--s, 2px); border-radius: 9999px; background: #ffffff; opacity: 0.55; pointer-events: none; }
+  @keyframes sb-twinkle { 0%, 100% { opacity: 0.35; scale: 0.8; } 50% { opacity: 1; scale: 1; } }
+  [data-motion='full'] .sb-twinkle { animation: sb-twinkle var(--d, 4s) ease-in-out var(--delay, 0s) 3; }
+
+  /* Colapsar: primero se desvanecen las etiquetas y después cambia el ancho (sin píldoras vacías). */
+  .sb-label { transition: opacity 100ms ease-in; }
+  [data-collapsing='true'] .sb-label { opacity: 0; }
+  @keyframes sb-label-in { from { opacity: 0; } }
+  .sb-label-in .sb-label { animation: sb-label-in 140ms ease-out 80ms both; }
+
+  /* Flotantes del carril colapsado y de la lista de clases; cajón del celular sin desenfoque. */
+  @keyframes sb-flyout-in { from { opacity: 0; translate: -6px 0; scale: 0.98; } }
+  .sb-flyout { animation: sb-flyout-in 150ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+  @keyframes sb-tip-in { from { opacity: 0; translate: -4px 0; } }
+  .sb-tip { animation: sb-tip-in 120ms ease-out both; }
+  @keyframes sb-fade { from { opacity: 0; } }
+  .sb-backdrop { animation: sb-fade 200ms ease-out both; }
+  @keyframes sb-slide-in { from { transform: translateX(100%); } }
+  .sb-slide-in { animation: sb-slide-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+  @keyframes sb-menu-in { from { opacity: 0; transform: translateY(4px); } }
+  .sb-menu-in { animation: sb-menu-in 150ms ease-out both; }
 }

@@ -111,3 +111,10 @@ export const storyAccentVars = (accent: StoryAccent | null): CSSProperties | und
 
 export const accentGradient = (accent: StoryAccent, angle = 135) =>
   `linear-gradient(${angle}deg, ${accent.primary}, ${accent.secondary})`;
+
+/** Mezcla dos colores hex (t = cuánto del segundo); el primero si alguno no es válido. */
+export const mixHex = (a: string, b: string, t: number) => {
+  const ra = toRgb(a);
+  const rb = toRgb(b);
+  return ra && rb ? toHex(mix(ra, rb, t)) : a;
+};

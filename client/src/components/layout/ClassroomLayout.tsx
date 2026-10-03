@@ -1,42 +1,15 @@
-import { lazy, Suspense, useMemo, useState } from 'react';
-import { Outlet, useParams, useNavigate, useLocation, Link } from 'react-router-dom';
+import { lazy, Suspense, useMemo, useRef, useState } from 'react';
+import { Outlet, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
-  Archive,
-  Users,
-  Settings,
-  Award,
-  ArrowLeft,
-  Copy,
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  ShoppingBag,
-  Telescope,
+  Sparkles,
   GraduationCap,
-  CalendarCheck,
-  ChevronDown,
-  List,
-  Gamepad2,
   LogOut,
   Menu,
   X,
-  Medal,
-  Trophy,
-  BookOpen,
-  // Target, // Temporalmente no usado
   Map,
-  Lock,
-  Sparkles,
   Rocket,
-  BarChart3,
-  Scroll,
-  ClipboardList,
-  Album,
-  Megaphone,
-  MessageCircle,
-  BookMarked,
   Coins,
   TrendingUp,
   Crown,
@@ -55,18 +28,21 @@ import { shopApi } from '../../lib/shopApi';
 const ClassroomUtilities = lazy(() =>
   import('../classroom/ClassroomUtilities').then((module) => ({ default: module.ClassroomUtilities })),
 );
-import toast from 'react-hot-toast';
 import { ParticleLayer } from '../story/ParticleLayer';
-import { deriveStoryAccent, storyAccentVars, accentGradient } from '../../lib/storyTheme';
+import { deriveStoryAccent, storyAccentVars, accentGradient, mixHex } from '../../lib/storyTheme';
 import { storyApi } from '../../lib/storyApi';
 import { useStoryParticles } from '../../hooks/useStoryParticles';
 import { useStoryLive } from '../../hooks/useStoryLive';
 import { useTeacherOnboardingSafe } from '../../contexts/TeacherOnboardingContext';
-import {
-  CLASSROOM_SETTINGS_SECTIONS,
-  DEFAULT_CLASSROOM_SETTINGS_SECTION,
-  type ClassroomSettingsSectionKey,
-} from '../../pages/classroom/classroomSettingsSections';
+import { classSkyFor } from '../student/home/classSky';
+import { AppSidebar } from './sidebar/AppSidebar';
+import { NewsLine } from './sidebar/SidebarFooters';
+import { TeacherClassCard } from './sidebar/TeacherClassCard';
+import { teacherClassNav } from './sidebar/navBuilders';
+import { useOpenGroups, useSidebarCollapsed } from './sidebar/useSidebarState';
+
+const NIGHT = '#0b1026';
+const NEWS_KEY = 'juried-sb-news';
 
 const FEATURE_LABELS: Record<string, string> = {
   students: 'Estudiantes',
@@ -87,7 +63,7 @@ const FEATURE_LABELS: Record<string, string> = {
 
 const FEATURE_INFO: Record<string, { emoji: string; description: string }> = {
   badges: { emoji: '\u{1F3C5}', description: 'Reconoce logros específicos de tus estudiantes con trofeos permanentes.' },
-  shop: { emoji: '\u{1F6CD}\uFE0F', description: 'Tus estudiantes canjean sus puntos por recompensas que vos creás.' },
+  shop: { emoji: '\u{1F6CD}\uFE0F', description: 'Tus estudiantes canjean sus puntos por recompensas que tú creas.' },
   clans: { emoji: '\u2694\uFE0F', description: 'Divide tu clase en equipos que compiten y colaboran entre sí.' },
   attendance: { emoji: '\u{1F4CB}', description: 'Registra la asistencia diaria de tus estudiantes desde el aula.' },
   collectibles: { emoji: '\u{1F4E6}', description: 'Tus estudiantes completan álbumes de figuritas abriendo sobres con su oro.' },
@@ -101,16 +77,20 @@ export const ClassroomLayout = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const [collapsed, setCollapsed] = useState(false);
-  const [copiedCode, setCopiedCode] = useState(false);
+  const [collapsed, setCollapsed] = useSidebarCollapsed('teacher');
   const [showNotifications, setShowNotifications] = useState(false);
   const [showTools, setShowTools] = useState(false);
-  const [studentsMenuOpen, setStudentsMenuOpen] = useState(true);
-  const [gamificationMenuOpen, setGamificationMenuOpen] = useState(false);
-  const [claseMenuOpen, setClaseMenuOpen] = useState(false);
-  const [comunicacionMenuOpen, setComunicacionMenuOpen] = useState(false);
-  const [configuracionMenuOpen, setConfiguracionMenuOpen] = useState(location.pathname.includes('/settings'));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  // Aviso de funciones oculto «hasta la próxima novedad» (se guarda qué novedad se ocultó).
+  const [newsDismissed, setNewsDismissed] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(NEWS_KEY);
+    } catch {
+      return null;
+    }
+  });
   const [showExpeditionsModal, setShowExpeditionsModal] = useState(false);
   const [showUnlockModal, setShowUnlockModal] = useState(false);
   const [earlyUnlockConfirm, setEarlyUnlockConfirm] = useState<{ features: string[]; label: string } | null>(null);
@@ -181,143 +161,43 @@ export const ClassroomLayout = () => {
     return student.characterName || 'Sin nombre';
   };
 
-  const copyCode = async () => {
-    if (!classroom) return;
-    await navigator.clipboard.writeText(classroom.code);
-    setCopiedCode(true);
-    toast.success('Código copiado');
-    setTimeout(() => setCopiedCode(false), 2000);
-  };
+  // ── Sidebar ───────────────────────────────────────────────────────────────────────────────────
+  // Funciones del onboarding: lo bloqueado no aparece; lo recién activado lleva «Nuevo».
+  const isUnlocked = (featureKey?: string) => !featureKey || !onboarding || onboarding.isFeatureUnlocked(featureKey);
+  const isNewFeature = (featureKey?: string) => !!featureKey && !!onboarding && onboarding.isFeatureNew(featureKey);
+  const { groups: navGroups, footer: navFooter, activeGroupId } = teacherClassNav({
+    classroomId: id ?? '',
+    pathname: location.pathname,
+    scrollsEnabled: !!classroom?.scrollsEnabled,
+    isUnlocked,
+    isNew: isNewFeature,
+    dismissNew: (featureKey) => onboarding?.dismissBadge(featureKey),
+    pendingShopCount,
+    readyToReveal,
+  });
+  const openGroups = useOpenGroups('teacher-class', activeGroupId);
 
-  const allMenuItems = [
-    { 
-      label: 'Estudiantes', 
-      icon: Users,
-      gradient: 'from-blue-600 to-indigo-600',
-      activeGradient: 'from-blue-600 to-indigo-600',
-      menuKey: 'students',
-      onboardingId: 'students-menu',
-      featureKey: 'students',
-      subItems: [
-        { path: `/classroom/${id}/students`, label: 'Lista', icon: List, onboardingId: 'students-list', featureKey: 'students' },
-        { path: `/classroom/${id}/clans`, label: 'Clanes', icon: Users, featureKey: 'clans' },
-        { path: `/classroom/${id}/attendance`, label: 'Asistencia', icon: CalendarCheck, featureKey: 'attendance' },
-      ],
-    },
-    { 
-      label: 'Gamificación', 
-      icon: Gamepad2,
-      gradient: 'from-amber-600 to-orange-600',
-      activeGradient: 'from-amber-700 to-orange-700',
-      menuKey: 'gamification',
-      onboardingId: 'gamification-menu',
-      featureKey: 'behaviors',
-      subItems: [
-        { path: `/classroom/${id}/behaviors`, label: 'Comportamientos', icon: Award, onboardingId: 'behaviors-menu', featureKey: 'behaviors' },
-        { path: `/classroom/${id}/badges`, label: 'Insignias', icon: Medal, featureKey: 'badges' },
-        { path: `/classroom/${id}/shop`, label: 'Tienda', icon: ShoppingBag, onboardingId: 'shop-menu', featureKey: 'shop' },
-        { path: `/classroom/${id}/collectibles`, label: 'Coleccionables', icon: Album, featureKey: 'collectibles' },
-        { path: `/classroom/${id}/rankings`, label: 'Rankings', icon: Trophy, featureKey: 'rankings' },
-        { path: `/classroom/${id}/storytelling`, label: 'Historia de clase', icon: Sparkles, featureKey: 'storytelling' },
-      ],
-    },
-    { 
-      label: 'Clase', 
-      icon: BookMarked,
-      gradient: 'from-emerald-600 to-teal-600',
-      activeGradient: 'from-emerald-700 to-teal-700',
-      menuKey: 'clase',
-      featureKey: 'activities',
-      subItems: [
-        { path: `/classroom/${id}/activities`, label: 'Observatorio de Jiro', icon: Telescope, featureKey: 'activities' },
-        { path: `/classroom/${id}/question-banks`, label: 'Preguntas', icon: BookOpen, featureKey: 'question_bank' },
-        // Siempre visible: sin configurar, Calificaciones muestra cómo empezar.
-        { path: `/classroom/${id}/gradebook`, label: 'Calificaciones', icon: ClipboardList, featureKey: 'grades' },
-        { path: `/classroom/${id}/history`, label: 'Registro de actividad', icon: Scroll },
-      ],
-    },
-    { 
-      label: 'Comunicación', 
-      icon: Megaphone,
-      gradient: 'from-cyan-600 to-blue-600',
-      activeGradient: 'from-cyan-700 to-blue-700',
-      menuKey: 'comunicacion',
-      subItems: [
-        { path: `/classroom/${id}/announcements`, label: 'Avisos', icon: Megaphone },
-        { path: `/classroom/${id}/chat`, label: 'Chat grupal', icon: MessageCircle },
-        ...(classroom?.scrollsEnabled ? [{ path: `/classroom/${id}/activities`, label: 'Chats', icon: MessageCircle }] : []),
-      ],
-    },
-  ];
-
-  const settingsSectionIcons: Record<ClassroomSettingsSectionKey, typeof Settings> = {
-    general: Settings,
-    gamificacion: Gamepad2,
-    riesgo: Archive,
-  };
-
-  const settingsSubItems = CLASSROOM_SETTINGS_SECTIONS.map((section) => ({
-    path: `/classroom/${id}/settings/${section.key}`,
-    label: section.label,
-    icon: settingsSectionIcons[section.key],
-    featureKey: 'settings',
-  }));
-
-  // Bottom items — separated visually from groups
-  const bottomMenuItems = [
-    { 
-      path: `/classroom/${id}/reports`, 
-      label: 'Estadísticas', 
-      icon: BarChart3,
-      gradient: 'from-violet-600 to-purple-600',
-      activeGradient: 'from-violet-600 to-purple-600',
-      onboardingId: 'statistics-menu',
-    },
-  ];
-
-  // Helper: check if a feature is unlocked
-  const isUnlocked = (featureKey?: string) => {
-    if (!featureKey) return true; // Items without featureKey are always visible
-    if (!onboarding) return true; // No onboarding context → show everything
-    return onboarding.isFeatureUnlocked(featureKey);
-  };
-
-  // Helper: check if a feature has "¡Nuevo!" badge
-  const isNewFeature = (featureKey?: string) => {
-    if (!featureKey || !onboarding) return false;
-    return onboarding.isFeatureNew(featureKey);
-  };
-
-  // Filter menu items based on unlocked features
-  const menuItems = allMenuItems
-    .map((item) => {
-      if ('subItems' in item && item.subItems) {
-        const filteredSubs = item.subItems.filter(sub => isUnlocked((sub as any).featureKey));
-        // Show parent menu if at least one sub-item is visible
-        if (filteredSubs.length === 0) return null;
-        return { ...item, subItems: filteredSubs };
-      }
-      if (!isUnlocked((item as any).featureKey)) return null;
-      return item;
-    })
-    .filter(Boolean) as typeof allMenuItems;
-
-  const isActive = (path: string, exact?: boolean) => {
-    if (!path) return false;
-    if (exact) {
-      return location.pathname === path;
+  // Novedades del onboarding: una sola línea; con ✕ se oculta hasta la próxima novedad.
+  const pendingUnlocks = onboarding?.data?.pendingUnlocks ?? [];
+  const lockedCount = onboarding?.data?.lockedFeatures.length ?? 0;
+  const newsKey = pendingUnlocks.length > 0
+    ? `pending:${[...pendingUnlocks].sort().join(',')}`
+    : lockedCount > 0 ? `locked:${lockedCount}` : null;
+  const showNews = !!onboarding && !onboarding.data?.isExperienced && !!newsKey && newsKey !== newsDismissed;
+  const dismissNews = () => {
+    if (!newsKey) return;
+    try {
+      localStorage.setItem(NEWS_KEY, newsKey);
+    } catch {
+      // Sin almacenamiento: vuelve a aparecer al recargar.
     }
-    return location.pathname.startsWith(path);
+    setNewsDismissed(newsKey);
   };
-
-  const visibleSettingsSubItems = settingsSubItems.filter((item) => isUnlocked(item.featureKey));
-  const isSettingsSubMenuActive = visibleSettingsSubItems.some((item) => isActive(item.path));
-  const isSettingsMenuOpen = configuracionMenuOpen || isSettingsSubMenuActive;
 
   if (isLoading) {
     return (
       <div className="fixed inset-0 z-[100] flex bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800">
-        <div className="w-60 bg-white/50 dark:bg-gray-800/50 animate-pulse" />
+        <div className="w-64 bg-white/50 dark:bg-gray-800/50 animate-pulse" />
         <div className="flex-1 p-6">
           <div className="h-32 bg-white/50 dark:bg-gray-800/50 rounded-xl animate-pulse" />
         </div>
@@ -354,7 +234,8 @@ export const ClassroomLayout = () => {
         <ParticleLayer particles={storyAccent.particles} accentColor={storyAccent.primary} />
       )}
 
-      {/* Brillos de fondo: con tema toman su color y derivan despacio (sustituyen a las partículas) */}
+      {/* Brillos de fondo: con tema toman su color y derivan despacio; sin tema, quietos. Sin filter: blur
+          ni pulsos infinitos (se recalculaban en cada cuadro, también proyectando). */}
       {hasStoryTheme ? (
         <>
           <div className="story-glow story-glow-a pointer-events-none absolute top-16 right-8 h-72 w-72 rounded-full" aria-hidden="true" />
@@ -362,414 +243,47 @@ export const ClassroomLayout = () => {
         </>
       ) : (
         <>
-          <div className="absolute top-20 right-10 w-64 h-64 bg-blue-200 dark:bg-blue-900 rounded-full mix-blend-multiply filter blur-3xl opacity-20 motion-safe:animate-pulse pointer-events-none" />
-          <div className="absolute bottom-20 left-1/3 w-64 h-64 bg-purple-200 dark:bg-purple-900 rounded-full mix-blend-multiply filter blur-3xl opacity-20 motion-safe:animate-pulse pointer-events-none" style={{ animationDelay: '1s' }} />
+          <div className="pointer-events-none absolute right-10 top-20 h-72 w-72 rounded-full opacity-70 dark:opacity-25" style={{ background: 'radial-gradient(circle, rgba(191, 219, 254, 0.55), transparent 70%)' }} aria-hidden="true" />
+          <div className="pointer-events-none absolute bottom-20 left-1/3 h-72 w-72 rounded-full opacity-70 dark:opacity-25" style={{ background: 'radial-gradient(circle, rgba(233, 213, 255, 0.5), transparent 70%)' }} aria-hidden="true" />
         </>
       )}
 
-      {/* Mobile Overlay */}
-      <AnimatePresence>
-        {mobileMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setMobileMenuOpen(false)}
-            className="fixed inset-0 bg-black/30 backdrop-blur-sm z-40 lg:hidden"
+      {/* Sidebar de la clase: banda con el cielo de la clase (el mismo que ven sus alumnos, quieto) */}
+      <AppSidebar
+        accent={storyAccent}
+        bandTint={storyAccent ? mixHex(NIGHT, storyAccent.sidebar, 0.35) : null}
+        sky={{ kind: 'class', constellation: classSkyFor(classroom.id), lit: classSkyFor(classroom.id).stars.length, key: classroom.id }}
+        twinkle={false}
+        logoTo="/dashboard"
+        context={(
+          <TeacherClassCard
+            classroomId={classroom.id}
+            name={classroom.name}
+            code={classroom.code}
+            accent={storyAccent}
+            onBack={() => navigate('/dashboard')}
           />
         )}
-      </AnimatePresence>
-
-      {/* Sidebar de clase */}
-      <motion.aside
-        initial={false}
-        animate={{ width: collapsed ? 72 : 240 }}
-        className={`
-          fixed lg:relative z-50 lg:z-10 h-full
-          ${hasStoryTheme ? '' : 'bg-white/90 dark:bg-gray-800/90'} backdrop-blur-xl shadow-xl shadow-blue-500/10 
-          ${hasStoryTheme ? 'border-r border-white/10' : 'border-r border-white/50 dark:border-gray-700/50'} flex flex-col
-          transform transition-transform duration-300 lg:transform-none
-          ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-        `}
-        style={storyAccent ? { backgroundColor: storyAccent.sidebar } : undefined}
-      >
-        {/* Logo */}
-        <div className={`p-3 flex items-center justify-between ${hasStoryTheme ? 'border-b border-white/10' : 'border-b border-gray-100 dark:border-gray-700'}`}>
-          <Link to="/dashboard" className="flex items-center gap-2 justify-center">
-            <img 
-              src={collapsed ? "/logo-solo.png" : "/logo.png"}
-              alt="Juried" 
-              className={`${collapsed ? 'h-8 w-8' : 'h-9'} w-auto transition-all`}
-            />
-          </Link>
-          {/* Botón cerrar en móvil */}
-          <button
-            onClick={() => setMobileMenuOpen(false)}
-            className={`lg:hidden p-1.5 rounded-lg transition-colors ${hasStoryTheme ? 'text-white/85 hover:text-white hover:bg-white/10' : 'text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-          >
-            <X size={20} />
-          </button>
-        </div>
-
-        {/* Header del sidebar */}
-        <div className={`p-3 ${hasStoryTheme ? 'border-b border-white/10' : 'border-b border-gray-100 dark:border-gray-700'}`}>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => navigate('/dashboard')}
-              className={`p-2 rounded-xl transition-colors ${hasStoryTheme ? 'text-white/85 hover:text-white hover:bg-white/10' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-              title="Volver a mis clases"
-              aria-label="Volver a mis clases"
-            >
-              <ArrowLeft size={18} />
-            </button>
-            {!collapsed && (
-              <div className="flex-1 min-w-0">
-                <h2 className={`font-bold truncate text-sm ${hasStoryTheme ? 'text-white' : 'text-gray-800 dark:text-white'}`}>
-                  {classroom.name}
-                </h2>
-                <button
-                  onClick={copyCode}
-                  className={`flex items-center gap-1 min-h-[28px] text-xs transition-colors ${hasStoryTheme ? 'text-white hover:text-white' : 'text-primary-700 hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200'}`}
-                  aria-label={`Copiar código de la clase ${classroom.code}`}
-                >
-                  <span className={`font-mono px-1.5 py-0.5 rounded ${hasStoryTheme ? 'bg-white/10' : 'bg-primary-50 dark:bg-primary-900/40'}`}>{classroom.code}</span>
-                  {copiedCode ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Menú */}
-        <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
-          {/* Collapsible groups */}
-          {menuItems.map((item) => {
-            const Icon = item.icon;
-            const isSubMenuActive = item.subItems?.some(sub => isActive(sub.path));
-            const menuKey = (item as any).menuKey;
-            const isMenuOpen = 
-              menuKey === 'students' ? studentsMenuOpen :
-              menuKey === 'gamification' ? gamificationMenuOpen :
-              menuKey === 'clase' ? claseMenuOpen :
-              menuKey === 'comunicacion' ? comunicacionMenuOpen : false;
-            
-            const toggleMenu = () => {
-              if (menuKey === 'students') {
-                setStudentsMenuOpen(!studentsMenuOpen);
-              } else if (menuKey === 'gamification') {
-                setGamificationMenuOpen(!gamificationMenuOpen);
-              } else if (menuKey === 'clase') {
-                setClaseMenuOpen(!claseMenuOpen);
-              } else if (menuKey === 'comunicacion') {
-                setComunicacionMenuOpen(!comunicacionMenuOpen);
-              }
-            };
-            
-            return (
-              <div key={item.label}>
-                <button
-                  onClick={toggleMenu}
-                  className={`
-                    w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all duration-200 group
-                    ${isSubMenuActive
-                      ? hasStoryTheme ? 'text-white shadow-md' : 'bg-gradient-to-r ' + item.activeGradient + ' text-white shadow-md'
-                      : hasStoryTheme ? 'text-white/80 hover:bg-white/10' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                    }
-                  `}
-                  style={isSubMenuActive && storyAccent ? { background: accentGradient(storyAccent, 90) } : undefined}
-                  title={collapsed ? item.label : undefined}
-                >
-                  <div className={`
-                    w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0
-                    ${isSubMenuActive 
-                      ? 'bg-white/20' 
-                      : 'bg-gradient-to-br ' + item.gradient + ' text-white shadow-sm group-hover:scale-105'
-                    }
-                  `}>
-                    <Icon size={16} />
-                  </div>
-                  {!collapsed && (
-                    <>
-                      <span className={`text-sm font-medium truncate flex-1 text-left ${isSubMenuActive ? '' : hasStoryTheme ? 'text-white/90' : 'text-gray-700 dark:text-gray-300'}`}>
-                        {item.label}
-                      </span>
-                      {/* Plegado: el contador de la tienda sigue visible en la cabecera del grupo */}
-                      {!isMenuOpen && pendingShopCount > 0 && item.subItems?.some((sub) => sub.path.endsWith('/shop')) && (
-                        <span
-                          className="min-w-[20px] rounded-full bg-red-600 px-1.5 py-0.5 text-center text-xs font-bold leading-none text-white"
-                          aria-label={`${pendingShopCount} por atender en la tienda`}
-                        >
-                          {pendingShopCount}
-                        </span>
-                      )}
-                      <ChevronDown
-                        size={14} 
-                        className={`transition-transform ${isMenuOpen ? 'rotate-180' : ''} ${isSubMenuActive ? 'text-white' : 'text-gray-500 dark:text-gray-400'}`} 
-                      />
-                    </>
-                  )}
-                </button>
-                
-                {/* Submenú */}
-                {isMenuOpen && !collapsed && (
-                  <div className="ml-4 mt-1 space-y-1">
-                    {item.subItems?.map((subItem) => {
-                      const SubIcon = subItem.icon;
-                      const subActive = isActive(subItem.path);
-                      const isLocked = (subItem as any).locked;
-                      
-                      // Item bloqueado (próximamente)
-                      if (isLocked) {
-                        return (
-                          <button
-                            key={subItem.label}
-                            onClick={() => setShowExpeditionsModal(true)}
-                            className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all duration-200 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
-                          >
-                            <SubIcon size={14} />
-                            <span className="text-sm">{subItem.label}</span>
-                            <Lock size={12} className="ml-auto text-gray-500 dark:text-gray-400" aria-label="Próximamente" />
-                          </button>
-                        );
-                      }
-                      
-                      return (
-                        <Link
-                          key={subItem.path}
-                          to={subItem.path}
-                          onClick={() => {
-                            const fk = (subItem as any).featureKey;
-                            if (fk && isNewFeature(fk)) onboarding?.dismissBadge(fk);
-                          }}
-                          className={`
-                            flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all duration-200
-                            ${subActive
-                              ? hasStoryTheme ? 'text-white' : 'bg-primary-50 dark:bg-primary-900/40 text-primary-700 dark:text-primary-200 font-medium'
-                              : hasStoryTheme ? 'text-white/85 hover:bg-white/10 hover:text-white' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
-                            }
-                          `}
-                          style={subActive && storyAccent ? { backgroundColor: `${storyAccent.primary}66` } : undefined}
-                        >
-                          <SubIcon size={14} />
-                          <span className="text-sm">{subItem.label}</span>
-                          {subItem.path.endsWith('/storytelling') && readyToReveal > 0 && (
-                            <span
-                              className="ml-auto rounded-full bg-amber-300 px-1.5 py-0.5 text-xs font-bold leading-none text-amber-950"
-                              aria-label="Hay un final listo para revelar"
-                            >
-                              Revelar
-                            </span>
-                          )}
-                          {subItem.path.endsWith('/shop') && pendingShopCount > 0 && (
-                            <span
-                              className="ml-auto min-w-[20px] rounded-full bg-red-600 px-1.5 py-0.5 text-center text-xs font-bold leading-none text-white"
-                              aria-label={`${pendingShopCount} por atender en la tienda`}
-                            >
-                              {pendingShopCount}
-                            </span>
-                          )}
-                          {isNewFeature((subItem as any).featureKey) && (
-                            <span className="ml-auto px-1.5 py-0.5 text-xs font-bold bg-amber-300 text-amber-950 rounded-full leading-none">
-                              Nuevo
-                            </span>
-                          )}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-
-          {/* Divider — only show if groups are visible above */}
-          {menuItems.length > 0 && (
-            <div className={`my-2 mx-2 h-px ${hasStoryTheme ? 'bg-white/10' : 'bg-gray-200 dark:bg-gray-700'}`} />
-          )}
-
-          {/* Bottom items: Estadísticas + Configuración */}
-          {bottomMenuItems.filter(bi => isUnlocked((bi as any).featureKey)).map((bItem) => {
-            const BIcon = bItem.icon;
-            const bActive = isActive(bItem.path);
-            const bIsNew = isNewFeature((bItem as any).featureKey);
-            return (
-              <Link
-                key={bItem.path}
-                to={bItem.path}
-                onClick={() => {
-                  const fk = (bItem as any).featureKey;
-                  if (fk && bIsNew) onboarding?.dismissBadge(fk);
-                }}
-                className={`
-                  flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all duration-200 group
-                  ${bActive
-                    ? 'bg-gradient-to-r ' + bItem.activeGradient + ' text-white shadow-md'
-                    : hasStoryTheme ? 'text-white/80 hover:bg-white/10' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                  }
-                `}
-                title={collapsed ? bItem.label : undefined}
-              >
-                <div className={`
-                  w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0
-                  ${bActive 
-                    ? 'bg-white/20' 
-                    : 'bg-gradient-to-br ' + bItem.gradient + ' text-white shadow-sm group-hover:scale-105'
-                  }
-                `}>
-                  <BIcon size={16} />
-                </div>
-                {!collapsed && (
-                  <>
-                    <span className={`text-sm font-medium truncate flex-1 ${bActive ? '' : hasStoryTheme ? 'text-white/90' : 'text-gray-700 dark:text-gray-300'}`}>
-                      {bItem.label}
-                    </span>
-                    {bIsNew && (
-                      <span className="px-1.5 py-0.5 text-xs font-bold bg-amber-300 text-amber-950 rounded-full leading-none">
-                        Nuevo
-                      </span>
-                    )}
-                  </>
-                )}
-              </Link>
-            );
-          })}
-
-          {isUnlocked('settings') && visibleSettingsSubItems.length > 0 && (
-            <div className="mt-1">
-              <button
-                onClick={() => {
-                  if (collapsed) {
-                    navigate(`/classroom/${id}/settings/${DEFAULT_CLASSROOM_SETTINGS_SECTION}`);
-                    return;
-                  }
-
-                  setConfiguracionMenuOpen(!configuracionMenuOpen);
-                }}
-                className={`
-                  w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl transition-all duration-200 group
-                  ${isSettingsSubMenuActive
-                    ? hasStoryTheme ? 'text-white shadow-md' : 'bg-gradient-to-r from-gray-600 to-slate-600 text-white shadow-md'
-                    : hasStoryTheme ? 'text-white/80 hover:bg-white/10' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                  }
-                `}
-                style={isSettingsSubMenuActive && storyAccent ? { background: accentGradient(storyAccent, 90) } : undefined}
-                title={collapsed ? 'Configuración' : undefined}
-              >
-                <div className={`
-                  w-8 h-8 rounded-lg flex items-center justify-center transition-all flex-shrink-0
-                  ${isSettingsSubMenuActive
-                    ? 'bg-white/20'
-                    : 'bg-gradient-to-br from-gray-500 to-slate-500 text-white shadow-sm group-hover:scale-105'
-                  }
-                `}>
-                  <Settings size={16} />
-                </div>
-                {!collapsed && (
-                  <>
-                    <span className={`text-sm font-medium truncate flex-1 text-left ${isSettingsSubMenuActive ? '' : hasStoryTheme ? 'text-white/90' : 'text-gray-700 dark:text-gray-300'}`}>
-                      Configuración
-                    </span>
-                    <ChevronDown
-                      size={14}
-                      className={`transition-transform ${isSettingsMenuOpen ? 'rotate-180' : ''} ${isSettingsSubMenuActive ? 'text-white' : 'text-gray-500 dark:text-gray-400'}`}
-                    />
-                  </>
-                )}
-              </button>
-
-              {isSettingsMenuOpen && !collapsed && (
-                <div className="ml-4 mt-1 space-y-1">
-                  {visibleSettingsSubItems.map((subItem) => {
-                    const SubIcon = subItem.icon;
-                    const subActive = isActive(subItem.path);
-
-                    return (
-                      <Link
-                        key={subItem.path}
-                        to={subItem.path}
-                        className={`
-                          flex items-center gap-2 px-2.5 py-1.5 rounded-lg transition-all duration-200
-                          ${subActive
-                            ? hasStoryTheme ? 'text-white' : 'bg-slate-50 dark:bg-slate-900/30 text-slate-600 dark:text-slate-300'
-                            : hasStoryTheme ? 'text-white/85 hover:bg-white/10 hover:text-white' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
-                          }
-                        `}
-                        style={subActive && storyAccent ? { backgroundColor: `${storyAccent.primary}66` } : undefined}
-                      >
-                        <SubIcon size={14} />
-                        <span className="text-sm">{subItem.label}</span>
-                      </Link>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-        </nav>
-
-        {/* Onboarding sidebar bottom: pending unlocks + unlock link + level */}
-        {onboarding && !onboarding.data?.isExperienced && !collapsed && (
-          <div className={`p-2 space-y-1 ${hasStoryTheme ? 'border-t border-white/10' : 'border-t border-gray-100 dark:border-gray-700'}`}>
-            {/* Pending unlocks notification */}
-            {onboarding.hasPendingUnlocks && (
-              <button
-                onClick={() => setShowUnlockModal(true)}
-                className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 hover:from-amber-500/20 hover:to-orange-500/20 transition-all text-left"
-              >
-                <div className="w-6 h-6 bg-gradient-to-br from-amber-400 to-orange-500 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <Sparkles size={12} className="text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 truncate">
-                    ¡Nuevas funciones disponibles!
-                  </p>
-                </div>
-                <span className="min-w-[20px] h-5 px-1 bg-amber-300 text-amber-950 text-xs font-bold rounded-full flex items-center justify-center flex-shrink-0">
-                  {(onboarding.data?.pendingUnlocks ?? []).length}
-                </span>
-              </button>
-            )}
-
-            {/* Desbloquear más funciones */}
-            {onboarding.data && onboarding.data.lockedFeatures.length > 0 && (
-              <button
-                onClick={() => setShowUnlockModal(true)}
-                className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
-                  hasStoryTheme
-                    ? 'text-white/85 hover:text-white hover:bg-white/10'
-                    : 'text-gray-600 dark:text-gray-400 hover:text-primary-700 dark:hover:text-primary-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                }`}
-              >
-                <Lock size={12} />
-                <span>Desbloquear más funciones →</span>
-              </button>
-            )}
-
-            {/* Level indicator */}
-            {onboarding.data?.level && (
-              <div className={`flex items-center gap-2 px-2.5 py-1 ${hasStoryTheme ? 'text-white/85' : 'text-gray-600 dark:text-gray-400'}`}>
-                <Rocket size={12} />
-                <span className="text-xs font-medium">Nivel: {onboarding.data.level}</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Toggle collapse - solo en desktop */}
-        <div className={`hidden lg:block p-2 ${hasStoryTheme ? 'border-t border-white/10' : 'border-t border-gray-100 dark:border-gray-700'}`}>
-          <button
-            onClick={() => setCollapsed(!collapsed)}
-            className={`w-full flex items-center justify-center gap-2 px-2.5 py-2 rounded-xl transition-colors ${hasStoryTheme ? 'text-white/85 hover:text-white hover:bg-white/10' : 'text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-            aria-label={collapsed ? 'Expandir menú' : 'Colapsar menú'}
-          >
-            {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
-            {!collapsed && <span className="text-xs font-medium">Colapsar</span>}
-          </button>
-        </div>
-      </motion.aside>
+        nav={navGroups}
+        navLabel="Menú de la clase"
+        footerNav={navFooter}
+        footer={showNews
+          ? ({ rail }) => (
+            <NewsLine rail={rail} pending={pendingUnlocks.length} onOpen={() => setShowUnlockModal(true)} onDismiss={dismissNews} />
+          )
+          : undefined}
+        speed="fast"
+        openGroups={openGroups}
+        collapsed={collapsed}
+        onCollapsedChange={setCollapsed}
+        mobileOpen={mobileMenuOpen}
+        onMobileOpenChange={setMobileMenuOpen}
+        contentRef={contentRef}
+        menuButtonRef={menuButtonRef}
+      />
 
       {/* Contenido principal */}
-      <div className="flex-1 flex flex-col overflow-hidden relative z-10">
+      <div ref={contentRef} className={`flex-1 flex flex-col overflow-hidden relative z-10 ${collapsed ? 'lg:pl-[72px]' : 'lg:pl-64'}`}>
         {/* Header */}
         <header
           className="relative h-14 backdrop-blur-lg shadow-sm flex items-center justify-between px-4 bg-white/80 dark:bg-gray-800/80 border-b border-white/50 dark:border-gray-700/50"
@@ -780,9 +294,12 @@ export const ClassroomLayout = () => {
           <div className="flex items-center gap-3 min-w-0">
             {/* Botón menú móvil */}
             <button
+              ref={menuButtonRef}
+              type="button"
               onClick={() => setMobileMenuOpen(true)}
-              className="lg:hidden p-2 text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors"
+              className="lg:hidden flex h-11 w-11 items-center justify-center text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors"
               aria-label="Abrir menú"
+              aria-expanded={mobileMenuOpen}
             >
               <Menu size={20} />
             </button>
@@ -865,7 +382,7 @@ export const ClassroomLayout = () => {
               aria-label="Cerrar sesión"
             >
               <LogOut size={16} />
-              <span className="hidden sm:inline">Salir</span>
+              <span className="hidden sm:inline">Cerrar sesión</span>
             </button>
           </div>
         </header>
@@ -1060,7 +577,13 @@ export const ClassroomLayout = () => {
                   <img src="/logo-solo.png" alt="Juried" className="w-10 h-10" />
                   <div>
                     <h3 className="font-bold text-gray-900 dark:text-white text-lg">Funciones disponibles</h3>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">Activá nuevas funciones para tu clase</p>
+                    <p className="text-xs text-gray-600 dark:text-gray-400">Activa nuevas funciones para tu clase</p>
+                    {onboarding.data.level && (
+                      <p className="mt-0.5 flex items-center gap-1 text-xs font-semibold text-gray-700 dark:text-gray-300">
+                        <Rocket size={12} aria-hidden="true" />
+                        Tu nivel: {onboarding.data.level}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <p className="text-xs text-gray-400 dark:text-gray-500">

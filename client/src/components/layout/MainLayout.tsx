@@ -1,84 +1,37 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
-  LayoutDashboard,
-  Users,
-  Settings,
-  LogOut,
-  Menu,
-  X,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Heart,
-  Moon,
-  Coins,
-  Zap,
-  Check,
-  Shield,
-  Calendar,
-  ScrollText,
-  Map,
-  BookOpen,
-  Album,
-  School,
-  BookMarked,
-  BarChart3,
-  ShoppingBag,
-  Medal,
-  Shirt,
-  Plus,
-} from 'lucide-react';
+import { BookOpen, ChevronDown, Coins, Heart, LogOut, Menu, Moon, Plus, Settings, Users, Zap } from 'lucide-react';
 import { Hearts } from '../energy/EnergyMeter';
 import { isYoungLevel } from '../energy/energyHelpers';
 import { useAuthStore } from '../../store/authStore';
 import { accountLabel } from '../auth/authHelpers';
 import { useStudentStore } from '../../store/studentStore';
 import { useThemeStore } from '../../store/themeStore';
+import { useAnnouncer } from '../../store/announcerStore';
 import { useCurrentStudentProfile } from '../../hooks/useCurrentStudentProfile';
-import { useCharacterClasses } from '../../hooks/useCharacterClasses';
 import { expeditionApi } from '../../lib/expeditionApi';
+import { jiroExpeditionApi } from '../../lib/jiroExpeditionApi';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { NotificationsBell, NotificationsPanel } from '../NotificationsPanel';
 import { BugReportButton } from '../BugReportButton';
 import { ParticleLayer } from '../story/ParticleLayer';
-import { deriveStoryAccent, storyAccentVars, accentGradient } from '../../lib/storyTheme';
+import { deriveStoryAccent, storyAccentVars, accentGradient, mixHex } from '../../lib/storyTheme';
 import { useStoryParticles } from '../../hooks/useStoryParticles';
 import { useStoryLive } from '../../hooks/useStoryLive';
 import { StudentEntryEffects } from '../student/StudentEntryEffects';
 import { levelProgress } from '../students/profile/profileHelpers';
+import { classSkyFor, litStarsFor } from '../student/home/classSky';
+import { AppSidebar } from './sidebar/AppSidebar';
+import { ClassSwitcher, type ClassLink } from './sidebar/ClassSwitcher';
+import type { BandSky } from './sidebar/SidebarBand';
+import { StudentDrawerFooter, TeacherHomeFooter } from './sidebar/SidebarFooters';
+import { studentClassNav, studentEmptyNav, studentRouteAvailable, teacherHomeNav } from './sidebar/navBuilders';
+import { useSidebarCollapsed } from './sidebar/useSidebarState';
 
-type StudentMenuKey = 'space' | 'rewards' | 'adventures' | 'community';
-
-type StudentMenuItem = {
-  path: string;
-  label: string;
-  icon: JSX.Element;
-  gradient: string;
-  /** Fondo cuando está activo, con texto blanco (tonos 700: contraste AA). */
-  activeGradient?: string;
-  isActive: boolean;
-  meta?: string;
-  showPing?: boolean;
-};
-
-type StudentMenuGroup = {
-  key: StudentMenuKey;
-  label: string;
-  icon: JSX.Element;
-  gradient: string;
-  activeGradient?: string;
-  subItems: StudentMenuItem[];
-};
-
-const teacherNavItems = [
-  { path: '/dashboard', label: 'Inicio', icon: LayoutDashboard, gradient: 'from-blue-500 to-indigo-500' },
-  { path: '/schools', label: 'Mi Escuela', icon: School, gradient: 'from-blue-500 to-indigo-600' },
-  { path: '/settings', label: 'Configuración', icon: Settings, gradient: 'from-gray-500 to-slate-500' },
-];
+const NIGHT = '#0b1026';
 
 export const MainLayout = () => {
   const { user, logout } = useAuthStore();
@@ -89,22 +42,18 @@ export const MainLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [showClassSelector, setShowClassSelector] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [studentMenusOpen, setStudentMenusOpen] = useState<Record<StudentMenuKey, boolean>>({
-    space: true,
-    rewards: false,
-    adventures: false,
-    community: false,
-  });
+  const announcement = useAnnouncer((state) => state.message);
+  const announce = useAnnouncer((state) => state.announce);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   const isTeacher = user?.role === 'TEACHER';
+  const [collapsed, setCollapsed] = useSidebarCollapsed(isTeacher ? 'teacher' : 'student');
 
   // La clase abierta del alumno (por id: sobrevive a la recarga).
   const { myClasses, profile: currentProfile, source, stale, isFetching, selectProfile } = useCurrentStudentProfile();
-  const { classMap } = useCharacterClasses(currentProfile?.classroomId);
 
   // Entró con PIN por una clase: esa queda elegida (manda sobre la que recordaba).
   useEffect(() => {
@@ -126,16 +75,19 @@ export const MainLayout = () => {
     [currentProfile?.classroom?.themeConfig],
   );
 
-  // Cargar expediciones del estudiante para mostrar indicador
+  // Expediciones de la clase (el menú las muestra si hay; el punto, si alguna sigue en curso).
   const { data: studentExpeditions = [] } = useQuery({
     queryKey: ['student-expeditions', currentProfile?.classroomId, currentProfile?.id],
     queryFn: () => expeditionApi.getStudentExpeditions(currentProfile!.classroomId, currentProfile!.id),
     enabled: !isTeacher && !!currentProfile?.classroomId && !!currentProfile?.id,
   });
-
-  // Verificar si hay expediciones no completadas
-  const hasActiveExpeditions = studentExpeditions.some(exp => !exp.studentProgress?.isCompleted);
-  const characterInfo = currentProfile ? (classMap[currentProfile.characterClassId!] || classMap[currentProfile.characterClass]) : null;
+  const hasActiveExpeditions = studentExpeditions.some((exp) => !exp.studentProgress?.isCompleted);
+  // Expediciones de Jiro (misma caché que el Inicio y el calendario): sin ninguna, no aparece en el menú.
+  const { data: jiroExpeditions } = useQuery({
+    queryKey: ['jiro-available-expeditions', currentProfile?.id],
+    queryFn: () => jiroExpeditionApi.getAvailable(currentProfile!.id),
+    enabled: !isTeacher && !!currentProfile?.id,
+  });
 
   const matchesPath = (path: string, mode: 'exact' | 'startsWith' = 'exact') => {
     if (mode === 'startsWith') {
@@ -145,6 +97,7 @@ export const MainLayout = () => {
   };
 
   const hasCompetencyOverview = !!myClasses?.some((profile) => profile.classroom?.useCompetencies);
+  // Vistas de todas las clases: la barra superior no muestra los datos de una sola.
   const isStudentOverviewZone = !isTeacher && ['/dashboard', '/my-classes', '/my-skills', '/join-class'].some((path) => matchesPath(path));
   const isStudentClassThemeRoute = !isTeacher && [
     { path: '/my-class', mode: 'exact' as const },
@@ -176,178 +129,6 @@ export const MainLayout = () => {
     navigate('/login');
   };
 
-  const studentOverviewNavItems: StudentMenuItem[] = !isTeacher ? [
-    {
-      path: '/dashboard',
-      label: 'Inicio',
-      icon: <LayoutDashboard size={14} />,
-      gradient: 'from-blue-500 to-indigo-500',
-      activeGradient: 'from-blue-700 to-indigo-700',
-      isActive: matchesPath('/dashboard'),
-    },
-    {
-      path: '/my-classes',
-      label: 'Mis clases',
-      icon: <Users size={14} />,
-      gradient: 'from-emerald-500 to-teal-500',
-      activeGradient: 'from-emerald-700 to-teal-700',
-      isActive: matchesPath('/my-classes') || matchesPath('/join-class'),
-    },
-    ...((hasCompetencyOverview || matchesPath('/my-skills')) ? [{
-      path: '/my-skills',
-      label: 'Destrezas',
-      icon: <BookOpen size={14} />,
-      gradient: 'from-violet-500 to-indigo-500',
-      activeGradient: 'from-violet-700 to-indigo-700',
-      isActive: matchesPath('/my-skills'),
-    }] : []),
-  ] : [];
-
-  const studentMenuGroups: StudentMenuGroup[] = !isTeacher && currentProfile && !isStudentOverviewZone ? [
-    {
-      key: 'space',
-      label: 'Mi espacio',
-      icon: <Users size={16} />,
-      gradient: 'from-emerald-500 to-teal-500',
-      activeGradient: 'from-emerald-700 to-teal-700',
-      subItems: [
-        {
-          path: '/my-class',
-          label: 'Inicio',
-          icon: <Users size={14} />,
-          gradient: 'from-emerald-500 to-teal-500',
-          isActive: matchesPath('/my-class'),
-        },
-        {
-          path: '/my-calendar',
-          label: 'Mi calendario',
-          icon: <Calendar size={14} />,
-          gradient: 'from-indigo-500 to-purple-500',
-          isActive: matchesPath('/my-calendar'),
-        },
-        ...(currentProfile.classroom?.useCompetencies ? [{
-          path: '/my-grades',
-          label: 'Mis calificaciones',
-          icon: <BookOpen size={14} />,
-          gradient: 'from-purple-500 to-indigo-500',
-          isActive: matchesPath('/my-grades'),
-        }] : []),
-        {
-          path: '/my-progress',
-          label: 'Mi progreso',
-          icon: <BarChart3 size={14} />,
-          gradient: 'from-emerald-500 to-teal-500',
-          isActive: matchesPath('/my-progress'),
-        },
-      ],
-    },
-    {
-      key: 'rewards',
-      label: 'Recompensas',
-      icon: <Medal size={16} />,
-      gradient: 'from-amber-500 to-orange-500',
-      activeGradient: 'from-amber-700 to-orange-700',
-      subItems: [
-        // «Tienda» solo si hay qué comprar o algo tuyo que ver o usar (cerrada o vacía, no lleva a nada).
-        ...((currentProfile.classroom?.shopEnabled && (currentProfile.shopSummary?.items ?? 0) > 0) || (currentProfile.shopSummary?.owned ?? 0) > 0 ? [{
-          path: '/my-shop',
-          label: 'Tienda',
-          icon: <ShoppingBag size={14} />,
-          gradient: 'from-amber-500 to-orange-500',
-          isActive: matchesPath('/my-shop'),
-          meta: `${currentProfile.gp} de oro`,
-        }] : []),
-        // «Mis insignias» solo si la clase tiene alguna que se pueda ganar o el alumno tiene alguna.
-        ...((currentProfile.badgeSummary?.available ?? 0) > 0 || (currentProfile.badgeSummary?.owned ?? 0) > 0 ? [{
-          path: '/my-badges',
-          label: 'Mis insignias',
-          icon: <Medal size={14} />,
-          gradient: 'from-amber-500 to-orange-500',
-          isActive: matchesPath('/my-badges'),
-        }] : []),
-        {
-          path: '/my-avatar',
-          label: 'Mi personaje',
-          icon: <Shirt size={14} />,
-          gradient: 'from-fuchsia-500 to-pink-500',
-          isActive: matchesPath('/my-avatar'),
-        },
-        // «Coleccionables» solo si la clase tiene un álbum activo con figuritas o el alumno tiene alguna.
-        ...((currentProfile.collectibleSummary?.albums ?? 0) > 0 || (currentProfile.collectibleSummary?.owned ?? 0) > 0 ? [{
-          path: '/collectibles',
-          label: 'Coleccionables',
-          icon: <Album size={14} />,
-          gradient: 'from-amber-500 to-yellow-500',
-          isActive: matchesPath('/collectibles'),
-        }] : []),
-      ],
-    },
-    {
-      key: 'adventures',
-      label: 'Aventuras',
-      icon: <Map size={16} />,
-      gradient: 'from-cyan-500 to-blue-500',
-      activeGradient: 'from-cyan-700 to-blue-700',
-      subItems: [
-        ...(studentExpeditions.length > 0 ? [{
-          path: '/expeditions',
-          label: 'Expediciones',
-          icon: <Map size={14} />,
-          gradient: 'from-emerald-500 to-teal-500',
-          isActive: matchesPath('/expeditions'),
-          showPing: hasActiveExpeditions && !matchesPath('/expeditions'),
-        }] : []),
-        {
-          path: '/jiro-expeditions',
-          label: 'Expedición de Jiro',
-          icon: <span className="text-sm">🦊</span>,
-          gradient: 'from-orange-500 to-amber-500',
-          isActive: matchesPath('/jiro-expeditions') || matchesPath('/jiro-expedition', 'startsWith'),
-        },
-        ...(currentProfile.classroom?.scrollsEnabled ? [{
-          path: '/scrolls',
-          label: 'Pergaminos',
-          icon: <ScrollText size={14} />,
-          gradient: 'from-amber-500 to-orange-500',
-          isActive: matchesPath('/scrolls'),
-          showPing: !!currentProfile.classroom?.scrollsOpen && !matchesPath('/scrolls'),
-        }] : []),
-        ...(currentProfile?.classroom?.hasActiveStory || hasStoryTheme ? [{
-          path: '/my-story',
-          label: 'Mi Historia',
-          icon: <BookMarked size={14} />,
-          gradient: 'from-violet-500 to-fuchsia-500',
-          isActive: matchesPath('/my-story'),
-        }] : []),
-      ],
-    },
-    {
-      key: 'community',
-      label: 'Comunidad',
-      icon: <Shield size={16} />,
-      gradient: 'from-teal-500 to-cyan-500',
-      activeGradient: 'from-teal-700 to-cyan-700',
-      subItems: [
-        ...(currentProfile.classroom?.clansEnabled ? [{
-          path: '/my-clan',
-          label: 'Mi Clan',
-          icon: <Shield size={14} />,
-          gradient: 'from-teal-500 to-cyan-500',
-          isActive: matchesPath('/my-clan'),
-        }] : []),
-      ],
-    },
-  ] : [];
-
-  const toggleStudentMenu = (menuKey: StudentMenuKey) => {
-    setStudentMenusOpen((prev) => ({
-      ...prev,
-      [menuKey]: !prev[menuKey],
-    }));
-  };
-
-  const themedActiveGradientStyle = storyAccent ? { background: accentGradient(storyAccent, 90) } : undefined;
-
   useEffect(() => {
     if (typeof document === 'undefined' || isTeacher) {
       return;
@@ -356,6 +137,51 @@ export const MainLayout = () => {
     // El tema de la historia ya no fuerza el modo claro: cada alumno conserva su preferencia.
     document.documentElement.classList.toggle('dark', resolvedTheme === 'dark');
   }, [isTeacher, resolvedTheme]);
+
+  // ── Sidebar ─────────────────────────────────────────────────────────────────────────────────
+  const pathname = location.pathname;
+  // Dentro de una clase, ClassroomLayout (hija de esta ruta) cubre todo con su propio menú: este no se
+  // monta (si no, quedaban dos menús para el lector y el teclado, y su estado se desfasaba).
+  const coveredByClassroom = isTeacher && pathname.startsWith('/classroom/');
+  const xpPerLevel = (currentProfile?.classroom as { xpPerLevel?: number } | undefined)?.xpPerLevel || 100;
+  const levelPercent = currentProfile ? levelProgress(currentProfile.xp, currentProfile.level, xpPerLevel).percent : 0;
+
+  const nav = isTeacher
+    ? teacherHomeNav(pathname)
+    : currentProfile
+      ? studentClassNav({
+        profile: currentProfile,
+        pathname,
+        expeditions: studentExpeditions.length,
+        hasActiveExpeditions,
+        jiroExpeditions: jiroExpeditions ? jiroExpeditions.length : null,
+        hasStoryTheme,
+      })
+      : studentEmptyNav(pathname);
+
+  // El cielo de la clase (el mismo de su Inicio), encendido con su nivel; fuera de una clase, Orión.
+  const sky: BandSky = !isTeacher && currentProfile
+    ? { kind: 'class', constellation: classSkyFor(currentProfile.classroomId), lit: litStarsFor(levelPercent), key: currentProfile.classroomId }
+    : { kind: 'orion' };
+
+  const classLinks: ClassLink[] = [
+    { to: '/join-class', label: 'Unirme a otra clase', icon: <Plus size={16} aria-hidden="true" /> },
+    { to: '/my-classes', label: 'Ver todas mis clases', icon: <Users size={16} aria-hidden="true" /> },
+    ...(hasCompetencyOverview ? [{ to: '/my-skills', label: 'Destrezas', icon: <BookOpen size={16} aria-hidden="true" /> }] : []),
+  ];
+
+  // Cambiar de clase: sigue en la misma página si existe en la otra; si no, va a su Inicio con aviso.
+  const handleSelectClass = (profileId: string) => {
+    const next = myClasses?.find((profile) => profile.id === profileId);
+    if (!next) return;
+    selectProfile(profileId);
+    const name = next.classroom?.name ?? 'tu clase';
+    announce(`Ahora estás en «${name}»`);
+    if (!studentRouteAvailable(next, location.pathname)) {
+      navigate('/my-class');
+      toast(`En «${name}» no está esta sección: te llevamos a su inicio.`, { id: 'class-section-missing', icon: 'ℹ️' });
+    }
+  };
 
   return (
     <div
@@ -367,358 +193,32 @@ export const MainLayout = () => {
         <ParticleLayer particles={storyAccent.particles} accentColor={storyAccent.primary} />
       )}
 
-      {/* Sidebar Mobile Overlay */}
-      <AnimatePresence>
-        {sidebarOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setSidebarOpen(false)}
-            className="fixed inset-0 bg-black/30 backdrop-blur-sm z-40 lg:hidden"
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Sidebar */}
-      <motion.aside
-        initial={false}
-        animate={{ width: !isTeacher && collapsed ? 72 : 240 }}
-        className={`
-          fixed top-0 left-0 z-50 h-full flex flex-col
-          ${hasStoryTheme ? '' : 'bg-white/90 dark:bg-gray-800/90'} backdrop-blur-xl shadow-xl shadow-blue-500/10
-          ${hasStoryTheme ? 'border-r border-white/10' : 'border-r border-white/50 dark:border-gray-700/50'}
-          transform transition-transform duration-300 ease-in-out
-          lg:translate-x-0
-          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        `}
-        style={storyAccent ? { backgroundColor: storyAccent.sidebar } : undefined}
-      >
-        {/* Logo */}
-        <div className={`flex items-center justify-between h-14 px-4 ${hasStoryTheme ? 'border-b border-white/10' : 'border-b border-gray-100 dark:border-gray-700'}`}>
-          <Link to="/dashboard" className="flex items-center gap-2 justify-center">
-            <img 
-              src={!isTeacher && collapsed ? '/logo-solo.png' : '/logo.png'}
-              alt="Juried" 
-              className={`${!isTeacher && collapsed ? 'h-8 w-8' : 'h-8'} w-auto transition-all`}
-            />
-          </Link>
-          <button
-            type="button"
-            onClick={() => setSidebarOpen(false)}
-            aria-label="Cerrar menú"
-            className={`lg:hidden flex h-11 w-11 items-center justify-center rounded-lg transition-colors ${hasStoryTheme ? 'text-white/85 hover:text-white hover:bg-white/10' : 'text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-          >
-            <X size={20} aria-hidden="true" />
-          </button>
-        </div>
-
-        {/* Student Stats (solo para estudiantes) */}
-        {!isTeacher && currentProfile && !collapsed && !isStudentOverviewZone && (
-          <div className={`p-3 ${hasStoryTheme ? 'border-b border-white/10' : 'border-b border-gray-100 dark:border-gray-700'}`}>
-            {/* Selector de clase si tiene múltiples */}
-            {myClasses && myClasses.length > 1 && (
-              <div className="mb-2 relative">
-                <button
-                  onClick={() => setShowClassSelector(!showClassSelector)}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${hasStoryTheme ? 'bg-white/10 hover:bg-white/20' : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">{characterInfo?.icon}</span>
-                    <span className={`font-medium truncate max-w-[120px] ${hasStoryTheme ? 'text-white' : 'text-gray-700 dark:text-gray-200'}`}>
-                      {currentProfile.classroom?.name}
-                    </span>
-                  </div>
-                  <ChevronDown size={14} className={`transition-transform ${hasStoryTheme ? 'text-white/85' : 'text-gray-500'} ${showClassSelector ? 'rotate-180' : ''}`} />
-                </button>
-                
-                {showClassSelector && (
-                  <div className={`absolute top-full left-0 right-0 mt-1 rounded-lg shadow-xl z-20 overflow-hidden ${hasStoryTheme ? 'bg-gray-900/95 border border-white/20' : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700'}`}>
-                    {myClasses.map((profile) => {
-                      const classInfo = classMap[profile.characterClassId!] || classMap[profile.characterClass];
-                      return (
-                        <button
-                          key={profile.id}
-                          onClick={() => {
-                            selectProfile(profile.id);
-                            setShowClassSelector(false);
-                          }}
-                          className={`w-full flex items-center gap-2 p-2 transition-colors ${hasStoryTheme
-                            ? (profile.id === currentProfile.id ? 'bg-white/15' : 'hover:bg-white/10')
-                            : (profile.id === currentProfile.id ? 'bg-indigo-50 dark:bg-indigo-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700')
-                          }`}
-                        >
-                          <span className="text-lg">{classInfo?.icon}</span>
-                          <div className="flex-1 text-left">
-                            <p className={`text-sm font-medium truncate ${hasStoryTheme ? 'text-white' : 'text-gray-800 dark:text-white'}`}>{profile.classroom?.name}</p>
-                            <p className={`text-xs ${hasStoryTheme ? 'text-white/85' : 'text-gray-500 dark:text-gray-400'}`}>Nivel {profile.level}</p>
-                          </div>
-                          {profile.id === currentProfile.id && <Check size={14} className={hasStoryTheme ? 'text-white' : 'text-indigo-600 dark:text-indigo-400'} />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-          </div>
-        )}
-
-        {/* Navigation */}
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {isTeacher ? (
-            teacherNavItems.map((item) => {
-              const isActivePath = location.pathname === item.path ||
-                (item.path === '/dashboard' && location.pathname.startsWith('/classroom'));
-
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  onClick={() => setSidebarOpen(false)}
-                  className={`
-                    flex items-center gap-3 px-3 py-2.5 rounded-xl
-                    transition-all duration-200 group
-                    ${isActivePath
-                      ? 'bg-primary-600 text-white shadow-md'
-                      : hasStoryTheme ? 'text-white/85 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                    }
-                  `}
-                  aria-current={isActivePath ? 'page' : undefined}
-                >
-                  <div className={`
-                    w-8 h-8 rounded-lg flex items-center justify-center transition-all
-                    ${isActivePath
-                      ? 'bg-white/20'
-                      : 'bg-gradient-to-br ' + item.gradient + ' text-white shadow-sm group-hover:scale-105'
-                    }
-                  `}>
-                    <item.icon size={16} aria-hidden="true" />
-                  </div>
-                  <span className={`text-sm font-medium ${isActivePath ? '' : hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
-                    {item.label}
-                  </span>
-                </Link>
-              );
-            })
-          ) : (
-            <div className="space-y-2">
-              {isStudentOverviewZone && studentOverviewNavItems.map((item) => (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  title={collapsed ? item.label : undefined}
-                  onClick={() => setSidebarOpen(false)}
-                  className={`
-                    flex items-center gap-3 px-3 py-2.5 rounded-xl
-                    transition-all duration-200 group
-                    ${item.isActive
-                      ? `${hasStoryTheme ? '' : `bg-gradient-to-r ${item.activeGradient ?? item.gradient}`} text-white shadow-md`
-                      : hasStoryTheme ? 'text-white/85 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                    }
-                  `}
-                  style={item.isActive && hasStoryTheme ? themedActiveGradientStyle : undefined}
-                >
-                  <div className={`
-                    w-8 h-8 rounded-lg flex items-center justify-center transition-all
-                    ${item.isActive
-                      ? 'bg-white/20'
-                      : hasStoryTheme
-                        ? 'bg-white/10 text-white shadow-sm group-hover:scale-105'
-                        : 'bg-gradient-to-br ' + item.gradient + ' text-white shadow-sm group-hover:scale-105'
-                    }
-                  `}>
-                    {item.icon}
-                  </div>
-                  {!collapsed && (
-                    <span className={`text-sm font-semibold ${item.isActive ? '' : hasStoryTheme ? 'text-white/85' : 'text-gray-700 dark:text-gray-300'}`}>
-                      {item.label}
-                    </span>
-                  )}
-                </Link>
-              ))}
-
-              {!isStudentOverviewZone && studentMenuGroups.map((group) => {
-                const groupHasActiveItem = group.subItems.some((subItem) => subItem.isActive);
-                const groupKey = group.key;
-                const isGroupOpen = !collapsed && (studentMenusOpen[groupKey] || groupHasActiveItem);
-
-                return (
-                  <div key={group.key} className="space-y-1">
-                    <button
-                      type="button"
-                      title={collapsed ? group.label : undefined}
-                      onClick={() => {
-                        if (collapsed) {
-                          setCollapsed(false);
-                          return;
-                        }
-
-                        toggleStudentMenu(groupKey);
-                      }}
-                      className={`
-                        w-full flex items-center gap-3 px-3 py-2.5 rounded-xl
-                        transition-all duration-200 group
-                        ${groupHasActiveItem
-                          ? `${hasStoryTheme ? '' : `bg-gradient-to-r ${group.activeGradient ?? group.gradient}`} text-white shadow-md`
-                          : hasStoryTheme ? 'text-white/85 hover:bg-white/10 hover:text-white' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                        }
-                      `}
-                      style={groupHasActiveItem && hasStoryTheme ? themedActiveGradientStyle : undefined}
-                    >
-                      <div className={`
-                        w-8 h-8 rounded-lg flex items-center justify-center transition-all
-                        ${groupHasActiveItem
-                          ? 'bg-white/20'
-                          : hasStoryTheme
-                            ? 'bg-white/10 text-white shadow-sm group-hover:scale-105'
-                            : 'bg-gradient-to-br ' + group.gradient + ' text-white shadow-sm group-hover:scale-105'
-                        }
-                      `}>
-                        {group.icon}
-                      </div>
-                      {!collapsed && (
-                        <>
-                          <span className={`flex-1 text-left text-sm font-semibold ${groupHasActiveItem ? '' : hasStoryTheme ? 'text-white/85' : 'text-gray-700 dark:text-gray-300'}`}>
-                            {group.label}
-                          </span>
-                          <ChevronDown
-                            size={16}
-                            className={`transition-transform duration-200 ${isGroupOpen ? 'rotate-180' : ''}`}
-                          />
-                        </>
-                      )}
-                    </button>
-
-                    {!collapsed && isGroupOpen && (
-                      <div className="ml-4 mt-1 space-y-1">
-                        {group.subItems.map((subItem) => (
-                          <Link
-                            key={subItem.path}
-                            to={subItem.path}
-                            onClick={() => setSidebarOpen(false)}
-                            aria-current={subItem.isActive ? 'page' : undefined}
-                            className={`
-                              flex min-h-[44px] items-center gap-2 px-2.5 py-1.5 rounded-lg
-                              transition-all duration-200 group relative
-                              ${subItem.isActive
-                                ? hasStoryTheme ? 'text-white' : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'
-                                : hasStoryTheme ? 'text-white/85 hover:bg-white/10 hover:text-white/90' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
-                              }
-                            `}
-                            style={subItem.isActive && storyAccent ? { backgroundColor: `${storyAccent.primary}66` } : undefined}
-                          >
-                            <span className={`
-                              flex h-4 w-4 items-center justify-center flex-shrink-0
-                              ${subItem.isActive
-                                ? hasStoryTheme ? 'text-white' : 'text-indigo-500 dark:text-indigo-400'
-                                : hasStoryTheme ? 'text-white/85' : 'text-gray-400 dark:text-gray-500'
-                              }
-                            `}>
-                              {subItem.icon}
-                            </span>
-                            <span className="flex-1 text-sm font-medium">
-                              {subItem.label}
-                            </span>
-                            {(subItem.meta || subItem.showPing) && (
-                              <div className="ml-auto flex items-center gap-2">
-                                {subItem.meta && (
-                                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${subItem.isActive ? hasStoryTheme ? 'bg-white/15 text-white' : 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300' : hasStoryTheme ? 'bg-white/10 text-white/75' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300'}`}>
-                                    {subItem.meta}
-                                  </span>
-                                )}
-                                {subItem.showPing && (
-                                  <motion.span
-                                    initial={{ scale: 0 }}
-                                    animate={{ scale: 1 }}
-                                    className="relative flex h-2.5 w-2.5"
-                                  >
-                                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
-                                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
-                                  </motion.span>
-                                )}
-                              </div>
-                            )}
-                          </Link>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-        </nav>
-
-        {/* User Card - solo para profesores */}
-        {isTeacher && (
-          <div className={`absolute bottom-0 left-0 right-0 p-3 ${hasStoryTheme ? 'border-t border-white/10 bg-black/10' : 'border-t border-gray-100 dark:border-gray-700 bg-white/50 dark:bg-gray-800/50'}`}>
-            <div className={`flex items-center gap-3 p-2 rounded-xl mb-2 ${hasStoryTheme ? 'bg-white/10' : 'bg-gray-50 dark:bg-gray-700'}`}>
-              {user?.avatarUrl ? (
-                <img 
-                  src={user.avatarUrl.startsWith('http') ? user.avatarUrl : `${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}${user.avatarUrl.startsWith('/api') ? user.avatarUrl.replace('/api', '') : user.avatarUrl}`}
-                  alt="Avatar"
-                  className="w-9 h-9 rounded-xl object-cover shadow-md"
-                />
-              ) : (
-                <div className="w-9 h-9 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl flex items-center justify-center shadow-md">
-                  <span className="text-white text-sm font-bold">
-                    {user?.firstName?.[0]}{user?.lastName?.[0]}
-                  </span>
-                </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <p className={`text-sm font-semibold truncate ${hasStoryTheme ? 'text-white' : 'text-gray-800 dark:text-white'}`}>
-                  {user?.firstName} {user?.lastName}
-                </p>
-                <p className={`text-xs ${hasStoryTheme ? 'text-white/80' : 'text-gray-700 dark:text-gray-300'}`}>
-                  Docente
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={handleLogout}
-              className={`flex items-center gap-2 px-3 py-2 w-full rounded-xl transition-colors text-sm font-medium ${hasStoryTheme ? 'text-red-300 hover:bg-red-500/20' : 'text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-900/20'}`}
-            >
-              <LogOut size={16} />
-              Cerrar sesión
-            </button>
-          </div>
-        )}
-        {/* Alumno en el celular: "Salir" dentro del menú (en pantallas grandes está en la barra superior) */}
-        {!isTeacher && (
-          <div className={`lg:hidden p-2 ${hasStoryTheme ? 'border-t border-white/10' : 'border-t border-gray-100 dark:border-gray-700'}`}>
-            <button
-              type="button"
-              onClick={handleLogout}
-              className={`w-full flex min-h-[44px] items-center gap-2 px-3 rounded-xl text-sm font-semibold transition-colors ${hasStoryTheme ? 'text-red-200 hover:bg-red-500/20' : 'text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-900/20'}`}
-            >
-              <LogOut size={16} aria-hidden="true" />
-              Salir{user?.firstName ? ` · ¿No eres ${user.firstName}?` : ''}
-            </button>
-          </div>
-        )}
-        {/* Toggle collapse - solo en desktop para estudiantes */}
-        {!isTeacher && (
-          <div className={`hidden lg:block p-2 ${hasStoryTheme ? 'border-t border-white/10' : 'border-t border-gray-100 dark:border-gray-700'}`}>
-            <button
-              type="button"
-              onClick={() => setCollapsed(!collapsed)}
-              aria-label={collapsed ? 'Expandir menú' : 'Colapsar menú'}
-              aria-expanded={!collapsed}
-              className={`w-full flex min-h-[44px] items-center justify-center gap-2 px-2.5 rounded-xl transition-colors ${hasStoryTheme ? 'text-white/85 hover:text-white hover:bg-white/10' : 'text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-            >
-              {collapsed ? <ChevronRight size={18} aria-hidden="true" /> : <ChevronLeft size={18} aria-hidden="true" />}
-              {!collapsed && <span className="text-xs font-medium">Colapsar</span>}
-            </button>
-          </div>
-        )}
-      </motion.aside>
+      {!coveredByClassroom && <AppSidebar
+        accent={storyAccent}
+        bandTint={storyAccent ? mixHex(NIGHT, storyAccent.sidebar, 0.35) : null}
+        sky={sky}
+        // Hasta 5 estrellas titilan al llegar; en el Inicio no, porque su cielo ya se mueve.
+        twinkle={isTeacher || pathname !== '/my-class'}
+        logoTo={isTeacher || !currentProfile ? '/dashboard' : '/my-class'}
+        context={!isTeacher && currentProfile && myClasses
+          ? <ClassSwitcher classes={myClasses} current={currentProfile} onSelect={handleSelectClass} links={classLinks} />
+          : undefined}
+        nav={nav}
+        navLabel={isTeacher ? 'Menú principal' : 'Menú de la clase'}
+        footer={isTeacher
+          ? ({ rail }) => <TeacherHomeFooter user={user} rail={rail} onLogout={() => void handleLogout()} />
+          : ({ drawer }) => (drawer ? <StudentDrawerFooter firstName={user?.firstName} onLogout={() => void handleLogout()} /> : null)}
+        collapsed={collapsed}
+        onCollapsedChange={setCollapsed}
+        mobileOpen={sidebarOpen}
+        onMobileOpenChange={setSidebarOpen}
+        contentRef={contentRef}
+        menuButtonRef={menuButtonRef}
+      />}
+      <p className="sr-only" aria-live="polite">{announcement}</p>
 
       {/* Main Content */}
-      <div className={`transition-all duration-300 ${!isTeacher && collapsed ? 'lg:pl-[72px]' : 'lg:pl-60'}`}>
+      <div ref={contentRef} className={collapsed ? 'lg:pl-[72px]' : 'lg:pl-64'}>
         {/* Top Bar */}
         <header
           className="sticky top-0 z-30 h-14 backdrop-blur-lg shadow-sm bg-white/80 dark:bg-gray-800/80 border-b border-white/50 dark:border-gray-700/50"
@@ -730,9 +230,11 @@ export const MainLayout = () => {
             <div className="flex min-w-0 flex-1 items-center">
               {/* Mobile Menu Button */}
               <button
+                ref={menuButtonRef}
                 type="button"
                 onClick={() => setSidebarOpen(true)}
                 aria-label="Abrir menú"
+                aria-expanded={sidebarOpen}
                 className={`lg:hidden flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-colors text-gray-600 hover:text-gray-800 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700`}
               >
                 <Menu size={20} aria-hidden="true" />
@@ -820,7 +322,7 @@ export const MainLayout = () => {
                 className={`flex min-h-[44px] items-center gap-2 rounded-xl px-2 py-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-gray-700`}
               >
                 {user?.avatarUrl ? (
-                  <img 
+                  <img
                     src={user.avatarUrl.startsWith('http') ? user.avatarUrl : `${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}${user.avatarUrl.startsWith('/api') ? user.avatarUrl.replace('/api', '') : user.avatarUrl}`}
                     alt="Avatar"
                     className="w-8 h-8 rounded-xl object-cover shadow-sm"
@@ -843,8 +345,8 @@ export const MainLayout = () => {
               <AnimatePresence>
                 {userMenuOpen && (
                   <>
-                    <div 
-                      className="fixed inset-0 z-40" 
+                    <div
+                      className="fixed inset-0 z-40"
                       onClick={() => setUserMenuOpen(false)}
                     />
                     <motion.div
@@ -865,7 +367,7 @@ export const MainLayout = () => {
                         <Settings size={16} />
                         Configuración
                       </Link>
-                      {/* Alumno: sus clases y unirse a otra (ya no hay una pantalla general aparte) */}
+                      {/* Alumno: sus clases, unirse a otra y sus destrezas (también en «Tus clases» del menú) */}
                       {!isTeacher && myClasses && myClasses.length > 1 && (
                         <Link
                           to="/my-classes"
@@ -874,6 +376,16 @@ export const MainLayout = () => {
                         >
                           <Users size={16} aria-hidden="true" />
                           Mis clases
+                        </Link>
+                      )}
+                      {!isTeacher && hasCompetencyOverview && (
+                        <Link
+                          to="/my-skills"
+                          onClick={() => setUserMenuOpen(false)}
+                          className="flex min-h-[44px] items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                        >
+                          <BookOpen size={16} aria-hidden="true" />
+                          Destrezas
                         </Link>
                       )}
                       {!isTeacher && (
