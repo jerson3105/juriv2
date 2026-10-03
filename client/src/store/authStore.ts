@@ -25,9 +25,10 @@ interface AuthState {
     lastName: string;
     role: 'TEACHER' | 'STUDENT' | 'PARENT';
   }) => Promise<void>;
-  logout: () => Promise<void>;
+  /** `afterClear`: corre tras limpiar el navegador y antes de ir al login (p. ej. guardar a dónde volver). */
+  logout: (afterClear?: () => void) => Promise<void>;
   /** La sesión terminó (revocada o vencida): limpiar sin llamar al servidor. */
-  endSession: (reason?: string) => Promise<void>;
+  endSession: (reason?: string, afterClear?: () => void) => Promise<void>;
   fetchUser: () => Promise<void>;
   clearError: () => void;
   setAuth: (data: AuthData) => void;
@@ -118,21 +119,22 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      logout: async () => {
+      logout: async (afterClear) => {
         try {
           // El servidor cierra la sesión de este dispositivo (cookie) y borra la cookie.
           await authApi.logout();
         } catch (error) {
           console.error('Error al cerrar sesión:', error);
         } finally {
-          await get().endSession('salida=1');
+          await get().endSession('salida=1', afterClear);
         }
       },
 
-      endSession: async (reason = 'error=session_expired') => {
+      endSession: async (reason = 'error=session_expired', afterClear) => {
         stopRefresh();
         set({ user: null, accessToken: null, isAuthenticated: false, sessionStatus: 'ready', error: null });
         await clearSessionData();
+        afterClear?.();
         // Recarga completa: no queda nada del usuario anterior en memoria.
         window.location.replace(`/login?${reason}`);
       },

@@ -1,6 +1,7 @@
-import { lazy, Suspense, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, useParams, useNavigate, useLocation } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSocket } from '../../hooks/useSocket';
 import { motion } from 'framer-motion';
 import {
   Sparkles,
@@ -131,6 +132,18 @@ export const ClassroomLayout = () => {
     staleTime: 60_000,
   });
   const pendingFamilyCount = familyRequests.filter((request) => request.classroomId === id).length;
+  // Una familia pidió unirse: el número del menú y la pestaña Familias se actualizan sin recargar.
+  const queryClient = useQueryClient();
+  const socket = useSocket();
+  useEffect(() => {
+    if (!socket) return;
+    const onFamilyRequest = () => {
+      void queryClient.invalidateQueries({ queryKey: ['family-requests'] });
+      void queryClient.invalidateQueries({ queryKey: ['family-room-families'] });
+    };
+    socket.on('family:request', onFamilyRequest);
+    return () => { socket.off('family:request', onFamilyRequest); };
+  }, [socket, queryClient]);
 
   // Tema de historia: solo acentos (barra lateral, cabecera, chips) derivados para cumplir AA.
   // El contenido conserva sus superficies neutras del modo claro/oscuro.

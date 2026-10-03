@@ -100,11 +100,12 @@ export const authApi = {
     role: 'TEACHER' | 'STUDENT' | 'PARENT';
   }) => api.post<ApiResponse<AuthData>>('/auth/register', data),
 
-  /** Puerta /unirse: código de clase o personal, sin sesión. */
+  /** Puerta /unirse: código de clase, personal o familiar, sin sesión. */
   verifyJoinCode: (code: string) =>
     api.post<ApiResponse<
       (| { type: 'classroom'; classroomName: string; teacherName: string | null; open: boolean }
-      | { type: 'student'; studentName: string | null; classroomName: string | null; alreadyLinked: boolean; access?: 'new' | 'pin-reset' })
+      | { type: 'student'; studentName: string | null; classroomName: string | null; alreadyLinked: boolean; access?: 'new' | 'pin-reset' }
+      | { type: 'family'; studentName: string | null; classroomName: string; teacherName: string | null; open: boolean })
       & { teacherVerified?: boolean; message?: string }
     >>('/auth/join-code/verify', { code }),
 

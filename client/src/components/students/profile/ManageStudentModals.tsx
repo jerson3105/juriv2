@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { familyRoomApi, familyRoomKeys } from '../../../lib/familyRoomApi';
 import { Copy, Download, KeyRound, Loader2, Lock, RefreshCw, RotateCcw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { Student } from '../../../lib/classroomApi';
@@ -236,15 +237,23 @@ export const AccessCodeModal = ({ classroomId, student, name, onClose }: { class
 
 // ---------- Código para la familia ----------
 
-export const FamilyCodeModal = ({ student, name, onClose }: { student: Student; name: string; onClose: () => void }) => {
-  const [code, setCode] = useState<string | null>(null);
+export const FamilyCodeModal = ({ classroomId, student, name, onClose }: { classroomId: string; student: Student; name: string; onClose: () => void }) => {
+  const queryClient = useQueryClient();
+  // El código vigente sale de «Familias»: antes cada clic generaba uno nuevo y el folleto impreso dejaba de servir.
+  const families = useQuery({ queryKey: familyRoomKeys.families(classroomId), queryFn: () => familyRoomApi.families(classroomId) });
+  const current = families.data?.students.find((s) => s.studentId === student.id)?.code ?? null;
+  const [fresh, setFresh] = useState<string | null>(null);
+  const [confirmChange, setConfirmChange] = useState(false);
   const [busy, setBusy] = useState(false);
+  const code = fresh ?? current;
 
   const generate = async () => {
     setBusy(true);
     try {
       const result = await parentApi.generateParentLinkCode(student.id);
-      setCode(result.code);
+      setFresh(result.code);
+      setConfirmChange(false);
+      void queryClient.invalidateQueries({ queryKey: familyRoomKeys.families(classroomId) });
     } catch (e) {
       toast.error(errorMessage(e, 'No se pudo generar el código'));
     } finally {
@@ -256,10 +265,29 @@ export const FamilyCodeModal = ({ student, name, onClose }: { student: Student; 
     <HomeModal title="Código para la familia" subtitle={name} onClose={onClose}
       footer={<button type="button" onClick={onClose} className={cancelButton}>Cerrar</button>}>
       <p className="text-sm text-gray-800 dark:text-gray-100">
-        Con este código, madre, padre o tutor se vinculan desde su cuenta de familia y ven el progreso de {name}.
+        Con este código, madre, padre o tutor piden unirse desde su cuenta de familia; tú los apruebas en «Familias». Envíalo por privado, nunca al grupo.
       </p>
-      {code ? (
-        <CodeBox code={code} label="Código para la familia" />
+      {families.isLoading ? (
+        <p className="mt-3 text-sm text-gray-700 dark:text-gray-300">Cargando…</p>
+      ) : code ? (
+        <>
+          <CodeBox code={code} label="Código para la familia" />
+          {!confirmChange ? (
+            <button type="button" onClick={() => setConfirmChange(true)} className="mt-2 inline-flex min-h-[44px] items-center gap-1.5 rounded-lg px-2 text-sm font-semibold text-gray-700 underline-offset-2 hover:underline dark:text-gray-200">
+              <RefreshCw size={14} aria-hidden="true" /> Cambiar código
+            </button>
+          ) : (
+            <div role="alert" className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-100">
+              <p>El código actual y los folletos ya impresos dejarán de servir. Las familias ya vinculadas no se ven afectadas.</p>
+              <div className="mt-2 flex gap-2">
+                <button type="button" onClick={generate} disabled={busy} className={primaryButton}>
+                  {busy && <Loader2 size={14} className="animate-spin" aria-hidden="true" />} Cambiar código
+                </button>
+                <button type="button" onClick={() => setConfirmChange(false)} className={cancelButton}>Cancelar</button>
+              </div>
+            </div>
+          )}
+        </>
       ) : (
         <button type="button" onClick={generate} disabled={busy} data-autofocus className={primaryButton}>
           {busy ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <KeyRound size={16} aria-hidden="true" />} Generar código

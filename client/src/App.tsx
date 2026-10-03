@@ -17,6 +17,7 @@ import { GoogleCallbackPage } from './pages/auth/GoogleCallbackPage';
 import { SelectRolePage } from './pages/auth/SelectRolePage';
 import { TeacherRegisterPage } from './pages/auth/TeacherRegisterPage';
 import { FamilyRegisterPage } from './pages/auth/FamilyRegisterPage';
+import { FamilyJoinPage } from './pages/auth/FamilyJoinPage';
 
 // Resto de páginas: bajo demanda (code splitting por ruta). Cada usuario descarga solo lo que abre.
 const AboutPage = lazyPage(() => import('./pages/AboutPage').then((m) => ({ default: m.AboutPage })));
@@ -224,6 +225,8 @@ function App() {
           <Route path="/register/student-code" element={<Navigate to="/unirse" replace />} />
           <Route path="/registro/docente" element={<PublicRoute><TeacherRegisterPage /></PublicRoute>} />
           <Route path="/registro/familia" element={<PublicRoute><FamilyRegisterPage /></PublicRoute>} />
+          {/* Sin PublicRoute: una familia con sesión también abre el enlace para pedir unirse. */}
+          <Route path="/familia/:code" element={<FamilyJoinPage />} />
           <Route path="/unirse" element={<JoinDoorPage />} />
           <Route path="/unirse/:code" element={<JoinDoorPage />} />
           <Route path="/about" element={<AboutPage />} />

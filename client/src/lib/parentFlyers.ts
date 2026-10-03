@@ -3,7 +3,11 @@ import { escapeHtml } from './safeHtml';
 
 type FlyerData = Awaited<ReturnType<typeof parentApi.generateBulkParentLinkCodes>>;
 
-// Folletos imprimibles (4 por hoja A4) con el código de vinculación de cada alumno para su familia.
+// El QR lo genera el servidor (SVG propio, sin datos del usuario): solo se acepta si es un <svg>.
+const safeQr = (svg: string) => (/^\s*<svg[\s>]/.test(svg) && !/<script|on\w+=/i.test(svg) ? svg : '');
+const shortLink = (url: string) => url.replace(/^https?:\/\//, '');
+
+// Folletos imprimibles (4 por hoja A4): cada familia escanea el QR (o escribe el enlace) de su hijo o hija.
 const flyersHtml = (data: FlyerData) => {
   const pages: string[] = [];
   for (let i = 0; i < data.students.length; i += 4) {
@@ -12,17 +16,18 @@ const flyersHtml = (data: FlyerData) => {
       <div class="flyer">
         <div class="flyer-logo">Juried</div>
         <div class="flyer-class">${escapeHtml(data.classroomName)}</div>
-        <div class="flyer-student">${escapeHtml(s.name)}</div>
-        <div class="flyer-label">Código de vinculación para padres</div>
-        <div class="flyer-code">${escapeHtml(s.parentLinkCode)}</div>
+        <div class="flyer-student">Para la familia de ${escapeHtml(s.name)}</div>
+        <div class="flyer-qr">${safeQr(s.qrSvg)}</div>
         <div class="flyer-instructions">
           <ol>
-            <li>Ingrese a <strong>www.plataformajuried.com</strong> y regístrese como <strong>Padre/Madre</strong></li>
-            <li>Ingrese el código de arriba para vincular a su hijo/a</li>
-            <li>Podrá ver el progreso, calificaciones y actividad de su hijo/a</li>
+            <li>Escanee el código QR con la cámara del celular (o entre a <strong>${escapeHtml(shortLink(s.joinUrl))}</strong>).</li>
+            <li>Cree su cuenta de familia o entre con la suya.</li>
+            <li>El docente confirma que es su familia y verá los avisos de la clase y el progreso de su hijo/a.</li>
           </ol>
         </div>
-        <div class="flyer-url">www.plataformajuried.com</div>
+        <div class="flyer-label">Código para la familia</div>
+        <div class="flyer-code">${escapeHtml(s.parentLinkCode)}</div>
+        <div class="flyer-note">Es solo para su familia: no lo comparta en grupos.</div>
       </div>`).join('');
     const empty = Array(4 - batch.length).fill('<div class="flyer" style="border-color:transparent;"></div>').join('');
     pages.push(`<div class="page"><div class="grid">${flyers}${empty}</div></div>`);
@@ -42,13 +47,15 @@ const flyersHtml = (data: FlyerData) => {
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; height: calc(297mm - 20mm); }
     .flyer { border: 2px dashed #cbd5e1; border-radius: 12px; padding: 6mm; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; background: white; }
     .flyer-logo { font-size: 28px; font-weight: 700; color: #6366f1; margin-bottom: 4mm; }
-    .flyer-class { font-size: 11px; color: #64748b; margin-bottom: 5mm; background: #f1f5f9; padding: 3px 10px; border-radius: 20px; }
+    .flyer-class { font-size: 11px; color: #475569; margin-bottom: 3mm; background: #f1f5f9; padding: 3px 10px; border-radius: 20px; }
     .flyer-student { font-size: 15px; font-weight: 600; color: #1e293b; margin-bottom: 2mm; }
-    .flyer-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2mm; margin-top: 4mm; }
+    .flyer-label { font-size: 10px; color: #475569; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 1mm; margin-top: 3mm; }
     .flyer-code { font-size: 26px; font-weight: 700; letter-spacing: 3px; color: #6366f1; background: #eef2ff; padding: 4mm 8mm; border-radius: 10px; margin: 3mm 0; font-family: monospace; }
     .flyer-instructions { font-size: 9px; color: #64748b; line-height: 1.5; margin-top: 4mm; max-width: 90%; }
     .flyer-instructions ol { padding-left: 14px; text-align: left; }
-    .flyer-url { font-size: 10px; color: #6366f1; font-weight: 600; margin-top: 2mm; }
+    .flyer-qr { width: 38mm; height: 38mm; margin-top: 2mm; }
+    .flyer-qr svg { width: 100%; height: 100%; }
+    .flyer-note { font-size: 9px; color: #475569; margin-top: 1mm; }
     @media print {
       body { background: white; }
       .no-print { display: none !important; }

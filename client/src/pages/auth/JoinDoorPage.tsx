@@ -95,7 +95,13 @@ export const JoinDoorPage = () => {
     setCodeError(null);
     try {
       const response = await authApi.verifyJoinCode(value);
-      const data = response.data.data as Verified;
+      const raw = response.data.data!;
+      // Código familiar: no es para el alumno; va a la puerta de la familia (antes, «No encontramos ese código»).
+      if (raw.type === 'family') {
+        navigate(`/familia/${value}`, { replace: true });
+        return;
+      }
+      const data = raw as Verified;
       if (data.teacherVerified === false) {
         setCodeError(data.message ?? 'Tu profe aún está verificando su cuenta de docente. Avísale para que la verifique.');
       } else if (data.type === 'classroom') {

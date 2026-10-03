@@ -4,7 +4,7 @@ import { Backpack, ChevronRight, Lock, Mail } from 'lucide-react';
 import { Input } from '../../components/ui/Input';
 import { AuthShell } from '../../components/auth/AuthShell';
 import { GoogleButton, OrDivider } from '../../components/auth/GoogleButton';
-import { AUTH_ERROR_MESSAGES, errorMessage, studentLanding, liftable, pressable } from '../../components/auth/authHelpers';
+import { AUTH_ERROR_MESSAGES, errorMessage, landingFor, liftable, pressable } from '../../components/auth/authHelpers';
 import { primaryButton } from '../../components/home/homeHelpers';
 import { useAuthStore } from '../../store/authStore';
 
@@ -27,7 +27,7 @@ export const LoginPage = () => {
     setFormError(null);
     try {
       await login(email, password);
-      navigate(useAuthStore.getState().user?.role === 'STUDENT' ? studentLanding() : '/dashboard');
+      navigate(landingFor(useAuthStore.getState().user?.role));
     } catch (err) {
       const message = errorMessage(err, 'No se pudo iniciar sesión');
       setFormError(message === 'Credenciales inválidas'

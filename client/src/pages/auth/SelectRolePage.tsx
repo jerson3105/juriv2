@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Presentation } from 'lucide-react';
 import { AuthShell } from '../../components/auth/AuthShell';
 import { RoleDoors } from '../../components/auth/RoleDoors';
-import { errorMessage, studentLanding, type SignupRole, pressable } from '../../components/auth/authHelpers';
+import { errorMessage, familyLanding, studentLanding, type SignupRole, pressable } from '../../components/auth/authHelpers';
 import { primaryButton } from '../../components/home/homeHelpers';
 import { secondaryButton } from '../../components/gradebook/gradebookHelpers';
 import { useAuthStore } from '../../store/authStore';
@@ -14,7 +14,9 @@ const getHashParam = (name: string): string | null => {
   return hash.length > 1 ? new URLSearchParams(hash.slice(1)).get(name) : null;
 };
 
-const afterSignup = (role: SignupRole) => (role === 'STUDENT' ? studentLanding().replace(/^\/dashboard$/, '/join-class') : '/dashboard');
+const afterSignup = (role: SignupRole) => (role === 'STUDENT'
+  ? studentLanding().replace(/^\/dashboard$/, '/join-class')
+  : role === 'PARENT' ? familyLanding() : '/dashboard');
 
 /**
  * Cuenta nueva con Google sin puerta elegida. Antes un toque en "Docente" (la primera tarjeta)

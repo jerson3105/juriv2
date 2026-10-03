@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { AuthShell } from '../../components/auth/AuthShell';
 import { AccountForm, type AccountFormValues } from '../../components/auth/AccountForm';
 import { GoogleButton, OrDivider } from '../../components/auth/GoogleButton';
-import { errorMessage } from '../../components/auth/authHelpers';
+import { errorMessage, familyLanding } from '../../components/auth/authHelpers';
 import { useAuthStore } from '../../store/authStore';
 
 /** Puerta de la familia: crea la cuenta y luego vincula al hijo o hija con el código familiar. */
@@ -16,7 +16,8 @@ export const FamilyRegisterPage = () => {
     setError(null);
     try {
       await register({ ...values, role: 'PARENT' });
-      navigate('/dashboard');
+      // Si llegó desde el enlace de un código familiar, vuelve a pedir unirse.
+      navigate(familyLanding());
     } catch (err) {
       setError(errorMessage(err, 'No se pudo crear la cuenta'));
     }

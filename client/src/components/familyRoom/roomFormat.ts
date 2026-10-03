@@ -33,11 +33,11 @@ export const familyOfMap = (families?: RoomFamilies) => {
   return new Map([...students].map(([userId, names]) => [userId, `familia de ${joinNames(names)}`]));
 };
 
-/** Texto para mandar por el chat privado con esa familia (nunca al grupo: el código es solo suyo). */
+/** Texto para mandar por el chat privado con esa familia (nunca al grupo: el enlace es solo suyo). */
 export const familyInviteText = ({ studentName, code, classroomName }: { studentName: string; code: string; classroomName: string }) =>
   [
-    `Hola. Para seguir el progreso de ${studentName} y recibir los avisos de ${classroomName} en Juried:`,
-    `1. Entra a ${window.location.origin} y crea tu cuenta como familia.`,
-    `2. Escribe este código: ${code}`,
-    'El código es solo para tu familia: no lo compartas en grupos.',
+    `Hola. Para recibir los avisos de ${classroomName} y seguir el progreso de ${studentName} en Juried, abre este enlace:`,
+    `${window.location.origin}/familia/${code}`,
+    'Crea tu cuenta de familia (o entra con la tuya) y yo confirmo tu solicitud.',
+    'El enlace es solo para tu familia: no lo compartas en grupos.',
   ].join('\n');

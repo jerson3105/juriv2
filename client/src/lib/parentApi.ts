@@ -275,7 +275,8 @@ export const parentApi = {
 
   // Generar códigos de vinculación masivos para folletos de padres (para profesor)
   generateBulkParentLinkCodes: async (classroomId: string): Promise<{
-    students: { id: string; name: string; parentLinkCode: string }[];
+    /** joinUrl = /familia/<código>; qrSvg = su QR para el folleto (lo genera el servidor). */
+    students: { id: string; name: string; parentLinkCode: string; joinUrl: string; qrSvg: string }[];
     classroomName: string;
     classroomCode: string;
   }> => {

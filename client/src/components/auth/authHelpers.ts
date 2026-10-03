@@ -64,6 +64,32 @@ export const studentLanding = (): string => {
   return code ? `/join-class?code=${encodeURIComponent(code)}` : '/dashboard';
 };
 
+// Código familiar de /familia/:code mientras la familia crea su cuenta, va a Google o inicia sesión.
+const PENDING_FAMILY_KEY = 'juried:pending-family';
+
+export const setPendingFamilyCode = (code: string) => {
+  try {
+    sessionStorage.setItem(PENDING_FAMILY_KEY, code);
+  } catch {
+    // Sin almacenamiento: la familia vuelve a abrir el enlace o escribe el código.
+  }
+};
+
+/** Adónde va una familia tras entrar: de vuelta a pedir unirse si traía un código. */
+export const familyLanding = (): string => {
+  try {
+    const code = sessionStorage.getItem(PENDING_FAMILY_KEY);
+    sessionStorage.removeItem(PENDING_FAMILY_KEY);
+    return code ? `/familia/${encodeURIComponent(code)}` : '/dashboard';
+  } catch {
+    return '/dashboard';
+  }
+};
+
+/** Destino tras entrar según el rol. */
+export const landingFor = (role: string | undefined): string =>
+  role === 'STUDENT' ? studentLanding() : role === 'PARENT' ? familyLanding() : '/dashboard';
+
 /** Lo que se muestra como "cuenta" del usuario: los alumnos con PIN no tienen correo visible. */
 export const accountLabel = (user: { email?: string; provider?: string } | null | undefined) =>
   user?.provider === 'PIN' ? 'Entras con tu PIN' : user?.email ?? '';

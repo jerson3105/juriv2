@@ -235,7 +235,7 @@ export const StudentDetailPage = () => {
       <AnimatePresence>
         {modal === 'edit' && <EditNamesModal key="edit" classroomId={classroomId!} student={student} onClose={() => setModal(null)} />}
         {modal === 'access' && <AccessCodeModal key="access" classroomId={classroomId!} student={student} name={name} onClose={() => setModal(null)} />}
-        {modal === 'family' && <FamilyCodeModal key="family" student={student} name={name} onClose={() => setModal(null)} />}
+        {modal === 'family' && <FamilyCodeModal key="family" classroomId={classroomId!} student={student} name={name} onClose={() => setModal(null)} />}
         {modal === 'remove' && (
           <RemoveStudentModal
             key="remove"

@@ -185,7 +185,8 @@ export const register = async (input: RegisterInput): Promise<AuthResponse> => {
 
 export type JoinCodeVerification =
   | { type: 'classroom'; classroomName: string; teacherName: string | null; open: boolean; teacherVerified: boolean; message?: string }
-  | ({ type: 'student' } & StudentCodeVerificationResult);
+  | ({ type: 'student' } & StudentCodeVerificationResult)
+  | { type: 'family'; studentName: string | null; classroomName: string; teacherName: string | null; open: boolean };
 
 /**
  * Puerta /unirse (sin sesión): el alumno escribe el código de su clase o su código personal y ve
@@ -213,7 +214,30 @@ export const verifyJoinCode = async (code: string): Promise<JoinCodeVerification
     };
   }
   const student = await verifyStudentRegistrationCode(normalizedCode);
-  return student ? { type: 'student', ...student } : null;
+  if (student) return { type: 'student', ...student };
+
+  // Código familiar (el de la ficha del alumno): la puerta lo manda a /familia/<código>, donde la familia
+  // pide unirse y el docente la aprueba. Antes /unirse respondía «No encontramos ese código».
+  const [family] = await db.select({
+    displayName: studentProfiles.displayName,
+    characterName: studentProfiles.characterName,
+    classroomName: classrooms.name,
+    classroomActive: classrooms.isActive,
+    teacherId: classrooms.teacherId,
+  })
+    .from(studentProfiles)
+    .innerJoin(classrooms, eq(studentProfiles.classroomId, classrooms.id))
+    .where(and(eq(studentProfiles.parentLinkCode, normalizedCode), eq(studentProfiles.isActive, true), eq(studentProfiles.isDemo, false)))
+    .limit(1);
+  if (!family) return null;
+  const teacher = await db.query.users.findFirst({ where: eq(users.id, family.teacherId), columns: { firstName: true, lastName: true } });
+  return {
+    type: 'family',
+    studentName: maskPersonName(family.displayName || family.characterName),
+    classroomName: family.classroomName,
+    teacherName: teacher ? maskPersonName(`${teacher.firstName} ${teacher.lastName}`) : null,
+    open: family.classroomActive && await teacherVerificationService.isVerified(family.teacherId),
+  };
 };
 
 export const verifyStudentRegistrationCode = async (code: string): Promise<StudentCodeVerificationResult | null> => {

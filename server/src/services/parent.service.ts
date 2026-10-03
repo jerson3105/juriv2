@@ -29,6 +29,8 @@ import { teacherOwnsClassroom } from '../utils/access.js';
 import { teacherVerificationService } from './teacherVerification.service.js';
 import { ConflictError, NotFoundError } from '../utils/errors.js';
 import { familyRoomService } from './familyRoom.service.js';
+import { createNotification, getIO } from '../utils/notificationEmitter.js';
+import { familyJoinQrSvg, familyJoinUrl } from '../utils/familyLink.js';
 import { createGenAI } from '../utils/aiClient.js';
 
 // Marcador que sustituye al nombre del menor en los prompts enviados a la IA (minimización de datos).
@@ -185,13 +187,13 @@ class ParentService {
       .from(studentProfiles)
       .where(eq(studentProfiles.parentLinkCode, linkCode));
     
-    if (!student) {
-      throw new Error('Código de vinculación inválido');
+    if (!student || !student.isActive || student.isDemo) {
+      throw new NotFoundError('Ese código no existe o cambió. Pide uno nuevo a su docente.');
     }
 
     // Solo clases de docentes verificados reciben familias.
     await teacherVerificationService.assertClassroomAcceptsAccounts(student.classroomId);
-    
+
     // Verificar si ya existe un vínculo
     const existingLink = await db.select()
       .from(parentStudentLinks)
@@ -199,10 +201,10 @@ class ParentService {
         eq(parentStudentLinks.parentProfileId, parentProfileId),
         eq(parentStudentLinks.studentProfileId, student.id)
       ));
-    
+
     if (existingLink.length > 0) {
       if (existingLink[0].status === 'ACTIVE') {
-        throw new Error('Este estudiante ya está vinculado a tu cuenta');
+        throw new ConflictError('Ya está vinculado a tu cuenta.');
       }
       if (existingLink[0].status === 'PENDING') {
         throw new ConflictError('Ya enviaste esta solicitud. Espera a que el docente la apruebe.');
@@ -211,7 +213,8 @@ class ParentService {
       await db.update(parentStudentLinks)
         .set({ status: 'PENDING', linkedAt: null, updatedAt: now })
         .where(eq(parentStudentLinks.id, existingLink[0].id));
-      
+      await this.notifyFamilyRequest(student.classroomId);
+
       return { linked: false, pending: true, studentId: student.id };
     }
     
@@ -228,8 +231,30 @@ class ParentService {
       createdAt: now,
       updatedAt: now,
     });
-    
+    await this.notifyFamilyRequest(student.classroomId);
+
     return { linked: false, pending: true, studentId: student.id, linkId };
+  }
+
+  /**
+   * Una familia pidió unirse: aviso al docente (campana, sin nombres: puede verse mientras proyecta) y
+   * evento para que su menú muestre la solicitud sin recargar. Antes nadie se enteraba.
+   */
+  private async notifyFamilyRequest(classroomId: string) {
+    const [cls] = await db.select({ teacherId: classrooms.teacherId, name: classrooms.name })
+      .from(classrooms).where(eq(classrooms.id, classroomId));
+    if (!cls) return;
+    try {
+      await createNotification({
+        userId: cls.teacherId,
+        classroomId,
+        type: 'ANNOUNCEMENT',
+        title: `👪 Una familia pidió unirse a ${cls.name}`,
+        message: 'Confirma que es la familia de tu estudiante en «Familias».',
+        data: JSON.stringify({ familyRequest: true }),
+      });
+    } catch { /* la solicitud ya quedó guardada */ }
+    getIO()?.to(`user:${cls.teacherId}`).emit('family:request', { classroomId });
   }
   
   /** Solicitudes de la familia que esperan al docente (la familia las ve como "esperando aprobación"). */
@@ -277,7 +302,10 @@ class ParentService {
       status: parentStudentLinks.status,
       teacherId: classrooms.teacherId,
       classroomId: classrooms.id,
+      classroomName: classrooms.name,
       parentUserId: parentProfiles.userId,
+      studentName: studentProfiles.displayName,
+      characterName: studentProfiles.characterName,
     })
       .from(parentStudentLinks)
       .innerJoin(parentProfiles, eq(parentStudentLinks.parentProfileId, parentProfiles.id))
@@ -293,6 +321,22 @@ class ParentService {
       .where(and(eq(parentStudentLinks.id, linkId), eq(parentStudentLinks.status, 'PENDING')));
     // Aprobada: la familia entra a la sala de la clase en vivo, sin reconectar.
     if (approved) familyRoomService.joinParentToRoom(row.parentUserId, row.classroomId);
+
+    // La familia se entera de la respuesta (antes no se le avisaba por ningún medio).
+    const student = row.studentName || row.characterName || 'tu hijo o hija';
+    try {
+      await createNotification({
+        userId: row.parentUserId,
+        classroomId: row.classroomId,
+        type: 'ANNOUNCEMENT',
+        title: approved ? `✅ Ya estás en ${row.classroomName}` : `Tu solicitud para ${row.classroomName} no fue aprobada`,
+        message: approved
+          ? `Ya puedes ver el progreso de ${student} y los avisos de la clase.`
+          : 'Si crees que es un error, habla con su docente.',
+        data: JSON.stringify({ familyReviewed: approved }),
+      });
+    } catch { /* la respuesta ya quedó guardada */ }
+    getIO()?.to(`user:${row.parentUserId}`).emit('family:reviewed', { classroomId: row.classroomId, approved });
   }
 
   // Obtener lista de hijos vinculados (batched — no N+1)
@@ -1189,7 +1233,7 @@ class ParentService {
   
   // Generar códigos de vinculación para TODOS los estudiantes de una clase (bulk)
   async generateBulkParentLinkCodes(classroomId: string): Promise<{
-    students: { id: string; name: string; parentLinkCode: string }[];
+    students: { id: string; name: string; parentLinkCode: string; joinUrl: string; qrSvg: string }[];
     classroomName: string;
     classroomCode: string;
   }> {
@@ -1217,7 +1261,7 @@ class ParentService {
       eq(studentProfiles.isDemo, false),
     ));
 
-    const result: { id: string; name: string; parentLinkCode: string }[] = [];
+    const result: { id: string; name: string; parentLinkCode: string; joinUrl: string; qrSvg: string }[] = [];
 
     for (const student of students) {
       let code = student.parentLinkCode;
@@ -1232,6 +1276,9 @@ class ParentService {
         id: student.id,
         name: student.displayName || student.characterName || 'Sin nombre',
         parentLinkCode: code,
+        // El folleto lleva el enlace directo y su QR: la familia no tiene que pasar por /login ni /unirse.
+        joinUrl: familyJoinUrl(code),
+        qrSvg: await familyJoinQrSvg(code),
       });
     }
 

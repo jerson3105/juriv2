@@ -4,7 +4,7 @@ import { useAuthStore } from '../../store/authStore';
 import { Loader2 } from 'lucide-react';
 import { Starfield } from '../../components/auth/SpaceScene';
 import { authApi } from '../../lib/api';
-import { studentLanding } from '../../components/auth/authHelpers';
+import { landingFor } from '../../components/auth/authHelpers';
 
 const getHashParam = (paramName: string): string | null => {
   const hash = window.location.hash;
@@ -57,7 +57,7 @@ export const GoogleCallbackPage = () => {
           setAuth({ user: response.data.data, accessToken });
           
           // El alumno que venía de /unirse termina de unirse a su clase.
-          navigate(response.data.data.role === 'STUDENT' ? studentLanding() : '/dashboard');
+          navigate(landingFor(response.data.data.role));
         } else {
           throw new Error('No se pudo obtener el usuario');
         }
