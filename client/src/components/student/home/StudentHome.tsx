@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
-import { LogOut } from 'lucide-react';
+import { ChevronDown, LogOut } from 'lucide-react';
 import { useAuthStore } from '../../../store/authStore';
 import { useStudentStore } from '../../../store/studentStore';
+import { useAnnouncer } from '../../../store/announcerStore';
 import { studentApi } from '../../../lib/studentApi';
 import { avatarApi } from '../../../lib/avatarApi';
 import { badgeApi } from '../../../lib/badgeApi';
@@ -17,6 +18,7 @@ import { recoveryApi } from '../../../lib/recoveryApi';
 import { shopApi } from '../../../lib/shopApi';
 import { accentGradient, type StoryAccent } from '../../../lib/storyTheme';
 import { useCharacterClasses } from '../../../hooks/useCharacterClasses';
+import { useCurrentStudentProfile } from '../../../hooks/useCurrentStudentProfile';
 import { isInitialLevel, isYoungLevel } from '../../energy/energyHelpers';
 import { levelProgress } from '../../students/profile/profileHelpers';
 import type { EquippedItem } from '../../avatar/AvatarRenderer';
@@ -28,6 +30,7 @@ import { FirstStepsCard } from './FirstStepsCard';
 import { ClanCard } from './ClanCard';
 import { AccessTiles } from './AccessTiles';
 import { CorreoModal, EnergyModal, RolePickerModal, StreakModal } from './HomeModals';
+import { ClassPickerModal } from './ClassPickerModal';
 import { nextGoal, todoItems, type HomeInput } from './nextGoal';
 import type { HomeModalKind } from './HomeActionButton';
 import { homeCard, localDateKey } from './studentHomeHelpers';
@@ -60,6 +63,11 @@ export const StudentHome = ({ profile, firstName, storyAccent }: StudentHomeProp
   const entrySettled = useStudentStore((s) => s.entrySettled);
   const [modal, setModal] = useState<HomeModalKind | 'streak' | null>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
+  // Con 2 o más clases, el nombre de la clase del saludo abre «Tus clases» (en el celular, sin abrir el menú).
+  const { myClasses, selectProfile } = useCurrentStudentProfile();
+  const [picker, setPicker] = useState(false);
+  const announce = useAnnouncer((state) => state.announce);
+  const manyClasses = (myClasses?.length ?? 0) > 1;
 
   const { id, classroomId } = profile;
   const classroom = profile.classroom as HomeClassroom;
@@ -168,8 +176,20 @@ export const StudentHome = ({ profile, firstName, storyAccent }: StudentHomeProp
           </span>
           <div className="min-w-0">
             <h1 ref={titleRef} tabIndex={-1} className="text-2xl font-black text-gray-900 outline-none dark:text-white sm:text-3xl">¡Hola, {firstName}!</h1>
-            <p className="text-sm text-gray-700 dark:text-gray-300">
-              {classroom.name} · {date.charAt(0).toUpperCase() + date.slice(1)}
+            <p className="flex flex-wrap items-center gap-x-1 text-sm text-gray-700 dark:text-gray-300">
+              {manyClasses ? (
+                <button
+                  type="button"
+                  onClick={() => setPicker(true)}
+                  aria-haspopup="dialog"
+                  aria-label={`Clase actual: ${classroom.name}. Cambiar de clase`}
+                  className="-mx-1 inline-flex min-h-[44px] items-center gap-1 rounded-lg px-1 font-semibold text-gray-900 underline decoration-gray-400 underline-offset-4 hover:decoration-gray-700 dark:text-white dark:decoration-gray-500 dark:hover:decoration-gray-200"
+                >
+                  {classroom.name}
+                  <ChevronDown size={16} aria-hidden="true" />
+                </button>
+              ) : classroom.name}
+              <span aria-hidden="true">·</span> {date.charAt(0).toUpperCase() + date.slice(1)}
             </p>
           </div>
         </div>
@@ -261,6 +281,20 @@ export const StudentHome = ({ profile, firstName, storyAccent }: StudentHomeProp
         {modal === 'correo' && <CorreoModal profileId={id} onClose={() => setModal(null)} />}
         {modal === 'energy' && <EnergyModal initial={initial} onClose={() => setModal(null)} />}
         {modal === 'streak' && <StreakModal classroomId={classroomId} onClose={() => setModal(null)} />}
+        {picker && myClasses && (
+          <ClassPickerModal
+            classes={myClasses}
+            currentId={id}
+            onClose={() => setPicker(false)}
+            onPick={(profileId) => {
+              setPicker(false);
+              if (profileId === id) return;
+              selectProfile(profileId);
+              const next = myClasses.find((item) => item.id === profileId);
+              announce(`Ahora estás en «${next?.classroom?.name ?? 'tu clase'}»`);
+            }}
+          />
+        )}
       </AnimatePresence>
     </div>
   );
