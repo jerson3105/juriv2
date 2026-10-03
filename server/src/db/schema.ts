@@ -3087,60 +3087,8 @@ export type NewSceneDialogue = typeof sceneDialogues.$inferInsert;
 export type StudentSceneView = typeof studentSceneViews.$inferSelect;
 export type StoryDonation = typeof storyDonations.$inferSelect;
 
-// ==================== AVISOS (PROFESOR → PADRES) ====================
-
-export const announcements = mysqlTable('announcements', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
-  teacherId: varchar('teacher_id', { length: 36 }).notNull(),
-  message: text('message').notNull(),
-  createdAt: datetime('created_at').notNull(),
-}, (table) => ({
-  classroomIdx: index('idx_announcements_classroom').on(table.classroomId),
-  classroomDateIdx: index('idx_announcements_classroom_date').on(table.classroomId, table.createdAt),
-}));
-
-export const announcementsRelations = relations(announcements, ({ one, many }) => ({
-  classroom: one(classrooms, {
-    fields: [announcements.classroomId],
-    references: [classrooms.id],
-  }),
-  teacher: one(users, {
-    fields: [announcements.teacherId],
-    references: [users.id],
-  }),
-  reads: many(announcementReads),
-}));
-
-export type Announcement = typeof announcements.$inferSelect;
-export type NewAnnouncement = typeof announcements.$inferInsert;
-
-// ==================== ANNOUNCEMENT READS ====================
-
-export const announcementReads = mysqlTable('announcement_reads', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  announcementId: varchar('announcement_id', { length: 36 }).notNull(),
-  userId: varchar('user_id', { length: 36 }).notNull(),
-  readAt: datetime('read_at').notNull(),
-}, (table) => ({
-  announcementIdx: index('idx_announcement_reads_announcement').on(table.announcementId),
-  userIdx: index('idx_announcement_reads_user').on(table.userId),
-  uniqueRead: unique('unique_announcement_user_read').on(table.announcementId, table.userId),
-}));
-
-export const announcementReadsRelations = relations(announcementReads, ({ one }) => ({
-  announcement: one(announcements, {
-    fields: [announcementReads.announcementId],
-    references: [announcements.id],
-  }),
-  user: one(users, {
-    fields: [announcementReads.userId],
-    references: [users.id],
-  }),
-}));
-
-export type AnnouncementRead = typeof announcementReads.$inferSelect;
-export type NewAnnouncementRead = typeof announcementReads.$inferInsert;
+// announcements y announcement_reads: tablas sin uso desde la sala de familias (migraciones/family_room.sql).
+// Se borrarán en una migración posterior; ya no tienen definición aquí para que nadie las use.
 
 // ==================== SALA DE FAMILIAS (DOCENTE ↔ FAMILIAS) ====================
 

@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
@@ -18,18 +18,9 @@ import { RoomThread } from '../../components/familyRoom/RoomThread';
 import { RoomComposer } from '../../components/familyRoom/RoomComposer';
 import { FamiliesTab } from '../../components/familyRoom/FamiliesTab';
 import { familyOfMap } from '../../components/familyRoom/roomFormat';
+import { useThreadScroll } from '../../components/familyRoom/useThreadScroll';
 
 type Tab = 'room' | 'families';
-
-const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-/** Lleva al final el contenedor que desplaza la página: así el cuadro fijo de abajo no tapa lo último. */
-const scrollToEnd = (from: HTMLElement | null, smooth: boolean) => {
-  let node = from?.parentElement ?? null;
-  while (node && !/(auto|scroll)/.test(getComputedStyle(node).overflowY)) node = node.parentElement;
-  const target = node ?? document.scrollingElement;
-  target?.scrollTo({ top: target.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
-};
 
 /**
  * «Familias» del docente: una sola sala con sus avisos (con «visto por») y, si él la abre, la conversación
@@ -62,40 +53,16 @@ export const FamilyRoomPage = () => {
   const hasMessages = room.messages.some((m) => m.kind === 'MESSAGE');
   const shown = onlyNotices ? room.messages.filter((m) => m.kind === 'ANNOUNCEMENT') : room.messages;
 
-  // Al final del hilo: al entrar y cuando llega algo nuevo, si ya se estaba mirando el final.
-  const endRef = useRef<HTMLDivElement>(null);
-  const threadRef = useRef<HTMLDivElement>(null);
-  const nearEnd = useRef(true);
-  const firstScroll = useRef(true);
-  useEffect(() => {
-    const end = endRef.current;
-    const thread = threadRef.current;
-    if (!end || !thread) return;
-    const observer = new IntersectionObserver(([entry]) => { nearEnd.current = entry.isIntersecting; }, { rootMargin: '0px 0px 200px 0px' });
-    observer.observe(end);
-    // El hilo crece después del primer dibujo (letras, nombres de las familias): si se miraba el final, seguirlo.
-    const growth = new ResizeObserver(() => { if (nearEnd.current) scrollToEnd(end, false); });
-    growth.observe(thread);
-    return () => {
-      observer.disconnect();
-      growth.disconnect();
-    };
-  }, [tab, room.query.isSuccess]);
-  // Antes que el efecto de abajo: al volver a la Sala (o cambiar de clase) se baja de nuevo al final.
-  useEffect(() => { firstScroll.current = true; }, [tab, classroomId]);
-  const latestId = room.messages[room.messages.length - 1]?.id;
-  useEffect(() => {
-    if (!latestId || tab !== 'room') return;
-    if (firstScroll.current || nearEnd.current) {
-      scrollToEnd(endRef.current, !firstScroll.current && !reducedMotion());
-      firstScroll.current = false;
-    }
-  }, [latestId, tab]);
+  const { endRef, threadRef, followEnd } = useThreadScroll(room.messages[room.messages.length - 1]?.id, {
+    active: tab === 'room',
+    ready: room.query.isSuccess,
+    resetKey: `${tab}:${classroomId}`,
+  });
 
   const send = async (kind: RoomKind, text: string) => {
     try {
       await room.post.mutateAsync({ kind, text });
-      nearEnd.current = true;
+      followEnd();
       return true;
     } catch (error) {
       toast.error(errorMessage(error, 'No se pudo publicar'));

@@ -11,33 +11,30 @@ import {
   ChevronDown,
   ChevronUp,
   Megaphone,
-  MessageCircle,
   GraduationCap,
   Check,
+  type LucideIcon,
 } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '../../store/authStore';
+import { useSocket } from '../../hooks/useSocket';
+import { familyRoomApi } from '../../lib/familyRoomApi';
+import { NotificationsBell, NotificationsPanel } from '../NotificationsPanel';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { SelectedClassroomProvider, useSelectedClassroom } from '../../contexts/SelectedClassroomContext';
 import type { ChildSummary } from '../../lib/parentApi';
 
-type NavItem = { path: string; label: string; icon: any; gradient: string; exact?: boolean };
-type NavGroup = { label: string; icon: any; gradient: string; menuKey: string; subItems: NavItem[] };
+// `countsNew`: lleva el número de avisos y mensajes nuevos de la clase elegida.
+type NavItem = { path: string; label: string; icon: LucideIcon; gradient: string; exact?: boolean; countsNew?: boolean };
+type NavGroup = { label: string; icon: LucideIcon; gradient: string; menuKey: string; subItems: NavItem[] };
 type ParentNavEntry = NavItem | NavGroup;
 
 const parentNavItems: ParentNavEntry[] = [
   { path: '/parent', label: 'Inicio', icon: Home, gradient: 'from-indigo-500 to-purple-500', exact: true },
+  // Una sola sala: los avisos del docente y, si él la abre, la conversación con las familias.
+  { path: '/parent/avisos', label: 'Avisos', icon: Megaphone, gradient: 'from-cyan-500 to-blue-500', countsNew: true },
   { path: '/parent/report', label: 'Reportes', icon: BarChart3, gradient: 'from-emerald-500 to-teal-500' },
   { path: '/parent/ai-report', label: 'Informe inteligente', icon: Sparkles, gradient: 'from-purple-500 to-pink-500' },
-  {
-    label: 'Comunicación',
-    icon: Megaphone,
-    gradient: 'from-cyan-500 to-blue-500',
-    menuKey: 'comunicacion',
-    subItems: [
-      { path: '/parent/chat', label: 'Avisos', icon: Megaphone, gradient: 'from-cyan-500 to-blue-500', exact: true },
-      { path: '/parent/chat/group', label: 'Chat grupal', icon: MessageCircle, gradient: 'from-indigo-500 to-purple-500' },
-    ],
-  },
 ];
 
 export const ParentLayout = () => {
@@ -136,7 +133,38 @@ const ParentLayoutInner = () => {
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({ comunicacion: true });
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({});
+  const queryClient = useQueryClient();
+  const socket = useSocket();
+  const { selected } = useSelectedClassroom();
+
+  // Avisos y mensajes nuevos de la clase elegida (el número del menú).
+  const { data: newCount = 0 } = useQuery({
+    queryKey: ['family-room-unread', selected?.classroomId],
+    queryFn: () => familyRoomApi.unread(selected!.classroomId),
+    enabled: !!selected?.classroomId,
+    staleTime: 30_000,
+  });
+
+  // En vivo: llega algo a la sala (la familia está en ella desde que conecta) o el docente la aprueba.
+  useEffect(() => {
+    if (!socket) return;
+    const onRoomMessage = () => {
+      void queryClient.invalidateQueries({ queryKey: ['family-room-unread'] });
+      void queryClient.invalidateQueries({ queryKey: ['family-room-latest'] });
+    };
+    const onReviewed = () => {
+      void queryClient.invalidateQueries({ queryKey: ['parent-children'] });
+      void queryClient.invalidateQueries({ queryKey: ['parent-pending-links'] });
+    };
+    socket.on('room:message', onRoomMessage);
+    socket.on('family:reviewed', onReviewed);
+    return () => {
+      socket.off('room:message', onRoomMessage);
+      socket.off('family:reviewed', onReviewed);
+    };
+  }, [socket, queryClient]);
 
   const toggleMenu = (key: string) => {
     setOpenMenus(prev => ({ ...prev, [key]: !prev[key] }));
@@ -296,6 +324,11 @@ const ParentLayoutInner = () => {
                 <span className={`text-sm font-medium ${isActivePath ? '' : 'text-gray-700 dark:text-gray-300'}`}>
                   {item.label}
                 </span>
+                {item.countsNew && newCount > 0 && (
+                  <span className="ml-auto rounded-full bg-rose-600 px-2 py-0.5 text-xs font-bold text-white">
+                    {newCount > 99 ? '99+' : newCount}<span className="sr-only"> nuevos</span>
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -321,8 +354,8 @@ const ParentLayoutInner = () => {
               <p className="text-sm font-semibold truncate text-gray-800 dark:text-white">
                 {user?.firstName} {user?.lastName}
               </p>
-              <p className="text-xs text-gray-500">
-                Padre de familia
+              <p className="text-xs text-gray-600 dark:text-gray-300">
+                Familia
               </p>
             </div>
           </div>
@@ -357,6 +390,10 @@ const ParentLayoutInner = () => {
 
             {/* Theme Toggle */}
             <ThemeToggle />
+
+            {/* Campana: avisos nuevos, respuestas del docente a una solicitud (antes la familia no tenía) */}
+            <NotificationsBell onClick={() => setShowNotifications(true)} />
+            <NotificationsPanel isOpen={showNotifications} onClose={() => setShowNotifications(false)} />
 
             {/* User Menu */}
             <div className="relative">

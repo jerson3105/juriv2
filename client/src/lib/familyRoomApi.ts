@@ -71,8 +71,8 @@ export const familyRoomKeys = {
 };
 
 export const familyRoomApi = {
-  page: async (classroomId: string, before: string | null): Promise<RoomPage> =>
-    (await api.get(`/classrooms/${classroomId}/room`, { params: before ? { before } : undefined })).data.data,
+  page: async (classroomId: string, before: string | null, limit?: number): Promise<RoomPage> =>
+    (await api.get(`/classrooms/${classroomId}/room`, { params: { ...(before ? { before } : {}), ...(limit ? { limit } : {}) } })).data.data,
   post: async (classroomId: string, kind: RoomKind, message: string): Promise<RoomMessage> =>
     (await api.post(`/classrooms/${classroomId}/room/messages`, { kind, message })).data.data,
   remove: async (classroomId: string, messageId: string): Promise<void> => {

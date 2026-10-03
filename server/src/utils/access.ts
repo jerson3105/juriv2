@@ -148,9 +148,6 @@ const classroomIdById = async (table: ClassroomScopedTable, id: string): Promise
   return row?.classroomId ?? null;
 };
 
-/** Clase a la que pertenece un mensaje de chat (para scope de borrado). */
-export const classroomIdOfChatMessage = (messageId: string) => classroomIdById(classroomMessages, messageId);
-
 /** Clase dueña de un ítem de la tienda de avatar (por id de classroom_avatar_items). */
 export const classroomIdOfShopItem = (shopItemId: string) => classroomIdById(classroomAvatarItems, shopItemId);
 

@@ -1,7 +1,5 @@
 import { Router } from 'express';
 import { classroomController } from '../controllers/classroom.controller.js';
-import { announcementController } from '../controllers/announcement.controller.js';
-import { chatController } from '../controllers/chat.controller.js';
 import { familyRoomController } from '../controllers/familyRoom.controller.js';
 import { classNoteController } from '../controllers/classNote.controller.js';
 import { characterClassController } from '../controllers/characterClass.controller.js';
@@ -49,14 +47,7 @@ router.post('/:id/sync-competencies', authorize('TEACHER'), classroomController.
 router.get('/:classroomId/cloneable-counts', authorize('TEACHER'), classroomController.getCloneableCounts.bind(classroomController));
 router.post('/:classroomId/clone', authorize('TEACHER'), classroomController.cloneClassroom.bind(classroomController));
 
-// Avisos (profesor → padres)
-router.post('/:id/announcements', authorize('TEACHER'), announcementController.create.bind(announcementController));
-router.get('/:id/announcements', authorize('TEACHER', 'PARENT'), announcementController.list.bind(announcementController));
-router.get('/:id/announcements/parent-stats', authorize('TEACHER'), announcementController.parentStats.bind(announcementController));
-router.get('/:id/announcements/families', authorize('TEACHER'), announcementController.families.bind(announcementController));
-router.post('/:id/announcements/mark-read', authorize('PARENT'), announcementController.markRead.bind(announcementController));
-
-// Sala de familias (avisos + conversación, docente ↔ familias). Reemplaza a avisos y chat de abajo.
+// Sala de familias (avisos + conversación, docente ↔ familias). Reemplazó a /announcements y /chat.
 router.get('/:id/room', authorize('TEACHER', 'PARENT'), familyRoomController.list);
 router.post('/:id/room/messages', authorize('TEACHER', 'PARENT'), roomMessageLimiter, familyRoomController.post);
 router.delete('/:id/room/messages/:messageId', authorize('TEACHER'), familyRoomController.remove);
@@ -66,13 +57,6 @@ router.post('/:id/room/read', authorize('TEACHER', 'PARENT'), familyRoomControll
 router.get('/:id/room/unread', authorize('TEACHER', 'PARENT'), familyRoomController.unread);
 router.get('/:id/room/families', authorize('TEACHER'), familyRoomController.families);
 router.delete('/:id/room/families/:linkId', authorize('TEACHER'), familyRoomController.revokeFamily);
-
-// Chat grupal (profesor ↔ padres)
-router.get('/:id/chat', authorize('TEACHER', 'PARENT'), chatController.getMessages.bind(chatController));
-router.post('/:id/chat', authorize('TEACHER', 'PARENT'), chatController.sendMessage.bind(chatController));
-router.delete('/:id/chat/:messageId', authorize('TEACHER'), chatController.deleteMessage.bind(chatController));
-router.get('/:id/chat/settings', authorize('TEACHER', 'PARENT'), chatController.getSettings.bind(chatController));
-router.patch('/:id/chat/settings', authorize('TEACHER'), chatController.updateSettings.bind(chatController));
 
 // Notas de clase (profesor crea/edita, estudiante lee)
 router.post('/:id/notes', authorize('TEACHER'), classNoteController.create.bind(classNoteController));

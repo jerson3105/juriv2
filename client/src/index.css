@@ -871,7 +871,9 @@
 
   /* Sala de familias: lo propio en azul sólido, lo ajeno en gris, lo del docente (vista de la familia) en
      tinte. El aviso es una tarjeta ancha con franja azul y su «visto» escrito, no escondido. */
-  .pg-bubble { max-width: min(36rem, 85%); border-radius: 1rem; padding: 0.5rem 0.875rem; background-color: var(--pg-bubble); color: var(--pg-fg); font-size: 0.9375rem; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+  /* El ancho máximo lo pone la fila (ver RoomThread): un % aquí se calcula sobre la propia burbuja y la
+     parte a media palabra cuando no tiene botón al lado. */
+  .pg-bubble { min-width: 0; max-width: 100%; border-radius: 1rem; padding: 0.5rem 0.875rem; background-color: var(--pg-bubble); color: var(--pg-fg); font-size: 0.9375rem; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
   .pg-bubble-own { background-color: var(--pg-own); color: var(--pg-own-fg); }
   .pg-bubble-teacher { background-color: var(--pg-select); color: var(--pg-fg); }
   .pg-notice { border: 1px solid var(--pg-line); border-left: 4px solid var(--pg-notice); border-radius: 0.75rem; background-color: var(--pg-surface); color: var(--pg-fg); }

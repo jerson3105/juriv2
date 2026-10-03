@@ -86,8 +86,7 @@ const ParentDashboard = lazyPage(() => import('./pages/parent/ParentDashboard'))
 const ChildDetailPage = lazyPage(() => import('./pages/parent/ChildDetailPage'));
 const ParentReportPage = lazyPage(() => import('./pages/parent/ParentReportPage'));
 const ParentAIReportPage = lazyPage(() => import('./pages/parent/ParentAIReportPage'));
-const ParentAnnouncementsPage = lazyPage(() => import('./pages/parent/ParentAnnouncementsPage'));
-const ParentGroupChatPage = lazyPage(() => import('./pages/parent/ParentGroupChatPage'));
+const ParentRoomPage = lazyPage(() => import('./pages/parent/ParentRoomPage'));
 
 // Layout
 import { MainLayout } from './components/layout/MainLayout';
@@ -360,10 +359,9 @@ function App() {
             <Route path="report/:studentId" element={<ParentReportPage />} />
             <Route path="ai-report" element={<ParentAIReportPage />} />
             <Route path="ai-report/:studentId" element={<ParentAIReportPage />} />
-            <Route path="chat" element={<ParentAnnouncementsPage />} />
-            <Route path="chat/announcements/:classroomId" element={<ParentAnnouncementsPage />} />
-            <Route path="chat/group" element={<ParentGroupChatPage />} />
-            <Route path="chat/group/:classroomId" element={<ParentGroupChatPage />} />
+            <Route path="avisos" element={<ParentRoomPage />} />
+            {/* Avisos y Chat grupal ahora son una sola sala. */}
+            <Route path="chat/*" element={<Navigate to="/parent/avisos" replace />} />
           </Route>
 
             {/* Catch all */}

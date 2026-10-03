@@ -6,10 +6,11 @@ import { useSelectedClassroom } from '../../contexts/SelectedClassroomContext';
 import ChildDetailPage from './ChildDetailPage';
 import { verificationApi } from '../../lib/verificationApi';
 import { primaryButton } from '../../components/home/homeHelpers';
+import { FamilyNoticesCard } from '../../components/familyRoom/FamilyNoticesCard';
 
 export default function ParentDashboard() {
   const [showLinkModal, setShowLinkModal] = useState(false);
-  const { children, isLoading } = useSelectedClassroom();
+  const { children, isLoading, selected } = useSelectedClassroom();
   const { data: pending = [] } = useQuery({ queryKey: ['parent-pending-links'], queryFn: verificationApi.getMyPendingLinks });
 
   if (isLoading) {
@@ -21,9 +22,14 @@ export default function ParentDashboard() {
     );
   }
 
-  // Si hay hijos vinculados, mostrar el detalle del hijo seleccionado directamente
+  // Con hijos vinculados: primero lo nuevo de la clase (avisos), luego el progreso del hijo elegido.
   if (children.length > 0) {
-    return <ChildDetailPage />;
+    return (
+      <div className="space-y-4">
+        {selected && <FamilyNoticesCard classroomId={selected.classroomId} classroomName={selected.classroomName} />}
+        <ChildDetailPage />
+      </div>
+    );
   }
 
   return (

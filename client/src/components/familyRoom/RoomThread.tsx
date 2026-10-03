@@ -65,7 +65,7 @@ export const RoomThread = ({ classroomId, messages, viewerId, viewerRole, family
             {who} · <time dateTime={message.createdAt} title={fullDateLabel(message.createdAt)}>{timeLabel(message.createdAt)}</time>
           </p>
         )}
-        <div className={`flex max-w-full items-center gap-1 ${own ? 'flex-row-reverse' : ''}`}>
+        <div className={`flex max-w-[min(38rem,88%)] items-center gap-1 ${own ? 'flex-row-reverse' : ''}`}>
           {message.isDeleted ? (
             <p className="pg-tombstone">Mensaje borrado</p>
           ) : (
