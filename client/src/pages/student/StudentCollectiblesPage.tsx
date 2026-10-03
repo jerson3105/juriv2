@@ -3,7 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
 import { Coins } from 'lucide-react';
-import { useStudentStore } from '../../store/studentStore';
+import { useCurrentStudentProfile } from '../../hooks/useCurrentStudentProfile';
 import { studentApi } from '../../lib/studentApi';
 import { collectibleApi, type AlbumCompletion, type OpenPackResult, type StickerView, type StudentAlbumView, type StudentCollectiblesView } from '../../lib/collectibleApi';
 import type { StoryAccent } from '../../lib/storyTheme';
@@ -273,10 +273,8 @@ const CollectiblesContent = ({ profile, storyAccent }: { profile: MyClass; story
 
 /** «Coleccionables»: el álbum de figuritas de la clase elegida (cada clase tiene sus álbumes y su oro). */
 export const StudentCollectiblesPage = () => {
-  const selectedClassIndex = useStudentStore((s) => s.selectedClassIndex);
   const { storyAccent } = useOutletContext<{ storyAccent?: StoryAccent | null }>();
-  const { data: myClasses, isLoading } = useQuery({ queryKey: ['my-classes'], queryFn: studentApi.getMyClasses });
-  const profile = myClasses?.[selectedClassIndex];
+  const { profile, isLoading } = useCurrentStudentProfile();
 
   if (isLoading) return <Skeleton />;
   if (!profile) return <ErrorCard text="No pudimos abrir tu clase." onRetry={() => window.location.reload()} />;

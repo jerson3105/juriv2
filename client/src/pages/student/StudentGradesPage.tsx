@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
-import { useStudentStore } from '../../store/studentStore';
+import { useCurrentStudentProfile } from '../../hooks/useCurrentStudentProfile';
 import { studentApi } from '../../lib/studentApi';
 import { gradeApi } from '../../lib/gradeApi';
 import type { StoryAccent } from '../../lib/storyTheme';
@@ -111,10 +111,8 @@ const GradesContent = ({ profile, storyAccent }: { profile: MyClass; storyAccent
 };
 
 export const StudentGradesPage = () => {
-  const selectedClassIndex = useStudentStore((s) => s.selectedClassIndex);
   const { storyAccent } = useOutletContext<{ storyAccent?: StoryAccent | null }>();
-  const { data: myClasses, isLoading } = useQuery({ queryKey: ['my-classes'], queryFn: studentApi.getMyClasses });
-  const profile = myClasses?.[selectedClassIndex];
+  const { profile, isLoading } = useCurrentStudentProfile();
 
   if (isLoading) return <Skeleton />;
   if (!profile) {

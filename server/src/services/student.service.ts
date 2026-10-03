@@ -206,10 +206,12 @@ export class StudentService {
     });
   }
 
-  // Obtener mis clases como estudiante (optimizado para evitar N+1)
+  // Obtener mis clases como estudiante (optimizado para evitar N+1). Como en la entrada con PIN, sin
+  // perfiles inactivos ni clases archivadas; en orden alfabético y estable (sin orden, MySQL las daba
+  // por id aleatorio y la «primera clase» cambiaba al unirse a otra).
   async getMyClasses(userId: string) {
     const profiles = await db.query.studentProfiles.findMany({
-      where: eq(studentProfiles.userId, userId),
+      where: and(eq(studentProfiles.userId, userId), eq(studentProfiles.isActive, true)),
     });
 
     if (profiles.length === 0) return [];
@@ -303,6 +305,8 @@ export class StudentService {
         db.delete(studentProfiles).where(eq(studentProfiles.id, profile.id)).catch(() => {});
         continue;
       }
+      // Archivada: deja de aparecer, pero el perfil se conserva (no es huérfano).
+      if (classroom.isActive === false) continue;
 
       const classroomRanking = classroomRankingMap.get(profile.classroomId);
 
@@ -317,7 +321,8 @@ export class StudentService {
       });
     }
 
-    return results;
+    return results.sort((a, b) =>
+      a.classroom.name.localeCompare(b.classroom.name, 'es', { sensitivity: 'base', numeric: true }) || a.id.localeCompare(b.id));
   }
 
   // Obtener estudiante por ID (para profesores)

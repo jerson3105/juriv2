@@ -1,6 +1,6 @@
 import { useOutletContext } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { useStudentStore } from '../../store/studentStore';
+import { useCurrentStudentProfile } from '../../hooks/useCurrentStudentProfile';
 import { studentApi } from '../../lib/studentApi';
 import { avatarApi } from '../../lib/avatarApi';
 import type { StoryAccent } from '../../lib/storyTheme';
@@ -54,10 +54,8 @@ const ClosetContent = ({ profile, storyAccent }: { profile: MyClass; storyAccent
 
 /** «Mi personaje»: el espejo y el clóset de la clase elegida (cada clase tiene su personaje, su oro y su ropa). */
 export const StudentAvatarPage = () => {
-  const selectedClassIndex = useStudentStore((s) => s.selectedClassIndex);
   const { storyAccent } = useOutletContext<{ storyAccent?: StoryAccent | null }>();
-  const { data: myClasses, isLoading } = useQuery({ queryKey: ['my-classes'], queryFn: studentApi.getMyClasses });
-  const profile = myClasses?.[selectedClassIndex];
+  const { profile, isLoading } = useCurrentStudentProfile();
 
   if (isLoading) return <Skeleton />;
   if (!profile) return <ErrorCard text="No pudimos abrir tu clase." onRetry={() => window.location.reload()} />;

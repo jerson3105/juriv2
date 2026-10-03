@@ -9,6 +9,7 @@ import { characterClassApi } from '../../lib/characterClassApi';
 import { placeholderStudentApi } from '../../lib/placeholderStudentApi';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../../store/authStore';
+import { useCurrentStudentProfile } from '../../hooks/useCurrentStudentProfile';
 import { StudentSwitchPanel } from '../../components/auth/StudentSwitch';
 import { useStudentSwitch } from '../../components/auth/useStudentSwitch';
 import { RosterPicker } from '../../components/auth/RosterPicker';
@@ -60,6 +61,7 @@ const TeacherAccountNotice = () => {
 const JoinClassFlow = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { selectProfile } = useCurrentStudentProfile();
 
   // Step flow: 1=code, 2=character name+avatar, 3=class selection (only for classroom mode)
   const [step, setStep] = useState(1);
@@ -100,9 +102,11 @@ const JoinClassFlow = () => {
   const joinMutation = useMutation({
     mutationFn: studentApi.joinClass,
     onSuccess: async (data) => {
+      // Primero la lista nueva y después elegirla: entra directo a la clase a la que se unió.
       await queryClient.invalidateQueries({ queryKey: ['my-classes'] });
+      selectProfile(data.profileId);
       toast.success(`¡Te has unido a ${data.classroom.name}!`);
-      navigate('/my-classes');
+      navigate('/my-class');
     },
     onError: (error: any) => {
       const message = error?.response?.data?.message || error.message || 'Error al unirse a la clase';
@@ -206,8 +210,9 @@ const JoinClassFlow = () => {
         avatarGender,
       });
       await queryClient.invalidateQueries({ queryKey: ['my-classes'] });
+      selectProfile(result.profileId);
       toast.success(`¡Te has unido a ${result.classroom.name}!`);
-      navigate('/my-classes');
+      navigate('/my-class');
     } catch (error) {
       const message = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
       toast.error(message || 'No se pudo unir a la clase');
@@ -265,8 +270,9 @@ const JoinClassFlow = () => {
         avatarGender,
       });
       await queryClient.invalidateQueries({ queryKey: ['my-classes'] });
+      selectProfile(result.data.profileId);
       toast.success(`¡Te has unido a ${result.data.classroom.name}!`);
-      navigate('/my-classes');
+      navigate('/my-class');
     } catch (error: any) {
       const message = error?.response?.data?.message || 'Error al vincular cuenta';
       toast.error(message);

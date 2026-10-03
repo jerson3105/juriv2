@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard,
@@ -37,7 +38,7 @@ import { useAuthStore } from '../../store/authStore';
 import { accountLabel } from '../auth/authHelpers';
 import { useStudentStore } from '../../store/studentStore';
 import { useThemeStore } from '../../store/themeStore';
-import { studentApi } from '../../lib/studentApi';
+import { useCurrentStudentProfile } from '../../hooks/useCurrentStudentProfile';
 import { useCharacterClasses } from '../../hooks/useCharacterClasses';
 import { expeditionApi } from '../../lib/expeditionApi';
 import { ThemeToggle } from '../ui/ThemeToggle';
@@ -81,7 +82,9 @@ const teacherNavItems = [
 
 export const MainLayout = () => {
   const { user, logout } = useAuthStore();
-  const { selectedClassIndex, setSelectedClassIndex, pendingClassCode, setPendingClassCode } = useStudentStore();
+  const pendingClassCode = useStudentStore((state) => state.pendingClassCode);
+  const setPendingClassCode = useStudentStore((state) => state.setPendingClassCode);
+  const forgetProfile = useStudentStore((state) => state.forgetProfile);
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme);
   const location = useLocation();
   const navigate = useNavigate();
@@ -99,23 +102,23 @@ export const MainLayout = () => {
 
   const isTeacher = user?.role === 'TEACHER';
 
-  // Cargar clases del estudiante
-  const { data: myClasses } = useQuery({
-    queryKey: ['my-classes'],
-    queryFn: studentApi.getMyClasses,
-    enabled: !isTeacher,
-  });
-
-  const currentProfile = myClasses?.[selectedClassIndex];
+  // La clase abierta del alumno (por id: sobrevive a la recarga).
+  const { myClasses, profile: currentProfile, source, stale, isFetching, selectProfile } = useCurrentStudentProfile();
   const { classMap } = useCharacterClasses(currentProfile?.classroomId);
 
-  // Entró con PIN por una clase: esa es la que se abre (no la primera de la lista).
+  // Entró con PIN por una clase: esa queda elegida (manda sobre la que recordaba).
   useEffect(() => {
     if (!pendingClassCode || !myClasses) return;
-    const index = myClasses.findIndex((profile) => profile.classroom?.code === pendingClassCode);
-    if (index >= 0) setSelectedClassIndex(index);
+    if (source === 'pending' && currentProfile) selectProfile(currentProfile.id);
     setPendingClassCode(null);
-  }, [pendingClassCode, myClasses, setSelectedClassIndex, setPendingClassCode]);
+  }, [pendingClassCode, myClasses, source, currentProfile, selectProfile, setPendingClassCode]);
+
+  // La clase que recordaba ya no está en su lista (la archivaron o lo quitaron): se olvida, con aviso.
+  useEffect(() => {
+    if (!stale || isFetching) return;
+    forgetProfile(user?.id);
+    toast('La clase que tenías abierta ya no está en tu lista.', { id: 'class-gone', icon: 'ℹ️' });
+  }, [stale, isFetching, forgetProfile, user?.id]);
 
   // Tema de la clase para lo que ocurre al entrar (historia), en cualquier pantalla.
   const entryAccent = useMemo(
@@ -431,18 +434,18 @@ export const MainLayout = () => {
                 
                 {showClassSelector && (
                   <div className={`absolute top-full left-0 right-0 mt-1 rounded-lg shadow-xl z-20 overflow-hidden ${hasStoryTheme ? 'bg-gray-900/95 border border-white/20' : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700'}`}>
-                    {myClasses.map((profile, index) => {
+                    {myClasses.map((profile) => {
                       const classInfo = classMap[profile.characterClassId!] || classMap[profile.characterClass];
                       return (
                         <button
                           key={profile.id}
                           onClick={() => {
-                            setSelectedClassIndex(index);
+                            selectProfile(profile.id);
                             setShowClassSelector(false);
                           }}
                           className={`w-full flex items-center gap-2 p-2 transition-colors ${hasStoryTheme
-                            ? (index === selectedClassIndex ? 'bg-white/15' : 'hover:bg-white/10')
-                            : (index === selectedClassIndex ? 'bg-indigo-50 dark:bg-indigo-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700')
+                            ? (profile.id === currentProfile.id ? 'bg-white/15' : 'hover:bg-white/10')
+                            : (profile.id === currentProfile.id ? 'bg-indigo-50 dark:bg-indigo-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700')
                           }`}
                         >
                           <span className="text-lg">{classInfo?.icon}</span>
@@ -450,7 +453,7 @@ export const MainLayout = () => {
                             <p className={`text-sm font-medium truncate ${hasStoryTheme ? 'text-white' : 'text-gray-800 dark:text-white'}`}>{profile.classroom?.name}</p>
                             <p className={`text-xs ${hasStoryTheme ? 'text-white/85' : 'text-gray-500 dark:text-gray-400'}`}>Nivel {profile.level}</p>
                           </div>
-                          {index === selectedClassIndex && <Check size={14} className={hasStoryTheme ? 'text-white' : 'text-indigo-600 dark:text-indigo-400'} />}
+                          {profile.id === currentProfile.id && <Check size={14} className={hasStoryTheme ? 'text-white' : 'text-indigo-600 dark:text-indigo-400'} />}
                         </button>
                       );
                     })}

@@ -1,25 +1,18 @@
-import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { Plus, Users } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { useAuthStore } from '../../store/authStore';
-import { useStudentStore } from '../../store/studentStore';
-import { studentApi } from '../../lib/studentApi';
+import { useCurrentStudentProfile } from '../../hooks/useCurrentStudentProfile';
 import type { StoryAccent } from '../../lib/storyTheme';
 import { StudentHome } from '../../components/student/home/StudentHome';
 
 /** Inicio de la clase del alumno (/my-class). La historia, la racha y las celebraciones ocurren al entrar: StudentEntryEffects. */
 export const StudentDashboard = () => {
   const user = useAuthStore((s) => s.user);
-  const selectedClassIndex = useStudentStore((s) => s.selectedClassIndex);
   const navigate = useNavigate();
   const { storyAccent } = useOutletContext<{ storyAccent?: StoryAccent | null }>();
 
-  const { data: myClasses, isLoading } = useQuery({
-    queryKey: ['my-classes'],
-    queryFn: studentApi.getMyClasses,
-  });
-  const currentProfile = myClasses?.[selectedClassIndex];
+  const { myClasses, profile: currentProfile, isLoading } = useCurrentStudentProfile();
 
   if (isLoading) {
     return (

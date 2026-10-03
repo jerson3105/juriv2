@@ -14,7 +14,7 @@ import { Button } from '../../components/ui/Button';
 import { classroomApi } from '../../lib/classroomApi';
 import { gradeApi, type PerformanceBucket } from '../../lib/gradeApi';
 import { studentApi } from '../../lib/studentApi';
-import { useStudentStore } from '../../store/studentStore';
+import { useCurrentStudentProfile } from '../../hooks/useCurrentStudentProfile';
 
 type StoryOutletContext = {
   storyTheme?: unknown;
@@ -33,7 +33,7 @@ const getBucketCheckIconClassName = (bucket: PerformanceBucket | null | undefine
 
 export const StudentSkillsOverviewPage = () => {
   const navigate = useNavigate();
-  const { selectedClassIndex, setSelectedClassIndex } = useStudentStore();
+  const { profile: currentProfile, selectProfile } = useCurrentStudentProfile();
   const { storyTheme, isThemeDark } = useOutletContext<StoryOutletContext>();
   const hasTheme = !!storyTheme;
   const [selectedClassroomId, setSelectedClassroomId] = useState<string | null>(null);
@@ -91,11 +91,11 @@ export const StudentSkillsOverviewPage = () => {
     }
 
     const preferredProfile = competencyProfiles.find(
-      (profile) => profile.classroomId === myClasses[selectedClassIndex]?.classroomId
+      (profile) => profile.classroomId === currentProfile?.classroomId
     ) ?? competencyProfiles[0];
 
     setSelectedClassroomId(preferredProfile.classroomId);
-  }, [competencyProfiles, myClasses, selectedClassIndex, selectedClassroomId]);
+  }, [competencyProfiles, currentProfile?.classroomId, selectedClassroomId]);
 
   const competencyClassrooms = competencyProfiles.map((profile, index) => ({
     profile,
@@ -155,10 +155,8 @@ export const StudentSkillsOverviewPage = () => {
   const handleSelectClassroom = (classroomId: string) => {
     setSelectedClassroomId(classroomId);
 
-    const index = myClasses.findIndex((profile) => profile.classroomId === classroomId);
-    if (index >= 0) {
-      setSelectedClassIndex(index);
-    }
+    const profile = myClasses.find((item) => item.classroomId === classroomId);
+    if (profile) selectProfile(profile.id);
   };
 
   const skillsLoading = isLoading || competencyQueries.some((query) => query.isLoading) || gradebookQueries.some((query) => query.isLoading);

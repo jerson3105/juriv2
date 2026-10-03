@@ -3,8 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useOutletContext } from 'react-router-dom';
 import { BookOpen, CheckCircle2, Film, Lock, MessageSquare, PartyPopper, Play, Sparkles, Trophy } from 'lucide-react';
-import { useStudentStore } from '../../store/studentStore';
-import { studentApi } from '../../lib/studentApi';
+import { useCurrentStudentProfile } from '../../hooks/useCurrentStudentProfile';
 import { storyApi, type StoryRewardPreview, type StudentChapterInfo, type StudentSceneSummary } from '../../lib/storyApi';
 import { STORY_UPDATED_EVENT, type StoryUpdateEvent } from '../../hooks/useStoryLive';
 import { FactionStandings } from '../../components/storytelling/ChapterRewards';
@@ -29,7 +28,6 @@ interface PlayerState {
 }
 
 export const StudentStoryPage = () => {
-  const { selectedClassIndex } = useStudentStore();
   const { storyAccent } = useOutletContext<{ storyAccent?: StoryAccent | null }>();
   const queryClient = useQueryClient();
   const [particles, setParticles] = useStoryParticles('student');
@@ -37,8 +35,7 @@ export const StudentStoryPage = () => {
   const [autoplayDismissed, setAutoplayDismissed] = useState(false);
   const [loadingChapter, setLoadingChapter] = useState<string | null>(null);
 
-  const { data: myClasses } = useQuery({ queryKey: ['my-classes'], queryFn: studentApi.getMyClasses });
-  const currentProfile = myClasses?.[selectedClassIndex];
+  const { profile: currentProfile } = useCurrentStudentProfile();
 
   const { data: story, isLoading } = useQuery({
     queryKey: ['student-story', currentProfile?.classroomId, currentProfile?.id],

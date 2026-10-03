@@ -12,20 +12,12 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { clanApi, CLAN_EMBLEMS } from '../../lib/clanApi';
-import { useStudentStore } from '../../store/studentStore';
-import { studentApi } from '../../lib/studentApi';
+import { useCurrentStudentProfile } from '../../hooks/useCurrentStudentProfile';
 
 export const MyClanPage = () => {
   const navigate = useNavigate();
-  const { selectedClassIndex } = useStudentStore();
 
-  // Obtener perfil del estudiante
-  const { data: myClasses } = useQuery({
-    queryKey: ['my-classes'],
-    queryFn: studentApi.getMyClasses,
-  });
-
-  const currentProfile = myClasses?.[selectedClassIndex];
+  const { profile: currentProfile } = useCurrentStudentProfile();
 
   // Obtener info del clan
   const { data: clanInfo, isLoading } = useQuery({

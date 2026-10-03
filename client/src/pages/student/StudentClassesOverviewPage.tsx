@@ -14,7 +14,7 @@ import {
 import { Button } from '../../components/ui/Button';
 import { useStudentOverviewData } from '../../hooks/useStudentOverviewData';
 import type { ThemeConfig } from '../../lib/storyApi';
-import { useStudentStore } from '../../store/studentStore';
+import { useCurrentStudentProfile } from '../../hooks/useCurrentStudentProfile';
 
 type StoryOutletContext = {
   storyTheme?: unknown;
@@ -57,13 +57,13 @@ const parseThemeConfig = (rawTheme: unknown): ThemeConfig | null => {
 
 export const StudentClassesOverviewPage = () => {
   const navigate = useNavigate();
-  const { setSelectedClassIndex } = useStudentStore();
+  const { selectProfile } = useCurrentStudentProfile();
   const { storyTheme, isThemeDark } = useOutletContext<StoryOutletContext>();
   const hasTheme = !!storyTheme;
   const { myClasses, isLoading, classroomNotes } = useStudentOverviewData();
 
-  const handleOpenClass = (index: number) => {
-    setSelectedClassIndex(index);
+  const handleOpenClass = (profileId: string) => {
+    selectProfile(profileId);
     navigate('/my-class');
   };
 
@@ -162,7 +162,7 @@ export const StudentClassesOverviewPage = () => {
                 type="button"
                 whileHover={{ y: -4 }}
                 whileTap={{ scale: 0.99 }}
-                onClick={() => handleOpenClass(index)}
+                onClick={() => handleOpenClass(profile.id)}
                 className={`group relative h-full overflow-hidden rounded-3xl text-left transition-all ${
                   hasClassroomTheme ? 'shadow-lg shadow-slate-300/30 dark:shadow-black/20' : ''
                 }`}

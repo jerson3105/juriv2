@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useOutletContext } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
-import { useStudentStore } from '../../store/studentStore';
+import { useCurrentStudentProfile } from '../../hooks/useCurrentStudentProfile';
 import { studentApi } from '../../lib/studentApi';
 import { attendanceApi } from '../../lib/attendanceApi';
 import { classNoteApi } from '../../lib/classNoteApi';
@@ -107,10 +107,8 @@ const CalendarContent = ({ profile, storyAccent }: { profile: MyClass; storyAcce
 };
 
 export const StudentCalendarPage = () => {
-  const selectedClassIndex = useStudentStore((s) => s.selectedClassIndex);
   const { storyAccent } = useOutletContext<{ storyAccent?: StoryAccent | null }>();
-  const { data: myClasses, isLoading } = useQuery({ queryKey: ['my-classes'], queryFn: studentApi.getMyClasses });
-  const profile = myClasses?.[selectedClassIndex];
+  const { profile, isLoading } = useCurrentStudentProfile();
 
   if (isLoading) return <Skeleton />;
   if (!profile) {

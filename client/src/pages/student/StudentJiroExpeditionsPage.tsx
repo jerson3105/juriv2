@@ -4,19 +4,12 @@ import { motion } from 'framer-motion';
 import { ChevronLeft, Zap, Clock, MapPin, Play, CheckCircle, Trophy, Star } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { jiroExpeditionApi } from '../../lib/jiroExpeditionApi';
-import { useStudentStore } from '../../store/studentStore';
-import { studentApi } from '../../lib/studentApi';
+import { useCurrentStudentProfile } from '../../hooks/useCurrentStudentProfile';
 
 export const StudentJiroExpeditionsPage = () => {
   const navigate = useNavigate();
-  const { selectedClassIndex } = useStudentStore();
   
-  const { data: myClasses } = useQuery({
-    queryKey: ['my-classes'],
-    queryFn: studentApi.getMyClasses,
-  });
-  
-  const currentProfile = myClasses?.[selectedClassIndex];
+  const { profile: currentProfile } = useCurrentStudentProfile();
 
   const { data: expeditions = [], isLoading } = useQuery({
     queryKey: ['jiro-available-expeditions', currentProfile?.id],

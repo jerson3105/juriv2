@@ -10,22 +10,15 @@ import {
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { jiroExpeditionApi, type JiroStation } from '../../lib/jiroExpeditionApi';
-import { studentApi } from '../../lib/studentApi';
-import { useStudentStore } from '../../store/studentStore';
+import { useCurrentStudentProfile } from '../../hooks/useCurrentStudentProfile';
 import toast from 'react-hot-toast';
 
 export const StudentJiroExpeditionPage = () => {
   const { expeditionId } = useParams<{ expeditionId: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { selectedClassIndex } = useStudentStore();
   
-  const { data: myClasses } = useQuery({
-    queryKey: ['my-classes'],
-    queryFn: studentApi.getMyClasses,
-  });
-  
-  const currentProfile = myClasses?.[selectedClassIndex];
+  const { profile: currentProfile } = useCurrentStudentProfile();
   const studentProfileId = currentProfile?.id;
   
   const [currentStationIndex, setCurrentStationIndex] = useState<number | null>(null);

@@ -37,7 +37,7 @@ import {
   type ExpeditionStudentProgress,
   type ExpeditionPinProgress,
 } from '../../lib/expeditionApi';
-import { useStudentStore } from '../../store/studentStore';
+import { useCurrentStudentProfile } from '../../hooks/useCurrentStudentProfile';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../../store/authStore';
 
@@ -54,7 +54,6 @@ const getStaticUrl = (url: string) => {
 
 export const StudentExpeditionsPage = () => {
   const queryClient = useQueryClient();
-  const { selectedClassIndex } = useStudentStore();
   const [selectedExpedition, setSelectedExpedition] = useState<(Expedition & { studentProgress: ExpeditionStudentProgress }) | null>(null);
   const [selectedPin, setSelectedPin] = useState<ExpeditionPin | null>(null);
   const [showPinModal, setShowPinModal] = useState(false);
@@ -67,13 +66,7 @@ export const StudentExpeditionsPage = () => {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [submissionComment, setSubmissionComment] = useState('');
 
-  // Obtener clases del estudiante
-  const { data: myClasses } = useQuery({
-    queryKey: ['my-classes'],
-    queryFn: () => import('../../lib/studentApi').then(m => m.studentApi.getMyClasses()),
-  });
-
-  const currentProfile = myClasses?.[selectedClassIndex];
+  const { profile: currentProfile } = useCurrentStudentProfile();
 
   // Obtener expediciones del estudiante
   const { data: expeditions = [], isLoading } = useQuery({

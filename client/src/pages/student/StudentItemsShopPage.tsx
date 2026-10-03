@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { Lock } from 'lucide-react';
-import { useStudentStore } from '../../store/studentStore';
+import { useCurrentStudentProfile } from '../../hooks/useCurrentStudentProfile';
 import { studentApi } from '../../lib/studentApi';
 import { shopApi, type StudentShopItem, type StudentShopOwned, type StudentShopView } from '../../lib/shopApi';
 import type { StoryAccent } from '../../lib/storyTheme';
@@ -242,10 +242,8 @@ const ShopContent = ({ profile, storyAccent }: { profile: MyClass; storyAccent: 
 };
 
 export const StudentItemsShopPage = () => {
-  const selectedClassIndex = useStudentStore((s) => s.selectedClassIndex);
   const { storyAccent } = useOutletContext<{ storyAccent?: StoryAccent | null }>();
-  const { data: myClasses, isLoading } = useQuery({ queryKey: ['my-classes'], queryFn: studentApi.getMyClasses });
-  const profile = myClasses?.[selectedClassIndex];
+  const { profile, isLoading } = useCurrentStudentProfile();
 
   if (isLoading) return <Skeleton />;
   if (!profile) return <ErrorCard text="No pudimos abrir tu clase." onRetry={() => window.location.reload()} />;

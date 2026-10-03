@@ -29,21 +29,13 @@ import {
   type CreateScrollDto,
 } from '../../lib/scrollApi';
 import { clanApi } from '../../lib/clanApi';
-import { studentApi } from '../../lib/studentApi';
-import { useStudentStore } from '../../store/studentStore';
+import { useCurrentStudentProfile } from '../../hooks/useCurrentStudentProfile';
 import toast from 'react-hot-toast';
 
 export const StudentScrollsPage = () => {
   const queryClient = useQueryClient();
-  const { selectedClassIndex } = useStudentStore();
   
-  // Obtener clases del estudiante
-  const { data: myClasses } = useQuery({
-    queryKey: ['my-classes'],
-    queryFn: studentApi.getMyClasses,
-  });
-  
-  const studentProfile = myClasses?.[selectedClassIndex];
+  const { profile: studentProfile } = useCurrentStudentProfile();
   const classroom = studentProfile ? {
     id: studentProfile.classroomId,
     scrollsEnabled: studentProfile.classroom?.scrollsEnabled,
