@@ -833,6 +833,27 @@
   .pg-sky-row[aria-current='true'], .pg-sky-row[aria-current='true']:hover { background-color: var(--pg-select); }
   .pg-sky-row[aria-current='true'] .pg-star::before { opacity: 0; }
 
+  /* Ficha: manda el ancho de la ficha, no el de la pantalla (con el menú abierto es más angosta). Angosta: el
+     escenario chico y encima de los datos; ancha: al lado y más grande. Los nombres de las conductas necesitan
+     ancho. Sin utilidades de flex en estos elementos: la capa de utilidades pisaría la consulta. */
+  .pg-ficha { container-type: inline-size; }
+  .pg-ficha-body { display: flex; min-height: 0; flex: 1 1 0%; flex-direction: column; gap: 1.25rem; overflow-y: auto; padding: 1rem; }
+  .pg-ficha-info { display: flex; min-width: 0; flex: 1 1 0%; flex-direction: column; gap: 1.25rem; }
+  .pg-stage { height: 296px; width: 200px; }
+  /* Una sola transformación (centrar y escalar desde los pies): mezclar `scale` con el translate de Tailwind
+     las compone en otro orden y el personaje se corre. */
+  .pg-stage-avatar { position: absolute; bottom: 0.5rem; left: 50%; transform-origin: bottom; transform: translateX(-50%) scale(0.63); }
+  @container (min-width: 620px) {
+    .pg-ficha-body { flex-direction: row; overflow: visible; padding: 1.25rem; }
+    .pg-ficha-info { overflow-y: auto; padding-right: 0.25rem; }
+    .pg-stage { height: 400px; width: 264px; }
+    .pg-stage-avatar { transform: translateX(-50%) scale(0.865); }
+  }
+  @container (min-width: 840px) {
+    .pg-stage { height: 462px; width: 300px; }
+    .pg-stage-avatar { transform: translateX(-50%); }
+  }
+
   /* Clanes: franja y emblema del color guardado; el texto, en tinta derivada (AA sobre el tinte). */
   .pg-clan-stripe { background-color: var(--clan); }
   .pg-clan-tint { background-color: var(--clan-tint); }

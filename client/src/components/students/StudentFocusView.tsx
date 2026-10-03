@@ -4,9 +4,6 @@ import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { ChevronLeft, Eye, Heart, Medal, RotateCcw } from 'lucide-react';
 import { Hearts, RestingPill } from '../energy/EnergyMeter';
-import { StudentAvatarMini } from '../avatar/StudentAvatarMini';
-import { ConstellationSky } from '../observatorio/descanso/ConstellationSky';
-import { classSkyFor, litStarsFor } from '../student/home/classSky';
 import { Sparkle } from '../layout/sidebar/ClassSeal';
 import { MenuCheck, Popover } from '../ui/Popover';
 import { usePopover } from '../../hooks/usePopover';
@@ -17,6 +14,7 @@ import type { Classroom, Student } from '../../lib/classroomApi';
 import { clanVars } from '../../lib/storyTheme';
 import { studentsPulseKey } from '../../lib/rankingApi';
 import { levelProgress } from './profile/profileHelpers';
+import { AvatarStage } from './AvatarStage';
 import { BehaviorMenu } from './BehaviorMenu';
 import { ExceptionTags } from './studentsUi';
 import { clanEmblem, rewardText, type Role } from './studentsHelpers';
@@ -184,8 +182,6 @@ export const StudentFocusView = ({
   const name = current.name;
   const progress = levelProgress(student.xp, student.level, xpPerLevel);
   const remaining = Math.max(0, progress.needed - progress.inLevel);
-  const sky = classSkyFor(classroom.id);
-  const lit = litStarsFor(progress.percent);
 
   return (
     <div className="flex flex-col gap-4 lg:h-[calc(100vh-210px)] lg:min-h-[500px] lg:flex-row">
@@ -225,25 +221,24 @@ export const StudentFocusView = ({
       </nav>
 
       {/* Ficha del alumno, en una sola capa */}
-      <section aria-label={`Ficha de ${name}`} className={`${selectedStudentId ? 'flex' : 'hidden lg:flex'} pg-surface min-w-0 flex-1 flex-col overflow-hidden`}>
+      <section aria-label={`Ficha de ${name}`} className={`${selectedStudentId ? 'flex' : 'hidden lg:flex'} pg-surface pg-ficha min-w-0 flex-1 flex-col overflow-hidden`}>
         <button type="button" onClick={() => onSelectStudent(null)} className="pg-btn pg-btn-ghost m-3 mb-0 self-start lg:hidden">
           <ChevronLeft size={16} aria-hidden="true" />
           Alumnos
         </button>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-5 p-4 lg:flex-row lg:p-5">
+        <div className="pg-ficha-body">
           <div className="flex flex-shrink-0 justify-center">
-            <div className="relative h-[280px] w-[160px] overflow-hidden rounded-2xl lg:h-[384px] lg:w-[220px] 2xl:h-[444px] 2xl:w-[255px]">
-              <StudentAvatarMini
-                studentProfileId={student.id}
-                gender={student.avatarGender || 'MALE'}
-                size="xl"
-                className="absolute left-1/2 top-0 origin-top -translate-x-1/2 scale-[0.63] lg:scale-[0.865] 2xl:scale-100"
-              />
-            </div>
+            <AvatarStage
+              student={student}
+              classroomId={classroom.id}
+              clanColor={classroom.clansEnabled && student.clanName ? student.clanColor ?? null : null}
+              percent={progress.percent}
+              lively={lively}
+            />
           </div>
 
-          <div className="flex min-w-0 flex-1 flex-col gap-5 lg:overflow-y-auto lg:pr-1">
+          <div className="pg-ficha-info">
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="truncate text-2xl font-bold pg-fg lg:text-3xl">{name}</h2>
@@ -261,25 +256,20 @@ export const StudentFocusView = ({
               </div>
             </div>
 
-            {/* Progreso: la constelación de la clase se enciende con el nivel, como en el Inicio del alumno */}
-            <div className="flex items-center gap-4">
-              <div className="obs-sky w-20 flex-shrink-0 rounded-xl px-1.5 py-1" aria-hidden="true">
-                <ConstellationSky constellation={sky} lit={lit} still={!lively} />
+            {/* Progreso (la constelación de la clase lo acompaña en el escenario) */}
+            <div className="max-w-md">
+              <p className="text-sm font-semibold pg-fg">Le faltan {remaining.toLocaleString('es')} XP para el nivel {student.level + 1}</p>
+              <div
+                role="progressbar"
+                aria-label={`Progreso al nivel ${student.level + 1}`}
+                aria-valuemin={0}
+                aria-valuemax={progress.needed}
+                aria-valuenow={progress.inLevel}
+                className="mt-1.5 h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-600"
+              >
+                <motion.div initial={false} animate={{ width: `${progress.percent}%` }} className="h-full rounded-full bg-[var(--pg-accent)]" />
               </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold pg-fg">Le faltan {remaining.toLocaleString('es')} XP para el nivel {student.level + 1}</p>
-                <div
-                  role="progressbar"
-                  aria-label={`Progreso al nivel ${student.level + 1}`}
-                  aria-valuemin={0}
-                  aria-valuemax={progress.needed}
-                  aria-valuenow={progress.inLevel}
-                  className="mt-1.5 h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-600"
-                >
-                  <motion.div initial={false} animate={{ width: `${progress.percent}%` }} className="h-full rounded-full bg-[var(--pg-accent)]" />
-                </div>
-                <p className="mt-1 text-xs pg-fg2">{student.xp.toLocaleString('es')} XP · {student.gp.toLocaleString('es')} de oro</p>
-              </div>
+              <p className="mt-1 text-xs pg-fg2">{student.xp.toLocaleString('es')} XP · {student.gp.toLocaleString('es')} de oro</p>
             </div>
 
             {/* Energía: solo por excepción y nunca al proyectar */}
@@ -313,7 +303,7 @@ export const StudentFocusView = ({
               {points.positives.length === 0 ? (
                 <p className="text-sm pg-fg2">La clase aún no tiene comportamientos positivos.</p>
               ) : (
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(10.5rem,1fr))]">
                   {points.positives.map((behavior) => (
                     // Los nombres suelen ser largos: el nombre usa todo el ancho y el monto va debajo.
                     <button

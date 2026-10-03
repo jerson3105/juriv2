@@ -136,6 +136,9 @@ export const clanVars = (color: string | null | undefined): CSSProperties => {
   return vars;
 };
 
+/** Un hex con transparencia («rgba(…)»); gris si no es válido. */
+export const withAlpha = (color: string, alpha: number) => `rgba(${(toRgb(color) ?? [107, 114, 128]).join(', ')}, ${alpha})`;
+
 /** Mezcla dos colores hex (t = cuánto del segundo); el primero si alguno no es válido. */
 export const mixHex = (a: string, b: string, t: number) => {
   const ra = toRgb(a);
