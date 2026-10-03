@@ -15,6 +15,7 @@ import { AppError } from './utils/errors.js';
 import { setIO } from './utils/notificationEmitter.js';
 import { serveUploads } from './utils/fileValidation.js';
 import { AVATAR_UPLOAD_DIR, serveAvatarImage } from './utils/avatarImages.js';
+import { serveCollectibleImage } from './utils/collectibleImages.js';
 import { PERF_TRACE, perfMiddleware } from './utils/perfTrace.js';
 import { userCanAccessClassroom } from './utils/access.js';
 import { eq } from 'drizzle-orm';
@@ -69,6 +70,8 @@ app.use('/api/uploads/jiro-deliveries', cors(corsOptions), ...serveUploads(path.
 // Avatar: prendas que sube el admin (nombre único → caché larga) y capas en WebP del tamaño que se muestran.
 app.use('/api/uploads/avatar-items', cors(corsOptions), ...serveUploads(AVATAR_UPLOAD_DIR, { immutable: true }));
 app.get('/api/avatar-img/:variant', cors(corsOptions), serveAvatarImage);
+// Figuritas y portadas subidas, en WebP del tamaño que se muestran (miniaturas).
+app.get('/api/collectible-img/:variant', cors(corsOptions), serveCollectibleImage);
 // También mantener rutas sin /api para desarrollo local
 app.use('/badges', cors(corsOptions), ...serveUploads(path.join(process.cwd(), 'public', 'badges')));
 app.use('/avatars', cors(corsOptions), ...serveUploads(path.join(uploadsBaseDir, 'avatars')));

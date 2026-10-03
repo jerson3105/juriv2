@@ -104,7 +104,7 @@ export const StickerBook = ({ album, young, page, onPageChange, pressIds, onPres
     const upcoming = pages.slice(current + step, current + step * 2);
     for (const p of upcoming) {
       if (p.kind !== 'cards') continue;
-      for (const card of p.cards) if (card.imageUrl) new Image().src = collectibleImageUrl(card.imageUrl);
+      for (const card of p.cards) if (card.imageUrl) new Image().src = collectibleImageUrl(card.imageUrl, 'sm');
     }
   }, [pages, current, step]);
 

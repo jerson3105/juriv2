@@ -230,7 +230,15 @@ export interface CardOwners {
 // URL de imágenes de figuritas/portadas: las subidas viven en /api/uploads/collectibles (junto a la API);
 // las antiguas pueden ser URLs externas y se usan tal cual.
 const API_ORIGIN = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace(/\/api\/?$/, '');
-export const collectibleImageUrl = (path: string) => (path.startsWith('/api/') ? `${API_ORIGIN}${path}` : path);
+const UPLOADED_IMAGE = /^\/api\/uploads\/collectibles\/[\w.-]+\.(png|jpe?g|gif|webp)$/i;
+/**
+ * Con `variant`, una subida se pide como miniatura WebP del tamaño que se muestra (sm: cartas del álbum y la mesa;
+ * md: cartas grandes, detalle y portadas). Sin variante, el original (el profe al editar).
+ */
+export const collectibleImageUrl = (path: string, variant?: 'sm' | 'md') => {
+  if (variant && UPLOADED_IMAGE.test(path)) return `${API_ORIGIN}/api/collectible-img/${variant}?src=${encodeURIComponent(path)}`;
+  return path.startsWith('/api/') ? `${API_ORIGIN}${path}` : path;
+};
 
 export interface ImportableAlbumSource {
   classroomId: string;

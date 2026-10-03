@@ -92,7 +92,8 @@ export const OpenPackModal = ({ profileId, view, album, mode, onOpened, onClose 
       onOpened(data);
       setResult(data);
       setPhase('tearing');
-      const images = data.cards.filter((card) => card.imageUrl).map((card) => preload(collectibleImageUrl(card.imageUrl!)));
+      // La misma miniatura que mostrará la carta (sm en la mesa; md la carta grande de los pequeños).
+      const images = data.cards.filter((card) => card.imageUrl).map((card) => preload(collectibleImageUrl(card.imageUrl!, young ? 'md' : 'sm')));
       await Promise.all([...images, wait(prefersReducedMotion() ? 0 : TEAR_MS)]);
       setPhase('reveal');
     } catch (err) {

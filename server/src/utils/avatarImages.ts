@@ -1,8 +1,8 @@
-import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import type { Request, Response } from 'express';
 import sharp from 'sharp';
+import { createVariantCache, fileInside, sendVariant } from './imageVariantCache.js';
 
 // Capas del avatar en WebP, del tamaño que se muestran: se generan una vez al pedirlas y quedan en disco.
 //   sm    → listas, podio y miniaturas del personaje (alto 320).
@@ -29,24 +29,11 @@ const UPLOADED = /^\/api\/uploads\/avatar-items\/[\w.-]+\.(png|gif|webp)$/i;
 
 /** Archivo de una capa del avatar a partir de su ruta guardada; null si no es una capa válida. */
 export const resolveAvatarSource = (src: string): string | null => {
-  if (!src || src.includes('..') || src.includes('\\')) return null;
-  let root: string;
-  let relative: string;
-  if (LEGACY.test(src)) {
-    root = path.resolve(PUBLIC_DIR, 'avatars');
-    relative = src.slice('/avatars/'.length);
-  } else if (UPLOADED.test(src)) {
-    root = path.resolve(AVATAR_UPLOAD_DIR);
-    relative = src.slice(AVATAR_UPLOAD_PATH.length);
-  } else {
-    return null;
-  }
-  const full = path.resolve(root, relative);
-  return full.startsWith(root + path.sep) ? full : null;
+  if (!src) return null;
+  if (LEGACY.test(src)) return fileInside(path.resolve(PUBLIC_DIR, 'avatars'), src.slice('/avatars/'.length));
+  if (UPLOADED.test(src)) return fileInside(AVATAR_UPLOAD_DIR, src.slice(AVATAR_UPLOAD_PATH.length));
+  return null;
 };
-
-// Dos pedidos de la misma variante a la vez esperan la misma generación.
-const pending = new Map<string, Promise<string>>();
 
 const render = async (source: string, variant: AvatarVariant, target: string) => {
   try {
@@ -60,23 +47,7 @@ const render = async (source: string, variant: AvatarVariant, target: string) =>
   }
 };
 
-export const avatarVariantFile = async (source: string, variant: AvatarVariant): Promise<string> => {
-  const stat = await fs.promises.stat(source);
-  const key = crypto.createHash('sha1').update(`${source}|${stat.size}|${stat.mtimeMs}`).digest('hex');
-  const target = path.join(CACHE_DIR, variant, `${key}.webp`);
-  if (fs.existsSync(target)) return target;
-  const inflight = pending.get(target);
-  if (inflight) return inflight;
-  const job = (async () => {
-    await fs.promises.mkdir(path.dirname(target), { recursive: true });
-    const temporary = `${target}.${process.pid}.${Date.now()}.tmp`;
-    await render(source, variant, temporary);
-    await fs.promises.rename(temporary, target);
-    return target;
-  })().finally(() => pending.delete(target));
-  pending.set(target, job);
-  return job;
-};
+export const avatarVariantFile = createVariantCache<AvatarVariant>(CACHE_DIR, render);
 
 /** GET /api/avatar-img/:variant?src=<ruta de la capa> — pública (la piden etiquetas <img>, sin token). */
 export const serveAvatarImage = async (req: Request, res: Response) => {
@@ -95,11 +66,7 @@ export const serveAvatarImage = async (req: Request, res: Response) => {
     return;
   }
   try {
-    const file = await avatarVariantFile(source, variant);
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Cross-Origin-Resource-Policy', 'same-site');
-    res.type('image/webp');
-    res.sendFile(file, { maxAge: '7d' });
+    sendVariant(res, await avatarVariantFile(source, variant));
   } catch (error) {
     console.error('Error preparando una capa del avatar:', error);
     res.status(500).json({ success: false, message: 'No se pudo preparar la imagen' });

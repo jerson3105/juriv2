@@ -20,7 +20,7 @@ const secondaryButton = 'inline-flex min-h-[44px] flex-1 sm:flex-none items-cent
 const Cover = ({ album }: { album: CollectibleAlbum }) => (
   <div className="relative h-36 overflow-hidden rounded-t-2xl bg-gradient-to-br from-amber-700 via-orange-800 to-red-900">
     {album.coverImage ? (
-      <img src={collectibleImageUrl(album.coverImage)} alt="" className="absolute inset-0 h-full w-full object-cover" />
+      <img src={collectibleImageUrl(album.coverImage, 'md')} alt="" className="absolute inset-0 h-full w-full object-cover" />
     ) : (
       <>
         <div className="absolute inset-3 rounded-lg border-2 border-dashed border-amber-200/50" aria-hidden="true" />

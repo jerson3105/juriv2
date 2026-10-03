@@ -64,7 +64,7 @@ export const CollectibleCardView = ({
         {/* Arte */}
         <div className={`relative flex flex-1 items-center justify-center overflow-hidden bg-gradient-to-br ${style.art}`}>
           {showImage ? (
-            <img src={collectibleImageUrl(card.imageUrl!)} alt="" loading="lazy" decoding="async" onError={() => setFailedSrc(card.imageUrl)} className="h-full w-full object-cover" />
+            <img src={collectibleImageUrl(card.imageUrl!, small ? 'sm' : 'md')} alt="" loading="lazy" decoding="async" onError={() => setFailedSrc(card.imageUrl)} className="h-full w-full object-cover" />
           ) : (
             <span className={`leading-none drop-shadow-md ${sizes.emoji}`} aria-hidden="true">
               {card.icon || RARITY_FALLBACK_ICON[card.rarity]}
