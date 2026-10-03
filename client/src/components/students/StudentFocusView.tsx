@@ -2,45 +2,54 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { ChevronLeft, Coins, Copy, Crown, Eye, Heart, LayoutList, Medal, Moon, RotateCcw, Search, Sparkles } from 'lucide-react';
+import { ChevronLeft, Eye, Heart, Medal, RotateCcw } from 'lucide-react';
 import { Hearts, RestingPill } from '../energy/EnergyMeter';
-import { isInitialLevel, LOW_ENERGY_RATIO } from '../energy/energyHelpers';
-import { useProjectorStore } from '../../store/projectorStore';
 import { StudentAvatarMini } from '../avatar/StudentAvatarMini';
+import { ConstellationSky } from '../observatorio/descanso/ConstellationSky';
+import { classSkyFor, litStarsFor } from '../student/home/classSky';
+import { Sparkle } from '../layout/sidebar/ClassSeal';
+import { MenuCheck, Popover } from '../ui/Popover';
+import { usePopover } from '../../hooks/usePopover';
+import { useStarMarker } from '../../hooks/useStarMarker';
 import { historyApi, type ActivityLogEntry } from '../../lib/historyApi';
 import type { Behavior } from '../../lib/behaviorApi';
 import type { Classroom, Student } from '../../lib/classroomApi';
-import { getBehaviorRewards } from '../../lib/behaviorPoints';
-import { levelProgress as levelProgressOf } from './profile/profileHelpers';
+import { clanVars } from '../../lib/storyTheme';
+import { studentsPulseKey } from '../../lib/rankingApi';
+import { levelProgress } from './profile/profileHelpers';
+import { BehaviorMenu } from './BehaviorMenu';
+import { ExceptionTags } from './studentsUi';
+import { clanEmblem, rewardText, type Role } from './studentsHelpers';
+import type { StudentRow } from './StudentsTable';
 
 type CharacterClassOption = { id?: string; key?: string; name: string; icon?: string | null; isActive?: boolean };
-type ClassInfo = { name: string; icon: string };
+
+export interface FocusPoints {
+  positives: Behavior[];
+  negatives: Behavior[];
+  totalPositives: number;
+  totalNegatives: number;
+  applying: boolean;
+  onApply: (behavior: Behavior, studentId: string) => void;
+  onOpenAll: (studentId: string, positive: boolean) => void;
+}
 
 interface StudentFocusViewProps {
   classroom: Classroom & { xpPerLevel?: number | null; clansEnabled?: boolean | null };
-  students: Student[];
+  rows: StudentRow[];
   selectedStudentId: string | null;
   onSelectStudent: (id: string | null) => void;
-  searchQuery: string;
-  onSearchChange: (value: string) => void;
+  projecting: boolean;
+  /** Animaciones completas (no al proyectar ni con movimiento reducido). */
+  lively: boolean;
+  initial: boolean;
   characterClasses: CharacterClassOption[];
-  classMap: Record<string, ClassInfo>;
-  topStudentId: string | null;
-  getDisplayName: (student: Student) => string;
-  getStudentLinkCode: (studentId: string) => string | null;
-  onCopyLinkCode: (code: string) => void;
-  featuredBehaviors: Behavior[];
-  totalBehaviors: number;
-  isApplying: boolean;
-  onApplyBehavior: (behavior: Behavior, studentId: string) => void;
-  onOpenAllBehaviors: (studentId: string) => void;
+  points: FocusPoints;
   onAwardBadge: (studentId: string) => void;
-  /** Misión de recuperación para quien descansa (0 HP). */
-  onRecovery?: (studentId: string) => void;
+  onRecovery: (studentId: string) => void;
   onViewProfile: (studentId: string) => void;
-  onAssignClass: (studentId: string, characterClassId: string | null) => void;
-  storyTheme?: { colors?: { primary?: string } } | null;
-  isThemeDark?: boolean;
+  onAssignRole: (studentId: string, characterClassId: string | null) => void;
+  emptyMessage: string;
 }
 
 const startOfToday = () => {
@@ -54,48 +63,89 @@ const entryAmounts = (entry: ActivityLogEntry) => {
   const parts = [
     xpAmount ? `${sign}${xpAmount} XP` : null,
     hpAmount ? `${sign}${hpAmount} HP` : null,
-    gpAmount ? `${sign}${gpAmount} GP` : null,
+    gpAmount ? `${sign}${gpAmount} oro` : null,
   ].filter(Boolean);
-  if (parts.length === 0 && amount) parts.push(`${sign}${amount} ${pointType === 'MIXED' ? '' : pointType || ''}`.trim());
+  if (parts.length === 0 && amount) parts.push(`${sign}${amount} ${pointType === 'MIXED' ? '' : pointType === 'GP' ? 'oro' : pointType || ''}`.trim());
   return { text: parts.join(' · '), positive: sign === '+' };
 };
 
-// Vista "Foco en el alumno": lista compacta a la izquierda y la ficha del alumno elegido con su
-// avatar como protagonista (se proyecta), sus comportamientos más usados a un toque y lo que se le
-// dio hoy, con deshacer por línea.
+// Rol como texto con «Cambiar» o «Asignar» (un menú en lugar del select).
+const RoleControl = ({ student, name, role, options, onAssign }: {
+  student: Student;
+  name: string;
+  role: Role | null;
+  options: CharacterClassOption[];
+  onAssign: (characterClassId: string | null) => void;
+}) => {
+  const { open, anchorRef, close, toggle } = usePopover();
+  const active = options.filter((option) => option.isActive !== false && option.id);
+  const isCurrent = (option: CharacterClassOption) =>
+    student.characterClassId ? student.characterClassId === option.id : !!option.key && option.key === student.characterClass;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className="text-lg leading-none" aria-hidden="true">{role?.icon ?? '·'}</span>
+      <span className="font-medium pg-fg">{role?.name ?? 'Sin rol'}</span>
+      <button
+        ref={anchorRef}
+        type="button"
+        onClick={toggle}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        aria-label={`${role ? 'Cambiar' : 'Asignar'} el rol de ${name}`}
+        className="pg-btn pg-btn-ghost px-2 text-primary-800 dark:text-primary-200"
+      >
+        {role ? 'Cambiar' : 'Asignar'}
+      </button>
+      <Popover open={open} onClose={close} anchorRef={anchorRef} label={`Rol de ${name}`} align="start">
+        <p className="pg-menu-label" id="focus-role-label">Rol de {name}</p>
+        <div role="radiogroup" aria-labelledby="focus-role-label">
+          {active.map((option) => (
+            <button key={option.id} type="button" role="radio" aria-checked={isCurrent(option)} onClick={() => { close(true); onAssign(option.id!); }} className="pg-menu-item">
+              <span className="w-5 text-center" aria-hidden="true">{option.icon}</span>
+              {option.name}
+              <MenuCheck on={isCurrent(option)} />
+            </button>
+          ))}
+          <div className="pg-menu-sep" />
+          <button type="button" role="radio" aria-checked={!role} onClick={() => { close(true); onAssign(null); }} className="pg-menu-item pg-fg2">
+            Sin rol
+            <MenuCheck on={!role} />
+          </button>
+        </div>
+      </Popover>
+    </span>
+  );
+};
+
+/**
+ * Vista Ficha: a la izquierda los alumnos como una constelación (como el menú: guía, una estrella por alumno
+ * —encendida si hoy recibió algo, solo para el profe— y el destello en quien se mira); a la derecha su ficha
+ * en una sola capa, con el avatar como protagonista (se proyecta).
+ */
 export const StudentFocusView = ({
   classroom,
-  students,
+  rows,
   selectedStudentId,
   onSelectStudent,
-  searchQuery,
-  onSearchChange,
+  projecting,
+  lively,
+  initial,
   characterClasses,
-  classMap,
-  topStudentId,
-  getDisplayName,
-  getStudentLinkCode,
-  onCopyLinkCode,
-  featuredBehaviors,
-  totalBehaviors,
-  isApplying,
-  onApplyBehavior,
-  onOpenAllBehaviors,
+  points,
   onAwardBadge,
   onRecovery,
   onViewProfile,
-  onAssignClass,
-  storyTheme,
-  isThemeDark,
+  onAssignRole,
+  emptyMessage,
 }: StudentFocusViewProps) => {
   const queryClient = useQueryClient();
   const [undoingId, setUndoingId] = useState<string | null>(null);
 
-  const student = (selectedStudentId && students.find((s) => s.id === selectedStudentId)) || students[0] || null;
+  const current = (selectedStudentId && rows.find((row) => row.student.id === selectedStudentId)) || rows[0] || null;
+  const student = current?.student ?? null;
   const maxHp = classroom.maxHp || 100;
-  const projecting = useProjectorStore((st) => st.projecting);
-  const initial = isInitialLevel(classroom.gradeLevel);
   const xpPerLevel = classroom.xpPerLevel || 100;
+  const { listRef, markerRef } = useStarMarker(current?.student.id ?? null, 'data-student-id', rows.map((row) => row.student.id).join(','), true);
 
   const { data: studentHistory } = useQuery({
     queryKey: ['history-today', classroom.id, 'student', student?.id],
@@ -105,13 +155,11 @@ export const StudentFocusView = ({
 
   const todayStart = startOfToday();
   const todayEntries = (studentHistory?.logs || []).filter(
-    (entry) => entry.type === 'POINTS' && !entry.isReverted && new Date(entry.timestamp).getTime() >= todayStart,
+    (entry) => entry.type === 'POINTS'
+      && !entry.isReverted
+      && new Date(entry.timestamp).getTime() >= todayStart
+      && (!projecting || entry.details.action !== 'REMOVE'),
   );
-
-  const classInfoOf = (s: Student): ClassInfo | undefined =>
-    (s.characterClassId && classMap[s.characterClassId]) || classMap[s.characterClass];
-
-  const levelProgress = (s: Student) => levelProgressOf(s.xp, s.level, xpPerLevel);
 
   const undoEntry = async (entry: ActivityLogEntry) => {
     setUndoingId(entry.id);
@@ -119,6 +167,7 @@ export const StudentFocusView = ({
       await historyApi.revertEntry('POINTS', entry.id);
       queryClient.invalidateQueries({ queryKey: ['classroom', classroom.id] });
       queryClient.invalidateQueries({ queryKey: ['history-today', classroom.id] });
+      queryClient.invalidateQueries({ queryKey: studentsPulseKey(classroom.id) });
       toast.success(`Deshecho: ${entry.details.reason || 'puntos'}`);
     } catch (error) {
       const message = (error as { response?: { data?: { message?: string } } })?.response?.data?.message;
@@ -128,295 +177,221 @@ export const StudentFocusView = ({
     }
   };
 
-  const positives = featuredBehaviors.filter((b) => b.isPositive);
-  const negatives = featuredBehaviors.filter((b) => !b.isPositive);
+  if (!current || !student) {
+    return <p className="pg-surface px-4 py-10 text-center text-sm pg-fg2">{emptyMessage}</p>;
+  }
+
+  const name = current.name;
+  const progress = levelProgress(student.xp, student.level, xpPerLevel);
+  const remaining = Math.max(0, progress.needed - progress.inLevel);
+  const sky = classSkyFor(classroom.id);
+  const lit = litStarsFor(progress.percent);
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4 lg:h-[calc(100vh-200px)] lg:min-h-[500px]">
-      {/* Lista compacta (en móvil se oculta al abrir una ficha) */}
-      <aside className={`${selectedStudentId ? 'hidden lg:flex' : 'flex'} w-full lg:w-64 flex-shrink-0 flex-col overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 max-h-[70vh] lg:max-h-none`}>
-        <div className="p-2 border-b border-gray-200 dark:border-gray-700">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" aria-hidden="true" />
-            <input
-              type="text"
-              placeholder="Buscar alumno"
-              aria-label="Buscar alumno"
-              value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
-              className="w-full min-h-[36px] pl-8 pr-3 text-sm border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-white rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-            />
+    <div className="flex flex-col gap-4 lg:h-[calc(100vh-210px)] lg:min-h-[500px] lg:flex-row">
+      {/* Alumnos: en el celular se ocultan al abrir una ficha */}
+      <nav aria-label="Alumnos" className={`${selectedStudentId ? 'hidden lg:flex' : 'flex'} pg-surface max-h-[70vh] w-full flex-shrink-0 flex-col overflow-hidden lg:max-h-none lg:w-72`}>
+        <div className="sb-scroll flex-1 overflow-y-auto py-1">
+          <div ref={listRef} className="sb-list">
+            <span className="sb-guide" aria-hidden="true" />
+            <span ref={markerRef} className="sb-marker" data-speed="fast" aria-hidden="true">
+              <Sparkle className="h-full w-full" />
+            </span>
+            <ul>
+              {rows.map((row) => {
+                const active = row.student.id === student.id;
+                return (
+                  <li key={row.student.id}>
+                    <button
+                      type="button"
+                      data-student-id={row.student.id}
+                      onClick={() => onSelectStudent(row.student.id)}
+                      aria-current={active ? 'true' : undefined}
+                      className="pg-sky-row pg-row pg-focus flex min-h-[44px] w-full items-center gap-2 pr-3 text-left"
+                    >
+                      <span className="pg-star" data-lit={row.recognized === true} aria-hidden="true" />
+                      <span className="w-6 flex-shrink-0 text-center text-lg leading-none" aria-hidden="true">{row.role?.icon ?? '·'}</span>
+                      <span className={`min-w-0 flex-1 truncate text-sm ${active ? 'font-semibold' : 'font-medium'} pg-fg`}>{row.name}</span>
+                      {row.recognized && <span className="sr-only">, reconocido hoy</span>}
+                      <ExceptionTags energy={row.energy} hp={row.student.hp} attendance={row.attendance} compact />
+                      <span className="flex-shrink-0 text-xs font-semibold tabular-nums pg-fg2">Nv {row.student.level}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto py-1">
-          {students.length === 0 ? (
-            <p className="px-3 py-8 text-center text-sm text-gray-600 dark:text-gray-400">
-              {searchQuery.trim() ? `Sin resultados para "${searchQuery}"` : 'No hay alumnos con este filtro'}
-            </p>
-          ) : students.map((s) => {
-            const isActive = student?.id === s.id;
-            const progress = levelProgress(s);
-            const resting = !projecting && s.hp <= 0;
-            const lowHp = !projecting && s.hp > 0 && s.hp / maxHp < LOW_ENERGY_RATIO;
-            return (
-              <button
-                key={s.id}
-                type="button"
-                data-student-id={s.id}
-                onClick={() => onSelectStudent(s.id)}
-                aria-current={isActive ? 'true' : undefined}
-                className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 text-left border-l-4 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500 ${
-                  isActive
-                    ? storyTheme ? '' : 'bg-primary-50 dark:bg-primary-900/30 border-l-primary-500'
-                    : storyTheme ? 'border-l-transparent hover:bg-white/10' : 'border-l-transparent hover:bg-gray-50 dark:hover:bg-gray-700/50'
-                }`}
-                style={isActive && storyTheme ? {
-                  backgroundColor: `${storyTheme.colors?.primary}${isThemeDark ? '30' : '20'}`,
-                  borderLeftColor: storyTheme.colors?.primary || '#3b82f6',
-                } : undefined}
-              >
-                <span
-                  className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700 text-lg"
-                  title={classInfoOf(s)?.name || 'Sin clase'}
-                  aria-hidden="true"
-                >
-                  {classInfoOf(s)?.icon || '👤'}
-                </span>
-                <span className="flex-1 min-w-0">
-                  <span className="flex items-center gap-1">
-                    <span className={`truncate text-sm font-medium ${isActive && !storyTheme ? 'text-primary-800 dark:text-primary-200' : storyTheme && isThemeDark ? 'text-white' : 'text-gray-800 dark:text-gray-100'}`}>
-                      {getDisplayName(s)}
-                    </span>
-                    {topStudentId === s.id && <Crown size={12} className="text-amber-500 flex-shrink-0" aria-label="Líder en XP" />}
-                    {lowHp && <Heart size={12} className="text-red-600 fill-red-600 flex-shrink-0" aria-label="HP bajo" />}
-                    {resting && <Moon size={12} className="text-slate-700 fill-slate-700 dark:text-slate-200 dark:fill-slate-200 flex-shrink-0" aria-label="Descansando" />}
-                  </span>
-                  <span className="mt-1 flex items-center gap-2">
-                    <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-600" aria-hidden="true">
-                      <span className="block h-full rounded-full bg-primary-500" style={{ width: `${progress.percent}%` }} />
-                    </span>
-                    <span className="text-xs font-medium text-gray-600 dark:text-gray-300 tabular-nums">Nv {s.level}</span>
-                  </span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </aside>
+      </nav>
 
-      {/* Ficha del alumno */}
-      {student && (
-        <section
-          aria-label={`Ficha de ${getDisplayName(student)}`}
-          className={`${selectedStudentId ? 'flex' : 'hidden lg:flex'} flex-1 min-w-0 flex-col overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800`}
-        >
-          <div className="h-1.5 bg-primary-500 flex-shrink-0" />
-          <button
-            type="button"
-            onClick={() => onSelectStudent(null)}
-            className="lg:hidden self-start m-3 mb-0 inline-flex items-center gap-1 min-h-[40px] px-3 rounded-lg text-sm font-semibold text-primary-700 dark:text-primary-300 hover:bg-primary-50 dark:hover:bg-primary-900/30"
-          >
-            <ChevronLeft size={16} aria-hidden="true" />
-            <LayoutList size={16} aria-hidden="true" />
-            Lista
-          </button>
+      {/* Ficha del alumno, en una sola capa */}
+      <section aria-label={`Ficha de ${name}`} className={`${selectedStudentId ? 'flex' : 'hidden lg:flex'} pg-surface min-w-0 flex-1 flex-col overflow-hidden`}>
+        <button type="button" onClick={() => onSelectStudent(null)} className="pg-btn pg-btn-ghost m-3 mb-0 self-start lg:hidden">
+          <ChevronLeft size={16} aria-hidden="true" />
+          Alumnos
+        </button>
 
-          <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-5 p-4 lg:p-5">
-            {/* Avatar protagonista */}
-            <div className="flex flex-col items-center gap-2 flex-shrink-0">
-              <div className="relative w-[160px] h-[280px] lg:w-[220px] lg:h-[384px] 2xl:w-[255px] 2xl:h-[444px] overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-700 bg-gradient-to-b from-primary-50 to-white dark:from-gray-700 dark:to-gray-800">
-                <StudentAvatarMini
-                  studentProfileId={student.id}
-                  gender={student.avatarGender || 'MALE'}
-                  size="xl"
-                  className="absolute top-0 left-1/2 -translate-x-1/2 origin-top scale-[0.63] lg:scale-[0.865] 2xl:scale-100"
-                />
+        <div className="flex min-h-0 flex-1 flex-col gap-5 p-4 lg:flex-row lg:p-5">
+          <div className="flex flex-shrink-0 justify-center">
+            <div className="relative h-[280px] w-[160px] overflow-hidden rounded-2xl lg:h-[384px] lg:w-[220px] 2xl:h-[444px] 2xl:w-[255px]">
+              <StudentAvatarMini
+                studentProfileId={student.id}
+                gender={student.avatarGender || 'MALE'}
+                size="xl"
+                className="absolute left-1/2 top-0 origin-top -translate-x-1/2 scale-[0.63] lg:scale-[0.865] 2xl:scale-100"
+              />
+            </div>
+          </div>
+
+          <div className="flex min-w-0 flex-1 flex-col gap-5 lg:overflow-y-auto lg:pr-1">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="truncate text-2xl font-bold pg-fg lg:text-3xl">{name}</h2>
+                <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-sm font-bold text-gray-900 dark:bg-gray-700 dark:text-gray-50">Nivel {student.level}</span>
               </div>
-              {getStudentLinkCode(student.id) && (
-                <button
-                  type="button"
-                  onClick={() => onCopyLinkCode(getStudentLinkCode(student.id)!)}
-                  title="Copiar código del estudiante"
-                  className="inline-flex items-center gap-1.5 min-h-[36px] px-3 rounded-lg text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+              {current.secondary && <p className="mt-0.5 text-sm pg-fg2">{current.secondary}</p>}
+              <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
+                <RoleControl student={student} name={name} role={current.role} options={characterClasses} onAssign={(roleId) => onAssignRole(student.id, roleId)} />
+                {classroom.clansEnabled && (student.clanName ? (
+                  <span className="inline-flex items-center gap-1.5" style={clanVars(student.clanColor)}>
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg text-base pg-clan-tint" aria-hidden="true">{clanEmblem(student.clanEmblem)}</span>
+                    <span className="font-medium pg-fg">{student.clanName}</span>
+                  </span>
+                ) : !projecting && <span className="pg-fg2">Sin clan (por asignar)</span>)}
+              </div>
+            </div>
+
+            {/* Progreso: la constelación de la clase se enciende con el nivel, como en el Inicio del alumno */}
+            <div className="flex items-center gap-4">
+              <div className="obs-sky w-20 flex-shrink-0 rounded-xl px-1.5 py-1" aria-hidden="true">
+                <ConstellationSky constellation={sky} lit={lit} still={!lively} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold pg-fg">Le faltan {remaining.toLocaleString('es')} XP para el nivel {student.level + 1}</p>
+                <div
+                  role="progressbar"
+                  aria-label={`Progreso al nivel ${student.level + 1}`}
+                  aria-valuemin={0}
+                  aria-valuemax={progress.needed}
+                  aria-valuenow={progress.inLevel}
+                  className="mt-1.5 h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-600"
                 >
-                  Código <span className="font-mono font-bold text-gray-800 dark:text-gray-100">{getStudentLinkCode(student.id)}</span>
-                  <Copy size={12} aria-hidden="true" />
+                  <motion.div initial={false} animate={{ width: `${progress.percent}%` }} className="h-full rounded-full bg-[var(--pg-accent)]" />
+                </div>
+                <p className="mt-1 text-xs pg-fg2">{student.xp.toLocaleString('es')} XP · {student.gp.toLocaleString('es')} de oro</p>
+              </div>
+            </div>
+
+            {/* Energía: solo por excepción y nunca al proyectar */}
+            {!projecting && current.energy && (
+              <p className="flex flex-wrap items-center gap-2 text-sm">
+                {current.energy === 'resting' ? (
+                  <>
+                    <RestingPill compact />
+                    <button type="button" onClick={() => onRecovery(student.id)} className="pg-btn pg-btn-ghost px-2 text-primary-800 dark:text-primary-200">
+                      {initial ? 'Recuperar energía' : 'Misión de recuperación'}
+                    </button>
+                  </>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 font-semibold pg-alert">
+                    <Heart size={14} className="fill-current" aria-hidden="true" />
+                    Energía baja:
+                    {initial ? <Hearts hp={student.hp} maxHp={maxHp} /> : <span>{student.hp} de {maxHp}</span>}
+                  </span>
+                )}
+              </p>
+            )}
+
+            {/* Dar: los más usados de la clase; corregir, plegado */}
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold pg-fg">Dar a {name}</h3>
+                <button type="button" onClick={() => points.onOpenAll(student.id, true)} className="pg-btn pg-btn-ghost px-2 text-primary-800 dark:text-primary-200">
+                  {points.totalPositives > points.positives.length ? `Ver todos (${points.totalPositives})` : 'Más opciones'}
                 </button>
+              </div>
+              {points.positives.length === 0 ? (
+                <p className="text-sm pg-fg2">La clase aún no tiene comportamientos positivos.</p>
+              ) : (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {points.positives.map((behavior) => (
+                    // Los nombres suelen ser largos: el nombre usa todo el ancho y el monto va debajo.
+                    <button
+                      key={behavior.id}
+                      type="button"
+                      onClick={() => points.onApply(behavior, student.id)}
+                      disabled={points.applying}
+                      title={`${behavior.name} · ${rewardText(behavior)}`}
+                      className="pg-btn min-h-[56px] items-start justify-start gap-2 whitespace-normal py-2 text-left font-medium"
+                    >
+                      <span className="flex-shrink-0 text-lg leading-6" aria-hidden="true">{behavior.icon || '⭐'}</span>
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span className="line-clamp-3 break-words leading-snug">{behavior.name}</span>
+                        <span className="mt-0.5 text-xs font-bold pg-pos-ink">{rewardText(behavior)}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {points.negatives.length > 0 && (
+                  <BehaviorMenu
+                    mode="fix"
+                    target={name}
+                    positives={[]}
+                    negatives={points.negatives}
+                    totalPositives={0}
+                    totalNegatives={points.totalNegatives}
+                    disabled={points.applying}
+                    onApply={(behavior) => points.onApply(behavior, student.id)}
+                    onOpenAll={(positive) => points.onOpenAll(student.id, positive)}
+                    align="start"
+                  />
+                )}
+                <button type="button" onClick={() => onAwardBadge(student.id)} className="pg-btn pg-btn-ghost">
+                  <Medal size={16} aria-hidden="true" /> Insignia
+                </button>
+                <button type="button" onClick={() => onViewProfile(student.id)} className="pg-btn pg-btn-ghost">
+                  <Eye size={16} aria-hidden="true" /> Ver perfil
+                </button>
+              </div>
+            </div>
+
+            {/* Lo de hoy, con deshacer (al proyectar, solo lo positivo) */}
+            <div className="border-t pt-3 pg-line">
+              <h3 className="mb-1 text-sm font-semibold pg-fg">Hoy con {name}</h3>
+              {todayEntries.length === 0 ? (
+                <p className="text-sm pg-fg2">Aún nada hoy.</p>
+              ) : (
+                <ul className="divide-y divide-gray-100 dark:divide-gray-700">
+                  {todayEntries.slice(0, 5).map((entry) => {
+                    const amounts = entryAmounts(entry);
+                    return (
+                      <li key={entry.id} className="flex items-center gap-2 py-1 text-sm">
+                        <span className="w-11 text-xs tabular-nums pg-fg2">
+                          {new Date(entry.timestamp).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate pg-fg">{entry.details.reason || 'Puntos'}</span>
+                        <span className={`font-semibold ${amounts.positive ? 'pg-pos-ink' : 'pg-fix'}`}>{amounts.text}</span>
+                        <button
+                          type="button"
+                          onClick={() => undoEntry(entry)}
+                          disabled={undoingId !== null}
+                          aria-label={`Deshacer ${entry.details.reason || 'puntos'}`}
+                          title="Deshacer"
+                          className="pg-icon-btn"
+                        >
+                          <RotateCcw size={14} className={undoingId === entry.id ? 'animate-spin' : ''} aria-hidden="true" />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
             </div>
-
-            {/* Datos y acciones */}
-            <div className="flex-1 min-w-0 flex flex-col gap-4 lg:overflow-y-auto lg:pr-1">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white truncate">{getDisplayName(student)}</h2>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-900/40 px-2.5 py-0.5 text-sm font-bold text-amber-800 dark:text-amber-200">
-                    Nivel {student.level}
-                  </span>
-                  {topStudentId === student.id && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-primary-100 dark:bg-primary-900/40 px-2.5 py-0.5 text-sm font-semibold text-primary-800 dark:text-primary-200">
-                      <Crown size={14} aria-hidden="true" /> Líder en XP
-                    </span>
-                  )}
-                </div>
-                <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-                  <span className="text-lg" aria-hidden="true">{classInfoOf(student)?.icon || '👤'}</span>
-                  <select
-                    aria-label="Clase de personaje"
-                    value={student.characterClassId || ''}
-                    onChange={(e) => onAssignClass(student.id, e.target.value || null)}
-                    className="min-h-[32px] rounded-lg border border-gray-200 dark:border-gray-600 bg-transparent px-2 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 cursor-pointer"
-                  >
-                    <option value="">Sin clase</option>
-                    {characterClasses.filter((c) => c.isActive !== false && c.id).map((c) => (
-                      <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
-                    ))}
-                  </select>
-                  {classroom.clansEnabled && (
-                    <span className="rounded-full px-2 py-0.5 text-xs font-medium text-gray-800 dark:text-gray-100" style={{ backgroundColor: `${student.clanColor || '#6b7280'}33` }}>
-                      🛡️ {student.clanName || 'Sin clan'}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Estadísticas */}
-              <div className={`grid gap-2 ${projecting ? 'grid-cols-2' : 'grid-cols-3'}`}>
-                {!projecting && (
-                <div className="rounded-xl bg-gray-50 dark:bg-gray-900/40 p-3">
-                  <div className="flex items-center gap-1.5 text-sm font-semibold text-red-700 dark:text-red-300"><Heart size={16} className="fill-current" aria-hidden="true" />Energía</div>
-                  {student.hp <= 0 ? (
-                    <div className="mt-1 space-y-1.5">
-                      <RestingPill compact />
-                      {onRecovery && (
-                        <button type="button" onClick={() => onRecovery(student.id)}
-                          className="block min-h-[36px] text-sm font-semibold text-primary-800 underline-offset-2 hover:underline dark:text-primary-200">
-                          {initial ? 'Recuperar' : 'Misión'}
-                        </button>
-                      )}
-                    </div>
-                  ) : initial ? (
-                    <div className="mt-1.5"><Hearts hp={student.hp} maxHp={maxHp} /></div>
-                  ) : (
-                    <>
-                      <div className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tabular-nums whitespace-nowrap">{student.hp}<span className="text-xs sm:text-sm font-normal text-gray-500 dark:text-gray-400"> / {maxHp}</span></div>
-                      <div className="mt-1 h-1.5 rounded-full bg-gray-200 dark:bg-gray-600 overflow-hidden">
-                        <motion.div initial={false} animate={{ width: `${Math.min((student.hp / maxHp) * 100, 100)}%` }} className="h-full rounded-full bg-red-500" />
-                      </div>
-                    </>
-                  )}
-                </div>
-                )}
-                <div className="rounded-xl bg-gray-50 dark:bg-gray-900/40 p-3">
-                  <div className="flex items-center gap-1.5 text-sm font-semibold text-primary-700 dark:text-primary-300"><Sparkles size={16} aria-hidden="true" />XP</div>
-                  <div className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tabular-nums whitespace-nowrap">{student.xp}</div>
-                  <div className="mt-1 h-1.5 rounded-full bg-gray-200 dark:bg-gray-600 overflow-hidden" title={`${levelProgress(student).inLevel} / ${levelProgress(student).needed} para el nivel ${student.level + 1}`}>
-                    <motion.div initial={false} animate={{ width: `${levelProgress(student).percent}%` }} className="h-full rounded-full bg-primary-500" />
-                  </div>
-                </div>
-                <div className="rounded-xl bg-gray-50 dark:bg-gray-900/40 p-3">
-                  <div className="flex items-center gap-1.5 text-sm font-semibold text-amber-700 dark:text-amber-300"><Coins size={16} aria-hidden="true" />Oro</div>
-                  <div className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white tabular-nums whitespace-nowrap">{student.gp}</div>
-                </div>
-              </div>
-
-              {/* Comportamientos más usados: un toque */}
-              <div>
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Un toque aplica a {getDisplayName(student)}</span>
-                  <button
-                    type="button"
-                    onClick={() => onOpenAllBehaviors(student.id)}
-                    className="min-h-[36px] px-2 rounded-lg text-sm font-semibold text-primary-700 dark:text-primary-300 hover:bg-primary-50 dark:hover:bg-primary-900/30"
-                  >
-                    {totalBehaviors > featuredBehaviors.length ? `Ver todos (${totalBehaviors})` : 'Más opciones'}
-                  </button>
-                </div>
-                {featuredBehaviors.length === 0 ? (
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Esta clase aún no tiene comportamientos.</p>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {[...positives, ...negatives].map((behavior) => {
-                      const rewards = getBehaviorRewards(behavior);
-                      const sign = behavior.isPositive ? '+' : '−';
-                      return (
-                        <button
-                          key={behavior.id}
-                          type="button"
-                          onClick={() => onApplyBehavior(behavior, student.id)}
-                          disabled={isApplying}
-                          className={`min-h-[48px] flex items-center justify-between gap-2 rounded-xl border-2 px-3 text-left text-sm font-medium transition-colors disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
-                            behavior.isPositive
-                              ? 'border-emerald-200 dark:border-emerald-800 text-gray-900 dark:text-white hover:border-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'
-                              : 'border-red-200 dark:border-red-800 text-gray-900 dark:text-white hover:border-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'
-                          }`}
-                        >
-                          <span className="flex items-center gap-2 min-w-0">
-                            <span className="text-lg flex-shrink-0" aria-hidden="true">{behavior.icon || (behavior.isPositive ? '⭐' : '💔')}</span>
-                            <span className="truncate">{behavior.name}</span>
-                          </span>
-                          <span className={`flex-shrink-0 text-xs font-bold ${behavior.isPositive ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
-                            {rewards.map((reward) => `${sign}${reward.amount} ${reward.type}`).join(' · ')}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => onAwardBadge(student.id)}
-                    className="inline-flex items-center gap-1.5 min-h-[36px] px-3 rounded-lg border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
-                  >
-                    <Medal size={15} aria-hidden="true" /> Insignia
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onViewProfile(student.id)}
-                    className="inline-flex items-center gap-1.5 min-h-[36px] px-3 rounded-lg border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
-                  >
-                    <Eye size={15} aria-hidden="true" /> Ver perfil completo
-                  </button>
-                </div>
-              </div>
-
-              {/* Lo que se le dio hoy */}
-              <div className="border-t border-gray-200 dark:border-gray-700 pt-3">
-                <p className="mb-1 text-sm font-semibold text-gray-700 dark:text-gray-200">Hoy con {getDisplayName(student)}</p>
-                {todayEntries.length === 0 ? (
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Sin actividad hoy.</p>
-                ) : (
-                  <ul className="divide-y divide-gray-100 dark:divide-gray-700">
-                    {todayEntries.slice(0, 5).map((entry) => {
-                      const amounts = entryAmounts(entry);
-                      return (
-                        <li key={entry.id} className="flex items-center gap-2 py-1.5 text-sm">
-                          <span className="w-11 text-xs text-gray-500 dark:text-gray-400 tabular-nums">
-                            {new Date(entry.timestamp).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                          <span className="flex-1 min-w-0 truncate text-gray-800 dark:text-gray-100">{entry.details.reason || 'Puntos'}</span>
-                          <span className={`font-semibold ${amounts.positive ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>{amounts.text}</span>
-                          <button
-                            type="button"
-                            onClick={() => undoEntry(entry)}
-                            disabled={undoingId !== null}
-                            aria-label={`Deshacer ${entry.details.reason || 'puntos'}`}
-                            title="Deshacer"
-                            className="inline-flex items-center justify-center min-h-[32px] min-w-[32px] rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
-                          >
-                            <RotateCcw size={14} className={undoingId === entry.id ? 'animate-spin' : ''} aria-hidden="true" />
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
-            </div>
           </div>
-        </section>
-      )}
+        </div>
+      </section>
     </div>
   );
 };

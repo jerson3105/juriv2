@@ -5,13 +5,13 @@ import { BellOff, ChevronRight, PartyPopper, Star } from 'lucide-react';
 import { historyApi } from '../../lib/historyApi';
 import { localToday } from '../home/homeHelpers';
 import { LEVEL_SOURCE_LABEL, timeLabel } from '../history/historyHelpers';
-import { SwitchRow } from '../settings/settingsUi';
 import { useCelebrationStore } from '../../store/celebrationStore';
 import { levelUpsTodayKey } from './celebrationHelpers';
 
 /**
- * "Hoy subieron: N" en la Lista: quién subió de nivel hoy (cualquier origen), celebrar lo
- * acumulado en modo silencioso y las preferencias de celebración.
+ * «Hoy subieron» en la Lista: neutro en 0 y en oro si hubo subidas o hay celebraciones guardadas (modo
+ * silencioso). Dentro, quién subió hoy (cualquier origen) y «Celebrar ahora». Las preferencias viven en
+ * «Modo clase», en la barra del aula.
  */
 export const TodayLevelUps = ({ classroomId, nameOf }: { classroomId: string; nameOf: (studentId: string, fallback: string | null) => string }) => {
   const [open, setOpen] = useState(false);
@@ -19,10 +19,7 @@ export const TodayLevelUps = ({ classroomId, nameOf }: { classroomId: string; na
   const panelRef = useRef<HTMLDivElement>(null);
   const { since, date } = localToday();
   const silent = useCelebrationStore((s) => s.silent);
-  const sound = useCelebrationStore((s) => s.sound);
   const pending = useCelebrationStore((s) => s.pending.length);
-  const setSilent = useCelebrationStore((s) => s.setSilent);
-  const setSound = useCelebrationStore((s) => s.setSound);
   const playPending = useCelebrationStore((s) => s.playPending);
 
   const { data } = useQuery({
@@ -47,19 +44,21 @@ export const TodayLevelUps = ({ classroomId, nameOf }: { classroomId: string; na
   }, [open]);
 
   return (
-    <div className="relative">
+    // En el celular, en 0 no ocupa lugar en la barra.
+    <div className={`relative ${students === 0 && pending === 0 ? 'max-sm:hidden' : ''}`}>
       <button
         ref={buttonRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls="today-level-ups"
-        className="inline-flex min-h-[40px] items-center gap-1.5 whitespace-nowrap rounded-lg border border-amber-300 bg-white px-3 text-sm font-semibold text-amber-800 hover:bg-amber-50 dark:border-amber-700 dark:bg-gray-800 dark:text-amber-200 dark:hover:bg-amber-900/30"
+        title="Subidas de nivel de hoy"
+        className={students > 0 || pending > 0 ? 'pg-btn pg-gold border-transparent' : 'pg-btn pg-btn-ghost pg-fg2'}
       >
-        {silent ? <BellOff size={15} aria-hidden="true" /> : <Star size={15} className="fill-current" aria-hidden="true" />}
-        Hoy subieron: {students}
-        {pending > 0 && <span className="rounded-full bg-amber-600 px-1.5 text-xs font-bold text-white">{pending}</span>}
-        <span className="sr-only">{silent ? ' (modo silencioso)' : ''}{pending > 0 ? `, ${pending} sin celebrar` : ''}</span>
+        {silent ? <BellOff size={15} aria-hidden="true" /> : <Star size={15} className={students > 0 ? 'fill-current' : ''} aria-hidden="true" />}
+        {students > 0 ? <span>Hoy subieron {students}</span> : <span aria-hidden="true">{students}</span>}
+        {pending > 0 && <span className="rounded-full bg-amber-700 px-1.5 text-xs font-bold text-white" aria-hidden="true">{pending}</span>}
+        <span className="sr-only">{students > 0 ? '' : 'Hoy subieron de nivel: 0'}{silent ? ' (modo silencioso)' : ''}{pending > 0 ? `, ${pending} sin celebrar` : ''}</span>
       </button>
       {open && (
         <>
@@ -91,10 +90,9 @@ export const TodayLevelUps = ({ classroomId, nameOf }: { classroomId: string; na
                 <PartyPopper size={16} aria-hidden="true" /> Celebrar ahora ({pending})
               </button>
             )}
-            <div className="mt-2 divide-y divide-gray-100 border-t border-gray-100 dark:divide-gray-700 dark:border-gray-700">
-              <SwitchRow title="Modo silencioso" description="Para exámenes: no se anima nada; se guarda para celebrar después." checked={silent} onChange={setSilent} />
-              <SwitchRow title="Sonidos de celebración" checked={sound} onChange={setSound} />
-            </div>
+            <p className="mt-2 border-t border-gray-100 pt-2 text-sm text-gray-700 dark:border-gray-700 dark:text-gray-300">
+              El modo silencioso y los sonidos están en «Modo clase», arriba.
+            </p>
             <Link to={`/classroom/${classroomId}/history?type=LEVEL_UP&period=today`}
               className="mt-1 inline-flex min-h-[44px] items-center gap-1 text-sm font-semibold text-primary-800 hover:underline dark:text-primary-200">
               Ver en el Registro <ChevronRight size={16} aria-hidden="true" />

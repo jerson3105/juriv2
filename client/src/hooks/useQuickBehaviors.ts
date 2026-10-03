@@ -1,45 +1,33 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { Behavior } from '../lib/behaviorApi';
-
-type QuickBehaviorIds = { positiveId: string | null; negativeId: string | null };
 
 const storageKey = (classroomId: string) => `juried:quick-behaviors:${classroomId}`;
 
-const readStored = (classroomId: string): QuickBehaviorIds => {
+// Guardado como { positiveId, negativeId } (el negativo ya no tiene botón propio: se conserva por compatibilidad).
+const readPinned = (classroomId: string): string | null => {
   try {
     const raw = localStorage.getItem(storageKey(classroomId));
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      return { positiveId: parsed.positiveId ?? null, negativeId: parsed.negativeId ?? null };
-    }
+    if (raw) return JSON.parse(raw).positiveId ?? null;
   } catch {
-    // Sin almacenamiento disponible: se usan los predeterminados.
+    // Sin almacenamiento disponible: el más usado.
   }
-  return { positiveId: null, negativeId: null };
+  return null;
 };
 
-// Comportamientos de la acción rápida por fila (uno positivo y uno negativo), recordados por clase
-// en este navegador. Si no hay elección guardada (o ya no existe), se usa el primero de cada tipo.
-export const useQuickBehaviors = (classroomId: string, positives: Behavior[], negatives: Behavior[]) => {
-  const [ids, setIds] = useState<QuickBehaviorIds>(() => readStored(classroomId));
+// Comportamiento del botón de cada fila, fijado por clase en este navegador. Sin fijar (o si ya no existe),
+// el más usado de la clase (`fallback`). La Lista se monta por clase, así que se lee una vez.
+export const useQuickBehaviors = (classroomId: string, positives: Behavior[], fallback: Behavior | null) => {
+  const [pinnedId, setPinnedId] = useState<string | null>(() => readPinned(classroomId));
 
-  useEffect(() => {
-    setIds(readStored(classroomId));
-  }, [classroomId]);
-
-  const save = (next: QuickBehaviorIds) => {
-    setIds(next);
+  const pin = (id: string | null) => {
+    setPinnedId(id);
     try {
-      localStorage.setItem(storageKey(classroomId), JSON.stringify(next));
+      localStorage.setItem(storageKey(classroomId), JSON.stringify({ positiveId: id, negativeId: null }));
     } catch {
       // Ignorar: la elección vale solo para esta sesión.
     }
   };
 
-  return {
-    positive: positives.find((behavior) => behavior.id === ids.positiveId) ?? positives[0] ?? null,
-    negative: negatives.find((behavior) => behavior.id === ids.negativeId) ?? negatives[0] ?? null,
-    setPositiveId: (id: string) => save({ ...ids, positiveId: id }),
-    setNegativeId: (id: string) => save({ ...ids, negativeId: id }),
-  };
+  const pinned = positives.find((behavior) => behavior.id === pinnedId) ?? null;
+  return { rowBehavior: pinned ?? fallback, pinnedId: pinned?.id ?? null, pin };
 };

@@ -1,10 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronDown } from 'lucide-react';
 import { Sparkle } from './ClassSeal';
 import { groupBadge, type NavBadge, type NavGroup, type NavItem, type NavNode, type NavSection } from './navTypes';
 import { useSidebarUi } from './sidebarContext';
 import { SidebarFlyout } from './sidebarUi';
+import { useStarMarker } from '../../../hooks/useStarMarker';
 
 export const Badge = ({ badge }: { badge: NavBadge }) => {
   switch (badge.kind) {
@@ -51,20 +52,6 @@ const RailBadge = ({ badge }: { badge: NavBadge }) => {
   );
 };
 
-/**
- * Posición vertical de un ítem dentro de su lista, por layout (sin transform). No basta offsetTop: mientras
- * una fila anima (la cascada al abrir el grupo), la fila pasa a ser el offsetParent y offsetTop vale 0.
- */
-const offsetWithin = (element: HTMLElement, container: HTMLElement) => {
-  let top = 0;
-  let node: HTMLElement | null = element;
-  while (node && node !== container) {
-    top += node.offsetTop;
-    node = node.offsetParent as HTMLElement | null;
-  }
-  return node === container ? top : element.getBoundingClientRect().top - container.getBoundingClientRect().top;
-};
-
 interface NavListProps {
   items: NavItem[];
   /** Dentro de un grupo: la guía nace bajo el ícono del grupo. */
@@ -82,38 +69,8 @@ interface NavListProps {
  * llegas desde otra).
  */
 export const NavList = ({ items, inGroup = false, speed, onNavigate, labelledBy, visible = true }: NavListProps) => {
-  const listRef = useRef<HTMLDivElement>(null);
-  const markerRef = useRef<HTMLSpanElement>(null);
-  const lastY = useRef<number | null>(null);
   const activeId = items.find((item) => item.active)?.id ?? null;
-
-  useLayoutEffect(() => {
-    const list = listRef.current;
-    const marker = markerRef.current;
-    if (!list || !marker) return;
-    const target = activeId ? list.querySelector<HTMLElement>(`[data-nav-id="${CSS.escape(activeId)}"]`) : null;
-    if (!target) {
-      marker.classList.remove('sb-marker-pop');
-      marker.style.opacity = '0';
-      lastY.current = null;
-      return;
-    }
-    const y = offsetWithin(target, list) + target.offsetHeight / 2;
-    if (lastY.current === null) {
-      marker.style.transition = 'none';
-      marker.style.transform = `translateY(${y}px)`;
-      void marker.offsetHeight;
-      marker.style.transition = '';
-      marker.classList.remove('sb-marker-pop');
-      void marker.offsetWidth;
-      marker.classList.add('sb-marker-pop');
-    } else {
-      marker.style.transform = `translateY(${y}px)`;
-    }
-    marker.style.opacity = '1';
-    lastY.current = y;
-    if (visible) target.scrollIntoView({ block: 'nearest' });
-  }, [activeId, items.length, visible]);
+  const { listRef, markerRef } = useStarMarker(activeId, 'data-nav-id', items.length, visible);
 
   return (
     <div ref={listRef} className="sb-list" data-in-group={inGroup}>

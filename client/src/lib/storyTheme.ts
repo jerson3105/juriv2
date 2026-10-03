@@ -112,6 +112,30 @@ export const storyAccentVars = (accent: StoryAccent | null): CSSProperties | und
 export const accentGradient = (accent: StoryAccent, angle = 135) =>
   `linear-gradient(${angle}deg, ${accent.primary}, ${accent.secondary})`;
 
+/**
+ * Color de un clan sin texto blanco encima: franja y emblema en su color, un tinte suave de fondo y la tinta
+ * derivada para el texto (≥ 4.5:1 sobre el tinte, en claro y en oscuro). Variables para `.pg-clan-*`.
+ */
+const clanCache = new Map<string, CSSProperties>();
+
+export const clanVars = (color: string | null | undefined): CSSProperties => {
+  const key = color ?? '';
+  const cached = clanCache.get(key);
+  if (cached) return cached;
+  const base = toRgb(key) ?? toRgb('#6b7280')!;
+  const tintLight = toHex(mix(toRgb(SURFACE_LIGHT)!, base, 0.14));
+  const tintDark = toHex(mix(toRgb(SURFACE_DARK)!, base, 0.22));
+  const vars = {
+    '--clan': toHex(base),
+    '--clan-tint': tintLight,
+    '--clan-tint-dark': tintDark,
+    '--clan-ink': ensureContrast(base, tintLight, 4.6, 'dark'),
+    '--clan-ink-dark': ensureContrast(base, tintDark, 4.6, 'light'),
+  } as CSSProperties;
+  clanCache.set(key, vars);
+  return vars;
+};
+
 /** Mezcla dos colores hex (t = cuánto del segundo); el primero si alguno no es válido. */
 export const mixHex = (a: string, b: string, t: number) => {
   const ra = toRgb(a);

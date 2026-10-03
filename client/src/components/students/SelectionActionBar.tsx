@@ -1,40 +1,47 @@
-import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ChevronUp, Medal, Minus, Plus, Swords, X } from 'lucide-react';
+import { ChevronUp, Medal, MoreHorizontal, Plus, Swords, X } from 'lucide-react';
+import { usePopover } from '../../hooks/usePopover';
+import { Popover } from '../ui/Popover';
 
 type CharacterClassOption = { id?: string; name: string; icon?: string | null; isActive?: boolean };
 
 interface SelectionActionBarProps {
   count: number;
-  allowNegative: boolean;
+  /** false al proyectar o si la clase no usa negativos. */
+  canCorrect: boolean;
   characterClasses: CharacterClassOption[];
   onGive: () => void;
-  onRemove: () => void;
+  onCorrect: () => void;
   onBadge: () => void;
-  onAssignClass: (characterClassId: string | null) => void;
+  onAssignRole: (characterClassId: string | null) => void;
   onClear: () => void;
 }
 
-const actionClass =
-  'inline-flex items-center gap-1.5 min-h-[44px] px-3 sm:px-4 rounded-xl text-sm font-semibold text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary-500';
+const RoleOptions = ({ options, onPick }: { options: CharacterClassOption[]; onPick: (id: string | null) => void }) => (
+  <>
+    <p className="pg-menu-label">Rol para la selección</p>
+    {options.filter((option) => option.isActive !== false && option.id).map((option) => (
+      <button key={option.id} type="button" onClick={() => onPick(option.id!)} className="pg-menu-item">
+        <span className="w-5 text-center" aria-hidden="true">{option.icon}</span>
+        {option.name}
+      </button>
+    ))}
+    <div className="pg-menu-sep" />
+    <button type="button" onClick={() => onPick(null)} className="pg-menu-item pg-fg2">
+      <X size={14} aria-hidden="true" /> Sin rol
+    </button>
+  </>
+);
 
-// Barra fija al pie que aparece al seleccionar alumnos: las acciones masivas quedan siempre a la
-// vista aunque la selección se haga al final de una lista larga.
-export const SelectionActionBar = ({
-  count,
-  allowNegative,
-  characterClasses,
-  onGive,
-  onRemove,
-  onBadge,
-  onAssignClass,
-  onClear,
-}: SelectionActionBarProps) => {
-  const [showClassMenu, setShowClassMenu] = useState(false);
+// Barra fija al pie mientras haya alumnos seleccionados: un solo botón relleno («Dar puntos»), el resto
+// con contorno; «Corregir» en pizarra. En el celular cabe en una fila (lo demás, en «⋯»).
+export const SelectionActionBar = ({ count, canCorrect, characterClasses, onGive, onCorrect, onBadge, onAssignRole, onClear }: SelectionActionBarProps) => {
+  const { open: roleOpen, anchorRef: roleAnchor, close: closeRole, toggle: toggleRole } = usePopover();
+  const { open: moreOpen, anchorRef: moreAnchor, close: closeMore, toggle: toggleMore } = usePopover();
 
-  const assignClass = (characterClassId: string | null) => {
-    setShowClassMenu(false);
-    onAssignClass(characterClassId);
+  const pickRole = (close: (restore?: boolean) => void) => (id: string | null) => {
+    close();
+    onAssignRole(id);
   };
 
   return (
@@ -45,88 +52,54 @@ export const SelectionActionBar = ({
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 24, opacity: 0 }}
           transition={{ duration: 0.18 }}
-          className="fixed bottom-4 inset-x-3 z-40 flex justify-center pointer-events-none"
+          className="pointer-events-none fixed inset-x-3 bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 flex justify-center"
           role="region"
           aria-label="Acciones para los estudiantes seleccionados"
         >
-          <div className="pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white/95 dark:bg-gray-800/95 backdrop-blur px-3 py-2 shadow-xl">
-            <span className="inline-flex items-center gap-2 pl-1 pr-2 text-sm font-semibold text-gray-800 dark:text-gray-100">
-              <span className="inline-flex min-w-[28px] h-7 items-center justify-center rounded-full bg-primary-600 px-2 text-white">
-                {count}
-              </span>
-              seleccionado{count !== 1 ? 's' : ''}
+          <div className="pg-surface pointer-events-auto flex items-center gap-2 px-2 py-2 shadow-[var(--pg-shadow)] sm:px-3">
+            <span className="inline-flex items-center gap-2 pl-1 pr-1 text-sm font-semibold pg-fg">
+              <span className="inline-flex h-7 min-w-[28px] items-center justify-center rounded-full bg-primary-600 px-2 text-white">{count}</span>
+              <span className="hidden sm:inline">seleccionado{count !== 1 ? 's' : ''}</span>
             </span>
 
-            <button type="button" onClick={onGive} className={`${actionClass} bg-emerald-700 hover:bg-emerald-800`}>
+            <button type="button" onClick={onGive} className="pg-btn pg-btn-give" data-filled="true">
               <Plus size={16} aria-hidden="true" />
               Dar puntos
             </button>
-            {allowNegative && (
-              <button type="button" onClick={onRemove} className={`${actionClass} bg-red-600 hover:bg-red-700`}>
-                <Minus size={16} aria-hidden="true" />
-                Quitar
-              </button>
-            )}
-            <button type="button" onClick={onBadge} className={`${actionClass} bg-amber-700 hover:bg-amber-800`}>
-              <Medal size={16} aria-hidden="true" />
-              Insignia
-            </button>
 
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setShowClassMenu((open) => !open)}
-                aria-expanded={showClassMenu}
-                aria-haspopup="menu"
-                className={`${actionClass} bg-violet-600 hover:bg-violet-700`}
-              >
+            <span className="hidden items-center gap-2 sm:inline-flex">
+              {canCorrect && (
+                <button type="button" onClick={onCorrect} className="pg-btn pg-btn-fix">Corregir</button>
+              )}
+              <button type="button" onClick={onBadge} className="pg-btn">
+                <Medal size={16} aria-hidden="true" />
+                Insignia
+              </button>
+              <button ref={roleAnchor} type="button" onClick={toggleRole} aria-expanded={roleOpen} aria-haspopup="dialog" className="pg-btn">
                 <Swords size={16} aria-hidden="true" />
-                Clase
+                Rol
                 <ChevronUp size={14} aria-hidden="true" />
               </button>
-              {showClassMenu && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setShowClassMenu(false)} />
-                  <div
-                    role="menu"
-                    className="absolute bottom-full mb-2 right-0 z-50 w-52 max-h-72 overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 py-1 shadow-xl"
-                  >
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => assignClass(null)}
-                      className="w-full min-h-[40px] text-left px-3 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
-                    >
-                      <X size={14} aria-hidden="true" />
-                      Sin clase
-                    </button>
-                    <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
-                    {characterClasses
-                      .filter((characterClass) => characterClass.isActive !== false && characterClass.id)
-                      .map((characterClass) => (
-                        <button
-                          key={characterClass.id}
-                          type="button"
-                          role="menuitem"
-                          onClick={() => assignClass(characterClass.id!)}
-                          className="w-full min-h-[40px] text-left px-3 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
-                        >
-                          <span aria-hidden="true">{characterClass.icon}</span>
-                          {characterClass.name}
-                        </button>
-                      ))}
-                  </div>
-                </>
-              )}
-            </div>
+            </span>
+            <Popover open={roleOpen} onClose={closeRole} anchorRef={roleAnchor} label="Rol para la selección" side="top">
+              <RoleOptions options={characterClasses} onPick={pickRole(closeRole)} />
+            </Popover>
 
-            <button
-              type="button"
-              onClick={onClear}
-              aria-label="Quitar selección"
-              title="Quitar selección"
-              className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] rounded-xl text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
-            >
+            <button ref={moreAnchor} type="button" onClick={toggleMore} aria-expanded={moreOpen} aria-haspopup="dialog" aria-label="Más acciones para la selección" className="pg-icon-btn sm:hidden">
+              <MoreHorizontal size={18} aria-hidden="true" />
+            </button>
+            <Popover open={moreOpen} onClose={closeMore} anchorRef={moreAnchor} label="Más acciones para la selección" side="top">
+              {canCorrect && (
+                <button type="button" onClick={() => { closeMore(); onCorrect(); }} className="pg-menu-item pg-fix">Corregir</button>
+              )}
+              <button type="button" onClick={() => { closeMore(); onBadge(); }} className="pg-menu-item">
+                <Medal size={16} aria-hidden="true" /> Insignia
+              </button>
+              <div className="pg-menu-sep" />
+              <RoleOptions options={characterClasses} onPick={pickRole(closeMore)} />
+            </Popover>
+
+            <button type="button" onClick={onClear} aria-label="Quitar selección" title="Quitar selección" className="pg-icon-btn">
               <X size={18} aria-hidden="true" />
             </button>
           </div>

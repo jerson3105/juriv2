@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, Download, Printer, UserPlus, UserX } from 'lucide-react';
+import { ChevronDown, Download, Printer, Settings2, UserPlus, UserX } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { studentApi } from '../../lib/studentApi';
 import { placeholderStudentApi } from '../../lib/placeholderStudentApi';
@@ -86,10 +86,14 @@ export const StudentsManageMenu = ({ classroomId, onAddStudents }: { classroomId
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls="students-manage-panel"
+        aria-label="Gestionar alumnos"
+        title="Gestionar alumnos"
         disabled={busy}
-        className="inline-flex min-h-[40px] items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-800 hover:bg-gray-50 disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+        className="pg-btn max-sm:w-11 max-sm:px-0"
       >
-        Gestionar <ChevronDown size={16} className={open ? 'rotate-180' : ''} aria-hidden="true" />
+        <Settings2 size={18} className="sm:hidden" aria-hidden="true" />
+        <span className="hidden sm:inline">Gestionar</span>
+        <ChevronDown size={16} className={`hidden sm:block ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
       </button>
       {open && (
         <>
