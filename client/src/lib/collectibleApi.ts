@@ -131,6 +131,10 @@ export interface StickerView {
   shiny: boolean;
   /** La consiguió en los últimos 7 días. */
   isNew: boolean;
+  /** Caja de la clase: copias que puede donar (repetidas normales; nunca la última ni la brillante). */
+  donatable: number;
+  /** Caja de la clase: si le falta, cuántas hay en la caja para tomar. */
+  inBox: number;
 }
 
 export interface AlbumRewards {
@@ -157,6 +161,8 @@ export interface StudentAlbumView {
   /** El sobre de hoy: figuritas que trae y precio (null con el álbum completo o archivado). */
   pack: { cards: number; price: number } | null;
   rewards: AlbumRewards;
+  /** La caja de la clase (anónima): cuántas quedan y cuántas puede tomar hoy. Null si está cerrada. */
+  box: { total: number; takesLeft: number } | null;
   cards: StickerView[];
 }
 
@@ -176,6 +182,35 @@ export interface StudentCollectiblesView {
   albums: StudentAlbumView[];
   /** Álbumes que se completaron al mirar (la última figurita llegó por la Historia). */
   justCompleted: AlbumCompletion[];
+}
+
+export interface DonateResult {
+  cardId: string;
+  slotNumber: number;
+  name: string;
+  /** Cuántas de esa figurita quedan ahora en la caja. */
+  inBox: number;
+}
+
+export interface TakeResult {
+  card: StickerView;
+  takesLeft: number;
+  completed: AlbumCompletion | null;
+}
+
+/** La caja de la clase para el profe: con nombres (los alumnos no los ven). */
+export interface BoxLog {
+  inBox: number;
+  donated: number;
+  taken: number;
+  items: Array<{
+    id: string;
+    card: { slotNumber: number; name: string };
+    donor: string;
+    donatedAt: string;
+    taker: string | null;
+    takenAt: string | null;
+  }>;
 }
 
 export interface OpenPackResult {
@@ -384,6 +419,23 @@ export const collectibleApi = {
   // El sobre de bienvenida: gratis, uno por álbum.
   openWelcome: async (profileId: string, albumId: string): Promise<OpenPackResult> => {
     const response = await api.post(`/collectibles/student/${profileId}/albums/${albumId}/welcome`);
+    return response.data.data;
+  },
+
+  // Caja de la clase: donar una repetida y tomar una que falta (hasta 3 al día).
+  donateToBox: async (profileId: string, albumId: string, cardId: string): Promise<DonateResult> => {
+    const response = await api.post(`/collectibles/student/${profileId}/albums/${albumId}/box/donate`, { cardId });
+    return response.data.data;
+  },
+
+  takeFromBox: async (profileId: string, albumId: string, cardId: string): Promise<TakeResult> => {
+    const response = await api.post(`/collectibles/student/${profileId}/albums/${albumId}/box/take`, { cardId, tz: new Date().getTimezoneOffset() });
+    return response.data.data;
+  },
+
+  // La caja de la clase con nombres (profesor).
+  getBoxLog: async (albumId: string): Promise<BoxLog> => {
+    const response = await api.get(`/collectibles/albums/${albumId}/box`);
     return response.data.data;
   },
 

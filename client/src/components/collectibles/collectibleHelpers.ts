@@ -62,6 +62,7 @@ export const albumKey = (albumId: string) => ['collectible-album', albumId] as c
 export const cardOwnersKey = (albumId: string) => ['collectible-card-owners', albumId] as const;
 
 export const pricingKey = (classroomId: string, cards: number) => ['collectible-pricing', classroomId, cards] as const;
+export const boxLogKey = (albumId: string) => ['collectible-box', albumId] as const;
 
 export { gold };
 

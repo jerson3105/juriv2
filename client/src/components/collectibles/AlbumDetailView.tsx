@@ -18,6 +18,7 @@ interface AlbumDetailViewProps {
   onConfigure: () => void;
   onExport: () => void;
   onMove: () => void;
+  onBox: () => void;
   onArchive: () => void;
 }
 
@@ -76,7 +77,7 @@ const MoreMenu = ({ items }: { items: { label: string; onClick: () => void; dang
 };
 
 export const AlbumDetailView = ({
-  album, owners, onBack, onBrowse, onProgress, onAddCard, onAddWithAI, onEditCard, onDeleteCard, onConfigure, onExport, onMove, onArchive,
+  album, owners, onBack, onBrowse, onProgress, onAddCard, onAddWithAI, onEditCard, onDeleteCard, onConfigure, onExport, onMove, onBox, onArchive,
 }: AlbumDetailViewProps) => {
   const ownersById = useMemo(() => new Map(owners.map((o) => [o.cardId, o.owners])), [owners]);
   const cards = useMemo(() => [...album.cards].sort((a, b) => a.slotNumber - b.slotNumber), [album.cards]);
@@ -128,6 +129,7 @@ export const AlbumDetailView = ({
           </button>
           <MoreMenu items={[
             { label: 'Configurar álbum', onClick: onConfigure },
+            { label: 'Caja de la clase', onClick: onBox },
             { label: 'Copiar a otras clases', onClick: onExport },
             { label: 'Mover figuritas a otro álbum', onClick: onMove, disabled: cards.length === 0 },
             { label: album.isActive ? 'Archivar álbum' : 'Ya está archivado', onClick: onArchive, danger: true, disabled: !album.isActive },

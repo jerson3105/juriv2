@@ -22,6 +22,7 @@ import { AlbumFormModal, type AlbumFormTarget } from '../../components/collectib
 import { CardFormModal, type CardFormTarget } from '../../components/collectibles/CardFormModal';
 import { AICollectiblesModal } from '../../components/collectibles/AICollectiblesModal';
 import { ExportAlbumModal, ImportAlbumModal, MoveCardsModal } from '../../components/collectibles/TransferModals';
+import { BoxLogModal } from '../../components/collectibles/BoxLogModal';
 import { albumKey, albumsKey, cardOwnersKey } from '../../components/collectibles/collectibleHelpers';
 
 type View = { kind: 'list' } | { kind: 'album'; albumId: string } | { kind: 'progress'; albumId: string };
@@ -59,6 +60,7 @@ export const CollectiblesPage = () => {
   const [cardForm, setCardForm] = useState<CardFormTarget | null>(null);
   const [aiMode, setAiMode] = useState<'album' | 'cards' | null>(null);
   const [transfer, setTransfer] = useState<'import' | 'export' | 'move' | null>(null);
+  const [showBox, setShowBox] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const albumId = view.kind === 'list' ? null : view.albumId;
@@ -293,6 +295,7 @@ export const CollectiblesPage = () => {
         onConfigure={() => setAlbumForm({ kind: 'edit', album })}
         onExport={() => setTransfer('export')}
         onMove={() => setTransfer('move')}
+        onBox={() => setShowBox(true)}
         onArchive={() => void setAlbumActive(album, false)}
       />
     );
@@ -312,6 +315,9 @@ export const CollectiblesPage = () => {
     <>
       {content}
 
+      <AnimatePresence>
+        {showBox && album && <BoxLogModal key="box" album={album} onClose={() => setShowBox(false)} />}
+      </AnimatePresence>
       <AnimatePresence>
         {book && <AlbumBook key="book" album={book.album} owned={book.owned} subtitle={book.subtitle} onClose={() => setBook(null)} />}
       </AnimatePresence>

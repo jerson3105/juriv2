@@ -1,6 +1,6 @@
 import { Coins, Lock, Moon } from 'lucide-react';
 import type { StudentAlbumView, StudentCollectiblesView } from '../../../lib/collectibleApi';
-import { cardLink, cardText, cardTitle, homeCard } from '../../student/home/studentHomeHelpers';
+import { cardLink, cardText, cardTitle, homeCard, rowButton } from '../../student/home/studentHomeHelpers';
 import { gold, savingsTrack, statusLine, statusTone } from '../../student/shop/shopStudentHelpers';
 import { EnvelopeIcon } from './Envelope';
 import { completedDate, kioskStateOf, percentOf, rewardsText, spendableOf } from './stickerHelpers';
@@ -11,6 +11,7 @@ interface AlbumPanelProps {
   onOpen: (mode: 'pack' | 'welcome') => void;
   onShowLists: () => void;
   onWhatCanCome: () => void;
+  onOpenBox: () => void;
 }
 
 const progressFill = 'h-full rounded-full bg-primary-600 dark:bg-primary-300';
@@ -58,7 +59,7 @@ const AlbumProgress = ({ view, album, onShowLists }: Pick<AlbumPanelProps, 'view
 };
 
 /** El kiosco: el sobre de bienvenida y el del día, con las reglas de la Tienda a la vista. */
-const Kiosk = ({ view, album, onOpen, onWhatCanCome }: Omit<AlbumPanelProps, 'onShowLists'>) => {
+const Kiosk = ({ view, album, onOpen, onWhatCanCome }: Omit<AlbumPanelProps, 'onShowLists' | 'onOpenBox'>) => {
   const state = kioskStateOf(view, album);
   const spendable = spendableOf(view);
   const young = view.young;
@@ -156,10 +157,29 @@ const Kiosk = ({ view, album, onOpen, onWhatCanCome }: Omit<AlbumPanelProps, 'on
   );
 };
 
-/** El panel al lado del libro (debajo en pantallas chicas): «Tu álbum» y el kiosco. */
+/** La caja de la clase (si está abierta): cuántas de la caja te faltan y cuántas repetidas puedes donar. */
+const BoxCard = ({ album, onOpenBox }: Pick<AlbumPanelProps, 'album' | 'onOpenBox'>) => {
+  if (!album.box) return null;
+  const useful = album.cards.filter((card) => !card.owned && card.inBox > 0).length;
+  const donatable = album.cards.reduce((sum, card) => sum + card.donatable, 0);
+  return (
+    <section className={homeCard} aria-labelledby="box-title">
+      <h2 id="box-title" className={`${cardTitle} flex items-center gap-2`}><span aria-hidden="true">📦</span>Caja de la clase</h2>
+      <p className={`${cardText} mt-0.5`}>Dona tus repetidas y toma las que te faltan. Nadie ve quién dona.</p>
+      <ul className="mt-2 space-y-0.5 text-sm text-gray-800 dark:text-gray-100">
+        <li>{useful === 0 ? 'Ninguna de la caja te falta por ahora.' : useful === 1 ? 'Hay 1 que te falta.' : `Hay ${useful} que te faltan.`}</li>
+        <li>{donatable === 0 ? 'No tienes repetidas para donar.' : donatable === 1 ? 'Puedes donar 1 repetida.' : `Puedes donar ${donatable} repetidas.`}</li>
+      </ul>
+      <button type="button" onClick={onOpenBox} className={`${rowButton} mt-3`}>Abrir la caja</button>
+    </section>
+  );
+};
+
+/** El panel al lado del libro (debajo en pantallas chicas): «Tu álbum», el kiosco y la caja de la clase. */
 export const AlbumPanel = (props: AlbumPanelProps) => (
   <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-1">
     <AlbumProgress view={props.view} album={props.album} onShowLists={props.onShowLists} />
     <Kiosk view={props.view} album={props.album} onOpen={props.onOpen} onWhatCanCome={props.onWhatCanCome} />
+    <BoxCard album={props.album} onOpenBox={props.onOpenBox} />
   </div>
 );

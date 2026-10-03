@@ -14,6 +14,7 @@ import { gold, savingsTrack } from '../../components/student/shop/shopStudentHel
 import { StickerBook } from '../../components/collectibles/student/StickerBook';
 import { AlbumPanel } from '../../components/collectibles/student/AlbumPanel';
 import { OpenPackModal } from '../../components/collectibles/student/OpenPackModal';
+import { BoxModal } from '../../components/collectibles/student/BoxModal';
 import { CompletionCard, StickerDetailModal, StickerListsModal, WhatCanComeModal } from '../../components/collectibles/student/StickerModals';
 import { myCollectiblesKey, pageOfCard, percentOf, readSavedPage, savePage, slotsPerPage } from '../../components/collectibles/student/stickerHelpers';
 
@@ -24,6 +25,7 @@ type Modal =
   | { kind: 'detail'; card: StickerView }
   | { kind: 'lists' }
   | { kind: 'rules' }
+  | { kind: 'box' }
   | null;
 
 const tab = 'inline-flex min-h-[44px] items-center gap-1.5 rounded-xl border-2 px-3 text-sm font-bold transition-colors';
@@ -67,6 +69,8 @@ const CollectiblesContent = ({ profile, storyAccent }: { profile: MyClass; story
   const [modal, setModal] = useState<Modal>(null);
   const [pressIds, setPressIds] = useState<Set<string>>(() => new Set());
   const focusCardId = useRef<string | null>(null);
+  // Lo que tomó de la caja mientras estaba abierta: se pega en el libro al cerrarla.
+  const boxResults = useRef<{ taken: StickerView[]; completed: AlbumCompletion | null }>({ taken: [], completed: null });
 
   const goToPage = useCallback((target: number, id = album?.id) => {
     if (!id) return;
@@ -102,18 +106,40 @@ const CollectiblesContent = ({ profile, storyAccent }: { profile: MyClass; story
     void queryClient.invalidateQueries({ queryKey: ['my-progress', profile.id] });
   };
 
-  // Al cerrar la mesa: el libro salta a la primera nueva (sin girar), las nuevas se aprietan en su casilla y,
-  // si el sobre completó el álbum, se celebra en la página.
+  // Las figuritas que llegan (de un sobre o de la caja): el libro salta a la primera (sin girar), se aprietan en
+  // su casilla y, si completaron el álbum, se celebra en la página.
+  const landCards = (fresh: StickerView[], completed: AlbumCompletion | null) => {
+    if (fresh.length) {
+      setPressIds(new Set(fresh.map((card) => card.id)));
+      jumpToCard([...fresh].sort((a, b) => a.slotNumber - b.slotNumber)[0]);
+    }
+    if (completed) celebrate([completed]);
+  };
+
   const closePack = (result: OpenPackResult | null) => {
     setModal(null);
     refresh();
-    if (!result || !album) return;
-    const fresh = result.cards.filter((card) => card.isNew);
-    if (fresh.length) {
-      setPressIds(new Set(fresh.map((card) => card.id)));
-      jumpToCard(fresh.sort((a, b) => a.slotNumber - b.slotNumber)[0]);
-    }
-    if (result.completed) celebrate([result.completed]);
+    if (result && album) landCards(result.cards.filter((card) => card.isNew), result.completed);
+  };
+
+  // Caja de la clase: cada acción refresca el álbum detrás; lo tomado se pega al cerrar.
+  const takeFromBox = async (card: StickerView) => {
+    const result = await collectibleApi.takeFromBox(profile.id, album!.id, card.id);
+    boxResults.current.taken.push(result.card);
+    if (result.completed) boxResults.current.completed = result.completed;
+    refresh();
+    return `¡La ${card.slotNumber} ya está en tu álbum!${result.completed ? ' ¡Y lo completaste!' : ''}`;
+  };
+  const donateToBox = async (card: StickerView) => {
+    await collectibleApi.donateToBox(profile.id, album!.id, card.id);
+    refresh();
+    return `Donaste una copia de la ${card.slotNumber}. ¡Gracias!`;
+  };
+  const closeBox = () => {
+    setModal(null);
+    const { taken, completed } = boxResults.current;
+    boxResults.current = { taken: [], completed: null };
+    landCards(taken, completed);
   };
 
   const header = (
@@ -208,6 +234,7 @@ const CollectiblesContent = ({ profile, storyAccent }: { profile: MyClass; story
           onOpen={(mode) => setModal({ kind: 'open', mode, album, view })}
           onShowLists={() => setModal({ kind: 'lists' })}
           onWhatCanCome={() => setModal({ kind: 'rules' })}
+          onOpenBox={() => setModal({ kind: 'box' })}
         />
       </div>
 
@@ -224,7 +251,7 @@ const CollectiblesContent = ({ profile, storyAccent }: { profile: MyClass; story
           />
         )}
         {modal?.kind === 'detail' && (
-          <StickerDetailModal key="detail" card={modal.card} album={album} young={view.young} onClose={() => setModal(null)} />
+          <StickerDetailModal key="detail" card={modal.card} album={album} young={view.young} onOpenBox={() => setModal({ kind: 'box' })} onClose={() => setModal(null)} />
         )}
         {modal?.kind === 'lists' && (
           <StickerListsModal
@@ -238,6 +265,7 @@ const CollectiblesContent = ({ profile, storyAccent }: { profile: MyClass; story
           />
         )}
         {modal?.kind === 'rules' && <WhatCanComeModal key="rules" album={album} dailyLimit={view.daily.limit} onClose={() => setModal(null)} />}
+        {modal?.kind === 'box' && <BoxModal key="box" album={album} onTake={takeFromBox} onDonate={donateToBox} onClose={closeBox} />}
       </AnimatePresence>
     </div>
   );

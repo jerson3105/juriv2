@@ -11,7 +11,7 @@ const closeButton = 'inline-flex min-h-[44px] items-center rounded-xl px-4 text-
 const numberButton = 'flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border-2 border-dashed border-gray-400 px-2 text-sm font-black text-gray-800 hover:border-primary-600 hover:bg-primary-50 dark:border-gray-500 dark:text-gray-100 dark:hover:bg-primary-900/30';
 
 /** El detalle de una figurita: el dibujo grande, la rareza, cuántas tienes y su dato (el contenido educativo). */
-export const StickerDetailModal = ({ card, album, young, onClose }: { card: StickerView; album: StudentAlbumView; young: boolean; onClose: () => void }) => {
+export const StickerDetailModal = ({ card, album, young, onOpenBox, onClose }: { card: StickerView; album: StudentAlbumView; young: boolean; onOpenBox: () => void; onClose: () => void }) => {
   const page = pageOfCard(album.cards, card.id, slotsPerPage(young));
   const rarity = CARD_RARITY_STYLE[card.rarity];
   return (
@@ -49,6 +49,16 @@ export const StickerDetailModal = ({ card, album, young, onClose }: { card: Stic
       ) : (
         <p className={`${cardText} text-center`}>Te falta. Puede salir en los sobres de este álbum.</p>
       )}
+      {album.box && (card.owned ? card.donatable > 0 : card.inBox > 0) && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-emerald-50 p-3 dark:bg-emerald-900/20">
+          <p className="text-sm text-emerald-900 dark:text-emerald-100">
+            {card.owned
+              ? `Puedes donar ${card.donatable === 1 ? '1 copia' : `${card.donatable} copias`} a la caja de la clase.`
+              : `Hay ${card.inBox} en la caja de la clase.`}
+          </p>
+          <button type="button" onClick={onOpenBox} className={rowButton}>Ir a la caja</button>
+        </div>
+      )}
     </HomeModal>
   );
 };
@@ -79,7 +89,7 @@ export const StickerListsModal = ({ album, onPick, onClose }: { album: StudentAl
       {repeated.length > 0 && (
         <div>
           <h3 className="text-sm font-bold text-gray-900 dark:text-white">Repetidas</h3>
-          <p className={`${cardText} mb-2`}>Las guardas para cambiarlas más adelante.</p>
+          <p className={`${cardText} mb-2`}>{album.box ? 'Puedes donarlas a la caja de la clase.' : 'Por ahora la caja de la clase está cerrada.'}</p>
           <ul className="flex flex-wrap gap-2" aria-label="Figuritas repetidas">
             {repeated.map((card) => (
               <li key={card.id}>
@@ -107,7 +117,7 @@ export const WhatCanComeModal = ({ album, dailyLimit, onClose }: { album: Studen
   <HomeModal title="¿Qué puede salir?" subtitle={album.name} onClose={onClose} footer={<button type="button" onClick={onClose} className={closeButton}>Entendido</button>}>
     <ul className="list-disc space-y-2 pl-5 text-sm text-gray-800 dark:text-gray-200">
       <li>Cada figurita del sobre sale de <strong>las que te faltan</strong>, y todas tienen la misma probabilidad, sea común o legendaria.</li>
-      <li><strong>1 de cada 5</strong>, en promedio, es una repetida de las que ya tienes. Las repetidas se guardan para cambiarlas más adelante.</li>
+      <li><strong>1 de cada 5</strong>, en promedio, es una repetida de las que ya tienes. Las repetidas puedes donarlas a la caja de la clase: las toma un compañero al que le falten.</li>
       <li>El sobre trae {album.pack?.cards ?? 5} figuritas (el último, solo las que te falten) y puedes abrir {dailyLimit === 1 ? '1 al día' : `hasta ${dailyLimit} al día`}.</li>
       <li>Cuando completas el álbum, ya no hay más sobres: no gastas oro de más.</li>
     </ul>

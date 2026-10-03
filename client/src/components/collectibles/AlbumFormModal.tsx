@@ -28,6 +28,8 @@ const initialState = (target: AlbumFormTarget) => {
     priceLevel: album?.priceLevel ?? null as CollectiblePriceLevel | null,
     rewardGp: album?.rewardGp ?? 0,
     rewardBadgeId: album?.rewardBadgeId ?? '',
+    // La caja de la clase, encendida por defecto.
+    allowTrades: album?.allowTrades ?? true,
     isActive: album?.isActive ?? true,
   };
 };
@@ -97,6 +99,7 @@ export const AlbumFormModal = ({ target, classroomId, isSaving, onClose, onSubmi
       ...(form.priceLevel ? { priceLevel: form.priceLevel } : {}),
       rewardGp: form.rewardGp,
       rewardBadgeId: form.rewardBadgeId || null,
+      allowTrades: form.allowTrades,
       ...(isEdit ? { isActive: form.isActive } : {}),
     });
     if (saved) onClose();
@@ -207,6 +210,18 @@ export const AlbumFormModal = ({ target, classroomId, isSaving, onClose, onSubmi
             </label>
             <p className="mt-1.5 text-xs text-gray-700 dark:text-gray-300">Sin XP: lo que se compra con oro no sube de nivel.</p>
           </div>
+
+          <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-gray-200 p-3 dark:border-gray-600">
+            <input type="checkbox" checked={form.allowTrades} onChange={(e) => set('allowTrades', e.target.checked)} className="h-5 w-5 rounded border-gray-400 text-primary-600 focus:ring-primary-500" />
+            <span>
+              <span className="block text-sm font-semibold text-gray-900 dark:text-white">Caja de la clase</span>
+              <span className="block text-xs text-gray-700 dark:text-gray-300">
+                {preview.data?.young
+                  ? 'En inicial a 2.º no se usa: sus sobres no dan repetidas.'
+                  : 'Tus estudiantes donan sus repetidas y un compañero al que le falta la toma (hasta 3 al día). Es anónima para ellos; tú ves quién dona y quién toma.'}
+              </span>
+            </span>
+          </label>
 
           {isEdit && (
             <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-gray-200 p-3 dark:border-gray-600">
