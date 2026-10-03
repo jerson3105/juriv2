@@ -1,32 +1,16 @@
 import { Request, Response } from 'express';
 import { db } from '../db/index.js';
 import {
-  users, classrooms, avatarItems, avatarCollections, studentProfiles,
+  users, classrooms, avatarItems, studentProfiles,
   questionBanks, questions, timedActivities, expeditions
 } from '../db/schema.js';
 import { eq, desc, count, sql, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcryptjs';
-import path from 'path';
-import fs from 'fs';
 import { teacherVerificationService } from '../services/teacherVerification.service.js';
 import { adminUsersService } from '../services/adminUsers.service.js';
 import { AppError } from '../utils/errors.js';
-import { AVATAR_RATIO, AVATAR_UPLOAD_DIR, AVATAR_UPLOAD_PATH, avatarImageRatio } from '../utils/avatarImages.js';
 import { z } from 'zod';
-
-const LAYER_ORDER: Record<string, number> = {
-  FLAG: -2,     // Detrás del personaje
-  BACK: -1,     // Detrás del personaje
-  SHOES: 1,
-  BOTTOM: 2,
-  TOP: 3,
-  LEFT_HAND: 4,
-  RIGHT_HAND: 5,
-  EYES: 6,
-  HEAD: 7,
-  HAIR: 8,
-};
 
 const userIdSchema = z.string().uuid();
 const roleChangeSchema = z.object({
@@ -273,163 +257,6 @@ export const adminController = {
     } catch (error) {
       console.error('Error creating teacher:', error);
       res.status(500).json({ success: false, message: 'Error al crear profesor' });
-    }
-  },
-
-  // ==================== GESTIÓN DE ITEMS DE AVATAR ====================
-  async getAvatarItems(req: Request, res: Response) {
-    try {
-      const gender = req.query.gender as string | undefined;
-      const slot = req.query.slot as string | undefined;
-      
-      // Solo mostrar items activos
-      const items = await db
-        .select()
-        .from(avatarItems)
-        .where(eq(avatarItems.isActive, true))
-        .orderBy(desc(avatarItems.createdAt));
-
-      // Filtrar en memoria si hay filtros adicionales
-      let filteredItems = items;
-      if (gender) {
-        filteredItems = filteredItems.filter(item => item.gender === gender);
-      }
-      if (slot) {
-        filteredItems = filteredItems.filter(item => item.slot === slot);
-      }
-
-      res.json({
-        success: true,
-        data: filteredItems,
-      });
-    } catch (error) {
-      console.error('Error getting avatar items:', error);
-      res.status(500).json({ success: false, message: 'Error al obtener items' });
-    }
-  },
-
-  async createAvatarItem(req: Request, res: Response) {
-    try {
-      const { name, description, gender, slot, rarity, basePrice, isDefault } = req.body;
-      const file = req.file;
-
-      if (!file) {
-        return res.status(400).json({ success: false, message: 'Se requiere una imagen PNG' });
-      }
-
-      if (!name || !gender || !slot) {
-        return res.status(400).json({ success: false, message: 'Faltan campos requeridos' });
-      }
-      if (gender !== 'MALE' && gender !== 'FEMALE') {
-        return res.status(400).json({ success: false, message: 'El cuerpo debe ser MALE o FEMALE' });
-      }
-      if (!(slot in LAYER_ORDER) && slot !== 'BACKGROUND') {
-        return res.status(400).json({ success: false, message: 'Ranura inválida' });
-      }
-      if (rarity && !['COMMON', 'RARE', 'LEGENDARY'].includes(rarity)) {
-        return res.status(400).json({ success: false, message: 'Rareza inválida' });
-      }
-      // Catálogo v2: lo nuevo entra en «Básicos» y llega solo a todas las clases.
-      const [basicos] = await db.select({ id: avatarCollections.id }).from(avatarCollections).where(eq(avatarCollections.slug, 'basicos'));
-
-      // Las prendas se superponen al personaje: deben tener su proporción (395×959) para quedar alineadas.
-      // Los fondos se recortan para cubrir el recuadro, así que pueden tener cualquier tamaño.
-      if (slot !== 'BACKGROUND') {
-        const ratio = await avatarImageRatio(file.path);
-        if (!ratio || Math.abs(ratio - AVATAR_RATIO) / AVATAR_RATIO > 0.03) {
-          fs.unlinkSync(file.path);
-          return res.status(400).json({ success: false, message: 'La imagen debe tener la proporción del personaje (395×959 px)' });
-        }
-      }
-
-      // Fuera del repositorio (carpeta de subidas): se ve al instante y sobrevive a los despliegues.
-      fs.mkdirSync(AVATAR_UPLOAD_DIR, { recursive: true });
-      fs.renameSync(file.path, path.join(AVATAR_UPLOAD_DIR, file.filename));
-
-      const id = uuidv4();
-      const now = new Date();
-      const imagePath = `${AVATAR_UPLOAD_PATH}${file.filename}`;
-
-      await db.insert(avatarItems).values({
-        id,
-        name,
-        description: description || null,
-        gender,
-        slot,
-        imagePath,
-        layerOrder: LAYER_ORDER[slot] || 0,
-        basePrice: parseInt(basePrice) || 100,
-        rarity: rarity || 'COMMON',
-        collectionId: basicos?.id ?? null,
-        isDefault: isDefault === 'true' || isDefault === true,
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      const [newItem] = await db.select().from(avatarItems).where(eq(avatarItems.id, id));
-
-      res.status(201).json({
-        success: true,
-        message: 'Item creado exitosamente',
-        data: newItem,
-      });
-    } catch (error) {
-      console.error('Error creating avatar item:', error);
-      // Limpiar archivo temporal si existe
-      if (req.file?.path && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-      }
-      res.status(500).json({ success: false, message: 'Error al crear item' });
-    }
-  },
-
-  async updateAvatarItem(req: Request, res: Response) {
-    try {
-      const { itemId } = req.params;
-      const { name, description, basePrice, rarity, isActive, isDefault } = req.body;
-
-      const updateData: Record<string, any> = { updatedAt: new Date() };
-      
-      if (name !== undefined) updateData.name = name;
-      if (description !== undefined) updateData.description = description;
-      if (basePrice !== undefined) updateData.basePrice = parseInt(basePrice);
-      if (rarity !== undefined) updateData.rarity = rarity;
-      if (isActive !== undefined) updateData.isActive = isActive;
-      if (isDefault !== undefined) updateData.isDefault = isDefault;
-
-      await db
-        .update(avatarItems)
-        .set(updateData)
-        .where(eq(avatarItems.id, itemId));
-
-      const [updatedItem] = await db.select().from(avatarItems).where(eq(avatarItems.id, itemId));
-
-      res.json({
-        success: true,
-        message: 'Item actualizado',
-        data: updatedItem,
-      });
-    } catch (error) {
-      console.error('Error updating avatar item:', error);
-      res.status(500).json({ success: false, message: 'Error al actualizar item' });
-    }
-  },
-
-  async deleteAvatarItem(req: Request, res: Response) {
-    try {
-      const { itemId } = req.params;
-
-      // Soft delete - solo desactivar
-      await db
-        .update(avatarItems)
-        .set({ isActive: false, updatedAt: new Date() })
-        .where(eq(avatarItems.id, itemId));
-
-      res.json({ success: true, message: 'Item eliminado' });
-    } catch (error) {
-      console.error('Error deleting avatar item:', error);
-      res.status(500).json({ success: false, message: 'Error al eliminar item' });
     }
   },
 

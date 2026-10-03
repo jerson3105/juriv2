@@ -1,0 +1,2 @@
+/** Botón principal del panel (azul 600: AA con texto blanco en claro y en oscuro). */
+export const primaryButton = 'inline-flex min-h-[2.5rem] items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-4 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-55 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--pg-ring)]';

@@ -169,7 +169,8 @@ const buildEntries = (catalog: Catalog, exceptions: Exceptions, base: number, le
   });
 
 const isVisible = (entry: Entry) => !entry.hidden && !entry.collectionHidden;
-const isNew = (item: CatalogItem) => Date.now() - new Date(item.createdAt).getTime() < NEW_DAYS * 86_400_000;
+// «Nueva» cuenta desde que se publicó (un borrador puede esperar días antes de salir).
+const isNew = (item: CatalogItem) => Date.now() - new Date(item.publishedAt ?? item.createdAt).getTime() < NEW_DAYS * 86_400_000;
 
 /** Lo que el alumno puede ponerse en su cuerpo actual: lo comprado y su par en este cuerpo (las iniciales aparte). */
 const ownedFor = async (profileId: string, gender: AvatarGender) => {

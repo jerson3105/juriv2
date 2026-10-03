@@ -68,6 +68,8 @@ const SettingsPage = lazyPage(() => import('./pages/settings/SettingsPage').then
 // Admin pages
 const AdminDashboard = lazyPage(() => import('./pages/admin/AdminDashboard'));
 const AdminAvatarItems = lazyPage(() => import('./pages/admin/AdminAvatarItems'));
+const AdminAvatarItemPage = lazyPage(() => import('./pages/admin/AdminAvatarItemPage'));
+const AvatarItemEditorPage = lazyPage(() => import('./pages/admin/AvatarItemEditorPage'));
 const AdminUsers = lazyPage(() => import('./pages/admin/AdminUsers'));
 const AdminClassrooms = lazyPage(() => import('./pages/admin/AdminClassrooms'));
 const AdminExpeditionMaps = lazyPage(() => import('./pages/admin/AdminExpeditionMaps'));
@@ -318,6 +320,30 @@ function App() {
             element={
               <ProtectedRoute>
                 <AdminAvatarItems />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/avatar-items/nueva"
+            element={
+              <ProtectedRoute>
+                <AvatarItemEditorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/avatar-items/:id/editar"
+            element={
+              <ProtectedRoute>
+                <AvatarItemEditorPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/avatar-items/:id"
+            element={
+              <ProtectedRoute>
+                <AdminAvatarItemPage />
               </ProtectedRoute>
             }
           />

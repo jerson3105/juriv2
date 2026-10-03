@@ -962,6 +962,9 @@ export const avatarItems = mysqlTable('avatar_items', {
   gender: avatarGenderEnum.notNull(), // MALE o FEMALE
   slot: avatarSlotEnum.notNull(), // HEAD, HAIR, EYES, TOP, etc.
   imagePath: varchar('image_path', { length: 500 }).notNull(), // ruta a la imagen PNG
+  // sha256 de la imagen subida desde el panel (las sembradas no lo tienen): las dos versiones de un par
+  // nunca comparten archivo.
+  imageHash: varchar('image_hash', { length: 64 }),
   layerOrder: int('layer_order').notNull(), // orden de renderizado (mayor = más arriba)
   basePrice: int('base_price').notNull().default(100), // sin uso en el catálogo v2 (el precio sale de la rareza y la clase)
   rarity: itemRarityEnum.notNull().default('COMMON'),
@@ -969,10 +972,14 @@ export const avatarItems = mysqlTable('avatar_items', {
   // La misma prenda en el otro cuerpo comparte pair_key: lo comprado pasa al cambiar de cuerpo.
   pairKey: varchar('pair_key', { length: 36 }),
   isDefault: boolean('is_default').notNull().default(false), // items por defecto al crear cuenta
+  // Borrador = inactiva sin publishedAt; publicada = activa; retirada = inactiva con publishedAt.
   isActive: boolean('is_active').notNull().default(true),
+  publishedAt: datetime('published_at'),
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
-});
+}, (table) => ({
+  pairGenderUnique: unique('uniq_avatar_items_pair_gender').on(table.pairKey, table.gender),
+}));
 
 export const avatarItemsRelations = relations(avatarItems, ({ many }) => ({
   classroomItems: many(classroomAvatarItems),

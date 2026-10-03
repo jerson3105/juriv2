@@ -35,15 +35,18 @@ export const resolveAvatarSource = (src: string): string | null => {
   return null;
 };
 
+// Tope de píxeles al decodificar (las capas miden 395×959; un archivo enorme no llega a la memoria).
+const open = (source: string) => sharp(source, { animated: false, limitInputPixels: 25_000_000 });
+
 const render = async (source: string, variant: AvatarVariant, target: string) => {
   try {
     // La prenda recortada a su contenido (sin el lienzo transparente del personaje).
-    const base = variant === 'thumb' ? sharp(source, { animated: false }).trim() : sharp(source, { animated: false });
+    const base = variant === 'thumb' ? open(source).trim() : open(source);
     await VARIANTS[variant](base).toFile(target);
   } catch (error) {
     if (variant !== 'thumb') throw error;
     // Una imagen vacía no se puede recortar: va completa.
-    await VARIANTS.thumb(sharp(source, { animated: false })).toFile(target);
+    await VARIANTS.thumb(open(source)).toFile(target);
   }
 };
 
