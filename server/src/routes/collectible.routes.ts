@@ -9,7 +9,7 @@ import { createUploadFilter, safeUploadFilename, verifyUploadedFile, IMAGE_MIMES
 
 const router = Router();
 
-// Imágenes de cromos y portadas: UPLOAD_DIR/collectibles, servidas por /api/uploads/collectibles (index.ts).
+// Imágenes de figuritas y portadas: UPLOAD_DIR/collectibles, servidas por /api/uploads/collectibles (index.ts).
 const collectibleImagesDir = path.join(process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads'), 'collectibles');
 if (!fs.existsSync(collectibleImagesDir)) {
   fs.mkdirSync(collectibleImagesDir, { recursive: true });
@@ -26,7 +26,7 @@ const uploadCollectibleImage = multer({
 // Todas las rutas requieren autenticación
 router.use(authenticate);
 
-// Subir imagen de cromo o portada (profesor)
+// Subir imagen de figurita o portada (profesor)
 router.post('/upload-image', authorize('TEACHER'), (req, res, next) => {
   uploadCollectibleImage(req, res, (error: unknown) => {
     if (error) {
@@ -42,7 +42,7 @@ router.post('/upload-image', authorize('TEACHER'), (req, res, next) => {
   res.json({ imageUrl: `/api/uploads/collectibles/${req.file.filename}` });
 });
 
-// Cuántos estudiantes tienen cada cromo de un álbum (profesor)
+// Cuántos estudiantes tienen cada figurita de un álbum (profesor)
 router.get('/albums/:albumId/card-owners', authorize('TEACHER'), collectibleController.getCardOwners);
 
 // ==================== ÁLBUMES (PROFESOR) ====================
@@ -119,7 +119,7 @@ router.post(
   collectibleController.createManyCards
 );
 
-// Mover cromos entre álbumes de la misma clase
+// Mover figuritas entre álbumes de la misma clase
 router.post(
   '/albums/:albumId/cards/move',
   authorize('TEACHER'),

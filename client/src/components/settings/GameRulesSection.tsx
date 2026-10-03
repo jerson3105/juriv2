@@ -130,7 +130,7 @@ const EnergyCard = ({ classroom }: { classroom: Classroom }) => {
       footer={initial ? null : <SaveBar dirty={dirty} saving={saving} invalid={invalid} onSave={submit} onDiscard={reset} note={invalid ? 'Cada misión necesita al menos 3 letras' : undefined} />}
     >
       <ul className="mt-2 space-y-1.5 text-sm text-gray-800 dark:text-gray-100">
-        <li>🌙 Con 0 HP el alumno <strong>descansa</strong>: {initial ? 'lo recuperas en cuanto esté listo.' : 'la tienda de premios se pausa y sigue ganando XP y oro.'}</li>
+        <li>🌙 Con 0 HP el alumno <strong>descansa</strong>: {initial ? 'lo recuperas en cuanto esté listo.' : 'sus compras con oro (premios, ropa del avatar y sobres de figuritas) se pausan y sigue ganando XP y oro.'}</li>
         {!initial && <li>✅ Vuelve con la mitad de su energía al cumplir una <strong>misión de recuperación</strong> que tú validas.</li>}
         <li>📖 Al empezar un capítulo de la Historia, todos vuelven a su energía máxima.</li>
         {initial && <li>❤️ En inicial la energía se ve con corazones, sin números.</li>}

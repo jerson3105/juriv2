@@ -179,7 +179,7 @@ class StudentSummaryService {
       }
     }
 
-    // Cromos: distintos que tiene de los álbumes de la clase.
+    // Figuritas: distintas que tiene de los álbumes de la clase.
     const albumIds = (await db.select({ id: collectibleAlbums.id }).from(collectibleAlbums)
       .where(eq(collectibleAlbums.classroomId, classroomId))).map((a) => a.id);
     let collectibles = { owned: 0, total: 0 };

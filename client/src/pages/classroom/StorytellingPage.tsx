@@ -400,7 +400,7 @@ const RevealModal = ({ chapter, position, next, busy, onPresent, onRevealOnly, o
     reward?.badgeId ? 'una insignia' : null,
     reward?.xp ? `${reward.xp} XP` : null,
     reward?.gp ? `${reward.gp} de oro` : null,
-    reward?.cardId ? 'un cromo' : null,
+    reward?.cardId ? 'una figurita' : null,
   ].filter(Boolean);
   return (
     <StoryConfirmModal

@@ -549,7 +549,7 @@ const SceneView = ({ scene, hideDialogue, backdrop, emoji, projector, line, text
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
-// Resumen de lo entregado al revelar (insignia, XP, oro, cromo).
+// Resumen de lo entregado al revelar (insignia, XP, oro, figurita).
 const rewardLine = (r: StoryRewardResult) => [
   r.badge && r.badge.awarded > 0 ? `${r.badge.icon} ${r.badge.name}` : null,
   r.xp ? `+${r.xp} XP` : null,

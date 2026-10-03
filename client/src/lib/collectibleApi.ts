@@ -227,7 +227,7 @@ export interface CardOwners {
   owners: number;
 }
 
-// URL de imágenes de cromos/portadas: las subidas viven en /api/uploads/collectibles (junto a la API);
+// URL de imágenes de figuritas/portadas: las subidas viven en /api/uploads/collectibles (junto a la API);
 // las antiguas pueden ser URLs externas y se usan tal cual.
 const API_ORIGIN = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace(/\/api\/?$/, '');
 export const collectibleImageUrl = (path: string) => (path.startsWith('/api/') ? `${API_ORIGIN}${path}` : path);
@@ -345,13 +345,13 @@ export const collectibleApi = {
     await api.delete(`/collectibles/cards/${cardId}`);
   },
 
-  // Cuántos estudiantes tienen cada cromo (un cromo con dueños no se puede borrar)
+  // Cuántos estudiantes tienen cada figurita (una figurita con dueños no se puede borrar)
   getCardOwners: async (albumId: string): Promise<CardOwners[]> => {
     const response = await api.get(`/collectibles/albums/${albumId}/card-owners`);
     return response.data;
   },
 
-  // Subir imagen de cromo o portada
+  // Subir imagen de figurita o portada
   uploadImage: async (file: File): Promise<string> => {
     const formData = new FormData();
     formData.append('image', file);

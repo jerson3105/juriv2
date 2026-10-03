@@ -157,7 +157,7 @@ export const classroomIdOfShopItem = (shopItemId: string) => classroomIdById(cla
 /** Clase de un perfil de estudiante. */
 export const classroomIdOfStudentProfile = (studentProfileId: string) => classroomIdById(studentProfiles, studentProfileId);
 
-/** Clase de un álbum de cromos. */
+/** Clase de un álbum de figuritas. */
 export const classroomIdOfAlbum = (albumId: string) => classroomIdById(collectibleAlbums, albumId);
 
 /** Clase de un comportamiento. */
@@ -207,7 +207,7 @@ export const questionBanksOwnedBy = async (
   return rows.length === unique.length;
 };
 
-/** Clase de una carta de cromos (a través de su álbum). */
+/** Clase de una figurita (a través de su álbum). */
 export const classroomIdOfCard = async (cardId: string): Promise<string | null> => {
   if (!cardId) return null;
   const [row] = await db

@@ -151,7 +151,7 @@ export const CollectiblesPage = () => {
     }
   };
 
-  // ── Cromos ──
+  // ── Figuritas ──
   const saveCard = async (data: CreateCardData, another: boolean) => {
     if (!album) return false;
     setSaving(true);

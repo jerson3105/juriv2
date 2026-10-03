@@ -93,7 +93,7 @@ export const RecoveryMissionModal = ({ classroomId, studentId, studentName, init
         <p>
           {initial
             ? `${studentName} se quedó sin energía. En inicial vuelve en cuanto esté listo: recupéralo cuando se haya calmado.`
-            : `${studentName} se quedó sin energía. Mientras descansa, la tienda de premios está en pausa (sigue ganando XP y oro). Al cumplir su misión vuelve con la mitad de su energía.`}
+            : `${studentName} se quedó sin energía. Mientras descansa, sus compras con oro están en pausa: premios, ropa del avatar y sobres de figuritas (sigue ganando XP y oro). Al cumplir su misión vuelve con la mitad de su energía.`}
         </p>
       </div>
 

@@ -2249,14 +2249,14 @@ export const collectibleAlbumsRelations = relations(collectibleAlbums, ({ one, m
   cards: many(collectibleCards),
 }));
 
-// Cromos/cartas del álbum
+// Figuritas del álbum
 export const collectibleCards = mysqlTable('collectible_cards', {
   id: varchar('id', { length: 36 }).primaryKey(),
   albumId: varchar('album_id', { length: 36 }).notNull(),
   name: varchar('name', { length: 255 }).notNull(),
   description: text('description'),
   imageUrl: varchar('image_url', { length: 500 }),
-  icon: varchar('icon', { length: 50 }), // Emoji del cromo cuando no hay imagen (migrations/add_collectible_card_icon.sql)
+  icon: varchar('icon', { length: 50 }), // Emoji de la figurita cuando no hay imagen (migrations/add_collectible_card_icon.sql)
   rarity: cardRarityEnum.notNull().default('COMMON'),
   slotNumber: int('slot_number').notNull(), // Posición en el álbum
   isShiny: boolean('is_shiny').notNull().default(false), // Versión brillante
@@ -2276,7 +2276,7 @@ export const collectibleCardsRelations = relations(collectibleCards, ({ one, man
   studentCollectibles: many(studentCollectibles),
 }));
 
-// Cromos obtenidos por estudiantes
+// Figuritas obtenidas por estudiantes
 export const studentCollectibles = mysqlTable('student_collectibles', {
   id: varchar('id', { length: 36 }).primaryKey(),
   studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),

@@ -21,7 +21,7 @@ export const RestingBanner = ({ profileId }: { profileId: string }) => {
           <p className="text-sm text-slate-800 dark:text-slate-100">Te quedaste sin energía. Cuando estés listo, tu profe te ayudará a recuperarla.</p>
         ) : (
           <>
-            <p className="text-sm text-slate-800 dark:text-slate-100">Te quedaste sin energía. Mientras descansas, la tienda de premios está en pausa. Sigues ganando XP y oro.</p>
+            <p className="text-sm text-slate-800 dark:text-slate-100">Te quedaste sin energía. Mientras descansas, las compras con oro están en pausa: premios, ropa de tu personaje y sobres de figuritas. Sigues ganando XP y oro.</p>
             <p className="mt-2 text-sm font-semibold text-slate-900 dark:text-white">
               {data.mission ? <>Tu misión: «{data.mission.text}»</> : 'Pregúntale a tu profe por tu misión de recuperación.'}
             </p>

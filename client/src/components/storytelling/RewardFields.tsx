@@ -54,9 +54,9 @@ export const RewardFields = ({ classroomId, clansEnabled, value, disabled, onCha
           </select>
         </div>
         <div>
-          <label htmlFor="reward-card" className={labelClass}>Cromo</label>
+          <label htmlFor="reward-card" className={labelClass}>Figurita</label>
           <select id="reward-card" value={value.cardId ?? ''} onChange={(e) => set({ cardId: e.target.value || null })} className={`${inputClass} mt-1`} disabled={disabled || cards.length === 0}>
-            <option value="">{cards.length === 0 ? 'La clase no tiene álbumes' : 'Ninguno'}</option>
+            <option value="">{cards.length === 0 ? 'La clase no tiene álbumes' : 'Ninguna'}</option>
             {cards.map((c) => <option key={c.id} value={c.id}>{c.name} ({c.album})</option>)}
           </select>
         </div>

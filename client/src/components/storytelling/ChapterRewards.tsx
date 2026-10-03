@@ -20,7 +20,7 @@ export const ChapterRewardChips = ({ chapter }: { chapter: StoryChapter }) => {
         config?.badgeId ? '🏅 Insignia' : null,
         config?.xp ? `+${config.xp} XP` : null,
         config?.gp ? `+${config.gp} oro` : null,
-        config?.cardId ? '🃏 Cromo' : null,
+        config?.cardId ? '🃏 Figurita' : null,
         config?.clanPrize?.mode === 'GP' ? `Clan ganador: +${config.clanPrize.gp ?? 0} oro c/u` : null,
       ];
   const visible = chips.filter(Boolean);

@@ -690,7 +690,7 @@ class StoryService {
     });
   }
 
-  /** Nombres de la insignia y el cromo configurados (para mostrarlos al alumno y en el editor). */
+  /** Nombres de la insignia y la figurita configuradas (para mostrarlos al alumno y en el editor). */
   async rewardPreview(config: StoryRewardConfig | null) {
     if (!config) return null;
     const [badge] = config.badgeId
@@ -709,7 +709,7 @@ class StoryService {
     return preview.badge || preview.xp || preview.gp || preview.card || preview.clanPrize.mode !== 'NONE' ? preview : null;
   }
 
-  /** La insignia y el cromo de la recompensa deben ser de esta clase. */
+  /** La insignia y la figurita de la recompensa deben ser de esta clase. */
   async validateRewardConfig(classroomId: string, config: StoryRewardConfig | null | undefined) {
     if (!config) return;
     if (config.badgeId) {
@@ -722,7 +722,7 @@ class StoryService {
       const [card] = await db.select({ id: collectibleCards.id }).from(collectibleCards)
         .innerJoin(collectibleAlbums, eq(collectibleCards.albumId, collectibleAlbums.id))
         .where(and(eq(collectibleCards.id, config.cardId), eq(collectibleAlbums.classroomId, classroomId)));
-      if (!card) throw new ValidationError('El cromo no pertenece a esta clase');
+      if (!card) throw new ValidationError('La figurita no pertenece a esta clase');
     }
   }
 
@@ -818,7 +818,7 @@ class StoryService {
     }
   }
 
-  /** Un cromo para cada alumno (suma uno si ya lo tenía). */
+  /** Una figurita para cada alumno (suma una copia si ya la tenía). */
   private async grantCard(cardId: string, studentIds: string[]) {
     if (studentIds.length === 0) return;
     const now = new Date();
@@ -901,10 +901,10 @@ class StoryService {
       try {
         const [card] = await db.select({ name: collectibleCards.name }).from(collectibleCards).where(eq(collectibleCards.id, config.cardId));
         await this.grantCard(config.cardId, participants);
-        result.card = { id: config.cardId, name: card?.name ?? 'Cromo', granted: participants.length };
+        result.card = { id: config.cardId, name: card?.name ?? 'Figurita', granted: participants.length };
       } catch (error) {
-        result.errors!.push('cromo');
-        console.error('Recompensa de historia (cromo):', error);
+        result.errors!.push('figurita');
+        console.error('Recompensa de historia (figurita):', error);
       }
     }
 

@@ -557,7 +557,7 @@ class CollectibleService {
     rarity?: CardRarity;
   }>) {
     const now = new Date();
-    // Continúa la numeración: antes empezaba en 1 y duplicaba casillas al añadir a un álbum con cromos.
+    // Continúa la numeración: antes empezaba en 1 y duplicaba casillas al añadir a un álbum con figuritas.
     const [maxSlot] = await db
       .select({ max: sql<number>`COALESCE(MAX(slot_number), 0)` })
       .from(collectibleCards)
@@ -602,7 +602,7 @@ class CollectibleService {
     return card;
   }
 
-  // Solo se borra si ningún estudiante lo tiene (no se quitan cromos ya pagados). Las casillas
+  // Solo se borra si ningún estudiante lo tiene (no se quitan figuritas ya pagadas). Las casillas
   // posteriores se corren para no dejar huecos.
   async deleteCard(cardId: string): Promise<{ deleted: boolean; owners: number }> {
     return db.transaction(async (tx) => {
@@ -622,7 +622,7 @@ class CollectibleService {
     });
   }
 
-  // Cuántos estudiantes tienen cada cromo del álbum (para avisar antes de borrar).
+  // Cuántos estudiantes tienen cada figurita del álbum (para avisar antes de borrar).
   async getCardOwnerCounts(albumId: string) {
     const rows = await db
       .select({

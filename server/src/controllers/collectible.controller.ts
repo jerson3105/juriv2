@@ -417,7 +417,7 @@ export const collectibleController = {
     }
   },
 
-  // Cuántos estudiantes tienen cada cromo de un álbum (profesor)
+  // Cuántos estudiantes tienen cada figurita de un álbum (profesor)
   async getCardOwners(req: Request, res: Response, next: NextFunction) {
     try {
       const { albumId } = req.params;
