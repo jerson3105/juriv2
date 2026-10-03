@@ -5,22 +5,19 @@ import { motion } from 'framer-motion';
 import {
   Sparkles,
   GraduationCap,
-  LogOut,
   Menu,
   X,
   Map,
   Rocket,
-  Coins,
-  TrendingUp,
-  Crown,
   Wrench,
 } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../store/authStore';
+import { useProjectorStore } from '../../store/projectorStore';
 import { classroomApi } from '../../lib/classroomApi';
 import { NotificationsBell, NotificationsPanel } from '../NotificationsPanel';
-import { ThemeToggle } from '../ui/ThemeToggle';
-import { BugReportButton } from '../BugReportButton';
+import { ClassModeMenu } from './ClassModeMenu';
+import { AccountMenu } from './AccountMenu';
 import { classNoteApi } from '../../lib/classNoteApi';
 import { shopApi } from '../../lib/shopApi';
 
@@ -95,6 +92,7 @@ export const ClassroomLayout = () => {
   const [showUnlockModal, setShowUnlockModal] = useState(false);
   const [earlyUnlockConfirm, setEarlyUnlockConfirm] = useState<{ features: string[]; label: string } | null>(null);
   const { logout } = useAuthStore();
+  const projecting = useProjectorStore((s) => s.projecting);
   const onboarding = useTeacherOnboardingSafe();
 
   const { data: classroom, isLoading, refetch } = useQuery({
@@ -140,26 +138,6 @@ export const ClassroomLayout = () => {
     staleTime: 60_000,
   });
   const readyToReveal = classroomStories.reduce((sum, story) => sum + (story.isActive ? story.readyToReveal ?? 0 : 0), 0);
-
-  const classroomStudents = classroom?.students || [];
-  const headerTotalXP = classroomStudents.reduce((sum, student) => sum + (student.xp || 0), 0);
-  const headerTotalGP = classroomStudents.reduce((sum, student) => sum + (student.gp || 0), 0);
-  const headerAvgLevel = classroomStudents.length > 0
-    ? Math.round((classroomStudents.reduce((sum, student) => sum + (student.level || 0), 0) / classroomStudents.length) * 10) / 10
-    : 0;
-  const headerTopStudent = classroomStudents.length > 0
-    ? [...classroomStudents].sort((a, b) => (b.xp || 0) - (a.xp || 0))[0]
-    : null;
-  const showStudentsSummaryHeader = location.pathname.includes('/students');
-
-  const getHeaderDisplayName = (student: typeof classroomStudents[number] | null) => {
-    if (!student) return 'Sin datos';
-    if (classroom?.showCharacterName === false) {
-      if (student.realName && student.realLastName) return `${student.realName} ${student.realLastName}`;
-      return student.realName || student.characterName || 'Sin nombre';
-    }
-    return student.characterName || 'Sin nombre';
-  };
 
   // ── Sidebar ───────────────────────────────────────────────────────────────────────────────────
   // Funciones del onboarding: lo bloqueado no aparece; lo recién activado lleva «Nuevo».
@@ -228,6 +206,7 @@ export const ClassroomLayout = () => {
     <div
       className="fixed inset-0 z-[100] flex bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800"
       style={storyAccentVars(storyAccent)}
+      data-projecting={projecting}
     >
       {/* Partículas del tema: apagadas por defecto en vistas del profesor (interruptor en Historia de clase) */}
       {storyAccent?.particles && teacherParticles && (
@@ -284,20 +263,20 @@ export const ClassroomLayout = () => {
 
       {/* Contenido principal */}
       <div ref={contentRef} className={`flex-1 flex flex-col overflow-hidden relative z-10 ${collapsed ? 'lg:pl-[72px]' : 'lg:pl-64'}`}>
-        {/* Header */}
+        {/* Barra de la clase (todas sus páginas): sin totales; «Modo clase», Herramientas, avisos y cuenta. */}
         <header
-          className="relative h-14 backdrop-blur-lg shadow-sm flex items-center justify-between px-4 bg-white/80 dark:bg-gray-800/80 border-b border-white/50 dark:border-gray-700/50"
+          className="relative h-14 backdrop-blur-lg shadow-sm flex items-center justify-between gap-2 px-2 sm:px-4 bg-white/80 dark:bg-gray-800/80 border-b border-white/50 dark:border-gray-700/50"
         >
           {storyAccent && (
             <span className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5" style={{ background: accentGradient(storyAccent, 90) }} aria-hidden="true" />
           )}
-          <div className="flex items-center gap-3 min-w-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             {/* Botón menú móvil */}
             <button
               ref={menuButtonRef}
               type="button"
               onClick={() => setMobileMenuOpen(true)}
-              className="lg:hidden flex h-11 w-11 items-center justify-center text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors"
+              className="lg:hidden flex h-11 w-11 flex-shrink-0 items-center justify-center text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-colors"
               aria-label="Abrir menú"
               aria-expanded={mobileMenuOpen}
             >
@@ -305,7 +284,7 @@ export const ClassroomLayout = () => {
             </button>
             {storyAccent ? (
               <div
-                className="w-8 h-8 rounded-xl flex items-center justify-center shadow-md text-base"
+                className="hidden sm:flex w-8 h-8 flex-shrink-0 rounded-xl items-center justify-center shadow-md text-base"
                 style={{ background: accentGradient(storyAccent) }}
                 title={storyAccent.title ?? 'Tema de la clase'}
                 aria-hidden="true"
@@ -313,43 +292,24 @@ export const ClassroomLayout = () => {
                 {storyAccent.emoji}
               </div>
             ) : (
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-md">
+              <div className="hidden sm:flex w-8 h-8 flex-shrink-0 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl items-center justify-center shadow-md" aria-hidden="true">
                 <GraduationCap size={16} className="text-white" />
               </div>
             )}
-            <div className="hidden sm:block min-w-0">
-              <h1 className="text-sm font-bold text-gray-800 dark:text-white">{classroom.name}</h1>
-              <p className="text-xs text-gray-500 dark:text-gray-400">{classroom.students?.length || 0} estudiantes</p>
+            <div className="min-w-0">
+              <h1 className="truncate text-sm font-bold text-gray-800 dark:text-white">{classroom.name}</h1>
+              <p className="hidden sm:block text-xs text-gray-600 dark:text-gray-400">{classroom.students?.length || 0} estudiantes</p>
             </div>
           </div>
 
-          {showStudentsSummaryHeader && (
-            <div className="hidden xl:flex items-center justify-center gap-2 flex-1 px-4 min-w-0">
-              <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300">
-                <Sparkles size={12} />
-                <span className="text-xs font-semibold">{headerTotalXP.toLocaleString()} XP</span>
-              </div>
-              <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300">
-                <Coins size={12} />
-                <span className="text-xs font-semibold">{headerTotalGP.toLocaleString()} GP</span>
-              </div>
-              <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300">
-                <TrendingUp size={12} />
-                <span className="text-xs font-semibold">{headerAvgLevel} Nv</span>
-              </div>
-              <div className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-gray-50 dark:bg-gray-900/30 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 max-w-[220px] min-w-0">
-                <Crown size={12} className="text-amber-500 flex-shrink-0" />
-                <span className="text-xs font-semibold truncate">{getHeaderDisplayName(headerTopStudent)}</span>
-              </div>
-            </div>
-          )}
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            <ClassModeMenu />
 
-          <div className="flex items-center gap-2 shrink-0">
             {/* Herramientas de clase: disponibles en todas las páginas del aula */}
             <button
               type="button"
               onClick={() => setShowTools(true)}
-              className="relative inline-flex items-center gap-2 min-h-[36px] px-3 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold"
+              className="relative inline-flex h-11 min-w-[44px] items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-2.5 text-sm font-semibold text-gray-800 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700 md:px-3"
               aria-label={pendingNotesCount > 0 ? `Herramientas de clase (${pendingNotesCount} notas pendientes)` : 'Herramientas de clase'}
               title="Herramientas de clase"
             >
@@ -362,28 +322,9 @@ export const ClassroomLayout = () => {
               )}
             </button>
 
-            {/* Botón de reportar bug */}
-            <BugReportButton variant="icon" />
-            
-            {/* Toggle de tema */}
-            <ThemeToggle />
-            
-            {/* Botón de notificaciones */}
             <NotificationsBell onClick={() => setShowNotifications(true)} classroomId={classroom.id} />
-            
-            {/* Botón de cerrar sesión */}
-            <button
-              onClick={() => {
-                logout();
-                navigate('/login');
-              }}
-              className="flex items-center gap-2 min-h-[36px] px-3 text-sm font-medium text-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-              title="Cerrar sesión"
-              aria-label="Cerrar sesión"
-            >
-              <LogOut size={16} />
-              <span className="hidden sm:inline">Cerrar sesión</span>
-            </button>
+
+            <AccountMenu onLogout={() => { logout(); navigate('/login'); }} />
           </div>
         </header>
         

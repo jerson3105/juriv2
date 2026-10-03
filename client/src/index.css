@@ -664,3 +664,186 @@
   @keyframes sb-menu-in { from { opacity: 0; transform: translateY(4px); } }
   .sb-menu-in { animation: sb-menu-in 150ms ease-out both; }
 }
+
+/* ── Lista de estudiantes («calma por defecto») ───────────────────────────────────────────────────────
+   Un significado = un color = un ícono: primario para acción y selección, verde solo para «dar», ámbar para
+   celebrar, rojo para las alertas del profe (por excepción) y pizarra para «descansando» y «corregir».
+   Mismo patrón que [data-sb]. La constelación de la ficha usa las clases del sidebar (.sb-list, .sb-guide,
+   .sb-marker) con las estrellas de la página. Los menús flotantes llevan su propio data-pg (van en un portal). */
+.dark { color-scheme: dark; }
+[data-pg] {
+  --pg-surface: #ffffff;
+  --pg-hover: #f3f4f6;
+  --pg-line: #e5e7eb;
+  --pg-control: #cbd5e1;
+  --pg-fg: #111827;
+  --pg-fg2: #4b5563;
+  --pg-accent: #2563eb;
+  --pg-accent-fg: #1e40af;
+  --pg-select: #eff6ff;
+  --pg-pos: #047857;
+  --pg-pos-hover: #065f46;
+  --pg-pos-ink: #065f46;
+  --pg-fix: #334155;
+  --pg-fix-hover: #f1f5f9;
+  --pg-alert: #b91c1c;
+  --pg-gold-bg: #fef3c7;
+  --pg-gold-fg: #78350f;
+  --pg-ring: #2563eb;
+  --pg-shadow: 0 8px 24px rgb(15 23 42 / 0.12);
+  --sb-star: #fbbf24;
+  --sb-star-edge: #b45309;
+  --sb-star-off: #9ca3af;
+  --sb-guide: #e5e7eb;
+}
+.dark [data-pg] {
+  --pg-surface: #1f2937;
+  --pg-hover: rgba(255, 255, 255, 0.06);
+  --pg-line: #374151;
+  --pg-control: #4b5563;
+  --pg-fg: #f3f4f6;
+  --pg-fg2: #d1d5db;
+  --pg-accent: #60a5fa;
+  --pg-accent-fg: #ffffff;
+  --pg-select: rgba(59, 130, 246, 0.22);
+  --pg-fix: #cbd5e1;
+  --pg-fix-hover: rgba(255, 255, 255, 0.08);
+  --pg-pos-ink: #6ee7b7;
+  --pg-alert: #fca5a5;
+  --pg-gold-bg: rgba(120, 53, 15, 0.45);
+  --pg-gold-fg: #fef3c7;
+  --pg-ring: #fcd34d;
+  --pg-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
+  --sb-star: #fcd34d;
+  --sb-star-edge: transparent;
+  --sb-star-off: #6b7280;
+  --sb-guide: #374151;
+}
+/* Proyectando: nada se mueve en el fondo del aula. */
+[data-projecting='true'] .story-glow { animation: none; }
+
+@layer components {
+  .pg-surface { background-color: var(--pg-surface); color: var(--pg-fg); border: 1px solid var(--pg-line); border-radius: 0.75rem; }
+  .pg-line { border-color: var(--pg-line); }
+  .pg-focus:focus-visible { outline: 2px solid var(--pg-ring); outline-offset: 2px; }
+
+  /* Botones de 40 px (44 en pantallas táctiles). */
+  .pg-btn {
+    display: inline-flex;
+    min-height: 2.5rem;
+    align-items: center;
+    justify-content: center;
+    gap: 0.375rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--pg-control);
+    background-color: var(--pg-surface);
+    padding: 0 0.75rem;
+    color: var(--pg-fg);
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.25rem;
+    white-space: nowrap;
+    transition: background-color 120ms ease-out, color 120ms ease-out, border-color 120ms ease-out;
+  }
+  .pg-btn:hover:not(:disabled) { background-color: var(--pg-hover); }
+  .pg-btn:disabled { cursor: not-allowed; opacity: 0.55; }
+  .pg-btn-ghost { border-color: transparent; background-color: transparent; }
+  /* Dar: el verde solo aquí. En la fila, con contorno; se rellena al pasar, en la fila elegida y en la barra. */
+  .pg-btn-give { color: var(--pg-pos-ink); }
+  .pg-btn-give:hover:not(:disabled), [data-selected='true'] .pg-btn-give, .pg-btn-give[data-filled='true'] { border-color: var(--pg-pos); background-color: var(--pg-pos); color: #ffffff; }
+  .pg-btn-give[data-filled='true']:hover:not(:disabled) { border-color: var(--pg-pos-hover); background-color: var(--pg-pos-hover); }
+  /* Corregir: pizarra con contorno, nunca rojo relleno. */
+  .pg-btn-fix { color: var(--pg-fix); }
+  .pg-btn-fix:hover:not(:disabled) { background-color: var(--pg-fix-hover); }
+  .pg-icon-btn { display: inline-flex; height: 2.5rem; width: 2.5rem; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 0.5rem; color: var(--pg-fg2); }
+  .pg-icon-btn:hover:not(:disabled) { background-color: var(--pg-hover); color: var(--pg-fg); }
+  .pg-icon-btn[aria-pressed='true'] { background-color: var(--pg-select); color: var(--pg-accent-fg); }
+
+  /* Chips de filtro: neutros y, activos, en primario. Los de atención solo aparecen con N > 0. */
+  .pg-chip {
+    display: inline-flex;
+    min-height: 2.5rem;
+    align-items: center;
+    gap: 0.375rem;
+    border-radius: 9999px;
+    border: 1px solid var(--pg-control);
+    background-color: var(--pg-surface);
+    padding: 0 0.875rem;
+    color: var(--pg-fg);
+    font-size: 0.875rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .pg-chip:hover { background-color: var(--pg-hover); }
+  .pg-chip[aria-pressed='true'] { border-color: var(--pg-accent); background-color: var(--pg-select); color: var(--pg-accent-fg); font-weight: 600; }
+  .pg-gold, .pg-btn.pg-gold:hover:not(:disabled) { border-radius: 9999px; background: var(--pg-gold-bg); color: var(--pg-gold-fg); }
+
+  /* Selector de vista, con texto. */
+  .pg-seg { display: inline-flex; flex-shrink: 0; border-radius: 0.625rem; border: 1px solid var(--pg-control); background-color: var(--pg-surface); padding: 0.1875rem; }
+  .pg-seg-item { display: inline-flex; min-height: 2.125rem; align-items: center; gap: 0.375rem; border-radius: 0.4375rem; padding: 0 0.75rem; color: var(--pg-fg2); font-size: 0.875rem; font-weight: 600; white-space: nowrap; }
+  .pg-seg-item:hover { color: var(--pg-fg); }
+  .pg-seg-item[aria-pressed='true'] { background-color: var(--pg-select); color: var(--pg-accent-fg); }
+
+  @media (pointer: coarse) {
+    .pg-btn, .pg-chip { min-height: 2.75rem; }
+    .pg-icon-btn { height: 2.75rem; width: 2.75rem; }
+    .pg-seg-item { min-height: 2.375rem; }
+  }
+  @media (max-width: 639px) {
+    .pg-seg-item { padding: 0 0.625rem; }
+  }
+  .pg-btn:focus-visible, .pg-chip:focus-visible, .pg-icon-btn:focus-visible, .pg-seg-item:focus-visible, .pg-menu-item:focus-visible, .pg-row-link:focus-visible {
+    outline: 2px solid var(--pg-ring);
+    outline-offset: 2px;
+  }
+
+  /* Filas: líneas, sin tarjetas; la elegida en primario suave. */
+  .pg-row { border-color: var(--pg-line); }
+  @media (hover: hover) { .pg-row:hover { background-color: var(--pg-hover); } }
+  .pg-row[data-selected='true'], .pg-row[data-selected='true']:hover { background-color: var(--pg-select); }
+  .pg-row-link { border-radius: 0.375rem; text-align: left; }
+  @media (hover: hover) { .pg-row-link:hover { text-decoration: underline; text-underline-offset: 2px; } }
+  /* Casillas: aparecen al pasar, con foco o con selección; siempre en pantallas táctiles. */
+  .pg-check { height: 1.125rem; width: 1.125rem; flex-shrink: 0; cursor: pointer; accent-color: var(--pg-accent); }
+  @media (hover: hover) and (pointer: fine) {
+    .pg-reveal .pg-check { opacity: 0; transition: opacity 120ms ease-out; }
+    .pg-reveal:hover .pg-check, .pg-reveal:focus-within .pg-check, [data-selecting='true'] .pg-reveal .pg-check { opacity: 1; }
+  }
+
+  /* Menús flotantes. */
+  .pg-menu { min-width: 15rem; max-width: min(22rem, calc(100vw - 1rem)); max-height: min(30rem, calc(100vh - 1rem)); overflow-y: auto; border-radius: 0.75rem; border: 1px solid var(--pg-line); background-color: var(--pg-surface); padding: 0.375rem; color: var(--pg-fg); box-shadow: var(--pg-shadow); }
+  .pg-menu-item { display: flex; min-height: 2.75rem; width: 100%; align-items: center; gap: 0.625rem; border-radius: 0.5rem; padding: 0 0.75rem; color: var(--pg-fg); font-size: 0.875rem; font-weight: 500; text-align: left; }
+  .pg-menu-item:hover:not(:disabled) { background-color: var(--pg-hover); }
+  .pg-menu-item:disabled { cursor: not-allowed; opacity: 0.55; }
+  .pg-menu-item[aria-checked='true'] { color: var(--pg-accent-fg); font-weight: 600; }
+  .pg-menu-label { padding: 0.5rem 0.75rem 0.25rem; color: var(--pg-fg2); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+  .pg-menu-sep { margin: 0.375rem 0; border-top: 1px solid var(--pg-line); }
+  @keyframes pg-menu-in { from { opacity: 0; translate: 0 4px; } }
+  .pg-menu-in { animation: pg-menu-in 140ms ease-out both; }
+
+  /* Estrellas de hoy, con forma además de color: encendida = recibió algo hoy; punto apagado = aún no. */
+  .pg-star { position: relative; z-index: 1; display: inline-flex; height: 0.75rem; width: 0.75rem; flex-shrink: 0; align-items: center; justify-content: center; }
+  .pg-star::before { content: ''; height: 0.3125rem; width: 0.3125rem; border-radius: 9999px; background: var(--sb-star-off); transition: opacity 150ms ease-out; }
+  .pg-star[data-lit='true']::before { height: 0.5rem; width: 0.5rem; background: var(--sb-star); box-shadow: 0 0 0 1px var(--sb-star-edge), 0 0 0 4px rgb(251 191 36 / 0.2); }
+  @keyframes pg-star-on { 0% { scale: 0.3; } 60% { scale: 1.35; } 100% { scale: 1; } }
+  [data-motion='full'] .pg-star[data-lit='true']::before { animation: pg-star-on 320ms cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+  /* Lista de la ficha: la constelación del sidebar; el destello marca a quién se está mirando. */
+  .pg-sky-row { padding-left: calc(var(--sb-star-x) - 0.375rem); }
+  .pg-sky-row[aria-current='true'], .pg-sky-row[aria-current='true']:hover { background-color: var(--pg-select); }
+  .pg-sky-row[aria-current='true'] .pg-star::before { opacity: 0; }
+
+  /* Clanes: franja y emblema del color guardado; el texto, en tinta derivada (AA sobre el tinte). */
+  .pg-clan-stripe { background-color: var(--clan); }
+  .pg-clan-tint { background-color: var(--clan-tint); }
+  .pg-clan-ink { color: var(--clan-ink); }
+  .dark .pg-clan-tint { background-color: var(--clan-tint-dark); }
+  .dark .pg-clan-ink { color: var(--clan-ink-dark); }
+
+  /* Tintas al final: mandan sobre el color base de botones e ítems. */
+  .pg-fg { color: var(--pg-fg); }
+  .pg-fg2 { color: var(--pg-fg2); }
+  .pg-alert { color: var(--pg-alert); }
+  .pg-pos-ink { color: var(--pg-pos-ink); }
+  .pg-fix { color: var(--pg-fix); }
+}

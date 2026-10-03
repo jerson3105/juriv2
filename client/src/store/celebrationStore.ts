@@ -123,6 +123,12 @@ export const useCelebrationStore = create<CelebrationState>((set, get) => ({
   setRaised: (value) => set({ raised: value }),
 }));
 
+/** Sonidos de puntos en clase: nunca en modo silencioso ni con los sonidos apagados («Modo clase»). */
+export const feedbackSoundOn = () => {
+  const { silent, sound } = useCelebrationStore.getState();
+  return !silent && sound;
+};
+
 /** Hito: cruzar un múltiplo de 5 o una insignia legendaria → celebración grande. */
 export const isMilestone = (c: Pick<Celebration, 'levelUps' | 'badges'>) =>
   c.levelUps.some((l) => Math.floor(l.to / 5) > Math.floor(l.from / 5)) || c.badges.some((b) => b.rarity === 'LEGENDARY');

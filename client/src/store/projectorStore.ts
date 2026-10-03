@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
-// "Proyectando": la Lista oculta la energía (HP) y quién descansa. Preferencia de este navegador.
+// "Proyectando" (en «Modo clase», en todas las páginas del aula): oculta lo privado (energía, negativos,
+// asistencia, quién falta reconocer, códigos) y calma el movimiento. Preferencia de este navegador.
 const KEY = 'juried-projecting';
 
 const read = () => {

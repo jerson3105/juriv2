@@ -22,11 +22,16 @@ import {
 import toast from 'react-hot-toast';
 
 interface BugReportButtonProps {
-  variant?: 'floating' | 'icon';
+  /** 'none': sin botón propio; se abre desde fuera con `open` (p. ej. el menú de cuenta). */
+  variant?: 'floating' | 'icon' | 'none';
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export const BugReportButton = ({ variant = 'floating' }: BugReportButtonProps) => {
-  const [isOpen, setIsOpen] = useState(false);
+export const BugReportButton = ({ variant = 'floating', open, onOpenChange }: BugReportButtonProps) => {
+  const [ownOpen, setOwnOpen] = useState(false);
+  const isOpen = open ?? ownOpen;
+  const setIsOpen = (value: boolean) => (onOpenChange ? onOpenChange(value) : setOwnOpen(value));
   const [showSuccess, setShowSuccess] = useState(false);
   const location = useLocation();
 
@@ -104,7 +109,7 @@ export const BugReportButton = ({ variant = 'floating' }: BugReportButtonProps) 
             transition={{ repeat: Infinity, duration: 2 }}
           />
         </motion.button>
-      ) : (
+      ) : variant === 'icon' ? (
         <button
           onClick={() => setIsOpen(true)}
           className="p-2 text-gray-500 dark:text-gray-400 hover:text-orange-500 dark:hover:text-orange-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
@@ -112,7 +117,7 @@ export const BugReportButton = ({ variant = 'floating' }: BugReportButtonProps) 
         >
           <Bug size={20} />
         </button>
-      )}
+      ) : null}
 
       {/* Modal - Usando portal para asegurar que esté al frente */}
       {isOpen && ReactDOM.createPortal(

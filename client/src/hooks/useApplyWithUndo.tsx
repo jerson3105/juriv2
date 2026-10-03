@@ -7,6 +7,9 @@ import { formatBehaviorRewards } from '../lib/behaviorPoints';
 import { behaviorUsageKey, useBehaviorUsage } from './useBehaviorUsage';
 import { useSound } from './useSound';
 import { celebrateApplyResult } from '../components/celebrations/celebrationHelpers';
+import { feedbackSoundOn } from '../store/celebrationStore';
+import { useProjectorStore } from '../store/projectorStore';
+import { studentsPulseKey } from '../lib/rankingApi';
 
 const errorMessage = (error: unknown, fallback: string) =>
   (error as { response?: { data?: { message?: string } } })?.response?.data?.message || fallback;
@@ -23,6 +26,7 @@ export const useApplyWithUndo = (classroomId: string) => {
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['classroom', classroomId] });
     queryClient.invalidateQueries({ queryKey: ['history-today', classroomId] });
+    queryClient.invalidateQueries({ queryKey: studentsPulseKey(classroomId) });
     // Perfil del alumno: resumen y registro.
     queryClient.invalidateQueries({ queryKey: ['student-summary', classroomId] });
     queryClient.invalidateQueries({ queryKey: ['student-activity', classroomId] });
@@ -39,7 +43,8 @@ export const useApplyWithUndo = (classroomId: string) => {
     const failed = outcomes.filter((o) => o.status === 'rejected').length;
     refresh();
     queryClient.invalidateQueries({ queryKey: behaviorUsageKey(classroomId) });
-    if (failed === 0) toast.success(`Deshecho: ${result.behavior.name}`, { id: toastId });
+    const quiet = useProjectorStore.getState().projecting && !result.behavior.isPositive;
+    if (failed === 0) toast.success(quiet ? 'Deshecho' : `Deshecho: ${result.behavior.name}`, { id: toastId });
     else toast.error(`No se pudo deshacer en ${failed} de ${ids.length} estudiante(s)`, { id: toastId });
   };
 
@@ -50,13 +55,17 @@ export const useApplyWithUndo = (classroomId: string) => {
     try {
       const result = await behaviorApi.apply({ behaviorId: behavior.id, studentIds, ...(multiplier !== undefined && multiplier !== 1 ? { multiplier } : {}) });
       usage.recordUse(behavior.id);
-      // Subidas e insignias: una celebración con su propio sonido; si no hay, el sonido de puntos.
-      if (!celebrateApplyResult(queryClient, classroomId, result)) play(behavior.isPositive ? 'pointsGain' : 'pointsLoss');
+      // Al proyectar, lo negativo no dice a quién ni cuánto, y no suena.
+      const projecting = useProjectorStore.getState().projecting;
+      const quiet = projecting && !behavior.isPositive;
+      // Subidas e insignias: una celebración con su propio sonido; si no hay, el sonido de puntos (salvo en
+      // modo silencioso o con los sonidos apagados en «Modo clase»).
+      if (!celebrateApplyResult(queryClient, classroomId, result) && feedbackSoundOn() && !quiet) play(behavior.isPositive ? 'pointsGain' : 'pointsLoss');
       refresh();
       toast.success(
         (t) => (
           <span className="flex items-center gap-3">
-            <span>{who}: {formatBehaviorRewards(behavior)} — {behavior.name}{result.restingSkipped ? ` · ${result.restingSkipped} descansando (sin HP)` : ''}</span>
+            <span>{quiet ? 'Anotado' : `${who}: ${formatBehaviorRewards(behavior)} — ${behavior.name}${result.restingSkipped && !projecting ? ` · ${result.restingSkipped} descansando (sin HP)` : ''}`}</span>
             <button
               type="button"
               onClick={() => {
