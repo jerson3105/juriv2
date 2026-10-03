@@ -10,13 +10,12 @@ import {
   ClipboardList,
   Gamepad2,
   GraduationCap,
+  HeartHandshake,
   House,
   LayoutDashboard,
   List,
   Map,
   Medal,
-  Megaphone,
-  MessageCircle,
   MessageSquareText,
   MessagesSquare,
   Plus,
@@ -51,6 +50,8 @@ interface TeacherClassNavInput {
   dismissNew: (featureKey: string) => void;
   pendingShopCount: number;
   readyToReveal: number;
+  /** Familias que pidieron unirse a esta clase y esperan al docente. */
+  pendingFamilyCount: number;
 }
 
 /** Grupos del aula, el pie fijo (Estadísticas y Configuración) y el grupo de la página actual. */
@@ -132,8 +133,10 @@ export const teacherClassNav = (input: TeacherClassNavInput) => {
       label: 'Comunicación',
       icon: icon(MessagesSquare),
       items: [
-        item(`${base}/announcements`, 'Avisos', Megaphone),
-        item(`${base}/chat`, 'Chat grupal', MessageCircle),
+        // Una sola sala: avisos (con «visto por») y, si el docente la abre, conversación con las familias.
+        item(`${base}/families`, 'Familias', HeartHandshake, undefined, input.pendingFamilyCount > 0
+          ? { badge: { kind: 'count', value: input.pendingFamilyCount, label: `${input.pendingFamilyCount} ${input.pendingFamilyCount === 1 ? 'familia espera' : 'familias esperan'} tu aprobación` } }
+          : {}),
         // Se queda (se usará más adelante). Lleva a la misma página que el Observatorio: nunca se marca
         // como la actual, para no resaltar dos lugares a la vez.
         input.scrollsEnabled ? item(`${base}/activities`, 'Chats', MessageSquareText, undefined, { id: 'chats', active: false }) : null,

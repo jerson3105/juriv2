@@ -20,6 +20,7 @@ import { ClassModeMenu } from './ClassModeMenu';
 import { AccountMenu } from './AccountMenu';
 import { classNoteApi } from '../../lib/classNoteApi';
 import { shopApi } from '../../lib/shopApi';
+import { verificationApi } from '../../lib/verificationApi';
 
 // Las herramientas de clase se descargan solo al abrirlas (no pesan en la carga inicial de la app).
 const ClassroomUtilities = lazy(() =>
@@ -122,6 +123,15 @@ export const ClassroomLayout = () => {
   });
   const pendingShopCount = pendingShopPurchases.length + pendingShopUsages.length;
 
+  // Familias que esperan aprobación (misma clave que el panel del Inicio: comparten caché).
+  const { data: familyRequests = [] } = useQuery({
+    queryKey: ['family-requests'],
+    queryFn: verificationApi.getFamilyRequests,
+    enabled: !!id,
+    staleTime: 60_000,
+  });
+  const pendingFamilyCount = familyRequests.filter((request) => request.classroomId === id).length;
+
   // Tema de historia: solo acentos (barra lateral, cabecera, chips) derivados para cumplir AA.
   // El contenido conserva sus superficies neutras del modo claro/oscuro.
   const storyAccent = useMemo(() => deriveStoryAccent(classroom?.themeConfig), [classroom?.themeConfig]);
@@ -152,6 +162,7 @@ export const ClassroomLayout = () => {
     dismissNew: (featureKey) => onboarding?.dismissBadge(featureKey),
     pendingShopCount,
     readyToReveal,
+    pendingFamilyCount,
   });
   const openGroups = useOpenGroups('teacher-class', activeGroupId);
 

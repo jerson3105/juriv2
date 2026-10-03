@@ -48,8 +48,7 @@ const ReportsPage = lazyPage(() => import('./pages/classroom/ReportsPage').then(
 const HistoryPage = lazyPage(() => import('./pages/classroom/HistoryPage').then((m) => ({ default: m.HistoryPage })));
 const GradebookPage = lazyPage(() => import('./pages/classroom/GradebookPage').then((m) => ({ default: m.GradebookPage })));
 const StorytellingPage = lazyPage(() => import('./pages/classroom/StorytellingPage').then((m) => ({ default: m.StorytellingPage })));
-const AnnouncementsPage = lazyPage(() => import('./pages/classroom/AnnouncementsPage').then((m) => ({ default: m.AnnouncementsPage })));
-const ClassroomChatPage = lazyPage(() => import('./pages/classroom/ClassroomChatPage').then((m) => ({ default: m.ClassroomChatPage })));
+const FamilyRoomPage = lazyPage(() => import('./pages/classroom/FamilyRoomPage').then((m) => ({ default: m.FamilyRoomPage })));
 const StudentScrollsPage = lazyPage(() => import('./pages/student/StudentScrollsPage').then((m) => ({ default: m.StudentScrollsPage })));
 const StudentGradesPage = lazyPage(() => import('./pages/student/StudentGradesPage').then((m) => ({ default: m.StudentGradesPage })));
 const StudentExpeditionsPage = lazyPage(() => import('./pages/student/StudentExpeditionsPage').then((m) => ({ default: m.StudentExpeditionsPage })));
@@ -273,8 +272,10 @@ function App() {
               <Route path="expeditions" element={<ExpeditionsPage />} />
               <Route path="collectibles" element={<CollectiblesPage />} />
               <Route path="storytelling" element={<StorytellingPage />} />
-              <Route path="announcements" element={<AnnouncementsPage />} />
-              <Route path="chat" element={<ClassroomChatPage />} />
+              <Route path="families" element={<FamilyRoomPage />} />
+              {/* Avisos y Chat grupal ahora son una sola sala. */}
+              <Route path="announcements" element={<Navigate to="../families" replace />} />
+              <Route path="chat" element={<Navigate to="../families" replace />} />
               <Route path="settings" element={<Navigate to="general" replace />} />
               <Route path="settings/:section" element={<ClassroomSettingsPage />} />
               <Route path="student/:studentId" element={<StudentDetailPage />} />

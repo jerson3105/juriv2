@@ -691,6 +691,10 @@
   --pg-gold-fg: #78350f;
   --pg-ring: #2563eb;
   --pg-shadow: 0 8px 24px rgb(15 23 42 / 0.12);
+  --pg-own: #2563eb;
+  --pg-own-fg: #ffffff;
+  --pg-bubble: #f3f4f6;
+  --pg-notice: #2563eb;
   --sb-star: #fbbf24;
   --sb-star-edge: #b45309;
   --sb-star-off: #9ca3af;
@@ -714,6 +718,10 @@
   --pg-gold-fg: #fef3c7;
   --pg-ring: #fcd34d;
   --pg-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
+  /* El acento oscuro (#60a5fa) con texto blanco no llega a AA: la burbuja propia usa un azul más hondo. */
+  --pg-own: #1d4ed8;
+  --pg-bubble: #374151;
+  --pg-notice: #60a5fa;
   --sb-star: #fcd34d;
   --sb-star-edge: transparent;
   --sb-star-off: #6b7280;
@@ -860,6 +868,16 @@
   .pg-clan-ink { color: var(--clan-ink); }
   .dark .pg-clan-tint { background-color: var(--clan-tint-dark); }
   .dark .pg-clan-ink { color: var(--clan-ink-dark); }
+
+  /* Sala de familias: lo propio en azul sólido, lo ajeno en gris, lo del docente (vista de la familia) en
+     tinte. El aviso es una tarjeta ancha con franja azul y su «visto» escrito, no escondido. */
+  .pg-bubble { max-width: min(36rem, 85%); border-radius: 1rem; padding: 0.5rem 0.875rem; background-color: var(--pg-bubble); color: var(--pg-fg); font-size: 0.9375rem; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .pg-bubble-own { background-color: var(--pg-own); color: var(--pg-own-fg); }
+  .pg-bubble-teacher { background-color: var(--pg-select); color: var(--pg-fg); }
+  .pg-notice { border: 1px solid var(--pg-line); border-left: 4px solid var(--pg-notice); border-radius: 0.75rem; background-color: var(--pg-surface); color: var(--pg-fg); }
+  .pg-day { display: flex; align-items: center; gap: 0.75rem; color: var(--pg-fg2); font-size: 0.75rem; font-weight: 600; }
+  .pg-day::before, .pg-day::after { content: ''; height: 1px; flex: 1 1 0%; background-color: var(--pg-line); }
+  .pg-tombstone { border: 1px dashed var(--pg-control); border-radius: 1rem; padding: 0.375rem 0.875rem; color: var(--pg-fg2); font-size: 0.875rem; font-style: italic; }
 
   /* Tintas al final: mandan sobre el color base de botones e ítems. */
   .pg-fg { color: var(--pg-fg); }
