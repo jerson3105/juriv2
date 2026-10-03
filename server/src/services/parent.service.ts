@@ -28,6 +28,7 @@ import { generateRandomCode } from '../utils/helpers.js';
 import { teacherOwnsClassroom } from '../utils/access.js';
 import { teacherVerificationService } from './teacherVerification.service.js';
 import { ConflictError, NotFoundError } from '../utils/errors.js';
+import { familyRoomService } from './familyRoom.service.js';
 import { createGenAI } from '../utils/aiClient.js';
 
 // Marcador que sustituye al nombre del menor en los prompts enviados a la IA (minimización de datos).
@@ -271,8 +272,15 @@ class ParentService {
 
   /** Docente: aprobar o rechazar una solicitud de una clase propia. */
   async reviewLink(teacherId: string, linkId: string, approved: boolean) {
-    const [row] = await db.select({ id: parentStudentLinks.id, status: parentStudentLinks.status, teacherId: classrooms.teacherId })
+    const [row] = await db.select({
+      id: parentStudentLinks.id,
+      status: parentStudentLinks.status,
+      teacherId: classrooms.teacherId,
+      classroomId: classrooms.id,
+      parentUserId: parentProfiles.userId,
+    })
       .from(parentStudentLinks)
+      .innerJoin(parentProfiles, eq(parentStudentLinks.parentProfileId, parentProfiles.id))
       .innerJoin(studentProfiles, eq(parentStudentLinks.studentProfileId, studentProfiles.id))
       .innerJoin(classrooms, eq(studentProfiles.classroomId, classrooms.id))
       .where(eq(parentStudentLinks.id, linkId));
@@ -283,6 +291,8 @@ class ParentService {
     await db.update(parentStudentLinks)
       .set(approved ? { status: 'ACTIVE', linkedAt: now, updatedAt: now } : { status: 'REVOKED', updatedAt: now })
       .where(and(eq(parentStudentLinks.id, linkId), eq(parentStudentLinks.status, 'PENDING')));
+    // Aprobada: la familia entra a la sala de la clase en vivo, sin reconectar.
+    if (approved) familyRoomService.joinParentToRoom(row.parentUserId, row.classroomId);
   }
 
   // Obtener lista de hijos vinculados (batched — no N+1)
@@ -1162,12 +1172,18 @@ class ParentService {
     }
     
     await db.update(parentStudentLinks)
-      .set({ 
+      .set({
         status: 'REVOKED',
         updatedAt: now,
       })
       .where(eq(parentStudentLinks.id, link.id));
-    
+
+    // Sin vínculo, la familia sale en el acto de la sala de esa clase (antes seguía recibiendo
+    // mensajes en vivo hasta reconectar).
+    const [owner] = await db.select({ userId: parentProfiles.userId }).from(parentProfiles).where(eq(parentProfiles.id, parentProfileId));
+    const [student] = await db.select({ classroomId: studentProfiles.classroomId }).from(studentProfiles).where(eq(studentProfiles.id, studentProfileId));
+    if (owner && student) await familyRoomService.removeParentIfUnlinked(owner.userId, student.classroomId);
+
     return { unlinked: true };
   }
   

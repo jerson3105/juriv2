@@ -19,8 +19,7 @@ import { serveCollectibleImage } from './utils/collectibleImages.js';
 import { PERF_TRACE, perfMiddleware } from './utils/perfTrace.js';
 import { userCanAccessClassroom } from './utils/access.js';
 import { eq } from 'drizzle-orm';
-import { announcementService } from './services/announcement.service.js';
-import { chatService } from './services/chat.service.js';
+import { familyRoomOf, familyRoomService } from './services/familyRoom.service.js';
 import { getSessionState } from './utils/jwt.js';
 
 // Crear aplicación Express
@@ -254,22 +253,11 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Auto-join parents to their children's classroom rooms for announcements + chat
+  // Familias: entran solas a la sala de familias de cada clase donde tienen un hijo vinculado. Solo a esa:
+  // `classroom:<id>` es la sala del aula y la comparten los alumnos.
   if (user.role === 'PARENT') {
-    announcementService.getClassroomIdsForParent(user.id).then(classroomIds => {
-      for (const cid of classroomIds) {
-        socket.join(`classroom:${cid}`);
-        socket.join(`classroom:${cid}:chat`);
-      }
-      if (classroomIds.length > 0) {
-        logger.info(`📚 Padre auto-unido a ${classroomIds.length} aula(s) (anuncios + chat)`, { userId: user.id });
-        // Emit parent stats update to each classroom so teachers see updated connected count
-        for (const cid of classroomIds) {
-          announcementService.getParentStats(cid).then(stats => {
-            io.to(`classroom:${cid}`).emit('announcement:parent_stats', stats);
-          }).catch(() => {});
-        }
-      }
+    familyRoomService.classroomIdsForParent(user.id).then((classroomIds) => {
+      for (const cid of classroomIds) socket.join(familyRoomOf(cid));
     }).catch(() => {});
   }
   
@@ -285,22 +273,13 @@ io.on('connection', (socket) => {
       socketId: socket.id,
       userId: user.id,
     });
-    // If a parent disconnects, update parent stats for their classrooms
-    if (user.role === 'PARENT') {
-      announcementService.getClassroomIdsForParent(user.id).then(classroomIds => {
-        for (const cid of classroomIds) {
-          announcementService.getParentStats(cid).then(stats => {
-            io.to(`classroom:${cid}`).emit('announcement:parent_stats', stats);
-          }).catch(() => {});
-        }
-      }).catch(() => {});
-    }
   });
   
   // Unirse a sala de aula (con validación de permisos)
   socket.on('join-classroom', async (classroomId: unknown) => {
     try {
-      if (!isClassroomId(classroomId) || !(await userCanAccessClassroom(user, classroomId))) {
+      // La sala del aula es del docente y sus alumnos; las familias tienen su propia sala (join-chat).
+      if (!isClassroomId(classroomId) || user.role === 'PARENT' || !(await userCanAccessClassroom(user, classroomId))) {
         logger.warn('Socket.io: join-classroom denegado', {
           socketId: socket.id, userId: user.id, role: user.role, classroomId: roomIdLabel(classroomId),
         });
@@ -344,7 +323,7 @@ io.on('connection', (socket) => {
         socket.emit('access:denied', { room: 'chat', classroomId: isClassroomId(classroomId) ? classroomId : null });
         return;
       }
-      socket.join(`classroom:${classroomId}:chat`);
+      socket.join(familyRoomOf(classroomId));
       logger.info(`💬 Usuario se unió al chat`, {
         socketId: socket.id,
         userId: user.id,
@@ -362,7 +341,7 @@ io.on('connection', (socket) => {
   // Salir de sala de chat grupal
   socket.on('leave-chat', (classroomId: unknown) => {
     if (!isClassroomId(classroomId)) return;
-    socket.leave(`classroom:${classroomId}:chat`);
+    socket.leave(familyRoomOf(classroomId));
     logger.info(`💬 Usuario salió del chat`, {
       socketId: socket.id,
       userId: user.id,

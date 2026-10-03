@@ -131,6 +131,20 @@ export const bugReportLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Sala de familias: cada aviso notifica a todas las familias de la clase; sin tope, una cuenta podía
+// llenar la sala (y las campanas) de mensajes. Cuenta por usuario (o IP).
+export const roomMessageLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minuto
+  max: config_app.isDev ? 200 : 15,
+  keyGenerator: (req) => (req as any).user?.id ?? ipKey(req),
+  message: {
+    success: false,
+    message: 'Estás enviando muchos mensajes seguidos. Espera un momento y vuelve a intentarlo.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Rate limiter para funciones con IA (Gemini). Cualquiera puede registrarse como profesor:
 // sin este límite la app servía de proxy gratuito de Gemini. Cuenta por usuario (o IP).
 export const aiLimiter = rateLimit({

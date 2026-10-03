@@ -9,7 +9,8 @@ import {
   json,
   unique,
   index,
-  decimal
+  decimal,
+  primaryKey
 } from 'drizzle-orm/mysql-core';
 import { relations } from 'drizzle-orm';
 
@@ -3141,7 +3142,7 @@ export const announcementReadsRelations = relations(announcementReads, ({ one })
 export type AnnouncementRead = typeof announcementReads.$inferSelect;
 export type NewAnnouncementRead = typeof announcementReads.$inferInsert;
 
-// ==================== CHAT GRUPAL (PROFESOR ↔ PADRES) ====================
+// ==================== SALA DE FAMILIAS (DOCENTE ↔ FAMILIAS) ====================
 
 export const chatSenderRoleEnum = mysqlEnum('sender_role', ['TEACHER', 'PARENT']);
 
@@ -3150,10 +3151,13 @@ export const classroomMessages = mysqlTable('classroom_messages', {
   classroomId: varchar('classroom_id', { length: 36 }).notNull(),
   senderId: varchar('sender_id', { length: 36 }).notNull(),
   senderRole: chatSenderRoleEnum.notNull(),
+  // Un aviso es un mensaje destacado del docente (notifica a las familias y lleva «visto por»).
+  kind: mysqlEnum('kind', ['MESSAGE', 'ANNOUNCEMENT']).notNull().default('MESSAGE'),
   message: text('message').notNull(),
   deletedAt: datetime('deleted_at'),
   deletedBy: varchar('deleted_by', { length: 36 }),
-  createdAt: datetime('created_at').notNull(),
+  // Con milisegundos: ordena y pagina sin perder los mensajes del mismo segundo (el id desempata).
+  createdAt: datetime('created_at', { fsp: 3 }).notNull(),
 }, (table) => ({
   classroomIdx: index('idx_classroom_messages_classroom').on(table.classroomId),
   classroomDateIdx: index('idx_classroom_messages_classroom_date').on(table.classroomId, table.createdAt),
@@ -3174,12 +3178,22 @@ export const classroomMessagesRelations = relations(classroomMessages, ({ one })
 export type ClassroomMessage = typeof classroomMessages.$inferSelect;
 export type NewClassroomMessage = typeof classroomMessages.$inferInsert;
 
+// isOpen = las familias pueden escribir. Sin fila = cerrada: la sala empieza como tablón de avisos.
 export const classroomChatSettings = mysqlTable('classroom_chat_settings', {
   classroomId: varchar('classroom_id', { length: 36 }).primaryKey(),
-  isOpen: boolean('is_open').notNull().default(true),
+  isOpen: boolean('is_open').notNull().default(false),
   closedAt: datetime('closed_at'),
   closedBy: varchar('closed_by', { length: 36 }),
 });
+
+// Hasta dónde leyó cada persona la sala de una clase: «visto» de los avisos y mensajes sin leer.
+export const classroomRoomReads = mysqlTable('classroom_room_reads', {
+  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
+  userId: varchar('user_id', { length: 36 }).notNull(),
+  lastReadAt: datetime('last_read_at', { fsp: 3 }).notNull(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.classroomId, table.userId] }),
+}));
 
 export const classroomChatSettingsRelations = relations(classroomChatSettings, ({ one }) => ({
   classroom: one(classrooms, {
