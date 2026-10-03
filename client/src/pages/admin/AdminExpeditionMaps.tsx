@@ -1,7 +1,6 @@
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  ArrowLeft,
   Search,
   Plus,
   Trash2,
@@ -16,7 +15,10 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { expeditionMapApi, type ExpeditionMap } from '../../lib/expeditionMapApi';
 import { useAuthStore } from '../../store/authStore';
-import { Navigate, Link } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
+import { AdminPageHeader } from '../../components/admin/AdminPageHeader';
+import { primaryButton } from '../../components/admin/adminStyles';
+import { ConfirmModal } from '../../components/ui/ConfirmModal';
 import toast from 'react-hot-toast';
 
 const CATEGORIES = [
@@ -36,6 +38,7 @@ export default function AdminExpeditionMaps() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('');
   const [uploading, setUploading] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form state
@@ -189,11 +192,7 @@ export default function AdminExpeditionMaps() {
     }
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('¿Estás seguro de eliminar este mapa?')) {
-      deleteMutation.mutate(id);
-    }
-  };
+  const handleDelete = (id: string) => setDeleting(id);
 
   // Filtrar mapas
   const filteredMaps = maps.filter(map => {
@@ -214,38 +213,21 @@ export default function AdminExpeditionMaps() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Header */}
-      <div className="bg-white dark:bg-gray-800 shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Link
-                to="/admin"
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-              >
-                <ArrowLeft size={20} className="text-gray-600 dark:text-gray-300" />
-              </Link>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                  <Map className="text-emerald-500" />
-                  Mapas de Expediciones
-                </h1>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Gestiona los mapas disponibles para las expediciones
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={openCreateModal}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-colors"
-            >
-              <Plus size={20} />
-              Nuevo Mapa
-            </button>
-          </div>
-        </div>
-      </div>
+    <div data-pg="" className="text-[var(--pg-fg)]">
+      <AdminPageHeader
+        title="Mapas de expedición"
+        subtitle="Los mapas que los docentes eligen para sus expediciones. «Ocultar» lo saca de la lista sin romper las expediciones que ya lo usan."
+        actions={<button type="button" onClick={openCreateModal} className={primaryButton}><Plus size={18} aria-hidden="true" /> Nuevo mapa</button>}
+      />
+      <ConfirmModal
+        isOpen={!!deleting}
+        onClose={() => !deleteMutation.isPending && setDeleting(null)}
+        onConfirm={() => { if (deleting) deleteMutation.mutate(deleting); setDeleting(null); }}
+        isLoading={deleteMutation.isPending}
+        title="¿Eliminar este mapa?"
+        message="Ya no se podrá elegir para expediciones nuevas. Las expediciones que lo usan conservan su imagen. Si solo quieres sacarlo de la lista, usa «Ocultar»."
+        confirmText="Eliminar"
+      />
 
       {/* Filters */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -305,7 +287,7 @@ export default function AdminExpeditionMaps() {
                     alt={map.name}
                     className="w-full h-full object-cover"
                     onError={(e) => {
-                      (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x200?text=Mapa';
+                      (e.target as HTMLImageElement).style.visibility = 'hidden';
                     }}
                   />
                   <div className="absolute top-2 right-2 flex gap-1">
@@ -346,7 +328,7 @@ export default function AdminExpeditionMaps() {
                   <div className="flex gap-2">
                     <button
                       onClick={() => openEditModal(map)}
-                      className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-600 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+                      className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
                     >
                       <Edit2 size={16} />
                       Editar
@@ -467,22 +449,6 @@ export default function AdminExpeditionMaps() {
                   </select>
                 </div>
 
-                {/* URL manual (opcional) */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    O ingresa URL de imagen
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.imageUrl}
-                    onChange={(e) => {
-                      setFormData({ ...formData, imageUrl: e.target.value });
-                      if (e.target.value) setPreviewUrl(e.target.value);
-                    }}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    placeholder="https://..."
-                  />
-                </div>
               </div>
 
               <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex gap-3">

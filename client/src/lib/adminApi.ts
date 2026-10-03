@@ -53,9 +53,17 @@ export const adminUsersKey = (filters: AdminUserFilters) => ['admin-users', filt
 export interface AdminClassroom {
   id: string;
   name: string;
+  /** Sirve para unirse: la pantalla lo muestra oculto hasta pedirlo. */
   code: string;
+  gradeLevel: string | null;
   isActive: boolean;
   createdAt: string;
+  schoolName: string | null;
+  /** Alumnos activos (sin el de demostración). */
+  students: number;
+  /** Último punto dado en los últimos 90 días (null = sin puntos en ese tiempo). */
+  lastPointAt: string | null;
+  pointsThisWeek: number;
   teacher: {
     id: string;
     firstName: string;
@@ -127,6 +135,7 @@ export interface AdminClassroomDetails {
       completed: number;
     };
     lastActivity: string | null;
+    points?: { thisWeek: number; studentsThisWeek: number };
   };
   students: AdminClassroomStudent[];
   activities: {

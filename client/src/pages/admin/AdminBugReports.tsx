@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { AdminPageHeader } from '../../components/admin/AdminPageHeader';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Bug,
@@ -31,7 +32,7 @@ import {
 import toast from 'react-hot-toast';
 import { safeUrl } from '../../lib/safeHtml';
 
-const STATUS_ICONS: Record<BugReportStatus, any> = {
+const STATUS_ICONS: Record<BugReportStatus, typeof Clock> = {
   PENDING: Clock,
   IN_PROGRESS: RefreshCw,
   RESOLVED: CheckCircle,
@@ -47,6 +48,7 @@ export const AdminBugReports = () => {
     category?: BugReportCategory;
   }>({});
   const [adminNotes, setAdminNotes] = useState('');
+  const changeFilters = (next: typeof filters) => { setFilters(next); setPage(1); };
 
   // Obtener estadísticas
   const { data: stats } = useQuery({
@@ -55,9 +57,10 @@ export const AdminBugReports = () => {
   });
 
   // Obtener reportes
-  const { data: reportsData, isLoading, refetch } = useQuery({
-    queryKey: ['bug-reports', filters],
-    queryFn: () => bugReportApi.getAllReports(filters),
+  const [page, setPage] = useState(1);
+  const { data: reportsData, isLoading, isError, refetch } = useQuery({
+    queryKey: ['bug-reports', filters, page],
+    queryFn: () => bugReportApi.getAllReports({ ...filters, page }),
   });
 
   // Mutación para actualizar estado
@@ -110,34 +113,23 @@ export const AdminBugReports = () => {
     });
   };
 
-  const parseBrowserInfo = (info?: string) => {
+  // Solo valores simples: un objeto anidado (enviado a mano) hacía caer la pantalla al pintarlo.
+  const parseBrowserInfo = (info?: string): Record<string, string | number | boolean> | null => {
     if (!info) return null;
     try {
-      return JSON.parse(info);
+      const parsed: unknown = JSON.parse(info);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+      return Object.fromEntries(Object.entries(parsed as Record<string, unknown>)
+        .filter(([, value]) => ['string', 'number', 'boolean'].includes(typeof value))) as Record<string, string | number | boolean>;
     } catch {
       return null;
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-3 bg-gradient-to-br from-orange-500 to-red-500 rounded-xl text-white">
-              <Bug size={28} />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                Reportes de Bugs
-              </h1>
-              <p className="text-gray-600 dark:text-gray-400">
-                Gestiona los reportes enviados por los profesores
-              </p>
-            </div>
-          </div>
-        </div>
+    <div data-pg="" className="text-[var(--pg-fg)]">
+      <AdminPageHeader title="Reportes de error" subtitle="Lo que los docentes reportan desde «Reportar un error»." />
+      <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6">
 
         {/* Stats Cards */}
         {stats && (
@@ -156,8 +148,8 @@ export const AdminBugReports = () => {
               transition={{ delay: 0.1 }}
               className="bg-yellow-50 dark:bg-yellow-900/20 rounded-xl p-4 shadow-sm border border-yellow-200 dark:border-yellow-800"
             >
-              <div className="text-3xl font-bold text-yellow-600">{stats.pending}</div>
-              <div className="text-sm text-yellow-600/80">Pendientes</div>
+              <div className="text-3xl font-bold text-amber-800 dark:text-amber-300">{stats.pending}</div>
+              <div className="text-sm text-amber-800 dark:text-amber-200">Pendientes</div>
             </motion.div>
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -165,8 +157,8 @@ export const AdminBugReports = () => {
               transition={{ delay: 0.2 }}
               className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 shadow-sm border border-blue-200 dark:border-blue-800"
             >
-              <div className="text-3xl font-bold text-blue-600">{stats.inProgress}</div>
-              <div className="text-sm text-blue-600/80">En Progreso</div>
+              <div className="text-3xl font-bold text-blue-700 dark:text-blue-300">{stats.inProgress}</div>
+              <div className="text-sm text-blue-800 dark:text-blue-200">En Progreso</div>
             </motion.div>
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -174,8 +166,8 @@ export const AdminBugReports = () => {
               transition={{ delay: 0.3 }}
               className="bg-green-50 dark:bg-green-900/20 rounded-xl p-4 shadow-sm border border-green-200 dark:border-green-800"
             >
-              <div className="text-3xl font-bold text-green-600">{stats.resolved}</div>
-              <div className="text-sm text-green-600/80">Resueltos</div>
+              <div className="text-3xl font-bold text-emerald-700 dark:text-emerald-300">{stats.resolved}</div>
+              <div className="text-sm text-emerald-800 dark:text-emerald-200">Resueltos</div>
             </motion.div>
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -183,8 +175,8 @@ export const AdminBugReports = () => {
               transition={{ delay: 0.4 }}
               className="bg-red-50 dark:bg-red-900/20 rounded-xl p-4 shadow-sm border border-red-200 dark:border-red-800"
             >
-              <div className="text-3xl font-bold text-red-600">{stats.criticalPending}</div>
-              <div className="text-sm text-red-600/80">Críticos Pendientes</div>
+              <div className="text-3xl font-bold text-red-700 dark:text-red-300">{stats.criticalPending}</div>
+              <div className="text-sm text-red-800 dark:text-red-200">Críticos Pendientes</div>
             </motion.div>
           </div>
         )}
@@ -200,7 +192,7 @@ export const AdminBugReports = () => {
             <div className="relative">
               <select
                 value={filters.status || ''}
-                onChange={(e) => setFilters({ ...filters, status: e.target.value as BugReportStatus || undefined })}
+                onChange={(e) => changeFilters({ ...filters, status: e.target.value as BugReportStatus || undefined })}
                 className="pl-3 pr-8 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm appearance-none cursor-pointer"
               >
                 <option value="">Todos los estados</option>
@@ -214,7 +206,7 @@ export const AdminBugReports = () => {
             <div className="relative">
               <select
                 value={filters.priority || ''}
-                onChange={(e) => setFilters({ ...filters, priority: e.target.value as BugReportPriority || undefined })}
+                onChange={(e) => changeFilters({ ...filters, priority: e.target.value as BugReportPriority || undefined })}
                 className="pl-3 pr-8 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm appearance-none cursor-pointer"
               >
                 <option value="">Todas las prioridades</option>
@@ -228,7 +220,7 @@ export const AdminBugReports = () => {
             <div className="relative">
               <select
                 value={filters.category || ''}
-                onChange={(e) => setFilters({ ...filters, category: e.target.value as BugReportCategory || undefined })}
+                onChange={(e) => changeFilters({ ...filters, category: e.target.value as BugReportCategory || undefined })}
                 className="pl-3 pr-8 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm appearance-none cursor-pointer"
               >
                 <option value="">Todas las categorías</option>
@@ -240,7 +232,7 @@ export const AdminBugReports = () => {
             </div>
 
             <button
-              onClick={() => setFilters({})}
+              onClick={() => changeFilters({})}
               className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
             >
               Limpiar filtros
@@ -259,7 +251,12 @@ export const AdminBugReports = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Reports List */}
           <div className="lg:col-span-2 space-y-4">
-            {isLoading ? (
+            {isError ? (
+              <div role="alert" className="pg-surface p-6 text-center">
+                <p className="font-semibold">No se pudieron cargar los reportes.</p>
+                <button type="button" className="pg-btn mt-3" onClick={() => void refetch()}>Reintentar</button>
+              </div>
+            ) : isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
               </div>
@@ -282,6 +279,10 @@ export const AdminBugReports = () => {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     onClick={() => handleSelectReport(report)}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={selectedReport?.id === report.id}
+                    onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); handleSelectReport(report); } }}
                     className={`bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm cursor-pointer transition-all hover:shadow-md border-2 ${
                       selectedReport?.id === report.id
                         ? 'border-orange-500'
@@ -305,7 +306,7 @@ export const AdminBugReports = () => {
                         <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2 mt-1">
                           {report.description}
                         </p>
-                        <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
+                        <div className="flex items-center gap-4 mt-2 text-xs text-gray-600 dark:text-gray-300">
                           <span className="flex items-center gap-1">
                             <User size={12} />
                             {report.user?.firstName} {report.user?.lastName}
@@ -316,13 +317,20 @@ export const AdminBugReports = () => {
                           </span>
                         </div>
                       </div>
-                      <div className="text-xs text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
+                      <div className="text-xs text-gray-700 bg-gray-100 dark:bg-gray-700 dark:text-gray-200 px-2 py-1 rounded">
                         {CATEGORY_LABELS[report.category]}
                       </div>
                     </div>
                   </motion.div>
                 );
               })
+            )}
+            {reportsData && reportsData.pagination.totalPages > 1 && (
+              <nav aria-label="Páginas" className="flex items-center justify-between gap-2 pt-2 text-sm">
+                <button type="button" className="pg-btn" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>Anterior</button>
+                <span>Página {reportsData.pagination.page} de {reportsData.pagination.totalPages}</span>
+                <button type="button" className="pg-btn" disabled={page >= reportsData.pagination.totalPages} onClick={() => setPage((value) => value + 1)}>Siguiente</button>
+              </nav>
             )}
           </div>
 
@@ -392,7 +400,7 @@ export const AdminBugReports = () => {
                           href={safeUrl(selectedReport.currentUrl)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                          className="text-sm text-blue-700 dark:text-blue-300 hover:underline flex items-center gap-1"
                         >
                           {selectedReport.currentUrl}
                           <ExternalLink size={12} />

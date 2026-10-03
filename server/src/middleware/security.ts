@@ -117,6 +117,20 @@ export const codeRedemptionLimiter = rateLimit({
   skipSuccessfulRequests: true,
 });
 
+// Reportes de error: cualquiera puede registrarse como docente; sin tope podía enterrar los reportes reales
+// del admin con miles de falsos. Cuenta por usuario (o IP).
+export const bugReportLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hora
+  max: config_app.isDev ? 100 : 10,
+  keyGenerator: (req) => (req as any).user?.id ?? ipKey(req),
+  message: {
+    success: false,
+    message: 'Ya enviaste varios reportes en la última hora. Gracias: inténtalo de nuevo más tarde.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Rate limiter para funciones con IA (Gemini). Cualquiera puede registrarse como profesor:
 // sin este límite la app servía de proxy gratuito de Gemini. Cuenta por usuario (o IP).
 export const aiLimiter = rateLimit({

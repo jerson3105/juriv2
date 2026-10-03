@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { bugReportController } from '../controllers/bugReport.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { bugReportLimiter } from '../middleware/security.js';
 
 const router = Router();
 
 // Rutas para profesores (TEACHER)
-router.post('/', authenticate, authorize('TEACHER'), bugReportController.createReport);
+router.post('/', authenticate, authorize('TEACHER'), bugReportLimiter, bugReportController.createReport);
 router.get('/my-reports', authenticate, authorize('TEACHER'), bugReportController.getMyReports);
 
 // Rutas para administradores (ADMIN)

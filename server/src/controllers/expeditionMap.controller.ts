@@ -4,6 +4,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
+import { z } from 'zod';
 
 // Configuración de multer para subir imágenes de mapas
 const baseUploadDir = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
@@ -68,25 +69,28 @@ export const getMapById = async (req: Request, res: Response) => {
   }
 };
 
+// Solo imágenes subidas aquí (las antiguas, sin /api): una URL externa la cargaban los navegadores de los
+// alumnos (su dueño veía sus IP y podía cambiarla) y se rompía si el enlace moría.
+const OWN_MAP_IMAGE = /^\/(api\/)?uploads\/maps\/[\w-]+\.(png|jpe?g|webp|gif)$/i;
+const imageField = z.string().trim().regex(OWN_MAP_IMAGE, 'Sube la imagen del mapa: no se aceptan enlaces externos');
+const mapSchema = z.object({
+  name: z.string().trim().min(1, 'Ponle un nombre al mapa').max(255),
+  description: z.string().trim().max(2000).nullable().optional(),
+  imageUrl: imageField,
+  thumbnailUrl: imageField.nullable().optional(),
+  category: z.string().trim().min(1).max(100).optional(),
+}).strict();
+const mapUpdateSchema = mapSchema.partial().extend({ isActive: z.boolean().optional() }).strict();
+const invalid = (res: Response, error: z.ZodError) => res.status(400).json({ error: error.issues[0]?.message ?? 'Datos inválidos' });
+
 // Crear un nuevo mapa
 export const createMap = async (req: Request, res: Response) => {
   try {
-    const { name, description, imageUrl, thumbnailUrl, category } = req.body;
-    
-    if (!name || !imageUrl) {
-      return res.status(400).json({ error: 'Nombre e imagen son requeridos' });
-    }
-    
-    const map = await expeditionMapService.create({
-      name,
-      description,
-      imageUrl,
-      thumbnailUrl,
-      category,
-    });
-    
+    const data = mapSchema.parse(req.body);
+    const map = await expeditionMapService.create({ ...data, description: data.description ?? undefined, thumbnailUrl: data.thumbnailUrl ?? undefined });
     res.status(201).json(map);
   } catch (error) {
+    if (error instanceof z.ZodError) return invalid(res, error);
     console.error('Error creating map:', error);
     res.status(500).json({ error: 'Error al crear mapa' });
   }
@@ -96,19 +100,12 @@ export const createMap = async (req: Request, res: Response) => {
 export const updateMap = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, description, imageUrl, thumbnailUrl, category, isActive } = req.body;
-    
-    const map = await expeditionMapService.update(id, {
-      name,
-      description,
-      imageUrl,
-      thumbnailUrl,
-      category,
-      isActive,
-    });
-    
+    const data = mapUpdateSchema.parse(req.body);
+    const map = await expeditionMapService.update(id, { ...data, description: data.description ?? undefined, thumbnailUrl: data.thumbnailUrl ?? undefined });
+    if (!map) return res.status(404).json({ error: 'Mapa no encontrado' });
     res.json(map);
   } catch (error) {
+    if (error instanceof z.ZodError) return invalid(res, error);
     console.error('Error updating map:', error);
     res.status(500).json({ error: 'Error al actualizar mapa' });
   }

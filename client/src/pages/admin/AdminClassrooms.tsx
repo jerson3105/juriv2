@@ -1,263 +1,150 @@
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { 
-  ArrowLeft,
-  Search,
-  School,
-  Users,
-  Calendar,
-  Copy,
-  ExternalLink,
-  ToggleLeft,
-  ToggleRight
-} from 'lucide-react';
-import { adminApi } from '../../lib/adminApi';
-import type { AdminClassroom, AdminClassroomDetails } from '../../lib/adminApi';
-import { useAuthStore } from '../../store/authStore';
-import { Navigate, Link } from 'react-router-dom';
+import { useCallback, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
+import { Copy, Eye, Search } from 'lucide-react';
+import { adminApi, type AdminClassroom, type AdminClassroomDetails } from '../../lib/adminApi';
+import { AdminPageHeader } from '../../components/admin/AdminPageHeader';
 import { AdminClassroomDetailsModal } from '../../components/admin/AdminClassroomDetailsModal';
 
+type StatusFilter = 'active' | 'archived' | 'all';
+type Sort = 'recent' | 'activity';
+
+const relative = new Intl.RelativeTimeFormat('es', { numeric: 'auto' });
+const activityLabel = (iso: string | null) => {
+  if (!iso) return 'Sin puntos en 90 días';
+  const days = Math.round((new Date(iso).getTime() - Date.now()) / 86_400_000);
+  return days > -1 ? 'Puntos hoy' : `Último punto ${relative.format(days, 'day')}`;
+};
+const gradeLabel = (grade: string | null) => {
+  if (!grade) return null;
+  const [level, number] = grade.split('_');
+  const names: Record<string, string> = { INICIAL: 'Inicial', PRIMARIA: 'Primaria', SECUNDARIA: 'Secundaria' };
+  return `${names[level] ?? level}${number ? ` ${number}${level === 'INICIAL' ? ' años' : '.º'}` : ''}`;
+};
+
+/** Clases: docente, escuela, alumnos y actividad real (puntos); el código de unión, oculto hasta pedirlo. */
 export default function AdminClassrooms() {
-  const user = useAuthStore((state) => state.user);
-  const [classrooms, setClassrooms] = useState<AdminClassroom[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string>('');
-  const [selectedClassroomId, setSelectedClassroomId] = useState<string | null>(null);
-  const [classroomDetails, setClassroomDetails] = useState<AdminClassroomDetails | null>(null);
-  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState<StatusFilter>('active');
+  const [sort, setSort] = useState<Sort>('recent');
+  const [revealed, setRevealed] = useState<Set<string>>(new Set());
+  const [detail, setDetail] = useState<{ id: string; data: AdminClassroomDetails | null } | null>(null);
+  const { data = [], isLoading, isError, refetch } = useQuery({ queryKey: ['admin-classrooms'], queryFn: adminApi.getClassrooms });
 
-  useEffect(() => {
-    loadClassrooms();
-  }, []);
+  const term = search.trim().toLowerCase();
+  const visible = useMemo(() => data
+    .filter((room) => (status === 'all' ? true : status === 'active' ? room.isActive : !room.isActive))
+    .filter((room) => !term
+      || room.name.toLowerCase().includes(term)
+      || room.code.toLowerCase() === term
+      || `${room.teacher.firstName} ${room.teacher.lastName}`.toLowerCase().includes(term)
+      || (room.schoolName ?? '').toLowerCase().includes(term))
+    .sort((a, b) => (sort === 'activity'
+      ? new Date(b.lastPointAt ?? 0).getTime() - new Date(a.lastPointAt ?? 0).getTime()
+      : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())), [data, status, term, sort]);
+  const active = data.filter((room) => room.isActive).length;
+  const quiet = data.filter((room) => room.isActive && !room.lastPointAt).length;
 
-  const loadClassrooms = async () => {
+  const openDetail = async (id: string) => {
+    setDetail({ id, data: null });
     try {
-      setLoading(true);
-      const data = await adminApi.getClassrooms();
-      setClassrooms(data);
-    } catch (error) {
-      console.error('Error loading classrooms:', error);
-      toast.error('Error al cargar clases');
-    } finally {
-      setLoading(false);
+      const details = await adminApi.getClassroomDetails(id);
+      setDetail((current) => (current?.id === id ? { id, data: details } : current));
+    } catch {
+      toast.error('No se pudo cargar el detalle de la clase');
+      setDetail(null);
     }
   };
-
-  const copyCode = (code: string) => {
-    navigator.clipboard.writeText(code);
-    toast.success('Código copiado al portapapeles');
-  };
-
-  const handleViewClassroom = async (classroomId: string) => {
-    setSelectedClassroomId(classroomId);
-    setLoadingDetails(true);
-    try {
-      const details = await adminApi.getClassroomDetails(classroomId);
-      setClassroomDetails(details);
-    } catch (error) {
-      console.error('Error loading classroom details:', error);
-      toast.error('Error al cargar detalles de la clase');
-      setSelectedClassroomId(null);
-    } finally {
-      setLoadingDetails(false);
-    }
-  };
-
-  const handleCloseModal = () => {
-    setSelectedClassroomId(null);
-    setClassroomDetails(null);
-  };
-
-  // Verificar rol de admin
-  if (user?.role !== 'ADMIN') {
-    return <Navigate to="/" replace />;
-  }
-
-  const filteredClassrooms = classrooms.filter(c => {
-    const matchesSearch = 
-      c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.teacher.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.teacher.lastName.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = !filterStatus || 
-      (filterStatus === 'active' && c.isActive) ||
-      (filterStatus === 'inactive' && !c.isActive);
-    return matchesSearch && matchesStatus;
-  });
-
-  const activeCount = classrooms.filter(c => c.isActive).length;
-  const inactiveCount = classrooms.filter(c => !c.isActive).length;
+  const closeDetail = useCallback(() => setDetail(null), []);
+  const reveal = (id: string) => setRevealed((current) => new Set(current).add(id));
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center gap-4">
-            <Link to="/admin" className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-              <ArrowLeft className="w-5 h-5" />
-            </Link>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Gestión de Clases</h1>
-              <p className="text-gray-600">{classrooms.length} clases en el sistema</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Filters */}
-        <div className="bg-white rounded-xl p-4 shadow-sm mb-6">
-          <div className="flex flex-wrap gap-4">
-            <div className="flex-1 min-w-[250px]">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Buscar por nombre, código o profesor..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                />
-              </div>
-            </div>
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500"
-            >
-              <option value="">Todos los estados</option>
-              <option value="active">Activas</option>
-              <option value="inactive">Inactivas</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="bg-white rounded-xl p-4 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="p-3 rounded-lg bg-blue-100 text-blue-600">
-                <School className="w-6 h-6" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-gray-900">{classrooms.length}</p>
-                <p className="text-sm text-gray-500">Total de Clases</p>
-              </div>
-            </div>
-          </div>
-          <div className="bg-white rounded-xl p-4 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="p-3 rounded-lg bg-green-100 text-green-600">
-                <ToggleRight className="w-6 h-6" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-gray-900">{activeCount}</p>
-                <p className="text-sm text-gray-500">Clases Activas</p>
-              </div>
-            </div>
-          </div>
-          <div className="bg-white rounded-xl p-4 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="p-3 rounded-lg bg-gray-100 text-gray-600">
-                <ToggleLeft className="w-6 h-6" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-gray-900">{inactiveCount}</p>
-                <p className="text-sm text-gray-500">Clases Inactivas</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Classrooms Grid */}
-        {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[1, 2, 3, 4, 5, 6].map(i => (
-              <div key={i} className="bg-white rounded-xl p-6 shadow-sm animate-pulse">
-                <div className="h-6 bg-gray-200 rounded w-3/4 mb-4"></div>
-                <div className="h-4 bg-gray-200 rounded w-1/2 mb-2"></div>
-                <div className="h-4 bg-gray-200 rounded w-2/3"></div>
-              </div>
+    <div data-pg="" className="text-[var(--pg-fg)]">
+      <AdminPageHeader
+        title="Clases"
+        subtitle={isLoading ? 'Cargando…' : `${active} activas${data.length > active ? ` · ${data.length - active} archivadas` : ''}${quiet ? ` · ${quiet} sin puntos en 90 días` : ''}`}
+      />
+      <main className="mx-auto max-w-7xl space-y-4 px-4 py-6 sm:px-6">
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="relative min-w-[14rem] flex-1">
+            <span className="sr-only">Buscar clases</span>
+            <Search className="pg-fg2 absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" aria-hidden="true" />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Clase, docente, escuela o código exacto…"
+              className="min-h-[2.5rem] w-full rounded-lg border border-[var(--pg-control)] bg-[var(--pg-surface)] pl-9 pr-3"
+            />
+          </label>
+          <div className="pg-seg" role="group" aria-label="Estado">
+            {([['active', 'Activas'], ['archived', 'Archivadas'], ['all', 'Todas']] as const).map(([value, label]) => (
+              <button key={value} type="button" className="pg-seg-item" aria-pressed={status === value} onClick={() => setStatus(value)}>{label}</button>
             ))}
           </div>
-        ) : filteredClassrooms.length === 0 ? (
-          <div className="text-center py-12 bg-white rounded-xl shadow-sm">
-            <School className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900">No hay clases</h3>
-            <p className="text-gray-600">No se encontraron clases con los filtros aplicados</p>
+          <div className="pg-seg" role="group" aria-label="Orden">
+            <button type="button" className="pg-seg-item" aria-pressed={sort === 'recent'} onClick={() => setSort('recent')}>Recientes</button>
+            <button type="button" className="pg-seg-item" aria-pressed={sort === 'activity'} onClick={() => setSort('activity')}>Con actividad</button>
+          </div>
+        </div>
+
+        {isError ? (
+          <div role="alert" className="pg-surface p-6 text-center">
+            <p className="font-semibold">No se pudieron cargar las clases.</p>
+            <button type="button" className="pg-btn mt-3" onClick={() => void refetch()}>Reintentar</button>
+          </div>
+        ) : isLoading ? (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3" aria-hidden="true">
+            {[0, 1, 2].map((key) => <div key={key} className="pg-surface h-40 animate-pulse" />)}
+          </div>
+        ) : visible.length === 0 ? (
+          <div className="rounded-xl border-2 border-dashed border-[var(--pg-control)] p-8 text-center">
+            <p className="text-3xl" aria-hidden="true">🏫 🔍</p>
+            <p className="mt-2 font-semibold">Ninguna clase con estos filtros.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredClassrooms.map((classroom) => (
-              <motion.div
-                key={classroom.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className={`bg-white rounded-xl p-6 shadow-sm border-l-4 ${
-                  classroom.isActive ? 'border-green-500' : 'border-gray-300'
-                }`}
-              >
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h3 className="font-bold text-gray-900 text-lg">{classroom.name}</h3>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                        classroom.isActive 
-                          ? 'bg-green-100 text-green-700' 
-                          : 'bg-gray-100 text-gray-600'
-                      }`}>
-                        {classroom.isActive ? 'Activa' : 'Inactiva'}
-                      </span>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => copyCode(classroom.code)}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-mono transition-colors"
-                    title="Copiar código"
-                  >
-                    <Copy className="w-4 h-4" />
-                    {classroom.code}
-                  </button>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2 text-gray-600">
-                    <Users className="w-4 h-4" />
-                    <span className="text-sm">
-                      Profesor: <span className="font-medium">{classroom.teacher.firstName} {classroom.teacher.lastName}</span>
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 text-gray-500 text-sm">
-                    <Calendar className="w-4 h-4" />
-                    <span>Creada: {new Date(classroom.createdAt).toLocaleDateString('es-ES')}</span>
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-4 border-t border-gray-100 flex justify-end">
-                  <button
-                    onClick={() => handleViewClassroom(classroom.id)}
-                    className="flex items-center gap-1 text-sm text-purple-600 hover:text-purple-700 font-medium transition-colors"
-                  >
-                    Ver detalles
-                    <ExternalLink className="w-4 h-4" />
-                  </button>
-                </div>
-              </motion.div>
-            ))}
-          </div>
+          <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {visible.map((room) => <ClassroomCard key={room.id} room={room} showCode={revealed.has(room.id)} onReveal={() => reveal(room.id)} onOpen={() => void openDetail(room.id)} />)}
+          </ul>
         )}
-      </div>
+      </main>
 
-      {/* Modal de detalles */}
-      <AdminClassroomDetailsModal
-        isOpen={selectedClassroomId !== null}
-        onClose={handleCloseModal}
-        details={classroomDetails}
-        loading={loadingDetails}
-      />
+      <AdminClassroomDetailsModal isOpen={!!detail} onClose={closeDetail} details={detail?.data ?? null} loading={!detail?.data} />
     </div>
   );
 }
+
+const ClassroomCard = ({ room, showCode, onReveal, onOpen }: { room: AdminClassroom; showCode: boolean; onReveal: () => void; onOpen: () => void }) => {
+  const copy = () => {
+    void navigator.clipboard.writeText(room.code);
+    toast.success('Código copiado');
+  };
+  return (
+    <li className="pg-surface flex flex-col gap-2 p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h2 className="truncate font-semibold">{room.name}</h2>
+          <p className="pg-fg2 text-xs">{[gradeLabel(room.gradeLevel), room.schoolName].filter(Boolean).join(' · ') || 'Sin escuela'}</p>
+        </div>
+        {!room.isActive && <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-800 dark:bg-slate-700 dark:text-slate-100">Archivada</span>}
+      </div>
+      <p className="text-sm">{room.teacher.firstName} {room.teacher.lastName}</p>
+      <p className="pg-fg2 text-sm">
+        {room.students === 1 ? '1 alumno' : `${room.students} alumnos`} · {activityLabel(room.lastPointAt)}
+        {room.pointsThisWeek > 0 && ` · ${room.pointsThisWeek} esta semana`}
+      </p>
+      <div className="mt-auto flex flex-wrap items-center gap-2 pt-2">
+        {showCode ? (
+          <button type="button" className="pg-btn font-mono" onClick={copy} aria-label={`Copiar el código ${room.code}`}>
+            <Copy className="h-4 w-4" aria-hidden="true" /> {room.code}
+          </button>
+        ) : (
+          <button type="button" className="pg-btn" onClick={onReveal}>Mostrar código</button>
+        )}
+        <button type="button" className="pg-btn" onClick={onOpen}>
+          <Eye className="h-4 w-4" aria-hidden="true" /> Ver detalle
+        </button>
+      </div>
+    </li>
+  );
+};

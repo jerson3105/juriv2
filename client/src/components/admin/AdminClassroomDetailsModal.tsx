@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,
@@ -31,6 +31,12 @@ interface AdminClassroomDetailsModalProps {
 
 type TabType = 'general' | 'students' | 'activities' | 'questionBanks';
 
+// Estados de las actividades, en español.
+const STATUS_LABEL: Record<string, string> = {
+  COMPLETED: 'Terminada', FINISHED: 'Terminada', ARCHIVED: 'Archivada', ACTIVE: 'En curso',
+  PUBLISHED: 'Publicada', PAUSED: 'En pausa', DRAFT: 'Borrador',
+};
+
 export const AdminClassroomDetailsModal = ({
   isOpen,
   onClose,
@@ -38,6 +44,16 @@ export const AdminClassroomDetailsModal = ({
   loading,
 }: AdminClassroomDetailsModalProps) => {
   const [activeTab, setActiveTab] = useState<TabType>('general');
+  // El código sirve para unirse a la clase: oculto hasta pedirlo (pantalla compartida, capturas).
+  const [showCode, setShowCode] = useState(false);
+  const titleId = useId();
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -98,23 +114,36 @@ export const AdminClassroomDetailsModal = ({
           exit={{ scale: 0.95, opacity: 0 }}
           className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-hidden"
           onClick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
         >
           {/* Header */}
-          <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-6 text-white">
+          <div className="bg-slate-900 p-6 text-white">
             <div className="flex items-start justify-between">
               <div className="flex-1">
-                <h2 className="text-2xl font-bold mb-2">
+                <h2 id={titleId} className="text-2xl font-bold mb-2">
                   {loading ? 'Cargando...' : details?.classroom.name}
                 </h2>
                 {!loading && details && (
-                  <div className="flex items-center gap-4 text-purple-100">
-                    <button
-                      onClick={() => copyCode(details.classroom.code)}
-                      className="flex items-center gap-2 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-sm font-mono transition-colors"
-                    >
-                      <Copy size={14} />
-                      {details.classroom.code}
-                    </button>
+                  <div className="flex items-center gap-4 text-slate-200">
+                    {showCode ? (
+                      <button
+                        onClick={() => copyCode(details.classroom.code)}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-white/15 hover:bg-white/25 rounded-lg text-sm font-mono transition-colors"
+                        aria-label={`Copiar el código ${details.classroom.code}`}
+                      >
+                        <Copy size={14} aria-hidden="true" />
+                        {details.classroom.code}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setShowCode(true)}
+                        className="px-3 py-1.5 bg-white/15 hover:bg-white/25 rounded-lg text-sm transition-colors"
+                      >
+                        Mostrar código
+                      </button>
+                    )}
                     <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                       details.classroom.isActive
                         ? 'bg-green-500/30 text-green-100'
@@ -128,8 +157,9 @@ export const AdminClassroomDetailsModal = ({
               <button
                 onClick={onClose}
                 className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                aria-label="Cerrar"
               >
-                <X size={24} />
+                <X size={24} aria-hidden="true" />
               </button>
             </div>
           </div>
@@ -610,8 +640,8 @@ const ActivitiesTab = ({ details }: any) => {
                   </div>
                 </div>
                 <div className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(activity.status)}`}>
-                  <StatusIcon size={14} />
-                  {activity.status}
+                  <StatusIcon size={14} aria-hidden="true" />
+                  {STATUS_LABEL[activity.status] ?? activity.status}
                 </div>
               </div>
             </div>

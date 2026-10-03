@@ -8,6 +8,7 @@ import { eq, desc, count, sql, inArray } from 'drizzle-orm';
 import { teacherVerificationService } from '../services/teacherVerification.service.js';
 import { adminUsersService } from '../services/adminUsers.service.js';
 import { adminOverviewService } from '../services/adminOverview.service.js';
+import { adminClassroomsService } from '../services/adminClassrooms.service.js';
 import { AppError } from '../utils/errors.js';
 import { passwordSchema } from '../utils/passwordPolicy.js';
 import { z } from 'zod';
@@ -166,30 +167,9 @@ export const adminController = {
   },
 
   // ==================== GESTIÓN DE CLASES ====================
-  async getClassrooms(req: Request, res: Response) {
+  async getClassrooms(_req: Request, res: Response) {
     try {
-      const allClassrooms = await db
-        .select({
-          id: classrooms.id,
-          name: classrooms.name,
-          code: classrooms.code,
-          isActive: classrooms.isActive,
-          createdAt: classrooms.createdAt,
-          teacher: {
-            id: users.id,
-            firstName: users.firstName,
-            lastName: users.lastName,
-            email: users.email,
-          },
-        })
-        .from(classrooms)
-        .innerJoin(users, eq(classrooms.teacherId, users.id))
-        .orderBy(desc(classrooms.createdAt));
-
-      res.json({
-        success: true,
-        data: allClassrooms,
-      });
+      res.json({ success: true, data: await adminClassroomsService.list() });
     } catch (error) {
       console.error('Error getting classrooms:', error);
       res.status(500).json({ success: false, message: 'Error al obtener clases' });
@@ -287,10 +267,13 @@ export const adminController = {
         .orderBy(desc(expeditions.updatedAt))
         .limit(1);
 
+      // Los puntos son la señal real de uso: una clase que solo usa comportamientos también está activa.
+      const points = await adminClassroomsService.activity(id);
       const allLastActivities = [
         lastTimedActivity[0]?.updatedAt,
         lastExpedition[0]?.updatedAt,
-      ].filter(Boolean);
+        points.lastPointAt,
+      ].filter(Boolean) as (Date | string)[];
 
       const lastActivity = allLastActivities.length > 0
         ? new Date(Math.max(...allLastActivities.map(d => new Date(d).getTime())))
@@ -385,6 +368,7 @@ export const adminController = {
               completed: completedActivities,
             },
             lastActivity,
+            points: { thisWeek: points.pointsThisWeek, studentsThisWeek: points.studentsThisWeek },
           },
           students: studentsList,
           activities: {
