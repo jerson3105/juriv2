@@ -12,20 +12,28 @@ import {
   Calendar,
   ChevronDown,
   Plus,
+  RotateCcw,
   X
 } from 'lucide-react';
 import { adminApi } from '../../lib/adminApi';
-import type { AdminUser } from '../../lib/adminApi';
+import type { AdminUser, AssignableRole } from '../../lib/adminApi';
 import { useAuthStore } from '../../store/authStore';
 import { Navigate, Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import api from '../../lib/api';
+import { RoleChangeDialog } from '../../components/admin/RoleChangeDialog';
+import { ConfirmModal } from '../../components/ui/ConfirmModal';
 
 const ROLES = [
   { value: 'ADMIN', label: 'Administrador', icon: Shield, color: 'bg-purple-100 text-purple-700' },
   { value: 'TEACHER', label: 'Profesor', icon: UserCog, color: 'bg-blue-100 text-blue-700' },
   { value: 'STUDENT', label: 'Estudiante', icon: GraduationCap, color: 'bg-green-100 text-green-700' },
 ];
+// Las familias se muestran, pero su rol no se cambia desde aquí.
+const PARENT_ROLE = { value: 'PARENT', label: 'Familia', icon: Users, color: 'bg-amber-100 text-amber-800' };
+
+const errorMessage = (error: unknown, fallback: string) =>
+  (error as { response?: { data?: { message?: string } } })?.response?.data?.message ?? fallback;
 
 export default function AdminUsers() {
   const user = useAuthStore((state) => state.user);
@@ -33,7 +41,9 @@ export default function AdminUsers() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState<string>('');
-  const [changingRole, setChangingRole] = useState<string | null>(null);
+  const [roleTarget, setRoleTarget] = useState<AdminUser | null>(null);
+  const [statusTarget, setStatusTarget] = useState<AdminUser | null>(null);
+  const [savingStatus, setSavingStatus] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
 
@@ -54,24 +64,25 @@ export default function AdminUsers() {
     }
   };
 
-  const handleRoleChange = async (userId: string, newRole: string) => {
-    try {
-      await adminApi.updateUserRole(userId, newRole);
-      setUsers(users.map(u => u.id === userId ? { ...u, role: newRole as any } : u));
-      setChangingRole(null);
-      toast.success('Rol actualizado correctamente');
-    } catch (error) {
-      console.error('Error updating role:', error);
-      toast.error('Error al actualizar rol');
-    }
+  const handleRoleChanged = (userId: string, newRole: AssignableRole) => {
+    setUsers((list) => list.map(u => u.id === userId ? { ...u, role: newRole } : u));
+    setRoleTarget(null);
+    toast.success('Rol actualizado. Sus sesiones se cerraron.');
   };
 
-  const handleToggleStatus = async (_userId: string, currentStatus: boolean) => {
+  const handleToggleStatus = async () => {
+    if (!statusTarget) return;
+    const next = !statusTarget.isActive;
     try {
-      // Por ahora solo actualizamos localmente - necesitaríamos endpoint de toggle status
-      toast.success(currentStatus ? 'Usuario desactivado' : 'Usuario activado');
+      setSavingStatus(true);
+      await adminApi.updateUserStatus(statusTarget.id, next);
+      setUsers((list) => list.map(u => u.id === statusTarget.id ? { ...u, isActive: next } : u));
+      toast.success(next ? 'Cuenta reactivada' : 'Cuenta desactivada. Sus sesiones se cerraron.');
+      setStatusTarget(null);
     } catch (error) {
-      toast.error('Error al cambiar estado');
+      toast.error(errorMessage(error, 'No se pudo cambiar el estado de la cuenta'));
+    } finally {
+      setSavingStatus(false);
     }
   };
 
@@ -84,8 +95,8 @@ export default function AdminUsers() {
         setShowCreateModal(false);
         loadUsers(); // Recargar lista
       }
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Error al crear profesor');
+    } catch (error) {
+      toast.error(errorMessage(error, 'Error al crear profesor'));
     } finally {
       setCreating(false);
     }
@@ -105,7 +116,7 @@ export default function AdminUsers() {
     return matchesSearch && matchesRole;
   });
 
-  const getRoleInfo = (role: string) => ROLES.find(r => r.value === role) || ROLES[2];
+  const getRoleInfo = (role: string) => ROLES.find(r => r.value === role) || PARENT_ROLE;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -248,7 +259,12 @@ export default function AdminUsers() {
                               <p className="font-medium text-gray-900">
                                 {u.firstName} {u.lastName}
                               </p>
-                              <p className="text-sm text-gray-500">{u.provider}</p>
+                              <p className="text-sm text-gray-500">
+                                {u.provider}
+                                {!u.isActive && (
+                                  <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">Desactivada</span>
+                                )}
+                              </p>
                             </div>
                           </div>
                         </td>
@@ -260,21 +276,18 @@ export default function AdminUsers() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="relative">
-                            {changingRole === u.id ? (
-                              <select
-                                value={u.role}
-                                onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                                onBlur={() => setChangingRole(null)}
-                                autoFocus
-                                className="px-3 py-1 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
+                            {u.id === user.id || u.role === 'PARENT' ? (
+                              <span
+                                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium ${roleInfo.color}`}
+                                title={u.id === user.id ? 'Tu propio rol no se cambia desde aquí' : 'El rol de una familia no se cambia desde aquí'}
                               >
-                                {ROLES.map(role => (
-                                  <option key={role.value} value={role.value}>{role.label}</option>
-                                ))}
-                              </select>
+                                <RoleIcon className="w-4 h-4" />
+                                {roleInfo.label}
+                              </span>
                             ) : (
                               <button
-                                onClick={() => setChangingRole(u.id)}
+                                onClick={() => setRoleTarget(u)}
+                                aria-label={`Cambiar el rol de ${u.firstName} ${u.lastName} (ahora: ${roleInfo.label})`}
                                 className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium ${roleInfo.color} hover:opacity-80 transition-opacity`}
                               >
                                 <RoleIcon className="w-4 h-4" />
@@ -292,13 +305,25 @@ export default function AdminUsers() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => handleToggleStatus(u.id, true)}
-                              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Desactivar usuario"
-                            >
-                              <Ban className="w-4 h-4" />
-                            </button>
+                            {u.id !== user.id && (u.isActive ? (
+                              <button
+                                onClick={() => setStatusTarget(u)}
+                                className="p-2 text-gray-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Desactivar cuenta"
+                                aria-label={`Desactivar la cuenta de ${u.firstName} ${u.lastName}`}
+                              >
+                                <Ban className="w-4 h-4" />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => setStatusTarget(u)}
+                                className="p-2 text-gray-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                                title="Reactivar cuenta"
+                                aria-label={`Reactivar la cuenta de ${u.firstName} ${u.lastName}`}
+                              >
+                                <RotateCcw className="w-4 h-4" />
+                              </button>
+                            ))}
                           </div>
                         </td>
                       </motion.tr>
@@ -310,6 +335,29 @@ export default function AdminUsers() {
           )}
         </div>
       </div>
+
+      {roleTarget && (
+        <RoleChangeDialog
+          user={roleTarget}
+          onClose={() => setRoleTarget(null)}
+          onChanged={(role) => handleRoleChanged(roleTarget.id, role)}
+        />
+      )}
+
+      <ConfirmModal
+        isOpen={!!statusTarget}
+        onClose={() => !savingStatus && setStatusTarget(null)}
+        onConfirm={handleToggleStatus}
+        isLoading={savingStatus}
+        variant={statusTarget?.isActive ? 'danger' : 'info'}
+        title={statusTarget?.isActive
+          ? `¿Desactivar la cuenta de ${statusTarget.firstName} ${statusTarget.lastName}?`
+          : `¿Reactivar la cuenta de ${statusTarget?.firstName ?? ''} ${statusTarget?.lastName ?? ''}?`}
+        message={statusTarget?.isActive
+          ? 'No podrá entrar y se cerrarán sus sesiones abiertas. Sus datos no se borran: puedes reactivarla cuando quieras.'
+          : 'Podrá volver a entrar con sus datos de siempre.'}
+        confirmText={statusTarget?.isActive ? 'Desactivar' : 'Reactivar'}
+      />
 
       {/* Create Teacher Modal */}
       <AnimatePresence>

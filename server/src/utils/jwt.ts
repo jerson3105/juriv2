@@ -29,8 +29,13 @@ export interface SessionTokens {
 }
 
 const HOUR = 60 * 60 * 1000;
-/** Vida máxima de una sesión: alumnos 8 h (equipos compartidos del colegio), el resto 30 días. */
-export const sessionMaxMs = (role: UserRole) => (role === 'STUDENT' ? 8 * HOUR : 30 * 24 * HOUR);
+/**
+ * Vida máxima de una sesión: alumnos 8 h (equipos compartidos del colegio), administración 12 h (la
+ * cuenta que puede todo no queda abierta días), el resto 30 días.
+ */
+export const sessionMaxMs = (role: UserRole) => (role === 'STUDENT' ? 8 * HOUR : role === 'ADMIN' ? 12 * HOUR : 30 * 24 * HOUR);
+/** Alumnos y administración: cookie de sesión, se borra al cerrar el navegador. */
+const isPersistentRole = (role: UserRole) => role !== 'STUDENT' && role !== 'ADMIN';
 /** Dos pestañas que renuevan a la vez con el mismo refresh: no se toma como robo. */
 const REUSE_GRACE_MS = 30 * 1000;
 const SESSION_CACHE_TTL = 30;
@@ -84,7 +89,7 @@ export const generateTokenPair = async (
 ): Promise<SessionTokens> => {
   const now = new Date();
   const sessionId = uuidv4();
-  const persistent = payload.role !== 'STUDENT';
+  const persistent = isPersistentRole(payload.role);
   const expiresAt = new Date(now.getTime() + sessionMaxMs(payload.role));
   await tx.insert(authSessions).values({
     id: sessionId,

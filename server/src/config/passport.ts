@@ -92,6 +92,12 @@ export const configurePassport = () => {
               return done(null, false, fail('account_disabled'));
             }
 
+            // La cuenta de administración no se vincula a Google por el correo: quien controle ese buzón
+            // entraría sin contraseña. Solo pasa si ya estaba vinculada a esta misma cuenta de Google.
+            if (user.role === 'ADMIN' && (user.provider !== 'GOOGLE' || user.googleId !== googleId)) {
+              return done(null, false, fail('admin_google_disabled'));
+            }
+
             // Usuario existe - actualizar vínculo con Google si hace falta
             const shouldUpdateProvider = user.provider !== 'GOOGLE';
             const shouldUpdateGoogleId = user.googleId !== googleId;

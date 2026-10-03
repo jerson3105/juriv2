@@ -125,7 +125,7 @@ const oauthCookieBaseOptions = {
 
 // ==================== Cookie de sesión ====================
 // El refresh viaja en una cookie httpOnly (JavaScript no la lee: un XSS ya no se lleva la sesión).
-// Alumnos: cookie de sesión, se borra al cerrar el navegador (equipos compartidos del colegio).
+// Alumnos y administración: cookie de sesión, se borra al cerrar el navegador (equipos compartidos).
 const SESSION_COOKIE = 'juried_rt';
 const sessionCookieOptions = {
   httpOnly: true,

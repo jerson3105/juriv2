@@ -12,13 +12,16 @@ export interface AdminStats {
   studentProfiles: number;
 }
 
+export type AssignableRole = 'ADMIN' | 'TEACHER' | 'STUDENT';
+
 export interface AdminUser {
   id: string;
   email: string;
   firstName: string;
   lastName: string;
-  role: 'ADMIN' | 'TEACHER' | 'STUDENT';
+  role: AssignableRole | 'PARENT';
   provider: string;
+  isActive: boolean;
   createdAt: string;
 }
 
@@ -132,13 +135,18 @@ export const adminApi = {
   },
 
   // Users
-  async getUsers(page = 1, limit = 20): Promise<{ users: AdminUser[]; pagination: any }> {
+  async getUsers(page = 1, limit = 20): Promise<{ users: AdminUser[]; pagination: { page: number; limit: number; total: number; totalPages: number } }> {
     const response = await api.get(`/admin/users?page=${page}&limit=${limit}`);
     return response.data.data;
   },
 
-  async updateUserRole(userId: string, role: string): Promise<void> {
-    await api.patch(`/admin/users/${userId}/role`, { role });
+  /** Dar el rol de administrador pide la contraseña de quien lo da (`currentPassword`). */
+  async updateUserRole(userId: string, role: AssignableRole, currentPassword?: string): Promise<void> {
+    await api.patch(`/admin/users/${userId}/role`, { role, ...(currentPassword ? { currentPassword } : {}) });
+  },
+
+  async updateUserStatus(userId: string, isActive: boolean): Promise<void> {
+    await api.patch(`/admin/users/${userId}/status`, { isActive });
   },
 
   // Avatar Items

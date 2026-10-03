@@ -7,11 +7,10 @@ import {
 import { eq, desc, count, sql, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcryptjs';
-import { cache, CACHE_KEYS } from '../utils/cache.js';
-import { revokeAllUserTokens } from '../utils/jwt.js';
 import path from 'path';
 import fs from 'fs';
 import { teacherVerificationService } from '../services/teacherVerification.service.js';
+import { adminUsersService } from '../services/adminUsers.service.js';
 import { AppError } from '../utils/errors.js';
 import { AVATAR_RATIO, AVATAR_UPLOAD_DIR, AVATAR_UPLOAD_PATH, avatarImageRatio } from '../utils/avatarImages.js';
 import { z } from 'zod';
@@ -28,6 +27,14 @@ const LAYER_ORDER: Record<string, number> = {
   HEAD: 7,
   HAIR: 8,
 };
+
+const userIdSchema = z.string().uuid();
+const roleChangeSchema = z.object({
+  role: z.enum(['ADMIN', 'TEACHER', 'STUDENT']),
+  // Solo para dar el rol de administrador: la contraseña de quien lo da.
+  currentPassword: z.string().min(1).max(200).optional(),
+}).strict();
+const userStatusSchema = z.object({ isActive: z.boolean() }).strict();
 
 export const adminController = {
   // ==================== DASHBOARD ====================
@@ -89,6 +96,7 @@ export const adminController = {
           lastName: users.lastName,
           role: users.role,
           provider: users.provider,
+          isActive: users.isActive,
           createdAt: users.createdAt,
         })
         .from(users)
@@ -118,27 +126,29 @@ export const adminController = {
 
   async updateUserRole(req: Request, res: Response) {
     try {
-      const { userId } = req.params;
-      const { role } = req.body;
-
-      if (!['ADMIN', 'TEACHER', 'STUDENT'].includes(role)) {
-        return res.status(400).json({ success: false, message: 'Rol inválido' });
-      }
-
-      await db
-        .update(users)
-        .set({ role, updatedAt: new Date() })
-        .where(eq(users.id, userId));
-
-      if (role === 'TEACHER') await teacherVerificationService.markVerified(userId, 'ADMIN');
-      // El rol viaja en el token y en el socket: se cierran sus sesiones para que entre con el nuevo.
-      cache.delete(CACHE_KEYS.user(userId));
-      await revokeAllUserTokens(userId);
-
-      res.json({ success: true, message: 'Rol actualizado' });
+      const userId = userIdSchema.parse(req.params.userId);
+      const { role, currentPassword } = roleChangeSchema.parse(req.body);
+      const data = await adminUsersService.changeRole(req.user!.id, userId, role, currentPassword);
+      res.json({ success: true, data, message: 'Rol actualizado' });
     } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ success: false, message: 'Datos inválidos' });
+      if (error instanceof AppError) return res.status(error.statusCode).json({ success: false, message: error.message });
       console.error('Error updating user role:', error);
       res.status(500).json({ success: false, message: 'Error al actualizar rol' });
+    }
+  },
+
+  async updateUserStatus(req: Request, res: Response) {
+    try {
+      const userId = userIdSchema.parse(req.params.userId);
+      const { isActive } = userStatusSchema.parse(req.body);
+      const data = await adminUsersService.setActive(req.user!.id, userId, isActive);
+      res.json({ success: true, data, message: isActive ? 'Cuenta reactivada' : 'Cuenta desactivada' });
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ success: false, message: 'Datos inválidos' });
+      if (error instanceof AppError) return res.status(error.statusCode).json({ success: false, message: error.message });
+      console.error('Error updating user status:', error);
+      res.status(500).json({ success: false, message: 'Error al cambiar el estado de la cuenta' });
     }
   },
 

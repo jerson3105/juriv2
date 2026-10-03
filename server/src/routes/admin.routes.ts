@@ -66,6 +66,7 @@ router.get('/stats', adminController.getStats);
 router.get('/users', adminController.getUsers);
 router.post('/users/teacher', adminController.createTeacher);
 router.patch('/users/:userId/role', adminController.updateUserRole);
+router.patch('/users/:userId/status', adminController.updateUserStatus);
 
 // Verificación de docentes y dominios institucionales
 router.get('/teacher-verifications', adminController.listTeacherVerifications);

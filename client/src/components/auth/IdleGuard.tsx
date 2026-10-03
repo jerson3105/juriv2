@@ -4,8 +4,10 @@ import { Clock } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { primaryButton, cancelButton } from '../home/homeHelpers';
 
-const IDLE_MS = 60 * 60 * 1000; // 60 min sin actividad
-const WARNING_MS = 60 * 1000; // aviso el último minuto
+const MINUTE = 60 * 1000;
+/** Sin actividad: alumnos 60 min (computadoras del colegio), administración 30 min (la cuenta que puede todo). */
+const IDLE_MS: Partial<Record<string, number>> = { STUDENT: 60 * MINUTE, ADMIN: 30 * MINUTE };
+const WARNING_MS = MINUTE; // aviso el último minuto
 const KEY = 'juried-last-activity'; // compartido entre pestañas
 const EVENTS = ['pointerdown', 'keydown', 'wheel', 'touchstart'] as const;
 
@@ -25,20 +27,22 @@ const writeLast = (value: number) => {
 };
 
 /**
- * Alumnos en computadoras compartidas del colegio: tras 60 minutos sin tocar nada se cierra la
- * sesión, con un aviso el último minuto ("Sigo aquí"). La actividad se comparte entre pestañas.
+ * Cierra la sesión tras un rato sin tocar nada (alumnos en computadoras compartidas del colegio y la
+ * cuenta de administración), con un aviso el último minuto ("Sigo aquí"). La actividad se comparte
+ * entre pestañas.
  */
-export const StudentIdleGuard = () => {
+export const IdleGuard = () => {
   const user = useAuthStore((s) => s.user);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const logout = useAuthStore((s) => s.logout);
-  const active = isAuthenticated && user?.role === 'STUDENT';
+  const idleMs = isAuthenticated && user ? IDLE_MS[user.role] ?? null : null;
+  const active = idleMs !== null;
   const [remaining, setRemaining] = useState<number | null>(null);
   const lastWrite = useRef(0);
   const loggingOut = useRef(false);
 
   useEffect(() => {
-    if (!active) return;
+    if (idleMs === null) return;
     writeLast(Date.now());
     const onActivity = () => {
       const now = Date.now();
@@ -51,13 +55,13 @@ export const StudentIdleGuard = () => {
     EVENTS.forEach((e) => window.addEventListener(e, onActivity, { passive: true }));
     const timer = setInterval(() => {
       const idle = Date.now() - readLast();
-      if (idle >= IDLE_MS) {
+      if (idle >= idleMs) {
         if (!loggingOut.current) {
           loggingOut.current = true;
           void logout();
         }
-      } else if (idle >= IDLE_MS - WARNING_MS) {
-        setRemaining(Math.ceil((IDLE_MS - idle) / 1000));
+      } else if (idle >= idleMs - WARNING_MS) {
+        setRemaining(Math.ceil((idleMs - idle) / 1000));
       } else {
         setRemaining(null);
       }
@@ -66,7 +70,7 @@ export const StudentIdleGuard = () => {
       EVENTS.forEach((e) => window.removeEventListener(e, onActivity));
       clearInterval(timer);
     };
-  }, [active, logout]);
+  }, [idleMs, logout]);
 
   if (!active || remaining === null) return null;
 

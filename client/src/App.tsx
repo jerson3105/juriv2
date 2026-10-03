@@ -99,7 +99,7 @@ import { TeacherOnboardingProvider, useTeacherOnboarding } from './contexts/Teac
 import { Loader2 } from 'lucide-react';
 import { refreshSession } from './lib/session';
 import { Starfield } from './components/auth/SpaceScene';
-import { StudentIdleGuard } from './components/auth/StudentIdleGuard';
+import { IdleGuard } from './components/auth/IdleGuard';
 const TeacherOnboardingFlow = lazyPage(() => import('./pages/onboarding/TeacherOnboardingFlow'));
 
 // Dashboard Router - redirige según el rol
@@ -200,7 +200,7 @@ function App() {
       <TimerProvider>
         <BrowserRouter>
           <SessionBootstrap />
-          <StudentIdleGuard />
+          <IdleGuard />
           <Routes>
           {/* Public Routes */}
           <Route

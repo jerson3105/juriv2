@@ -13,6 +13,7 @@ export const AUTH_ERROR_MESSAGES: Record<string, string> = {
   google_email_missing: 'Google no compartió tu correo. Inténtalo con otra cuenta.',
   google_email_unverified: 'Tu correo de Google aún no está verificado.',
   account_disabled: 'Tu cuenta está desactivada. Escríbele al equipo de Juried.',
+  admin_google_disabled: 'La cuenta de administración entra solo con correo y contraseña.',
   session_expired: 'Tu sesión terminó. Vuelve a entrar.',
   session_changed: 'Alguien entró con otra cuenta en este navegador. Vuelve a entrar con la tuya.',
   missing_code: 'No se pudo completar el inicio con Google. Inténtalo otra vez.',
