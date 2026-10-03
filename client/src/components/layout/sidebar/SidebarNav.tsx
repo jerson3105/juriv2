@@ -51,6 +51,20 @@ const RailBadge = ({ badge }: { badge: NavBadge }) => {
   );
 };
 
+/**
+ * Posición vertical de un ítem dentro de su lista, por layout (sin transform). No basta offsetTop: mientras
+ * una fila anima (la cascada al abrir el grupo), la fila pasa a ser el offsetParent y offsetTop vale 0.
+ */
+const offsetWithin = (element: HTMLElement, container: HTMLElement) => {
+  let top = 0;
+  let node: HTMLElement | null = element;
+  while (node && node !== container) {
+    top += node.offsetTop;
+    node = node.offsetParent as HTMLElement | null;
+  }
+  return node === container ? top : element.getBoundingClientRect().top - container.getBoundingClientRect().top;
+};
+
 interface NavListProps {
   items: NavItem[];
   /** Dentro de un grupo: la guía nace bajo el ícono del grupo. */
@@ -84,7 +98,7 @@ export const NavList = ({ items, inGroup = false, speed, onNavigate, labelledBy,
       lastY.current = null;
       return;
     }
-    const y = target.offsetTop + target.offsetHeight / 2;
+    const y = offsetWithin(target, list) + target.offsetHeight / 2;
     if (lastY.current === null) {
       marker.style.transition = 'none';
       marker.style.transform = `translateY(${y}px)`;

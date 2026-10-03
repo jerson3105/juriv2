@@ -616,7 +616,7 @@
   .sb-panel[data-open='true'] { grid-template-rows: 1fr; transition-duration: 180ms; transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1); }
   .sb-panel > * { min-height: 0; overflow: hidden; }
   @keyframes sb-rise { from { opacity: 0; transform: translateY(-4px); } }
-  .sb-panel[data-open='true'][data-cascade='true'] li { animation: sb-rise 160ms cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: calc(var(--i, 0) * 20ms); }
+  .sb-panel[data-open='true'][data-cascade='true'] li { animation: sb-rise 160ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards; animation-delay: calc(var(--i, 0) * 20ms); }
 
   /* La constelación de cada lista: una guía tenue, una estrella apagada por página y el destello dorado
      («estás aquí») que se desliza al navegar. */
