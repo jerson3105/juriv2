@@ -202,6 +202,12 @@ io.use(async (socket, next) => {
 // Registrar io en el emitter centralizado
 setIO(io);
 
+// Los payloads del socket los arma el cliente: un id de clase es un string corto (UUID). Cualquier otro
+// tipo (arreglo, objeto) llegaba tal cual a la consulta SQL y su error tumbaba el proceso.
+const isClassroomId = (value: unknown): value is string =>
+  typeof value === 'string' && value.length > 0 && value.length <= 64;
+const roomIdLabel = (value: unknown) => (isClassroomId(value) ? value : `(${typeof value})`);
+
 // Socket.io eventos con autenticación
 io.on('connection', (socket) => {
   const user = socket.data.user;
@@ -292,13 +298,13 @@ io.on('connection', (socket) => {
   });
   
   // Unirse a sala de aula (con validación de permisos)
-  socket.on('join-classroom', async (classroomId: string) => {
+  socket.on('join-classroom', async (classroomId: unknown) => {
     try {
-      if (!classroomId || !(await userCanAccessClassroom(user, classroomId))) {
+      if (!isClassroomId(classroomId) || !(await userCanAccessClassroom(user, classroomId))) {
         logger.warn('Socket.io: join-classroom denegado', {
-          socketId: socket.id, userId: user.id, role: user.role, classroomId,
+          socketId: socket.id, userId: user.id, role: user.role, classroomId: roomIdLabel(classroomId),
         });
-        socket.emit('access:denied', { room: 'classroom', classroomId });
+        socket.emit('access:denied', { room: 'classroom', classroomId: isClassroomId(classroomId) ? classroomId : null });
         return;
       }
       socket.join(`classroom:${classroomId}`);
@@ -311,13 +317,14 @@ io.on('connection', (socket) => {
       logger.error('Error al unirse a sala de aula', {
         error: error instanceof Error ? error.message : 'Unknown error',
         userId: user.id,
-        classroomId,
+        classroomId: roomIdLabel(classroomId),
       });
     }
   });
-  
+
   // Salir de sala de aula
-  socket.on('leave-classroom', (classroomId: string) => {
+  socket.on('leave-classroom', (classroomId: unknown) => {
+    if (!isClassroomId(classroomId)) return;
     socket.leave(`classroom:${classroomId}`);
     logger.info(`📚 Usuario salió del aula`, {
       socketId: socket.id,
@@ -327,26 +334,34 @@ io.on('connection', (socket) => {
   });
 
   // Unirse a sala de chat grupal
-  socket.on('join-chat', async (classroomId: string) => {
-    // El chat es solo profesor dueño / padre vinculado (no estudiantes).
-    const canChat = classroomId && user.role !== 'STUDENT' && await userCanAccessClassroom(user, classroomId);
-    if (!canChat) {
-      logger.warn('Socket.io: join-chat denegado', {
-        socketId: socket.id, userId: user.id, role: user.role, classroomId,
+  socket.on('join-chat', async (classroomId: unknown) => {
+    try {
+      // El chat es solo profesor dueño / padre vinculado (no estudiantes).
+      if (!isClassroomId(classroomId) || user.role === 'STUDENT' || !(await userCanAccessClassroom(user, classroomId))) {
+        logger.warn('Socket.io: join-chat denegado', {
+          socketId: socket.id, userId: user.id, role: user.role, classroomId: roomIdLabel(classroomId),
+        });
+        socket.emit('access:denied', { room: 'chat', classroomId: isClassroomId(classroomId) ? classroomId : null });
+        return;
+      }
+      socket.join(`classroom:${classroomId}:chat`);
+      logger.info(`💬 Usuario se unió al chat`, {
+        socketId: socket.id,
+        userId: user.id,
+        classroomId,
       });
-      socket.emit('access:denied', { room: 'chat', classroomId });
-      return;
+    } catch (error) {
+      logger.error('Error al unirse al chat', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        userId: user.id,
+        classroomId: roomIdLabel(classroomId),
+      });
     }
-    socket.join(`classroom:${classroomId}:chat`);
-    logger.info(`💬 Usuario se unió al chat`, {
-      socketId: socket.id,
-      userId: user.id,
-      classroomId,
-    });
   });
 
   // Salir de sala de chat grupal
-  socket.on('leave-chat', (classroomId: string) => {
+  socket.on('leave-chat', (classroomId: unknown) => {
+    if (!isClassroomId(classroomId)) return;
     socket.leave(`classroom:${classroomId}:chat`);
     logger.info(`💬 Usuario salió del chat`, {
       socketId: socket.id,
@@ -358,6 +373,15 @@ io.on('connection', (socket) => {
 
 // Exportar io para usar en otros módulos
 export { io };
+
+// Red de seguridad: un handler async que falla sin catch deja una promesa rechazada sin manejar. En Node 22
+// eso termina el proceso y, con una sola instancia en PM2, se cae toda la API; aquí se registra y se sigue.
+process.on('unhandledRejection', (reason) => {
+  logger.error('Promesa rechazada sin manejar', {
+    error: reason instanceof Error ? reason.message : String(reason),
+    stack: reason instanceof Error ? reason.stack : undefined,
+  });
+});
 
 // Iniciar servidor
 const startServer = async () => {
