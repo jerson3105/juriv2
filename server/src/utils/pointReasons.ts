@@ -29,3 +29,7 @@ export const selfSpendText = (reason: string) => {
 /** Recompensa (XP y oro) de una insignia: «Insignia: <nombre>». */
 export const BADGE_REWARD_PREFIX = 'Insignia: ';
 export const isBadgeReward = (reason: string | null | undefined) => !!reason && reason.startsWith(BADGE_REWARD_PREFIX);
+
+/** Aportes al clan de la racha de inicio de sesión (clan_logs.reason): premian entrar desde casa, no el trabajo en clase. */
+export const STREAK_DAILY_CLAN_REASON = 'Racha de login diaria';
+export const STREAK_MILESTONE_CLAN_PREFIX = 'Milestone de racha: ';

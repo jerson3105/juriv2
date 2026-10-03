@@ -6,6 +6,7 @@ import { clanService } from './clan.service.js';
 import { badgeService } from './badge.service.js';
 import { createNotification } from '../utils/notificationEmitter.js';
 import { addXpGp, affectedRows } from '../utils/points.js';
+import { STREAK_DAILY_CLAN_REASON, STREAK_MILESTONE_CLAN_PREFIX } from '../utils/pointReasons.js';
 
 // Configuración por defecto para login streak
 const DEFAULT_LOGIN_STREAK_CONFIG = {
@@ -249,7 +250,7 @@ export const loginStreakService = {
       totalXpToAdd += config.dailyXp;
       
       // Contribuir XP al clan si aplica
-      await clanService.contributeXpToClan(studentProfileId, config.dailyXp, 'Racha de login diaria');
+      await clanService.contributeXpToClan(studentProfileId, config.dailyXp, STREAK_DAILY_CLAN_REASON);
     }
 
     // Verificar si alcanzó un milestone
@@ -268,7 +269,7 @@ export const loginStreakService = {
       
       // Contribuir XP del milestone al clan si aplica
       if (milestone.xp > 0) {
-        await clanService.contributeXpToClan(studentProfileId, milestone.xp, `Milestone de racha: ${milestone.day} días`);
+        await clanService.contributeXpToClan(studentProfileId, milestone.xp, `${STREAK_MILESTONE_CLAN_PREFIX}${milestone.day} días`);
       }
 
       // Item aleatorio si aplica

@@ -33,6 +33,7 @@ router.delete('/:id', authorize('TEACHER'), classroomController.delete.bind(clas
 router.post('/:id/reset-points', authorize('TEACHER'), classroomController.resetAllPoints.bind(classroomController));
 router.post('/:id/reset-selective', authorize('TEACHER'), classroomController.resetClassroomSelective.bind(classroomController));
 router.get('/:id/rankings', authorize('TEACHER', 'ADMIN'), rankingController.getDeltas.bind(rankingController));
+router.get('/:id/rankings/pulse', authorize('TEACHER', 'ADMIN'), rankingController.getPulse.bind(rankingController));
 router.get('/:id/competencies', authorize('TEACHER', 'STUDENT'), classroomController.getCompetencies.bind(classroomController));
 router.post('/:id/competencies', authorize('TEACHER'), classroomController.addCompetencies.bind(classroomController));
 router.delete('/:id/competencies/:competencyId', authorize('TEACHER'), classroomController.removeCompetency.bind(classroomController));
