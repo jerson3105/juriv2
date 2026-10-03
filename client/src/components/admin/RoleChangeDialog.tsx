@@ -62,7 +62,8 @@ export const RoleChangeDialog = ({ user, onClose, onChanged }: RoleChangeDialogP
   }, [onClose]);
 
   const giving = role === 'ADMIN';
-  const emailOk = typedEmail.trim().toLowerCase() === user.email.toLowerCase();
+  // Las cuentas con PIN no tienen correo real (y el servidor no las deja ser docentes ni administración).
+  const emailOk = !!user.email && typedEmail.trim().toLowerCase() === user.email.toLowerCase();
   const canSubmit = !!role && role !== user.role && !saving && (!giving || (emailOk && password.length > 0));
   const chosen = OPTIONS.find((option) => option.value === role);
   // El foco va a la primera opción que se puede elegir (la del rol actual está deshabilitada).
@@ -94,7 +95,7 @@ export const RoleChangeDialog = ({ user, onClose, onChanged }: RoleChangeDialogP
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 id={titleId} className="text-lg font-bold">Cambiar el rol de {fullName}</h2>
-            <p className="pg-fg2 truncate text-sm">{user.email}</p>
+            <p className="pg-fg2 truncate text-sm">{user.email ?? 'Entra con el PIN de su clase'}</p>
           </div>
           <button type="button" onClick={onClose} className="pg-icon-btn" aria-label="Cerrar">
             <X className="h-5 w-5" aria-hidden="true" />

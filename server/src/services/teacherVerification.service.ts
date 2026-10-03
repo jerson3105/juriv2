@@ -17,15 +17,39 @@ export const UNVERIFIED_CLASS_MESSAGE =
 const domainOf = (email: string) => email.trim().toLowerCase().split('@')[1] ?? '';
 const normalizeDomain = (value: string) => value.trim().toLowerCase().replace(/^@/, '');
 
+// Correos personales: cualquiera puede tener uno, no sirven para verificar (con los de PE/GT/EC/MX).
+const PERSONAL_DOMAINS = new Set([
+  'gmail.com', 'googlemail.com', 'hotmail.com', 'hotmail.es', 'outlook.com', 'outlook.es', 'live.com', 'live.com.mx',
+  'msn.com', 'yahoo.com', 'yahoo.es', 'yahoo.com.mx', 'ymail.com', 'icloud.com', 'me.com', 'aol.com',
+  'proton.me', 'protonmail.com', 'gmx.com', 'zoho.com', 'prodigy.net.mx',
+]);
+
+/**
+ * Por dominio solo se verifican cuentas de Google: Google comprobó que la persona es dueña del correo. Una
+ * cuenta con contraseña nunca confirmó su correo (cualquiera pudo escribir profe@colegio.edu.pe), así que
+ * espera sin verificar hasta entrar con Google o pedir revisión.
+ */
+type Provider = 'LOCAL' | 'GOOGLE' | 'PIN';
+
 class TeacherVerificationService {
-  /** Estado con el que nace una cuenta docente: verificada si su correo es de un dominio institucional. */
-  async initialStatusFor(email: string): Promise<{ teacherStatus: TeacherStatus; teacherVerifiedVia: VerifiedVia | null; teacherVerifiedAt: Date | null }> {
+  private async isListedDomain(email: string): Promise<boolean> {
     const domain = domainOf(email);
-    if (domain) {
-      const [match] = await db.select({ id: verifiedDomains.id }).from(verifiedDomains).where(eq(verifiedDomains.domain, domain)).limit(1);
-      if (match) return { teacherStatus: 'VERIFIED', teacherVerifiedVia: 'DOMAIN', teacherVerifiedAt: new Date() };
+    if (!domain) return false;
+    const [match] = await db.select({ id: verifiedDomains.id }).from(verifiedDomains).where(eq(verifiedDomains.domain, domain)).limit(1);
+    return !!match;
+  }
+
+  /** Estado con el que nace una cuenta docente: verificada si entra con Google con un correo institucional. */
+  async initialStatusFor(email: string, provider: Provider): Promise<{ teacherStatus: TeacherStatus; teacherVerifiedVia: VerifiedVia | null; teacherVerifiedAt: Date | null }> {
+    if (provider === 'GOOGLE' && (await this.isListedDomain(email))) {
+      return { teacherStatus: 'VERIFIED', teacherVerifiedVia: 'DOMAIN', teacherVerifiedAt: new Date() };
     }
     return { teacherStatus: 'UNVERIFIED', teacherVerifiedVia: null, teacherVerifiedAt: null };
+  }
+
+  /** Un docente con contraseña que ahora entra con Google: si su dominio está en la lista, queda verificado. */
+  async verifyByGoogleDomain(userId: string, email: string): Promise<void> {
+    if (await this.isListedDomain(email)) await this.markVerified(userId, 'DOMAIN');
   }
 
   /** ¿Puede este docente recibir alumnos con cuenta y familias? (el admin siempre). */
@@ -138,23 +162,43 @@ class TeacherVerificationService {
       .orderBy(verifiedDomains.domain);
   }
 
-  async addDomain(adminId: string, input: { domain: string; note?: string; schoolId?: string | null }) {
-    const domain = normalizeDomain(input.domain);
+  private validDomain(input: string): string {
+    const domain = normalizeDomain(input);
     if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain)) throw new ValidationError('Escribe un dominio válido, por ejemplo colegio.edu.pe');
-    // Correos personales: cualquiera puede tener uno, no sirven para verificar.
-    if (['gmail.com', 'hotmail.com', 'outlook.com', 'yahoo.com', 'icloud.com', 'live.com'].includes(domain)) {
-      throw new ValidationError('Ese dominio es de correo personal: no sirve para verificar docentes');
-    }
+    if (PERSONAL_DOMAINS.has(domain)) throw new ValidationError('Ese dominio es de correo personal: no sirve para verificar docentes');
+    return domain;
+  }
+
+  /** Docentes sin verificar con correo de ese dominio, por cómo entran (solo los de Google se verificarían). */
+  private async waitingFor(domain: string) {
+    const rows = await db.select({ id: users.id, provider: users.provider }).from(users).where(and(
+      eq(users.role, 'TEACHER'),
+      eq(users.isActive, true),
+      sql`LOWER(SUBSTRING_INDEX(${users.email}, '@', -1)) = ${domain}`,
+      or(isNull(users.teacherStatus), sql`${users.teacherStatus} <> 'VERIFIED'`),
+    ));
+    return { google: rows.filter((row) => row.provider === 'GOOGLE'), local: rows.filter((row) => row.provider !== 'GOOGLE') };
+  }
+
+  /** Antes de agregar un dominio: a cuántos verificaría ahora mismo. */
+  async previewDomain(input: string) {
+    const domain = this.validDomain(input);
+    const [taken] = await db.select({ id: verifiedDomains.id }).from(verifiedDomains).where(eq(verifiedDomains.domain, domain)).limit(1);
+    const waiting = await this.waitingFor(domain);
+    return { domain, alreadyListed: !!taken, google: waiting.google.length, local: waiting.local.length };
+  }
+
+  async addDomain(adminId: string, input: { domain: string; note?: string; schoolId?: string | null }) {
+    const domain = this.validDomain(input.domain);
     const [taken] = await db.select({ id: verifiedDomains.id }).from(verifiedDomains).where(eq(verifiedDomains.domain, domain)).limit(1);
     if (taken) throw new ConflictError('Ese dominio ya está en la lista');
     await db.insert(verifiedDomains).values({
       id: uuidv4(), domain, note: input.note?.trim().slice(0, 255) || null, schoolId: input.schoolId || null, createdBy: adminId, createdAt: new Date(),
     });
-    // Docentes que ya tenían ese correo y esperaban: quedan verificados.
-    const waiting = await db.select({ id: users.id }).from(users)
-      .where(and(eq(users.role, 'TEACHER'), sql`LOWER(SUBSTRING_INDEX(${users.email}, '@', -1)) = ${domain}`, sql`${users.teacherStatus} <> 'VERIFIED'`));
-    for (const w of waiting) await this.markVerified(w.id, 'DOMAIN');
-    return { verified: waiting.length };
+    // Los que ya esperaban con ese correo: quedan verificados solo los que entran con Google.
+    const waiting = await this.waitingFor(domain);
+    for (const teacher of waiting.google) await this.markVerified(teacher.id, 'DOMAIN');
+    return { verified: waiting.google.length, localWaiting: waiting.local.length };
   }
 
   async removeDomain(id: string) {

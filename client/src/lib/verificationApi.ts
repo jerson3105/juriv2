@@ -33,6 +33,15 @@ export interface VerifiedDomain {
   createdAt: string;
 }
 
+export interface DomainPreview {
+  domain: string;
+  alreadyListed: boolean;
+  /** Docentes sin verificar con ese dominio que entran con Google (se verificarían). */
+  google: number;
+  /** Los que entran con contraseña: siguen sin verificar hasta entrar con Google. */
+  local: number;
+}
+
 export interface FamilyRequest {
   linkId: string;
   parentFirstName: string;
@@ -73,7 +82,10 @@ export const verificationApi = {
   reviewTeacher: async (userId: string, approved: boolean, reason?: string) =>
     api.post(`/admin/teacher-verifications/${userId}`, { approved, ...(reason ? { reason } : {}) }),
   listDomains: async (): Promise<VerifiedDomain[]> => (await api.get('/admin/verified-domains')).data.data,
-  addDomain: async (domain: string, note?: string): Promise<{ verified: number }> =>
+  /** Antes de agregar: cuántos docentes de Google se verificarían y cuántos con contraseña quedarían esperando. */
+  previewDomain: async (domain: string): Promise<DomainPreview> =>
+    (await api.get('/admin/verified-domains/preview', { params: { domain } })).data.data,
+  addDomain: async (domain: string, note?: string): Promise<{ verified: number; localWaiting: number }> =>
     (await api.post('/admin/verified-domains', { domain, ...(note ? { note } : {}) })).data.data,
   removeDomain: async (id: string) => api.delete(`/admin/verified-domains/${id}`),
 };

@@ -107,9 +107,16 @@ export interface PendingVerification {
   schoolAddress: string | null;
   schoolCity: string | null;
   schoolCountry: string;
+  schoolVerified: boolean;
+  /** Quién la pide dentro de la escuela (solo el responsable que la registró puede pedirla). */
+  requesterRole: 'OWNER' | 'TEACHER' | null;
+  requesterStatus: 'PENDING_ADMIN' | 'PENDING_OWNER' | 'VERIFIED' | 'REJECTED' | null;
+  requesterIsCreator: number;
+  requesterClasses: number;
   userFirstName: string;
   userLastName: string;
   userEmail: string;
+  userTeacherStatus: 'UNVERIFIED' | 'PENDING' | 'VERIFIED' | null;
 }
 
 export interface AdminSchoolWithMembers {

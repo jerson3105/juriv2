@@ -1,11 +1,12 @@
 import bcrypt from 'bcryptjs';
-import { and, count, eq, ne } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, like, ne, or, sql, type SQL } from 'drizzle-orm';
+import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import { users, classrooms, studentProfiles } from '../db/schema.js';
 import { cache, CACHE_KEYS } from '../utils/cache.js';
 import { revokeAllUserTokens } from '../utils/jwt.js';
 import { logger } from '../utils/logger.js';
-import { ConflictError, ForbiddenError, NotFoundError } from '../utils/errors.js';
+import { ConflictError, ForbiddenError, NotFoundError, isDuplicateEntry } from '../utils/errors.js';
 import { teacherVerificationService } from './teacherVerification.service.js';
 
 export type AssignableRole = 'ADMIN' | 'TEACHER' | 'STUDENT';
@@ -33,11 +34,110 @@ const findTarget = async (userId: string) => {
   return target;
 };
 
+export interface UserListFilters {
+  q?: string;
+  role?: 'ADMIN' | 'TEACHER' | 'STUDENT' | 'PARENT';
+  status?: 'active' | 'inactive';
+  page: number;
+  limit: number;
+}
+
+/** `%` y `_` del texto buscado se toman literal (no como comodines). */
+const likeTerm = (value: string) => `%${value.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
+
 /**
  * Cambios de rol y de estado hechos desde el panel. Hasta que exista la bitácora, cada cambio deja
  * una línea en el log de la app (quién, a quién, de qué a qué).
  */
 export const adminUsersService = {
+  /**
+   * Búsqueda y páginas en el servidor (antes llegaban solo las 20 cuentas más nuevas). Los correos
+   * sintéticos de las cuentas con PIN no salen: el admin ve «Entra con PIN».
+   */
+  async list(filters: UserListFilters) {
+    const conditions: SQL[] = [];
+    if (filters.role) conditions.push(eq(users.role, filters.role));
+    if (filters.status) conditions.push(eq(users.isActive, filters.status === 'active'));
+    const term = filters.q?.trim();
+    if (term) {
+      const pattern = likeTerm(term.toLowerCase());
+      conditions.push(or(
+        like(sql`LOWER(${users.email})`, pattern),
+        like(sql`LOWER(CONCAT(${users.firstName}, ' ', ${users.lastName}))`, pattern),
+      )!);
+    }
+    const where = conditions.length ? and(...conditions) : undefined;
+    const [rows, [{ total }], roleRows] = await Promise.all([
+      db.select({
+        id: users.id, email: users.email, firstName: users.firstName, lastName: users.lastName, role: users.role,
+        provider: users.provider, isActive: users.isActive, teacherStatus: users.teacherStatus,
+        createdAt: users.createdAt, lastLoginAt: users.lastLoginAt,
+      }).from(users).where(where).orderBy(desc(users.createdAt)).limit(filters.limit).offset((filters.page - 1) * filters.limit),
+      db.select({ total: count() }).from(users).where(where),
+      db.select({ role: users.role, total: count() }).from(users).groupBy(users.role),
+    ]);
+
+    const ids = rows.map((row) => row.id);
+    const [teaching, enrolled] = ids.length
+      ? await Promise.all([
+        db.select({ id: classrooms.teacherId, n: count() }).from(classrooms)
+          .where(and(inArray(classrooms.teacherId, ids), eq(classrooms.isActive, true))).groupBy(classrooms.teacherId),
+        db.select({ id: studentProfiles.userId, n: count() }).from(studentProfiles)
+          .where(and(inArray(studentProfiles.userId, ids), eq(studentProfiles.isActive, true))).groupBy(studentProfiles.userId),
+      ])
+      : [[], []];
+    const classesOf = new Map(teaching.map((row) => [row.id, Number(row.n)]));
+    const enrolledOf = new Map(enrolled.map((row) => [row.id!, Number(row.n)]));
+    const pinAccount = (row: { provider: string; email: string }) => row.provider === 'PIN' || PIN_EMAIL.test(row.email);
+
+    return {
+      users: rows.map((row) => ({
+        ...row,
+        email: pinAccount(row) ? null : row.email,
+        classes: row.role === 'TEACHER' ? classesOf.get(row.id) ?? 0 : null,
+        enrolledIn: row.role === 'STUDENT' ? enrolledOf.get(row.id) ?? 0 : null,
+      })),
+      counts: Object.fromEntries(roleRows.map((row) => [row.role, Number(row.total)])) as Partial<Record<'ADMIN' | 'TEACHER' | 'STUDENT' | 'PARENT', number>>,
+      pagination: { page: filters.page, limit: filters.limit, total: Number(total), totalPages: Math.max(1, Math.ceil(Number(total) / filters.limit)) },
+    };
+  },
+
+  /** Docente creado por el admin: correo normalizado, contraseña con la política común y verificado. */
+  async createTeacher(actorId: string, input: { email: string; firstName: string; lastName: string; password: string }) {
+    const email = input.email.trim().toLowerCase();
+    const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
+    if (existing) throw new ConflictError('Ya existe una cuenta con ese correo.');
+    const now = new Date();
+    const id = uuidv4();
+    try {
+      await db.insert(users).values({
+        id,
+        email,
+        firstName: input.firstName.trim(),
+        lastName: input.lastName.trim(),
+        password: await bcrypt.hash(input.password, 12),
+        role: 'TEACHER',
+        teacherStatus: 'VERIFIED',
+        teacherVerifiedVia: 'ADMIN',
+        teacherVerifiedAt: now,
+        provider: 'LOCAL',
+        isActive: true,
+        notifyBadges: true,
+        notifyLevelUp: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+    } catch (error) {
+      // Doble clic: el segundo choca con el correo único.
+      if (isDuplicateEntry(error)) {
+        throw new ConflictError('Ya existe una cuenta con ese correo.');
+      }
+      throw error;
+    }
+    logger.info('admin.create_teacher', { actorId, targetId: id });
+    return { id, email, firstName: input.firstName.trim(), lastName: input.lastName.trim(), role: 'TEACHER' as const };
+  },
+
   async changeRole(actorId: string, targetId: string, role: AssignableRole, currentPassword?: string) {
     if (actorId === targetId) throw new ConflictError('No puedes cambiar tu propio rol.');
     const target = await findTarget(targetId);

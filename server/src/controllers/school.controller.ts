@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { schoolService } from '../services/school.service.js';
 import { schoolManagementService, SchoolManagementError } from '../services/schoolManagement.service.js';
 import { BADGE_IMAGE_PATTERN } from '../utils/badgeConditions.js';
+import { AppError } from '../utils/errors.js';
 import { z } from 'zod';
 import {
   requireSchoolOwner,
@@ -28,7 +29,8 @@ const createSchoolSchema = z.object({
 const createVerificationSchema = z.object({
   schoolId: z.string().uuid(),
   position: z.string().min(2).max(100),
-  documentUrls: z.array(z.string()).optional(),
+  // Enlaces https a documentos (hoy no hay pantalla que los suba; se validan por si una futura los muestra).
+  documentUrls: z.array(z.string().url().max(500).refine((url) => url.startsWith('https://'), 'Usa enlaces https')).max(5).optional(),
   details: z.string().max(2000).optional(),
 });
 
@@ -359,6 +361,7 @@ class SchoolController {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ success: false, message: 'Datos inválidos', errors: error.errors });
       }
+      if (error instanceof AppError) return res.status(error.statusCode).json({ success: false, message: error.message });
       console.error('Error creating verification:', error);
       res.status(500).json({ success: false, message: 'Error al enviar verificación' });
     }
@@ -384,12 +387,13 @@ class SchoolController {
       const data = reviewVerificationSchema.parse(req.body);
       const adminId = (req as any).user.id;
 
-      await schoolService.reviewVerification(verificationId, adminId, data.approved, data.note);
+      await schoolService.reviewVerification(z.string().uuid().parse(verificationId), adminId, data.approved, data.note);
       res.json({ success: true, message: data.approved ? 'Verificación aprobada' : 'Verificación rechazada' });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ success: false, message: 'Datos inválidos' });
       }
+      if (error instanceof AppError) return res.status(error.statusCode).json({ success: false, message: error.message });
       console.error('Error reviewing verification:', error);
       res.status(500).json({ success: false, message: 'Error al revisar verificación' });
     }

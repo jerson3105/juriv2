@@ -3,6 +3,7 @@ import { schools, schoolMembers, schoolVerifications, classrooms, users, schoolB
 import { eq, and, like, count, sql, desc, ne, inArray, gte, lte } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { teacherVerificationService } from './teacherVerification.service.js';
+import { ConflictError, ForbiddenError, NotFoundError } from '../utils/errors.js';
 import { conditionBehaviorIds, normalizeBadgeAssignment, parseBadgeCondition, safeBadgeImage } from '../utils/badgeConditions.js';
 
 interface CreateSchoolData {
@@ -345,8 +346,21 @@ export class SchoolService {
 
   // ==================== VERIFICACIONES ====================
 
-  // Crear solicitud de verificación
+  // Crear solicitud de verificación. Solo la pide quien registró la escuela (su responsable, que espera al
+  // equipo de Juried): antes cualquier docente que pedía unirse podía mandarla y, si se aprobaba, entraba
+  // como verificado sin el visto bueno del responsable.
   async createVerification(userId: string, data: CreateVerificationData) {
+    const [membership] = await db
+      .select({ role: schoolMembers.role, status: schoolMembers.status, verified: schools.isVerified })
+      .from(schoolMembers)
+      .innerJoin(schools, eq(schools.id, schoolMembers.schoolId))
+      .where(and(eq(schoolMembers.schoolId, data.schoolId), eq(schoolMembers.userId, userId)))
+      .limit(1);
+    if (!membership || membership.role !== 'OWNER' || membership.status !== 'PENDING_ADMIN') {
+      throw new ForbiddenError('Solo quien registró la escuela puede pedir su verificación.');
+    }
+    if (membership.verified) throw new ConflictError('La escuela ya está verificada.');
+
     const id = uuidv4();
     const now = new Date();
 
@@ -395,71 +409,55 @@ export class SchoolService {
         schoolAddress: schools.address,
         schoolCity: schools.city,
         schoolCountry: schools.country,
+        schoolVerified: schools.isVerified,
+        // Contexto para decidir: quién la pide dentro de la escuela, si la registró y cuántas clases tiene.
+        requesterRole: schoolMembers.role,
+        requesterStatus: schoolMembers.status,
+        requesterIsCreator: sql<number>`${schools.createdBy} = ${schoolVerifications.userId}`,
+        requesterClasses: sql<number>`(SELECT COUNT(*) FROM classrooms c WHERE c.teacher_id = ${schoolVerifications.userId} AND c.is_active = 1)`,
         userFirstName: users.firstName,
         userLastName: users.lastName,
         userEmail: users.email,
+        userTeacherStatus: users.teacherStatus,
       })
       .from(schoolVerifications)
       .innerJoin(schools, eq(schoolVerifications.schoolId, schools.id))
       .innerJoin(users, eq(schoolVerifications.userId, users.id))
+      .leftJoin(schoolMembers, and(eq(schoolMembers.schoolId, schoolVerifications.schoolId), eq(schoolMembers.userId, schoolVerifications.userId)))
       .where(eq(schoolVerifications.status, 'PENDING'))
       .orderBy(schoolVerifications.createdAt);
   }
 
-  // Revisar verificación (admin)
+  // Revisar verificación (admin). Solo una solicitud PENDING y de una vez (dos clics o dos pestañas no la
+  // revisan dos veces); se aprueba solo la membresía de responsable (OWNER) de quien la pidió.
   async reviewVerification(verificationId: string, adminId: string, approved: boolean, note?: string) {
     const now = new Date();
+    const verification = await db.transaction(async (tx) => {
+      const [row] = await tx.select().from(schoolVerifications).where(eq(schoolVerifications.id, verificationId)).for('update');
+      if (!row) throw new NotFoundError('Verificación no encontrada');
+      if (row.status !== 'PENDING') throw new ConflictError('Esta solicitud ya se revisó.');
 
-    // Obtener la verificación
-    const [verification] = await db
-      .select()
-      .from(schoolVerifications)
-      .where(eq(schoolVerifications.id, verificationId));
+      await tx.update(schoolVerifications)
+        .set({ status: approved ? 'APPROVED' : 'REJECTED', reviewedBy: adminId, reviewNote: note || null, reviewedAt: now })
+        .where(and(eq(schoolVerifications.id, verificationId), eq(schoolVerifications.status, 'PENDING')));
 
-    if (!verification) throw new Error('Verificación no encontrada');
-
-    // Actualizar verificación
-    await db.update(schoolVerifications)
-      .set({
-        status: approved ? 'APPROVED' : 'REJECTED',
-        reviewedBy: adminId,
-        reviewNote: note || null,
-        reviewedAt: now,
-      })
-      .where(eq(schoolVerifications.id, verificationId));
-
-    if (approved) {
-      // Marcar escuela como verificada
-      await db.update(schools)
-        .set({ isVerified: true, updatedAt: now })
-        .where(eq(schools.id, verification.schoolId));
-
-      // Aprobar al miembro
-      await db.update(schoolMembers)
-        .set({
-          status: 'VERIFIED',
-          joinedAt: now,
-          updatedAt: now,
-        })
-        .where(and(
-          eq(schoolMembers.schoolId, verification.schoolId),
-          eq(schoolMembers.userId, verification.userId)
-        ));
-      // El equipo de Juried verificó la escuela y a su responsable.
-      await teacherVerificationService.markVerified(verification.userId, 'ADMIN');
-    } else {
-      // Rechazar al miembro
-      await db.update(schoolMembers)
-        .set({
-          status: 'REJECTED',
-          rejectionReason: note || 'Verificación rechazada',
-          updatedAt: now,
-        })
-        .where(and(
-          eq(schoolMembers.schoolId, verification.schoolId),
-          eq(schoolMembers.userId, verification.userId)
-        ));
-    }
+      const ownerOfRequest = and(
+        eq(schoolMembers.schoolId, row.schoolId),
+        eq(schoolMembers.userId, row.userId),
+        eq(schoolMembers.role, 'OWNER'),
+      );
+      if (approved) {
+        await tx.update(schools).set({ isVerified: true, updatedAt: now }).where(eq(schools.id, row.schoolId));
+        await tx.update(schoolMembers).set({ status: 'VERIFIED', joinedAt: now, updatedAt: now }).where(ownerOfRequest);
+      } else {
+        await tx.update(schoolMembers)
+          .set({ status: 'REJECTED', rejectionReason: note || 'Verificación rechazada', updatedAt: now })
+          .where(ownerOfRequest);
+      }
+      return row;
+    });
+    // El equipo de Juried verificó la escuela y a su responsable.
+    if (approved) await teacherVerificationService.markVerified(verification.userId, 'ADMIN');
   }
 
   // Obtener todas las escuelas con miembros (admin)

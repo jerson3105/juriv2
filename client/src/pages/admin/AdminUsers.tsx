@@ -1,354 +1,186 @@
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  ArrowLeft,
-  Search,
-  Users,
-  Shield,
-  GraduationCap,
-  UserCog,
-  Ban,
-  Mail,
-  Calendar,
-  ChevronDown,
-  Plus,
-  RotateCcw,
-  X
-} from 'lucide-react';
-import { adminApi } from '../../lib/adminApi';
-import type { AdminUser, AssignableRole } from '../../lib/adminApi';
-import { useAuthStore } from '../../store/authStore';
-import { Navigate, Link } from 'react-router-dom';
+import { useEffect, useId, useState } from 'react';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import api from '../../lib/api';
+import { Ban, ChevronDown, ChevronLeft, ChevronRight, Plus, RotateCcw, Search, X } from 'lucide-react';
+import { useAuthStore } from '../../store/authStore';
+import {
+  adminApi, adminOverviewKey, type AdminUser, type AdminUserFilters, type UserRole,
+} from '../../lib/adminApi';
+import { AdminPageHeader } from '../../components/admin/AdminPageHeader';
+import { primaryButton } from '../../components/admin/adminStyles';
 import { RoleChangeDialog } from '../../components/admin/RoleChangeDialog';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
+import { passwordChecks } from '../../components/auth/authHelpers';
 
-const ROLES = [
-  { value: 'ADMIN', label: 'Administrador', icon: Shield, color: 'bg-purple-100 text-purple-700' },
-  { value: 'TEACHER', label: 'Profesor', icon: UserCog, color: 'bg-blue-100 text-blue-700' },
-  { value: 'STUDENT', label: 'Estudiante', icon: GraduationCap, color: 'bg-green-100 text-green-700' },
+const ROLE_NAME: Record<UserRole, string> = { ADMIN: 'Administración', TEACHER: 'Docente', STUDENT: 'Alumno', PARENT: 'Familia' };
+const ROLE_FILTERS: { value: UserRole | undefined; label: string }[] = [
+  { value: undefined, label: 'Todos' },
+  { value: 'TEACHER', label: 'Docentes' },
+  { value: 'STUDENT', label: 'Alumnos' },
+  { value: 'PARENT', label: 'Familias' },
+  { value: 'ADMIN', label: 'Administración' },
 ];
-// Las familias se muestran, pero su rol no se cambia desde aquí.
-const PARENT_ROLE = { value: 'PARENT', label: 'Familia', icon: Users, color: 'bg-amber-100 text-amber-800' };
+const ROLE_CHIP: Record<UserRole, string> = {
+  ADMIN: 'bg-violet-100 text-violet-800 dark:bg-violet-900 dark:text-violet-100',
+  TEACHER: 'bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-100',
+  STUDENT: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-100',
+  PARENT: 'bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-100',
+};
+const PROVIDER_NAME: Record<AdminUser['provider'], string> = { LOCAL: 'Correo y contraseña', GOOGLE: 'Google', PIN: 'PIN de su clase' };
+const VERIFICATION_NAME = { VERIFIED: 'Verificado', PENDING: 'Pidió verificación', UNVERIFIED: 'Sin verificar' } as const;
 
 const errorMessage = (error: unknown, fallback: string) =>
   (error as { response?: { data?: { message?: string } } })?.response?.data?.message ?? fallback;
 
+const relative = new Intl.RelativeTimeFormat('es', { numeric: 'auto' });
+const lastSeen = (value: string | null) => {
+  if (!value) return 'Nunca';
+  const days = Math.round((new Date(value).getTime() - Date.now()) / 86_400_000);
+  if (days > -1) return 'Hoy';
+  if (days > -30) return relative.format(days, 'day');
+  if (days > -365) return relative.format(Math.round(days / 30), 'month');
+  return relative.format(Math.round(days / 365), 'year');
+};
+
+/** Usuarios: búsqueda, filtros y páginas en el servidor; rol con diálogo; desactivar de verdad. */
 export default function AdminUsers() {
-  const user = useAuthStore((state) => state.user);
-  const [users, setUsers] = useState<AdminUser[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterRole, setFilterRole] = useState<string>('');
+  const me = useAuthStore((state) => state.user);
+  const queryClient = useQueryClient();
+  const [search, setSearch] = useState('');
+  const [q, setQ] = useState('');
+  const [role, setRole] = useState<UserRole | undefined>();
+  const [status, setStatus] = useState<'active' | 'inactive' | undefined>();
+  const [page, setPage] = useState(1);
   const [roleTarget, setRoleTarget] = useState<AdminUser | null>(null);
   const [statusTarget, setStatusTarget] = useState<AdminUser | null>(null);
-  const [savingStatus, setSavingStatus] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
 
+  // La búsqueda va al servidor un momento después de dejar de escribir.
   useEffect(() => {
-    loadUsers();
-  }, []);
+    const timer = window.setTimeout(() => { setQ(search.trim()); setPage(1); }, 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
-  const loadUsers = async () => {
-    try {
-      setLoading(true);
-      const data = await adminApi.getUsers();
-      setUsers(data.users);
-    } catch (error) {
-      console.error('Error loading users:', error);
-      toast.error('Error al cargar usuarios');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRoleChanged = (userId: string, newRole: AssignableRole) => {
-    setUsers((list) => list.map(u => u.id === userId ? { ...u, role: newRole } : u));
-    setRoleTarget(null);
-    toast.success('Rol actualizado. Sus sesiones se cerraron.');
-  };
-
-  const handleToggleStatus = async () => {
-    if (!statusTarget) return;
-    const next = !statusTarget.isActive;
-    try {
-      setSavingStatus(true);
-      await adminApi.updateUserStatus(statusTarget.id, next);
-      setUsers((list) => list.map(u => u.id === statusTarget.id ? { ...u, isActive: next } : u));
-      toast.success(next ? 'Cuenta reactivada' : 'Cuenta desactivada. Sus sesiones se cerraron.');
-      setStatusTarget(null);
-    } catch (error) {
-      toast.error(errorMessage(error, 'No se pudo cambiar el estado de la cuenta'));
-    } finally {
-      setSavingStatus(false);
-    }
-  };
-
-  const handleCreateTeacher = async (data: { email: string; firstName: string; lastName: string; password: string }) => {
-    try {
-      setCreating(true);
-      const response = await api.post('/admin/users/teacher', data);
-      if (response.data.success) {
-        toast.success('Profesor creado correctamente');
-        setShowCreateModal(false);
-        loadUsers(); // Recargar lista
-      }
-    } catch (error) {
-      toast.error(errorMessage(error, 'Error al crear profesor'));
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  // Verificar rol de admin
-  if (user?.role !== 'ADMIN') {
-    return <Navigate to="/" replace />;
-  }
-
-  const filteredUsers = users.filter(u => {
-    const matchesSearch = 
-      u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      u.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      u.lastName.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesRole = !filterRole || u.role === filterRole;
-    return matchesSearch && matchesRole;
+  const filters: AdminUserFilters = { q: q || undefined, role, status, page };
+  const { data, isLoading, isError, isFetching, refetch } = useQuery({
+    queryKey: ['admin-users', filters],
+    queryFn: () => adminApi.getUsers(filters),
+    placeholderData: keepPreviousData,
   });
 
-  const getRoleInfo = (role: string) => ROLES.find(r => r.value === role) || PARENT_ROLE;
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+    void queryClient.invalidateQueries({ queryKey: adminOverviewKey });
+  };
+
+  const toggleStatus = useMutation({
+    mutationFn: (target: AdminUser) => adminApi.updateUserStatus(target.id, !target.isActive),
+    onSuccess: (_data, target) => {
+      refresh();
+      setStatusTarget(null);
+      toast.success(target.isActive ? 'Cuenta desactivada. Sus sesiones se cerraron.' : 'Cuenta reactivada');
+    },
+    onError: (error) => toast.error(errorMessage(error, 'No se pudo cambiar el estado de la cuenta')),
+  });
+
+  const counts = data?.counts ?? {};
+  const total = Object.values(counts).reduce((sum, value) => sum + (value ?? 0), 0);
+  const users = data?.users ?? [];
+  const pagination = data?.pagination;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <Link to="/admin" className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-                <ArrowLeft className="w-5 h-5" />
-              </Link>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Gestión de Usuarios</h1>
-                <p className="text-gray-600">{users.length} usuarios registrados</p>
-              </div>
-            </div>
+    <div data-pg="" className="text-[var(--pg-fg)]">
+      <AdminPageHeader
+        title="Usuarios"
+        subtitle={data ? `${total} cuentas · ${pagination?.total ?? 0} con estos filtros` : 'Cargando…'}
+        actions={<button type="button" className={primaryButton} onClick={() => setCreating(true)}><Plus className="h-4 w-4" aria-hidden="true" /> Crear docente</button>}
+      />
+      <main className="mx-auto max-w-7xl space-y-4 px-4 py-6 sm:px-6">
+        <div className="flex flex-wrap items-center gap-2">
+          {ROLE_FILTERS.map((option) => (
             <button
-              onClick={() => setShowCreateModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+              key={option.label}
+              type="button"
+              className="pg-chip"
+              aria-pressed={role === option.value}
+              onClick={() => { setRole(option.value); setPage(1); }}
             >
-              <Plus className="w-5 h-5" />
-              Crear Profesor
+              {option.label} <span className="pg-fg2">{option.value ? counts[option.value] ?? 0 : total}</span>
             </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="relative min-w-[14rem] flex-1">
+            <span className="sr-only">Buscar por nombre o correo</span>
+            <Search className="pg-fg2 absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" aria-hidden="true" />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por nombre o correo…"
+              className="min-h-[2.5rem] w-full rounded-lg border border-[var(--pg-control)] bg-[var(--pg-surface)] pl-9 pr-3"
+            />
+          </label>
+          <div className="pg-seg" role="group" aria-label="Estado de la cuenta">
+            {([[undefined, 'Todas'], ['active', 'Activas'], ['inactive', 'Desactivadas']] as const).map(([value, label]) => (
+              <button key={label} type="button" className="pg-seg-item" aria-pressed={status === value} onClick={() => { setStatus(value); setPage(1); }}>{label}</button>
+            ))}
           </div>
         </div>
-      </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Filters */}
-        <div className="bg-white rounded-xl p-4 shadow-sm mb-6">
-          <div className="flex flex-wrap gap-4">
-            <div className="flex-1 min-w-[250px]">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Buscar por nombre o email..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+        {isError ? (
+          <div role="alert" className="pg-surface p-6 text-center">
+            <p className="font-semibold">No se pudieron cargar los usuarios.</p>
+            <button type="button" className="pg-btn mt-3" onClick={() => void refetch()}>Reintentar</button>
+          </div>
+        ) : isLoading ? (
+          <div className="pg-surface h-64 animate-pulse" aria-hidden="true" />
+        ) : users.length === 0 ? (
+          <div className="rounded-xl border-2 border-dashed border-[var(--pg-control)] p-8 text-center">
+            <p className="text-3xl" aria-hidden="true">🔍 👤</p>
+            <p className="mt-2 font-semibold">Ninguna cuenta con estos filtros.</p>
+            <button type="button" className="pg-btn mt-3" onClick={() => { setSearch(''); setRole(undefined); setStatus(undefined); }}>Quitar filtros</button>
+          </div>
+        ) : (
+          <section aria-label="Cuentas" className={`pg-surface overflow-hidden ${isFetching ? 'opacity-70' : ''}`} aria-busy={isFetching}>
+            <ul className="divide-y divide-[var(--pg-line)]">
+              {users.map((user) => (
+                <UserRow
+                  key={user.id}
+                  user={user}
+                  isMe={user.id === me?.id}
+                  onRole={() => setRoleTarget(user)}
+                  onStatus={() => setStatusTarget(user)}
                 />
-              </div>
-            </div>
-            <select
-              value={filterRole}
-              onChange={(e) => setFilterRole(e.target.value)}
-              className="px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500"
-            >
-              <option value="">Todos los roles</option>
-              {ROLES.map(role => (
-                <option key={role.value} value={role.value}>{role.label}</option>
               ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          {ROLES.map(role => {
-            const count = users.filter(u => u.role === role.value).length;
-            const Icon = role.icon;
-            return (
-              <div key={role.value} className="bg-white rounded-xl p-4 shadow-sm">
-                <div className="flex items-center gap-3">
-                  <div className={`p-3 rounded-lg ${role.color}`}>
-                    <Icon className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold text-gray-900">{count}</p>
-                    <p className="text-sm text-gray-500">{role.label}s</p>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Users Table */}
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          {loading ? (
-            <div className="p-8">
-              <div className="animate-pulse space-y-4">
-                {[1, 2, 3, 4, 5].map(i => (
-                  <div key={i} className="flex items-center gap-4">
-                    <div className="w-10 h-10 bg-gray-200 rounded-full"></div>
-                    <div className="flex-1">
-                      <div className="h-4 bg-gray-200 rounded w-1/4 mb-2"></div>
-                      <div className="h-3 bg-gray-200 rounded w-1/3"></div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : filteredUsers.length === 0 ? (
-            <div className="text-center py-12">
-              <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900">No hay usuarios</h3>
-              <p className="text-gray-600">No se encontraron usuarios con los filtros aplicados</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b">
-                  <tr>
-                    <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Usuario
-                    </th>
-                    <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Email
-                    </th>
-                    <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Rol
-                    </th>
-                    <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Registro
-                    </th>
-                    <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Acciones
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {filteredUsers.map((u) => {
-                    const roleInfo = getRoleInfo(u.role);
-                    const RoleIcon = roleInfo.icon;
-                    
-                    return (
-                      <motion.tr
-                        key={u.id}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="hover:bg-gray-50"
-                      >
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-400 to-indigo-500 flex items-center justify-center text-white font-bold">
-                              {u.firstName.charAt(0)}{u.lastName.charAt(0)}
-                            </div>
-                            <div>
-                              <p className="font-medium text-gray-900">
-                                {u.firstName} {u.lastName}
-                              </p>
-                              <p className="text-sm text-gray-500">
-                                {u.provider}
-                                {!u.isActive && (
-                                  <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800">Desactivada</span>
-                                )}
-                              </p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-2 text-gray-600">
-                            <Mail className="w-4 h-4" />
-                            {u.email}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="relative">
-                            {u.id === user.id || u.role === 'PARENT' ? (
-                              <span
-                                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium ${roleInfo.color}`}
-                                title={u.id === user.id ? 'Tu propio rol no se cambia desde aquí' : 'El rol de una familia no se cambia desde aquí'}
-                              >
-                                <RoleIcon className="w-4 h-4" />
-                                {roleInfo.label}
-                              </span>
-                            ) : (
-                              <button
-                                onClick={() => setRoleTarget(u)}
-                                aria-label={`Cambiar el rol de ${u.firstName} ${u.lastName} (ahora: ${roleInfo.label})`}
-                                className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium ${roleInfo.color} hover:opacity-80 transition-opacity`}
-                              >
-                                <RoleIcon className="w-4 h-4" />
-                                {roleInfo.label}
-                                <ChevronDown className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-2 text-gray-500 text-sm">
-                            <Calendar className="w-4 h-4" />
-                            {new Date(u.createdAt).toLocaleDateString('es-ES')}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-2">
-                            {u.id !== user.id && (u.isActive ? (
-                              <button
-                                onClick={() => setStatusTarget(u)}
-                                className="p-2 text-gray-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
-                                title="Desactivar cuenta"
-                                aria-label={`Desactivar la cuenta de ${u.firstName} ${u.lastName}`}
-                              >
-                                <Ban className="w-4 h-4" />
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => setStatusTarget(u)}
-                                className="p-2 text-gray-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
-                                title="Reactivar cuenta"
-                                aria-label={`Reactivar la cuenta de ${u.firstName} ${u.lastName}`}
-                              >
-                                <RotateCcw className="w-4 h-4" />
-                              </button>
-                            ))}
-                          </div>
-                        </td>
-                      </motion.tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
+            </ul>
+            {pagination && pagination.totalPages > 1 && (
+              <nav aria-label="Páginas" className="flex items-center justify-between gap-2 border-t border-[var(--pg-line)] p-3 text-sm">
+                <button type="button" className="pg-btn" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>
+                  <ChevronLeft className="h-4 w-4" aria-hidden="true" /> Anterior
+                </button>
+                <span>Página {pagination.page} de {pagination.totalPages}</span>
+                <button type="button" className="pg-btn" disabled={page >= pagination.totalPages} onClick={() => setPage((value) => value + 1)}>
+                  Siguiente <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </nav>
+            )}
+          </section>
+        )}
+      </main>
 
       {roleTarget && (
         <RoleChangeDialog
           user={roleTarget}
           onClose={() => setRoleTarget(null)}
-          onChanged={(role) => handleRoleChanged(roleTarget.id, role)}
+          onChanged={() => { setRoleTarget(null); refresh(); toast.success('Rol actualizado. Sus sesiones se cerraron.'); }}
         />
       )}
-
       <ConfirmModal
         isOpen={!!statusTarget}
-        onClose={() => !savingStatus && setStatusTarget(null)}
-        onConfirm={handleToggleStatus}
-        isLoading={savingStatus}
+        onClose={() => !toggleStatus.isPending && setStatusTarget(null)}
+        onConfirm={() => statusTarget && toggleStatus.mutate(statusTarget)}
+        isLoading={toggleStatus.isPending}
         variant={statusTarget?.isActive ? 'danger' : 'info'}
         title={statusTarget?.isActive
           ? `¿Desactivar la cuenta de ${statusTarget.firstName} ${statusTarget.lastName}?`
@@ -358,151 +190,115 @@ export default function AdminUsers() {
           : 'Podrá volver a entrar con sus datos de siempre.'}
         confirmText={statusTarget?.isActive ? 'Desactivar' : 'Reactivar'}
       />
-
-      {/* Create Teacher Modal */}
-      <AnimatePresence>
-        {showCreateModal && (
-          <CreateTeacherModal
-            onClose={() => setShowCreateModal(false)}
-            onSubmit={handleCreateTeacher}
-            isLoading={creating}
-          />
-        )}
-      </AnimatePresence>
+      {creating && <CreateTeacherDialog onClose={() => setCreating(false)} onCreated={() => { setCreating(false); refresh(); }} />}
     </div>
   );
 }
 
-// Create Teacher Modal Component
-function CreateTeacherModal({
-  onClose,
-  onSubmit,
-  isLoading,
-}: {
-  onClose: () => void;
-  onSubmit: (data: { email: string; firstName: string; lastName: string; password: string }) => void;
-  isLoading: boolean;
-}) {
-  const [formData, setFormData] = useState({
-    email: '',
-    firstName: '',
-    lastName: '',
-    password: '',
+const UserRow = ({ user, isMe, onRole, onStatus }: { user: AdminUser; isMe: boolean; onRole: () => void; onStatus: () => void }) => {
+  const name = `${user.firstName} ${user.lastName}`.trim();
+  const fixedRole = isMe || user.role === 'PARENT';
+  const roleChip = `inline-flex min-h-[2rem] items-center gap-1 rounded-full px-2.5 text-xs font-semibold ${ROLE_CHIP[user.role]}`;
+  return (
+    <li className={`grid gap-2 p-3 sm:grid-cols-[minmax(0,2fr)_auto_minmax(0,1.3fr)_auto] sm:items-center sm:gap-4 ${user.isActive ? '' : 'bg-red-50/60 dark:bg-red-950/20'}`}>
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-200 text-sm font-bold text-slate-800 dark:bg-slate-600 dark:text-slate-100" aria-hidden="true">
+          {user.firstName.charAt(0)}{user.lastName.charAt(0)}
+        </span>
+        <div className="min-w-0">
+          <p className="truncate font-semibold">
+            {name}{isMe && <span className="pg-fg2 font-normal"> (tú)</span>}
+          </p>
+          <p className="pg-fg2 truncate text-sm">{user.email ?? 'Entra con el PIN de su clase'}</p>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {fixedRole ? (
+          <span className={roleChip} title={isMe ? 'Tu propio rol no se cambia desde aquí' : 'El rol de una familia no se cambia desde aquí'}>{ROLE_NAME[user.role]}</span>
+        ) : (
+          <button type="button" onClick={onRole} className={`${roleChip} hover:opacity-80`} aria-label={`Cambiar el rol de ${name} (ahora: ${ROLE_NAME[user.role]})`}>
+            {ROLE_NAME[user.role]} <ChevronDown className="h-3 w-3" aria-hidden="true" />
+          </button>
+        )}
+        {!user.isActive && <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-800 dark:bg-red-900 dark:text-red-100">Desactivada</span>}
+      </div>
+      <p className="pg-fg2 text-sm">
+        {PROVIDER_NAME[user.provider]}
+        {user.role === 'TEACHER' && ` · ${VERIFICATION_NAME[user.teacherStatus ?? 'UNVERIFIED']} · ${user.classes === 1 ? '1 clase' : `${user.classes ?? 0} clases`}`}
+        {user.role === 'STUDENT' && ` · ${user.enrolledIn === 1 ? 'en 1 clase' : `en ${user.enrolledIn ?? 0} clases`}`}
+        {' · '}Último ingreso: {lastSeen(user.lastLoginAt)}
+      </p>
+      <div className="flex justify-end">
+        {!isMe && (
+          <button
+            type="button"
+            onClick={onStatus}
+            className="pg-icon-btn"
+            aria-label={`${user.isActive ? 'Desactivar' : 'Reactivar'} la cuenta de ${name}`}
+            title={user.isActive ? 'Desactivar cuenta' : 'Reactivar cuenta'}
+          >
+            {user.isActive ? <Ban className="h-4 w-4" aria-hidden="true" /> : <RotateCcw className="h-4 w-4" aria-hidden="true" />}
+          </button>
+        )}
+      </div>
+    </li>
+  );
+};
+
+/** Alta de un docente por el admin: queda verificado; contraseña con la política común. */
+const CreateTeacherDialog = ({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) => {
+  const [form, setForm] = useState({ firstName: '', lastName: '', email: '', password: '' });
+  const [error, setError] = useState<string | null>(null);
+  const titleId = useId();
+  const checks = passwordChecks(form.password);
+  const valid = form.firstName.trim() && form.lastName.trim() && /\S+@\S+\.\S+/.test(form.email) && checks.every((check) => check.ok);
+  const create = useMutation({
+    mutationFn: () => adminApi.createTeacher({ ...form, email: form.email.trim() }),
+    onSuccess: () => { toast.success('Docente creado y verificado'); onCreated(); },
+    onError: (err) => setError(errorMessage(err, 'No se pudo crear el docente')),
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.email || !formData.firstName || !formData.lastName || !formData.password) {
-      toast.error('Todos los campos son requeridos');
-      return;
-    }
-    if (formData.password.length < 6) {
-      toast.error('La contraseña debe tener al menos 6 caracteres');
-      return;
-    }
-    onSubmit(formData);
-  };
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
+  const field = 'mt-1 min-h-[2.5rem] w-full rounded-lg border border-[var(--pg-control)] bg-[var(--pg-surface)] px-3';
+  const set = (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement>) => { setForm({ ...form, [key]: event.target.value }); setError(null); };
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
-        onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl"
+    <div data-pg="" className="fixed inset-0 z-[160] flex items-center justify-center bg-black/50 p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <form
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="pg-surface w-full max-w-md space-y-3 p-5 shadow-2xl"
+        onSubmit={(e) => { e.preventDefault(); if (valid && !create.isPending) create.mutate(); }}
       >
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-gray-900">Crear Nuevo Profesor</h2>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
-            <X className="w-5 h-5 text-gray-500" />
-          </button>
+        <div className="flex items-start justify-between gap-3">
+          <h2 id={titleId} className="text-lg font-bold">Crear docente</h2>
+          <button type="button" onClick={onClose} className="pg-icon-btn" aria-label="Cerrar"><X className="h-5 w-5" aria-hidden="true" /></button>
         </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
-              <input
-                type="text"
-                value={formData.firstName}
-                onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                placeholder="Juan"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Apellido</label>
-              <input
-                type="text"
-                value={formData.lastName}
-                onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                placeholder="Pérez"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                required
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input
-              type="email"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              placeholder="profesor@escuela.com"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña</label>
-            <input
-              type="password"
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              placeholder="Mínimo 6 caracteres"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-              required
-              minLength={6}
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              El profesor usará esta contraseña para iniciar sesión
-            </p>
-          </div>
-
-          <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 mt-4">
-            <p className="text-sm text-blue-700">
-              <strong>Nota:</strong> Este profesor podrá ser asignado como administrador de una escuela después de crearlo.
-            </p>
-          </div>
-
-          <div className="flex gap-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {isLoading ? 'Creando...' : 'Crear Profesor'}
-            </button>
-          </div>
-        </form>
-      </motion.div>
-    </motion.div>
+        <p className="pg-fg2 text-sm">Queda verificado: podrá recibir alumnos con cuenta y familias. Si tiene Gmail o un correo de su colegio con Google, es mejor que entre con Google.</p>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="text-sm font-medium">Nombre<input value={form.firstName} onChange={set('firstName')} maxLength={100} autoFocus className={field} /></label>
+          <label className="text-sm font-medium">Apellido<input value={form.lastName} onChange={set('lastName')} maxLength={100} className={field} /></label>
+        </div>
+        <label className="block text-sm font-medium">Correo<input type="email" value={form.email} onChange={set('email')} maxLength={255} autoComplete="off" className={field} /></label>
+        <label className="block text-sm font-medium">Contraseña temporal<input type="text" value={form.password} onChange={set('password')} maxLength={128} autoComplete="new-password" spellCheck={false} className={field} /></label>
+        <ul className="grid grid-cols-1 gap-1 text-xs sm:grid-cols-2" aria-label="Requisitos de la contraseña">
+          {checks.map((check) => (
+            <li key={check.label} className={check.ok ? 'text-emerald-700 dark:text-emerald-400' : 'pg-fg2'}>{check.ok ? '✓' : '○'} {check.label}</li>
+          ))}
+        </ul>
+        <p className="pg-fg2 text-xs">Pásasela por un canal privado y pídele que la cambie en Configuración → Seguridad.</p>
+        {error && <p role="alert" className="pg-alert text-sm font-medium">{error}</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" className="pg-btn" onClick={onClose}>Cancelar</button>
+          <button type="submit" className={primaryButton} disabled={!valid || create.isPending}>{create.isPending ? 'Creando…' : 'Crear docente'}</button>
+        </div>
+      </form>
+    </div>
   );
-}
+};
+

@@ -123,8 +123,8 @@ export const register = async (input: RegisterInput): Promise<AuthResponse> => {
   const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
   const now = new Date();
   const userId = uuidv4();
-  // Docente: nace sin verificar (salvo correo de un dominio institucional).
-  const teacherFields = role === 'TEACHER' ? await teacherVerificationService.initialStatusFor(normalizedEmail) : {};
+  // Docente con contraseña: nace sin verificar (nadie confirmó su correo; el dominio solo cuenta con Google).
+  const teacherFields = role === 'TEACHER' ? await teacherVerificationService.initialStatusFor(normalizedEmail, 'LOCAL') : {};
 
   try {
     await db.transaction(async (tx) => {
@@ -873,7 +873,8 @@ export const completeGoogleRegistration = async (googleData: {
   const newUserId = uuidv4();
   const now = new Date();
 
-  const teacherFields = role === 'TEACHER' ? await teacherVerificationService.initialStatusFor(normalizedEmail) : {};
+  // Registro con Google (correo comprobado por Google): el dominio institucional verifica.
+  const teacherFields = role === 'TEACHER' ? await teacherVerificationService.initialStatusFor(normalizedEmail, 'GOOGLE') : {};
   try {
     await db.transaction(async (tx) => {
       await tx.insert(users).values({

@@ -15,16 +15,40 @@ export const adminOverviewKey = ['admin-overview'] as const;
 
 export type AssignableRole = 'ADMIN' | 'TEACHER' | 'STUDENT';
 
+export type UserRole = AssignableRole | 'PARENT';
+
 export interface AdminUser {
   id: string;
-  email: string;
+  /** null en las cuentas con PIN (su correo es sintético: entran con el PIN de su clase). */
+  email: string | null;
   firstName: string;
   lastName: string;
-  role: AssignableRole | 'PARENT';
-  provider: string;
+  role: UserRole;
+  provider: 'LOCAL' | 'GOOGLE' | 'PIN';
   isActive: boolean;
+  teacherStatus: 'UNVERIFIED' | 'PENDING' | 'VERIFIED' | null;
   createdAt: string;
+  lastLoginAt: string | null;
+  /** Docentes: clases activas. */
+  classes: number | null;
+  /** Alumnos: clases en las que está. */
+  enrolledIn: number | null;
 }
+
+export interface AdminUserFilters {
+  q?: string;
+  role?: UserRole;
+  status?: 'active' | 'inactive';
+  page: number;
+}
+
+export interface AdminUserPage {
+  users: AdminUser[];
+  counts: Partial<Record<UserRole, number>>;
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}
+
+export const adminUsersKey = (filters: AdminUserFilters) => ['admin-users', filters] as const;
 
 export interface AdminClassroom {
   id: string;
@@ -118,9 +142,15 @@ export const adminApi = {
     return response.data.data;
   },
 
-  // Users
-  async getUsers(page = 1, limit = 20): Promise<{ users: AdminUser[]; pagination: { page: number; limit: number; total: number; totalPages: number } }> {
-    const response = await api.get(`/admin/users?page=${page}&limit=${limit}`);
+  /** Búsqueda, filtros y páginas en el servidor. */
+  async getUsers(filters: AdminUserFilters): Promise<AdminUserPage> {
+    const params = Object.fromEntries(Object.entries({ ...filters, limit: 25 }).filter(([, value]) => value !== undefined && value !== ''));
+    const response = await api.get('/admin/users', { params });
+    return response.data.data;
+  },
+
+  async createTeacher(data: { email: string; firstName: string; lastName: string; password: string }): Promise<{ id: string }> {
+    const response = await api.post('/admin/users/teacher', data);
     return response.data.data;
   },
 

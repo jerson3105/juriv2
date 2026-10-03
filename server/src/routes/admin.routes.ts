@@ -23,6 +23,7 @@ router.patch('/users/:userId/status', adminController.updateUserStatus);
 router.get('/teacher-verifications', adminController.listTeacherVerifications);
 router.post('/teacher-verifications/:userId', adminController.reviewTeacherVerification);
 router.get('/verified-domains', adminController.listVerifiedDomains);
+router.get('/verified-domains/preview', adminController.previewVerifiedDomain);
 router.post('/verified-domains', adminController.addVerifiedDomain);
 router.delete('/verified-domains/:domainId', adminController.removeVerifiedDomain);
 

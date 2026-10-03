@@ -117,7 +117,11 @@ export const configurePassport = () => {
                   updatedAt: new Date(),
                 })
                 .where(eq(users.id, user.id));
-              
+              // Ahora Google comprobó su correo: un docente sin verificar con dominio institucional queda verificado.
+              if (user.role === 'TEACHER' && user.teacherStatus !== 'VERIFIED') {
+                await teacherVerificationService.verifyByGoogleDomain(user.id, user.email);
+              }
+
               user = await db.query.users.findFirst({
                 where: eq(users.id, user.id),
               });
@@ -145,7 +149,7 @@ export const configurePassport = () => {
             // Tiene rol seleccionado - crear usuario
             const newUserId = uuidv4();
             const now = new Date();
-            const teacherFields = selectedRole === 'TEACHER' ? await teacherVerificationService.initialStatusFor(normalizedEmail) : {};
+            const teacherFields = selectedRole === 'TEACHER' ? await teacherVerificationService.initialStatusFor(normalizedEmail, 'GOOGLE') : {};
 
             try {
               await db.transaction(async (tx) => {
