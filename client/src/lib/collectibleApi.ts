@@ -3,7 +3,6 @@ import api from './api';
 // ==================== TYPES ====================
 
 export type CardRarity = 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
-export type PackType = 'SINGLE' | 'PACK_5' | 'PACK_10';
 export type ImageStyle = 'CARTOON' | 'REALISTIC' | 'PIXEL_ART' | 'ANIME' | 'WATERCOLOR' | 'MINIMALIST';
 /** Nivel de precio del álbum sobre el oro semanal de la clase: la mitad, normal o el doble. */
 export type CollectiblePriceLevel = 'LOW' | 'NORMAL' | 'HIGH';
@@ -35,10 +34,6 @@ export interface CollectibleAlbum {
   coverImage: string | null;
   theme: string | null;
   imageStyle: ImageStyle | null;
-  /** Sin uso desde coleccionables v2 (el precio sale de priceLevel). */
-  singlePackPrice: number;
-  fivePackPrice: number;
-  tenPackPrice: number;
   priceLevel: CollectiblePriceLevel;
   rewardHp: number;
   rewardGp: number;
@@ -119,31 +114,76 @@ export interface ClassroomProgress {
   averageProgress: number;
 }
 
-export interface PurchaseResult {
-  purchase: {
-    id: string;
-    studentProfileId: string;
-    albumId: string;
-    packType: PackType;
-    gpSpent: number;
-    cardsObtained: Array<{
-      cardId: string;
-      cardName: string;
-      rarity: string;
-      isShiny: boolean;
-      isNew: boolean;
-    }>;
-    purchasedAt: string;
-  };
-  cards: Array<{
-    cardId: string;
-    cardName: string;
-    rarity: string;
-    imageUrl: string | null;
-    isShiny: boolean;
-    isNew: boolean;
-  }>;
-  newGpBalance: number;
+// ==================== ALUMNO (coleccionables v2) ====================
+
+/** Una figurita del álbum del alumno. Las que le faltan llegan sin dibujo, emoji ni dato (solo número, nombre y rareza). */
+export interface StickerView {
+  id: string;
+  slotNumber: number;
+  name: string;
+  rarity: CardRarity;
+  owned: boolean;
+  icon: string | null;
+  imageUrl: string | null;
+  description: string | null;
+  /** Copias que tiene (normales y brillantes). */
+  count: number;
+  shiny: boolean;
+  /** La consiguió en los últimos 7 días. */
+  isNew: boolean;
+}
+
+export interface AlbumRewards {
+  gp: number;
+  hp: number;
+  badge: { name: string; icon: string; customImage: string | null } | null;
+}
+
+export interface StudentAlbumView {
+  id: string;
+  name: string;
+  description: string | null;
+  coverImage: string | null;
+  /** false: archivado (se mira, ya no hay sobres). */
+  isActive: boolean;
+  totalCards: number;
+  owned: number;
+  missing: number;
+  /** Copias de más (las que se podrán cambiar). */
+  duplicates: number;
+  completedAt: string | null;
+  /** Sobre de bienvenida gratis (null si ya lo abrió o no aplica). */
+  welcome: { cards: number } | null;
+  /** El sobre de hoy: figuritas que trae y precio (null con el álbum completo o archivado). */
+  pack: { cards: number; price: number } | null;
+  rewards: AlbumRewards;
+  cards: StickerView[];
+}
+
+export interface AlbumCompletion {
+  albumId: string;
+  albumName: string;
+  rewards: AlbumRewards;
+}
+
+export interface StudentCollectiblesView {
+  profile: { id: string; gold: number; pendingGold: number };
+  classroomName: string;
+  /** Inicial a 2.º: sobre de 3, uno al día y sin repetidas. */
+  young: boolean;
+  kiosk: { open: boolean; reason: 'SHOP_CLOSED' | 'RESTING' | null };
+  daily: { limit: number; used: number; left: number };
+  albums: StudentAlbumView[];
+  /** Álbumes que se completaron al mirar (la última figurita llegó por la Historia). */
+  justCompleted: AlbumCompletion[];
+}
+
+export interface OpenPackResult {
+  cards: StickerView[];
+  price?: number;
+  newBalance?: number;
+  dailyLeft?: number;
+  completed: AlbumCompletion | null;
 }
 
 export interface GeneratedCard {
@@ -319,30 +359,27 @@ export const collectibleApi = {
     return response.data.imageUrl;
   },
 
-  // ==================== COMPRAS (ESTUDIANTE) ====================
+  // ==================== ALUMNO ====================
 
-  purchasePack: async (albumId: string, packType: PackType): Promise<PurchaseResult> => {
-    const response = await api.post(`/collectibles/albums/${albumId}/purchase`, { packType });
-    return response.data;
+  // Sus álbumes con sus figuritas, el sobre del día y el de bienvenida (tz: getTimezoneOffset, para «hoy»).
+  getStudentView: async (profileId: string): Promise<StudentCollectiblesView> => {
+    const response = await api.get(`/collectibles/student/${profileId}/view`, { params: { tz: new Date().getTimezoneOffset() } });
+    return response.data.data;
   },
 
-  // ==================== COLECCIÓN ====================
-
-  getMyCollection: async (albumId: string): Promise<StudentCollection> => {
-    const response = await api.get(`/collectibles/albums/${albumId}/my-collection`);
-    return response.data;
+  // Abre el sobre del álbum: el servidor cobra y sortea.
+  openPack: async (profileId: string, albumId: string): Promise<OpenPackResult> => {
+    const response = await api.post(`/collectibles/student/${profileId}/albums/${albumId}/open`, { tz: new Date().getTimezoneOffset() });
+    return response.data.data;
   },
 
-  getMyAlbumsProgress: async (classroomId: string): Promise<Array<{
-    albumId: string;
-    progress: number;
-    uniqueCollected: number;
-    totalCards: number;
-    isCompleted: boolean;
-  }>> => {
-    const response = await api.get(`/collectibles/classroom/${classroomId}/my-progress`);
-    return response.data;
+  // El sobre de bienvenida: gratis, uno por álbum.
+  openWelcome: async (profileId: string, albumId: string): Promise<OpenPackResult> => {
+    const response = await api.post(`/collectibles/student/${profileId}/albums/${albumId}/welcome`);
+    return response.data.data;
   },
+
+  // ==================== COLECCIÓN DE UN ESTUDIANTE (PROFESOR) ====================
 
   getStudentCollection: async (albumId: string, studentProfileId: string): Promise<StudentCollection> => {
     const response = await api.get(`/collectibles/albums/${albumId}/student/${studentProfileId}/collection`);
@@ -367,22 +404,6 @@ export const collectibleApi = {
     const response = await api.post('/collectibles/generate-card', { prompt, rarity });
     return response.data;
   },
-};
-
-// ==================== HELPERS ====================
-
-export const RARITY_CONFIG: Record<CardRarity, { label: string; color: string; bgColor: string; probability: number; icon: string; gradient: string }> = {
-  COMMON: { label: 'Común', color: 'text-gray-600', bgColor: 'bg-gray-100', probability: 50, icon: '⚪', gradient: 'from-gray-400 to-gray-500' },
-  UNCOMMON: { label: 'Poco común', color: 'text-green-600', bgColor: 'bg-green-100', probability: 30, icon: '🟢', gradient: 'from-green-400 to-emerald-500' },
-  RARE: { label: 'Raro', color: 'text-blue-600', bgColor: 'bg-blue-100', probability: 15, icon: '🔵', gradient: 'from-blue-400 to-indigo-500' },
-  EPIC: { label: 'Épico', color: 'text-purple-600', bgColor: 'bg-purple-100', probability: 4, icon: '🟣', gradient: 'from-purple-400 to-pink-500' },
-  LEGENDARY: { label: 'Legendario', color: 'text-amber-600', bgColor: 'bg-amber-100', probability: 1, icon: '🌟', gradient: 'from-amber-400 to-orange-500' },
-};
-
-export const PACK_CONFIG: Record<PackType, { label: string; cards: number; icon: string }> = {
-  SINGLE: { label: 'Sobre Simple', cards: 1, icon: '📦' },
-  PACK_5: { label: 'Paquete x5', cards: 5, icon: '📦📦' },
-  PACK_10: { label: 'Super Paquete x10', cards: 10, icon: '🎁' },
 };
 
 export default collectibleApi;

@@ -371,6 +371,30 @@
 .closet-curtain-left { animation: closet-curtain-left 900ms cubic-bezier(.65, 0, .35, 1) 1 both; }
 .closet-curtain-right { animation: closet-curtain-right 900ms cubic-bezier(.65, 0, .35, 1) 1 both; }
 
+/* «Coleccionables»: abrir el sobre (rasgar, repartir, voltear), pegar y pasar de página. Solo transform y
+   opacity, una sola vez; con menos movimiento la regla de arriba los deja en su estado final. */
+@keyframes cc-tear { to { transform: translate(36px, -44px) rotate(12deg); opacity: 0; } }
+@keyframes cc-deal { from { transform: translateY(-28px) scale(.92); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes cc-flip-out { to { transform: scaleX(0); } }
+@keyframes cc-flip-in { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes cc-press { 0% { transform: translateY(-10px) scale(1.06); } 60% { transform: translateY(1px) scale(.97); } 100% { transform: none; } }
+@keyframes cc-page-next { from { transform: translateX(20px); opacity: 0; } }
+@keyframes cc-page-prev { from { transform: translateX(-20px); opacity: 0; } }
+.cc-tear { animation: cc-tear 260ms ease-in 1 forwards; }
+.cc-deal { animation: cc-deal 220ms cubic-bezier(.2, .8, .2, 1) 1 both; }
+.cc-flip-out { animation: cc-flip-out 130ms ease-in 1 forwards; }
+.cc-flip-in { animation: cc-flip-in 170ms ease-out 1 both; }
+.cc-press { animation: cc-press 320ms cubic-bezier(.34, 1.56, .64, 1) 1 both; }
+.cc-page-next { animation: cc-page-next 200ms ease-out 1 both; }
+.cc-page-prev { animation: cc-page-prev 200ms ease-out 1 both; }
+/* La brillante: reflejo quieto (sin bucles, por las PCs del colegio). */
+.cc-holo-static {
+  background: linear-gradient(115deg, transparent 22%, rgba(255, 0, 170, 0.28) 34%, rgba(0, 240, 255, 0.28) 44%,
+    rgba(255, 240, 0, 0.28) 54%, rgba(0, 255, 150, 0.28) 64%, transparent 76%);
+  mix-blend-mode: overlay;
+  opacity: 0.85;
+}
+
 /* ── Observatorio de Jiro: escenario proyectado (legible a 6 m, sin desenfoques) ── */
 .stage-body { font-size: clamp(28px, 4.4vh, 52px); line-height: 1.25; }
 .stage-title { font-size: clamp(36px, 6.5vh, 78px); line-height: 1.1; }

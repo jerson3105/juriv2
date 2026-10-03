@@ -269,13 +269,14 @@ export const MainLayout = () => {
           gradient: 'from-fuchsia-500 to-pink-500',
           isActive: matchesPath('/my-avatar'),
         },
-        {
+        // «Coleccionables» solo si la clase tiene un álbum activo con figuritas o el alumno tiene alguna.
+        ...((currentProfile.collectibleSummary?.albums ?? 0) > 0 || (currentProfile.collectibleSummary?.owned ?? 0) > 0 ? [{
           path: '/collectibles',
-          label: 'Álbum de cromos',
+          label: 'Coleccionables',
           icon: <Album size={14} />,
           gradient: 'from-amber-500 to-yellow-500',
           isActive: matchesPath('/collectibles'),
-        },
+        }] : []),
       ],
     },
     {

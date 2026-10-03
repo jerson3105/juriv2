@@ -10,7 +10,28 @@ interface HomeModalProps {
   children: ReactNode;
   size?: 'md' | 'lg';
   header?: ReactNode; // cabecera propia (p. ej. con imagen); sustituye al título estándar
+  /** «night»: panel oscuro y opaco en los dos temas (la mesa donde se abren los sobres de figuritas). */
+  tone?: 'light' | 'night';
 }
+
+const TONE = {
+  light: {
+    panel: 'bg-white dark:bg-gray-800',
+    header: 'border-gray-200 dark:border-gray-700',
+    title: 'text-gray-900 dark:text-white',
+    subtitle: 'text-gray-700 dark:text-gray-300',
+    close: 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700',
+    footer: 'border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40',
+  },
+  night: {
+    panel: 'bg-stone-900 text-white',
+    header: 'border-white/10',
+    title: 'text-white',
+    subtitle: 'text-stone-300',
+    close: 'text-stone-200 hover:bg-white/10',
+    footer: 'border-white/10 bg-black/25',
+  },
+} as const;
 
 /**
  * Marco de los modales de Inicio: Esc cierra, el foco entra al abrir y vuelve al cerrar.
@@ -20,7 +41,8 @@ interface HomeModalProps {
  * terminar, framer cancelaba su animación y el elemento volvía un instante a su estilo en línea (el modal
  * desaparecía un momento al abrir y el fondo volvía a oscurecerse al cerrar).
  */
-export const HomeModal = ({ title, subtitle, onClose, footer, children, size = 'md', header }: HomeModalProps) => {
+export const HomeModal = ({ title, subtitle, onClose, footer, children, size = 'md', header, tone = 'light' }: HomeModalProps) => {
+  const colors = TONE[tone];
   const [isPresent, safeToRemove] = usePresence();
   const panelRef = useRef<HTMLDivElement>(null);
   const removed = useRef(false);
@@ -83,21 +105,21 @@ export const HomeModal = ({ title, subtitle, onClose, footer, children, size = '
         aria-modal="true"
         aria-label={title}
         // Al cerrar se oculta al instante (invisible: ni clics ni foco mientras el fondo se desvanece).
-        className={`home-modal-pop relative flex max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-800 ${size === 'lg' ? 'max-w-2xl' : 'max-w-lg'} ${isPresent ? '' : 'invisible'}`}
+        className={`home-modal-pop relative flex max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl shadow-2xl ${colors.panel} ${size === 'lg' ? 'max-w-2xl' : 'max-w-lg'} ${isPresent ? '' : 'invisible'}`}
       >
         {header ?? (
-          <div className="flex items-start justify-between gap-3 border-b border-gray-200 px-5 py-4 dark:border-gray-700">
+          <div className={`flex items-start justify-between gap-3 border-b px-5 py-4 ${colors.header}`}>
             <div className="min-w-0">
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white">{title}</h2>
-              {subtitle && <p className="text-sm text-gray-700 dark:text-gray-300">{subtitle}</p>}
+              <h2 className={`text-lg font-bold ${colors.title}`}>{title}</h2>
+              {subtitle && <p className={`text-sm ${colors.subtitle}`}>{subtitle}</p>}
             </div>
-            <button type="button" onClick={onClose} aria-label="Cerrar" className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700">
+            <button type="button" onClick={onClose} aria-label="Cerrar" className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg ${colors.close}`}>
               <X size={20} aria-hidden="true" />
             </button>
           </div>
         )}
         <div className="flex-1 space-y-4 overflow-y-auto p-5">{children}</div>
-        {footer && <div className="flex items-center justify-end gap-2 border-t border-gray-200 bg-gray-50 px-5 py-3 dark:border-gray-700 dark:bg-gray-900/40">{footer}</div>}
+        {footer && <div className={`flex items-center justify-end gap-2 border-t px-5 py-3 ${colors.footer}`}>{footer}</div>}
       </div>
     </div>
   );
