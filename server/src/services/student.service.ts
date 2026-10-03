@@ -6,7 +6,7 @@ import {
   purchases, itemUsages, powerUsages, expeditionSubmissions, expeditionStudentProgress,
   jiroStudentExpeditions, jiroQuestionAnswers, jiroDeliveries,
   studentCollectibles, scrolls, scrollReactions,
-  collectibleCards, collectibleAlbums, collectiblePurchases, collectibleWelcomePacks, completedAlbums, classroomCharacterClasses,
+  collectibleCards, collectibleAlbums, collectiblePurchases, collectibleWelcomePacks, collectibleBoxItems, completedAlbums, classroomCharacterClasses,
   stories,
   levelUpLogs,
 } from '../db/schema.js';
@@ -1108,6 +1108,7 @@ export class StudentService {
       await tx.delete(collectiblePurchases).where(eq(collectiblePurchases.studentProfileId, studentId));
       await tx.delete(collectibleWelcomePacks).where(eq(collectibleWelcomePacks.studentProfileId, studentId));
       await tx.delete(completedAlbums).where(eq(completedAlbums.studentProfileId, studentId));
+      await tx.delete(collectibleBoxItems).where(or(eq(collectibleBoxItems.donorProfileId, studentId), eq(collectibleBoxItems.takerProfileId, studentId)));
 
       // 13. Scrolls
       const studentScrolls = await tx.query.scrolls.findMany({

@@ -2228,7 +2228,8 @@ export const collectibleAlbums = mysqlTable('collectible_albums', {
   rewardBadgeId: varchar('reward_badge_id', { length: 36 }),
   
   // Configuración
-  allowTrades: boolean('allow_trades').notNull().default(false),
+  // Caja de la clase: las repetidas se donan y un compañero las toma (migrations/collectibles_box.sql).
+  allowTrades: boolean('allow_trades').notNull().default(true),
   isActive: boolean('is_active').notNull().default(true),
   
   createdAt: datetime('created_at').notNull(),
@@ -2358,6 +2359,21 @@ export const collectibleWelcomePacks = mysqlTable('collectible_welcome_packs', {
 }, (table) => ({
   uniqueStudentAlbum: unique('uniq_collectible_welcome').on(table.studentProfileId, table.albumId),
   albumIdx: index('idx_collectible_welcome_album').on(table.albumId),
+}));
+
+// Caja de la clase: cada figurita donada queda aquí hasta que un compañero la toma (migrations/collectibles_box.sql).
+export const collectibleBoxItems = mysqlTable('collectible_box_items', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  albumId: varchar('album_id', { length: 36 }).notNull(),
+  cardId: varchar('card_id', { length: 36 }).notNull(),
+  donorProfileId: varchar('donor_profile_id', { length: 36 }).notNull(),
+  donatedAt: datetime('donated_at').notNull(),
+  takerProfileId: varchar('taker_profile_id', { length: 36 }),
+  takenAt: datetime('taken_at'),
+}, (table) => ({
+  availableIdx: index('idx_collectible_box_available').on(table.albumId, table.cardId, table.takerProfileId),
+  takerIdx: index('idx_collectible_box_taker').on(table.takerProfileId, table.takenAt),
+  donorIdx: index('idx_collectible_box_donor').on(table.donorProfileId),
 }));
 
 export const completedAlbumsRelations = relations(completedAlbums, ({ one }) => ({

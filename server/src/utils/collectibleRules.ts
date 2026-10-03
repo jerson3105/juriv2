@@ -11,6 +11,19 @@ const BASE_PACK_CARDS = 5;
 const MAX_COMPLETE_WEEKS = 3;
 /** Una figurita es «Nueva» sus primeros 7 días. */
 export const NEW_CARD_DAYS = 7;
+/** Caja de la clase: cada alumno toma hasta 3 figuritas al día (donar no tiene límite). */
+export const BOX_TAKES_PER_DAY = 3;
+
+/**
+ * Copias que puede donar a la caja: las normales que le sobran. Nunca la última copia ni una brillante (con una
+ * brillante, todas sus normales son repetidas).
+ */
+export const donatableCopies = (copy: { normal: number; shiny: boolean } | undefined) =>
+  copy ? Math.max(0, copy.normal - (copy.shiny ? 0 : 1)) : 0;
+
+/** La caja está abierta en los álbumes activos con la caja encendida; no en inicial a 2.º (sus sobres no dan repetidas). */
+export const boxOpenFor = (album: { isActive: boolean; allowTrades: boolean }, young: boolean) =>
+  album.isActive && album.allowTrades && !young;
 
 /** Sobre de 5 y hasta 2 al día; en inicial a 2.º, sobre de 3, uno al día y sin repetidas. */
 export const packRules = (young: boolean) => ({

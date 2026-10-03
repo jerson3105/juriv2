@@ -66,6 +66,7 @@ const tzSchema = z.coerce.number().int().min(-840).max(840).default(DEFAULT_TZ_O
 const viewQuerySchema = z.object({ tz: tzSchema });
 const openSchema = z.object({ tz: tzSchema });
 const pricingQuerySchema = z.object({ cards: z.coerce.number().int().min(0).max(1000).default(0) });
+const boxCardSchema = z.object({ cardId: z.string().uuid('Figurita inválida'), tz: tzSchema });
 const fail = (res: Response, error: unknown, fallback: string) => {
   if (error instanceof AppError) return res.status(error.statusCode).json({ success: false, message: error.message });
   if (error instanceof z.ZodError) return res.status(400).json({ success: false, message: error.errors[0]?.message || 'Datos inválidos' });
@@ -367,6 +368,39 @@ export const collectibleController = {
       res.json({ success: true, data });
     } catch (error) {
       fail(res, error, 'No se pudo abrir tu sobre de bienvenida');
+    }
+  },
+
+  // POST /collectibles/student/:studentProfileId/albums/:albumId/box/donate { cardId }
+  async donateToBox(req: Request, res: Response) {
+    try {
+      const { cardId } = boxCardSchema.parse(req.body ?? {});
+      const data = await collectibleStudentService.donateToBox(req.params.studentProfileId, req.user!.id, req.params.albumId, cardId);
+      res.json({ success: true, data });
+    } catch (error) {
+      fail(res, error, 'No se pudo donar la figurita');
+    }
+  },
+
+  // POST /collectibles/student/:studentProfileId/albums/:albumId/box/take { cardId, tz }
+  async takeFromBox(req: Request, res: Response) {
+    try {
+      const { cardId, tz } = boxCardSchema.parse(req.body ?? {});
+      const data = await collectibleStudentService.takeFromBox(req.params.studentProfileId, req.user!.id, req.params.albumId, cardId, tz);
+      res.json({ success: true, data });
+    } catch (error) {
+      fail(res, error, 'No se pudo tomar la figurita');
+    }
+  },
+
+  // GET /collectibles/albums/:albumId/box: la caja de la clase con nombres (solo el profe).
+  async getBoxLog(req: Request, res: Response) {
+    try {
+      const { albumId } = req.params;
+      if (!(await requireResourceTeacher(req, res, classroomIdOfAlbum, albumId, 'Álbum no encontrado'))) return;
+      res.json({ success: true, data: await collectibleService.getBoxLog(albumId) });
+    } catch (error) {
+      fail(res, error, 'No se pudo cargar la caja de la clase');
     }
   },
 

@@ -46,6 +46,7 @@ import {
   collectibleCards,
   collectiblePurchases,
   collectibleWelcomePacks,
+  collectibleBoxItems,
   completedAlbums,
   studentCollectibles,
   curriculumAreas,
@@ -1889,6 +1890,7 @@ export class ClassroomService {
         await tx.delete(collectiblePurchases).where(inArray(collectiblePurchases.albumId, albumIds));
         await tx.delete(collectibleWelcomePacks).where(inArray(collectibleWelcomePacks.albumId, albumIds));
         await tx.delete(completedAlbums).where(inArray(completedAlbums.albumId, albumIds));
+        await tx.delete(collectibleBoxItems).where(inArray(collectibleBoxItems.albumId, albumIds));
         await tx.delete(collectibleAlbums).where(inArray(collectibleAlbums.id, albumIds));
       }
 

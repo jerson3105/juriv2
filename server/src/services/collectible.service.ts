@@ -3,12 +3,14 @@ import { createGenAI } from '../utils/aiClient.js';
 import { db } from '../db/index.js';
 import {
   collectibleAlbums,
+  collectibleBoxItems,
   collectibleCards,
   studentCollectibles,
   collectiblePurchases,
   completedAlbums,
   studentProfiles,
   classrooms,
+  users,
   type CardRarity,
   type ImageStyle,
 } from '../db/schema.js';
@@ -182,7 +184,7 @@ class CollectibleService {
       rewardHp: data.rewardHp ?? 0,
       rewardGp: data.rewardGp ?? 0,
       rewardBadgeId: data.rewardBadgeId || null,
-      allowTrades: data.allowTrades ?? false,
+      allowTrades: data.allowTrades ?? true, // la caja de la clase, encendida por defecto
       isActive: true,
       createdAt: now,
       updatedAt: now,
@@ -620,6 +622,48 @@ class CollectibleService {
         .where(and(eq(collectibleCards.albumId, card.albumId), sql`${collectibleCards.slotNumber} > ${card.slotNumber}`));
       return { deleted: true, owners: 0 };
     });
+  }
+
+  /**
+   * La caja de la clase para el profe (los alumnos no ven quién dona): lo que queda, lo donado y lo tomado, y los
+   * últimos 100 movimientos con nombres.
+   */
+  async getBoxLog(albumId: string) {
+    const rows = await db
+      .select({
+        id: collectibleBoxItems.id,
+        slotNumber: collectibleCards.slotNumber,
+        cardName: collectibleCards.name,
+        donorId: collectibleBoxItems.donorProfileId,
+        donatedAt: collectibleBoxItems.donatedAt,
+        takerId: collectibleBoxItems.takerProfileId,
+        takenAt: collectibleBoxItems.takenAt,
+      })
+      .from(collectibleBoxItems)
+      .innerJoin(collectibleCards, eq(collectibleCards.id, collectibleBoxItems.cardId))
+      .where(eq(collectibleBoxItems.albumId, albumId))
+      .orderBy(desc(sql`COALESCE(${collectibleBoxItems.takenAt}, ${collectibleBoxItems.donatedAt})`));
+    const ids = [...new Set(rows.flatMap((row) => [row.donorId, row.takerId]).filter((id): id is string => !!id))];
+    const people = ids.length
+      ? await db.select({ id: studentProfiles.id, firstName: users.firstName, lastName: users.lastName, displayName: studentProfiles.displayName, characterName: studentProfiles.characterName })
+        .from(studentProfiles)
+        .leftJoin(users, eq(users.id, studentProfiles.userId))
+        .where(inArray(studentProfiles.id, ids))
+      : [];
+    const nameOf = new Map(people.map((p) => [p.id, [p.firstName, p.lastName].filter(Boolean).join(' ').trim() || p.displayName || p.characterName || 'Estudiante']));
+    return {
+      inBox: rows.filter((row) => !row.takerId).length,
+      donated: rows.length,
+      taken: rows.filter((row) => row.takerId).length,
+      items: rows.slice(0, 100).map((row) => ({
+        id: row.id,
+        card: { slotNumber: row.slotNumber, name: row.cardName },
+        donor: nameOf.get(row.donorId) ?? 'Estudiante',
+        donatedAt: row.donatedAt,
+        taker: row.takerId ? nameOf.get(row.takerId) ?? 'Estudiante' : null,
+        takenAt: row.takenAt,
+      })),
+    };
   }
 
   // Cuántos estudiantes tienen cada figurita del álbum (para avisar antes de borrar).

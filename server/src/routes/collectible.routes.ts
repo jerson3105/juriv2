@@ -151,6 +151,13 @@ router.post('/student/:studentProfileId/albums/:albumId/open', authorize('STUDEN
 // Abrir el sobre de bienvenida (gratis, uno por álbum)
 router.post('/student/:studentProfileId/albums/:albumId/welcome', authorize('STUDENT'), collectibleController.openWelcome);
 
+// Caja de la clase: donar una repetida y tomar una que te falta (anónima para la clase)
+router.post('/student/:studentProfileId/albums/:albumId/box/donate', authorize('STUDENT'), collectibleController.donateToBox);
+router.post('/student/:studentProfileId/albums/:albumId/box/take', authorize('STUDENT'), collectibleController.takeFromBox);
+
+// La caja de la clase con nombres (profesor)
+router.get('/albums/:albumId/box', authorize('TEACHER'), collectibleController.getBoxLog);
+
 // Ver colección de un estudiante específico (profesor)
 router.get(
   '/albums/:albumId/student/:studentProfileId/collection',
