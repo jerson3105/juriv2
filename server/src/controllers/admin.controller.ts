@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { db } from '../db/index.js';
 import {
-  users, classrooms, avatarItems, studentProfiles,
+  users, classrooms, studentProfiles,
   questionBanks, questions, timedActivities, expeditions
 } from '../db/schema.js';
 import { eq, desc, count, sql, inArray } from 'drizzle-orm';
@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcryptjs';
 import { teacherVerificationService } from '../services/teacherVerification.service.js';
 import { adminUsersService } from '../services/adminUsers.service.js';
+import { adminOverviewService } from '../services/adminOverview.service.js';
 import { AppError } from '../utils/errors.js';
 import { z } from 'zod';
 
@@ -21,47 +22,13 @@ const roleChangeSchema = z.object({
 const userStatusSchema = z.object({ isActive: z.boolean() }).strict();
 
 export const adminController = {
-  // ==================== DASHBOARD ====================
-  async getStats(req: Request, res: Response) {
+  // ==================== INICIO ====================
+  async getOverview(_req: Request, res: Response) {
     try {
-      const [userStats] = await db
-        .select({
-          totalUsers: count(),
-          teachers: sql<number>`SUM(CASE WHEN role = 'TEACHER' THEN 1 ELSE 0 END)`,
-          students: sql<number>`SUM(CASE WHEN role = 'STUDENT' THEN 1 ELSE 0 END)`,
-          admins: sql<number>`SUM(CASE WHEN role = 'ADMIN' THEN 1 ELSE 0 END)`,
-        })
-        .from(users);
-
-      const [classroomStats] = await db
-        .select({ total: count() })
-        .from(classrooms);
-
-      const [avatarStats] = await db
-        .select({ total: count() })
-        .from(avatarItems);
-
-      const [studentStats] = await db
-        .select({ total: count() })
-        .from(studentProfiles);
-
-      res.json({
-        success: true,
-        data: {
-          users: {
-            total: userStats.totalUsers,
-            teachers: Number(userStats.teachers) || 0,
-            students: Number(userStats.students) || 0,
-            admins: Number(userStats.admins) || 0,
-          },
-          classrooms: classroomStats.total,
-          avatarItems: avatarStats.total,
-          studentProfiles: studentStats.total,
-        },
-      });
+      res.json({ success: true, data: await adminOverviewService.get() });
     } catch (error) {
-      console.error('Error getting admin stats:', error);
-      res.status(500).json({ success: false, message: 'Error al obtener estadísticas' });
+      console.error('Error getting admin overview:', error);
+      res.status(500).json({ success: false, message: 'Error al obtener el resumen' });
     }
   },
 

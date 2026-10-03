@@ -66,6 +66,7 @@ const StudentAvatarPage = lazyPage(() => import('./pages/student/StudentAvatarPa
 const SettingsPage = lazyPage(() => import('./pages/settings/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 
 // Admin pages
+const AdminLayout = lazyPage(() => import('./components/admin/AdminLayout').then((m) => ({ default: m.AdminLayout })));
 const AdminDashboard = lazyPage(() => import('./pages/admin/AdminDashboard'));
 const AdminAvatarItems = lazyPage(() => import('./pages/admin/AdminAvatarItems'));
 const AdminAvatarItemPage = lazyPage(() => import('./pages/admin/AdminAvatarItemPage'));
@@ -306,95 +307,28 @@ function App() {
 
           </Route>
 
-          {/* Admin Routes */}
+          {/* Panel de administración: un solo armazón (guarda de rol, menú y pie) para todas sus páginas. */}
           <Route
             path="/admin"
             element={
               <ProtectedRoute>
-                <AdminDashboard />
+                <AdminLayout />
               </ProtectedRoute>
             }
-          />
-          <Route
-            path="/admin/avatar-items"
-            element={
-              <ProtectedRoute>
-                <AdminAvatarItems />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/avatar-items/nueva"
-            element={
-              <ProtectedRoute>
-                <AvatarItemEditorPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/avatar-items/:id/editar"
-            element={
-              <ProtectedRoute>
-                <AvatarItemEditorPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/avatar-items/:id"
-            element={
-              <ProtectedRoute>
-                <AdminAvatarItemPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/expedition-maps"
-            element={
-              <ProtectedRoute>
-                <AdminExpeditionMaps />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/users"
-            element={
-              <ProtectedRoute>
-                <AdminUsers />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/classrooms"
-            element={
-              <ProtectedRoute>
-                <AdminClassrooms />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/bug-reports"
-            element={
-              <ProtectedRoute>
-                <AdminBugReports />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/teacher-verifications"
-            element={
-              <ProtectedRoute>
-                <AdminTeacherVerifications />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/admin/school-verifications"
-            element={
-              <ProtectedRoute>
-                <AdminSchoolVerifications />
-              </ProtectedRoute>
-            }
-          />
+          >
+            <Route index element={<AdminDashboard />} />
+            <Route path="avatar-items" element={<AdminAvatarItems />} />
+            <Route path="avatar-items/nueva" element={<AvatarItemEditorPage />} />
+            <Route path="avatar-items/:id/editar" element={<AvatarItemEditorPage />} />
+            <Route path="avatar-items/:id" element={<AdminAvatarItemPage />} />
+            <Route path="expedition-maps" element={<AdminExpeditionMaps />} />
+            <Route path="users" element={<AdminUsers />} />
+            <Route path="classrooms" element={<AdminClassrooms />} />
+            <Route path="bug-reports" element={<AdminBugReports />} />
+            <Route path="teacher-verifications" element={<AdminTeacherVerifications />} />
+            <Route path="school-verifications" element={<AdminSchoolVerifications />} />
+            <Route path="cuenta" element={<SettingsPage />} />
+          </Route>
           {/* School Routes */}
           <Route
             path="/schools"

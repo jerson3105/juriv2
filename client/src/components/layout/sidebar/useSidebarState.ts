@@ -18,12 +18,16 @@ const write = (key: string, value: string) => {
   }
 };
 
-type SidebarRole = 'teacher' | 'student';
+type SidebarRole = 'teacher' | 'student' | 'admin';
 const collapsedKey = (role: SidebarRole) => `juried-sb-collapsed:${role}`;
 
 // Compartido: el layout de la clase y el del Inicio del profe están montados a la vez.
 const useCollapsedStore = create<{ collapsed: Record<SidebarRole, boolean>; setCollapsed: (role: SidebarRole, value: boolean) => void }>((set) => ({
-  collapsed: { teacher: read(collapsedKey('teacher')) === '1', student: read(collapsedKey('student')) === '1' },
+  collapsed: {
+    teacher: read(collapsedKey('teacher')) === '1',
+    student: read(collapsedKey('student')) === '1',
+    admin: read(collapsedKey('admin')) === '1',
+  },
   setCollapsed: (role, value) => {
     write(collapsedKey(role), value ? '1' : '0');
     set((state) => ({ collapsed: { ...state.collapsed, [role]: value } }));

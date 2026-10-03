@@ -48,7 +48,7 @@ export default function AdminAvatarItems() {
   if (!isAdmin) return <Navigate to="/" replace />;
 
   return (
-    <div data-pg="" className="min-h-screen bg-gray-50 text-[var(--pg-fg)] dark:bg-gray-900">
+    <div data-pg="" className="text-[var(--pg-fg)]">
       <AdminPageHeader
         title="Prendas del avatar"
         subtitle={isLoading ? 'Cargando…' : `${garments.length} prendas${drafts ? ` · ${drafts} ${drafts === 1 ? 'borrador' : 'borradores'}` : ''}`}

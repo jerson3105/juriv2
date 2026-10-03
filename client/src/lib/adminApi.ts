@@ -1,16 +1,17 @@
 import { api } from './api';
 
-export interface AdminStats {
-  users: {
-    total: number;
-    teachers: number;
-    students: number;
-    admins: number;
-  };
-  classrooms: number;
-  avatarItems: number;
-  studentProfiles: number;
+/** Pendientes y cifras del panel (inicio y contadores del menú), cada una separada por lo que cuenta. */
+export interface AdminOverview {
+  users: { total: number; admins: number; teachers: number; students: number; parents: number; inactive: number };
+  teachers: { verified: number; unverified: number; pendingRequests: number; unverifiedWithClasses: number };
+  classrooms: { active: number; archived: number };
+  avatarItems: { published: number; drafts: number; retired: number; holes: { slot: string; gender: 'MALE' | 'FEMALE' }[] };
+  schools: { verified: number; unverified: number; pendingVerifications: number };
+  bugReports: { pending: number; inProgress: number; criticalPending: number };
+  expeditionMaps: { active: number; hidden: number };
 }
+
+export const adminOverviewKey = ['admin-overview'] as const;
 
 export type AssignableRole = 'ADMIN' | 'TEACHER' | 'STUDENT';
 
@@ -112,9 +113,8 @@ export interface AdminClassroomDetails {
 }
 
 export const adminApi = {
-  // Dashboard
-  async getStats(): Promise<AdminStats> {
-    const response = await api.get('/admin/stats');
+  async getOverview(): Promise<AdminOverview> {
+    const response = await api.get('/admin/overview');
     return response.data.data;
   },
 

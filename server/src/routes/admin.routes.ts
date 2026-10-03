@@ -9,8 +9,9 @@ const router = Router();
 router.use(authenticate);
 router.use(authorize('ADMIN'));
 
-// ==================== DASHBOARD ====================
-router.get('/stats', adminController.getStats);
+// ==================== INICIO ====================
+// Pendientes y cifras del panel (también los contadores del menú).
+router.get('/overview', adminController.getOverview);
 
 // ==================== GESTIÓN DE USUARIOS ====================
 router.get('/users', adminController.getUsers);

@@ -1,5 +1,6 @@
-import { Lock, LogOut, Sparkles, X } from 'lucide-react';
+import { Lock, LogOut, Monitor, Moon, Sparkles, Sun, X } from 'lucide-react';
 import type { User } from '../../../lib/api';
+import { useThemeStore } from '../../../store/themeStore';
 import { useSidebarUi } from './sidebarContext';
 
 const avatarSrc = (url: string | null | undefined) => {
@@ -9,8 +10,40 @@ const avatarSrc = (url: string | null | undefined) => {
   return `${api}${url.startsWith('/api') ? url.replace('/api', '') : url}`;
 };
 
-/** Pie del menú del profe fuera de una clase: quién está y «Cerrar sesión» (antes tapaba el menú). */
-export const TeacherHomeFooter = ({ user, rail, onLogout }: { user: User | null; rail: boolean; onLogout: () => void }) => {
+const THEMES = {
+  light: { label: 'Claro', next: 'dark', icon: Sun },
+  dark: { label: 'Oscuro', next: 'system', icon: Moon },
+  system: { label: 'Como el sistema', next: 'light', icon: Monitor },
+} as const;
+
+/** Botón de tema que va rotando (claro → oscuro → como el sistema). */
+const ThemeCycle = ({ rail }: { rail: boolean }) => {
+  const { showTip, hideTip } = useSidebarUi();
+  const theme = useThemeStore((s) => s.theme);
+  const setTheme = useThemeStore((s) => s.setTheme);
+  const current = THEMES[theme as keyof typeof THEMES] ?? THEMES.system;
+  const Icon = current.icon;
+  const label = `Tema: ${current.label}. Cambiar`;
+  return (
+    <button
+      type="button"
+      onClick={() => setTheme(current.next)}
+      aria-label={label}
+      className={`sb-item ${rail ? 'justify-center px-0' : ''}`}
+      onMouseEnter={(event) => rail && showTip(event.currentTarget, label)}
+      onMouseLeave={hideTip}
+    >
+      <span className="sb-icon"><Icon size={rail ? 18 : 16} aria-hidden="true" /></span>
+      {!rail && <span className="sb-label">Tema: {current.label}</span>}
+    </button>
+  );
+};
+
+/**
+ * Pie del menú del profe fuera de una clase: quién está y «Cerrar sesión» (antes tapaba el menú). El panel
+ * de administración lo usa con su rol y el botón de tema.
+ */
+export const TeacherHomeFooter = ({ user, rail, onLogout, roleLabel = 'Docente', showTheme = false }: { user: User | null; rail: boolean; onLogout: () => void; roleLabel?: string; showTheme?: boolean }) => {
   const { showTip, hideTip } = useSidebarUi();
   const name = [user?.firstName, user?.lastName].filter(Boolean).join(' ');
   const src = avatarSrc(user?.avatarUrl);
@@ -27,8 +60,9 @@ export const TeacherHomeFooter = ({ user, rail, onLogout }: { user: User | null;
       <div className="flex flex-col items-center gap-1">
         <span className="inline-flex py-1" onMouseEnter={(event) => showTip(event.currentTarget, name)} onMouseLeave={hideTip}>
           {face}
-          <span className="sr-only">{name}, docente</span>
+          <span className="sr-only">{name}, {roleLabel.toLowerCase()}</span>
         </span>
+        {showTheme && <ThemeCycle rail />}
         <button
           type="button"
           onClick={onLogout}
@@ -51,9 +85,10 @@ export const TeacherHomeFooter = ({ user, rail, onLogout }: { user: User | null;
         {face}
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">{name}</p>
-          <p className="text-xs sb-muted">Docente</p>
+          <p className="text-xs sb-muted">{roleLabel}</p>
         </div>
       </div>
+      {showTheme && <ThemeCycle rail={false} />}
       <button type="button" onClick={onLogout} className="sb-item sb-danger">
         <span className="sb-icon"><LogOut size={16} aria-hidden="true" /></span>
         <span className="sb-label">Cerrar sesión</span>

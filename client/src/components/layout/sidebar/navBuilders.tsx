@@ -4,6 +4,7 @@ import {
   BarChart3,
   BookMarked,
   BookOpen,
+  Bug,
   Calendar,
   CalendarCheck,
   ClipboardList,
@@ -24,6 +25,7 @@ import {
   ScrollText,
   Settings,
   Shield,
+  ShieldCheck,
   Shirt,
   ShoppingBag,
   Sparkles,
@@ -255,4 +257,48 @@ export const studentRouteAvailable = (profile: MyClass, pathname: string) => {
   if (needs) return studentAvailability(profile)[needs];
   if (pathname === '/my-story') return !!profile.classroom?.hasActiveStory || !!profile.classroom?.themeConfig;
   return true;
+};
+
+// ── Panel de administración ─────────────────────────────────────────────────────────────────────
+
+/** Lo que espera una acción del admin (los números del menú). */
+export interface AdminNavCounts {
+  teacherRequests: number;
+  schoolRequests: number;
+  drafts: number;
+  bugReports: number;
+}
+
+const counted = (value: number, label: string) => (value > 0 ? { kind: 'count' as const, value, label } : undefined);
+
+/** Menú del panel: secciones con título (como el del alumno) y un número solo donde te espera algo. */
+export const adminNav = (pathname: string, counts: AdminNavCounts | null): NavNode[] => {
+  const under = (path: string) => pathname === path || pathname.startsWith(`${path}/`);
+  const item = (id: string, label: string, to: string, Icon: typeof House, badge?: NavItem['badge']): NavItem => ({
+    id, label, to, icon: icon(Icon), active: under(to), ...(badge ? { badge } : {}),
+  });
+  return [
+    { kind: 'link', item: { ...item('home', 'Inicio', '/admin', LayoutDashboard), active: pathname === '/admin' } },
+    {
+      kind: 'section', id: 'people', label: 'Personas', icon: icon(Users), items: [
+        item('users', 'Usuarios', '/admin/users', Users),
+        item('teachers', 'Docentes por verificar', '/admin/teacher-verifications', ShieldCheck,
+          counted(counts?.teacherRequests ?? 0, 'docentes piden verificación')),
+        item('schools', 'Escuelas', '/admin/school-verifications', School,
+          counted(counts?.schoolRequests ?? 0, 'escuelas por verificar')),
+      ],
+    },
+    {
+      kind: 'section', id: 'content', label: 'Contenido', icon: icon(Shirt), items: [
+        item('avatar-items', 'Prendas del avatar', '/admin/avatar-items', Shirt, counted(counts?.drafts ?? 0, 'prendas en borrador')),
+        item('maps', 'Mapas de expedición', '/admin/expedition-maps', Map),
+      ],
+    },
+    { kind: 'section', id: 'classes', label: 'Aulas', icon: icon(GraduationCap), items: [item('classrooms', 'Clases', '/admin/classrooms', GraduationCap)] },
+    {
+      kind: 'section', id: 'support', label: 'Soporte', icon: icon(Bug), items: [
+        item('bug-reports', 'Reportes de error', '/admin/bug-reports', Bug, counted(counts?.bugReports ?? 0, 'reportes por atender')),
+      ],
+    },
+  ];
 };

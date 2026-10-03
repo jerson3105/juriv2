@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { useAuthStore } from '../../store/authStore';
 import type { AvatarGender, AvatarSlot } from '../../lib/avatarApi';
 import { adminAvatarItemKey, adminAvatarItemsApi, adminAvatarItemsKey } from '../../lib/adminAvatarItemsApi';
+import { adminOverviewKey } from '../../lib/adminApi';
 import { AdminPageHeader } from '../../components/admin/AdminPageHeader';
 import { CompletaEditor, type CompletaSaveInput } from '../../components/admin/completa/CompletaEditor';
 import { BODY_NAME, SLOT_NAMES, SLOT_SEQUENCE, errorMessage, otherBody } from '../../components/admin/avatarItems/avatarItemsHelpers';
@@ -74,6 +75,7 @@ export default function AvatarItemEditorPage() {
       queryClient.setQueryData(adminAvatarItemKey(detail.item.id), detail);
       void queryClient.invalidateQueries({ queryKey: adminAvatarItemsKey });
       void queryClient.invalidateQueries({ queryKey: ['admin-avatar-item'] });
+      void queryClient.invalidateQueries({ queryKey: adminOverviewKey });
       toast.success(mode !== 'new' ? 'Imagen guardada.' : input.publish ? 'Prenda publicada.' : 'Borrador guardado.');
       navigate(`/admin/avatar-items/${detail.item.id}`, { replace: true });
     },

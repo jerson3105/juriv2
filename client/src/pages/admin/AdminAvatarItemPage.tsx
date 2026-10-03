@@ -9,6 +9,7 @@ import {
   adminAvatarItemKey, adminAvatarItemsApi, adminAvatarItemsKey,
   type AdminAvatarItem, type AdminAvatarItemDetail,
 } from '../../lib/adminAvatarItemsApi';
+import { adminOverviewKey } from '../../lib/adminApi';
 import { AdminPageHeader } from '../../components/admin/AdminPageHeader';
 import { primaryButton } from '../../components/admin/adminStyles';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
@@ -37,6 +38,7 @@ export default function AdminAvatarItemPage() {
     if (detail) queryClient.setQueryData(adminAvatarItemKey(id), detail);
     void queryClient.invalidateQueries({ queryKey: adminAvatarItemsKey });
     void queryClient.invalidateQueries({ queryKey: ['admin-avatar-item'] });
+    void queryClient.invalidateQueries({ queryKey: adminOverviewKey });
   };
 
   const action = useMutation({
@@ -75,7 +77,7 @@ export default function AdminAvatarItemPage() {
 
   if (isError || (!isLoading && !data)) {
     return (
-      <div data-pg="" className="min-h-screen bg-gray-50 text-[var(--pg-fg)] dark:bg-gray-900">
+      <div data-pg="" className="text-[var(--pg-fg)]">
         <AdminPageHeader title="Prenda" back="/admin/avatar-items" backLabel="las prendas" />
         <div role="alert" className="pg-surface mx-auto mt-8 max-w-md p-6 text-center">
           <p className="font-semibold">No se pudo cargar la prenda.</p>
@@ -86,7 +88,7 @@ export default function AdminAvatarItemPage() {
   }
 
   if (isLoading || !data) {
-    return <div data-pg="" className="min-h-screen bg-gray-50 dark:bg-gray-900" aria-busy="true" />;
+    return <div data-pg="" className="min-h-[50vh]" aria-busy="true" />;
   }
 
   const { item, partner, goals } = data;
@@ -106,7 +108,7 @@ export default function AdminAvatarItemPage() {
   const confirm = pending ? confirmTexts[pending] : null;
 
   return (
-    <div data-pg="" className="min-h-screen bg-gray-50 text-[var(--pg-fg)] dark:bg-gray-900">
+    <div data-pg="" className="text-[var(--pg-fg)]">
       <AdminPageHeader
         title={item.name}
         subtitle={`${SLOT_NAMES[item.slot]} · ${RARITY_NAME[item.rarity]}${owners ? ` · ${owners} la tienen, ${equipped} la llevan puesta` : ''}`}
