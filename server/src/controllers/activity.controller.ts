@@ -12,6 +12,8 @@ const createSchema = z.object({
   activityType: z.enum(ACTIVITY_TYPES),
   title: z.string().trim().max(120).optional().nullable(),
   state: jsonBlob.optional(),
+  // Partida jugada desde una parada «en clase» de una expedición publicada de esta clase.
+  expeditionStopId: z.string().uuid().optional().nullable(),
 });
 const stateSchema = z.object({ state: jsonBlob });
 const finishSchema = z.object({ result: jsonBlob.optional(), state: jsonBlob.optional() });
@@ -69,8 +71,8 @@ class ActivityController {
     try {
       const { classroomId } = req.params;
       if (!(await requireClassroomTeacher(req, res, classroomId))) return;
-      const { activityType, title, state } = createSchema.parse(req.body);
-      const data = await activityService.create(classroomId, req.user!.id, activityType, title || null, state);
+      const { activityType, title, state, expeditionStopId } = createSchema.parse(req.body);
+      const data = await activityService.create(classroomId, req.user!.id, activityType, title || null, state, expeditionStopId ?? null);
       res.status(201).json({ success: true, data });
     } catch (error) {
       fail(res, error, 'No se pudo empezar la partida');

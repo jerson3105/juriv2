@@ -8,7 +8,9 @@ import { AppError, ForbiddenError, NotFoundError, ValidationError } from '../uti
 import { questionBanksOwnedBy, requireClassroomTeacher, studentsBelongToClassroom } from '../utils/access.js';
 import { cleanMessageText } from '../utils/messageText.js';
 import { EXPEDITION_STOP_KINDS } from '../db/schema.js';
-import { MAX_QUESTIONS, MAX_REWARD, MAX_STOPS, expeditionService } from '../services/expedition.service.js';
+import {
+  CLASS_ACTIVITIES, MAX_GRADE_WEIGHT, MAX_QUESTIONS, MAX_REWARD, MAX_STOPS, REFLECTIONS, expeditionService,
+} from '../services/expedition.service.js';
 
 // ── Validación (lista blanca: lo que no está en el esquema se rechaza) ──
 
@@ -62,6 +64,8 @@ const updateSchema = z.object({
   scenario: z.enum(['CONSTELLATION', 'MAP'], { errorMap: () => ({ message: 'Escenario no válido' }) }).optional(),
   constellationId: z.string().max(40, 'Constelación no válida').optional(),
   mapImageUrl: z.string().max(500, 'Mapa no válido').nullable().optional(),
+  finishBadgeId: idSchema.nullable().optional(),
+  perseveranceBadgeId: idSchema.nullable().optional(),
 }).strict('Datos no válidos');
 
 const stopKind = z.enum(EXPEDITION_STOP_KINDS, { errorMap: () => ({ message: 'Tipo de parada no válido' }) });
@@ -83,6 +87,11 @@ const updateStopSchema = z.object({
   rewardGold: reward.optional(),
   mapX: position.optional(),
   mapY: position.optional(),
+  // Las competencias oficiales usan códigos (comp-pe-…), las propias un UUID: se valida contra la clase.
+  competencyId: z.string({ invalid_type_error: 'Competencia no válida' }).trim().min(1, 'Competencia no válida').max(36, 'Competencia no válida').nullable().optional(),
+  gradeWeight: z.number({ invalid_type_error: 'El peso debe ser un número' }).int('El peso debe ser un número entero')
+    .min(1, `El peso va de 1 a ${MAX_GRADE_WEIGHT}`).max(MAX_GRADE_WEIGHT, `El peso va de 1 a ${MAX_GRADE_WEIGHT}`).optional(),
+  classActivity: z.enum(CLASS_ACTIVITIES, { errorMap: () => ({ message: 'Actividad no válida' }) }).nullable().optional(),
 }).strict('Datos no válidos');
 
 const reorderSchema = z.object({
@@ -96,6 +105,8 @@ const reviewSchema = z.object({
     feedback: cleanText(500, 'El comentario es muy largo (máximo 500)').optional(),
     // La entrega que vio el docente: si el alumno la cambió mientras tanto, esa decisión se salta.
     evidenceId: idSchema.nullable().optional(),
+    // Nivel en la escala de la clase al aprobar (AD, 17, 85…); solo cuenta si la parada tiene competencia.
+    level: z.preprocess((value) => (typeof value === 'string' ? value.trim() || null : value), z.string().max(10, 'Nivel no válido').nullable()).optional(),
   }).strict('Datos no válidos').refine((d) => d.decision !== 'NEEDS_WORK' || !!d.feedback, 'Escribe qué debe mejorar'))
     .min(1, 'No hay decisiones').max(300, 'Demasiadas decisiones a la vez'),
 }).strict('Datos no válidos');
@@ -107,6 +118,11 @@ const classSchema = z.object({
 const answerSchema = z.object({
   questionId: idSchema,
   answer: z.union([z.boolean(), z.number().int(), z.array(z.number().int()).max(20)], { errorMap: () => ({ message: 'Respuesta no válida' }) }),
+}).strict('Datos no válidos');
+
+const reflectionSchema = z.object({
+  value: z.enum(REFLECTIONS, { errorMap: () => ({ message: 'Elige cómo te fue' }) }),
+  note: cleanText(200, 'Escribe algo más corto (máximo 200)').optional(),
 }).strict('Datos no válidos');
 
 const evidenceSchema = z.object({
@@ -362,7 +378,7 @@ export const expeditionController = {
     }
   },
 
-  /** POST /expeditions/stops/:stopId/class { studentProfileIds } */
+  /** POST /expeditions/stops/:stopId/class { studentProfileIds }: presentes en una parada hecha en clase (cualquier tipo). */
   async markClass(req: Request, res: Response) {
     try {
       const stopId = idSchema.parse(req.params.stopId);
@@ -370,7 +386,7 @@ export const expeditionController = {
       const context = await teacherOfStop(req, res, stopId);
       if (!context) return;
       if (!(await studentsBelongToClassroom(studentProfileIds, context.expedition.classroomId))) throw new ValidationError('Hay alumnos que no son de esta clase');
-      res.json({ success: true, data: await expeditionService.markClass(stopId, req.user!.id, studentProfileIds) });
+      res.json({ success: true, data: await expeditionService.markPresent(stopId, req.user!.id, studentProfileIds) });
     } catch (error) {
       fail(res, error, 'Error al marcar la parada');
     }
@@ -433,6 +449,20 @@ export const expeditionController = {
       res.json({ success: true, data: await expeditionService.answer(stopId, profileId, input.questionId, input.answer) });
     } catch (error) {
       fail(res, error, 'Error al guardar la respuesta');
+    }
+  },
+
+  /** POST /expeditions/:id/reflection { value, note }: «¿Cómo me fue?» al llegar a la meta. */
+  async reflect(req: Request, res: Response) {
+    try {
+      const id = idSchema.parse(req.params.id);
+      const input = reflectionSchema.parse(req.body);
+      const classroomId = await expeditionService.getClassroomIdOf(id);
+      if (!classroomId) throw new NotFoundError('Expedición no encontrada');
+      const profileId = await studentIn(req, classroomId);
+      res.json({ success: true, data: await expeditionService.reflect(id, profileId, input.value, input.note ?? null), message: 'Respuesta guardada' });
+    } catch (error) {
+      fail(res, error, 'Error al guardar tu respuesta');
     }
   },
 

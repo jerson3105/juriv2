@@ -626,6 +626,8 @@ export const activitySessions = mysqlTable('activity_sessions', {
   activityType: varchar('activity_type', { length: 20 }).notNull(), // DESCANSO | ESTRELLAS | CONQUISTA | CORREO | ERROR
   status: varchar('status', { length: 12 }).notNull().default('ACTIVE'), // ACTIVE | FINISHED | ABANDONED
   title: varchar('title', { length: 120 }),
+  // Partida jugada desde una parada «en clase»: su recompensa marca la parada (sin pagarla dos veces).
+  expeditionStopId: varchar('expedition_stop_id', { length: 36 }),
   state: json('state'),
   result: json('result'),
   selfAssessment: varchar('self_assessment', { length: 8 }), // GREEN | YELLOW | RED
@@ -1608,6 +1610,9 @@ export const expeditions = mysqlTable('expeditions', {
   closingText: text('closing_text'), // lo que Jiro dice al llegar a la meta
   finishXp: int('finish_xp').notNull().default(0),
   finishGold: int('finish_gold').notNull().default(0),
+  // Insignias que elige el docente: al llegar a la meta y por perseverancia (aprobada después de «pedir mejora»).
+  finishBadgeId: varchar('finish_badge_id', { length: 36 }),
+  perseveranceBadgeId: varchar('perseverance_badge_id', { length: 36 }),
   status: expeditionStatusEnum.notNull().default('DRAFT'),
   publishedAt: datetime('published_at'),
   createdAt: datetime('created_at').notNull(),
@@ -1636,12 +1641,18 @@ export const expeditionStops = mysqlTable('expedition_stops', {
   dueAt: datetime('due_at'),
   rewardXp: int('reward_xp').notNull().default(0),
   rewardGold: int('reward_gold').notNull().default(0),
+  // Nota (solo reto y evidencia): competencia de la clase y peso de 1 a 30, como una observación.
+  competencyId: varchar('competency_id', { length: 36 }),
+  gradeWeight: tinyint('grade_weight', { unsigned: true }).notNull().default(20),
+  // «En clase»: actividad del Observatorio con la que se juega (con el banco de la parada).
+  classActivity: varchar('class_activity', { length: 12 }), // ESTRELLAS | CONQUISTA | ERROR
   mapX: decimal('map_x', { precision: 5, scale: 2 }),
   mapY: decimal('map_y', { precision: 5, scale: 2 }),
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
 }, (table) => ({
   expeditionIdx: index('idx_expedition_stops_expedition').on(table.expeditionId, table.sortOrder),
+  competencyIdx: index('idx_expedition_stops_competency').on(table.competencyId),
 }));
 
 export const expeditionsRelations = relations(expeditions, ({ one, many }) => ({
@@ -1672,12 +1683,18 @@ export const expeditionStopProgress = mysqlTable('expedition_stop_progress', {
   attempt: tinyint('attempt').notNull().default(1),
   firstScore: int('first_score'),
   finalScore: int('final_score'),
+  // Nivel que eligió el docente al aprobar la evidencia (etiqueta de la escala y su %), para la nota.
+  gradeScore: decimal('grade_score', { precision: 5, scale: 2 }),
+  gradeLabel: varchar('grade_label', { length: 10 }),
   goldStar: boolean('gold_star').notNull().default(false),
   review: mysqlEnum('review', ['PENDING', 'APPROVED', 'NEEDS_WORK']),
   feedback: varchar('feedback', { length: 500 }),
+  needsWorkCount: tinyint('needs_work_count', { unsigned: true }).notNull().default(0),
   reviewedAt: datetime('reviewed_at'),
   reviewedBy: varchar('reviewed_by', { length: 36 }),
   doneAt: datetime('done_at'),
+  // Lograda en clase (proyectada o con una actividad del Observatorio): sin nota individual.
+  doneInClass: boolean('done_in_class').notNull().default(false),
   rewardedAt: datetime('rewarded_at'),
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
@@ -1723,6 +1740,10 @@ export const expeditionFinishes = mysqlTable('expedition_finishes', {
   studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),
   finishedAt: datetime('finished_at').notNull(),
   rewardedAt: datetime('rewarded_at'),
+  // «¿Cómo me fue?»: GREEN | YELLOW | RED y lo más difícil (opcional). No condiciona la recompensa.
+  reflection: varchar('reflection', { length: 8 }),
+  reflectionNote: varchar('reflection_note', { length: 200 }),
+  reflectedAt: datetime('reflected_at'),
 }, (table) => ({
   pk: primaryKey({ columns: [table.expeditionId, table.studentProfileId] }),
   studentIdx: index('idx_expedition_finishes_student').on(table.studentProfileId),

@@ -10,10 +10,12 @@ import { prepareForTx } from '../utils/notificationEmitter.js';
 import { badgeService } from './badge.service.js';
 import { behaviorService } from './behavior.service.js';
 import { clanService } from './clan.service.js';
+import { expeditionService } from './expedition.service.js';
 import { historyService } from './history.service.js';
 import { storyService } from './story.service.js';
 
-export const ACTIVITY_TYPES = ['DESCANSO', 'ESTRELLAS', 'CONQUISTA', 'CORREO', 'ERROR'] as const;
+// EXPEDICION: la expedición proyectada en clase (sus paradas pagan solas; la Bitácora cierra la clase).
+export const ACTIVITY_TYPES = ['DESCANSO', 'ESTRELLAS', 'CONQUISTA', 'CORREO', 'ERROR', 'EXPEDICION'] as const;
 export type ActivityType = typeof ACTIVITY_TYPES[number];
 export const SELF_ASSESSMENTS = ['GREEN', 'YELLOW', 'RED'] as const;
 export type SelfAssessment = typeof SELF_ASSESSMENTS[number];
@@ -38,6 +40,7 @@ const ACTIVITY_NAMES: Record<ActivityType, string> = {
   CONQUISTA: 'Conquista del Cielo',
   CORREO: 'Correo Estelar',
   ERROR: 'El Error de Jiro',
+  EXPEDICION: 'Expedición',
 };
 
 // MariaDB devuelve las columnas JSON como texto.
@@ -77,6 +80,7 @@ const serialize = (row: SessionRow, withState = false) => ({
   activityType: row.activityType as ActivityType,
   status: row.status,
   title: row.title,
+  expeditionStopId: row.expeditionStopId,
   result: parseJson<Record<string, unknown>>(row.result),
   selfAssessment: row.selfAssessment as SelfAssessment | null,
   reward: publicReward(row.reward),
@@ -124,11 +128,13 @@ class ActivityService {
       .orderBy(desc(activitySessions.updatedAt))
       .limit(5);
 
-    // Última partida terminada sin recompensa (p. ej. se recargó en la Bitácora): se ofrece retomarla.
+    // Última partida terminada sin recompensa (p. ej. se recargó en la Bitácora): se ofrece retomarla. La
+    // expedición proyectada no cuenta: sus paradas ya pagaron y la recompensa de su Bitácora es opcional.
     const [unrewarded] = await db.select().from(activitySessions)
       .where(and(
         eq(activitySessions.classroomId, classroomId),
         eq(activitySessions.status, 'FINISHED'),
+        sql`${activitySessions.activityType} <> 'EXPEDICION'`,
         isNull(activitySessions.rewardedAt),
         gte(activitySessions.finishedAt, new Date(Date.now() - 12 * 60 * 60 * 1000)),
       ))
@@ -142,8 +148,15 @@ class ActivityService {
     };
   }
 
-  /** Nueva partida. La anterior sin terminar de la misma actividad queda abandonada. */
-  async create(classroomId: string, teacherId: string, activityType: ActivityType, title: string | null, state: unknown) {
+  /**
+   * Nueva partida. La anterior sin terminar de la misma actividad queda abandonada. Si se juega desde una parada
+   * «en clase» de una expedición (publicada, de esta clase), al entregar la recompensa se marca esa parada.
+   */
+  async create(classroomId: string, teacherId: string, activityType: ActivityType, title: string | null, state: unknown, expeditionStopId: string | null = null) {
+    if (expeditionStopId) {
+      if (!['ESTRELLAS', 'CONQUISTA', 'ERROR'].includes(activityType)) throw new ValidationError('Esta actividad no se juega desde una expedición');
+      await expeditionService.classStopFor(expeditionStopId, classroomId);
+    }
     const now = new Date();
     const id = uuidv4();
     await db.transaction(async (tx) => {
@@ -155,7 +168,7 @@ class ActivityService {
           eq(activitySessions.status, 'ACTIVE'),
         ));
       await tx.insert(activitySessions).values({
-        id, classroomId, activityType, status: 'ACTIVE', title, state: state ?? null,
+        id, classroomId, activityType, status: 'ACTIVE', title, expeditionStopId, state: state ?? null,
         createdBy: teacherId, createdAt: now, updatedAt: now,
       });
     });
@@ -333,12 +346,25 @@ class ActivityService {
     await db.update(activitySessions).set({ reward: stored }).where(eq(activitySessions.id, sessionId));
     const after = before ? await this.chapterSnapshot(classroomId) : null;
 
+    // Jugada desde una parada «en clase»: la Bitácora ya pagó, así que la parada se marca a los mismos presentes
+    // sin volver a pagarla. Si la expedición se cerró mientras tanto, la recompensa igual queda entregada.
+    let expeditionStop: { title: string; marked: number } | null = null;
+    if (session.expeditionStopId) {
+      try {
+        const result = await expeditionService.markPresent(session.expeditionStopId, teacherId, studentIds, { paid: false, onlyKind: 'CLASS' });
+        expeditionStop = { title: result.stopTitle, marked: result.marked };
+      } catch (error) {
+        console.error('No se pudo marcar la parada de la expedición desde la Bitácora', error);
+      }
+    }
+
     return {
       session: await this.get(sessionId, teacherId),
       levelUps: outcome.levelUps,
       awardedBadges: outcome.awardedBadges,
       restingSkipped: outcome.restingSkipped,
       studentsAffected: outcome.studentsAffected,
+      expeditionStop,
       chapter: before && after && before.chapterId === after.chapterId
         ? { title: before.title, completionType: before.completionType, target: before.target, before: before.progress, after: after.progress }
         : null,

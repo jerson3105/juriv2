@@ -2,7 +2,10 @@ import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import {
+  badges,
+  classroomCompetencies,
   classrooms,
+  curriculumCompetencies,
   expeditionAnswers,
   expeditionEvidence,
   expeditionFinishes,
@@ -23,6 +26,7 @@ import {
 } from '../db/schema.js';
 import { ConflictError, NotFoundError, ValidationError, isDuplicateEntry } from '../utils/errors.js';
 import { affectedRows, applyPointDeltas } from '../utils/points.js';
+import { parseScaleConfig, scaleOptions, scaleValueToScore } from '../utils/gradeScale.js';
 import { getIO, prepareForTx } from '../utils/notificationEmitter.js';
 import {
   checkAnswer,
@@ -81,6 +85,14 @@ export const suggestedFinish = (xpPerLevel: number) => ({ xp: percentOf(xpPerLev
 
 const DEFAULT_TITLE: Record<StopKind, string> = { STORY: 'Relato', CHALLENGE: 'Reto', EVIDENCE: 'Evidencia', CLASS: 'En clase' };
 const GOLD_STAR_SCORE = 80;
+/** Solo el reto (su % del primer intento) y la evidencia (el nivel al aprobar) dan nota. */
+export const GRADED_KINDS: StopKind[] = ['CHALLENGE', 'EVIDENCE'];
+export const MAX_GRADE_WEIGHT = 30;
+/** Actividades del Observatorio con las que se puede jugar una parada «en clase». */
+export const CLASS_ACTIVITIES = ['ESTRELLAS', 'CONQUISTA', 'ERROR'] as const;
+export type ClassActivity = typeof CLASS_ACTIVITIES[number];
+export const REFLECTIONS = ['GREEN', 'YELLOW', 'RED'] as const;
+export type Reflection = typeof REFLECTIONS[number];
 
 // ── Serialización ──
 
@@ -108,6 +120,8 @@ const expeditionDto = (e: Expedition) => ({
   closingText: e.closingText,
   finishXp: e.finishXp,
   finishGold: e.finishGold,
+  finishBadgeId: e.finishBadgeId,
+  perseveranceBadgeId: e.perseveranceBadgeId,
   status: e.status,
   publishedAt: e.publishedAt,
   createdAt: e.createdAt,
@@ -134,6 +148,9 @@ const teacherStop = (stop: ExpeditionStop, stats: StopStats = emptyStats()) => (
   dueAt: stop.dueAt,
   rewardXp: stop.rewardXp,
   rewardGold: stop.rewardGold,
+  competencyId: stop.competencyId,
+  gradeWeight: stop.gradeWeight,
+  classActivity: stop.classActivity as ClassActivity | null,
   mapX: num(stop.mapX),
   mapY: num(stop.mapY),
   stats,
@@ -188,6 +205,8 @@ interface Grant {
   title: string; // aviso al alumno («Lo nuevo»)
   what: string; // «por …» en el aviso
   givenBy: string | null;
+  /** Insignia elegida por el docente (de la meta o de perseverancia): se otorga después del commit. */
+  badge?: { id: string; reason: string } | null;
 }
 
 const rewardText = (xp: number, gold: number) => [xp > 0 ? `+${xp} XP` : '', gold > 0 ? `+${gold} de oro` : ''].filter(Boolean).join(' · ');
@@ -384,9 +403,17 @@ class ExpeditionService {
     return { ...expeditionDto(expedition), stops: stops.map((stop) => teacherStop(stop, stats.get(stop.id))) };
   }
 
+  /** Insignia activa de la clase (la que elige el docente para la meta o la perseverancia). */
+  private async assertClassroomBadge(classroomId: string, badgeId: string) {
+    const [badge] = await db.select({ id: badges.id }).from(badges)
+      .where(and(eq(badges.id, badgeId), eq(badges.classroomId, classroomId), eq(badges.isActive, true)));
+    if (!badge) throw new ValidationError('Elige una insignia activa de esta clase');
+  }
+
   async update(expeditionId: string, patch: {
     name?: string; description?: string | null; closingText?: string | null; finishXp?: number; finishGold?: number;
     scenario?: 'CONSTELLATION' | 'MAP'; constellationId?: string; mapImageUrl?: string | null;
+    finishBadgeId?: string | null; perseveranceBadgeId?: string | null;
   }) {
     const expedition = await this.requireExpedition(expeditionId);
     const stops = await this.stopsOf(expeditionId);
@@ -396,6 +423,12 @@ class ExpeditionService {
     if (patch.closingText !== undefined) set.closingText = patch.closingText || null;
     if (patch.finishXp !== undefined) set.finishXp = patch.finishXp;
     if (patch.finishGold !== undefined) set.finishGold = patch.finishGold;
+    for (const key of ['finishBadgeId', 'perseveranceBadgeId'] as const) {
+      const badgeId = patch[key];
+      if (badgeId === undefined) continue;
+      if (badgeId) await this.assertClassroomBadge(expedition.classroomId, badgeId);
+      set[key] = badgeId || null;
+    }
     if (patch.mapImageUrl !== undefined && patch.mapImageUrl !== expedition.mapImageUrl) {
       if (patch.mapImageUrl) await this.assertLibraryMap(patch.mapImageUrl);
       set.mapImageUrl = patch.mapImageUrl || null;
@@ -532,7 +565,7 @@ class ExpeditionService {
     kind?: StopKind; title?: string; story?: string | null; goal?: string | null; successCriteria?: string | null;
     mission?: string | null; resources?: ExpeditionResource[]; bankId?: string | null; questionIds?: string[];
     passPercent?: number; reviewMode?: 'ADVANCE' | 'WAIT'; dueAt?: Date | null; rewardXp?: number; rewardGold?: number;
-    mapX?: number; mapY?: number;
+    mapX?: number; mapY?: number; competencyId?: string | null; gradeWeight?: number; classActivity?: ClassActivity | null;
   }) {
     const context = await this.getStopContext(stopId);
     if (!context) throw new NotFoundError('Parada no encontrada');
@@ -573,8 +606,28 @@ class ExpeditionService {
       }
       set.questionIds = ids;
     }
-    // Publicada, un reto sin preguntas deja a los alumnos esperando: se guarda junto con sus preguntas.
+    // Nota: competencia de la clase y peso (solo reto y evidencia; al pasar a otro tipo se quita).
     const finalKind = set.kind ?? stop.kind;
+    if (patch.gradeWeight !== undefined) set.gradeWeight = Math.max(1, Math.min(MAX_GRADE_WEIGHT, Math.round(patch.gradeWeight)));
+    if (patch.competencyId !== undefined) {
+      if (patch.competencyId && !GRADED_KINDS.includes(finalKind)) throw new ValidationError('Solo los retos y las evidencias cuentan para la nota');
+      if (patch.competencyId) {
+        const [linked] = await db.select({ id: classroomCompetencies.id }).from(classroomCompetencies)
+          .where(and(eq(classroomCompetencies.classroomId, expedition.classroomId), eq(classroomCompetencies.competencyId, patch.competencyId)));
+        if (!linked) throw new ValidationError('Elige una competencia de esta clase');
+      }
+      set.competencyId = patch.competencyId || null;
+    } else if (kindChanges && !GRADED_KINDS.includes(finalKind)) {
+      set.competencyId = null;
+    }
+    // «En clase»: la actividad del Observatorio con la que se juega (con el banco de la parada).
+    if (patch.classActivity !== undefined) {
+      if (patch.classActivity && finalKind !== 'CLASS') throw new ValidationError('Solo una parada «en clase» se juega con el Observatorio');
+      set.classActivity = patch.classActivity || null;
+    } else if (kindChanges && finalKind !== 'CLASS') {
+      set.classActivity = null;
+    }
+    // Publicada, un reto sin preguntas deja a los alumnos esperando: se guarda junto con sus preguntas.
     const finalQuestions = set.questionIds !== undefined ? toIds(set.questionIds) : toIds(stop.questionIds);
     if (expedition.status !== 'DRAFT' && finalKind === 'CHALLENGE' && (kindChanges || patch.bankId !== undefined || patch.questionIds !== undefined)
       && finalQuestions.length === 0) {
@@ -661,25 +714,32 @@ class ExpeditionService {
       map.set(row.stopId, row);
       byStudent.set(row.studentProfileId, map);
     }
-    const finished = new Set(finishes.map((f) => f.studentProfileId));
+    const finishOf = new Map(finishes.map((f) => [f.studentProfileId, f]));
     const here = new Map<string, number>();
+    const done = new Map<string, number>();
     const rows = students.map((student) => {
       const states = computeStates(stops, byStudent.get(student.id) ?? new Map());
       const frontier = frontierOf(states);
       if (frontier) here.set(frontier.stop.id, (here.get(frontier.stop.id) ?? 0) + 1);
+      for (const s of states) if (s.row?.status === 'DONE') done.set(s.stop.id, (done.get(s.stop.id) ?? 0) + 1);
+      const finish = finishOf.get(student.id);
       return {
         id: student.id,
         name: student.name,
         characterName: student.characterName,
         hasAccount: !!student.userId,
         doneCount: states.filter((s) => s.row?.status === 'DONE').length,
-        finished: finished.has(student.id) || isFinished(states),
+        finished: !!finish || isFinished(states),
         current: frontier ? { stopId: frontier.stop.id, state: frontier.state } : null,
-        states: states.map((s) => ({ stopId: s.stop.id, state: s.state, review: s.row?.review ?? null, firstScore: s.row?.firstScore ?? null, goldStar: !!s.row?.goldStar })),
+        reflection: finish?.reflection ? { value: finish.reflection as Reflection, note: finish.reflectionNote } : null,
+        states: states.map((s) => ({
+          stopId: s.stop.id, state: s.state, review: s.row?.review ?? null, firstScore: s.row?.firstScore ?? null, goldStar: !!s.row?.goldStar,
+          inClass: !!s.row?.doneInClass, gradeLabel: s.row?.gradeLabel ?? null,
+        })),
       };
     });
     return {
-      stops: stops.map((stop) => ({ id: stop.id, sortOrder: stop.sortOrder, kind: stop.kind, title: stop.title, here: here.get(stop.id) ?? 0 })),
+      stops: stops.map((stop) => ({ id: stop.id, sortOrder: stop.sortOrder, kind: stop.kind, title: stop.title, here: here.get(stop.id) ?? 0, done: done.get(stop.id) ?? 0 })),
       students: rows,
     };
   }
@@ -694,6 +754,7 @@ class ExpeditionService {
         reviewMode: expeditionStops.reviewMode,
         rewardXp: expeditionStops.rewardXp,
         rewardGold: expeditionStops.rewardGold,
+        competencyId: expeditionStops.competencyId,
         firstName: users.firstName,
         lastName: users.lastName,
         displayName: studentProfiles.displayName,
@@ -719,6 +780,13 @@ class ExpeditionService {
       if (!latest.has(key)) latest.set(key, item);
     }
     const stopCount = (await this.stopsOf(expeditionId)).length;
+    // Paradas que cuentan para la nota: al aprobar se puede elegir el nivel en la escala de la clase.
+    const competencyIds = [...new Set(rows.map((r) => r.competencyId).filter((id): id is string => !!id))];
+    const competencyNames = new Map(competencyIds.length
+      ? (await db.select({ id: curriculumCompetencies.id, name: curriculumCompetencies.name, shortName: curriculumCompetencies.shortName })
+        .from(curriculumCompetencies).where(inArray(curriculumCompetencies.id, competencyIds))).map((c) => [c.id, c.shortName || c.name])
+      : []);
+    const scale = await this.classroomScale(expedition.classroomId);
     const items = rows.map((row) => {
       const item = latest.get(`${row.progress.stopId}:${row.progress.studentProfileId}`);
       return {
@@ -729,6 +797,7 @@ class ExpeditionService {
         reviewMode: row.reviewMode,
         rewardXp: row.rewardXp,
         rewardGold: row.rewardGold,
+        competency: row.competencyId ? { id: row.competencyId, name: competencyNames.get(row.competencyId) ?? 'Competencia' } : null,
         review: row.progress.review,
         feedback: row.progress.feedback,
         reviewedAt: row.progress.reviewedAt,
@@ -741,15 +810,36 @@ class ExpeditionService {
     return {
       expeditionId: expedition.id,
       stopCount,
+      scale: scaleOptions(scale.type, scale.config),
+      scaleType: scale.type,
       pending: items.filter((item) => item.review === 'PENDING').sort(bySubmitted),
       needsWork: items.filter((item) => item.review === 'NEEDS_WORK').sort(bySubmitted),
     };
   }
 
-  async review(expeditionId: string, teacherId: string, decisions: { progressId: string; decision: 'APPROVE' | 'NEEDS_WORK'; feedback?: string | null; evidenceId?: string | null }[]) {
+  /** Escala de notas de la clase (AD/A/B/C, 0–20, 0–100 o la propia). */
+  private async classroomScale(classroomId: string) {
+    const [row] = await db.select({ type: classrooms.gradeScaleType, config: classrooms.gradeScaleConfig }).from(classrooms).where(eq(classrooms.id, classroomId));
+    return { type: row?.type ?? null, config: parseScaleConfig(row?.config) };
+  }
+
+  async review(expeditionId: string, teacherId: string, decisions: {
+    progressId: string; decision: 'APPROVE' | 'NEEDS_WORK'; feedback?: string | null; evidenceId?: string | null; level?: string | null;
+  }[]) {
     const expedition = await this.requireExpedition(expeditionId);
     const stops = new Map((await this.stopsOf(expeditionId)).map((stop) => [stop.id, stop]));
     const progressIds = [...new Set(decisions.map((d) => d.progressId))];
+    // Nivel elegido al aprobar, en la escala de la clase (AD/A/B/C, 0–20…): se valida antes de tocar nada.
+    const scale = decisions.some((d) => d.level) ? await this.classroomScale(expedition.classroomId) : null;
+    const levels = new Map<string, { score: number; label: string }>();
+    for (const decision of decisions) {
+      if (!decision.level || decision.decision !== 'APPROVE' || !scale) continue;
+      try {
+        levels.set(decision.progressId, scaleValueToScore(decision.level, scale.type, scale.config));
+      } catch (error) {
+        throw new ValidationError(error instanceof Error ? error.message : 'Nivel no válido');
+      }
+    }
     // Solo alumnos activos (un pedido armado a mano no paga a un perfil dado de baja).
     const owners = await db.select({ studentProfileId: expeditionStopProgress.studentProfileId }).from(expeditionStopProgress)
       .innerJoin(studentProfiles, eq(expeditionStopProgress.studentProfileId, studentProfiles.id))
@@ -786,24 +876,34 @@ class ExpeditionService {
         touched.push(row.studentProfileId);
         if (decision.decision === 'APPROVE') {
           const becomesDone = row.status !== 'DONE';
+          // El nivel solo cuenta si la parada está ligada a una competencia.
+          const level = stop.competencyId ? levels.get(row.id) ?? null : null;
           await tx.update(expeditionStopProgress).set({
             review: 'APPROVED',
             // El comentario de «pedir mejora» ya no aplica: al aprobar queda solo el de ahora (o ninguno).
             feedback: decision.feedback ?? null,
+            gradeScore: level ? String(level.score) : null,
+            gradeLabel: level?.label ?? null,
             reviewedAt: now,
             reviewedBy: teacherId,
             status: 'DONE',
             doneAt: row.doneAt ?? now,
             updatedAt: now,
           }).where(eq(expeditionStopProgress.id, row.id));
+          // Perseverancia: la aprobó después de que se le pidiera mejorarla.
+          const perseverance = row.needsWorkCount > 0 && expedition.perseveranceBadgeId
+            ? { id: expedition.perseveranceBadgeId, reason: `Mejoró su evidencia en «${stop.title}» (${expedition.name})` }
+            : null;
           const paid = await tx.update(expeditionStopProgress).set({ rewardedAt: now })
             .where(and(eq(expeditionStopProgress.id, row.id), isNull(expeditionStopProgress.rewardedAt)));
           if (affectedRows(paid) === 1) {
             grants.push({
               studentProfileId: row.studentProfileId, xp: stop.rewardXp, gold: stop.rewardGold,
               reason: `Expedición «${expedition.name}»: evidencia aprobada en «${stop.title}»`,
-              title: '✅ Evidencia aprobada', what: `«${stop.title}»`, givenBy: teacherId,
+              title: '✅ Evidencia aprobada', what: `«${stop.title}»`, givenBy: teacherId, badge: perseverance,
             });
+          } else if (perseverance) {
+            grants.push({ studentProfileId: row.studentProfileId, xp: 0, gold: 0, reason: '', title: '', what: '', givenBy: teacherId, badge: perseverance });
           }
           if (becomesDone) await this.checkFinishInTx(tx, expedition, row.studentProfileId, grants, teacherId);
           result.approved++;
@@ -811,6 +911,7 @@ class ExpeditionService {
           await tx.update(expeditionStopProgress).set({
             review: 'NEEDS_WORK',
             feedback: decision.feedback ?? null,
+            needsWorkCount: sql`LEAST(${expeditionStopProgress.needsWorkCount} + 1, 255)`,
             reviewedAt: now,
             reviewedBy: teacherId,
             updatedAt: now,
@@ -843,12 +944,21 @@ class ExpeditionService {
     return result;
   }
 
-  async markClass(stopId: string, teacherId: string, studentIds: string[]) {
+  /**
+   * Marca a los presentes en una parada hecha en clase: «en clase» desde el editor, cualquier parada desde la
+   * proyección (así avanzan también los que no tienen cuenta) o la partida del Observatorio jugada desde la parada.
+   * - Relato y en clase quedan logradas. El reto, logrado sin nota individual (se jugó con toda la clase).
+   * - La evidencia queda aprobada en clase; se salta a quien ya entregó desde su cuenta (eso va en «Por revisar»).
+   * - Con `paid: false` (la Bitácora del Observatorio ya pagó) se marca sin volver a pagar la parada.
+   */
+  async markPresent(stopId: string, teacherId: string, studentIds: string[], options: { paid?: boolean; onlyKind?: StopKind } = {}) {
+    const payStop = options.paid !== false;
     const context = await this.getStopContext(stopId);
     if (!context) throw new NotFoundError('Parada no encontrada');
     const { stop, expedition } = context;
-    if (stop.kind !== 'CLASS') throw new ValidationError('Solo las paradas «En clase» se marcan desde aquí');
     if (expedition.status !== 'PUBLISHED') throw new ConflictError('La expedición no está publicada');
+    // La partida del Observatorio se enlazó a una parada «en clase»: si después cambió de tipo, no se marca.
+    if (options.onlyKind && stop.kind !== options.onlyKind) throw new ConflictError('La parada ya no es «en clase»');
     // Solo alumnos activos de la clase (un perfil dado de baja no recibe la parada ni su recompensa).
     const ids = studentIds.length === 0 ? [] : (await db.select({ id: studentProfiles.id }).from(studentProfiles)
       .where(and(inArray(studentProfiles.id, [...new Set(studentIds)]), eq(studentProfiles.classroomId, expedition.classroomId), eq(studentProfiles.isActive, true))))
@@ -862,13 +972,19 @@ class ExpeditionService {
         await tx.insert(expeditionStopProgress).ignore().values({
           id: uuidv4(), expeditionId: expedition.id, stopId, studentProfileId: studentId, status: 'STARTED', createdAt: now, updatedAt: now,
         });
-        const done = await tx.update(expeditionStopProgress).set({ status: 'DONE', doneAt: now, reviewedBy: teacherId, reviewedAt: now, updatedAt: now })
-          .where(and(eq(expeditionStopProgress.stopId, stopId), eq(expeditionStopProgress.studentProfileId, studentId), sql`${expeditionStopProgress.status} <> 'DONE'`));
-        if (affectedRows(done) !== 1) continue;
+        const [row] = await tx.select().from(expeditionStopProgress)
+          .where(and(eq(expeditionStopProgress.stopId, stopId), eq(expeditionStopProgress.studentProfileId, studentId)))
+          .for('update');
+        if (!row || row.status === 'DONE') continue;
+        if (stop.kind === 'EVIDENCE' && row.review) continue;
+        await tx.update(expeditionStopProgress).set({
+          status: 'DONE', doneAt: now, doneInClass: true, reviewedBy: teacherId, reviewedAt: now, updatedAt: now,
+          ...(stop.kind === 'EVIDENCE' ? { review: 'APPROVED' as const } : {}),
+        }).where(eq(expeditionStopProgress.id, row.id));
         marked.push(studentId);
         const paid = await tx.update(expeditionStopProgress).set({ rewardedAt: now })
-          .where(and(eq(expeditionStopProgress.stopId, stopId), eq(expeditionStopProgress.studentProfileId, studentId), isNull(expeditionStopProgress.rewardedAt)));
-        if (affectedRows(paid) === 1) {
+          .where(and(eq(expeditionStopProgress.id, row.id), isNull(expeditionStopProgress.rewardedAt)));
+        if (affectedRows(paid) === 1 && payStop) {
           grants.push({
             studentProfileId: studentId, xp: stop.rewardXp, gold: stop.rewardGold,
             reason: `Expedición «${expedition.name}»: «${stop.title}» en clase`,
@@ -880,7 +996,15 @@ class ExpeditionService {
       return { value: marked, after: [await this.grantInTx(tx, expedition.classroomId, grants)] };
     });
     await this.emitToStudents(marked, expedition.id);
-    return { marked: marked.length, skipped: new Set(studentIds).size - marked.length };
+    return { marked: marked.length, skipped: new Set(studentIds).size - marked.length, stopTitle: stop.title };
+  }
+
+  /** Parada «en clase» publicada de esa clase (para enlazarla a una partida del Observatorio). */
+  async classStopFor(stopId: string, classroomId: string) {
+    const context = await this.getStopContext(stopId);
+    if (!context || context.expedition.classroomId !== classroomId || context.stop.kind !== 'CLASS') throw new NotFoundError('Parada no encontrada');
+    if (context.expedition.status !== 'PUBLISHED') throw new ConflictError('La expedición no está publicada');
+    return context;
   }
 
   // ==================== Alumno ====================
@@ -912,6 +1036,7 @@ class ExpeditionService {
       firstScore: row?.firstScore ?? null,
       finalScore: row?.finalScore ?? null,
       goldStar: !!row?.goldStar,
+      doneInClass: !!row?.doneInClass,
       evidence,
     };
   }
@@ -986,9 +1111,27 @@ class ExpeditionService {
       closingText: finished ? expedition.closingText : null,
       finishedAt: finish?.finishedAt ?? null,
       finished,
+      // «¿Cómo me fue?»: se responde al llegar a la meta (y se puede cambiar).
+      reflection: finish?.reflection ? { value: finish.reflection as Reflection, note: finish.reflectionNote } : null,
       currentStopId: frontier?.stop.id ?? null,
       stops: states.map((s) => this.studentStop(s.stop, s.state, s.row, s.stop.kind === 'EVIDENCE' ? latest.get(s.stop.id) ?? null : null)),
     };
+  }
+
+  /** «¿Cómo me fue?» del alumno que llegó a la meta. No paga nada: es reflexión, sin presión. */
+  async reflect(expeditionId: string, studentProfileId: string, value: Reflection, note: string | null) {
+    const expedition = await this.requireExpedition(expeditionId);
+    if (expedition.status === 'DRAFT') throw new NotFoundError('Expedición no encontrada');
+    const result = await db.update(expeditionFinishes)
+      .set({ reflection: value, reflectionNote: note, reflectedAt: new Date() })
+      .where(and(eq(expeditionFinishes.expeditionId, expeditionId), eq(expeditionFinishes.studentProfileId, studentProfileId)));
+    if (affectedRows(result) !== 1) {
+      // MySQL cuenta 0 filas si no cambió nada: se distingue «no llegó a la meta» de «misma respuesta».
+      const [finish] = await db.select({ id: expeditionFinishes.expeditionId }).from(expeditionFinishes)
+        .where(and(eq(expeditionFinishes.expeditionId, expeditionId), eq(expeditionFinishes.studentProfileId, studentProfileId)));
+      if (!finish) throw new ConflictError('Primero llega a la meta');
+    }
+    return this.getForStudent(expeditionId, studentProfileId);
   }
 
   /** Contexto de una acción del alumno: parada, expedición publicada y su estado actual (con la fila bloqueada). */
@@ -1089,6 +1232,8 @@ class ExpeditionService {
       firstScore: row?.firstScore ?? null,
       finalScore: row?.finalScore ?? null,
       goldStar: !!row?.goldStar,
+      // Lo jugaron juntos en clase (proyectado): logrado, sin % propio.
+      doneInClass: !!row?.doneInClass,
       // Sin preguntas (el docente las está eligiendo): el alumno espera, no queda trabado.
       preparing: list.length === 0 && row?.status !== 'DONE',
       questions: list.map((q) => toStudentQuestion(q, questionSeed(stopId, studentProfileId, q.id))),
@@ -1292,7 +1437,21 @@ class ExpeditionService {
     grants.push({
       studentProfileId, xp: expedition.finishXp, gold: expedition.finishGold,
       reason: `Expedición «${expedition.name}»: llegó a la meta`, title: '🏁 ¡Llegaste a la meta!', what: `terminar «${expedition.name}»`, givenBy,
+      badge: expedition.finishBadgeId ? { id: expedition.finishBadgeId, reason: `Llegó a la meta de «${expedition.name}»` } : null,
     });
+  }
+
+  /** Insignias elegidas por el docente, después del commit. Si ya la tiene (tope) o la archivó, se salta. */
+  private async awardBadges(awards: { studentProfileId: string; id: string; reason: string }[]) {
+    for (const award of awards) {
+      try {
+        const badge = await badgeService.getBadgeById(award.id);
+        if (!badge?.isActive) continue;
+        await badgeService.awardBadgeAutomatic(award.studentProfileId, award.id, award.reason);
+      } catch {
+        // Tope de la insignia alcanzado: no rompe la expedición.
+      }
+    }
   }
 
   /**
@@ -1300,12 +1459,14 @@ class ExpeditionService {
    * commit: el contador de la campana, el aporte al clan, Historia y las insignias de XP.
    */
   private async grantInTx(tx: Tx, classroomId: string, grants: Grant[]): Promise<() => Promise<void>> {
+    const badgeAwards = grants.flatMap((g) => (g.badge ? [{ studentProfileId: g.studentProfileId, ...g.badge }] : []));
+    const afterBadges = async () => { if (badgeAwards.length) await this.awardBadges(badgeAwards); };
     const paid = grants.filter((g) => g.xp > 0 || g.gold > 0);
-    if (paid.length === 0) return async () => {};
+    if (paid.length === 0) return afterBadges;
     const [classroom] = await tx.select({
       xpPerLevel: classrooms.xpPerLevel, notifyOnPoints: classrooms.notifyOnPoints, clansEnabled: classrooms.clansEnabled, teacherId: classrooms.teacherId,
     }).from(classrooms).where(eq(classrooms.id, classroomId));
-    if (!classroom) return async () => {};
+    if (!classroom) return afterBadges;
     const ids = [...new Set(paid.map((g) => g.studentProfileId))];
     const students = new Map((await tx.select({ id: studentProfiles.id, userId: studentProfiles.userId, characterName: studentProfiles.characterName, teamId: studentProfiles.teamId })
       .from(studentProfiles).where(inArray(studentProfiles.id, ids))).map((s) => [s.id, s]));
@@ -1346,21 +1507,23 @@ class ExpeditionService {
     return async () => {
       await notifTx.emitAfterCommit();
       const withXp = [...xpByStudent.entries()];
-      if (withXp.length === 0) return;
-      for (const [studentId, xp] of withXp) {
-        if (!classroom.clansEnabled || !students.get(studentId)?.teamId) continue;
+      if (withXp.length > 0) {
+        for (const [studentId, xp] of withXp) {
+          if (!classroom.clansEnabled || !students.get(studentId)?.teamId) continue;
+          try {
+            await clanService.contributeXpToClan(studentId, xp, 'Expedición');
+          } catch {
+            // No rompe la recompensa.
+          }
+        }
         try {
-          await clanService.contributeXpToClan(studentId, xp, 'Expedición');
+          await storyService.onXpAwardedBatch(classroomId, withXp.map(([studentProfileId, xpAmount]) => ({ studentProfileId, xpAmount })));
         } catch {
           // No rompe la recompensa.
         }
+        await badgeService.checkXpBadges(withXp.map(([studentId]) => studentId));
       }
-      try {
-        await storyService.onXpAwardedBatch(classroomId, withXp.map(([studentProfileId, xpAmount]) => ({ studentProfileId, xpAmount })));
-      } catch {
-        // No rompe la recompensa.
-      }
-      await badgeService.checkXpBadges(withXp.map(([studentId]) => studentId));
+      await afterBadges();
     };
   }
 

@@ -21,6 +21,7 @@ router.post('/stops/:stopId/continue', student, c.continueStory);
 router.post('/stops/:stopId/answer', student, c.answer);
 router.post('/stops/:stopId/evidence', student, c.evidence);
 router.get('/:id/play', student, c.play);
+router.post('/:id/reflection', student, c.reflect);
 
 // Docente
 router.get('/classroom/:classroomId', teacher, c.list);

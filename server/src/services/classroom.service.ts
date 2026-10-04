@@ -395,14 +395,12 @@ export class ClassroomService {
           inArray(activityCompetencies.competencyId, competencyIds),
           eq(timedActivities.classroomId, classroomId),
         )),
-      db.select({ competencyId: activityCompetencies.competencyId })
-        .from(activityCompetencies)
-        .innerJoin(expeditions, and(
-          eq(activityCompetencies.activityId, expeditions.id),
-          eq(activityCompetencies.activityType, 'EXPEDITION'),
-        ))
+      // Expediciones: las paradas (reto o evidencia) ligadas a la competencia.
+      db.select({ competencyId: expeditionStops.competencyId })
+        .from(expeditionStops)
+        .innerJoin(expeditions, eq(expeditionStops.expeditionId, expeditions.id))
         .where(and(
-          inArray(activityCompetencies.competencyId, competencyIds),
+          inArray(expeditionStops.competencyId, competencyIds),
           eq(expeditions.classroomId, classroomId),
         )),
       db.select({ competencyId: studentGrades.competencyId })

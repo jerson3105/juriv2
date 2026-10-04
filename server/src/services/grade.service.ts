@@ -16,6 +16,9 @@ import {
   users,
   gradeEvaluations,
   gradeEvaluationScores,
+  expeditions,
+  expeditionStops,
+  expeditionStopProgress,
   type BimesterDates,
   type GradeScaleType,
 } from '../db/schema.js';
@@ -1307,6 +1310,10 @@ class GradeService {
     const timedScores = await this.getTimedActivityScores(studentProfileId, competencyId, dateRange);
     scores.push(...timedScores);
 
+    // 2. Paradas de expediciones ligadas a la competencia
+    const expeditionScores = await this.getExpeditionScores(studentProfileId, competencyId, classroomId, dateRange);
+    scores.push(...expeditionScores);
+
     // 6. Comportamientos positivos
     const behaviorScores = await this.getBehaviorScores(studentProfileId, competencyId, classroomId, dateRange);
     scores.push(...behaviorScores);
@@ -1384,6 +1391,52 @@ class GradeService {
       }
     }
 
+    return scores;
+  }
+
+  /**
+   * Expediciones: solo las paradas ligadas a la competencia. El reto aporta el % de su primer intento; la evidencia,
+   * el nivel que eligió el docente al aprobarla. Cada parada pesa de 1 a 30, como una observación. Nunca 60 por
+   * estar inscrito ni 100 por llegar al final, y lo jugado en clase (proyectado) no da nota individual.
+   */
+  private async getExpeditionScores(studentProfileId: string, competencyId: string, classroomId: string, dateRange: BimesterDateRange): Promise<ActivityScoreData[]> {
+    const rows = await db.select({
+      stopId: expeditionStops.id,
+      kind: expeditionStops.kind,
+      title: expeditionStops.title,
+      weight: expeditionStops.gradeWeight,
+      expeditionName: expeditions.name,
+      firstScore: expeditionStopProgress.firstScore,
+      gradeScore: expeditionStopProgress.gradeScore,
+      startedAt: expeditionStopProgress.createdAt,
+      reviewedAt: expeditionStopProgress.reviewedAt,
+    })
+      .from(expeditionStopProgress)
+      .innerJoin(expeditionStops, eq(expeditionStopProgress.stopId, expeditionStops.id))
+      .innerJoin(expeditions, eq(expeditionStops.expeditionId, expeditions.id))
+      .where(and(
+        eq(expeditionStopProgress.studentProfileId, studentProfileId),
+        eq(expeditions.classroomId, classroomId),
+        eq(expeditionStops.competencyId, competencyId),
+        inArray(expeditionStops.kind, ['CHALLENGE', 'EVIDENCE']),
+      ));
+
+    const scores: ActivityScoreData[] = [];
+    for (const row of rows) {
+      const isChallenge = row.kind === 'CHALLENGE';
+      const score = isChallenge ? row.firstScore : row.gradeScore === null ? null : Number(row.gradeScore);
+      // El reto se fecha cuando lo empezó; la evidencia, cuando el docente eligió el nivel.
+      const at = isChallenge ? row.startedAt : row.reviewedAt;
+      if (score === null || !at || at < dateRange.startDate || at > dateRange.endDate) continue;
+      scores.push({
+        type: 'EXPEDITION',
+        id: row.stopId,
+        name: `${row.expeditionName} · ${row.title}`,
+        score: Math.max(0, Math.min(100, score)),
+        weight: Math.max(1, Math.min(30, row.weight || 20)),
+        competencyId,
+      });
+    }
     return scores;
   }
 
