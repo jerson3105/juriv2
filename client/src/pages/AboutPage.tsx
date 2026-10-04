@@ -1,698 +1,266 @@
+import { useRef, useState, type MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, useInView, useReducedMotion } from 'framer-motion';
+import { ChevronRight, Coins, HeartHandshake, Star } from 'lucide-react';
+import { ConstellationArt } from '../components/auth/SpaceScene';
+import { AudienceTabs } from '../components/landing/AudienceTabs';
+import { HowItWorksDemo } from '../components/landing/HowItWorksDemo';
+import { Reveal } from '../components/landing/Reveal';
+import type { AudienceId } from '../components/landing/audiences';
 import {
-  BookOpen,
-  CheckCircle2,
-  ChevronRight,
-  ClipboardList,
-  Coins,
-  Compass,
-  FlaskConical,
-  GraduationCap,
-  Heart,
-  Map as MapIcon,
-  Megaphone,
-  MessageCircle,
-  Rocket,
-  Shield,
-  ShoppingBag,
-  Sparkles,
-  Swords,
-  Target,
-  Trophy,
-  Users,
-  Wand2,
-  Zap,
-} from 'lucide-react';
+  EASE_OUT, btnCompact, btnPrimary, btnSecondary, container, h2, lead, linkQuiet, nightFocus, sectionPad,
+} from '../components/landing/landingStyles';
 
-const teacherBenefits = [
-  {
-    icon: Target,
-    title: 'Haz visible la participación diaria',
-    description:
-      'Convierte esfuerzo y participación en progreso visible con XP, HP, GP, insignias y rankings.',
-    support: 'Puntos, niveles, insignias y rankings',
-    accent: 'from-sky-100 via-cyan-50 to-white',
-    iconClass: 'bg-sky-100 text-sky-700',
-  },
-  {
-    icon: ClipboardList,
-    title: 'Ordena seguimiento y evaluación',
-    description:
-      'Gestiona estudiantes, asistencia y calificaciones desde un mismo lugar.',
-    support: 'Seguimiento, asistencia e historial',
-    accent: 'from-emerald-100 via-teal-50 to-white',
-    iconClass: 'bg-emerald-100 text-emerald-700',
-  },
-  {
-    icon: Rocket,
-    title: 'Activa clases memorables en minutos',
-    description:
-      'Activa actividades, expediciones y preguntas sin preparar cada clase desde cero.',
-    support: 'Actividades, expediciones y bancos de preguntas',
-    accent: 'from-violet-100 via-fuchsia-50 to-white',
-    iconClass: 'bg-violet-100 text-violet-700',
-  },
-  {
-    icon: MessageCircle,
-    title: 'Mantén alineada a tu comunidad',
-    description:
-      'Mantén avisos y conversaciones dentro del mismo ecosistema del aula.',
-    support: 'Avisos, chat y experiencia multirol',
-    accent: 'from-amber-100 via-orange-50 to-white',
-    iconClass: 'bg-amber-100 text-amber-700',
-  },
-];
-
-const workflowSteps = [
-  {
-    number: '01',
-    title: 'Crea tu clase con onboarding guiado',
-    description:
-      'Configura el aula y empieza sin una curva de entrada pesada.',
-  },
-  {
-    number: '02',
-    title: 'Agrega estudiantes y activa progreso',
-    description:
-      'Cada estudiante entra con progreso visible desde el primer día.',
-  },
-  {
-    number: '03',
-    title: 'Configura tu motor de motivación',
-    description:
-      'Activa comportamientos, clanes, tienda e insignias según tu estilo de aula.',
-  },
-  {
-    number: '04',
-    title: 'Dinamiza y sigue todo desde el mismo lugar',
-    description:
-      'Mueve clase, seguimiento y comunicación sin salir de Juried.',
-  },
-];
-
-const moduleGroups = [
-  {
-    title: 'Operación diaria del aula',
-    description: 'Lo esencial para organizar y seguir tu aula.',
-    accent: 'from-cyan-100 via-sky-50 to-white',
-    items: [
-      { icon: Users, name: 'Estudiantes', text: 'Perfiles y progreso.' },
-      { icon: CheckCircle2, name: 'Asistencia', text: 'Registro diario.' },
-      { icon: ClipboardList, name: 'Calificaciones', text: 'Seguimiento académico.' },
-    ],
-  },
-  {
-    title: 'Motivación con economía y equipos',
-    description: 'Haz tangible el avance y sostén el interés.',
-    accent: 'from-emerald-100 via-teal-50 to-white',
-    items: [
-      { icon: Trophy, name: 'Insignias y rankings', text: 'Reconoce logros.' },
-      { icon: ShoppingBag, name: 'Tienda', text: 'Convierte GP en recompensas.' },
-      { icon: Swords, name: 'Clanes y coleccionables', text: 'Activa pertenencia y competencia sana.' },
-    ],
-  },
-  {
-    title: 'Experiencias que mueven la clase',
-    description: 'Convierte una sesión común en una experiencia activa.',
-    accent: 'from-violet-100 via-fuchsia-50 to-white',
-    items: [
-      { icon: Sparkles, name: 'Observatorio de Jiro', text: 'Actividades para jugar en clase con Jiro.' },
-      { icon: MapIcon, name: 'Expediciones', text: 'Mapas, misiones y energía.' },
-      { icon: BookOpen, name: 'Preguntas e historia de clase', text: 'Bancos reutilizables y narrativa.' },
-    ],
-  },
-  {
-    title: 'Comunicación y continuidad',
-    description: 'Comunica y da continuidad fuera de clase.',
-    accent: 'from-amber-100 via-orange-50 to-white',
-    items: [
-      { icon: Megaphone, name: 'Avisos', text: 'Mensajes para toda la comunidad.' },
-      { icon: MessageCircle, name: 'Chat grupal', text: 'Conversación dentro del aula.' },
-      { icon: GraduationCap, name: 'Experiencia para estudiantes y familias', text: 'Vistas para seguir el proceso.' },
-    ],
-  },
-];
-
-const progressionLoop = [
-  {
-    icon: Zap,
-    token: 'XP',
-    title: 'Experiencia',
-    description: 'Hace visible aprendizaje y participación.',
-    color: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  },
-  {
-    icon: Heart,
-    token: 'HP',
-    title: 'Vida del personaje',
-    description: 'Refuerza hábitos y consecuencias.',
-    color: 'border-rose-200 bg-rose-50 text-rose-700',
-  },
-  {
-    icon: Coins,
-    token: 'GP',
-    title: 'Moneda del aula',
-    description: 'Conecta esfuerzo con recompensas.',
-    color: 'border-amber-200 bg-amber-50 text-amber-700',
-  },
-];
-
-const characterClasses = [
-  {
-    name: 'Guardián',
-    icon: Shield,
-    description: 'Refuerza equipo y pertenencia.',
-    accent: 'from-sky-500 to-blue-500',
-  },
-  {
-    name: 'Arcano',
-    icon: Wand2,
-    description: 'Une curiosidad e identidad.',
-    accent: 'from-violet-500 to-fuchsia-500',
-  },
-  {
-    name: 'Explorador',
-    icon: Compass,
-    description: 'Empuja misiones y aventura.',
-    accent: 'from-emerald-500 to-teal-500',
-  },
-  {
-    name: 'Alquimista',
-    icon: FlaskConical,
-    description: 'Da sentido a recursos y recompensas.',
-    accent: 'from-amber-500 to-orange-500',
-  },
-];
+// Landing pública (/about) para docentes, estudiantes y directivos. De día arriba (explica con calma, Jiro nítido);
+// anochece una sola vez en el Observatorio y el cierre. Nada se mueve en reposo: cada bloque aparece una vez y la
+// única animación con protagonismo es la demostración de «Así funciona».
 
 const navLinks = [
-  { label: 'Beneficios', href: '#beneficios' },
-  { label: 'Cómo funciona', href: '#como-funciona' },
-  { label: 'Módulos', href: '#modulos' },
+  { label: 'Así funciona', href: '#como-funciona' },
+  { label: 'Para quién', href: '#para-quien' },
+  { label: 'Observatorio', href: '#observatorio' },
 ];
 
-const revealProps = {
-  initial: { opacity: 0, y: 24 },
-  whileInView: { opacity: 1, y: 0 },
-  viewport: { once: true, amount: 0.2 },
-};
+const steps = [
+  { title: 'Crea tu clase', text: 'A mano o con ayuda de Jiro, que te propone comportamientos, insignias y premios para empezar.' },
+  { title: 'Tus estudiantes entran', text: 'Con el código de la clase y un PIN. No necesitan correo.' },
+  { title: 'Cada logro se ve', text: 'Cuando reconoces algo, tu estudiante gana experiencia y oro, y ve cómo avanza. Pruébalo en el ejemplo.' },
+];
+
+// Las tres «monedas» explicadas sin jerga: la energía es convivencia, nunca una nota.
+const currencies = [
+  { icon: Star, name: 'Experiencia (XP)', text: 'Se gana al participar y esforzarse. Con ella se sube de nivel.' },
+  { icon: Coins, name: 'Oro', text: 'Se gana en clase y se usa en premios, ropa para el personaje o figuritas. No se compra con dinero.' },
+  { icon: HeartHandshake, name: 'Energía (HP)', text: 'Muestra cómo va la convivencia; no es una nota. Si llega a cero, el personaje descansa y vuelve con una misión de recuperación.' },
+];
+
+const activities = [
+  { cover: 'descanso', name: 'Descanso de Jiro', text: 'Si el aula está en calma, Jiro sueña una constelación.' },
+  { cover: 'estrellas', name: 'Estrellas en Movimiento', text: 'Verdadero o falso: de pie o agachados.' },
+  { cover: 'conquista', name: 'Conquista del Cielo', text: 'Los equipos responden juntos para despejar la Niebla.' },
+];
+
+const doors = [
+  { who: 'Soy docente', action: 'Crear mi cuenta', to: '/registro/docente' },
+  { who: 'Soy estudiante', action: 'Tengo un código de clase', to: '/unirse' },
+  { who: 'Soy familia', action: 'Unirme a la clase', to: '/registro/familia' },
+];
 
 export const AboutPage = () => {
-  const surfacePanel = 'rounded-[32px] border border-white/80 bg-white/85 shadow-[0_24px_70px_rgba(99,102,241,0.10)] backdrop-blur-sm';
-  const heroPills = [
-    { icon: Zap, label: 'Puntos y niveles', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
-    { icon: Swords, label: 'Clanes y retos', className: 'border-violet-200 bg-violet-50 text-violet-700' },
-    { icon: MapIcon, label: 'Expediciones', className: 'border-sky-200 bg-sky-50 text-sky-700' },
-    { icon: Megaphone, label: 'Avisos y chat', className: 'border-amber-200 bg-amber-50 text-amber-700' },
-  ];
+  const [audience, setAudience] = useState<AudienceId>('docentes');
+  const reduce = useReducedMotion();
+  // La constelación se monta al verse: su trazo (CSS) corre al montar y respeta «reducir movimiento».
+  const constellationRef = useRef<HTMLDivElement>(null);
+  const constellationInView = useInView(constellationRef, { once: true, margin: '-100px' });
 
-  const heroCards = [
-    {
-      icon: Zap,
-      title: '+50 XP',
-      subtitle: 'Respuesta correcta',
-      className: 'left-0 top-8 sm:left-4',
-      palette: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-      delay: 0,
-    },
-    {
-      icon: Trophy,
-      title: 'Insignia nueva',
-      subtitle: 'Explorador Nato',
-      className: 'right-2 top-4 sm:right-6',
-      palette: 'border-amber-200 bg-amber-50 text-amber-700',
-      delay: 0.4,
-    },
-    {
-      icon: Users,
-      title: '4 clanes',
-      subtitle: 'Competencia sana',
-      className: 'left-2 bottom-16 sm:left-6',
-      palette: 'border-violet-200 bg-violet-50 text-violet-700',
-      delay: 0.2,
-    },
-    {
-      icon: Compass,
-      title: 'Expedición lista',
-      subtitle: 'Mapa + preguntas',
-      className: 'bottom-10 right-0 sm:right-4',
-      palette: 'border-sky-200 bg-sky-50 text-sky-700',
-      delay: 0.6,
-    },
-  ];
+  const showDirectors = (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    setAudience('directivos');
+    document.getElementById('para-quien')?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+  };
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 text-slate-900">
-      <div className="pointer-events-none absolute inset-0 opacity-90">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.16),_transparent_28%),radial-gradient(circle_at_80%_18%,_rgba(56,189,248,0.14),_transparent_22%),radial-gradient(circle_at_50%_75%,_rgba(99,102,241,0.12),_transparent_30%)]" />
-        <div
-          className="absolute inset-0 opacity-40"
-          style={{
-            backgroundImage:
-              'linear-gradient(to right, rgba(148,163,184,0.10) 1px, transparent 1px), linear-gradient(to bottom, rgba(148,163,184,0.10) 1px, transparent 1px)',
-            backgroundSize: '56px 56px',
-          }}
-        />
-      </div>
+    <div className="min-h-screen bg-white text-slate-900">
+      <a href="#contenido" className="sr-only rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60]">
+        Saltar al contenido
+      </a>
 
-      <nav className="fixed left-0 right-0 top-0 z-50 px-4 py-3">
-        <div className="mx-auto flex max-w-7xl items-center justify-between rounded-3xl border border-white/85 bg-white/82 px-4 py-3 shadow-[0_18px_45px_rgba(59,130,246,0.10)] backdrop-blur-2xl sm:px-6">
-          <Link to="/about" className="flex items-center gap-3">
-            <img src="/logo.png" alt="Juried" className="h-10 w-auto" />
+      <header className="sticky top-0 z-50 border-b border-slate-200 bg-white">
+        <nav aria-label="Principal" className={`${container} flex h-16 items-center justify-between gap-4`}>
+          <Link to="/about" className="flex min-h-11 items-center rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">
+            <img src="/logo.png" alt="Juried" width={1920} height={631} className="h-8 w-auto" />
           </Link>
-
-          <div className="hidden items-center gap-6 lg:flex">
+          <ul className="hidden items-center gap-8 lg:flex">
             {navLinks.map((item) => (
-              <a
-                key={item.href}
-                href={item.href}
-                className="text-sm font-medium text-slate-500 transition-colors hover:text-slate-900"
-              >
-                {item.label}
-              </a>
-            ))}
-          </div>
-
-          <div className="flex items-center gap-2 sm:gap-3">
-            <Link
-              to="/login"
-              className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 transition-colors hover:text-slate-900"
-            >
-              Entrar
-            </Link>
-            <Link
-              to="/register"
-              className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-blue-500 to-sky-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-blue-500/20 transition-transform hover:-translate-y-0.5 sm:px-5"
-            >
-              Comenzar
-            </Link>
-          </div>
-        </div>
-      </nav>
-
-      <main className="relative z-10">
-        <section className="px-6 pb-20 pt-32 sm:px-8 lg:px-10 lg:pt-36">
-          <div className="mx-auto grid max-w-7xl gap-12 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
-            <motion.div
-              initial={{ opacity: 0, x: -32 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.65, ease: 'easeOut' }}
-            >
-              <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-100/80 px-4 py-2 text-sm font-semibold text-sky-700 shadow-sm">
-                <Sparkles size={16} />
-                Gamificación lista para llevar al aula
-              </div>
-
-              <h1 className="mt-7 max-w-4xl text-4xl font-black leading-[0.94] text-slate-900 sm:text-5xl lg:text-[64px]">
-                Haz que tu clase se sienta como una{' '}
-                <span className="bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 bg-clip-text text-transparent">
-                  aventura con progreso real.
-                </span>
-              </h1>
-
-              <p className="mt-5 max-w-xl text-lg leading-8 text-slate-600 sm:text-xl">
-                Puntos, clanes, expediciones e insignias para motivar y seguir mejor el avance del aula.
-              </p>
-
-              <div className="mt-7 flex flex-wrap gap-2.5">
-                {heroPills.map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <div
-                      key={item.label}
-                      className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-sm font-semibold shadow-sm ${item.className}`}
-                    >
-                      <Icon size={15} />
-                      {item.label}
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="mt-9 flex flex-wrap items-center gap-4">
-                <Link
-                  to="/register"
-                  className="group inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-blue-500 to-sky-500 px-7 py-4 text-base font-bold text-white shadow-2xl shadow-blue-500/20 transition-transform hover:-translate-y-0.5"
-                >
-                  Crear cuenta gratis
-                  <ChevronRight size={18} className="transition-transform group-hover:translate-x-0.5" />
-                </Link>
-                <a
-                  href="#beneficios"
-                  className="rounded-2xl border border-slate-200 bg-white px-7 py-4 text-base font-semibold text-slate-700 shadow-[0_14px_35px_rgba(59,130,246,0.08)] transition-colors hover:border-slate-300 hover:text-slate-900"
-                >
-                  Ver beneficios para docentes
+              <li key={item.href}>
+                <a href={item.href} className="inline-flex min-h-11 items-center rounded-md text-sm font-medium text-slate-600 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 [@media(hover:hover)]:hover:text-slate-900">
+                  {item.label}
                 </a>
+              </li>
+            ))}
+          </ul>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Link to="/login" className={`${linkQuiet} px-2 text-sm`}>Entrar</Link>
+            <Link to="/register" className={btnCompact}>Crear mi cuenta</Link>
+          </div>
+        </nav>
+      </header>
+
+      <main id="contenido">
+        {/* Qué es y para quién. El texto no se anima: se lee al instante. */}
+        <section aria-labelledby="hero-title">
+          <div className={`${container} grid items-center gap-10 py-16 sm:py-20 lg:grid-cols-12 lg:gap-12 lg:py-24`}>
+            <div className="lg:col-span-7">
+              <p className="text-sm font-semibold text-indigo-700">Gamificación educativa para el aula</p>
+              <h1 id="hero-title" className="mt-4 max-w-[18ch] text-balance text-4xl font-bold leading-[1.1] tracking-[-0.025em] text-slate-900 sm:text-5xl lg:text-[3.5rem]">
+                La clase como una aventura. El avance, a la vista.
+              </h1>
+              <p className={`${lead} mt-6 text-slate-600 sm:text-xl`}>
+                El docente guía la clase, cada estudiante avanza con su propio personaje, y la familia y la dirección ven cómo va.
+              </p>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <Link to="/registro/docente" className={btnPrimary}>
+                  Crear mi cuenta de docente
+                  <ChevronRight size={18} aria-hidden="true" />
+                </Link>
+                <Link to="/unirse" className={btnSecondary}>Tengo un código de clase</Link>
               </div>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, x: 32, scale: 0.97 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              transition={{ duration: 0.7, ease: 'easeOut', delay: 0.1 }}
-              className="relative"
-            >
-              <div className="absolute -left-10 top-10 hidden h-40 w-40 rounded-full bg-cyan-400/20 blur-3xl lg:block" />
-              <div className="absolute -right-8 bottom-8 hidden h-44 w-44 rounded-full bg-blue-500/20 blur-3xl lg:block" />
-
-              <div className={`relative overflow-hidden p-5 sm:p-7 ${surfacePanel}`}>
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(168,85,247,0.10),_transparent_25%),radial-gradient(circle_at_bottom_right,_rgba(56,189,248,0.12),_transparent_28%)]" />
-                <div className="absolute left-[12%] top-[20%] hidden h-28 w-28 rounded-full border-2 border-dashed border-sky-200/80 lg:block" />
-                <div className="absolute bottom-[18%] right-[18%] hidden h-20 w-20 rounded-full border-2 border-dashed border-violet-200/80 lg:block" />
-
-                <div className="relative">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="rounded-full border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-700 shadow-sm">
-                      Jiro convierte la clase en una aventura visible
-                    </div>
-                    <div className="rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-semibold text-sky-700 shadow-sm">
-                      1 aula, muchas formas de jugar
-                    </div>
-                  </div>
-
-                  <div className="relative mt-8 flex min-h-[470px] items-center justify-center">
-                    {heroCards.map((item) => {
-                      const Icon = item.icon;
-                      return (
-                        <motion.div
-                          key={item.title}
-                          animate={{ y: [0, -8, 0] }}
-                          transition={{ duration: 3.6, repeat: Infinity, ease: 'easeInOut', delay: item.delay }}
-                          className={`absolute z-20 w-[154px] rounded-3xl border px-4 py-3 shadow-[0_16px_30px_rgba(99,102,241,0.12)] ${item.className} ${item.palette}`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-white/75 shadow-sm">
-                              <Icon size={17} />
-                            </div>
-                            <div>
-                              <p className="text-sm font-black leading-tight">{item.title}</p>
-                              <p className="text-[11px] font-semibold opacity-75">{item.subtitle}</p>
-                            </div>
-                          </div>
-                        </motion.div>
-                      );
-                    })}
-
-                    <div className="relative z-10 flex flex-col items-center">
-                      <div className="absolute left-1/2 top-1/2 h-[300px] w-[300px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-gradient-to-br from-violet-100 via-sky-100 to-cyan-100 blur-2xl" />
-
-                      <motion.div
-                        animate={{ y: [0, -10, 0] }}
-                        transition={{ duration: 3.4, repeat: Infinity, ease: 'easeInOut' }}
-                        className="relative overflow-hidden rounded-[36px] bg-gradient-to-br from-violet-500 via-blue-500 to-cyan-400 p-4 shadow-[0_30px_70px_rgba(59,130,246,0.22)]"
-                      >
-                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.30),_transparent_30%)]" />
-                        <div className="relative rounded-[28px] border border-white/60 bg-white/88 px-5 py-4 text-center backdrop-blur-sm">
-                          <p className="text-xs font-black uppercase tracking-[0.22em] text-violet-700">Mision del dia</p>
-                          <p className="mt-2 text-sm font-semibold leading-6 text-slate-700">
-                            Participar, cooperar y ganar recompensas.
-                          </p>
-                        </div>
-                        <motion.img
-                          src="/assets/mascot/jiro.webp"
-                          alt="Jiro, la mascota de Juried"
-                          className="relative mx-auto mt-4 h-64 w-auto drop-shadow-2xl sm:h-72"
-                          animate={{ rotate: [0, -2, 2, 0] }}
-                          transition={{ duration: 4.2, repeat: Infinity, ease: 'easeInOut' }}
-                        />
-                      </motion.div>
-
-                      <div className="mt-5 grid w-full max-w-[360px] grid-cols-3 gap-3">
-                        {[
-                          { value: '32', label: 'estudiantes', color: 'text-sky-700 bg-sky-50 border-sky-200' },
-                          { value: '4', label: 'clanes', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
-                          { value: '12', label: 'experiencias', color: 'text-amber-700 bg-amber-50 border-amber-200' },
-                        ].map((item) => (
-                          <div key={item.label} className={`rounded-2xl border px-3 py-3 text-center shadow-sm ${item.color}`}>
-                            <p className="text-2xl font-black leading-none">{item.value}</p>
-                            <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em]">{item.label}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        </section>
-
-        <section id="beneficios" className="px-6 py-20 sm:px-8 lg:px-10">
-          <div className="mx-auto max-w-7xl">
-            <motion.div {...revealProps} transition={{ duration: 0.5 }} className="max-w-3xl">
-              <p className="text-sm font-black uppercase tracking-[0.3em] text-sky-700/70">Beneficios para docentes</p>
-              <h2 className="mt-4 text-3xl font-black text-slate-900 sm:text-5xl">
-                Gestiona mejor. Motiva más.
-              </h2>
-              <p className="mt-5 text-lg leading-8 text-slate-600">
-                Juried une seguimiento, motivación y experiencias sin repartir tu clase en varias herramientas.
-              </p>
-            </motion.div>
-
-            <div className="mt-10 grid gap-5 lg:grid-cols-2">
-              {teacherBenefits.map((benefit, index) => (
-                <motion.div
-                  key={benefit.title}
-                  {...revealProps}
-                  transition={{ duration: 0.45, delay: index * 0.08 }}
-                  className="relative overflow-hidden rounded-[30px] border border-white/80 bg-white/88 p-6 shadow-[0_20px_50px_rgba(99,102,241,0.08)]"
-                >
-                  <div className={`absolute inset-0 bg-gradient-to-br ${benefit.accent}`} />
-                  <div className="relative">
-                    <div className={`flex h-14 w-14 items-center justify-center rounded-2xl ${benefit.iconClass}`}>
-                      <benefit.icon size={24} />
-                    </div>
-                    <h3 className="mt-5 text-2xl font-black text-slate-900">{benefit.title}</h3>
-                    <p className="mt-4 text-base leading-7 text-slate-600">{benefit.description}</p>
-                    <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
-                      {benefit.support}
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
+              <a href="#para-quien" onClick={showDirectors} className={`${linkQuiet} mt-4`}>
+                ¿Diriges un colegio? Conoce «Mi Escuela»
+              </a>
             </div>
-          </div>
-        </section>
-
-        <section id="como-funciona" className="px-6 py-20 sm:px-8 lg:px-10">
-          <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-[0.92fr_1.08fr]">
             <motion.div
-              {...revealProps}
-              transition={{ duration: 0.5 }}
-              className={`${surfacePanel} p-6 sm:p-8`}
+              className="flex justify-center lg:col-span-5"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, ease: EASE_OUT, delay: 0.1 }}
             >
-              <p className="text-sm font-black uppercase tracking-[0.3em] text-emerald-700/70">Cómo funciona</p>
-              <h2 className="mt-4 text-3xl font-black text-slate-900 sm:text-4xl">
-                Empieza rápido y activa más solo cuando lo necesites.
-              </h2>
-              <p className="mt-5 text-lg leading-8 text-slate-600">
-                Un docente nuevo puede entrar rápido; uno avanzado puede profundizar después.
-              </p>
-
-              <div className="mt-8 rounded-[28px] border border-emerald-200 bg-emerald-50 p-5">
-                <p className="text-xs font-black uppercase tracking-[0.24em] text-emerald-700/70">Lo que ya contempla Juried</p>
-                <ul className="mt-4 space-y-3">
-                  {[
-                    'Onboarding guiado para crear clase y empezar.',
-                    'Módulos activables según el momento del aula.',
-                    'Gestión, juego y comunicación en el mismo lugar.',
-                  ].map((item) => (
-                    <li key={item} className="flex items-start gap-3 text-sm leading-6 text-emerald-800">
-                      <CheckCircle2 size={16} className="mt-1 shrink-0 text-emerald-600" />
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              <img src="/assets/jiro/acceso/login.webp" alt="Jiro, la mascota de Juried, te saluda" width={553} height={900} className="h-64 w-auto sm:h-80 lg:h-[26rem]" />
             </motion.div>
-
-            <div className="space-y-4">
-              {workflowSteps.map((step, index) => (
-                <motion.div
-                  key={step.number}
-                  {...revealProps}
-                  transition={{ duration: 0.45, delay: index * 0.08 }}
-                  className="rounded-[28px] border border-white/80 bg-white/88 p-5 shadow-[0_18px_45px_rgba(99,102,241,0.08)] sm:p-6"
-                >
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-100 text-lg font-black text-blue-700">
-                      {step.number}
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-black text-slate-900">{step.title}</h3>
-                      <p className="mt-2 text-base leading-7 text-slate-600">{step.description}</p>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
           </div>
         </section>
 
-        <section id="modulos" className="px-6 py-20 sm:px-8 lg:px-10">
-          <div className="mx-auto max-w-7xl">
-            <motion.div {...revealProps} transition={{ duration: 0.5 }} className="max-w-3xl">
-              <p className="text-sm font-black uppercase tracking-[0.3em] text-violet-700/70">Módulos reales de Juried</p>
-              <h2 className="mt-4 text-3xl font-black text-slate-900 sm:text-5xl">
-                Módulos que ya viven dentro de Juried.
-              </h2>
-              <p className="mt-5 text-lg leading-8 text-slate-600">
-                No son promesas: son herramientas reales de la plataforma.
-              </p>
-            </motion.div>
+        <section id="como-funciona" aria-labelledby="como-title" className="scroll-mt-16 bg-slate-50">
+          <div className={`${container} ${sectionPad}`}>
+            <Reveal>
+              <h2 id="como-title" className={`${h2} text-slate-900`}>Así funciona, en tres pasos</h2>
+              <p className={`${lead} text-slate-600`}>Lo esencial se entiende en un minuto. Lo demás se activa cuando lo necesites.</p>
+            </Reveal>
 
-            <div className="mt-10 grid gap-5 xl:grid-cols-2">
-              {moduleGroups.map((group, groupIndex) => (
-                <motion.div
-                  key={group.title}
-                  {...revealProps}
-                  transition={{ duration: 0.45, delay: groupIndex * 0.08 }}
-                  className="relative overflow-hidden rounded-[32px] border border-white/80 bg-white/88 p-6 shadow-[0_20px_50px_rgba(99,102,241,0.08)]"
-                >
-                  <div className={`absolute inset-0 bg-gradient-to-br ${group.accent}`} />
-                  <div className="relative">
-                    <h3 className="text-2xl font-black text-slate-900">{group.title}</h3>
-                    <p className="mt-3 max-w-2xl text-base leading-7 text-slate-600">{group.description}</p>
-
-                    <div className="mt-6 grid gap-3 sm:grid-cols-3">
-                      {group.items.map((item, itemIndex) => (
-                        <div key={item.name} className={`rounded-2xl border p-4 ${itemIndex % 4 === 0 ? 'border-sky-200 bg-sky-50/85' : itemIndex % 4 === 1 ? 'border-emerald-200 bg-emerald-50/85' : itemIndex % 4 === 2 ? 'border-violet-200 bg-violet-50/85' : 'border-amber-200 bg-amber-50/85'}`}>
-                          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/80 text-slate-700 shadow-sm">
-                            <item.icon size={19} />
-                          </div>
-                          <p className="mt-4 text-base font-black text-slate-900">{item.name}</p>
-                          <p className="mt-2 text-sm leading-6 text-slate-600">{item.text}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
+            <div className="mt-12 grid items-center gap-12 lg:grid-cols-12">
+              <ol className="space-y-8 border-l border-slate-200 pl-6 lg:col-span-6">
+                {steps.map((step, index) => (
+                  <li key={step.title} className="relative">
+                    <span className="absolute -left-[29px] top-1.5 h-2 w-2 rounded-full bg-indigo-600" aria-hidden="true" />
+                    <Reveal delay={index * 0.05}>
+                      <p className="text-sm font-semibold text-indigo-700">Paso {index + 1}</p>
+                      <h3 className="mt-1 text-lg font-semibold leading-7 text-slate-900">{step.title}</h3>
+                      <p className="mt-1 max-w-prose text-base leading-relaxed text-slate-600">{step.text}</p>
+                    </Reveal>
+                  </li>
+                ))}
+              </ol>
+              <Reveal delay={0.1} className="lg:col-span-6">
+                <HowItWorksDemo />
+              </Reveal>
             </div>
-          </div>
-        </section>
 
-        <section className="px-6 py-20 sm:px-8 lg:px-10">
-          <div className="mx-auto grid max-w-7xl gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-            <motion.div
-              {...revealProps}
-              transition={{ duration: 0.5 }}
-              className={`${surfacePanel} p-6 sm:p-8`}
-            >
-              <p className="text-sm font-black uppercase tracking-[0.3em] text-amber-700/70">Lo que reciben tus estudiantes</p>
-              <h2 className="mt-4 text-3xl font-black text-slate-900 sm:text-4xl">
-                Progreso fácil de entender para tus estudiantes.
-              </h2>
-              <p className="mt-5 text-lg leading-8 text-slate-600">
-                Para ellos se siente como aventura; para ti, como seguimiento más claro.
-              </p>
-
-              <div className="mt-8 space-y-3">
-                {progressionLoop.map((item) => (
-                  <div key={item.token} className={`rounded-[24px] border p-4 ${item.color}`}>
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/80 shadow-sm">
+            <Reveal className="mt-16">
+              <h3 className="text-lg font-semibold leading-7 text-slate-900">Lo que verás en Juried</h3>
+              <dl className="mt-6 grid gap-8 sm:grid-cols-3">
+                {currencies.map((item) => (
+                  <div key={item.name} className="border-t border-slate-200 pt-6">
+                    <dt className="flex items-center gap-3 font-semibold text-slate-900">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700" aria-hidden="true">
                         <item.icon size={20} />
-                      </div>
-                      <div>
-                        <p className="text-xs font-black uppercase tracking-[0.22em] opacity-75">{item.token}</p>
-                        <p className="text-lg font-black text-slate-900">{item.title}</p>
-                      </div>
-                    </div>
-                    <p className="mt-3 text-sm leading-7 text-slate-700">{item.description}</p>
+                      </span>
+                      {item.name}
+                    </dt>
+                    <dd className="mt-3 text-base leading-relaxed text-slate-600">{item.text}</dd>
                   </div>
                 ))}
-              </div>
-            </motion.div>
-
-            <motion.div
-              {...revealProps}
-              transition={{ duration: 0.5, delay: 0.08 }}
-              className="rounded-[32px] border border-white/80 bg-gradient-to-br from-white to-indigo-50 p-6 shadow-[0_22px_60px_rgba(99,102,241,0.10)] sm:p-8"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-black uppercase tracking-[0.3em] text-sky-700/70">Identidad del estudiante</p>
-                  <h2 className="mt-4 text-3xl font-black text-slate-900 sm:text-4xl">Clases que vuelven más memorable la experiencia</h2>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-white/85 px-4 py-3 text-sm font-semibold text-slate-600 shadow-sm">
-                  Los personajes suman identidad sin complicar tu gestión.
-                </div>
-              </div>
-
-              <div className="mt-8 grid gap-4 sm:grid-cols-2">
-                {characterClasses.map((charClass, index) => (
-                  <motion.div
-                    key={charClass.name}
-                    {...revealProps}
-                    transition={{ duration: 0.4, delay: index * 0.06 }}
-                    className="group relative overflow-hidden rounded-[28px] border border-slate-200 bg-white/90 p-5 shadow-sm"
-                  >
-                    <div className={`absolute inset-0 bg-gradient-to-br ${charClass.accent} opacity-0 transition-opacity duration-300 group-hover:opacity-[0.14]`} />
-                    <div className="relative">
-                      <div className={`flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br ${charClass.accent} text-white shadow-lg`}>
-                        <charClass.icon size={24} />
-                      </div>
-                      <h3 className="mt-5 text-xl font-black text-slate-900">{charClass.name}</h3>
-                      <p className="mt-2 text-sm leading-7 text-slate-600">{charClass.description}</p>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            </motion.div>
+              </dl>
+            </Reveal>
           </div>
         </section>
 
-        <section className="px-6 py-20 sm:px-8 lg:px-10">
-          <div className="mx-auto max-w-6xl">
-            <motion.div
-              {...revealProps}
-              transition={{ duration: 0.5 }}
-              className="relative overflow-hidden rounded-[36px] border border-slate-800 bg-gradient-to-br from-blue-600 via-sky-500 to-cyan-400 px-6 py-10 text-center shadow-[0_28px_70px_rgba(37,99,235,0.28)] sm:px-10"
-            >
-              <div className="absolute -right-16 top-0 h-56 w-56 rounded-full bg-white/12 blur-3xl" />
-              <div className="absolute -bottom-20 left-0 h-48 w-48 rounded-full bg-white/12 blur-3xl" />
+        <section id="para-quien" aria-labelledby="para-title" className="scroll-mt-16">
+          <div className={`${container} ${sectionPad}`}>
+            <Reveal>
+              <h2 id="para-title" className={`${h2} text-slate-900`}>Una plataforma, tres miradas</h2>
+              <p className={`${lead} text-slate-600`}>Elige quién eres y mira lo que Juried hace por ti.</p>
+            </Reveal>
+            <Reveal className="mt-10">
+              <AudienceTabs value={audience} onChange={setAudience} />
+            </Reveal>
+            <p className="mt-12 text-base text-slate-600">
+              ¿Eres familia?{' '}
+              <Link to="/registro/familia" className={linkQuiet}>Únete con el código o el QR de la clase</Link>
+            </p>
+          </div>
+        </section>
 
-              <div className="relative">
-                <BookOpen className="mx-auto h-12 w-12 text-white/80" />
-                <h2 className="mt-6 text-3xl font-black text-white sm:text-5xl">
-                  Más claridad para ti. Más motivación para tu clase.
-                </h2>
-                <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-white/82">
-                  Empieza con lo esencial y activa más cuando lo necesites.
-                </p>
+        {/* Anochece: el cielo del Observatorio sigue hasta el pie de página. */}
+        <section id="observatorio" aria-labelledby="obs-title" className="obs-sky scroll-mt-16 text-white">
+          <div className={`${container} ${sectionPad}`}>
+            <Reveal>
+              <p className="text-sm font-semibold text-indigo-200">Observatorio de Jiro</p>
+              <h2 id="obs-title" className={`${h2} mt-3 text-white`}>Actividades para jugar juntos en clase</h2>
+              <p className={`${lead} text-indigo-100`}>
+                Se proyectan en la pizarra y se juegan con el cuerpo, en equipo o en calma, sin preparar nada desde cero.
+              </p>
+            </Reveal>
+            <ul className="mt-12 grid gap-10 md:grid-cols-3 md:gap-8">
+              {activities.map((activity, index) => (
+                <li key={activity.cover}>
+                  <Reveal delay={index * 0.05}>
+                    <img
+                      src={`/assets/jiro/actividades/${activity.cover}.webp`}
+                      alt=""
+                      width={800}
+                      height={600}
+                      loading="lazy"
+                      className="aspect-[4/3] w-full rounded-2xl object-cover ring-1 ring-white/10"
+                    />
+                    <h3 className="mt-4 text-lg font-semibold leading-7 text-white">{activity.name}</h3>
+                    <p className="mt-1 text-base leading-relaxed text-indigo-100">{activity.text}</p>
+                  </Reveal>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-10 max-w-2xl text-base leading-relaxed text-indigo-200">
+              Y también: El Error de Jiro, Correo Estelar, Pergaminos del Aula y Expediciones por paradas.
+            </p>
+          </div>
+        </section>
 
-                <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
+        <section aria-labelledby="entrar-title" className="obs-sky border-t border-white/10 text-white">
+          <div className={`${container} ${sectionPad} text-center`}>
+            <div ref={constellationRef} className="mx-auto h-[90px] w-32" aria-hidden="true">
+              {constellationInView && <ConstellationArt id="cruz-del-sur" draw className="h-full w-full" />}
+            </div>
+            <h2 id="entrar-title" className={`${h2} mx-auto mt-6 text-white`}>¿Por dónde entras?</h2>
+            <p className={`${lead} mx-auto text-indigo-100`}>Cada uno tiene su puerta.</p>
+            <ul className="mx-auto mt-10 grid max-w-4xl gap-4 text-left md:grid-cols-3">
+              {doors.map((door) => (
+                <li key={door.to}>
                   <Link
-                    to="/register"
-                    className="inline-flex items-center gap-2 rounded-2xl bg-white px-7 py-4 text-base font-black text-blue-600 transition-colors hover:bg-slate-100"
+                    to={door.to}
+                    className={`flex h-full min-h-[96px] flex-col justify-between gap-3 rounded-2xl border border-white/15 p-5 transition-[background-color,transform] duration-150 ease-out active:scale-[0.97] [@media(hover:hover)]:hover:bg-white/5 ${nightFocus}`}
                   >
-                    Crear cuenta gratis
-                    <ChevronRight size={18} />
+                    <span className="text-sm font-semibold text-indigo-200">{door.who}</span>
+                    <span className="flex items-center justify-between gap-2 text-lg font-semibold text-white">
+                      {door.action}
+                      <ChevronRight size={18} aria-hidden="true" />
+                    </span>
                   </Link>
-                  <Link
-                    to="/login"
-                    className="rounded-2xl border border-white/35 px-7 py-4 text-base font-semibold text-white transition-colors hover:bg-white/10"
-                  >
-                    Entrar a Juried
-                  </Link>
-                </div>
-              </div>
-            </motion.div>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-8 text-base text-indigo-100">
+              ¿Ya tienes cuenta?{' '}
+              <Link to="/login" className={`inline-flex min-h-11 items-center rounded-md font-semibold text-white underline underline-offset-4 ${nightFocus}`}>Entrar</Link>
+            </p>
+            <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-indigo-200">
+              ¿Diriges un colegio? Empieza con una cuenta de docente y crea tu escuela en «Mi Escuela».
+            </p>
           </div>
         </section>
       </main>
 
-      <footer className="relative z-10 border-t border-white/70 bg-white/45 px-6 py-8 backdrop-blur-sm sm:px-8 lg:px-10">
-        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 text-center sm:flex-row sm:text-left">
+      <footer className="obs-sky border-t border-white/10">
+        <div className={`${container} flex flex-col items-center justify-between gap-4 py-8 text-center sm:flex-row sm:text-left`}>
           <div className="flex items-center gap-3">
-            <img src="/logo.png" alt="Juried" className="h-9 w-auto opacity-80" />
-            <div>
-              <p className="text-sm font-semibold text-slate-800">Juried</p>
-              <p className="text-xs text-slate-500">Gamificación educativa para el aula.</p>
-            </div>
+            <img src="/logo-solo.png" alt="" width={400} height={400} className="h-8 w-8" />
+            <p className="text-sm text-indigo-200">
+              <span className="font-semibold text-white">Juried</span> · Gamificación educativa para el aula
+            </p>
           </div>
-          <p className="text-sm text-slate-500">© {new Date().getFullYear()} Juried. Todos los derechos reservados.</p>
+          <nav aria-label="Pie de página" className="flex items-center gap-6">
+            <Link to="/privacy" className={`inline-flex min-h-11 items-center rounded-md text-sm text-indigo-200 [@media(hover:hover)]:hover:text-white ${nightFocus}`}>Privacidad</Link>
+            <Link to="/login" className={`inline-flex min-h-11 items-center rounded-md text-sm text-indigo-200 [@media(hover:hover)]:hover:text-white ${nightFocus}`}>Entrar</Link>
+          </nav>
+          <p className="text-sm text-slate-400">© {new Date().getFullYear()} Juried</p>
         </div>
       </footer>
     </div>
