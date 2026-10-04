@@ -32,24 +32,29 @@ const PERSONAL_DOMAINS = new Set([
 type Provider = 'LOCAL' | 'GOOGLE' | 'PIN';
 
 class TeacherVerificationService {
-  private async isListedDomain(email: string): Promise<boolean> {
+  /**
+   * ¿Verifica este dominio por sí solo? Solo si es exclusivo de docentes: si lo comparten alumnos, un alumno con su
+   * correo institucional podría entrar por la puerta docente y quedar verificado.
+   */
+  private async isTeacherDomain(email: string): Promise<boolean> {
     const domain = domainOf(email);
     if (!domain) return false;
-    const [match] = await db.select({ id: verifiedDomains.id }).from(verifiedDomains).where(eq(verifiedDomains.domain, domain)).limit(1);
+    const [match] = await db.select({ id: verifiedDomains.id }).from(verifiedDomains)
+      .where(and(eq(verifiedDomains.domain, domain), eq(verifiedDomains.scope, 'TEACHERS_ONLY'))).limit(1);
     return !!match;
   }
 
-  /** Estado con el que nace una cuenta docente: verificada si entra con Google con un correo institucional. */
+  /** Estado con el que nace una cuenta docente: verificada si entra con Google con un correo de un dominio solo de docentes. */
   async initialStatusFor(email: string, provider: Provider): Promise<{ teacherStatus: TeacherStatus; teacherVerifiedVia: VerifiedVia | null; teacherVerifiedAt: Date | null }> {
-    if (provider === 'GOOGLE' && (await this.isListedDomain(email))) {
+    if (provider === 'GOOGLE' && (await this.isTeacherDomain(email))) {
       return { teacherStatus: 'VERIFIED', teacherVerifiedVia: 'DOMAIN', teacherVerifiedAt: new Date() };
     }
     return { teacherStatus: 'UNVERIFIED', teacherVerifiedVia: null, teacherVerifiedAt: null };
   }
 
-  /** Un docente con contraseña que ahora entra con Google: si su dominio está en la lista, queda verificado. */
+  /** Un docente con contraseña que ahora entra con Google: si su dominio es solo de docentes, queda verificado. */
   async verifyByGoogleDomain(userId: string, email: string): Promise<void> {
-    if (await this.isListedDomain(email)) await this.markVerified(userId, 'DOMAIN');
+    if (await this.isTeacherDomain(email)) await this.markVerified(userId, 'DOMAIN');
   }
 
   /** ¿Puede este docente recibir alumnos con cuenta y familias? (el admin siempre). */
@@ -156,7 +161,7 @@ class TeacherVerificationService {
 
   async listDomains() {
     return db
-      .select({ id: verifiedDomains.id, domain: verifiedDomains.domain, note: verifiedDomains.note, schoolId: verifiedDomains.schoolId, schoolName: schools.name, createdAt: verifiedDomains.createdAt })
+      .select({ id: verifiedDomains.id, domain: verifiedDomains.domain, scope: verifiedDomains.scope, note: verifiedDomains.note, schoolId: verifiedDomains.schoolId, schoolName: schools.name, createdAt: verifiedDomains.createdAt })
       .from(verifiedDomains)
       .leftJoin(schools, eq(schools.id, verifiedDomains.schoolId))
       .orderBy(verifiedDomains.domain);
@@ -188,15 +193,18 @@ class TeacherVerificationService {
     return { domain, alreadyListed: !!taken, google: waiting.google.length, local: waiting.local.length };
   }
 
-  async addDomain(adminId: string, input: { domain: string; note?: string; schoolId?: string | null }) {
+  async addDomain(adminId: string, input: { domain: string; note?: string; schoolId?: string | null; scope?: 'TEACHERS_ONLY' | 'SHARED' }) {
     const domain = this.validDomain(input.domain);
+    const scope = input.scope ?? 'SHARED';
     const [taken] = await db.select({ id: verifiedDomains.id }).from(verifiedDomains).where(eq(verifiedDomains.domain, domain)).limit(1);
     if (taken) throw new ConflictError('Ese dominio ya está en la lista');
     await db.insert(verifiedDomains).values({
-      id: uuidv4(), domain, note: input.note?.trim().slice(0, 255) || null, schoolId: input.schoolId || null, createdBy: adminId, createdAt: new Date(),
+      id: uuidv4(), domain, scope, note: input.note?.trim().slice(0, 255) || null, schoolId: input.schoolId || null, createdBy: adminId, createdAt: new Date(),
     });
-    // Los que ya esperaban con ese correo: quedan verificados solo los que entran con Google.
+    // Los que ya esperaban con ese correo: quedan verificados solo los que entran con Google, y solo si el dominio
+    // es exclusivo de docentes (compartido con alumnos no verifica a nadie por sí solo).
     const waiting = await this.waitingFor(domain);
+    if (scope !== 'TEACHERS_ONLY') return { verified: 0, localWaiting: waiting.local.length + waiting.google.length };
     for (const teacher of waiting.google) await this.markVerified(teacher.id, 'DOMAIN');
     return { verified: waiting.google.length, localWaiting: waiting.local.length };
   }

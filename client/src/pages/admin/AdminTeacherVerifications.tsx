@@ -2,7 +2,7 @@ import { useEffect, useId, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { Globe, Search, ShieldCheck, Trash2, X } from 'lucide-react';
-import { verificationApi, type DomainPreview, type TeacherToVerify, type VerifiedDomain } from '../../lib/verificationApi';
+import { verificationApi, type DomainPreview, type DomainScope, type TeacherToVerify, type VerifiedDomain } from '../../lib/verificationApi';
 import { adminApi, adminOverviewKey, type AdminOverview } from '../../lib/adminApi';
 import { AdminPageHeader } from '../../components/admin/AdminPageHeader';
 import { primaryButton } from '../../components/admin/adminStyles';
@@ -203,6 +203,8 @@ const DomainsPanel = ({ domains, loading, error, onRetry, onRemove, onAdded }: {
   const ids = useId();
   const [domain, setDomain] = useState('');
   const [note, setNote] = useState('');
+  // Por defecto, compartido con alumnos: lo seguro cuando no se sabe.
+  const [scope, setScope] = useState<DomainScope>('SHARED');
   const [preview, setPreview] = useState<DomainPreview | null>(null);
   const check = useMutation({
     mutationFn: () => verificationApi.previewDomain(domain.trim()),
@@ -210,13 +212,14 @@ const DomainsPanel = ({ domains, loading, error, onRetry, onRemove, onAdded }: {
     onError: (err) => toast.error(errorMessage(err, 'No se pudo revisar el dominio')),
   });
   const add = useMutation({
-    mutationFn: () => verificationApi.addDomain(domain.trim(), note.trim() || undefined),
+    mutationFn: () => verificationApi.addDomain(domain.trim(), scope, note.trim() || undefined),
     onSuccess: (data) => {
       void queryClient.invalidateQueries({ queryKey: ['admin-verified-domains'] });
       onAdded();
       setPreview(null);
       setDomain('');
       setNote('');
+      setScope('SHARED');
       toast.success(data.verified > 0 ? `Dominio agregado: ${data.verified} ${data.verified === 1 ? 'docente quedó verificado' : 'docentes quedaron verificados'}.` : 'Dominio agregado');
     },
     onError: (err) => toast.error(errorMessage(err, 'No se pudo agregar el dominio')),
@@ -226,7 +229,7 @@ const DomainsPanel = ({ domains, loading, error, onRetry, onRemove, onAdded }: {
     <section className="space-y-4" aria-label="Dominios de colegios">
       <form className="pg-surface space-y-3 p-4" onSubmit={(e) => { e.preventDefault(); if (domain.trim()) check.mutate(); }}>
         <h2 className="text-sm font-bold">Agregar el dominio de un colegio</h2>
-        <p className="pg-fg2 text-sm">Los docentes que entran <strong>con Google</strong> con un correo de ese dominio quedan verificados solos. Con correo y contraseña no basta: nadie comprobó que el correo sea suyo.</p>
+        <p className="pg-fg2 text-sm">Si el dominio es <strong>solo de docentes</strong>, quien entra <strong>con Google</strong> con ese correo queda verificado solo (con correo y contraseña no basta: nadie comprobó que el correo sea suyo). Si el colegio da el mismo dominio a sus alumnos, elige «Docentes y alumnos»: así ningún alumno queda verificado como docente.</p>
         <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
           <label className="text-sm font-medium" htmlFor={`${ids}-domain`}>Dominio
             <input id={`${ids}-domain`} value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="colegio.edu.pe" className={`${field} mt-1`} autoComplete="off" />
@@ -236,6 +239,17 @@ const DomainsPanel = ({ domains, loading, error, onRetry, onRemove, onAdded }: {
           </label>
           <button type="submit" className={primaryButton} disabled={!domain.trim() || check.isPending}>{check.isPending ? 'Revisando…' : 'Revisar'}</button>
         </div>
+        <fieldset className="space-y-1">
+          <legend className="text-sm font-medium">¿Quiénes tienen correo de este dominio?</legend>
+          <label className="flex min-h-11 cursor-pointer items-start gap-2 text-sm">
+            <input type="radio" name={`${ids}-scope`} value="SHARED" checked={scope === 'SHARED'} onChange={() => setScope('SHARED')} className="mt-1" />
+            <span><strong>Docentes y alumnos</strong> <span className="pg-fg2">— no verifica a nadie solo; cada docente se verifica por invitación de su escuela o por revisión.</span></span>
+          </label>
+          <label className="flex min-h-11 cursor-pointer items-start gap-2 text-sm">
+            <input type="radio" name={`${ids}-scope`} value="TEACHERS_ONLY" checked={scope === 'TEACHERS_ONLY'} onChange={() => setScope('TEACHERS_ONLY')} className="mt-1" />
+            <span><strong>Solo docentes</strong> <span className="pg-fg2">— quien entra con Google con ese correo queda verificado.</span></span>
+          </label>
+        </fieldset>
       </form>
 
       {error ? (
@@ -257,7 +271,7 @@ const DomainsPanel = ({ domains, loading, error, onRetry, onRemove, onAdded }: {
               <Globe className="pg-fg2 h-4 w-4 shrink-0" aria-hidden="true" />
               <div className="min-w-0 flex-1">
                 <p className="font-semibold">@{item.domain}</p>
-                <p className="pg-fg2 text-xs">{[item.schoolName, item.note].filter(Boolean).join(' · ') || 'Sin nota'} · desde el {fmt(item.createdAt)}</p>
+                <p className="pg-fg2 text-xs">{item.scope === 'TEACHERS_ONLY' ? 'Solo docentes: verifica al entrar con Google' : 'Docentes y alumnos: no verifica solo'} · {[item.schoolName, item.note].filter(Boolean).join(' · ') || 'Sin nota'} · desde el {fmt(item.createdAt)}</p>
               </div>
               <button type="button" className="pg-icon-btn" onClick={() => onRemove(item)} aria-label={`Quitar @${item.domain}`}><Trash2 className="h-4 w-4" aria-hidden="true" /></button>
             </li>
@@ -272,7 +286,9 @@ const DomainsPanel = ({ domains, loading, error, onRetry, onRemove, onAdded }: {
         isLoading={add.isPending}
         variant="info"
         title={`¿Agregar @${preview?.domain ?? ''}?`}
-        message={preview
+        message={preview && scope === 'SHARED'
+          ? 'Como lo comparten alumnos, no verificará a nadie por sí solo: cada docente se verifica por invitación de su escuela o por revisión.'
+          : preview
           ? `${preview.google === 0 ? 'Nadie se verificará ahora' : `Se verificarán ahora ${preview.google} ${preview.google === 1 ? 'docente que entra' : 'docentes que entran'} con Google`}.${preview.local ? ` ${preview.local} con correo y contraseña ${preview.local === 1 ? 'seguirá' : 'seguirán'} sin verificar hasta entrar con Google.` : ''} Las cuentas nuevas de Google con ese correo nacerán verificadas.`
           : ''}
         confirmText="Agregar"

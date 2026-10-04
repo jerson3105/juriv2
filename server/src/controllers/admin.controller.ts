@@ -145,7 +145,13 @@ export const adminController = {
 
   async addVerifiedDomain(req: Request, res: Response) {
     try {
-      const body = z.object({ domain: z.string().min(3).max(255), note: z.string().max(255).optional(), schoolId: z.string().uuid().nullable().optional() }).parse(req.body);
+      const body = z.object({
+        domain: z.string().min(3).max(255),
+        note: z.string().max(255).optional(),
+        schoolId: z.string().uuid().nullable().optional(),
+        // Por defecto, compartido con alumnos: no verifica a nadie por sí solo.
+        scope: z.enum(['TEACHERS_ONLY', 'SHARED']).default('SHARED'),
+      }).parse(req.body);
       const result = await teacherVerificationService.addDomain(req.user!.id, body);
       res.status(201).json({ success: true, data: result });
     } catch (error) {

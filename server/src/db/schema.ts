@@ -20,6 +20,9 @@ export const userRoleEnum = mysqlEnum('role', ['ADMIN', 'TEACHER', 'STUDENT', 'P
 // Docente sin verificar: usa su clase con la lista, pero no recibe alumnos con cuenta ni familias.
 export const teacherStatusEnum = mysqlEnum('teacher_status', ['UNVERIFIED', 'PENDING', 'VERIFIED']);
 export const teacherVerifiedViaEnum = mysqlEnum('teacher_verified_via', ['LEGACY', 'ADMIN', 'SCHOOL', 'DOMAIN']);
+// Alcance de un dominio verificado: solo uno exclusivo de docentes verifica por sí solo (si lo comparten alumnos,
+// un alumno con su correo institucional podría entrar por la puerta docente y quedar verificado).
+export const verifiedDomainScopeEnum = mysqlEnum('scope', ['TEACHERS_ONLY', 'SHARED']);
 // PIN = alumno sin correo (código de clase + nombre de la lista + PIN de 4 números).
 export const authProviderEnum = mysqlEnum('provider', ['LOCAL', 'GOOGLE', 'PIN']);
 export const characterClassEnum = mysqlEnum('character_class', ['GUARDIAN', 'ARCANE', 'EXPLORER', 'ALCHEMIST']);
@@ -80,10 +83,11 @@ export const users = mysqlTable('users', {
   pinLockedUntil: datetime('pin_locked_until'),
 });
 
-/** Dominios institucionales: un docente con ese correo queda verificado al registrarse. */
+/** Dominios institucionales. Solo los de alcance «solo docentes» verifican al docente que entra con Google. */
 export const verifiedDomains = mysqlTable('verified_domains', {
   id: varchar('id', { length: 36 }).primaryKey(),
   domain: varchar('domain', { length: 255 }).notNull().unique('uniq_verified_domains_domain'),
+  scope: verifiedDomainScopeEnum.notNull().default('SHARED'),
   schoolId: varchar('school_id', { length: 36 }),
   note: varchar('note', { length: 255 }),
   createdBy: varchar('created_by', { length: 36 }).notNull(),
