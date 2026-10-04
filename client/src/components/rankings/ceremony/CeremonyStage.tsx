@@ -3,9 +3,9 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 export type JiroPose = 'cheer' | 'point' | 'nervous';
 
 const JIRO_IMAGE: Record<JiroPose, string> = {
-  cheer: '/assets/mascot/jiro-ranking-xp.png',
-  point: '/assets/mascot/jiro-randomPickerSelect.png',
-  nervous: '/assets/mascot/jiro-randomPickerWhile.png',
+  cheer: '/assets/jiro/gala/presenta.webp',
+  point: '/assets/jiro/gala/senala.webp',
+  nervous: '/assets/jiro/gala/redoble.webp',
 };
 
 // Fondo de estadio de noche: luces en la grada, dos reflectores que barren y un suelo iluminado.
