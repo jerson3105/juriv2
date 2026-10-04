@@ -5,6 +5,7 @@ import { classrooms, schoolMembers, schools, studentProfiles, users, verifiedDom
 import { cache, CACHE_KEYS } from '../utils/cache.js';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../utils/errors.js';
 import { revokeAllUserTokens } from '../utils/jwt.js';
+import { affectedRows } from '../utils/points.js';
 
 type TeacherStatus = 'UNVERIFIED' | 'PENDING' | 'VERIFIED';
 type VerifiedVia = 'LEGACY' | 'ADMIN' | 'SCHOOL' | 'DOMAIN';
@@ -152,11 +153,13 @@ class TeacherVerificationService {
     await this.markVerified(userId, 'ADMIN');
   }
 
-  async reject(userId: string, reason?: string) {
-    await db.update(users)
+  /** true si había una solicitud pendiente y quedó rechazada. */
+  async reject(userId: string, reason?: string): Promise<boolean> {
+    const result = await db.update(users)
       .set({ teacherStatus: 'UNVERIFIED', teacherVerificationNote: reason ? `Rechazado: ${reason.trim().slice(0, 480)}` : null, updatedAt: new Date() })
       .where(and(eq(users.id, userId), eq(users.role, 'TEACHER'), eq(users.teacherStatus, 'PENDING')));
     cache.delete(CACHE_KEYS.user(userId));
+    return affectedRows(result) === 1;
   }
 
   async listDomains() {
@@ -198,19 +201,28 @@ class TeacherVerificationService {
     const scope = input.scope ?? 'SHARED';
     const [taken] = await db.select({ id: verifiedDomains.id }).from(verifiedDomains).where(eq(verifiedDomains.domain, domain)).limit(1);
     if (taken) throw new ConflictError('Ese dominio ya está en la lista');
+    const id = uuidv4();
     await db.insert(verifiedDomains).values({
-      id: uuidv4(), domain, scope, note: input.note?.trim().slice(0, 255) || null, schoolId: input.schoolId || null, createdBy: adminId, createdAt: new Date(),
+      id, domain, scope, note: input.note?.trim().slice(0, 255) || null, schoolId: input.schoolId || null, createdBy: adminId, createdAt: new Date(),
     });
     // Los que ya esperaban con ese correo: quedan verificados solo los que entran con Google, y solo si el dominio
     // es exclusivo de docentes (compartido con alumnos no verifica a nadie por sí solo).
     const waiting = await this.waitingFor(domain);
-    if (scope !== 'TEACHERS_ONLY') return { verified: 0, localWaiting: waiting.local.length + waiting.google.length };
+    if (scope !== 'TEACHERS_ONLY') return { id, domain, verified: 0, localWaiting: waiting.local.length + waiting.google.length };
     for (const teacher of waiting.google) await this.markVerified(teacher.id, 'DOMAIN');
-    return { verified: waiting.google.length, localWaiting: waiting.local.length };
+    return { id, domain, verified: waiting.google.length, localWaiting: waiting.local.length };
   }
 
+  /** Quita un dominio de la lista; devuelve el que quitó (null si ya no estaba). */
   async removeDomain(id: string) {
-    await db.delete(verifiedDomains).where(eq(verifiedDomains.id, id));
+    const [row] = await db
+      .select({ domain: verifiedDomains.domain, scope: verifiedDomains.scope, schoolId: verifiedDomains.schoolId })
+      .from(verifiedDomains)
+      .where(eq(verifiedDomains.id, id))
+      .limit(1);
+    if (!row) return null;
+    const result = await db.delete(verifiedDomains).where(eq(verifiedDomains.id, id));
+    return affectedRows(result) === 1 ? row : null;
   }
 
   // ==================== Retiro de cuentas sin uso ====================

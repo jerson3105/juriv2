@@ -8,6 +8,7 @@ import { OAUTH_STATE_COOKIE_NAME, verifyOAuthState } from '../utils/oauth-state.
 import { isDuplicateEntry } from '../utils/errors.js';
 import { revokeAllUserTokens } from '../utils/jwt.js';
 import { teacherVerificationService } from '../services/teacherVerification.service.js';
+import { recordAudit } from '../utils/audit.js';
 
 type UserRole = 'TEACHER' | 'STUDENT' | 'PARENT';
 
@@ -95,6 +96,7 @@ export const configurePassport = () => {
             // La cuenta de administración no se vincula a Google por el correo: quien controle ese buzón
             // entraría sin contraseña. Solo pasa si ya estaba vinculada a esta misma cuenta de Google.
             if (user.role === 'ADMIN' && (user.provider !== 'GOOGLE' || user.googleId !== googleId)) {
+              await recordAudit({ action: 'auth.admin_login_failed', target: { type: 'user', id: user.id }, metadata: { provider: 'GOOGLE' }, ip: req.ip ?? null });
               return done(null, false, fail('admin_google_disabled'));
             }
 

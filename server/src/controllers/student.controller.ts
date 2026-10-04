@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { config_app } from '../config/env.js';
 import { requireClassroomTeacher } from '../utils/access.js';
 import { AppError } from '../utils/errors.js';
+import { auditRequest } from '../utils/audit.js';
 
 const joinClassSchema = z.object({
   code: z.string().min(6, 'El código debe tener al menos 6 caracteres').max(8, 'El código no puede tener más de 8 caracteres'),
@@ -642,8 +643,14 @@ export class StudentController {
   // Docente: "Restablecer acceso" de un alumno con PIN (borra el PIN, cierra sus sesiones, tarjeta nueva)
   async resetAccess(req: Request, res: Response) {
     try {
-      const result = await studentPinService.resetAccess(req.params.studentId, req.user!.id);
-      res.json({ success: true, message: 'Acceso restablecido', data: result });
+      const { linkCode, classroomId, schoolId } = await studentPinService.resetAccess(req.params.studentId, req.user!.id);
+      await auditRequest(req, {
+        action: 'student.access_reset',
+        schoolId,
+        target: { type: 'student_profile', id: req.params.studentId },
+        metadata: { classroomId },
+      });
+      res.json({ success: true, message: 'Acceso restablecido', data: { linkCode } });
     } catch (error) {
       if (error instanceof AppError) {
         return res.status(error.statusCode).json({ success: false, message: error.message });
@@ -781,7 +788,13 @@ export class StudentController {
     try {
       const { studentId } = req.params;
 
-      const result = await studentService.removeStudentFromClass(studentId, req.user!.id);
+      const { classroomId, schoolId, ...result } = await studentService.removeStudentFromClass(studentId, req.user!.id);
+      await auditRequest(req, {
+        action: 'student.removed',
+        schoolId,
+        target: { type: 'student_profile', id: studentId },
+        metadata: { classroomId },
+      });
 
       res.json({
         success: true,

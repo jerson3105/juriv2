@@ -10,6 +10,7 @@ import { adminUsersService } from '../services/adminUsers.service.js';
 import { adminOverviewService } from '../services/adminOverview.service.js';
 import { adminClassroomsService } from '../services/adminClassrooms.service.js';
 import { AppError } from '../utils/errors.js';
+import { auditRequest } from '../utils/audit.js';
 import { passwordSchema } from '../utils/passwordPolicy.js';
 import { z } from 'zod';
 
@@ -59,6 +60,7 @@ export const adminController = {
   async createTeacher(req: Request, res: Response) {
     try {
       const data = await adminUsersService.createTeacher(req.user!.id, createTeacherSchema.parse(req.body));
+      await auditRequest(req, { action: 'admin.teacher_created', target: { type: 'user', id: data.id } });
       res.status(201).json({ success: true, data, message: 'Docente creado' });
     } catch (error) {
       if (error instanceof z.ZodError) return res.status(400).json({ success: false, message: error.issues[0]?.message ?? 'Datos inválidos' });
@@ -72,7 +74,10 @@ export const adminController = {
     try {
       const userId = userIdSchema.parse(req.params.userId);
       const { role, currentPassword } = roleChangeSchema.parse(req.body);
-      const data = await adminUsersService.changeRole(req.user!.id, userId, role, currentPassword);
+      const { previousRole, ...data } = await adminUsersService.changeRole(req.user!.id, userId, role, currentPassword);
+      if (previousRole !== role) {
+        await auditRequest(req, { action: 'admin.role_changed', target: { type: 'user', id: userId }, metadata: { from: previousRole, to: role } });
+      }
       res.json({ success: true, data, message: 'Rol actualizado' });
     } catch (error) {
       if (error instanceof z.ZodError) return res.status(400).json({ success: false, message: 'Datos inválidos' });
@@ -86,7 +91,10 @@ export const adminController = {
     try {
       const userId = userIdSchema.parse(req.params.userId);
       const { isActive } = userStatusSchema.parse(req.body);
-      const data = await adminUsersService.setActive(req.user!.id, userId, isActive);
+      const { changed, ...data } = await adminUsersService.setActive(req.user!.id, userId, isActive);
+      if (changed) {
+        await auditRequest(req, { action: isActive ? 'admin.account_activated' : 'admin.account_deactivated', target: { type: 'user', id: userId } });
+      }
       res.json({ success: true, data, message: isActive ? 'Cuenta reactivada' : 'Cuenta desactivada' });
     } catch (error) {
       if (error instanceof z.ZodError) return res.status(400).json({ success: false, message: 'Datos inválidos' });
@@ -111,8 +119,13 @@ export const adminController = {
   async reviewTeacherVerification(req: Request, res: Response) {
     try {
       const body = z.object({ approved: z.boolean(), reason: z.string().max(480).optional() }).parse(req.body);
-      if (body.approved) await teacherVerificationService.approve(req.params.userId);
-      else await teacherVerificationService.reject(req.params.userId, body.reason);
+      const target = { type: 'user', id: req.params.userId };
+      if (body.approved) {
+        await teacherVerificationService.approve(req.params.userId);
+        await auditRequest(req, { action: 'admin.teacher_verified', target });
+      } else if (await teacherVerificationService.reject(req.params.userId, body.reason)) {
+        await auditRequest(req, { action: 'admin.teacher_rejected', target });
+      }
       res.json({ success: true, message: body.approved ? 'Docente verificado' : 'Solicitud rechazada' });
     } catch (error) {
       if (error instanceof AppError) return res.status(error.statusCode).json({ success: false, message: error.message });
@@ -153,6 +166,12 @@ export const adminController = {
         scope: z.enum(['TEACHERS_ONLY', 'SHARED']).default('SHARED'),
       }).parse(req.body);
       const result = await teacherVerificationService.addDomain(req.user!.id, body);
+      await auditRequest(req, {
+        action: 'admin.domain_added',
+        schoolId: body.schoolId ?? null,
+        target: { type: 'verified_domain', id: result.id },
+        metadata: { domain: result.domain, scope: body.scope, verified: result.verified },
+      });
       res.status(201).json({ success: true, data: result });
     } catch (error) {
       if (error instanceof AppError) return res.status(error.statusCode).json({ success: false, message: error.message });
@@ -164,7 +183,15 @@ export const adminController = {
 
   async removeVerifiedDomain(req: Request, res: Response) {
     try {
-      await teacherVerificationService.removeDomain(req.params.domainId);
+      const removed = await teacherVerificationService.removeDomain(req.params.domainId);
+      if (removed) {
+        await auditRequest(req, {
+          action: 'admin.domain_removed',
+          schoolId: removed.schoolId,
+          target: { type: 'verified_domain', id: req.params.domainId },
+          metadata: { domain: removed.domain, scope: removed.scope },
+        });
+      }
       res.json({ success: true });
     } catch (error) {
       console.error('Error removing domain:', error);

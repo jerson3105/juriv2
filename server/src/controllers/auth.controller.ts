@@ -11,6 +11,7 @@ import { corsOptions } from '../middleware/security.js';
 import { SessionError } from '../utils/jwt.js';
 import { teacherVerificationService } from '../services/teacherVerification.service.js';
 import { studentPinService } from '../services/studentPin.service.js';
+import { recordAudit } from '../utils/audit.js';
 import jwt from 'jsonwebtoken';
 
 // Schema de validación de contraseña robusta
@@ -466,7 +467,10 @@ export const registerStudentWithCode = async (req: Request, res: Response): Prom
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
     const validatedData = loginSchema.parse(req.body);
-    const result = await authService.login(validatedData);
+    const result = await authService.login(validatedData, { ip: req.ip ?? null });
+    if (result.user.role === 'ADMIN') {
+      await recordAudit({ action: 'auth.admin_login', actor: { id: result.user.id, role: 'ADMIN' }, metadata: { provider: 'LOCAL' }, ip: req.ip ?? null });
+    }
     sendAuth(res, 200, 'Inicio de sesión exitoso', result);
   } catch (error) {
     handleAuthError(res, error);
@@ -817,6 +821,9 @@ export const googleCallback = async (req: Request, res: Response): Promise<void>
 
     // Generar tokens JWT para el usuario
     const tokens = await authService.generateTokensForUser(user.id);
+    if (user.role === 'ADMIN') {
+      await recordAudit({ action: 'auth.admin_login', actor: { id: user.id, role: 'ADMIN' }, metadata: { provider: 'GOOGLE' }, ip: req.ip ?? null });
+    }
     const code = issueOAuthCode(tokens);
     setOAuthCodeCookie(res, code);
     
@@ -1013,7 +1020,7 @@ export const setupPin = async (req: Request, res: Response): Promise<void> => {
 export const loginWithPin = async (req: Request, res: Response): Promise<void> => {
   try {
     const data = z.object({ classCode: classCodeSchema, studentId: z.string().uuid(), pin: pinSchema }).parse(req.body);
-    const result = await studentPinService.loginWithPin(data, req.get('user-agent'));
+    const result = await studentPinService.loginWithPin(data, req.get('user-agent'), req.ip ?? null);
     sendAuth(res, 200, 'Inicio de sesión exitoso', result);
   } catch (error) {
     handleAuthError(res, error, 'No se pudo iniciar sesión');
@@ -1024,7 +1031,7 @@ export const loginWithPin = async (req: Request, res: Response): Promise<void> =
 export const changePin = async (req: Request, res: Response): Promise<void> => {
   try {
     const { currentPin, newPin } = z.object({ currentPin: pinSchema, newPin: pinSchema }).parse(req.body);
-    const tokens = await studentPinService.changePin(req.user!.id, currentPin, newPin, req.get('user-agent'));
+    const tokens = await studentPinService.changePin(req.user!.id, currentPin, newPin, req.get('user-agent'), req.ip ?? null);
     sendAuth(res, 200, 'PIN actualizado', tokens);
   } catch (error) {
     handleAuthError(res, error, 'No se pudo cambiar tu PIN');

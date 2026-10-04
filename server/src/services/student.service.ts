@@ -1134,6 +1134,8 @@ export class StudentService {
     return {
       success: true,
       studentName: profile.characterName || profile.displayName || 'Estudiante',
+      classroomId,
+      schoolId: classroom.schoolId,
     };
   }
 }

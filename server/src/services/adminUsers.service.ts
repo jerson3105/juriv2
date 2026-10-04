@@ -141,7 +141,7 @@ export const adminUsersService = {
   async changeRole(actorId: string, targetId: string, role: AssignableRole, currentPassword?: string) {
     if (actorId === targetId) throw new ConflictError('No puedes cambiar tu propio rol.');
     const target = await findTarget(targetId);
-    if (target.role === role) return { role };
+    if (target.role === role) return { role, previousRole: target.role };
     if (target.role === 'PARENT') throw new ConflictError('Las cuentas de familia no cambian de rol.');
     if (role !== 'STUDENT' && (target.provider === 'PIN' || PIN_EMAIL.test(target.email))) {
       throw new ConflictError('Una cuenta con PIN es de alumno: no puede ser profesor ni administrador.');
@@ -187,13 +187,13 @@ export const adminUsersService = {
     cache.delete(CACHE_KEYS.user(targetId));
     await revokeAllUserTokens(targetId);
     logger.info('admin.role_change', { actorId, targetId, from: target.role, to: role });
-    return { role };
+    return { role, previousRole: target.role };
   },
 
   async setActive(actorId: string, targetId: string, isActive: boolean) {
     if (actorId === targetId) throw new ConflictError('No puedes desactivar tu propia cuenta.');
     const target = await findTarget(targetId);
-    if (target.isActive === isActive) return { isActive };
+    if (target.isActive === isActive) return { isActive, changed: false };
     if (!isActive && target.role === 'ADMIN' && (await otherActiveAdmins(targetId)) < 1) {
       throw new ConflictError('No puede quedar el sistema sin administrador.');
     }
@@ -203,6 +203,6 @@ export const adminUsersService = {
     // Desactivar corta ya: sesiones, refresh y sockets (el login, el PIN y Google ya rechazan cuentas inactivas).
     if (!isActive) await revokeAllUserTokens(targetId);
     logger.info('admin.user_status', { actorId, targetId, isActive });
-    return { isActive };
+    return { isActive, changed: true };
   },
 };

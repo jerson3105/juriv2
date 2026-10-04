@@ -3,11 +3,13 @@ import { schoolService } from '../services/school.service.js';
 import { schoolManagementService, SchoolManagementError } from '../services/schoolManagement.service.js';
 import { BADGE_IMAGE_PATTERN } from '../utils/badgeConditions.js';
 import { AppError } from '../utils/errors.js';
+import { auditRequest } from '../utils/audit.js';
 import { z } from 'zod';
 import {
   requireSchoolOwner,
   requireSchoolOwnerByMember,
   requireClassroomTeacher,
+  schoolIdOfMember,
   schoolIdOfClassroom,
   teacherOwnsClassroom,
   requireSchoolClassroomMember,
@@ -284,6 +286,12 @@ class SchoolController {
       if (!(await requireSchoolOwnerByMember(req, res, memberId))) return;
 
       await schoolManagementService.reviewPendingRequest(memberId, data.approved, data.reason);
+      await auditRequest(req, {
+        action: 'school.join_request_reviewed',
+        schoolId: await schoolIdOfMember(memberId),
+        target: { type: 'school_member', id: memberId },
+        metadata: { approved: data.approved },
+      });
       res.json({ success: true, message: data.approved ? 'Solicitud aceptada' : 'Solicitud rechazada' });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -396,7 +404,14 @@ class SchoolController {
       const data = reviewVerificationSchema.parse(req.body);
       const adminId = (req as any).user.id;
 
-      await schoolService.reviewVerification(z.string().uuid().parse(verificationId), adminId, data.approved, data.note);
+      const id = z.string().uuid().parse(verificationId);
+      const { schoolId } = await schoolService.reviewVerification(id, adminId, data.approved, data.note);
+      await auditRequest(req, {
+        action: 'admin.school_verification_reviewed',
+        schoolId,
+        target: { type: 'school_verification', id },
+        metadata: { approved: data.approved },
+      });
       res.json({ success: true, message: data.approved ? 'Verificación aprobada' : 'Verificación rechazada' });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -777,7 +792,13 @@ export const schoolManagementController = {
     try {
       const { schoolId, memberId } = req.params;
       if (!(await requireSchoolOwner(req, res, schoolId))) return;
-      const result = await schoolManagementService.removeTeacher(schoolId, memberId);
+      const { teacherId, ...result } = await schoolManagementService.removeTeacher(schoolId, memberId);
+      await auditRequest(req, {
+        action: 'school.teacher_removed',
+        schoolId,
+        target: { type: 'user', id: teacherId },
+        metadata: { unassignedClassrooms: result.unassignedClassrooms },
+      });
       res.json({ success: true, data: result, message: 'Profesor retirado de la escuela' });
     } catch (error) {
       return sendManagementError(res, error, 'Error al retirar al profesor');
@@ -802,6 +823,7 @@ export const schoolManagementController = {
       const { schoolId } = req.params;
       if (!(await requireSchoolOwner(req, res, schoolId))) return;
       const inviteCode = await schoolManagementService.regenerateInviteCode(schoolId);
+      await auditRequest(req, { action: 'school.invite_regenerated', schoolId });
       res.json({ success: true, data: { inviteCode } });
     } catch (error) {
       return sendManagementError(res, error, 'Error al generar la invitación');
@@ -814,6 +836,7 @@ export const schoolManagementController = {
       const { schoolId } = req.params;
       if (!(await requireSchoolOwner(req, res, schoolId))) return;
       await schoolManagementService.disableInviteCode(schoolId);
+      await auditRequest(req, { action: 'school.invite_disabled', schoolId });
       res.json({ success: true, message: 'Invitación desactivada' });
     } catch (error) {
       return sendManagementError(res, error, 'Error al desactivar la invitación');
@@ -840,6 +863,7 @@ export const schoolManagementController = {
       const code = String(req.params.code || '').toUpperCase();
       if (!INVITE_CODE_RE.test(code)) return res.status(404).json({ success: false, message: 'Enlace no válido' });
       const result = await schoolManagementService.joinByInvite(req.user!.id, code);
+      if (!result.alreadyMember) await auditRequest(req, { action: 'school.joined_by_invite', schoolId: result.school.id });
       res.json({ success: true, data: result, message: result.alreadyMember ? 'Ya eras parte de esta escuela' : 'Te uniste a la escuela' });
     } catch (error) {
       return sendManagementError(res, error, 'Error al unirse con la invitación');

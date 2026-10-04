@@ -14,6 +14,7 @@ import { studentService } from './student.service.js';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError, isDuplicateEntry } from '../utils/errors.js';
 import { maskPersonName } from '../utils/helpers.js';
 import { teacherVerificationService, UNVERIFIED_CLASS_MESSAGE } from './teacherVerification.service.js';
+import { recordAudit } from '../utils/audit.js';
 
 // Tipos
 type UserRole = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'PARENT';
@@ -509,7 +510,7 @@ export const registerStudentWithCode = async (input: {
 /**
  * Iniciar sesión con email y contraseña
  */
-export const login = async (input: LoginInput): Promise<AuthResponse> => {
+export const login = async (input: LoginInput, context: { ip?: string | null } = {}): Promise<AuthResponse> => {
   const { email, password } = input;
   const normalizedEmail = normalizeEmail(email);
   
@@ -523,6 +524,9 @@ export const login = async (input: LoginInput): Promise<AuthResponse> => {
   const isValidPassword = await bcrypt.compare(password, passwordHash);
 
   if (!user || !user.isActive || user.provider !== 'LOCAL' || !user.password || !isValidPassword) {
+    // Un intento fallido contra una cuenta de administrador queda en el registro. Sin esperar: el tiempo de
+    // respuesta no debe delatar que el correo es de un administrador.
+    if (user?.role === 'ADMIN') void recordAudit({ action: 'auth.admin_login_failed', target: { type: 'user', id: user.id }, metadata: { provider: 'LOCAL' }, ip: context.ip ?? null });
     throw new Error('Credenciales inválidas');
   }
 

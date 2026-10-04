@@ -2893,3 +2893,29 @@ export const classNotesRelations = relations(classNotes, ({ one }) => ({
 
 export type ClassNote = typeof classNotes.$inferSelect;
 export type NewClassNote = typeof classNotes.$inferInsert;
+
+// ==================== REGISTRO DE AUDITORÍA ====================
+
+// Quién hizo qué, cuándo y desde dónde en las acciones sensibles. La app solo agrega filas (nunca las edita ni
+// las borra). metadata sin datos personales: ids, estados y conteos; nunca nombres, DNI, correos ni contraseñas.
+export const auditEvents = mysqlTable('audit_events', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  schoolId: varchar('school_id', { length: 36 }),
+  // null: el sistema o alguien sin sesión (por ejemplo, intentos fallidos de entrar).
+  actorUserId: varchar('actor_user_id', { length: 36 }),
+  actorRole: varchar('actor_role', { length: 16 }),
+  action: varchar('action', { length: 64 }).notNull(),
+  targetType: varchar('target_type', { length: 32 }),
+  targetId: varchar('target_id', { length: 36 }),
+  metadata: json('metadata').$type<Record<string, string | number | boolean | null>>(),
+  ip: varchar('ip', { length: 45 }),
+  createdAt: datetime('created_at', { fsp: 3 }).notNull(),
+}, (table) => ({
+  schoolDateIdx: index('idx_audit_events_school_date').on(table.schoolId, table.createdAt),
+  actorDateIdx: index('idx_audit_events_actor_date').on(table.actorUserId, table.createdAt),
+  actionDateIdx: index('idx_audit_events_action_date').on(table.action, table.createdAt),
+  targetIdx: index('idx_audit_events_target').on(table.targetType, table.targetId),
+}));
+
+export type AuditEvent = typeof auditEvents.$inferSelect;
+export type NewAuditEvent = typeof auditEvents.$inferInsert;

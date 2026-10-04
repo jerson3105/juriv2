@@ -53,7 +53,7 @@ class SchoolManagementService {
         .set({ schoolId: null, updatedAt: new Date() })
         .where(and(eq(classrooms.schoolId, schoolId), eq(classrooms.teacherId, member.userId)));
       await tx.delete(schoolMembers).where(eq(schoolMembers.id, memberId));
-      return { unassignedClassrooms: affectedRows(unassign) };
+      return { unassignedClassrooms: affectedRows(unassign), teacherId: member.userId };
     });
   }
 

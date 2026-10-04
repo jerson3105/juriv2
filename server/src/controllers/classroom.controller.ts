@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { createGenAI } from '../utils/aiClient.js';
 import { canAttachClassroomsToSchool, requireClassroomTeacher } from '../utils/access.js';
 import { AppError } from '../utils/errors.js';
+import { auditRequest } from '../utils/audit.js';
 import { config_app } from '../config/env.js';
 import { classJoinQrSvg, classJoinUrl, pdfService } from '../services/pdf.service.js';
 
@@ -1353,7 +1354,13 @@ REGLAS:
   async delete(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      await classroomService.delete(id, req.user!.id);
+      const deleted = await classroomService.delete(id, req.user!.id);
+      await auditRequest(req, {
+        action: 'classroom.deleted',
+        schoolId: deleted.schoolId,
+        target: { type: 'classroom', id },
+        metadata: { name: deleted.name, students: deleted.students },
+      });
 
       res.json({
         success: true,

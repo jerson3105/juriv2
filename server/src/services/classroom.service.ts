@@ -1968,7 +1968,7 @@ export class ClassroomService {
       await tx.delete(classrooms).where(eq(classrooms.id, classroomId));
     });
 
-    return { success: true };
+    return { success: true, name: classroom.name, schoolId: classroom.schoolId, students: studentIds.length };
   }
 
 

@@ -458,6 +458,7 @@ export class SchoolService {
     });
     // El equipo de Juried verificó la escuela y a su responsable.
     if (approved) await teacherVerificationService.markVerified(verification.userId, 'ADMIN');
+    return { schoolId: verification.schoolId };
   }
 
   // Obtener todas las escuelas con miembros (admin)

@@ -8,6 +8,7 @@ import { generateRandomCode } from '../utils/helpers.js';
 import { avatarService } from './avatar.service.js';
 import { splitOfficialStudentName } from './auth.service.js';
 import { teacherVerificationService, UNVERIFIED_CLASS_MESSAGE } from './teacherVerification.service.js';
+import { recordAudit } from '../utils/audit.js';
 
 /**
  * Alumnos sin correo. Primera vez: tarjeta (código personal) o código de clase + su nombre de la
@@ -278,7 +279,7 @@ class StudentPinService {
    * Revisa el PIN con la fila del usuario bloqueada (los intentos simultáneos no esquivan el
    * contador). Devuelve el error a lanzar FUERA de la transacción, para que el contador se guarde.
    */
-  private async checkPinLocked(tx: any, userId: string, pin: string): Promise<{ error?: Error; user?: { email: string; firstName: string; lastName: string; avatarUrl: string | null } }> {
+  private async checkPinLocked(tx: any, userId: string, pin: string): Promise<{ error?: Error; locked?: boolean; user?: { email: string; firstName: string; lastName: string; avatarUrl: string | null } }> {
     const [user] = await tx.select({
       email: users.email, firstName: users.firstName, lastName: users.lastName, avatarUrl: users.avatarUrl,
       provider: users.provider, isActive: users.isActive, pinHash: users.pinHash,
@@ -298,7 +299,7 @@ class StudentPinService {
       const attempts = user.pinFailedAttempts + 1;
       if (attempts >= MAX_ATTEMPTS) {
         await tx.update(users).set({ pinFailedAttempts: 0, pinLockedUntil: new Date(now + LOCK_MS) }).where(eq(users.id, userId));
-        return { error: new RateLimitError('Fallaste 5 veces: tu PIN quedó bloqueado 15 minutos. Si no lo recuerdas, pídele ayuda a tu profe.') };
+        return { error: new RateLimitError('Fallaste 5 veces: tu PIN quedó bloqueado 15 minutos. Si no lo recuerdas, pídele ayuda a tu profe.'), locked: true };
       }
       await tx.update(users).set({ pinFailedAttempts: attempts }).where(eq(users.id, userId));
       const left = MAX_ATTEMPTS - attempts;
@@ -312,11 +313,11 @@ class StudentPinService {
   }
 
   /** Entrar: código de clase + nombre de la lista + PIN. */
-  async loginWithPin(input: { classCode: string; studentId: string; pin: string }, userAgent?: string | null): Promise<PinAuthResult> {
+  async loginWithPin(input: { classCode: string; studentId: string; pin: string }, userAgent?: string | null, ip?: string | null): Promise<PinAuthResult> {
     if (!isPinFormatValid(input.pin)) throw new ValidationError('El PIN tiene 4 números.');
     const classroom = await db.query.classrooms.findFirst({
       where: eq(classrooms.code, normalizeCode(input.classCode)),
-      columns: { id: true, name: true, code: true, isActive: true },
+      columns: { id: true, name: true, code: true, isActive: true, schoolId: true },
     });
     if (!classroom || !classroom.isActive) throw new NotFoundError('No encontramos esa clase.');
     const profile = await db.query.studentProfiles.findFirst({
@@ -337,7 +338,18 @@ class StudentPinService {
       const tokens = await generateTokenPair({ userId, email: checked.user!.email, role: 'STUDENT' }, tx, { userAgent });
       return { ...checked, tokens };
     });
-    if (result.error) throw result.error;
+    if (result.error) {
+      if (result.locked) {
+        await recordAudit({
+          action: 'student.pin_locked',
+          schoolId: classroom.schoolId,
+          target: { type: 'user', id: userId },
+          metadata: { classroomId: classroom.id, via: 'login' },
+          ip: ip ?? null,
+        });
+      }
+      throw result.error;
+    }
 
     const user = result.user!;
     return {
@@ -351,7 +363,7 @@ class StudentPinService {
    * El alumno cambia su PIN (con el actual). Cierra sus otras sesiones (por si alguien lo vio) y
    * devuelve una sesión nueva para este dispositivo.
    */
-  async changePin(userId: string, currentPin: string, newPin: string, userAgent?: string | null): Promise<SessionTokens> {
+  async changePin(userId: string, currentPin: string, newPin: string, userAgent?: string | null, ip?: string | null): Promise<SessionTokens> {
     if (!isPinFormatValid(currentPin)) throw new ValidationError('Tu PIN actual tiene 4 números.');
     assertNewPin(newPin);
     if (currentPin === newPin) throw new ValidationError('El PIN nuevo debe ser distinto del actual.');
@@ -364,6 +376,15 @@ class StudentPinService {
       return checked;
     });
     if (result.error) {
+      if (result.locked) {
+        await recordAudit({
+          action: 'student.pin_locked',
+          actor: { id: userId, role: 'STUDENT' },
+          target: { type: 'user', id: userId },
+          metadata: { via: 'change_pin' },
+          ip: ip ?? null,
+        });
+      }
       // Un PIN actual equivocado no debe cerrar la sesión del alumno (el cliente renovaría por 401).
       // (AppError fija su prototipo: se compara el código, no la subclase.)
       if (result.error instanceof AppError && result.error.statusCode === 401) throw new ValidationError(result.error.message.replace('Ese PIN', 'Tu PIN actual'));
@@ -377,13 +398,13 @@ class StudentPinService {
    * Docente: "Restablecer acceso". Borra el PIN, cierra todas las sesiones del alumno y genera una
    * tarjeta nueva para que cree otro PIN. Solo cuentas con PIN (las de correo o Google no).
    */
-  async resetAccess(studentProfileId: string, teacherId: string): Promise<{ linkCode: string }> {
+  async resetAccess(studentProfileId: string, teacherId: string): Promise<{ linkCode: string; classroomId: string; schoolId: string | null }> {
     const profile = await db.query.studentProfiles.findFirst({
       where: eq(studentProfiles.id, studentProfileId),
       columns: { id: true, classroomId: true, userId: true },
     });
     if (!profile) throw new NotFoundError('Estudiante no encontrado');
-    const classroom = await db.query.classrooms.findFirst({ where: eq(classrooms.id, profile.classroomId), columns: { teacherId: true } });
+    const classroom = await db.query.classrooms.findFirst({ where: eq(classrooms.id, profile.classroomId), columns: { teacherId: true, schoolId: true } });
     if (!classroom || classroom.teacherId !== teacherId) throw new ForbiddenError('No tienes permiso para modificar este estudiante');
     if (!profile.userId) throw new ConflictError('Este alumno aún no tiene acceso: usa su código de acceso.');
     const userId = profile.userId;
@@ -405,7 +426,7 @@ class StudentPinService {
       }
     }
     await revokeAllUserTokens(userId);
-    return { linkCode };
+    return { linkCode, classroomId: profile.classroomId, schoolId: classroom.schoolId };
   }
 }
 
