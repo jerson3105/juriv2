@@ -41,7 +41,7 @@ export const AuthShell = ({ title, subtitle, children, back, footer, wide = fals
         </div>
       </div>
       <img
-        src="/assets/jiro/senalando.webp"
+        src="/assets/jiro/acceso/login.webp"
         alt=""
         aria-hidden="true"
         className="auth-float pointer-events-none absolute bottom-0 right-3 h-32 w-auto drop-shadow-2xl sm:h-40 lg:bottom-6 lg:left-10 lg:right-auto lg:h-56"

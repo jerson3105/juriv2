@@ -341,7 +341,7 @@ const JoinClassFlow = () => {
             initial={{ scale: 0 }}
             animate={{ scale: 1, y: [0, -4, 0] }}
             transition={{ scale: { type: 'spring', delay: 0.2 }, y: { duration: 3, repeat: Infinity, ease: 'easeInOut' } }}
-            src="/assets/mascot/jiro-ranking-xp.png"
+            src="/assets/jiro/acceso/alumno.webp"
             alt="Jiro"
             className="w-28 h-28 mx-auto mb-2 object-contain drop-shadow-lg"
           />

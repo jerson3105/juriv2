@@ -80,7 +80,7 @@ export const GoogleCallbackPage = () => {
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#0b1026] px-4" role="status">
       <Starfield count={80} />
       <div className="relative text-center">
-        <img src="/assets/jiro/emocionado.webp" alt="" aria-hidden="true" className="auth-float mx-auto h-36 w-auto drop-shadow-2xl" />
+        <img src="/assets/jiro/acceso/google.webp" alt="" aria-hidden="true" className="auth-float mx-auto h-36 w-auto drop-shadow-2xl" />
         <Loader2 className="mx-auto mt-4 h-8 w-8 animate-spin text-amber-200" aria-hidden="true" />
         <p className="mt-3 text-lg text-indigo-50">Completando tu inicio de sesión con Google…</p>
       </div>
