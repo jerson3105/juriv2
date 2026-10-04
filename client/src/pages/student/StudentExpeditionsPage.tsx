@@ -40,6 +40,7 @@ import {
 import { useCurrentStudentProfile } from '../../hooks/useCurrentStudentProfile';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../../store/authStore';
+import { GENIALLY_SANDBOX, isGeniallyEmbed } from '../../lib/geniallyEmbed';
 
 // Helper para construir URLs de archivos estáticos
 const getStaticUrl = (url: string) => {
@@ -741,7 +742,7 @@ export const StudentExpeditionsPage = () => {
                     {Array.isArray(selectedPin.storyFiles) && selectedPin.storyFiles.length > 0 && (
                       <div className="space-y-3 mt-4">
                         {selectedPin.storyFiles.map((file: string, idx: number) => {
-                          const isGenially = file.includes('genial.ly') || file.includes('genially');
+                          const isGenially = isGeniallyEmbed(file);
                           const isImage = /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(file);
                           const isPdf = /\.pdf$/i.test(file);
                           
@@ -763,6 +764,8 @@ export const StudentExpeditionsPage = () => {
                                   className="w-full aspect-video"
                                   frameBorder="0"
                                   allowFullScreen
+                                  sandbox={GENIALLY_SANDBOX}
+                                  referrerPolicy="no-referrer"
                                   title={`Genially ${idx + 1}`}
                                 />
                               </motion.div>

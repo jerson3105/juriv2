@@ -106,6 +106,15 @@ export class ExpeditionService {
     return row?.classroomId ?? null;
   }
 
+  /** Estado de la expedición (para no mostrar borradores al alumno). */
+  async getStatusById(expeditionId: string): Promise<'DRAFT' | 'PUBLISHED' | 'ARCHIVED' | null> {
+    const [row] = await db.select({ status: expeditions.status })
+      .from(expeditions)
+      .where(eq(expeditions.id, expeditionId));
+
+    return row?.status ?? null;
+  }
+
   async getClassroomIdByPin(pinId: string): Promise<string | null> {
     const [row] = await db.select({ classroomId: expeditions.classroomId })
       .from(expeditionPins)

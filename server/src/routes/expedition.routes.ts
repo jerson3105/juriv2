@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { expeditionUploadLimiter } from '../middleware/security.js';
 import * as expeditionController from '../controllers/expedition.controller.js';
 
 const router = Router();
@@ -7,16 +8,20 @@ const router = Router();
 // Todas las rutas requieren autenticación
 router.use(authenticate);
 
+// Las lecturas son del docente de la clase, de sus alumnos o del admin; cada controlador revisa además la
+// clase. Antes solo pedían sesión: una familia recién registrada leía expediciones y progreso de cualquiera.
+const readers = authorize('TEACHER', 'STUDENT', 'ADMIN');
+
 // ==================== EXPEDITION CRUD (TEACHER) ====================
 
 // Crear expedición
 router.post('/', authorize('TEACHER'), expeditionController.createExpedition);
 
 // Obtener expedición por ID
-router.get('/:id', expeditionController.getExpedition);
+router.get('/:id', readers, expeditionController.getExpedition);
 
 // Obtener expediciones de un classroom
-router.get('/classroom/:classroomId', expeditionController.getClassroomExpeditions);
+router.get('/classroom/:classroomId', readers, expeditionController.getClassroomExpeditions);
 
 // Obtener estadísticas de expediciones de un classroom
 router.get('/classroom/:classroomId/stats', authorize('TEACHER'), expeditionController.getClassroomStats);
@@ -39,7 +44,7 @@ router.delete('/:id', authorize('TEACHER'), expeditionController.deleteExpeditio
 router.post('/:expeditionId/pins', authorize('TEACHER'), expeditionController.createPin);
 
 // Obtener pin
-router.get('/pins/:pinId', expeditionController.getPin);
+router.get('/pins/:pinId', readers, expeditionController.getPin);
 
 // Actualizar pin
 router.put('/pins/:pinId', authorize('TEACHER'), expeditionController.updatePin);
@@ -75,23 +80,23 @@ router.get('/pins/:pinId/submissions', authorize('TEACHER'), expeditionControlle
 // ==================== STUDENT ROUTES ====================
 
 // Obtener expediciones del estudiante en un classroom
-router.get('/student/:classroomId/:studentProfileId', expeditionController.getStudentExpeditions);
+router.get('/student/:classroomId/:studentProfileId', readers, expeditionController.getStudentExpeditions);
 
 // Obtener detalle de expedición para estudiante
-router.get('/student/:expeditionId/detail/:studentProfileId', expeditionController.getStudentExpeditionDetail);
+router.get('/student/:expeditionId/detail/:studentProfileId', readers, expeditionController.getStudentExpeditionDetail);
 
 // Obtener progreso del estudiante
-router.get('/:expeditionId/progress/:studentProfileId', expeditionController.getStudentProgress);
+router.get('/:expeditionId/progress/:studentProfileId', readers, expeditionController.getStudentProgress);
 
 // Crear entrega de tarea
-router.post('/:expeditionId/pins/:pinId/submit', expeditionController.createSubmission);
+router.post('/:expeditionId/pins/:pinId/submit', authorize('STUDENT'), expeditionController.createSubmission);
 
 // Completar un pin (estudiante avanza al siguiente)
-router.post('/pins/:pinId/complete', expeditionController.completePin);
+router.post('/pins/:pinId/complete', authorize('STUDENT'), expeditionController.completePin);
 
 // ==================== UPLOAD ====================
 
-// Subir archivo de entrega (máximo 5MB)
-router.post('/upload', expeditionController.uploadExpeditionFile, expeditionController.handleExpeditionUpload);
+// Subir archivo (recurso del docente o entrega del alumno; máximo 5MB)
+router.post('/upload', authorize('TEACHER', 'STUDENT'), expeditionUploadLimiter, expeditionController.uploadExpeditionFile, expeditionController.handleExpeditionUpload);
 
 export default router;

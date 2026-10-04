@@ -145,6 +145,21 @@ export const roomMessageLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Subidas de expediciones (recursos del docente y entregas del alumno): sin tope, una cuenta podía llenar el
+// disco de archivos de hasta 5 MB. Cuenta por usuario (o IP).
+export const expeditionUploadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hora
+  max: config_app.isDev ? 600 : 60,
+  keyGenerator: (req) => (req as any).user?.id ?? ipKey(req),
+  message: {
+    success: false,
+    error: 'Subiste muchos archivos en la última hora. Espera un rato y vuelve a intentarlo.',
+    message: 'Subiste muchos archivos en la última hora. Espera un rato y vuelve a intentarlo.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Rate limiter para funciones con IA (Gemini). Cualquiera puede registrarse como profesor:
 // sin este límite la app servía de proxy gratuito de Gemini. Cuenta por usuario (o IP).
 export const aiLimiter = rateLimit({

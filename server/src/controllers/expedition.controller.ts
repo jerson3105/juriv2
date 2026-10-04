@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { z } from 'zod';
 import { expeditionService } from '../services/expedition.service.js';
 import multer from 'multer';
 import path from 'path';
@@ -16,6 +17,67 @@ import { requireClassroomTeacher } from '../utils/access.js';
 
 // Acceso de profesor a la clase: ver utils/access.ts (requireClassroomTeacher).
 const ensureTeacherClassroomAccess = requireClassroomTeacher;
+
+// Lecturas: solo el docente de la clase, sus alumnos o el admin. Antes cualquier otro rol (una familia
+// recién registrada) pasaba sin control y leía expediciones y progreso de cualquier clase.
+const denyOtherRoles = (res: Response) => res.status(403).json({ error: 'No tienes permisos para esta acción' });
+
+// ── Validación de paradas, decisiones y entregas ──
+// Recompensa por parada: sin negativos (restaban XP sin dejar registro) y con tope.
+const MAX_PIN_REWARD = 500;
+// Archivo propio subido a /api/uploads/expeditions, o enlace https (incluye Genially: el cliente solo lo
+// incrusta si el dominio es genial.ly). Nada de javascript:, data: ni http:.
+const OWN_UPLOAD = /^\/api\/uploads\/expeditions\/[\w.-]+$/;
+const nullAsMissing = <T extends z.ZodTypeAny>(schema: T) => z.preprocess((value) => (value === null ? undefined : value), schema.optional());
+const resourceSchema = z.string().trim().max(500, 'El enlace es muy largo')
+  .refine((value) => OWN_UPLOAD.test(value) || /^https:\/\/[^\s<>"']+$/i.test(value), 'Recurso no válido: usa un archivo subido o un enlace https');
+const rewardSchema = z.coerce.number({ invalid_type_error: 'La recompensa debe ser un número' })
+  .int('La recompensa debe ser un número entero')
+  .min(0, 'La recompensa no puede ser negativa')
+  .max(MAX_PIN_REWARD, `La recompensa no puede pasar de ${MAX_PIN_REWARD}`);
+const positionSchema = z.coerce.number({ invalid_type_error: 'Posición no válida' }).min(0, 'Posición no válida').max(100, 'Posición no válida').transform(Math.round);
+// '' o null = sin fecha; una fecha inválida también queda sin fecha (como antes).
+const dateSchema = z.union([z.string(), z.null()]).optional().transform((value) => {
+  if (value === undefined) return undefined;
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+});
+// Lista blanca de campos: el resto del body se descarta. Antes se copiaba entero y podía pisar
+// expeditionId (crear o mover paradas a expediciones de otra clase).
+const pinFieldsSchema = z.object({
+  pinType: z.enum(['INTRO', 'OBJECTIVE', 'FINAL'], { errorMap: () => ({ message: 'Tipo de parada no válido' }) }),
+  name: z.string({ required_error: 'La parada necesita un nombre' }).trim().min(1, 'La parada necesita un nombre').max(255, 'El nombre es muy largo'),
+  positionX: positionSchema,
+  positionY: positionSchema,
+  storyContent: nullAsMissing(z.string().max(20000, 'La historia es muy larga')),
+  storyFiles: nullAsMissing(z.array(resourceSchema).max(5, 'Máximo 5 recursos')),
+  taskName: nullAsMissing(z.string().max(255, 'El nombre de la tarea es muy largo')),
+  taskContent: nullAsMissing(z.string().max(20000, 'La tarea es muy larga')),
+  taskFiles: nullAsMissing(z.array(resourceSchema).max(5, 'Máximo 5 recursos')),
+  requiresSubmission: nullAsMissing(z.boolean()),
+  dueDate: dateSchema,
+  rewardXp: nullAsMissing(rewardSchema),
+  rewardGp: nullAsMissing(rewardSchema),
+  earlySubmissionEnabled: nullAsMissing(z.boolean()),
+  earlySubmissionDate: dateSchema,
+  earlyBonusXp: nullAsMissing(rewardSchema),
+  earlyBonusGp: nullAsMissing(rewardSchema),
+  autoProgress: z.boolean().nullable().optional(),
+});
+const decisionSchema = z.object({
+  studentProfileId: z.string().uuid('Alumno no válido'),
+  passed: z.boolean({ required_error: 'Falta la decisión', invalid_type_error: 'La decisión debe ser sí o no' }),
+});
+const decisionsSchema = z.array(decisionSchema).min(1, 'No hay decisiones').max(300, 'Demasiadas decisiones a la vez');
+// Las entregas solo pueden apuntar a archivos subidos con /expeditions/upload.
+const submissionSchema = z.object({
+  studentProfileId: z.string().optional(),
+  files: z.array(z.string().regex(OWN_UPLOAD, 'Archivo no válido: súbelo desde la expedición'))
+    .min(1, 'Sube al menos un archivo').max(5, 'Máximo 5 archivos'),
+  comment: z.string().max(2000, 'El comentario es muy largo').nullable().optional(),
+});
+const firstIssue = (error: z.ZodError, fallback: string) => error.issues[0]?.message ?? fallback;
 
 const ensureTeacherExpeditionAccess = async (
   req: Request,
@@ -242,14 +304,17 @@ export const getExpedition = async (req: Request, res: Response) => {
       if (!hasAccess) {
         return res.status(403).json({ error: 'No tienes acceso a esta expedición' });
       }
+    } else if (user.role !== 'ADMIN') {
+      return denyOtherRoles(res);
     }
 
     const expedition = await expeditionService.getById(id);
-    
-    if (!expedition) {
+
+    // Un borrador es del docente: el alumno no lo ve hasta que se publica.
+    if (!expedition || (user.role === 'STUDENT' && expedition.status === 'DRAFT')) {
       return res.status(404).json({ error: 'Expedición no encontrada' });
     }
-    
+
     res.json(expedition);
   } catch (error) {
     console.error('Error getting expedition:', error);
@@ -278,6 +343,8 @@ export const getClassroomExpeditions = async (req: Request, res: Response) => {
         return res.status(403).json({ error: 'No tienes acceso a esta clase' });
       }
       resolvedStatus = 'PUBLISHED';
+    } else if (user.role !== 'ADMIN') {
+      return denyOtherRoles(res);
     }
     
     const expeditions = await expeditionService.getByClassroom(
@@ -377,28 +444,20 @@ export const createPin = async (req: Request, res: Response) => {
 
     const hasAccess = await ensureTeacherExpeditionAccess(req, res, expeditionId);
     if (!hasAccess) return;
-    
-    if (!pinData.pinType || !pinData.name || pinData.positionX === undefined || pinData.positionY === undefined) {
-      return res.status(400).json({ error: 'pinType, name, positionX y positionY son requeridos' });
+
+    const parsed = pinFieldsSchema.safeParse(pinData);
+    if (!parsed.success) {
+      return res.status(400).json({ error: firstIssue(parsed.error, 'Datos de la parada no válidos') });
     }
-    
-    // Convertir fechas de string a Date si existen y son válidas
-    if (pinData.dueDate && pinData.dueDate !== '') {
-      const date = new Date(pinData.dueDate);
-      pinData.dueDate = isNaN(date.getTime()) ? null : date;
-    } else {
-      pinData.dueDate = null;
-    }
-    if (pinData.earlySubmissionDate && pinData.earlySubmissionDate !== '') {
-      const date = new Date(pinData.earlySubmissionDate);
-      pinData.earlySubmissionDate = isNaN(date.getTime()) ? null : date;
-    } else {
-      pinData.earlySubmissionDate = null;
-    }
-    
+    const data = parsed.data;
+
+    // expeditionId sale de la ruta (ya autorizada), nunca del body.
     const pin = await expeditionService.createPin({
+      ...data,
+      dueDate: data.dueDate ?? undefined,
+      earlySubmissionDate: data.earlySubmissionDate ?? undefined,
+      autoProgress: data.autoProgress ?? undefined,
       expeditionId,
-      ...pinData,
     });
     
     res.status(201).json(pin);
@@ -430,11 +489,14 @@ export const getPin = async (req: Request, res: Response) => {
       if (!hasAccess) {
         return res.status(403).json({ error: 'No tienes acceso a este pin' });
       }
+    } else if (user.role !== 'ADMIN') {
+      return denyOtherRoles(res);
     }
 
     const pin = await expeditionService.getPinById(pinId);
-    
-    if (!pin) {
+
+    // Las paradas de un borrador tampoco se muestran al alumno.
+    if (!pin || (user.role === 'STUDENT' && await expeditionService.getStatusById(pin.expeditionId) === 'DRAFT')) {
       return res.status(404).json({ error: 'Pin no encontrado' });
     }
     
@@ -452,22 +514,14 @@ export const updatePin = async (req: Request, res: Response) => {
 
     const hasAccess = await ensureTeacherPinAccess(req, res, pinId);
     if (!hasAccess) return;
-    
-    // Convertir fechas de string a Date si existen y son válidas
-    if (pinData.dueDate && pinData.dueDate !== '') {
-      const date = new Date(pinData.dueDate);
-      pinData.dueDate = isNaN(date.getTime()) ? null : date;
-    } else if (pinData.dueDate === '') {
-      pinData.dueDate = null;
+
+    // Solo los campos de la lista blanca: expeditionId, id o fechas del sistema ya no se pueden pisar.
+    const parsed = pinFieldsSchema.partial().safeParse(pinData);
+    if (!parsed.success) {
+      return res.status(400).json({ error: firstIssue(parsed.error, 'Datos de la parada no válidos') });
     }
-    if (pinData.earlySubmissionDate && pinData.earlySubmissionDate !== '') {
-      const date = new Date(pinData.earlySubmissionDate);
-      pinData.earlySubmissionDate = isNaN(date.getTime()) ? null : date;
-    } else if (pinData.earlySubmissionDate === '') {
-      pinData.earlySubmissionDate = null;
-    }
-    
-    const pin = await expeditionService.updatePin(pinId, pinData);
+
+    const pin = await expeditionService.updatePin(pinId, parsed.data);
     res.json(pin);
   } catch (error) {
     console.error('Error updating pin:', error);
@@ -576,10 +630,12 @@ export const getStudentProgress = async (req: Request, res: Response) => {
 
       const canReadTarget = await ensureStudentProfileReadAccess(req, res, studentProfileId, classroomId);
       if (!canReadTarget) return;
+    } else if (user.role !== 'ADMIN') {
+      return denyOtherRoles(res);
     }
 
     const progress = await expeditionService.getStudentProgress(expeditionId, resolvedStudentProfileId);
-    
+
     if (!progress) {
       return res.status(404).json({ error: 'Progreso no encontrado' });
     }
@@ -609,16 +665,16 @@ export const getPinProgress = async (req: Request, res: Response) => {
 export const setTeacherDecision = async (req: Request, res: Response) => {
   try {
     const { pinId } = req.params;
-    const { studentProfileId, passed } = req.body;
 
     const hasAccess = await ensureTeacherPinAccess(req, res, pinId);
     if (!hasAccess) return;
-    
-    if (!studentProfileId || passed === undefined) {
-      return res.status(400).json({ error: 'studentProfileId y passed son requeridos' });
+
+    const parsed = decisionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: firstIssue(parsed.error, 'Decisión no válida') });
     }
-    
-    const progress = await expeditionService.setTeacherDecision(pinId, studentProfileId, passed);
+
+    const progress = await expeditionService.setTeacherDecision(pinId, parsed.data.studentProfileId, parsed.data.passed);
     res.json(progress);
   } catch (error) {
     console.error('Error setting teacher decision:', error);
@@ -629,17 +685,18 @@ export const setTeacherDecision = async (req: Request, res: Response) => {
 export const setTeacherDecisionBulk = async (req: Request, res: Response) => {
   try {
     const { pinId } = req.params;
-    const { decisions } = req.body; // Array de { studentProfileId, passed }
 
     const hasAccess = await ensureTeacherPinAccess(req, res, pinId);
     if (!hasAccess) return;
-    
-    if (!decisions || !Array.isArray(decisions)) {
-      return res.status(400).json({ error: 'decisions debe ser un array' });
+
+    // Array de { studentProfileId, passed }, con tope (antes sin límite ni forma: un `passed` ausente marcaba FAILED).
+    const parsed = decisionsSchema.safeParse(req.body?.decisions);
+    if (!parsed.success) {
+      return res.status(400).json({ error: firstIssue(parsed.error, 'Decisiones no válidas') });
     }
-    
+
     const results = [];
-    for (const decision of decisions) {
+    for (const decision of parsed.data) {
       const progress = await expeditionService.setTeacherDecision(
         pinId,
         decision.studentProfileId,
@@ -660,11 +717,12 @@ export const setTeacherDecisionBulk = async (req: Request, res: Response) => {
 export const createSubmission = async (req: Request, res: Response) => {
   try {
     const { expeditionId, pinId } = req.params;
-    const { studentProfileId, files, comment } = req.body;
-
-    if (!files || !Array.isArray(files) || files.length === 0) {
-      return res.status(400).json({ error: 'files es requerido y debe ser un array no vacío' });
+    const parsed = submissionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: firstIssue(parsed.error, 'Entrega no válida') });
     }
+    const { studentProfileId, files } = parsed.data;
+    const comment = parsed.data.comment ?? undefined;
 
     const classroomId = await expeditionService.getClassroomIdByPin(pinId);
     if (!classroomId) {
@@ -740,8 +798,10 @@ export const getStudentExpeditions = async (req: Request, res: Response) => {
 
       const canReadTarget = await ensureStudentProfileReadAccess(req, res, studentProfileId, classroomId);
       if (!canReadTarget) return;
+    } else if (user.role !== 'ADMIN') {
+      return denyOtherRoles(res);
     }
-    
+
     // Obtener expediciones publicadas
     const expeditions = await expeditionService.getByClassroom(classroomId, 'PUBLISHED');
     
@@ -789,10 +849,12 @@ export const getStudentExpeditionDetail = async (req: Request, res: Response) =>
 
       const canReadTarget = await ensureStudentProfileReadAccess(req, res, studentProfileId, classroomId);
       if (!canReadTarget) return;
+    } else if (user.role !== 'ADMIN') {
+      return denyOtherRoles(res);
     }
-    
+
     const expedition = await expeditionService.getById(expeditionId);
-    if (!expedition) {
+    if (!expedition || (user.role === 'STUDENT' && expedition.status === 'DRAFT')) {
       return res.status(404).json({ error: 'Expedición no encontrada' });
     }
     

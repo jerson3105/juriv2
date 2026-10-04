@@ -40,6 +40,7 @@ import {
 } from '../../lib/expeditionApi';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../../store/authStore';
+import { isGeniallyEmbed } from '../../lib/geniallyEmbed';
 
 // Helper para construir URLs de archivos estáticos
 const getStaticUrl = (url: string) => {
@@ -773,7 +774,7 @@ export const ExpeditionEditor = ({ expeditionId, onBack }: ExpeditionEditorProps
                         <div className="space-y-2 mb-3">
                           {pinForm.storyFiles.map((file, index) => (
                             <div key={index} className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                              {file.includes('genial.ly') || file.includes('genially') ? (
+                              {isGeniallyEmbed(file) ? (
                                 <Code size={16} className="text-purple-500 flex-shrink-0" />
                               ) : file.startsWith('http') ? (
                                 <Globe size={16} className="text-blue-500 flex-shrink-0" />
@@ -781,8 +782,8 @@ export const ExpeditionEditor = ({ expeditionId, onBack }: ExpeditionEditorProps
                                 <FileUp size={16} className="text-emerald-500 flex-shrink-0" />
                               )}
                               <span className="flex-1 text-sm text-gray-600 dark:text-gray-400 truncate">
-                                {file.includes('genial.ly') || file.includes('genially') 
-                                  ? 'Genially embed' 
+                                {isGeniallyEmbed(file)
+                                  ? 'Genially embed'
                                   : file.startsWith('http') 
                                     ? file 
                                     : file.split('/').pop()}
@@ -864,8 +865,9 @@ export const ExpeditionEditor = ({ expeditionId, onBack }: ExpeditionEditorProps
                             onClick={() => {
                               const url = prompt('Ingresa la URL del recurso:');
                               if (url && url.trim()) {
-                                if (!url.startsWith('http://') && !url.startsWith('https://')) {
-                                  toast.error('La URL debe comenzar con http:// o https://');
+                                // El servidor solo acepta enlaces seguros (https).
+                                if (!url.trim().startsWith('https://')) {
+                                  toast.error('La URL debe comenzar con https://');
                                   return;
                                 }
                                 setPinForm({ 
@@ -892,9 +894,9 @@ export const ExpeditionEditor = ({ expeditionId, onBack }: ExpeditionEditorProps
                                 if (srcMatch) {
                                   geniallyUrl = srcMatch[1];
                                 }
-                                // Validar que sea de Genially
-                                if (!geniallyUrl.includes('genial.ly') && !geniallyUrl.includes('genially')) {
-                                  toast.error('El enlace debe ser de Genially');
+                                // Solo enlaces https de genial.ly: el alumno lo verá incrustado.
+                                if (!isGeniallyEmbed(geniallyUrl)) {
+                                  toast.error('El enlace debe ser de Genially (https://view.genial.ly/…)');
                                   return;
                                 }
                                 setPinForm({ 
