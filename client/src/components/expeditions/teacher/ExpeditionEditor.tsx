@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, CheckCircle2, Eye, Loader2, MonitorPlay, MoreVertical, Plus, Rocket, Settings2 } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, CheckCircle2, Eye, Loader2, Lock, MonitorPlay, MoreVertical, Plus, Rocket, Settings2 } from 'lucide-react';
 import { SidePanel } from '../../gradebook/SidePanel';
 import { HomeModal } from '../../home/HomeModal';
 import { Popover } from '../../ui/Popover';
@@ -78,7 +78,9 @@ const Checklist = ({ expedition, issues }: { expedition: TeacherExpedition; issu
         ))}
       </ul>
     )}
-    <p className="text-sm pg-fg2">Toca una parada para editarla, o los ajustes para el nombre, el escenario y el premio de la meta.</p>
+    <p className="text-sm pg-fg2">{expedition.status === 'ARCHIVED'
+      ? 'Toca una parada o los ajustes para verlos (cerrada: solo lectura).'
+      : 'Toca una parada para editarla, o los ajustes para el nombre, el escenario y el premio de la meta.'}</p>
   </div>
 );
 
@@ -187,6 +189,8 @@ export const ExpeditionEditor = ({ classroom, expeditionId }: { classroom: Class
 
   const issues = publishIssues(expedition);
   const stops = expedition.stops;
+  // Cerrada: solo lectura; queda aprobar lo que entregaron (para cambiar algo, se abre de nuevo).
+  const closed = expedition.status === 'ARCHIVED';
   const selectedIndex = side?.kind === 'stop' ? stops.findIndex((s) => s.id === side.id) : -1;
   const selected = selectedIndex >= 0 ? stops[selectedIndex] : null;
   const pending = review.data?.pending.length ?? 0;
@@ -245,6 +249,15 @@ export const ExpeditionEditor = ({ classroom, expeditionId }: { classroom: Class
           </div>
         </div>
         {expedition.status === 'DRAFT' && issues.length > 0 && <p id="publish-why" className="text-sm pg-fg2">Para publicar: {issues[0]}{issues.length > 1 ? ` (y ${issues.length - 1} más)` : ''}.</p>}
+        {closed && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <p className="flex items-start gap-1.5 text-sm pg-fg2">
+              <Lock size={15} className="mt-0.5 flex-shrink-0" aria-hidden="true" />
+              Cerrada: tus alumnos ya no avanzan y queda en solo lectura. Puedes aprobar lo que quedó en «Por revisar».
+            </p>
+            <button type="button" onClick={() => statusAction.mutate('reopen')} disabled={statusAction.isPending} className="pg-btn">Abrir de nuevo</button>
+          </div>
+        )}
       </div>
 
       {live && (
@@ -258,7 +271,7 @@ export const ExpeditionEditor = ({ classroom, expeditionId }: { classroom: Class
       )}
 
       {live && tab === 'progress' && <ProgressBoard expeditionId={expeditionId} projecting={projecting} onMarkClass={(stopId, board) => setMarking({ stopId, board })} />}
-      {live && tab === 'review' && <ReviewQueue expeditionId={expeditionId} projecting={projecting} undoable={undoable} />}
+      {live && tab === 'review' && <ReviewQueue expeditionId={expeditionId} projecting={projecting} undoable={undoable} closed={closed} />}
 
       {(!live || tab === 'stops') && (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] lg:items-start">
@@ -282,7 +295,9 @@ export const ExpeditionEditor = ({ classroom, expeditionId }: { classroom: Class
                 <button type="button" onClick={() => setSide({ kind: 'settings' })} aria-pressed={side?.kind === 'settings'} className="pg-btn"><Settings2 size={16} aria-hidden="true" /> Ajustes</button>
               </div>
               {stops.length === 0 ? (
-                <p className="px-3 py-4 text-sm pg-fg2">Agrega la primera parada. Una buena expedición tiene de 4 a 6: un relato, un par de retos, una evidencia y una parada en clase.</p>
+                <p className="px-3 py-4 text-sm pg-fg2">{closed
+                  ? 'No tiene paradas.'
+                  : 'Agrega la primera parada. Una buena expedición tiene de 4 a 6: un relato, un par de retos, una evidencia y una parada en clase.'}</p>
               ) : (
                 <ol>
                   {stops.map((stop, index) => (
@@ -301,13 +316,17 @@ export const ExpeditionEditor = ({ classroom, expeditionId }: { classroom: Class
                           </span>
                         </span>
                       </button>
-                      <button type="button" onClick={() => move(index, -1)} disabled={index === 0 || reorder.isPending} className="pg-icon-btn" aria-label={`Subir «${stop.title}»`}><ArrowUp size={16} aria-hidden="true" /></button>
-                      <button type="button" onClick={() => move(index, 1)} disabled={index === stops.length - 1 || reorder.isPending} className="pg-icon-btn" aria-label={`Bajar «${stop.title}»`}><ArrowDown size={16} aria-hidden="true" /></button>
+                      {!closed && (
+                        <>
+                          <button type="button" onClick={() => move(index, -1)} disabled={index === 0 || reorder.isPending} className="pg-icon-btn" aria-label={`Subir «${stop.title}»`}><ArrowUp size={16} aria-hidden="true" /></button>
+                          <button type="button" onClick={() => move(index, 1)} disabled={index === stops.length - 1 || reorder.isPending} className="pg-icon-btn" aria-label={`Bajar «${stop.title}»`}><ArrowDown size={16} aria-hidden="true" /></button>
+                        </>
+                      )}
                     </li>
                   ))}
                 </ol>
               )}
-              {stops.length < MAX_STOPS && (
+              {stops.length < MAX_STOPS && !closed && (
                 <div className="border-t border-[var(--pg-line)] p-3">
                   <p className="mb-2 flex items-center gap-1.5 text-sm font-semibold pg-fg"><Plus size={16} aria-hidden="true" /> Agregar parada</p>
                   <div className="grid gap-2 sm:grid-cols-2">

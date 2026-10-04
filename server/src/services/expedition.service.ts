@@ -224,6 +224,11 @@ const noPoints = { xp: 0, gold: 0, reason: '', title: '', what: '', givenBy: nul
 
 const rewardText = (xp: number, gold: number) => [xp > 0 ? `+${xp} XP` : '', gold > 0 ? `+${gold} de oro` : ''].filter(Boolean).join(' · ');
 
+/** Cerrada = solo lectura también para el docente: solo aprueba lo que quedó por revisar (para cambiarla, la abre de nuevo). */
+const assertOpen = (expedition: Expedition) => {
+  if (expedition.status === 'ARCHIVED') throw new ConflictError('La expedición está cerrada: ábrela de nuevo para cambiarla');
+};
+
 const isDeadlock = (error: unknown) => [error, (error as { cause?: unknown } | null)?.cause].some((e) => {
   if (!e || typeof e !== 'object') return false;
   const dbError = e as { code?: string; errno?: number };
@@ -430,6 +435,7 @@ class ExpeditionService {
     groupMode?: 'INDIVIDUAL' | 'CLAN'; clanXp?: number; goalPercent?: number | null; goalDueAt?: Date | null; goalXp?: number;
   }) {
     const expedition = await this.requireExpedition(expeditionId);
+    assertOpen(expedition);
     const stops = await this.stopsOf(expeditionId);
     const set: Partial<typeof expeditions.$inferInsert> = { updatedAt: new Date() };
     // Por clanes: solo si la clase tiene clanes. Al activarlo, el premio del clan arranca con el sugerido.
@@ -554,6 +560,7 @@ class ExpeditionService {
     await transaction(async (tx) => {
       // Bloquea la expedición: dos «Agregar» seguidos no reciben el mismo orden.
       const expedition = await this.requireExpedition(expeditionId, tx, true);
+      assertOpen(expedition);
       const stops = await this.stopsOf(expeditionId, tx);
       if (stops.length >= MAX_STOPS) throw new ValidationError(`Una expedición tiene hasta ${MAX_STOPS} paradas`);
       const [classroom] = await tx.select({ xpPerLevel: classrooms.xpPerLevel }).from(classrooms).where(eq(classrooms.id, expedition.classroomId));
@@ -604,6 +611,7 @@ class ExpeditionService {
     const context = await this.getStopContext(stopId);
     if (!context) throw new NotFoundError('Parada no encontrada');
     const { stop, expedition } = context;
+    assertOpen(expedition);
     const set: Partial<typeof expeditionStops.$inferInsert> = { updatedAt: new Date() };
     const kindChanges = patch.kind !== undefined && patch.kind !== stop.kind;
     const bankChanges = patch.bankId !== undefined && patch.bankId !== stop.bankId;
@@ -682,7 +690,8 @@ class ExpeditionService {
       const students = await tx.selectDistinct({ id: expeditionStopProgress.studentProfileId }).from(expeditionStopProgress)
         .where(eq(expeditionStopProgress.expeditionId, expedition.id));
       await lockStudents(tx, students.map((s) => s.id));
-      await this.requireExpedition(expedition.id, tx, true);
+      // Cerrada: borrar una parada ya no da la meta (ni su XP) a quien tenía las demás.
+      assertOpen(await this.requireExpedition(expedition.id, tx, true));
       await tx.delete(expeditionAnswers).where(eq(expeditionAnswers.stopId, stopId));
       await tx.delete(expeditionEvidence).where(eq(expeditionEvidence.stopId, stopId));
       await tx.delete(expeditionStopProgress).where(eq(expeditionStopProgress.stopId, stopId));
@@ -703,7 +712,7 @@ class ExpeditionService {
 
   async reorderStops(expeditionId: string, stopIds: string[]) {
     await transaction(async (tx) => {
-      await this.requireExpedition(expeditionId, tx, true);
+      assertOpen(await this.requireExpedition(expeditionId, tx, true));
       const current = await this.stopsOf(expeditionId, tx);
       const known = new Set(current.map((s) => s.id));
       if (stopIds.length !== current.length || new Set(stopIds).size !== stopIds.length || stopIds.some((id) => !known.has(id))) {
@@ -873,6 +882,10 @@ class ExpeditionService {
     progressId: string; decision: 'APPROVE' | 'NEEDS_WORK'; feedback?: string | null; evidenceId?: string | null; level?: string | null;
   }[]) {
     const expedition = await this.requireExpedition(expeditionId);
+    // Cerrada: se aprueba lo que entregaron antes de cerrar (y paga como siempre); pedir mejora no sirve, ya no pueden reenviar.
+    if (expedition.status === 'ARCHIVED' && decisions.some((d) => d.decision === 'NEEDS_WORK')) {
+      throw new ConflictError('La expedición está cerrada: solo puedes aprobar. Para pedir mejoras, ábrela de nuevo');
+    }
     const stops = new Map((await this.stopsOf(expeditionId)).map((stop) => [stop.id, stop]));
     const progressIds = [...new Set(decisions.map((d) => d.progressId))];
     // Nivel elegido al aprobar, en la escala de la clase (AD/A/B/C, 0–20…): se valida antes de tocar nada.
@@ -1558,7 +1571,8 @@ class ExpeditionService {
    */
   private async checkTogether(expeditionId: string) {
     const expedition = await this.requireExpedition(expeditionId);
-    if (expedition.status !== 'PUBLISHED') return;
+    // También cerrada: aprobar lo que quedó por revisar paga como siempre, con clan y meta de clase.
+    if (expedition.status === 'DRAFT') return;
     if (expedition.groupMode === 'CLAN') {
       for (const clan of await this.clanProgress(db, expedition)) {
         if (clan.complete && !clan.arrived) await this.rewardClan(expedition, clan);
@@ -1654,7 +1668,7 @@ class ExpeditionService {
   private async refreshClassGoal(expeditionId: string) {
     const state = await transaction<'none' | 'reached' | 'new'>(async (tx) => {
       const [row] = await tx.select().from(expeditions).where(eq(expeditions.id, expeditionId)).for('update');
-      if (!row?.goalPercent || row.status !== 'PUBLISHED') return { value: 'none', after: [] };
+      if (!row?.goalPercent || row.status === 'DRAFT') return { value: 'none', after: [] };
       if (row.goalReachedAt) return { value: 'reached', after: [] };
       if (row.goalDueAt && Date.now() > row.goalDueAt.getTime()) return { value: 'none', after: [] };
       const { finished, total } = await this.classFinishCounts(tx, row);

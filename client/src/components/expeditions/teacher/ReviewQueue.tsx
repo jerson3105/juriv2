@@ -52,9 +52,11 @@ const Evidence = ({ item }: { item: ReviewItem }) => {
   );
 };
 
-const PendingRow = ({ item, selected, onSelect, onDecide, scale, scaleType, level, onLevel }: {
+const PendingRow = ({ item, selected, onSelect, onDecide, scale, scaleType, level, onLevel, closed }: {
   item: ReviewItem; selected: boolean; onSelect: () => void; onDecide: (decision: ReviewDecision) => void;
   scale: GradeScaleOptions; scaleType: GradeScaleType | null; level: string; onLevel: (value: string) => void;
+  /** Expedición cerrada: solo se aprueba (ya no pueden reenviar). */
+  closed: boolean;
 }) => {
   const [asking, setAsking] = useState(false);
   const [feedback, setFeedback] = useState('');
@@ -110,9 +112,11 @@ const PendingRow = ({ item, selected, onSelect, onDecide, scale, scaleType, leve
                 className="pg-btn pg-btn-give">
                 <Check size={16} aria-hidden="true" /> Aprobar{item.competency && level.trim() && levelOk ? ` con ${level.trim().toUpperCase()}` : ''} <span className="font-normal">({rewardLabel(item.rewardXp, item.rewardGold)})</span>
               </button>
-              <button type="button" onClick={() => setAsking(true)} className="pg-btn pg-btn-fix">
-                <RotateCcw size={16} aria-hidden="true" /> Pedir mejora
-              </button>
+              {!closed && (
+                <button type="button" onClick={() => setAsking(true)} className="pg-btn pg-btn-fix">
+                  <RotateCcw size={16} aria-hidden="true" /> Pedir mejora
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -125,9 +129,11 @@ const PendingRow = ({ item, selected, onSelect, onDecide, scale, scaleType, leve
  * «Por revisar»: las evidencias de toda la expedición en una cola, con aprobar en lote y pedir mejora con un
  * comentario. Cada decisión se puede deshacer durante 5 s. Proyectando, no se muestra nada.
  */
-export const ReviewQueue = ({ expeditionId, projecting, undoable }: {
+export const ReviewQueue = ({ expeditionId, projecting, undoable, closed }: {
   expeditionId: string;
   projecting: boolean;
+  /** Expedición cerrada: se aprueba lo que entregaron antes de cerrar; para pedir mejoras, se abre de nuevo. */
+  closed: boolean;
   undoable: (options: { message: string; action: () => Promise<unknown>; onUndo?: () => void; onDone?: () => void; errorText: string }) => void;
 }) => {
   const queryClient = useQueryClient();
@@ -213,9 +219,12 @@ export const ReviewQueue = ({ expeditionId, projecting, undoable }: {
               )}
             </div>
           </div>
+          {closed && (
+            <p className="border-b border-[var(--pg-line)] px-3 py-2 text-sm pg-fg2">La expedición está cerrada: puedes aprobar lo que entregaron. Para pedir mejoras, ábrela de nuevo.</p>
+          )}
           <ul>
             {pending.map((item) => (
-              <PendingRow key={item.progressId} item={item} selected={selected.has(item.progressId)}
+              <PendingRow key={item.progressId} item={item} selected={selected.has(item.progressId)} closed={closed}
                 scale={scale} scaleType={scaleType} level={levels[item.progressId] ?? ''}
                 onLevel={(value) => setLevels((current) => ({ ...current, [item.progressId]: value }))}
                 onSelect={() => setSelected((current) => {
@@ -232,6 +241,7 @@ export const ReviewQueue = ({ expeditionId, projecting, undoable }: {
       {needsWork.length > 0 && (
         <section aria-labelledby="review-waiting" className="space-y-2">
           <h2 id="review-waiting" className="font-bold pg-fg">Esperando que mejoren ({needsWork.length})</h2>
+          {closed && <p className="text-sm pg-fg2">Podrán mejorarlas si abres la expedición de nuevo.</p>}
           <ul className="pg-surface divide-y divide-[var(--pg-line)]">
             {needsWork.map((item) => (
               <li key={item.progressId} className="flex items-start gap-3 p-3">

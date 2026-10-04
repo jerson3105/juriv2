@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { FileUp, Link2, Loader2, MapPin, School, Shuffle, Trash2, X } from 'lucide-react';
+import { FileUp, Link2, Loader2, Lock, MapPin, School, Shuffle, Trash2, X } from 'lucide-react';
 import { ConfirmModal } from '../../ui/ConfirmModal';
 import { NumberField, SaveBar } from '../../settings/settingsUi';
 import { inputClass, labelClass } from '../../home/homeHelpers';
@@ -292,6 +292,8 @@ export const StopPanel = ({ expedition, stop, index, xpPerLevel, competencies, p
   const gradeWeightError = graded ? weightError(draft.gradeWeight) : null;
   const invalid = !draft.title.trim() || !!xpError || !!goldError || !!gradeWeightError;
   const started = stop.stats.started + stop.stats.waiting + stop.stats.done + stop.stats.pending + stop.stats.needsWork > 0;
+  // Cerrada: solo lectura (para cambiarla, se abre de nuevo).
+  const closed = expedition.status === 'ARCHIVED';
   const suggested = SUGGESTED[draft.kind];
   const suggestion = `Sugerido: ${Math.round((xpPerLevel * suggested.xpPercent) / 100)} XP${suggested.gold ? ` y ${suggested.gold} de oro` : ''}`;
 
@@ -324,140 +326,149 @@ export const StopPanel = ({ expedition, stop, index, xpPerLevel, competencies, p
 
   return (
     <div className="space-y-4">
-      <label className="block">
-        <span className={labelClass}>Título</span>
-        <input value={draft.title} onChange={(event) => set('title', event.target.value)} maxLength={120} className={`${inputClass} mt-1.5 min-h-[44px]`} />
-      </label>
+      {closed && (
+        <p className="flex items-start gap-1.5 text-sm pg-fg2"><Lock size={15} className="mt-0.5 flex-shrink-0" aria-hidden="true" /> Solo lectura: la expedición está cerrada.</p>
+      )}
+      <fieldset disabled={closed} className="min-w-0 space-y-4">
+        <label className="block">
+          <span className={labelClass}>Título</span>
+          <input value={draft.title} onChange={(event) => set('title', event.target.value)} maxLength={120} className={`${inputClass} mt-1.5 min-h-[44px]`} />
+        </label>
 
-      <fieldset>
-        <legend className={labelClass}>Tipo de parada</legend>
-        <div className="pg-seg mt-1.5 flex-wrap" role="group" aria-label="Tipo de parada">
-          {KIND_ORDER.map((kind) => (
-            <button key={kind} type="button" aria-pressed={draft.kind === kind} disabled={started && kind !== stop.kind}
-              onClick={() => set('kind', kind)} className="pg-seg-item disabled:cursor-not-allowed disabled:opacity-50">
-              <span aria-hidden="true">{KIND_INFO[kind].emoji}</span> {KIND_INFO[kind].label}
-            </button>
-          ))}
+        <fieldset>
+          <legend className={labelClass}>Tipo de parada</legend>
+          <div className="pg-seg mt-1.5 flex-wrap" role="group" aria-label="Tipo de parada">
+            {KIND_ORDER.map((kind) => (
+              <button key={kind} type="button" aria-pressed={draft.kind === kind} disabled={started && kind !== stop.kind}
+                onClick={() => set('kind', kind)} className="pg-seg-item disabled:cursor-not-allowed disabled:opacity-50">
+                <span aria-hidden="true">{KIND_INFO[kind].emoji}</span> {KIND_INFO[kind].label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">{started ? 'Ya tiene avances: el tipo queda fijo.' : KIND_INFO[draft.kind].hint}</p>
+        </fieldset>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className={labelClass}>Lo que vas a lograr <span className="font-normal text-gray-700 dark:text-gray-300">(opcional)</span></span>
+            <input value={draft.goal} onChange={(event) => set('goal', event.target.value)} maxLength={200} placeholder="Ej.: Reconocer los estados del agua" className={`${inputClass} mt-1.5 min-h-[44px]`} />
+          </label>
+          <label className="block">
+            <span className={labelClass}>Cómo sabrás que lo lograste <span className="font-normal text-gray-700 dark:text-gray-300">(opcional)</span></span>
+            <input value={draft.successCriteria} onChange={(event) => set('successCriteria', event.target.value)} maxLength={200} placeholder="Ej.: Aciertas 4 de 5" className={`${inputClass} mt-1.5 min-h-[44px]`} />
+          </label>
         </div>
-        <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">{started ? 'Ya tiene avances: el tipo queda fijo.' : KIND_INFO[draft.kind].hint}</p>
+
+        {draft.kind === 'STORY' && (
+          <>
+            {textArea('story', 'Lo que cuenta Jiro', 'Ej.: Una gota se escapó del mar y quiere volver. ¿La acompañan?', 5)}
+            <ResourceEditor resources={draft.resources} onChange={(next) => set('resources', next)} />
+          </>
+        )}
+
+        {draft.kind === 'CHALLENGE' && (
+          <>
+            <QuestionPicker classroomId={expedition.classroomId} bankId={draft.bankId} questionIds={draft.questionIds} bankLocked={started && stop.kind === 'CHALLENGE' && !!stop.bankId}
+              onChange={(bankId, ids) => setDraft((current) => ({ ...current, bankId, questionIds: ids }))} />
+            {expedition.status !== 'DRAFT' && draft.questionIds.length === 0 && (
+              <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 dark:bg-amber-900/40 dark:text-amber-50" role="status">
+                Elige al menos una pregunta: mientras no tenga, tus alumnos esperan en este reto.
+              </p>
+            )}
+            <label className="block">
+              <span className={labelClass}>Para superarlo</span>
+              <select value={draft.passPercent} onChange={(event) => set('passPercent', Number(event.target.value))} className={`${inputClass} mt-1.5 min-h-[44px] max-w-xs`}>
+                {[50, 60, 70, 80, 90, 100].map((p) => <option key={p} value={p}>{p} % de aciertos</option>)}
+              </select>
+              <span className="mt-1 block text-sm text-gray-700 dark:text-gray-300">Si no llega, reintenta solo las que falló (ve la explicación) y lo supera igual. Con 80 % o más al primer intento gana una estrella dorada.</span>
+            </label>
+            {textArea('story', 'Lo que cuenta Jiro antes del reto (opcional)', 'Ej.: Para cruzar el río hay que saber cuándo el agua hierve.', 3)}
+            {competencies.length > 0 && (
+              <GradeSettings kind="CHALLENGE" competencies={competencies} competencyId={draft.competencyId} weight={draft.gradeWeight} weightError={gradeWeightError}
+                onCompetency={(id) => set('competencyId', id)} onWeight={(value) => set('gradeWeight', value)} />
+            )}
+          </>
+        )}
+
+        {draft.kind === 'EVIDENCE' && (
+          <>
+            {textArea('mission', '¿Qué deben entregar?', 'Ej.: Sube una foto de tu vaso con hielo y escribe qué pasó a los 10 minutos.')}
+            <fieldset>
+              <legend className={labelClass}>Cuando entregan</legend>
+              <div className="pg-seg mt-1.5" role="group" aria-label="Cuando entregan">
+                <button type="button" aria-pressed={draft.reviewMode === 'ADVANCE'} onClick={() => set('reviewMode', 'ADVANCE')} className="pg-seg-item">Siguen enseguida</button>
+                <button type="button" aria-pressed={draft.reviewMode === 'WAIT'} onClick={() => set('reviewMode', 'WAIT')} className="pg-seg-item">Esperan tu revisión</button>
+              </div>
+              <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
+                {draft.reviewMode === 'ADVANCE'
+                  ? 'Avanzan al entregar y tú revisas después en «Por revisar». Recomendado.'
+                  : 'No siguen hasta que apruebes. Úsalo solo en paradas clave.'}
+              </p>
+            </fieldset>
+            <label className="block">
+              <span className={labelClass}>Fecha límite <span className="font-normal text-gray-700 dark:text-gray-300">(opcional; sale en su calendario)</span></span>
+              <input type="datetime-local" value={draft.dueAt} onChange={(event) => set('dueAt', event.target.value)} className={`${inputClass} mt-1.5 min-h-[44px] max-w-xs`} />
+            </label>
+            <ResourceEditor resources={draft.resources} onChange={(next) => set('resources', next)} />
+            {textArea('story', 'Lo que cuenta Jiro (opcional)', 'Ej.: El hielo guarda un secreto…', 3)}
+            {competencies.length > 0 && (
+              <GradeSettings kind="EVIDENCE" competencies={competencies} competencyId={draft.competencyId} weight={draft.gradeWeight} weightError={gradeWeightError}
+                onCompetency={(id) => set('competencyId', id)} onWeight={(value) => set('gradeWeight', value)} />
+            )}
+          </>
+        )}
+
+        {draft.kind === 'CLASS' && (
+          <>
+            {textArea('mission', '¿Qué harán en clase?', 'Ej.: Hervimos agua juntos y anotamos qué pasa con el vapor.')}
+            <fieldset>
+              <legend className={labelClass}>Cómo la juegan</legend>
+              <div className="pg-seg mt-1.5 flex-wrap" role="group" aria-label="Cómo la juegan">
+                <button type="button" aria-pressed={!draft.classActivity} onClick={() => set('classActivity', null)} className="pg-seg-item">Solo marcar presentes</button>
+                {CLASS_ACTIVITIES.map((activity) => (
+                  <button key={activity} type="button" aria-pressed={draft.classActivity === activity} onClick={() => set('classActivity', activity)} className="pg-seg-item">
+                    <span aria-hidden="true">{CLASS_ACTIVITY_INFO[activity].emoji}</span> {CLASS_ACTIVITY_INFO[activity].label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
+                {draft.classActivity
+                  ? `${CLASS_ACTIVITY_INFO[draft.classActivity].hint} Se abre desde «Proyectar»; al entregar la recompensa de su Bitácora, la parada queda lograda para los presentes (sin pagarla dos veces).`
+                  : 'Hacen la actividad en el aula y tú marcas a los presentes (también desde «Proyectar»).'}
+              </p>
+            </fieldset>
+            {draft.classActivity && <BankSelect classroomId={expedition.classroomId} bankId={draft.bankId} onChange={(bankId) => set('bankId', bankId)} />}
+            {expedition.status === 'PUBLISHED' && (
+              <button type="button" onClick={onMarkClass} className="pg-btn"><School size={16} aria-hidden="true" /> Marcar a los presentes</button>
+            )}
+            {textArea('story', 'Lo que cuenta Jiro (opcional)', '', 3)}
+          </>
+        )}
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <NumberField label="XP" value={draft.rewardXp} onChange={(value) => set('rewardXp', value)} min={0} max={MAX_REWARD} error={xpError} hint={suggestion} />
+          <NumberField label="Oro" value={draft.rewardGold} onChange={(value) => set('rewardGold', value)} min={0} max={MAX_REWARD} error={goldError}
+            hint={draft.kind === 'EVIDENCE' ? 'Si pides una mejora, al aprobarla se paga lo mismo.' : undefined} />
+        </div>
+
+        {expedition.scenario === 'MAP' && !closed && (
+          <button type="button" onClick={() => onPlace(!placing)} aria-pressed={placing} className="pg-btn">
+            <MapPin size={16} aria-hidden="true" /> {placing ? 'Toca el mapa (o cancela)' : 'Ubicar en el mapa'}
+          </button>
+        )}
       </fieldset>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="block">
-          <span className={labelClass}>Lo que vas a lograr <span className="font-normal text-gray-700 dark:text-gray-300">(opcional)</span></span>
-          <input value={draft.goal} onChange={(event) => set('goal', event.target.value)} maxLength={200} placeholder="Ej.: Reconocer los estados del agua" className={`${inputClass} mt-1.5 min-h-[44px]`} />
-        </label>
-        <label className="block">
-          <span className={labelClass}>Cómo sabrás que lo lograste <span className="font-normal text-gray-700 dark:text-gray-300">(opcional)</span></span>
-          <input value={draft.successCriteria} onChange={(event) => set('successCriteria', event.target.value)} maxLength={200} placeholder="Ej.: Aciertas 4 de 5" className={`${inputClass} mt-1.5 min-h-[44px]`} />
-        </label>
-      </div>
-
-      {draft.kind === 'STORY' && (
+      {!closed && (
         <>
-          {textArea('story', 'Lo que cuenta Jiro', 'Ej.: Una gota se escapó del mar y quiere volver. ¿La acompañan?', 5)}
-          <ResourceEditor resources={draft.resources} onChange={(next) => set('resources', next)} />
+          <SaveBar dirty={dirty} saving={save.isPending} invalid={invalid} onSave={() => save.mutate()} onDiscard={() => setDraft(toDraft(stop))} />
+
+          <div className="border-t border-gray-200 pt-3 dark:border-gray-700">
+            <button type="button" onClick={() => setConfirmDelete(true)} className="pg-btn pg-btn-ghost text-[var(--pg-alert)]">
+              <Trash2 size={16} aria-hidden="true" /> Eliminar parada {index + 1}
+            </button>
+          </div>
         </>
       )}
-
-      {draft.kind === 'CHALLENGE' && (
-        <>
-          <QuestionPicker classroomId={expedition.classroomId} bankId={draft.bankId} questionIds={draft.questionIds} bankLocked={started && stop.kind === 'CHALLENGE' && !!stop.bankId}
-            onChange={(bankId, ids) => setDraft((current) => ({ ...current, bankId, questionIds: ids }))} />
-          {expedition.status !== 'DRAFT' && draft.questionIds.length === 0 && (
-            <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 dark:bg-amber-900/40 dark:text-amber-50" role="status">
-              Elige al menos una pregunta: mientras no tenga, tus alumnos esperan en este reto.
-            </p>
-          )}
-          <label className="block">
-            <span className={labelClass}>Para superarlo</span>
-            <select value={draft.passPercent} onChange={(event) => set('passPercent', Number(event.target.value))} className={`${inputClass} mt-1.5 min-h-[44px] max-w-xs`}>
-              {[50, 60, 70, 80, 90, 100].map((p) => <option key={p} value={p}>{p} % de aciertos</option>)}
-            </select>
-            <span className="mt-1 block text-sm text-gray-700 dark:text-gray-300">Si no llega, reintenta solo las que falló (ve la explicación) y lo supera igual. Con 80 % o más al primer intento gana una estrella dorada.</span>
-          </label>
-          {textArea('story', 'Lo que cuenta Jiro antes del reto (opcional)', 'Ej.: Para cruzar el río hay que saber cuándo el agua hierve.', 3)}
-          {competencies.length > 0 && (
-            <GradeSettings kind="CHALLENGE" competencies={competencies} competencyId={draft.competencyId} weight={draft.gradeWeight} weightError={gradeWeightError}
-              onCompetency={(id) => set('competencyId', id)} onWeight={(value) => set('gradeWeight', value)} />
-          )}
-        </>
-      )}
-
-      {draft.kind === 'EVIDENCE' && (
-        <>
-          {textArea('mission', '¿Qué deben entregar?', 'Ej.: Sube una foto de tu vaso con hielo y escribe qué pasó a los 10 minutos.')}
-          <fieldset>
-            <legend className={labelClass}>Cuando entregan</legend>
-            <div className="pg-seg mt-1.5" role="group" aria-label="Cuando entregan">
-              <button type="button" aria-pressed={draft.reviewMode === 'ADVANCE'} onClick={() => set('reviewMode', 'ADVANCE')} className="pg-seg-item">Siguen enseguida</button>
-              <button type="button" aria-pressed={draft.reviewMode === 'WAIT'} onClick={() => set('reviewMode', 'WAIT')} className="pg-seg-item">Esperan tu revisión</button>
-            </div>
-            <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
-              {draft.reviewMode === 'ADVANCE'
-                ? 'Avanzan al entregar y tú revisas después en «Por revisar». Recomendado.'
-                : 'No siguen hasta que apruebes. Úsalo solo en paradas clave.'}
-            </p>
-          </fieldset>
-          <label className="block">
-            <span className={labelClass}>Fecha límite <span className="font-normal text-gray-700 dark:text-gray-300">(opcional; sale en su calendario)</span></span>
-            <input type="datetime-local" value={draft.dueAt} onChange={(event) => set('dueAt', event.target.value)} className={`${inputClass} mt-1.5 min-h-[44px] max-w-xs`} />
-          </label>
-          <ResourceEditor resources={draft.resources} onChange={(next) => set('resources', next)} />
-          {textArea('story', 'Lo que cuenta Jiro (opcional)', 'Ej.: El hielo guarda un secreto…', 3)}
-          {competencies.length > 0 && (
-            <GradeSettings kind="EVIDENCE" competencies={competencies} competencyId={draft.competencyId} weight={draft.gradeWeight} weightError={gradeWeightError}
-              onCompetency={(id) => set('competencyId', id)} onWeight={(value) => set('gradeWeight', value)} />
-          )}
-        </>
-      )}
-
-      {draft.kind === 'CLASS' && (
-        <>
-          {textArea('mission', '¿Qué harán en clase?', 'Ej.: Hervimos agua juntos y anotamos qué pasa con el vapor.')}
-          <fieldset>
-            <legend className={labelClass}>Cómo la juegan</legend>
-            <div className="pg-seg mt-1.5 flex-wrap" role="group" aria-label="Cómo la juegan">
-              <button type="button" aria-pressed={!draft.classActivity} onClick={() => set('classActivity', null)} className="pg-seg-item">Solo marcar presentes</button>
-              {CLASS_ACTIVITIES.map((activity) => (
-                <button key={activity} type="button" aria-pressed={draft.classActivity === activity} onClick={() => set('classActivity', activity)} className="pg-seg-item">
-                  <span aria-hidden="true">{CLASS_ACTIVITY_INFO[activity].emoji}</span> {CLASS_ACTIVITY_INFO[activity].label}
-                </button>
-              ))}
-            </div>
-            <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
-              {draft.classActivity
-                ? `${CLASS_ACTIVITY_INFO[draft.classActivity].hint} Se abre desde «Proyectar»; al entregar la recompensa de su Bitácora, la parada queda lograda para los presentes (sin pagarla dos veces).`
-                : 'Hacen la actividad en el aula y tú marcas a los presentes (también desde «Proyectar»).'}
-            </p>
-          </fieldset>
-          {draft.classActivity && <BankSelect classroomId={expedition.classroomId} bankId={draft.bankId} onChange={(bankId) => set('bankId', bankId)} />}
-          {expedition.status === 'PUBLISHED' && (
-            <button type="button" onClick={onMarkClass} className="pg-btn"><School size={16} aria-hidden="true" /> Marcar a los presentes</button>
-          )}
-          {textArea('story', 'Lo que cuenta Jiro (opcional)', '', 3)}
-        </>
-      )}
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <NumberField label="XP" value={draft.rewardXp} onChange={(value) => set('rewardXp', value)} min={0} max={MAX_REWARD} error={xpError} hint={suggestion} />
-        <NumberField label="Oro" value={draft.rewardGold} onChange={(value) => set('rewardGold', value)} min={0} max={MAX_REWARD} error={goldError}
-          hint={draft.kind === 'EVIDENCE' ? 'Si pides una mejora, al aprobarla se paga lo mismo.' : undefined} />
-      </div>
-
-      {expedition.scenario === 'MAP' && (
-        <button type="button" onClick={() => onPlace(!placing)} aria-pressed={placing} className="pg-btn">
-          <MapPin size={16} aria-hidden="true" /> {placing ? 'Toca el mapa (o cancela)' : 'Ubicar en el mapa'}
-        </button>
-      )}
-
-      <SaveBar dirty={dirty} saving={save.isPending} invalid={invalid} onSave={() => save.mutate()} onDiscard={() => setDraft(toDraft(stop))} />
-
-      <div className="border-t border-gray-200 pt-3 dark:border-gray-700">
-        <button type="button" onClick={() => setConfirmDelete(true)} className="pg-btn pg-btn-ghost text-[var(--pg-alert)]">
-          <Trash2 size={16} aria-hidden="true" /> Eliminar parada {index + 1}
-        </button>
-      </div>
 
       <ConfirmModal
         isOpen={confirmDelete}
