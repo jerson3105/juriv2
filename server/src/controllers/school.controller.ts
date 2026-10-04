@@ -217,7 +217,8 @@ class SchoolController {
       if (!detail) return res.status(404).json({ success: false, message: 'Escuela no encontrada' });
       const isOwner = req.user!.role === 'ADMIN' || (await verifiedSchoolRole(req.user!.id, schoolId)) === 'OWNER';
       const classroomsWithActivity = await schoolManagementService.getSchoolClassrooms(schoolId);
-      // Solo el responsable ve el código de invitación y los miembros no verificados.
+      // Solo el responsable ve el código de invitación y los miembros no verificados. El código de ingreso de cada
+      // clase lo ven solo su docente y el responsable: con él cualquiera podría reclamar un nombre de la lista.
       res.json({
         success: true,
         data: {
@@ -225,7 +226,7 @@ class SchoolController {
           inviteCode: isOwner ? detail.inviteCode : null,
           inviteExpiresAt: isOwner ? detail.inviteExpiresAt : null,
           members: isOwner ? detail.members : detail.members.filter((m) => m.status === 'VERIFIED'),
-          classrooms: classroomsWithActivity,
+          classrooms: classroomsWithActivity.map((c) => ({ ...c, code: isOwner || c.teacherId === req.user!.id ? c.code : null })),
         },
       });
     } catch (error) {
@@ -243,7 +244,15 @@ class SchoolController {
       if (!(await requireSchoolViewer(req, res, schoolId))) return;
 
       const teachers = await schoolService.getSchoolTeachers(schoolId);
-      res.json({ success: true, data: teachers });
+      // El código de ingreso de una clase lo ven solo su docente y el responsable de la escuela.
+      const isOwner = req.user!.role === 'ADMIN' || (await verifiedSchoolRole(req.user!.id, schoolId)) === 'OWNER';
+      res.json({
+        success: true,
+        data: teachers.map((t) => ({
+          ...t,
+          classrooms: t.classrooms.map((c) => ({ ...c, code: isOwner || c.teacherId === req.user!.id ? c.code : null })),
+        })),
+      });
     } catch (error) {
       console.error('Error getting school teachers:', error);
       res.status(500).json({ success: false, message: 'Error al obtener profesores' });

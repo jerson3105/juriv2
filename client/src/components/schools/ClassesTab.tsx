@@ -140,7 +140,7 @@ export const ClassesTab = ({ schoolId, manage, classrooms, isLoading }: ClassesT
     .filter((c) => (!area || (c.curriculumAreaName ?? '') === (area === '__none' ? '' : area))
       && (!grade || (c.gradeLevel ?? '') === (grade === '__none' ? '' : grade))
       && (!teacher || c.teacherId === teacher)
-      && (!term || [c.name, c.code, c.teacherName, gradeLabel(c.gradeLevel) ?? '', c.curriculumAreaName ?? ''].some((v) => v.toLocaleLowerCase('es').includes(term))))
+      && (!term || [c.name, c.code ?? '', c.teacherName, gradeLabel(c.gradeLevel) ?? '', c.curriculumAreaName ?? ''].some((v) => v.toLocaleLowerCase('es').includes(term))))
     .sort((a, b) => (gradeLabel(a.gradeLevel) ?? 'zz').localeCompare(gradeLabel(b.gradeLevel) ?? 'zz', 'es') || a.name.localeCompare(b.name, 'es'));
   const students = visible.reduce((s, c) => s + c.studentCount, 0);
   const filtered = !!(area || grade || teacher || term);
@@ -193,7 +193,7 @@ export const ClassesTab = ({ schoolId, manage, classrooms, isLoading }: ClassesT
                 <p className="text-sm text-gray-800 dark:text-gray-200">{c.teacherName}</p>
                 <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-700 dark:text-gray-300">
                   <span className="inline-flex items-center gap-1"><Users size={14} aria-hidden="true" />{c.studentCount}</span>
-                  <span className="font-mono text-xs">{c.code}</span>
+                  {c.code && <span className="font-mono text-xs">{c.code}</span>}
                   <span>{c.lastActivityAt ? `activa ${relativeTime(c.lastActivityAt)}` : 'sin actividad reciente'}</span>
                 </p>
                 <div className="mt-auto flex items-center justify-between gap-2 pt-1">

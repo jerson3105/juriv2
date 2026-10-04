@@ -65,7 +65,8 @@ export interface SchoolMember {
 export interface SchoolClassroom {
   id: string;
   name: string;
-  code: string;
+  /** null: el código de ingreso lo ven solo el docente de la clase y el responsable de la escuela. */
+  code: string | null;
   gradeLevel: string | null;
   teacherId: string;
   teacherName: string;
@@ -135,7 +136,8 @@ export interface AdminSchoolWithMembers {
 export interface SchoolTeacherClassroom {
   id: string;
   name: string;
-  code: string;
+  /** null: el código de ingreso lo ven solo el docente de la clase y el responsable de la escuela. */
+  code: string | null;
   gradeLevel: string | null;
   teacherId: string;
   useCompetencies: boolean;
