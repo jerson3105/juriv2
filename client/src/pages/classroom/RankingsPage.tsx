@@ -27,7 +27,7 @@ const TABS: { id: Tab; label: string; icon: typeof Zap }[] = [
 
 const MASCOT: Record<Tab, string> = {
   xp: '/assets/jiro/rankings/xp.webp',
-  gp: '/assets/mascot/jiro-ranking-oro.png',
+  gp: '/assets/jiro/rankings/oro.webp',
   clans: '/assets/mascot/jiro-ranking-clanes.png',
 };
 

@@ -829,7 +829,7 @@ const ClanFormModal = ({ clan, onClose, onSubmit, isLoading }: ClanFormModalProp
       >
         {/* Panel izquierdo - Jiro */}
         <div className="hidden md:block md:w-64 flex-shrink-0 relative overflow-hidden">
-          <img src="/assets/mascot/jiro-clanes.jpg" alt="" className="absolute inset-0 w-full h-full object-cover" />
+          <img src="/assets/jiro/clanes/nuevo-clan.webp" alt="" className="absolute inset-0 w-full h-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
           <div className="absolute bottom-0 left-0 right-0 p-4">
             <p className="text-white text-sm font-semibold mb-2">💡 Consejos para crear clanes</p>
