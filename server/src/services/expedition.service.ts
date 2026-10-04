@@ -165,9 +165,18 @@ export const computeStates = (stops: ExpeditionStop[], progress: Map<string, Exp
 
 const isFinished = (states: ReturnType<typeof computeStates>) => states.length > 0 && states.every((s) => s.row?.status === 'DONE');
 const frontierOf = (states: ReturnType<typeof computeStates>) => states.find((s) => s.row?.status !== 'DONE') ?? null;
-/** ¿Hay algo que el alumno pueda hacer ahora? (las paradas en clase dependen del docente). */
+/** ¿Hay algo que el alumno pueda hacer ahora? (las paradas en clase y un reto sin preguntas dependen del docente). */
 const hasActionable = (states: ReturnType<typeof computeStates>) => states.some((s) =>
-  (s.state === 'NEEDS_WORK') || ((s.state === 'AVAILABLE' || s.state === 'STARTED') && s.stop.kind !== 'CLASS'));
+  (s.state === 'NEEDS_WORK') || ((s.state === 'AVAILABLE' || s.state === 'STARTED') && s.stop.kind !== 'CLASS'
+    && !(s.stop.kind === 'CHALLENGE' && toIds(s.stop.questionIds).length === 0)));
+
+type AnswerMark = { questionId: string; attempt: number; isCorrect: boolean };
+/** Vuelta actual del reto con las preguntas que siguen en él: la primera, todas; el reintento, las falladas en la primera. */
+const roundOf = (attempt: number, list: { id: string }[], answers: AnswerMark[]) => {
+  if (attempt === 1) return list.map((q) => q.id);
+  const failed = new Set(answers.filter((a) => a.attempt === 1 && !a.isCorrect).map((a) => a.questionId));
+  return list.filter((q) => failed.has(q.id)).map((q) => q.id);
+};
 
 // ── Recompensas ──
 
@@ -527,12 +536,20 @@ class ExpeditionService {
   }) {
     const context = await this.getStopContext(stopId);
     if (!context) throw new NotFoundError('Parada no encontrada');
-    const { stop } = context;
+    const { stop, expedition } = context;
     const set: Partial<typeof expeditionStops.$inferInsert> = { updatedAt: new Date() };
-    if (patch.kind !== undefined && patch.kind !== stop.kind) {
+    const kindChanges = patch.kind !== undefined && patch.kind !== stop.kind;
+    const bankChanges = patch.bankId !== undefined && patch.bankId !== stop.bankId;
+    if (kindChanges) {
       const [started] = await db.select({ id: expeditionStopProgress.id }).from(expeditionStopProgress).where(eq(expeditionStopProgress.stopId, stopId)).limit(1);
       if (started) throw new ConflictError('Esta parada ya tiene avances: no se puede cambiar su tipo');
       set.kind = patch.kind;
+    }
+    if (bankChanges && stop.kind === 'CHALLENGE') {
+      // Con respuestas guardadas del banco anterior, el % del reto dejaría de ser comparable. (Abrirlo sin responder
+      // no traba el banco: un reto agregado sin preguntas tiene que poder recibirlas.)
+      const [answered] = await db.select({ id: expeditionAnswers.id }).from(expeditionAnswers).where(eq(expeditionAnswers.stopId, stopId)).limit(1);
+      if (answered) throw new ConflictError('Este reto ya tiene respuestas: no se puede cambiar el banco (sí sus preguntas)');
     }
     for (const key of ['title', 'story', 'goal', 'successCriteria', 'mission', 'passPercent', 'reviewMode', 'dueAt', 'rewardXp', 'rewardGold'] as const) {
       if (patch[key] !== undefined) (set as Record<string, unknown>)[key] = patch[key] === '' ? null : patch[key];
@@ -555,6 +572,13 @@ class ExpeditionService {
         if (playable.length !== ids.length) throw new ValidationError('Hay preguntas que no se pueden usar en un reto (las de IA deben estar revisadas)');
       }
       set.questionIds = ids;
+    }
+    // Publicada, un reto sin preguntas deja a los alumnos esperando: se guarda junto con sus preguntas.
+    const finalKind = set.kind ?? stop.kind;
+    const finalQuestions = set.questionIds !== undefined ? toIds(set.questionIds) : toIds(stop.questionIds);
+    if (expedition.status !== 'DRAFT' && finalKind === 'CHALLENGE' && (kindChanges || patch.bankId !== undefined || patch.questionIds !== undefined)
+      && finalQuestions.length === 0) {
+      throw new ValidationError('Un reto publicado necesita al menos una pregunta');
     }
     await db.update(expeditionStops).set(set).where(eq(expeditionStops.id, stopId));
     await db.update(expeditions).set({ updatedAt: new Date() }).where(eq(expeditions.id, stop.expeditionId));
@@ -687,7 +711,7 @@ class ExpeditionService {
     const evidence = rows.length
       ? await db.select().from(expeditionEvidence)
         .where(and(eq(expeditionEvidence.expeditionId, expeditionId), inArray(expeditionEvidence.studentProfileId, [...new Set(rows.map((r) => r.progress.studentProfileId))])))
-        .orderBy(desc(expeditionEvidence.submittedAt))
+        .orderBy(desc(expeditionEvidence.submittedAt), desc(expeditionEvidence.id))
       : [];
     const latest = new Map<string, typeof evidence[number]>();
     for (const item of evidence) {
@@ -709,7 +733,7 @@ class ExpeditionService {
         feedback: row.progress.feedback,
         reviewedAt: row.progress.reviewedAt,
         student: { id: row.progress.studentProfileId, name: studentName(row), characterName: row.characterName },
-        evidence: item ? { files: toFiles(item.files), note: item.note, submittedAt: item.submittedAt } : null,
+        evidence: item ? { id: item.id, files: toFiles(item.files), note: item.note, submittedAt: item.submittedAt } : null,
       };
     });
     const bySubmitted = (a: typeof items[number], b: typeof items[number]) =>
@@ -722,16 +746,19 @@ class ExpeditionService {
     };
   }
 
-  async review(expeditionId: string, teacherId: string, decisions: { progressId: string; decision: 'APPROVE' | 'NEEDS_WORK'; feedback?: string | null }[]) {
+  async review(expeditionId: string, teacherId: string, decisions: { progressId: string; decision: 'APPROVE' | 'NEEDS_WORK'; feedback?: string | null; evidenceId?: string | null }[]) {
     const expedition = await this.requireExpedition(expeditionId);
     const stops = new Map((await this.stopsOf(expeditionId)).map((stop) => [stop.id, stop]));
     const progressIds = [...new Set(decisions.map((d) => d.progressId))];
+    // Solo alumnos activos (un pedido armado a mano no paga a un perfil dado de baja).
     const owners = await db.select({ studentProfileId: expeditionStopProgress.studentProfileId }).from(expeditionStopProgress)
-      .where(and(inArray(expeditionStopProgress.id, progressIds), eq(expeditionStopProgress.expeditionId, expeditionId)));
+      .innerJoin(studentProfiles, eq(expeditionStopProgress.studentProfileId, studentProfiles.id))
+      .where(and(inArray(expeditionStopProgress.id, progressIds), eq(expeditionStopProgress.expeditionId, expeditionId), eq(studentProfiles.isActive, true)));
+    const active = new Set(owners.map((o) => o.studentProfileId));
     const { result, touched } = await transaction(async (tx) => {
       // Mismo orden de candados que el alumno: perfiles → avance.
-      await lockStudents(tx, owners.map((o) => o.studentProfileId));
-      const result = { approved: 0, needsWork: 0, skipped: 0 };
+      await lockStudents(tx, [...active]);
+      const result = { approved: 0, needsWork: 0, skipped: 0, changed: 0 };
       const touched: string[] = [];
       const grants: Grant[] = [];
       const notices: { studentProfileId: string; stopId: string; stopTitle: string; feedback: string | null }[] = [];
@@ -741,16 +768,28 @@ class ExpeditionService {
           .where(and(eq(expeditionStopProgress.id, decision.progressId), eq(expeditionStopProgress.expeditionId, expeditionId)))
           .for('update');
         const stop = row ? stops.get(row.stopId) : undefined;
-        if (!row || !stop || stop.kind !== 'EVIDENCE' || row.review === 'APPROVED' || !row.review) {
+        if (!row || !stop || stop.kind !== 'EVIDENCE' || row.review === 'APPROVED' || !row.review || !active.has(row.studentProfileId)) {
           result.skipped++;
           continue;
+        }
+        if (decision.evidenceId !== undefined) {
+          // El alumno pudo cambiar su entrega mientras el docente miraba la anterior: no se decide sobre lo que nadie vio.
+          const [latest] = await tx.select({ id: expeditionEvidence.id }).from(expeditionEvidence)
+            .where(and(eq(expeditionEvidence.stopId, row.stopId), eq(expeditionEvidence.studentProfileId, row.studentProfileId)))
+            .orderBy(desc(expeditionEvidence.submittedAt), desc(expeditionEvidence.id))
+            .limit(1);
+          if ((latest?.id ?? null) !== decision.evidenceId) {
+            result.changed++;
+            continue;
+          }
         }
         touched.push(row.studentProfileId);
         if (decision.decision === 'APPROVE') {
           const becomesDone = row.status !== 'DONE';
           await tx.update(expeditionStopProgress).set({
             review: 'APPROVED',
-            feedback: decision.feedback || row.feedback,
+            // El comentario de «pedir mejora» ya no aplica: al aprobar queda solo el de ahora (o ninguno).
+            feedback: decision.feedback ?? null,
             reviewedAt: now,
             reviewedBy: teacherId,
             status: 'DONE',
@@ -810,7 +849,10 @@ class ExpeditionService {
     const { stop, expedition } = context;
     if (stop.kind !== 'CLASS') throw new ValidationError('Solo las paradas «En clase» se marcan desde aquí');
     if (expedition.status !== 'PUBLISHED') throw new ConflictError('La expedición no está publicada');
-    const ids = [...new Set(studentIds)];
+    // Solo alumnos activos de la clase (un perfil dado de baja no recibe la parada ni su recompensa).
+    const ids = studentIds.length === 0 ? [] : (await db.select({ id: studentProfiles.id }).from(studentProfiles)
+      .where(and(inArray(studentProfiles.id, [...new Set(studentIds)]), eq(studentProfiles.classroomId, expedition.classroomId), eq(studentProfiles.isActive, true))))
+      .map((s) => s.id);
     const marked = await transaction(async (tx) => {
       await lockStudents(tx, ids);
       const marked: string[] = [];
@@ -838,7 +880,7 @@ class ExpeditionService {
       return { value: marked, after: [await this.grantInTx(tx, expedition.classroomId, grants)] };
     });
     await this.emitToStudents(marked, expedition.id);
-    return { marked: marked.length, skipped: ids.length - marked.length };
+    return { marked: marked.length, skipped: new Set(studentIds).size - marked.length };
   }
 
   // ==================== Alumno ====================
@@ -1010,22 +1052,35 @@ class ExpeditionService {
     const target = states.find((s) => s.stop.id === stopId);
     if (!target || target.state === 'LOCKED') throw new ConflictError('Esta parada todavía está bloqueada');
     const list = await this.challengeQuestions(stop);
-    if (!target.row && expedition.status === 'PUBLISHED') {
-      await transaction(async (tx) => {
-        await lockStudents(tx, [studentProfileId]);
-        const now = new Date();
-        await tx.insert(expeditionStopProgress).ignore().values({
-          id: uuidv4(), expeditionId: expedition.id, stopId, studentProfileId, status: 'STARTED', createdAt: now, updatedAt: now,
+    const answersOf = (exec: Tx | typeof db) => exec.select().from(expeditionAnswers)
+      .where(and(eq(expeditionAnswers.stopId, stopId), eq(expeditionAnswers.studentProfileId, studentProfileId)));
+    if (expedition.status === 'PUBLISHED' && target.row?.status !== 'DONE') {
+      // La fila nace al abrir el reto. Y si el docente quitó preguntas a mitad de vuelta (o las borró del banco),
+      // la vuelta ya respondida se cierra aquí: antes solo se cerraba al responder y el reto quedaba trabado.
+      const current = target.row;
+      const answered = current ? await answersOf(db) : [];
+      const stale = !!current && list.length > 0
+        && roundOf(current.attempt, list, answered).every((id) => answered.some((a) => a.attempt === current.attempt && a.questionId === id));
+      if (!current || stale) {
+        await transaction(async (tx) => {
+          await lockStudents(tx, [studentProfileId]);
+          const now = new Date();
+          await tx.insert(expeditionStopProgress).ignore().values({
+            id: uuidv4(), expeditionId: expedition.id, stopId, studentProfileId, status: 'STARTED', createdAt: now, updatedAt: now,
+          });
+          const [row] = await tx.select().from(expeditionStopProgress)
+            .where(and(eq(expeditionStopProgress.stopId, stopId), eq(expeditionStopProgress.studentProfileId, studentProfileId)))
+            .for('update');
+          if (!row || row.status === 'DONE') return { value: null, after: [] };
+          const settled = await this.settleRound(tx, expedition, stop, row, list, await answersOf(tx), now);
+          return { value: null, after: settled.after };
         });
-        return { value: null, after: [] };
-      });
+      }
     }
     const [row] = await db.select().from(expeditionStopProgress)
       .where(and(eq(expeditionStopProgress.stopId, stopId), eq(expeditionStopProgress.studentProfileId, studentProfileId)));
-    const answers = await db.select().from(expeditionAnswers)
-      .where(and(eq(expeditionAnswers.stopId, stopId), eq(expeditionAnswers.studentProfileId, studentProfileId)));
+    const answers = await answersOf(db);
     const attempt = row?.attempt ?? 1;
-    const wrongFirst = new Set(answers.filter((a) => a.attempt === 1 && !a.isCorrect).map((a) => a.questionId));
     const byId = new Map(list.map((q) => [q.id, q]));
     return {
       status: row?.status ?? 'STARTED',
@@ -1034,8 +1089,10 @@ class ExpeditionService {
       firstScore: row?.firstScore ?? null,
       finalScore: row?.finalScore ?? null,
       goldStar: !!row?.goldStar,
+      // Sin preguntas (el docente las está eligiendo): el alumno espera, no queda trabado.
+      preparing: list.length === 0 && row?.status !== 'DONE',
       questions: list.map((q) => toStudentQuestion(q, questionSeed(stopId, studentProfileId, q.id))),
-      round: attempt === 1 ? list.map((q) => q.id) : list.filter((q) => wrongFirst.has(q.id)).map((q) => q.id),
+      round: roundOf(attempt, list, answers),
       answers: answers.map((a) => {
         const question = byId.get(a.questionId);
         const reveal = !a.isCorrect && (a.attempt === 2 || row?.status === 'DONE');
@@ -1050,9 +1107,60 @@ class ExpeditionService {
     };
   }
 
+  /**
+   * Cierra la vuelta del reto si ya están respondidas todas sus preguntas actuales. La usan responder y abrir el
+   * reto, así un cambio del docente a mitad de vuelta no lo traba. Un reto sin preguntas no se cierra solo: espera
+   * a que el docente las elija.
+   */
+  private async settleRound(tx: Tx, expedition: Expedition, stop: ExpeditionStop, row: ExpeditionStopProgress, list: BankQuestionRow[], answers: AnswerMark[], now: Date) {
+    const attempt = row.attempt;
+    const roundIds = roundOf(attempt, list, answers);
+    const round = answers.filter((a) => a.attempt === attempt && roundIds.includes(a.questionId));
+    const outcome = {
+      complete: list.length > 0 && row.status !== 'DONE' && roundIds.every((id) => round.some((a) => a.questionId === id)),
+      score: null as number | null,
+      passed: false,
+      done: false,
+      goldStar: false,
+      retry: [] as string[],
+      after: [] as (() => Promise<void>)[],
+    };
+    if (!outcome.complete) return outcome;
+    const grants: Grant[] = [];
+    if (attempt === 1) {
+      outcome.score = Math.round((round.filter((a) => a.isCorrect).length * 100) / roundIds.length);
+      outcome.passed = outcome.score >= stop.passPercent;
+      outcome.goldStar = outcome.score >= GOLD_STAR_SCORE;
+      outcome.retry = round.filter((a) => !a.isCorrect).map((a) => a.questionId);
+      outcome.done = outcome.passed || outcome.retry.length === 0;
+      await tx.update(expeditionStopProgress).set({
+        firstScore: outcome.score,
+        // La estrella es por el primer intento, aunque el mínimo para superar pase de 80 %.
+        goldStar: outcome.goldStar,
+        ...(outcome.done ? { status: 'DONE' as const, finalScore: outcome.score, doneAt: now } : { attempt: 2 }),
+        updatedAt: now,
+      }).where(eq(expeditionStopProgress.id, row.id));
+    } else {
+      // Reintento: el reto queda superado igual; la nota usa el primer intento y aquí se mide la mejora.
+      const inList = new Set(list.map((q) => q.id));
+      const correctFirst = answers.filter((a) => a.attempt === 1 && a.isCorrect && inList.has(a.questionId)).length;
+      outcome.score = Math.round(((correctFirst + round.filter((a) => a.isCorrect).length) * 100) / list.length);
+      outcome.passed = true;
+      outcome.done = true;
+      outcome.goldStar = !!row.goldStar;
+      await tx.update(expeditionStopProgress).set({ status: 'DONE', finalScore: outcome.score, doneAt: now, updatedAt: now })
+        .where(eq(expeditionStopProgress.id, row.id));
+    }
+    if (outcome.done) {
+      await this.payStopOnce(tx, expedition, stop, row.studentProfileId, grants, outcome.goldStar ? '⭐ ¡Reto superado con estrella!' : '❓ Reto superado');
+      await this.checkFinishInTx(tx, expedition, row.studentProfileId, grants, null);
+    }
+    outcome.after.push(await this.grantInTx(tx, expedition.classroomId, grants));
+    return outcome;
+  }
+
   async answer(stopId: string, studentProfileId: string, questionId: string, answer: unknown) {
     return transaction(async (tx) => {
-      const after: (() => Promise<void>)[] = [];
       const { stop, expedition, state } = await this.actionContext(tx, stopId, studentProfileId, 'CHALLENGE');
       if (state === 'LOCKED') throw new ConflictError('Esta parada todavía está bloqueada');
       if (state === 'DONE' || state === 'NEEDS_WORK') throw new ConflictError('Ya terminaste este reto');
@@ -1071,11 +1179,7 @@ class ExpeditionService {
       const previous = await tx.select().from(expeditionAnswers)
         .where(and(eq(expeditionAnswers.stopId, stopId), eq(expeditionAnswers.studentProfileId, studentProfileId)));
       const attempt = row.attempt;
-      const firstRound = previous.filter((a) => a.attempt === 1);
-      const roundIds = attempt === 1
-        ? list.map((q) => q.id)
-        : list.filter((q) => firstRound.some((a) => a.questionId === q.id && !a.isCorrect)).map((q) => q.id);
-      if (!roundIds.includes(questionId)) throw new ValidationError('Esa pregunta no está en esta vuelta');
+      if (!roundOf(attempt, list, previous).includes(questionId)) throw new ValidationError('Esa pregunta no está en esta vuelta');
       if (previous.some((a) => a.attempt === attempt && a.questionId === questionId)) throw new ConflictError('Ya respondiste esta pregunta');
       if (!isWellFormedAnswer(question.type, answer)) throw new ValidationError('Respuesta no válida');
 
@@ -1091,59 +1195,21 @@ class ExpeditionService {
       }
 
       // Solo cuentan las preguntas que siguen en el reto (el docente pudo quitar alguna a mitad de vuelta).
-      const round = [...previous.filter((a) => a.attempt === attempt), { questionId, isCorrect }].filter((a) => roundIds.includes(a.questionId));
-      const roundComplete = roundIds.every((id) => round.some((a) => a.questionId === id));
-      let score: number | null = null;
-      let passed = false;
-      let done = false;
-      let goldStar = false;
-      let retry: string[] = [];
-      if (roundComplete) {
-        const grants: Grant[] = [];
-        if (attempt === 1) {
-          const correct = round.filter((a) => a.isCorrect).length;
-          score = Math.round((correct * 100) / Math.max(1, roundIds.length));
-          passed = score >= stop.passPercent;
-          goldStar = score >= GOLD_STAR_SCORE;
-          retry = round.filter((a) => !a.isCorrect).map((a) => a.questionId);
-          done = passed || retry.length === 0;
-          await tx.update(expeditionStopProgress).set({
-            firstScore: score,
-            ...(done ? { status: 'DONE' as const, finalScore: score, goldStar, doneAt: now } : { attempt: 2 }),
-            updatedAt: now,
-          }).where(eq(expeditionStopProgress.id, row.id));
-        } else {
-          // Reintento: el reto queda superado igual; la nota usa el primer intento y aquí se mide la mejora.
-          const total = list.length || 1;
-          const correctFirst = firstRound.filter((a) => a.isCorrect && list.some((q) => q.id === a.questionId)).length;
-          const correctRetry = round.filter((a) => a.isCorrect).length;
-          score = Math.round(((correctFirst + correctRetry) * 100) / total);
-          passed = true;
-          done = true;
-          goldStar = !!row.goldStar;
-          await tx.update(expeditionStopProgress).set({ status: 'DONE', finalScore: score, doneAt: now, updatedAt: now })
-            .where(eq(expeditionStopProgress.id, row.id));
-        }
-        if (done) {
-          await this.payStopOnce(tx, expedition, stop, studentProfileId, grants, goldStar ? '⭐ ¡Reto superado con estrella!' : '❓ Reto superado');
-          await this.checkFinishInTx(tx, expedition, studentProfileId, grants, null);
-        }
-        after.push(await this.grantInTx(tx, expedition.classroomId, grants));
-      }
+      const settled = await this.settleRound(tx, expedition, stop, row, list, [...previous, { questionId, attempt, isCorrect }], now);
       const value = {
         isCorrect,
         explanation: question.explanation ?? null,
         // La respuesta correcta se muestra recién en el reintento (en la primera vuelta, solo la explicación).
         correctAnswer: !isCorrect && attempt === 2 ? correctAnswerFor(question, seed) : null,
-        roundComplete,
-        attempt: roundComplete && !done ? 2 : attempt,
-        score,
-        passed,
-        done,
-        goldStar,
-        retry,
+        roundComplete: settled.complete,
+        attempt: settled.complete && !settled.done ? 2 : attempt,
+        score: settled.score,
+        passed: settled.passed,
+        done: settled.done,
+        goldStar: settled.goldStar,
+        retry: settled.retry,
       };
-      return { value, after };
+      return { value, after: settled.after };
     });
   }
 

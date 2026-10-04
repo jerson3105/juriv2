@@ -154,10 +154,11 @@ export const ChallengePlayer = ({ stop, onExit }: { stop: StudentStop; onExit: (
       </div>
     );
   }
-  if (state.questions.length === 0) {
+  if (state.preparing) {
     return (
       <div className="space-y-3 py-6 text-center">
-        <p className="text-sm text-gray-800 dark:text-gray-200">Este reto se quedó sin preguntas. Avísale a tu profe.</p>
+        <div className="text-4xl" aria-hidden="true">🛠️</div>
+        <p className="text-sm text-gray-800 dark:text-gray-200">Tu profe está preparando las preguntas de este reto. Vuelve en un rato.</p>
         <button type="button" onClick={onExit} className={secondaryButton}>Volver</button>
       </div>
     );

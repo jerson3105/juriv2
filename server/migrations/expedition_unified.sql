@@ -98,7 +98,8 @@ CREATE TABLE IF NOT EXISTS expedition_answers (
   KEY idx_expedition_answers_student (student_profile_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 5) Evidencias: cada entrega queda guardada; la vigente es la última.
+-- 5) Evidencias: cada entrega queda guardada; la vigente es la última (con milisegundos: dos entregas en el
+--    mismo segundo no se confunden al decidir cuál vio el docente).
 CREATE TABLE IF NOT EXISTS expedition_evidence (
   id VARCHAR(36) NOT NULL,
   expedition_id VARCHAR(36) NOT NULL,
@@ -106,7 +107,7 @@ CREATE TABLE IF NOT EXISTS expedition_evidence (
   student_profile_id VARCHAR(36) NOT NULL,
   files JSON NOT NULL,
   note TEXT NULL,
-  submitted_at DATETIME NOT NULL,
+  submitted_at DATETIME(3) NOT NULL,
   PRIMARY KEY (id),
   KEY idx_expedition_evidence_stop (stop_id, student_profile_id),
   KEY idx_expedition_evidence_student (student_profile_id)

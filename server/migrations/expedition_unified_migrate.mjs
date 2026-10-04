@@ -8,8 +8,8 @@
 // siempre está abierta. Sí se copian las paradas aprobadas (sin volver a pagar) y las entregas.
 // Es idempotente: salta las expediciones que ya tienen paradas.
 import { createRequire } from 'node:module';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 const require = createRequire(resolve('package.json'));
@@ -29,16 +29,30 @@ const asArray = (value) => {
   }
   return Array.isArray(parsed) ? parsed : [];
 };
+// Lo que se recorta o se descarta se cuenta: la simulación lo muestra antes de aplicar.
+const lost = { truncated: 0, resources: 0, files: 0, submissions: 0, longExpeditions: 0 };
 const clip = (text, max) => {
   const value = typeof text === 'string' ? text.trim() : '';
+  if (value.length > max) lost.truncated++;
   return value ? value.slice(0, max) : null;
 };
 const OWN_UPLOAD = /^\/api\/uploads\/expeditions\/[\w.-]+$/;
-const toResource = (url) => {
+const uploadsDir = env.UPLOAD_DIR || resolve('uploads');
+// Entre 2025-12 y 2026-01 la subida devolvía /uploads/expeditions/… (sin /api) y algunos clientes guardaron la
+// URL absoluta: si el archivo está en esta carpeta, pasa a la ruta actual.
+const ownUpload = (url) => {
   if (typeof url !== 'string') return null;
   const value = url.trim();
-  if (OWN_UPLOAD.test(value)) return { kind: 'FILE', url: value, name: value.split('/').pop() };
+  if (OWN_UPLOAD.test(value)) return value;
+  const match = value.match(/^(?:https?:\/\/[^/]+)?\/(?:api\/)?uploads\/expeditions\/([\w.-]+)$/i);
+  return match && existsSync(join(uploadsDir, 'expeditions', match[1])) ? `/api/uploads/expeditions/${match[1]}` : null;
+};
+const toResource = (url) => {
+  const own = ownUpload(url);
+  if (own) return { kind: 'FILE', url: own, name: own.split('/').pop() };
+  const value = typeof url === 'string' ? url.trim() : '';
   if (/^https:\/\/[^\s<>"']+$/i.test(value)) return { kind: 'LINK', url: value, name: null };
+  if (value) lost.resources++;
   return null;
 };
 
@@ -85,6 +99,10 @@ for (const expedition of expeditions) {
   const [pins] = await db.query('SELECT * FROM expedition_pins WHERE expedition_id = ?', [expedition.id]);
   const [connections] = await db.query('SELECT from_pin_id, to_pin_id, on_success FROM expedition_connections WHERE expedition_id = ?', [expedition.id]);
   const ordered = orderPins(pins, connections);
+  if (ordered.length > 10) {
+    lost.longExpeditions++;
+    console.warn(`  ⚠ ${expedition.id} tiene ${ordered.length} paradas (el editor admite 10): el docente deberá quitar algunas para reordenarlas`);
+  }
   const stops = ordered.map((pin, index) => {
     const mission = [clip(pin.task_name, 255), clip(pin.task_content, 4000)].filter(Boolean).join('\n');
     const resources = [...asArray(pin.story_files), ...asArray(pin.task_files)]
@@ -132,9 +150,16 @@ for (const expedition of expeditions) {
   for (const row of submissions) {
     const stop = stopById.get(row.pin_id);
     if (!stop) continue;
-    const files = asArray(row.files).filter((file) => typeof file === 'string' && OWN_UPLOAD.test(file)).slice(0, 5);
-    if (files.length === 0) continue;
-    evidence.push({ stop_id: row.pin_id, student_profile_id: row.student_profile_id, files: JSON.stringify(files), note: clip(row.comment, 2000), submitted_at: row.submitted_at });
+    const raw = asArray(row.files);
+    const files = [...new Set(raw.map(ownUpload).filter(Boolean))].slice(0, 5);
+    lost.files += raw.length - files.length;
+    const note = clip(row.comment, 2000);
+    // Una entrega con solo texto también vale (el modelo nuevo acepta archivos o texto).
+    if (files.length === 0 && !note) {
+      lost.submissions++;
+      continue;
+    }
+    evidence.push({ stop_id: row.pin_id, student_profile_id: row.student_profile_id, files: JSON.stringify(files), note, submitted_at: row.submitted_at });
     const key = `${row.pin_id}:${row.student_profile_id}`;
     if (!progress.has(key)) {
       // Entregada sin decisión: con «avanza ya» el alumno sigue y la evidencia queda por revisar.
@@ -179,4 +204,5 @@ for (const expedition of expeditions) {
 }
 
 console.log(apply ? 'Aplicado:' : 'Simulación (usa --apply para guardar):', summary);
+console.log('Recortado o descartado (textos más largos que el editor, recursos y archivos no válidos, entregas vacías, expediciones de más de 10 paradas):', lost);
 await db.end();

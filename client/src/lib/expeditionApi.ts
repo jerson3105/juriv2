@@ -104,7 +104,7 @@ export interface ReviewItem {
   feedback: string | null;
   reviewedAt: string | null;
   student: { id: string; name: string; characterName: string | null };
-  evidence: { files: string[]; note: string | null; submittedAt: string } | null;
+  evidence: { id: string; files: string[]; note: string | null; submittedAt: string } | null;
 }
 
 export interface ReviewQueue {
@@ -118,7 +118,11 @@ export interface ReviewDecision {
   progressId: string;
   decision: 'APPROVE' | 'NEEDS_WORK';
   feedback?: string | null;
+  /** La entrega que vio el docente: si el alumno la cambió, el servidor salta la decisión. */
+  evidenceId?: string | null;
 }
+
+export interface ReviewResult { approved: number; needsWork: number; skipped: number; changed: number }
 
 export interface StopPatch {
   kind?: StopKind;
@@ -243,6 +247,8 @@ export interface ChallengeState {
   firstScore: number | null;
   finalScore: number | null;
   goldStar: boolean;
+  /** El reto aún no tiene preguntas (el docente las está eligiendo): el alumno espera. */
+  preparing: boolean;
   questions: ChallengeQuestion[];
   /** Las preguntas de la vuelta actual (1 = todas; 2 = las falladas). */
   round: string[];
@@ -310,7 +316,7 @@ export const expeditionApi = {
     (await api.get(`/expeditions/${expeditionId}/board`)).data.data,
   reviewQueue: async (expeditionId: string): Promise<ReviewQueue> =>
     (await api.get(`/expeditions/${expeditionId}/review`)).data.data,
-  review: async (expeditionId: string, decisions: ReviewDecision[]): Promise<{ approved: number; needsWork: number; skipped: number }> =>
+  review: async (expeditionId: string, decisions: ReviewDecision[]): Promise<ReviewResult> =>
     (await api.post(`/expeditions/${expeditionId}/review`, { decisions })).data.data,
   markClass: async (stopId: string, studentProfileIds: string[]): Promise<{ marked: number; skipped: number }> =>
     (await api.post(`/expeditions/stops/${stopId}/class`, { studentProfileIds })).data.data,

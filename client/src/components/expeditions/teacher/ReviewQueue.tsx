@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import { Check, FileText, Hourglass, Loader2, MessageSquareQuote, RotateCcw } from 'lucide-react';
 import { assetUrl, expeditionApi, expeditionKeys, type ReviewDecision, type ReviewItem } from '../../../lib/expeditionApi';
 import { isImageFile, plural, rewardLabel } from '../expeditionHelpers';
@@ -73,14 +74,14 @@ const PendingRow = ({ item, selected, onSelect, onDecide }: {
                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" />
               <div className="flex justify-end gap-2">
                 <button type="button" onClick={() => setAsking(false)} className="pg-btn pg-btn-ghost">Cancelar</button>
-                <button type="button" disabled={!feedback.trim()} onClick={() => onDecide({ progressId: item.progressId, decision: 'NEEDS_WORK', feedback: feedback.trim() })} className="pg-btn pg-btn-fix">
+                <button type="button" disabled={!feedback.trim()} onClick={() => onDecide({ progressId: item.progressId, decision: 'NEEDS_WORK', feedback: feedback.trim(), evidenceId: item.evidence?.id ?? null })} className="pg-btn pg-btn-fix">
                   Enviar
                 </button>
               </div>
             </div>
           ) : (
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => onDecide({ progressId: item.progressId, decision: 'APPROVE' })} className="pg-btn pg-btn-give">
+              <button type="button" onClick={() => onDecide({ progressId: item.progressId, decision: 'APPROVE', evidenceId: item.evidence?.id ?? null })} className="pg-btn pg-btn-give">
                 <Check size={16} aria-hidden="true" /> Aprobar <span className="font-normal">({rewardLabel(item.rewardXp, item.rewardGold)})</span>
               </button>
               <button type="button" onClick={() => setAsking(true)} className="pg-btn pg-btn-fix">
@@ -122,6 +123,7 @@ export const ReviewQueue = ({ expeditionId, projecting, undoable }: {
 
   const pending = query.data.pending.filter((item) => !hidden.has(item.progressId));
   const needsWork = query.data.needsWork;
+  const approval = (item: ReviewItem): ReviewDecision => ({ progressId: item.progressId, decision: 'APPROVE', evidenceId: item.evidence?.id ?? null });
   const decide = (decisions: ReviewDecision[]) => {
     const ids = decisions.map((d) => d.progressId);
     setHidden((current) => new Set([...current, ...ids]));
@@ -132,7 +134,13 @@ export const ReviewQueue = ({ expeditionId, projecting, undoable }: {
         ? `${plural(approvals, 'evidencia aprobada', 'evidencias aprobadas')}`
         : approvals === 0 ? 'Mejora pedida' : `${approvals} aprobadas y ${decisions.length - approvals} con mejora pedida`,
       errorText: 'No se pudo guardar la revisión',
-      action: () => expeditionApi.review(expeditionId, decisions),
+      action: async () => {
+        const result = await expeditionApi.review(expeditionId, decisions);
+        // El alumno cambió su entrega mientras la mirabas: esa decisión no se aplicó y vuelve a la cola.
+        if (result.changed > 0) {
+          toast(`${plural(result.changed, 'entrega cambió', 'entregas cambiaron')} mientras revisabas: vuelve a mirarla${result.changed === 1 ? '' : 's'}.`, { icon: '🔄' });
+        }
+      },
       onUndo: () => setHidden((current) => new Set([...current].filter((id) => !ids.includes(id)))),
       onDone: () => {
         void queryClient.invalidateQueries({ queryKey: expeditionKeys.review(expeditionId) }).then(() => {
@@ -159,12 +167,12 @@ export const ReviewQueue = ({ expeditionId, projecting, undoable }: {
             <h2 id="review-pending" className="font-bold pg-fg">{plural(pending.length, 'evidencia por revisar', 'evidencias por revisar')}</h2>
             <div className="ml-auto flex flex-wrap gap-2">
               {selected.size > 0 && (
-                <button type="button" onClick={() => decide([...selected].map((progressId) => ({ progressId, decision: 'APPROVE' as const })))} className="pg-btn pg-btn-give" data-filled="true">
+                <button type="button" onClick={() => decide(pending.filter((item) => selected.has(item.progressId)).map(approval))} className="pg-btn pg-btn-give" data-filled="true">
                   <Check size={16} aria-hidden="true" /> Aprobar {selected.size}
                 </button>
               )}
               {selected.size === 0 && pending.length > 1 && (
-                <button type="button" onClick={() => decide(pending.map((item) => ({ progressId: item.progressId, decision: 'APPROVE' as const })))} className="pg-btn pg-btn-give">
+                <button type="button" onClick={() => decide(pending.map(approval))} className="pg-btn pg-btn-give">
                   <Check size={16} aria-hidden="true" /> Aprobar todas
                 </button>
               )}

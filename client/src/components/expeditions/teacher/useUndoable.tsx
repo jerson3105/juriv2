@@ -11,7 +11,8 @@ interface Pending {
 
 /**
  * «Deshacer» sin revertir puntos: la acción se envía a los 5 s salvo que el docente la deshaga. Así el alumno
- * nunca ve XP que aparece y desaparece. Si el docente sale antes, lo pendiente se envía al desmontar.
+ * nunca ve XP que aparece y desaparece. Si el docente sale antes, lo pendiente se envía al desmontar; al cerrar
+ * o recargar la pestaña, el navegador pregunta antes de salir y lo pendiente se intenta enviar.
  */
 export const useUndoable = () => {
   const pending = useRef(new Map<number, Pending>());
@@ -19,12 +20,24 @@ export const useUndoable = () => {
 
   useEffect(() => {
     const queue = pending.current;
-    return () => {
+    const flushAll = () => {
       for (const entry of queue.values()) {
         window.clearTimeout(entry.timer);
         void entry.fire();
       }
       queue.clear();
+    };
+    const warn = (event: BeforeUnloadEvent) => {
+      if (queue.size === 0) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    window.addEventListener('pagehide', flushAll);
+    return () => {
+      window.removeEventListener('beforeunload', warn);
+      window.removeEventListener('pagehide', flushAll);
+      flushAll();
     };
   }, []);
 

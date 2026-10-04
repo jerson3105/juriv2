@@ -94,6 +94,8 @@ const reviewSchema = z.object({
     progressId: idSchema,
     decision: z.enum(['APPROVE', 'NEEDS_WORK'], { errorMap: () => ({ message: 'Decisión no válida' }) }),
     feedback: cleanText(500, 'El comentario es muy largo (máximo 500)').optional(),
+    // La entrega que vio el docente: si el alumno la cambió mientras tanto, esa decisión se salta.
+    evidenceId: idSchema.nullable().optional(),
   }).strict('Datos no válidos').refine((d) => d.decision !== 'NEEDS_WORK' || !!d.feedback, 'Escribe qué debe mejorar'))
     .min(1, 'No hay decisiones').max(300, 'Demasiadas decisiones a la vez'),
 }).strict('Datos no válidos');

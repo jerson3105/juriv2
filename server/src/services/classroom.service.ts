@@ -59,6 +59,7 @@ import { revertLevelUpsAbove } from '../utils/points.js';
 import { ConflictError, ValidationError } from '../utils/errors.js';
 import { isYoungLevel } from '../utils/energy.js';
 import { normalizeBadgeAssignment, parseBadgeCondition, safeBadgeImage, type BadgeConditionShape } from '../utils/badgeConditions.js';
+import { deleteLegacyExpeditionRowsOfClassroom } from '../utils/legacyExpeditions.js';
 import { v4 as uuidv4 } from 'uuid';
 import { avatarService } from './avatar.service.js';
 import { avatarCatalogService } from './avatarCatalog.service.js';
@@ -1894,7 +1895,9 @@ export class ClassroomService {
         await tx.delete(scrolls).where(inArray(scrolls.id, scrollIds));
       }
 
-      // 6. Eliminar expediciones (paradas, avance, respuestas, evidencias y metas)
+      // 6. Eliminar expediciones (paradas, avance, respuestas, evidencias y metas), y antes las filas de las
+      //    tablas viejas (clásica y Jiro) que siguen en la base.
+      await deleteLegacyExpeditionRowsOfClassroom(tx, classroomId);
       if (expeditionIds.length > 0) {
         const stopIds = (await tx.select({ id: expeditionStops.id }).from(expeditionStops)
           .where(inArray(expeditionStops.expeditionId, expeditionIds))).map((s) => s.id);

@@ -79,8 +79,8 @@ const rewardError = (value: string) => {
   return null;
 };
 
-const QuestionPicker = ({ classroomId, bankId, questionIds, onChange }: {
-  classroomId: string; bankId: string | null; questionIds: string[]; onChange: (bankId: string | null, ids: string[]) => void;
+const QuestionPicker = ({ classroomId, bankId, questionIds, bankLocked, onChange }: {
+  classroomId: string; bankId: string | null; questionIds: string[]; bankLocked: boolean; onChange: (bankId: string | null, ids: string[]) => void;
 }) => {
   const banks = useQuery({ queryKey: ['questionBanks', classroomId], queryFn: () => questionBankApi.getBanks(classroomId) });
   const questions = useQuery({ queryKey: ['questions', bankId], queryFn: () => questionBankApi.getQuestions(bankId!), enabled: !!bankId });
@@ -104,10 +104,11 @@ const QuestionPicker = ({ classroomId, bankId, questionIds, onChange }: {
     <div className="space-y-2">
       <label className="block">
         <span className={labelClass}>Banco de preguntas</span>
-        <select value={bankId ?? ''} onChange={(event) => onChange(event.target.value || null, [])} className={`${inputClass} mt-1.5 min-h-[44px]`}>
+        <select value={bankId ?? ''} disabled={bankLocked} onChange={(event) => onChange(event.target.value || null, [])} className={`${inputClass} mt-1.5 min-h-[44px] disabled:opacity-60`}>
           <option value="">Elige un banco…</option>
           {(banks.data ?? []).map((bank) => <option key={bank.id} value={bank.id}>{bank.name}</option>)}
         </select>
+        {bankLocked && <span className="mt-1 block text-sm text-gray-700 dark:text-gray-300">Ya hay alumnos que lo empezaron: el banco queda fijo (sí puedes cambiar las preguntas).</span>}
       </label>
       {bankId && (
         questions.isLoading ? <p className="text-sm text-gray-700 dark:text-gray-300">Cargando preguntas…</p> : (
@@ -298,8 +299,13 @@ export const StopPanel = ({ expedition, stop, index, xpPerLevel, placing, onPlac
 
       {draft.kind === 'CHALLENGE' && (
         <>
-          <QuestionPicker classroomId={expedition.classroomId} bankId={draft.bankId} questionIds={draft.questionIds}
+          <QuestionPicker classroomId={expedition.classroomId} bankId={draft.bankId} questionIds={draft.questionIds} bankLocked={started && stop.kind === 'CHALLENGE' && !!stop.bankId}
             onChange={(bankId, ids) => setDraft((current) => ({ ...current, bankId, questionIds: ids }))} />
+          {expedition.status !== 'DRAFT' && draft.questionIds.length === 0 && (
+            <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 dark:bg-amber-900/40 dark:text-amber-50" role="status">
+              Elige al menos una pregunta: mientras no tenga, tus alumnos esperan en este reto.
+            </p>
+          )}
           <label className="block">
             <span className={labelClass}>Para superarlo</span>
             <select value={draft.passPercent} onChange={(event) => set('passPercent', Number(event.target.value))} className={`${inputClass} mt-1.5 min-h-[44px] max-w-xs`}>

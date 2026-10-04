@@ -21,6 +21,7 @@ import { generateRandomCode, maskPersonName } from '../utils/helpers.js';
 import { teacherVerificationService } from './teacherVerification.service.js';
 import { applyPointDeltas } from '../utils/points.js';
 import { ConflictError, ForbiddenError, NotFoundError } from '../utils/errors.js';
+import { deleteLegacyExpeditionRowsOfStudent } from '../utils/legacyExpeditions.js';
 
 export const ROSTER_REQUIRED_MESSAGE = 'Esta clase tiene lista: busca tu nombre en ella.';
 
@@ -1096,6 +1097,7 @@ export class StudentService {
       await tx.delete(expeditionEvidence).where(eq(expeditionEvidence.studentProfileId, studentId));
       await tx.delete(expeditionStopProgress).where(eq(expeditionStopProgress.studentProfileId, studentId));
       await tx.delete(expeditionFinishes).where(eq(expeditionFinishes.studentProfileId, studentId));
+      await deleteLegacyExpeditionRowsOfStudent(tx, studentId);
 
       // 12. Collectibles (figuritas, sobres abiertos, bienvenida y álbumes completados)
       await tx.delete(studentCollectibles).where(eq(studentCollectibles.studentProfileId, studentId));

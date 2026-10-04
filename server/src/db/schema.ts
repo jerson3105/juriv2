@@ -1702,7 +1702,8 @@ export const expeditionAnswers = mysqlTable('expedition_answers', {
   studentIdx: index('idx_expedition_answers_student').on(table.studentProfileId),
 }));
 
-// Evidencias: cada entrega queda guardada; la vigente es la última.
+// Evidencias: cada entrega queda guardada; la vigente es la última (milisegundos: dos entregas en el mismo
+// segundo no se confunden al decidir cuál vio el docente).
 export const expeditionEvidence = mysqlTable('expedition_evidence', {
   id: varchar('id', { length: 36 }).primaryKey(),
   expeditionId: varchar('expedition_id', { length: 36 }).notNull(),
@@ -1710,7 +1711,7 @@ export const expeditionEvidence = mysqlTable('expedition_evidence', {
   studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),
   files: json('files').$type<string[]>().notNull(),
   note: text('note'),
-  submittedAt: datetime('submitted_at').notNull(),
+  submittedAt: datetime('submitted_at', { fsp: 3 }).notNull(),
 }, (table) => ({
   stopIdx: index('idx_expedition_evidence_stop').on(table.stopId, table.studentProfileId),
   studentIdx: index('idx_expedition_evidence_student').on(table.studentProfileId),
