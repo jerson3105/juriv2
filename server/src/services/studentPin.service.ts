@@ -9,22 +9,25 @@ import { avatarService } from './avatar.service.js';
 import { splitOfficialStudentName } from './auth.service.js';
 import { teacherVerificationService, UNVERIFIED_CLASS_MESSAGE } from './teacherVerification.service.js';
 import { recordAudit } from '../utils/audit.js';
+import { isPinFormatValid, isWeakPin, PIN_BLOCK_LEVEL, PIN_LOCK_STEPS_MS, PIN_MAX_ATTEMPTS } from '../utils/pinPolicy.js';
 
 /**
  * Alumnos sin correo. Primera vez: tarjeta (código personal) o código de clase + su nombre de la
  * lista (solo con la clase abierta) → crean un PIN de 4 números. Después: código de clase + nombre
- * + PIN. 5 fallos bloquean 15 minutos; el docente puede restablecer el acceso (tarjeta nueva).
+ * + PIN. 5 fallos bloquean 15 minutos; otros 5, una hora; otros 5 dejan el acceso bloqueado hasta que
+ * el docente lo restablezca (tarjeta nueva).
  */
 
 // Correo interno (dominio reservado .invalid): la columna es obligatoria, pero nunca se muestra ni recibe correos.
 const PIN_EMAIL_DOMAIN = 'alumnos.juried.invalid';
 const pinEmailFor = (userId: string) => `pin-${userId}@${PIN_EMAIL_DOMAIN}`;
 const PIN_COST = 10;
-const MAX_ATTEMPTS = 5;
-const LOCK_MS = 15 * 60 * 1000;
 
 const CLOSED_CLASS_MESSAGE = 'Esta clase no está recibiendo estudiantes ahora. Pídele tu tarjeta a tu profe.';
 const RESET_MESSAGE = 'Tu profe restableció tu acceso: crea un PIN nuevo con la tarjeta que te dio.';
+const BLOCKED_MESSAGE = 'Tu acceso quedó bloqueado por seguridad. Pídele a tu profe que lo restablezca.';
+
+const durationText = (ms: number) => (ms >= 3_600_000 ? (ms === 3_600_000 ? '1 hora' : `${ms / 3_600_000} horas`) : `${ms / 60_000} minutos`);
 
 export type RosterState = 'new' | 'pin' | 'account';
 export interface ClassRoster {
@@ -41,12 +44,6 @@ interface PinAuthResult extends SessionTokens {
 }
 
 const normalizeCode = (code: string) => code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-
-export const isPinFormatValid = (pin: string) => /^\d{4}$/.test(pin);
-
-/** PIN que cualquiera probaría primero: 0000, 1111, 1234, 4321… */
-export const isWeakPin = (pin: string) =>
-  /^(\d)\1{3}$/.test(pin) || '0123456789'.includes(pin) || '9876543210'.includes(pin);
 
 const assertNewPin = (pin: string) => {
   if (!isPinFormatValid(pin)) throw new ValidationError('El PIN tiene 4 números.');
@@ -225,7 +222,7 @@ class StudentPinService {
       const userId = target.resetUserId;
       const result = await db.transaction(async (tx) => {
         const updated = await tx.update(users)
-          .set({ pinHash, pinFailedAttempts: 0, pinLockedUntil: null, updatedAt: now })
+          .set({ pinHash, pinFailedAttempts: 0, pinLockedUntil: null, pinLockLevel: 0, updatedAt: now })
           .where(and(eq(users.id, userId), eq(users.provider, 'PIN'), sql`${users.pinHash} IS NULL`));
         if (affectedRows(updated) !== 1) throw new ConflictError('Ya tienes un PIN: entra con el código de tu clase, tu nombre y tu PIN.');
         // La tarjeta de restablecimiento ya cumplió su función.
@@ -279,15 +276,17 @@ class StudentPinService {
    * Revisa el PIN con la fila del usuario bloqueada (los intentos simultáneos no esquivan el
    * contador). Devuelve el error a lanzar FUERA de la transacción, para que el contador se guarde.
    */
-  private async checkPinLocked(tx: any, userId: string, pin: string): Promise<{ error?: Error; locked?: boolean; user?: { email: string; firstName: string; lastName: string; avatarUrl: string | null } }> {
+  private async checkPinLocked(tx: any, userId: string, pin: string): Promise<{ error?: Error; lock?: { level: number; blocked: boolean }; user?: { email: string; firstName: string; lastName: string; avatarUrl: string | null } }> {
     const [user] = await tx.select({
       email: users.email, firstName: users.firstName, lastName: users.lastName, avatarUrl: users.avatarUrl,
       provider: users.provider, isActive: users.isActive, pinHash: users.pinHash,
-      pinFailedAttempts: users.pinFailedAttempts, pinLockedUntil: users.pinLockedUntil,
+      pinFailedAttempts: users.pinFailedAttempts, pinLockedUntil: users.pinLockedUntil, pinLockLevel: users.pinLockLevel,
     }).from(users).where(eq(users.id, userId)).for('update');
 
     if (!user || user.provider !== 'PIN' || !user.isActive) return { error: new UnauthorizedError('Este alumno no entra con PIN.') };
     if (!user.pinHash) return { error: new ConflictError(RESET_MESSAGE) };
+    // Tras el último bloqueo ya no se prueba el PIN: solo el docente puede restablecer el acceso.
+    if (user.pinLockLevel >= PIN_BLOCK_LEVEL) return { error: new ForbiddenError(BLOCKED_MESSAGE) };
 
     const now = Date.now();
     if (user.pinLockedUntil && new Date(user.pinLockedUntil).getTime() > now) {
@@ -297,17 +296,26 @@ class StudentPinService {
 
     if (!(await bcrypt.compare(pin, user.pinHash))) {
       const attempts = user.pinFailedAttempts + 1;
-      if (attempts >= MAX_ATTEMPTS) {
-        await tx.update(users).set({ pinFailedAttempts: 0, pinLockedUntil: new Date(now + LOCK_MS) }).where(eq(users.id, userId));
-        return { error: new RateLimitError('Fallaste 5 veces: tu PIN quedó bloqueado 15 minutos. Si no lo recuerdas, pídele ayuda a tu profe.'), locked: true };
+      if (attempts >= PIN_MAX_ATTEMPTS) {
+        const level = user.pinLockLevel + 1;
+        const lockMs = PIN_LOCK_STEPS_MS[level - 1];
+        await tx.update(users)
+          .set({ pinFailedAttempts: 0, pinLockLevel: level, pinLockedUntil: lockMs ? new Date(now + lockMs) : null })
+          .where(eq(users.id, userId));
+        const lock = { level, blocked: !lockMs };
+        if (!lockMs) return { error: new ForbiddenError(BLOCKED_MESSAGE), lock };
+        const next = level === PIN_LOCK_STEPS_MS.length
+          ? ` Si fallas ${PIN_MAX_ATTEMPTS} más, tu profe tendrá que restablecer tu acceso.`
+          : ' Si no lo recuerdas, pídele ayuda a tu profe.';
+        return { error: new RateLimitError(`Fallaste ${PIN_MAX_ATTEMPTS} veces${level > 1 ? ' otra vez' : ''}: tu PIN quedó bloqueado ${durationText(lockMs)}.${next}`), lock };
       }
       await tx.update(users).set({ pinFailedAttempts: attempts }).where(eq(users.id, userId));
-      const left = MAX_ATTEMPTS - attempts;
+      const left = PIN_MAX_ATTEMPTS - attempts;
       return { error: new UnauthorizedError(`Ese PIN no es correcto. Te ${left === 1 ? 'queda 1 intento' : `quedan ${left} intentos`}.`) };
     }
 
-    if (user.pinFailedAttempts > 0 || user.pinLockedUntil) {
-      await tx.update(users).set({ pinFailedAttempts: 0, pinLockedUntil: null }).where(eq(users.id, userId));
+    if (user.pinFailedAttempts > 0 || user.pinLockedUntil || user.pinLockLevel > 0) {
+      await tx.update(users).set({ pinFailedAttempts: 0, pinLockedUntil: null, pinLockLevel: 0 }).where(eq(users.id, userId));
     }
     return { user };
   }
@@ -339,12 +347,12 @@ class StudentPinService {
       return { ...checked, tokens };
     });
     if (result.error) {
-      if (result.locked) {
+      if (result.lock) {
         await recordAudit({
           action: 'student.pin_locked',
           schoolId: classroom.schoolId,
           target: { type: 'user', id: userId },
-          metadata: { classroomId: classroom.id, via: 'login' },
+          metadata: { classroomId: classroom.id, via: 'login', level: result.lock.level, blocked: result.lock.blocked },
           ip: ip ?? null,
         });
       }
@@ -376,12 +384,12 @@ class StudentPinService {
       return checked;
     });
     if (result.error) {
-      if (result.locked) {
+      if (result.lock) {
         await recordAudit({
           action: 'student.pin_locked',
           actor: { id: userId, role: 'STUDENT' },
           target: { type: 'user', id: userId },
-          metadata: { via: 'change_pin' },
+          metadata: { via: 'change_pin', level: result.lock.level, blocked: result.lock.blocked },
           ip: ip ?? null,
         });
       }
@@ -417,7 +425,7 @@ class StudentPinService {
       linkCode = generateRandomCode(6);
       try {
         await db.transaction(async (tx) => {
-          await tx.update(users).set({ pinHash: null, pinFailedAttempts: 0, pinLockedUntil: null, updatedAt: now }).where(eq(users.id, userId));
+          await tx.update(users).set({ pinHash: null, pinFailedAttempts: 0, pinLockedUntil: null, pinLockLevel: 0, updatedAt: now }).where(eq(users.id, userId));
           await tx.update(studentProfiles).set({ linkCode, updatedAt: now }).where(eq(studentProfiles.id, profile.id));
         });
         break;

@@ -8,7 +8,7 @@ import { PinInput } from '../../components/auth/PinInput';
 import { RosterPicker } from '../../components/auth/RosterPicker';
 import { Input } from '../../components/ui/Input';
 import {
-  errorMessage, isPasswordValid, isWeakPin, normalizeJoinCode, setPendingJoinCode, pressable } from '../../components/auth/authHelpers';
+  errorMessage, isPasswordValid, isWeakPin, normalizeJoinCode, setPendingJoinCode, pressable, WEAK_PIN_HINT } from '../../components/auth/authHelpers';
 import { primaryButton, cancelButton } from '../../components/home/homeHelpers';
 import { authApi } from '../../lib/api';
 import type { ClassRoster, PinAuthData } from '../../lib/api';
@@ -24,8 +24,6 @@ type Step =
   | 'code' | 'confirm' | 'notme' | 'access' | 'email'
   | 'roster' | 'pick-confirm' | 'pin-login' | 'pin-create' | 'done'
   | 'not-listed' | 'need-card' | 'has-account';
-
-const WEAK_PIN_HINT = 'No uses 1234 ni el mismo número cuatro veces.';
 
 const linkClass = 'inline-flex min-h-[44px] items-center font-semibold text-primary-700 underline-offset-2 hover:underline dark:text-primary-300';
 

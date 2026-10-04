@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { authApi } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
 import { PinInput } from './PinInput';
-import { errorMessage, isWeakPin } from './authHelpers';
+import { errorMessage, isWeakPin, WEAK_PIN_HINT } from './authHelpers';
 import { primaryButton } from '../home/homeHelpers';
 
 /**
@@ -22,7 +22,7 @@ export const ChangePinSection = () => {
     e.preventDefault();
     if (current.length !== 4) return setError({ field: 'current', message: 'Escribe tu PIN actual.' });
     if (next.length !== 4) return setError({ field: 'next', message: 'Escribe tu PIN nuevo.' });
-    if (isWeakPin(next)) return setError({ field: 'next', message: 'Ese PIN es muy fácil de adivinar. No uses 1234 ni el mismo número cuatro veces.' });
+    if (isWeakPin(next)) return setError({ field: 'next', message: `Ese PIN es muy fácil de adivinar. ${WEAK_PIN_HINT}` });
     if (next === current) return setError({ field: 'next', message: 'El PIN nuevo debe ser distinto del actual.' });
     if (repeat !== next) return setError({ field: 'repeat', message: 'Los PIN nuevos no coinciden.' });
     setBusy(true);

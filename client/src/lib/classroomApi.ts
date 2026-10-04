@@ -106,6 +106,8 @@ export interface Student {
   /** PIN restablecido por el docente: aún no crea el nuevo (1/0). */
   pinPending?: number | boolean | null;
   pinLockedUntil?: string | null;
+  /** Tras el último bloqueo por PIN equivocados: solo «Restablecer acceso» le devuelve la entrada (1/0). */
+  pinBlocked?: number | boolean | null;
   level: number;
   xp: number;
   hp: number;

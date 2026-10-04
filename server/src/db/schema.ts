@@ -81,6 +81,8 @@ export const users = mysqlTable('users', {
   pinHash: varchar('pin_hash', { length: 100 }),
   pinFailedAttempts: int('pin_failed_attempts').notNull().default(0),
   pinLockedUntil: datetime('pin_locked_until'),
+  /** Bloqueos seguidos sin entrar bien (utils/pinPolicy): 15 min, 1 hora y, al 3.º, bloqueado hasta que el docente lo restablezca. */
+  pinLockLevel: tinyint('pin_lock_level').notNull().default(0),
 });
 
 /** Dominios institucionales. Solo los de alcance «solo docentes» verifican al docente que entra con Google. */

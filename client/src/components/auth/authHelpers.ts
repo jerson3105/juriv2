@@ -94,8 +94,24 @@ export const landingFor = (role: string | undefined): string =>
 export const accountLabel = (user: { email?: string; provider?: string } | null | undefined) =>
   user?.provider === 'PIN' ? 'Entras con tu PIN' : user?.email ?? '';
 
-/** PIN que cualquiera probaría primero (0000, 1111, 1234, 4321…). El servidor aplica la misma regla. */
-export const isWeakPin = (pin: string) => /^(\d)\1{3}$/.test(pin) || '0123456789'.includes(pin) || '9876543210'.includes(pin);
+// Los primeros que cualquiera probaría además de las reglas de abajo: columnas y diagonales del teclado y los más usados.
+const COMMON_PINS = new Set(['1004', '2580', '0852', '1470', '0741', '3690', '0963', '7410', '9630', '1357', '2468', '6969', '1231', '1230', '0007', '7000']);
+
+/**
+ * PIN fácil de adivinar: repetido (1111), escalera (1234, 9876), pareja (1212, 1122), año (1950–2030) o muy usado.
+ * El servidor aplica la misma regla (server/src/utils/pinPolicy.ts): si cambia aquí, cambia allá.
+ */
+export const isWeakPin = (pin: string) =>
+  /^(\d)\1{3}$/.test(pin) ||
+  '0123456789'.includes(pin) ||
+  '9876543210'.includes(pin) ||
+  /^(\d\d)\1$/.test(pin) ||
+  /^(\d)\1(\d)\2$/.test(pin) ||
+  (Number(pin) >= 1950 && Number(pin) <= 2030) ||
+  COMMON_PINS.has(pin);
+
+/** Pista bajo el campo y en el error de PIN débil. */
+export const WEAK_PIN_HINT = 'No uses 1234, 1212, un año ni el mismo número cuatro veces.';
 
 /** Código como lo escribe un niño: mayúsculas, sin espacios ni guiones. */
 export const normalizeJoinCode = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);

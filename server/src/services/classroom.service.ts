@@ -1,4 +1,5 @@
 import { db } from '../db/index.js';
+import { PIN_BLOCK_LEVEL } from '../utils/pinPolicy.js';
 import { 
   classrooms, 
   levelUpLogs,
@@ -572,6 +573,8 @@ export class ClassroomService {
       accessType: sql<'PIN' | 'EMAIL' | 'GOOGLE' | null>`CASE WHEN ${users.id} IS NULL THEN NULL WHEN ${users.provider} = 'PIN' THEN 'PIN' WHEN ${users.provider} = 'GOOGLE' THEN 'GOOGLE' ELSE 'EMAIL' END`,
       pinPending: sql<number>`(${users.provider} = 'PIN' AND ${users.pinHash} IS NULL)`,
       pinLockedUntil: users.pinLockedUntil,
+      // Tras el último bloqueo solo «Restablecer acceso» le devuelve la entrada.
+      pinBlocked: sql<number>`(${users.provider} = 'PIN' AND ${users.pinLockLevel} >= ${PIN_BLOCK_LEVEL})`,
       realName: users.firstName,
       realLastName: users.lastName,
       // Datos del clan

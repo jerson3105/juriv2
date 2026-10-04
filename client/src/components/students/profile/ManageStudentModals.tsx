@@ -10,7 +10,7 @@ import { parentApi } from '../../../lib/parentApi';
 import { HomeModal } from '../../home/HomeModal';
 import { cancelButton, inputClass, labelClass, primaryButton } from '../../home/homeHelpers';
 import { errorMessage } from './profileHelpers';
-import { isPinPending, isPinStudent, pinLockedUntil } from '../../../lib/studentAccess';
+import { isPinBlocked, isPinPending, isPinStudent, pinLockedUntil } from '../../../lib/studentAccess';
 
 const copy = async (text: string, what: string) => {
   try {
@@ -94,6 +94,7 @@ const PinAccessPanel = ({ classroomId, student, name }: { classroomId: string; s
   const [busy, setBusy] = useState<'reset' | 'pdf' | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
   const lockedUntil = pending ? null : pinLockedUntil(student);
+  const blocked = !pending && isPinBlocked(student);
 
   const reset = async () => {
     setBusy('reset');
@@ -137,6 +138,12 @@ const PinAccessPanel = ({ classroomId, student, name }: { classroomId: string; s
         <p className="flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-900/30 dark:text-amber-50" role="status">
           <Lock size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
           Su PIN está bloqueado por intentos fallidos hasta las {lockedUntil.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}. Si no lo recuerda, restablece su acceso.
+        </p>
+      )}
+      {blocked && (
+        <p className="flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-900/30 dark:text-amber-50" role="status">
+          <Lock size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+          Su acceso quedó bloqueado tras muchos intentos fallidos con su PIN. Restablécelo para que vuelva a entrar.
         </p>
       )}
       {pending && code && <CodeBox code={code} label="Código" />}
