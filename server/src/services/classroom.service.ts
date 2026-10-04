@@ -41,6 +41,7 @@ import {
   expeditionAnswers,
   expeditionEvidence,
   expeditionFinishes,
+  expeditionClanFinishes,
   studentGrades,
   studentActivityScores,
   classroomCompetencyIndicators,
@@ -1903,6 +1904,7 @@ export class ClassroomService {
         await tx.delete(expeditionEvidence).where(inArray(expeditionEvidence.expeditionId, expeditionIds));
         await tx.delete(expeditionStopProgress).where(inArray(expeditionStopProgress.expeditionId, expeditionIds));
         await tx.delete(expeditionFinishes).where(inArray(expeditionFinishes.expeditionId, expeditionIds));
+        await tx.delete(expeditionClanFinishes).where(inArray(expeditionClanFinishes.expeditionId, expeditionIds));
         await tx.delete(expeditionStops).where(inArray(expeditionStops.expeditionId, expeditionIds));
         await tx.delete(expeditions).where(inArray(expeditions.id, expeditionIds));
       }

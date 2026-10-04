@@ -66,6 +66,13 @@ const updateSchema = z.object({
   mapImageUrl: z.string().max(500, 'Mapa no válido').nullable().optional(),
   finishBadgeId: idSchema.nullable().optional(),
   perseveranceBadgeId: idSchema.nullable().optional(),
+  // Por clanes (capa por mayoría) y su premio; meta de clase opcional (null = sin meta).
+  groupMode: z.enum(['INDIVIDUAL', 'CLAN'], { errorMap: () => ({ message: 'Modo no válido' }) }).optional(),
+  clanXp: reward.optional(),
+  goalPercent: z.number({ invalid_type_error: 'La meta debe ser un porcentaje' }).int('La meta debe ser un número entero')
+    .min(10, 'La meta va de 10 a 100 %').max(100, 'La meta va de 10 a 100 %').nullable().optional(),
+  goalDueAt: dueDate.optional(),
+  goalXp: reward.optional(),
 }).strict('Datos no válidos');
 
 const stopKind = z.enum(EXPEDITION_STOP_KINDS, { errorMap: () => ({ message: 'Tipo de parada no válido' }) });

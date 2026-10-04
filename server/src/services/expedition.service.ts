@@ -1,12 +1,14 @@
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import {
   badges,
+  clanLogs,
   classroomCompetencies,
   classrooms,
   curriculumCompetencies,
   expeditionAnswers,
+  expeditionClanFinishes,
   expeditionEvidence,
   expeditionFinishes,
   expeditionMaps,
@@ -17,6 +19,7 @@ import {
   pointLogs,
   questions,
   studentProfiles,
+  teams,
   users,
   type Expedition,
   type ExpeditionResource,
@@ -82,6 +85,8 @@ const SUGGESTED: Record<StopKind, { xpPercent: number; gold: number }> = {
 const percentOf = (xpPerLevel: number, percent: number) => Math.min(MAX_REWARD, Math.round((xpPerLevel * percent) / 100));
 export const suggestedReward = (kind: StopKind, xpPerLevel: number) => ({ xp: percentOf(xpPerLevel, SUGGESTED[kind].xpPercent), gold: SUGGESTED[kind].gold });
 export const suggestedFinish = (xpPerLevel: number) => ({ xp: percentOf(xpPerLevel, 20), gold: 10 });
+/** Premio del clan al llegar a la meta (suma al XP del clan) y de la meta de clase, en % del XP por nivel. */
+export const suggestedClanXp = (xpPerLevel: number) => percentOf(xpPerLevel, 30);
 
 const DEFAULT_TITLE: Record<StopKind, string> = { STORY: 'Relato', CHALLENGE: 'Reto', EVIDENCE: 'Evidencia', CLASS: 'En clase' };
 const GOLD_STAR_SCORE = 80;
@@ -122,6 +127,11 @@ const expeditionDto = (e: Expedition) => ({
   finishGold: e.finishGold,
   finishBadgeId: e.finishBadgeId,
   perseveranceBadgeId: e.perseveranceBadgeId,
+  clanXp: e.clanXp,
+  goalPercent: e.goalPercent,
+  goalDueAt: e.goalDueAt,
+  goalXp: e.goalXp,
+  goalReachedAt: e.goalReachedAt,
   status: e.status,
   publishedAt: e.publishedAt,
   createdAt: e.createdAt,
@@ -207,7 +217,10 @@ interface Grant {
   givenBy: string | null;
   /** Insignia elegida por el docente (de la meta o de perseverancia): se otorga después del commit. */
   badge?: { id: string; reason: string } | null;
+  /** Algo más que se hace después del commit, una sola vez por clave (revisar clanes y meta de la clase). */
+  followUp?: { key: string; run: () => Promise<void> };
 }
+const noPoints = { xp: 0, gold: 0, reason: '', title: '', what: '', givenBy: null };
 
 const rewardText = (xp: number, gold: number) => [xp > 0 ? `+${xp} XP` : '', gold > 0 ? `+${gold} de oro` : ''].filter(Boolean).join(' · ');
 
@@ -414,10 +427,27 @@ class ExpeditionService {
     name?: string; description?: string | null; closingText?: string | null; finishXp?: number; finishGold?: number;
     scenario?: 'CONSTELLATION' | 'MAP'; constellationId?: string; mapImageUrl?: string | null;
     finishBadgeId?: string | null; perseveranceBadgeId?: string | null;
+    groupMode?: 'INDIVIDUAL' | 'CLAN'; clanXp?: number; goalPercent?: number | null; goalDueAt?: Date | null; goalXp?: number;
   }) {
     const expedition = await this.requireExpedition(expeditionId);
     const stops = await this.stopsOf(expeditionId);
     const set: Partial<typeof expeditions.$inferInsert> = { updatedAt: new Date() };
+    // Por clanes: solo si la clase tiene clanes. Al activarlo, el premio del clan arranca con el sugerido.
+    if (patch.groupMode !== undefined && patch.groupMode !== expedition.groupMode) {
+      const [classroom] = await db.select({ clansEnabled: classrooms.clansEnabled, xpPerLevel: classrooms.xpPerLevel }).from(classrooms).where(eq(classrooms.id, expedition.classroomId));
+      if (patch.groupMode === 'CLAN' && !classroom?.clansEnabled) throw new ValidationError('Activa los clanes de la clase para usar este modo');
+      set.groupMode = patch.groupMode;
+      if (patch.groupMode === 'CLAN' && patch.clanXp === undefined && expedition.clanXp === 0) set.clanXp = suggestedClanXp(classroom?.xpPerLevel || 100);
+    }
+    if (patch.clanXp !== undefined) set.clanXp = patch.clanXp;
+    // Meta de clase: sin porcentaje no hay meta (y se borra el «lograda», por si después se pone otra).
+    const goalChanged = patch.goalPercent !== undefined || patch.goalDueAt !== undefined || patch.goalXp !== undefined;
+    if (patch.goalPercent !== undefined) {
+      set.goalPercent = patch.goalPercent;
+      if (patch.goalPercent === null) set.goalReachedAt = null;
+    }
+    if (patch.goalDueAt !== undefined) set.goalDueAt = patch.goalDueAt;
+    if (patch.goalXp !== undefined) set.goalXp = patch.goalXp;
     if (patch.name !== undefined) set.name = patch.name;
     if (patch.description !== undefined) set.description = patch.description || null;
     if (patch.closingText !== undefined) set.closingText = patch.closingText || null;
@@ -447,6 +477,9 @@ class ExpeditionService {
       set.constellationId = fittingConstellation(stops.length, expedition.constellationId);
     }
     await db.update(expeditions).set(set).where(eq(expeditions.id, expeditionId));
+    // Si con la meta nueva la clase ya la cumple (p. ej. bajó el porcentaje), se logra ahora y se paga; al pasar
+    // a clanes, los que ya completaron todas las paradas llegan a la meta.
+    if (goalChanged || set.groupMode === 'CLAN') await this.checkTogether(expeditionId);
     return this.getForTeacher(expeditionId);
   }
 
@@ -507,6 +540,7 @@ class ExpeditionService {
       await tx.delete(expeditionEvidence).where(eq(expeditionEvidence.expeditionId, expeditionId));
       await tx.delete(expeditionStopProgress).where(eq(expeditionStopProgress.expeditionId, expeditionId));
       await tx.delete(expeditionFinishes).where(eq(expeditionFinishes.expeditionId, expeditionId));
+      await tx.delete(expeditionClanFinishes).where(eq(expeditionClanFinishes.expeditionId, expeditionId));
       await tx.delete(expeditionStops).where(eq(expeditionStops.expeditionId, expeditionId));
       await tx.delete(expeditions).where(eq(expeditions.id, expeditionId));
       return { value: null, after: [] };
@@ -738,10 +772,22 @@ class ExpeditionService {
         })),
       };
     });
+    const clans = expedition.groupMode === 'CLAN' ? await this.clanProgress(db, expedition) : [];
     return {
       stops: stops.map((stop) => ({ id: stop.id, sortOrder: stop.sortOrder, kind: stop.kind, title: stop.title, here: here.get(stop.id) ?? 0, done: done.get(stop.id) ?? 0 })),
       students: rows,
+      groupMode: expedition.groupMode,
+      clans: clans.map((clan) => ({
+        id: clan.id, name: clan.name, color: clan.color, emblem: clan.emblem, members: clan.members, countedStopIds: clan.countedStopIds, finished: clan.finished,
+      })),
+      goal: this.goalDto(expedition, rows.filter((row) => finishOf.has(row.id)).length, rows.length),
     };
+  }
+
+  /** Meta de clase para mostrar (null = sin meta). */
+  private goalDto(expedition: Expedition, finished: number, total: number) {
+    if (!expedition.goalPercent) return null;
+    return { percent: expedition.goalPercent, dueAt: expedition.goalDueAt, xp: expedition.goalXp, reachedAt: expedition.goalReachedAt, finished, total };
   }
 
   async reviewQueue(expeditionId: string) {
@@ -1097,6 +1143,20 @@ class ExpeditionService {
     const states = computeStates(stops, progress);
     const finished = !!finish || isFinished(states);
     const frontier = frontierOf(states);
+    // Su clan (modo por clanes) y la meta de la clase: lo cooperativo que ve el alumno.
+    let clan: { name: string; color: string; emblem: string; members: number; countedStopIds: string[]; finished: boolean } | null = null;
+    if (expedition.groupMode === 'CLAN') {
+      const [own] = await db.select({ teamId: studentProfiles.teamId }).from(studentProfiles).where(eq(studentProfiles.id, studentProfileId));
+      const [progressOfClan] = own?.teamId ? await this.clanProgress(db, expedition, [own.teamId]) : [];
+      if (progressOfClan) {
+        clan = {
+          name: progressOfClan.name, color: progressOfClan.color, emblem: progressOfClan.emblem,
+          members: progressOfClan.members, countedStopIds: progressOfClan.countedStopIds, finished: progressOfClan.finished,
+        };
+      }
+    }
+    const goalCounts = expedition.goalPercent ? await this.classFinishCounts(db, expedition) : null;
+    const goal = goalCounts ? { ...this.goalDto(expedition, goalCounts.finished, goalCounts.total)!, rewarded: !!finish?.goalRewardedAt } : null;
     return {
       id: expedition.id,
       classroomId: expedition.classroomId,
@@ -1113,6 +1173,9 @@ class ExpeditionService {
       finished,
       // «¿Cómo me fue?»: se responde al llegar a la meta (y se puede cambiar).
       reflection: finish?.reflection ? { value: finish.reflection as Reflection, note: finish.reflectionNote } : null,
+      groupMode: expedition.groupMode,
+      clan,
+      goal,
       currentStopId: frontier?.stop.id ?? null,
       stops: states.map((s) => this.studentStop(s.stop, s.state, s.row, s.stop.kind === 'EVIDENCE' ? latest.get(s.stop.id) ?? null : null)),
     };
@@ -1422,8 +1485,17 @@ class ExpeditionService {
 
   // ==================== Meta y pagos ====================
 
-  /** Si el alumno tiene todas las paradas logradas: registra la meta y paga la recompensa final una vez. */
+  /**
+   * Después de que una parada queda lograda: la meta del alumno (paga la recompensa final una vez) y, después
+   * del commit, lo cooperativo (clanes y meta de la clase).
+   */
   private async checkFinishInTx(tx: Tx, expedition: Expedition, studentProfileId: string, grants: Grant[], givenBy: string | null) {
+    // Clanes y meta de clase cuentan el avance de varios alumnos: dentro de esta transacción no se ve lo que otros
+    // guardan a la vez (dos que logran la última parada al mismo tiempo no se contarían entre sí), así que se
+    // revisan después del commit, con datos frescos y una sola vez aunque se marquen muchos alumnos.
+    if (expedition.groupMode === 'CLAN' || expedition.goalPercent) {
+      grants.push({ ...noPoints, studentProfileId, followUp: { key: `together:${expedition.id}`, run: () => this.checkTogether(expedition.id) } });
+    }
     const [{ total }] = await tx.select({ total: sql<number>`COUNT(*)` }).from(expeditionStops).where(eq(expeditionStops.expeditionId, expedition.id));
     const [{ done }] = await tx.select({ done: sql<number>`COUNT(*)` }).from(expeditionStopProgress)
       .innerJoin(expeditionStops, eq(expeditionStopProgress.stopId, expeditionStops.id))
@@ -1433,12 +1505,164 @@ class ExpeditionService {
     await tx.insert(expeditionFinishes).ignore().values({ expeditionId: expedition.id, studentProfileId, finishedAt: now });
     const paid = await tx.update(expeditionFinishes).set({ rewardedAt: now })
       .where(and(eq(expeditionFinishes.expeditionId, expedition.id), eq(expeditionFinishes.studentProfileId, studentProfileId), isNull(expeditionFinishes.rewardedAt)));
-    if (affectedRows(paid) !== 1) return;
-    grants.push({
-      studentProfileId, xp: expedition.finishXp, gold: expedition.finishGold,
-      reason: `Expedición «${expedition.name}»: llegó a la meta`, title: '🏁 ¡Llegaste a la meta!', what: `terminar «${expedition.name}»`, givenBy,
-      badge: expedition.finishBadgeId ? { id: expedition.finishBadgeId, reason: `Llegó a la meta de «${expedition.name}»` } : null,
+    if (affectedRows(paid) === 1) {
+      grants.push({
+        studentProfileId, xp: expedition.finishXp, gold: expedition.finishGold,
+        reason: `Expedición «${expedition.name}»: llegó a la meta`, title: '🏁 ¡Llegaste a la meta!', what: `terminar «${expedition.name}»`, givenBy,
+        badge: expedition.finishBadgeId ? { id: expedition.finishBadgeId, reason: `Llegó a la meta de «${expedition.name}»` } : null,
+      });
+    }
+  }
+
+  // ==================== Clanes y meta de clase ====================
+
+  /**
+   * Capa de clanes: una parada cuenta para un clan cuando la logra más de la mitad de sus miembros activos; con
+   * todas contadas, el clan llegó a la meta. Cada alumno sigue a su ritmo: el clan no frena a nadie.
+   */
+  private async clanProgress(exec: Tx | typeof db, expedition: Expedition, onlyTeamIds?: string[]) {
+    const clans = await exec.select({ id: teams.id, name: teams.name, color: teams.color, emblem: teams.emblem }).from(teams)
+      .where(and(eq(teams.classroomId, expedition.classroomId), eq(teams.isActive, true), onlyTeamIds ? inArray(teams.id, onlyTeamIds) : undefined));
+    if (clans.length === 0) return [];
+    const [members, stops, recorded] = await Promise.all([
+      exec.select({ id: studentProfiles.id, teamId: studentProfiles.teamId }).from(studentProfiles)
+        .where(and(eq(studentProfiles.classroomId, expedition.classroomId), eq(studentProfiles.isActive, true), inArray(studentProfiles.teamId, clans.map((c) => c.id)))),
+      this.stopsOf(expedition.id, exec),
+      exec.select({ teamId: expeditionClanFinishes.teamId }).from(expeditionClanFinishes)
+        .where(and(eq(expeditionClanFinishes.expeditionId, expedition.id), inArray(expeditionClanFinishes.teamId, clans.map((c) => c.id)))),
+    ]);
+    const done = members.length && stops.length
+      ? await exec.select({ stopId: expeditionStopProgress.stopId, studentProfileId: expeditionStopProgress.studentProfileId }).from(expeditionStopProgress)
+        .where(and(eq(expeditionStopProgress.expeditionId, expedition.id), eq(expeditionStopProgress.status, 'DONE'), inArray(expeditionStopProgress.studentProfileId, members.map((m) => m.id))))
+      : [];
+    const teamOf = new Map(members.map((m) => [m.id, m.teamId]));
+    const doneBy = new Map<string, number>();
+    for (const row of done) {
+      const key = `${teamOf.get(row.studentProfileId)}:${row.stopId}`;
+      doneBy.set(key, (doneBy.get(key) ?? 0) + 1);
+    }
+    const arrived = new Set(recorded.map((r) => r.teamId));
+    return clans.map((clan) => {
+      const size = members.filter((m) => m.teamId === clan.id).length;
+      const countedStopIds = stops.filter((stop) => size > 0 && (doneBy.get(`${clan.id}:${stop.id}`) ?? 0) * 2 > size).map((stop) => stop.id);
+      const complete = stops.length > 0 && countedStopIds.length === stops.length;
+      // Una vez en la meta, el clan queda en la meta (aunque después cambie quién está en él).
+      return { ...clan, members: size, countedStopIds, complete, arrived: arrived.has(clan.id), finished: complete || arrived.has(clan.id) };
     });
+  }
+
+  /**
+   * Lo cooperativo, después del commit y con datos frescos: los clanes que ya completaron todas las paradas llegan
+   * a la meta (cada uno cobra una vez) y se revisa la meta de la clase. Como revisa todo, también repara lo que un
+   * corte haya dejado a medias en una revisión anterior.
+   */
+  private async checkTogether(expeditionId: string) {
+    const expedition = await this.requireExpedition(expeditionId);
+    if (expedition.status !== 'PUBLISHED') return;
+    if (expedition.groupMode === 'CLAN') {
+      for (const clan of await this.clanProgress(db, expedition)) {
+        if (clan.complete && !clan.arrived) await this.rewardClan(expedition, clan);
+      }
+    }
+    if (expedition.goalPercent) await this.refreshClassGoal(expeditionId);
+  }
+
+  /** Un clan completó todas las paradas: llega a la meta una vez, su premio suma al XP del clan y se avisa a sus miembros. */
+  private async rewardClan(expedition: Expedition, clan: { id: string; name: string }) {
+    const members = await transaction(async (tx) => {
+      const now = new Date();
+      await tx.insert(expeditionClanFinishes).ignore().values({ expeditionId: expedition.id, teamId: clan.id, finishedAt: now });
+      const paid = await tx.update(expeditionClanFinishes).set({ rewardedAt: now })
+        .where(and(eq(expeditionClanFinishes.expeditionId, expedition.id), eq(expeditionClanFinishes.teamId, clan.id), isNull(expeditionClanFinishes.rewardedAt)));
+      if (affectedRows(paid) !== 1) return { value: [] as string[], after: [] };
+      const clanXp = Math.max(0, expedition.clanXp);
+      if (clanXp > 0) await tx.update(teams).set({ totalXp: sql`${teams.totalXp} + ${clanXp}`, updatedAt: now }).where(eq(teams.id, clan.id));
+      await tx.insert(clanLogs).values({
+        id: uuidv4(), clanId: clan.id, studentId: null, action: 'EXPEDITION_GOAL', xpAmount: clanXp, gpAmount: 0,
+        reason: `Llegó a la meta de «${expedition.name}»`, createdAt: now,
+      });
+      // Aviso a los miembros con cuenta (campana): es un logro de todos.
+      const accounts = await tx.select({ id: studentProfiles.id, userId: studentProfiles.userId }).from(studentProfiles)
+        .where(and(eq(studentProfiles.teamId, clan.id), eq(studentProfiles.isActive, true)));
+      const notifTx = prepareForTx(accounts.flatMap((a) => (a.userId ? [{
+        userId: a.userId, classroomId: expedition.classroomId, type: 'ANNOUNCEMENT' as const,
+        title: '🏁 ¡Tu clan llegó a la meta!',
+        message: `«${clan.name}» completó «${expedition.name}»${clanXp > 0 ? `: +${clanXp} XP para el clan` : ''}.`,
+        data: { expeditionId: expedition.id },
+        createdAt: now,
+      }] : [])));
+      if (notifTx.entries.length) await tx.insert(notifications).values(notifTx.entries);
+      return { value: accounts.map((a) => a.id), after: [notifTx.emitAfterCommit] };
+    });
+    // Sus miembros ven al instante a su clan en la meta.
+    await this.emitToStudents(members, expedition.id);
+  }
+
+  /** Alumnos activos de la clase y cuántos llegaron a la meta. */
+  private async classFinishCounts(exec: Tx | typeof db, expedition: Expedition) {
+    const [[{ total }], [{ finished }]] = await Promise.all([
+      exec.select({ total: sql<number>`COUNT(*)` }).from(studentProfiles)
+        .where(and(eq(studentProfiles.classroomId, expedition.classroomId), eq(studentProfiles.isActive, true))),
+      exec.select({ finished: sql<number>`COUNT(*)` }).from(expeditionFinishes)
+        .innerJoin(studentProfiles, eq(expeditionFinishes.studentProfileId, studentProfiles.id))
+        .where(and(eq(expeditionFinishes.expeditionId, expedition.id), eq(studentProfiles.isActive, true))),
+    ]);
+    return { total: count(total), finished: count(finished) };
+  }
+
+  private async payGoalToStudentInTx(tx: Tx, expedition: Expedition, xp: number, studentProfileId: string, grants: Grant[]) {
+    const paid = await tx.update(expeditionFinishes).set({ goalRewardedAt: new Date() })
+      .where(and(eq(expeditionFinishes.expeditionId, expedition.id), eq(expeditionFinishes.studentProfileId, studentProfileId), isNull(expeditionFinishes.goalRewardedAt)));
+    if (affectedRows(paid) !== 1 || xp <= 0) return;
+    grants.push({
+      studentProfileId, xp, gold: 0, reason: `Expedición «${expedition.name}»: la clase logró su meta`,
+      title: '🎯 ¡La clase logró su meta!', what: `la meta de la clase en «${expedition.name}»`, givenBy: null,
+    });
+  }
+
+  /**
+   * Paga la meta de clase a quienes llegaron a tiempo (con fecha, hasta esa fecha) y aún no la cobraron, cada uno
+   * una sola vez. `announce`: la meta se acaba de lograr y toda la clase lo ve al instante.
+   */
+  private async payClassGoal(expeditionId: string, announce: boolean) {
+    const expedition = await this.requireExpedition(expeditionId);
+    if (!expedition.goalPercent || !expedition.goalReachedAt) return;
+    if (expedition.goalDueAt && expedition.goalReachedAt.getTime() > expedition.goalDueAt.getTime()) return;
+    const pending = await db.select({ id: expeditionFinishes.studentProfileId }).from(expeditionFinishes)
+      .innerJoin(studentProfiles, eq(expeditionFinishes.studentProfileId, studentProfiles.id))
+      .where(and(
+        eq(expeditionFinishes.expeditionId, expeditionId), isNull(expeditionFinishes.goalRewardedAt), eq(studentProfiles.isActive, true),
+        expedition.goalDueAt ? lte(expeditionFinishes.finishedAt, expedition.goalDueAt) : undefined,
+      ));
+    const ids = pending.map((p) => p.id);
+    if (ids.length) {
+      await transaction(async (tx) => {
+        await lockStudents(tx, ids);
+        const grants: Grant[] = [];
+        for (const id of ids) await this.payGoalToStudentInTx(tx, expedition, expedition.goalXp, id, grants);
+        return { value: null, after: [await this.grantInTx(tx, expedition.classroomId, grants)] };
+      });
+      await this.emitToStudents(ids, expeditionId);
+    }
+    if (announce) getIO()?.to(`classroom:${expedition.classroomId}`).emit('expedition:changed', { expeditionId });
+  }
+
+  /**
+   * Meta de clase: cuando el porcentaje de la clase llega a la meta antes de la fecha se marca una sola vez (el
+   * candado del registro pone en fila las revisiones) y se paga a quienes llegaron; también a quien llega después.
+   */
+  private async refreshClassGoal(expeditionId: string) {
+    const state = await transaction<'none' | 'reached' | 'new'>(async (tx) => {
+      const [row] = await tx.select().from(expeditions).where(eq(expeditions.id, expeditionId)).for('update');
+      if (!row?.goalPercent || row.status !== 'PUBLISHED') return { value: 'none', after: [] };
+      if (row.goalReachedAt) return { value: 'reached', after: [] };
+      if (row.goalDueAt && Date.now() > row.goalDueAt.getTime()) return { value: 'none', after: [] };
+      const { finished, total } = await this.classFinishCounts(tx, row);
+      if (total === 0 || finished * 100 < row.goalPercent * total) return { value: 'none', after: [] };
+      const marked = await tx.update(expeditions).set({ goalReachedAt: new Date() }).where(and(eq(expeditions.id, expeditionId), isNull(expeditions.goalReachedAt)));
+      return { value: affectedRows(marked) === 1 ? 'new' : 'reached', after: [] };
+    });
+    if (state !== 'none') await this.payClassGoal(expeditionId, state === 'new');
   }
 
   /** Insignias elegidas por el docente, después del commit. Si ya la tiene (tope) o la archivó, se salta. */
@@ -1460,7 +1684,18 @@ class ExpeditionService {
    */
   private async grantInTx(tx: Tx, classroomId: string, grants: Grant[]): Promise<() => Promise<void>> {
     const badgeAwards = grants.flatMap((g) => (g.badge ? [{ studentProfileId: g.studentProfileId, ...g.badge }] : []));
-    const afterBadges = async () => { if (badgeAwards.length) await this.awardBadges(badgeAwards); };
+    // Uno por clave: marcar a 30 alumnos revisa clanes y meta una sola vez.
+    const followUps = new Map(grants.flatMap((g) => (g.followUp ? [[g.followUp.key, g.followUp.run] as const] : [])));
+    const afterBadges = async () => {
+      if (badgeAwards.length) await this.awardBadges(badgeAwards);
+      for (const run of followUps.values()) {
+        try {
+          await run();
+        } catch (error) {
+          console.error('Seguimiento de la expedición', error);
+        }
+      }
+    };
     const paid = grants.filter((g) => g.xp > 0 || g.gold > 0);
     if (paid.length === 0) return afterBadges;
     const [classroom] = await tx.select({

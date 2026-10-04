@@ -1613,6 +1613,13 @@ export const expeditions = mysqlTable('expeditions', {
   // Insignias que elige el docente: al llegar a la meta y por perseverancia (aprobada después de «pedir mejora»).
   finishBadgeId: varchar('finish_badge_id', { length: 36 }),
   perseveranceBadgeId: varchar('perseverance_badge_id', { length: 36 }),
+  // Por clanes: XP para el clan cuando llega a la meta (una parada cuenta si la logra la mayoría del clan).
+  clanXp: int('clan_xp').notNull().default(0),
+  // Meta de la clase (opcional): si el % llega a la meta antes de la fecha, XP para quienes llegaron.
+  goalPercent: tinyint('goal_percent', { unsigned: true }),
+  goalDueAt: datetime('goal_due_at'),
+  goalXp: int('goal_xp').notNull().default(0),
+  goalReachedAt: datetime('goal_reached_at'),
   status: expeditionStatusEnum.notNull().default('DRAFT'),
   publishedAt: datetime('published_at'),
   createdAt: datetime('created_at').notNull(),
@@ -1740,6 +1747,8 @@ export const expeditionFinishes = mysqlTable('expedition_finishes', {
   studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),
   finishedAt: datetime('finished_at').notNull(),
   rewardedAt: datetime('rewarded_at'),
+  // Premio de la meta de clase (una sola vez por alumno que llegó).
+  goalRewardedAt: datetime('goal_rewarded_at'),
   // «¿Cómo me fue?»: GREEN | YELLOW | RED y lo más difícil (opcional). No condiciona la recompensa.
   reflection: varchar('reflection', { length: 8 }),
   reflectionNote: varchar('reflection_note', { length: 200 }),
@@ -1747,6 +1756,17 @@ export const expeditionFinishes = mysqlTable('expedition_finishes', {
 }, (table) => ({
   pk: primaryKey({ columns: [table.expeditionId, table.studentProfileId] }),
   studentIdx: index('idx_expedition_finishes_student').on(table.studentProfileId),
+}));
+
+// Clanes que llegaron a la meta (modo por clanes): el premio del clan se paga una sola vez.
+export const expeditionClanFinishes = mysqlTable('expedition_clan_finishes', {
+  expeditionId: varchar('expedition_id', { length: 36 }).notNull(),
+  teamId: varchar('team_id', { length: 36 }).notNull(),
+  finishedAt: datetime('finished_at').notNull(),
+  rewardedAt: datetime('rewarded_at'),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.expeditionId, table.teamId] }),
+  teamIdx: index('idx_expedition_clan_finishes_team').on(table.teamId),
 }));
 
 export type Expedition = typeof expeditions.$inferSelect;
