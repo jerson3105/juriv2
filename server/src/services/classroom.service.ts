@@ -36,9 +36,11 @@ import {
   randomEvents,
   eventLogs,
   expeditions,
-  expeditionPins,
-  expeditionStudentProgress,
-  expeditionSubmissions,
+  expeditionStops,
+  expeditionStopProgress,
+  expeditionAnswers,
+  expeditionEvidence,
+  expeditionFinishes,
   studentGrades,
   studentActivityScores,
   classroomCompetencyIndicators,
@@ -50,12 +52,6 @@ import {
   completedAlbums,
   studentCollectibles,
   curriculumAreas,
-  jiroExpeditions,
-  jiroStudentExpeditions,
-  jiroDeliveryStations,
-  jiroQuestionAnswers,
-  jiroDeliveries,
-  jiroExpeditionCompetencies,
 } from '../db/schema.js';
 import { eq, and, desc, inArray, sql, count, asc, or, gt } from 'drizzle-orm';
 import { calculateLevel, generateClassCode } from '../utils/helpers.js';
@@ -373,7 +369,7 @@ export class ClassroomService {
       return new Map<string, CompetencyUsageSummary>();
     }
 
-    const [behaviorRows, badgeRows, timedActivityRows, expeditionActivityRows, gradeRows, pointRows, jiroRows, indicatorRows] = await Promise.all([
+    const [behaviorRows, badgeRows, timedActivityRows, expeditionActivityRows, gradeRows, pointRows, indicatorRows] = await Promise.all([
       db.select({ competencyId: behaviors.competencyId })
         .from(behaviors)
         .where(and(
@@ -426,13 +422,6 @@ export class ClassroomService {
           inArray(pointLogs.competencyId, competencyIds),
           eq(pointLogs.isReverted, false),
         )),
-      db.select({ competencyId: jiroExpeditionCompetencies.competencyId })
-        .from(jiroExpeditionCompetencies)
-        .innerJoin(jiroExpeditions, eq(jiroExpeditionCompetencies.expeditionId, jiroExpeditions.id))
-        .where(and(
-          eq(jiroExpeditions.classroomId, classroomId),
-          inArray(jiroExpeditionCompetencies.competencyId, competencyIds),
-        )),
       db.select({ competencyId: classroomCompetencyIndicators.competencyId })
         .from(classroomCompetencyIndicators)
         .where(and(
@@ -447,7 +436,6 @@ export class ClassroomService {
       ...badgeRows,
       ...timedActivityRows,
       ...expeditionActivityRows,
-      ...jiroRows,
       ...indicatorRows,
     ].map((row) => row.competencyId).filter((value): value is string => !!value));
 
@@ -1840,13 +1828,6 @@ export class ClassroomService {
     });
     const expeditionIds = classExpeditions.map(e => e.id);
 
-    // Obtener IDs de jiro expeditions
-    const classJiroExpeditions = await db.query.jiroExpeditions.findMany({
-      where: eq(jiroExpeditions.classroomId, classroomId),
-      columns: { id: true }
-    });
-    const jiroExpeditionIds = classJiroExpeditions.map(e => e.id);
-
     // Obtener IDs de scrolls
     const classScrolls = await db.query.scrolls.findMany({
       where: eq(scrolls.classroomId, classroomId),
@@ -1913,31 +1894,16 @@ export class ClassroomService {
         await tx.delete(scrolls).where(inArray(scrolls.id, scrollIds));
       }
 
-      // 6. Eliminar expediciones
+      // 6. Eliminar expediciones (paradas, avance, respuestas, evidencias y metas)
       if (expeditionIds.length > 0) {
-        await tx.delete(expeditionSubmissions).where(inArray(expeditionSubmissions.expeditionId, expeditionIds));
-        await tx.delete(expeditionStudentProgress).where(inArray(expeditionStudentProgress.expeditionId, expeditionIds));
-        await tx.delete(expeditionPins).where(inArray(expeditionPins.expeditionId, expeditionIds));
+        const stopIds = (await tx.select({ id: expeditionStops.id }).from(expeditionStops)
+          .where(inArray(expeditionStops.expeditionId, expeditionIds))).map((s) => s.id);
+        if (stopIds.length > 0) await tx.delete(expeditionAnswers).where(inArray(expeditionAnswers.stopId, stopIds));
+        await tx.delete(expeditionEvidence).where(inArray(expeditionEvidence.expeditionId, expeditionIds));
+        await tx.delete(expeditionStopProgress).where(inArray(expeditionStopProgress.expeditionId, expeditionIds));
+        await tx.delete(expeditionFinishes).where(inArray(expeditionFinishes.expeditionId, expeditionIds));
+        await tx.delete(expeditionStops).where(inArray(expeditionStops.expeditionId, expeditionIds));
         await tx.delete(expeditions).where(inArray(expeditions.id, expeditionIds));
-      }
-
-      // 7. Eliminar jiro expeditions y datos relacionados
-      if (jiroExpeditionIds.length > 0) {
-        // Obtener student expeditions para limpiar sus hijos
-        const jiroStudentExps = await tx.query.jiroStudentExpeditions.findMany({
-          where: inArray(jiroStudentExpeditions.expeditionId, jiroExpeditionIds),
-          columns: { id: true }
-        });
-        const jiroStudentExpIds = jiroStudentExps.map(e => e.id);
-
-        if (jiroStudentExpIds.length > 0) {
-          await tx.delete(jiroQuestionAnswers).where(inArray(jiroQuestionAnswers.studentExpeditionId, jiroStudentExpIds));
-          await tx.delete(jiroDeliveries).where(inArray(jiroDeliveries.studentExpeditionId, jiroStudentExpIds));
-        }
-        await tx.delete(jiroStudentExpeditions).where(inArray(jiroStudentExpeditions.expeditionId, jiroExpeditionIds));
-        await tx.delete(jiroDeliveryStations).where(inArray(jiroDeliveryStations.expeditionId, jiroExpeditionIds));
-        await tx.delete(jiroExpeditionCompetencies).where(inArray(jiroExpeditionCompetencies.expeditionId, jiroExpeditionIds));
-        await tx.delete(jiroExpeditions).where(inArray(jiroExpeditions.id, jiroExpeditionIds));
       }
 
       // 9. Eliminar datos de tienda

@@ -1581,30 +1581,34 @@ export const expeditionMaps = mysqlTable('expedition_maps', {
 export type ExpeditionMap = typeof expeditionMaps.$inferSelect;
 export type NewExpeditionMap = typeof expeditionMaps.$inferInsert;
 
-// ==================== EXPEDICIONES (Misiones con Mapas) ====================
+// ==================== EXPEDICIONES ====================
+// Una sola «Expedición» (2026-10-03): paradas en lista (relato, reto del banco, evidencia y en clase).
+// expedition_pins, _connections, _pin_progress, _student_progress, _submissions y jiro_* quedan en la base
+// sin uso (migrations/expedition_unified.sql); se borrarán en una migración posterior.
 
-// Enums para Expediciones
 export const expeditionStatusEnum = mysqlEnum('expedition_status', ['DRAFT', 'PUBLISHED', 'ARCHIVED']);
-export const expeditionPinTypeEnum = mysqlEnum('expedition_pin_type', ['INTRO', 'OBJECTIVE', 'FINAL']);
-export const expeditionProgressStatusEnum = mysqlEnum('expedition_progress_status', ['LOCKED', 'UNLOCKED', 'IN_PROGRESS', 'PASSED', 'FAILED', 'COMPLETED']);
+export const EXPEDITION_STOP_KINDS = ['STORY', 'CHALLENGE', 'EVIDENCE', 'CLASS'] as const;
 
-// Expedición (la misión principal con el mapa)
+/** Recurso de una parada: archivo subido a /api/uploads/expeditions o enlace https (Genially se incrusta). */
+export interface ExpeditionResource {
+  kind: 'FILE' | 'LINK';
+  url: string;
+  name: string | null;
+}
+
 export const expeditions = mysqlTable('expeditions', {
   id: varchar('id', { length: 36 }).primaryKey(),
   classroomId: varchar('classroom_id', { length: 36 }).notNull(),
-  
-  // Info básica
   name: varchar('name', { length: 255 }).notNull(),
-  description: text('description'),
-  mapImageUrl: varchar('map_image_url', { length: 500 }).notNull(), // URL del mapa
-  
-  // Estado
+  description: text('description'), // lo que Jiro cuenta al empezar (también en la tarjeta)
+  scenario: mysqlEnum('scenario', ['CONSTELLATION', 'MAP']).notNull().default('CONSTELLATION'),
+  constellationId: varchar('constellation_id', { length: 40 }), // null = la más chica en la que caben las paradas
+  mapImageUrl: varchar('map_image_url', { length: 500 }), // solo con escenario de mapa (de la biblioteca)
+  groupMode: mysqlEnum('group_mode', ['INDIVIDUAL', 'CLAN']).notNull().default('INDIVIDUAL'),
+  closingText: text('closing_text'), // lo que Jiro dice al llegar a la meta
+  finishXp: int('finish_xp').notNull().default(0),
+  finishGold: int('finish_gold').notNull().default(0),
   status: expeditionStatusEnum.notNull().default('DRAFT'),
-  
-  // Configuración global
-  autoProgress: boolean('auto_progress').notNull().default(false), // Progreso a ritmo del estudiante
-  
-  // Timestamps
   publishedAt: datetime('published_at'),
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
@@ -1613,242 +1617,122 @@ export const expeditions = mysqlTable('expeditions', {
   statusIdx: index('idx_expeditions_status').on(table.status),
 }));
 
+// Paradas en orden. question_ids: las preguntas del banco que eligió el docente. map_x/map_y: % de la imagen.
+export const expeditionStops = mysqlTable('expedition_stops', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  expeditionId: varchar('expedition_id', { length: 36 }).notNull(),
+  sortOrder: int('sort_order').notNull().default(0),
+  kind: mysqlEnum('kind', EXPEDITION_STOP_KINDS).notNull(),
+  title: varchar('title', { length: 120 }).notNull(),
+  story: text('story'),
+  goal: varchar('goal', { length: 200 }), // «Lo que vas a lograr»
+  successCriteria: varchar('success_criteria', { length: 200 }), // «Cómo sabrás que lo lograste»
+  mission: text('mission'),
+  resources: json('resources').$type<ExpeditionResource[]>(),
+  bankId: varchar('bank_id', { length: 36 }),
+  questionIds: json('question_ids').$type<string[]>(),
+  passPercent: int('pass_percent').notNull().default(60),
+  reviewMode: mysqlEnum('review_mode', ['ADVANCE', 'WAIT']).notNull().default('ADVANCE'),
+  dueAt: datetime('due_at'),
+  rewardXp: int('reward_xp').notNull().default(0),
+  rewardGold: int('reward_gold').notNull().default(0),
+  mapX: decimal('map_x', { precision: 5, scale: 2 }),
+  mapY: decimal('map_y', { precision: 5, scale: 2 }),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  expeditionIdx: index('idx_expedition_stops_expedition').on(table.expeditionId, table.sortOrder),
+}));
+
 export const expeditionsRelations = relations(expeditions, ({ one, many }) => ({
   classroom: one(classrooms, {
     fields: [expeditions.classroomId],
     references: [classrooms.id],
   }),
-  pins: many(expeditionPins),
-  studentProgress: many(expeditionStudentProgress),
+  stops: many(expeditionStops),
 }));
 
-// Pines de la expedición (Intro, Objetivos, Final)
-export const expeditionPins = mysqlTable('expedition_pins', {
+export const expeditionStopsRelations = relations(expeditionStops, ({ one }) => ({
+  expedition: one(expeditions, {
+    fields: [expeditionStops.expeditionId],
+    references: [expeditions.id],
+  }),
+}));
+
+// Avance de cada alumno en cada parada: la fila nace al tocarla (sirve a quien entra tarde y a paradas nuevas).
+// status: STARTED = reto en curso · WAITING = evidencia que espera revisión · DONE = superada.
+// review: estado de la evidencia (con «avanza ya» el alumno sigue mientras queda PENDING).
+// rewarded_at: la recompensa se paga una sola vez por fila.
+export const expeditionStopProgress = mysqlTable('expedition_stop_progress', {
   id: varchar('id', { length: 36 }).primaryKey(),
   expeditionId: varchar('expedition_id', { length: 36 }).notNull(),
-  
-  // Tipo de pin
-  pinType: expeditionPinTypeEnum.notNull(), // INTRO, OBJECTIVE, FINAL
-  
-  // Posición en el mapa (coordenadas relativas 0-100%)
-  positionX: int('position_x').notNull(), // Porcentaje X
-  positionY: int('position_y').notNull(), // Porcentaje Y
-  
-  // Info del pin
-  name: varchar('name', { length: 255 }).notNull(),
-  
-  // Historia (narrativa del objetivo)
-  storyContent: text('story_content'), // Contenido HTML/texto de la historia
-  storyFiles: json('story_files').$type<string[]>(), // URLs de archivos adjuntos
-  
-  // Tarea (solo para OBJECTIVE)
-  taskName: varchar('task_name', { length: 255 }),
-  taskContent: text('task_content'), // Contenido HTML/texto de la tarea
-  taskFiles: json('task_files').$type<string[]>(), // URLs de archivos adjuntos
-  
-  // Configuración de entrega
-  requiresSubmission: boolean('requires_submission').notNull().default(false), // Si requiere subir archivo
-  dueDate: datetime('due_date'), // Fecha de vencimiento
-  
-  // Recompensas
-  rewardXp: int('reward_xp').notNull().default(0),
-  rewardGp: int('reward_gp').notNull().default(0),
-  
-  // Bonus por entrega temprana
-  earlySubmissionEnabled: boolean('early_submission_enabled').notNull().default(false),
-  earlySubmissionDate: datetime('early_submission_date'),
-  earlyBonusXp: int('early_bonus_xp').notNull().default(0),
-  earlyBonusGp: int('early_bonus_gp').notNull().default(0),
-  
-  // Progreso automático (override del global)
-  autoProgress: boolean('auto_progress'), // null = usar config de expedición
-  
-  // Orden para visualización en lista
-  orderIndex: int('order_index').notNull().default(0),
-  
+  stopId: varchar('stop_id', { length: 36 }).notNull(),
+  studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),
+  status: mysqlEnum('status', ['STARTED', 'WAITING', 'DONE']).notNull().default('STARTED'),
+  attempt: tinyint('attempt').notNull().default(1),
+  firstScore: int('first_score'),
+  finalScore: int('final_score'),
+  goldStar: boolean('gold_star').notNull().default(false),
+  review: mysqlEnum('review', ['PENDING', 'APPROVED', 'NEEDS_WORK']),
+  feedback: varchar('feedback', { length: 500 }),
+  reviewedAt: datetime('reviewed_at'),
+  reviewedBy: varchar('reviewed_by', { length: 36 }),
+  doneAt: datetime('done_at'),
+  rewardedAt: datetime('rewarded_at'),
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
 }, (table) => ({
-  expeditionIdx: index('idx_expedition_pins_expedition').on(table.expeditionId),
-  typeIdx: index('idx_expedition_pins_type').on(table.pinType),
+  stopStudentUnique: unique('uniq_expedition_stop_progress').on(table.stopId, table.studentProfileId),
+  studentIdx: index('idx_expedition_stop_progress_student').on(table.expeditionId, table.studentProfileId),
+  reviewIdx: index('idx_expedition_stop_progress_review').on(table.expeditionId, table.review),
 }));
 
-export const expeditionPinsRelations = relations(expeditionPins, ({ one, many }) => ({
-  expedition: one(expeditions, {
-    fields: [expeditionPins.expeditionId],
-    references: [expeditions.id],
-  }),
-  connectionsFrom: many(expeditionConnections, { relationName: 'fromPin' }),
-  connectionsTo: many(expeditionConnections, { relationName: 'toPin' }),
-  studentProgress: many(expeditionPinProgress),
-  submissions: many(expeditionSubmissions),
-}));
-
-// Conexiones entre pines (flechas)
-export const expeditionConnections = mysqlTable('expedition_connections', {
+// Respuestas del reto: una por pregunta en cada vuelta (1 = primer intento, 2 = reintento de las falladas).
+export const expeditionAnswers = mysqlTable('expedition_answers', {
   id: varchar('id', { length: 36 }).primaryKey(),
-  expeditionId: varchar('expedition_id', { length: 36 }).notNull(),
-  
-  // Pin de origen
-  fromPinId: varchar('from_pin_id', { length: 36 }).notNull(),
-  
-  // Pin de destino
-  toPinId: varchar('to_pin_id', { length: 36 }).notNull(),
-  
-  // Tipo de conexión: true = cuando PASA, false = cuando NO PASA, null = conexión lineal (intro)
-  onSuccess: boolean('on_success'), // true = ✅, false = ❌, null = lineal
-  
-  createdAt: datetime('created_at').notNull(),
-}, (table) => ({
-  expeditionIdx: index('idx_expedition_connections_expedition').on(table.expeditionId),
-  fromPinIdx: index('idx_expedition_connections_from').on(table.fromPinId),
-  toPinIdx: index('idx_expedition_connections_to').on(table.toPinId),
-}));
-
-export const expeditionConnectionsRelations = relations(expeditionConnections, ({ one }) => ({
-  expedition: one(expeditions, {
-    fields: [expeditionConnections.expeditionId],
-    references: [expeditions.id],
-  }),
-  fromPin: one(expeditionPins, {
-    fields: [expeditionConnections.fromPinId],
-    references: [expeditionPins.id],
-    relationName: 'fromPin',
-  }),
-  toPin: one(expeditionPins, {
-    fields: [expeditionConnections.toPinId],
-    references: [expeditionPins.id],
-    relationName: 'toPin',
-  }),
-}));
-
-// Progreso del estudiante en la expedición (nivel general)
-export const expeditionStudentProgress = mysqlTable('expedition_student_progress', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  expeditionId: varchar('expedition_id', { length: 36 }).notNull(),
+  stopId: varchar('stop_id', { length: 36 }).notNull(),
   studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),
-  
-  // Estado general
-  isCompleted: boolean('is_completed').notNull().default(false),
-  completedAt: datetime('completed_at'),
-  
-  // Pin actual donde está el estudiante
-  currentPinId: varchar('current_pin_id', { length: 36 }),
-  
-  startedAt: datetime('started_at').notNull(),
-  updatedAt: datetime('updated_at').notNull(),
+  questionId: varchar('question_id', { length: 36 }).notNull(),
+  attempt: tinyint('attempt').notNull(),
+  answer: json('answer'),
+  isCorrect: boolean('is_correct').notNull(),
+  answeredAt: datetime('answered_at').notNull(),
 }, (table) => ({
-  expeditionIdx: index('idx_expedition_progress_expedition').on(table.expeditionId),
-  studentIdx: index('idx_expedition_progress_student').on(table.studentProfileId),
-  uniqueProgress: unique('unique_expedition_student').on(table.expeditionId, table.studentProfileId),
+  answerUnique: unique('uniq_expedition_answer').on(table.stopId, table.studentProfileId, table.questionId, table.attempt),
+  studentIdx: index('idx_expedition_answers_student').on(table.studentProfileId),
 }));
 
-export const expeditionStudentProgressRelations = relations(expeditionStudentProgress, ({ one, many }) => ({
-  expedition: one(expeditions, {
-    fields: [expeditionStudentProgress.expeditionId],
-    references: [expeditions.id],
-  }),
-  student: one(studentProfiles, {
-    fields: [expeditionStudentProgress.studentProfileId],
-    references: [studentProfiles.id],
-  }),
-  currentPin: one(expeditionPins, {
-    fields: [expeditionStudentProgress.currentPinId],
-    references: [expeditionPins.id],
-  }),
-  pinProgress: many(expeditionPinProgress),
-}));
-
-// Progreso del estudiante por pin individual
-export const expeditionPinProgress = mysqlTable('expedition_pin_progress', {
+// Evidencias: cada entrega queda guardada; la vigente es la última.
+export const expeditionEvidence = mysqlTable('expedition_evidence', {
   id: varchar('id', { length: 36 }).primaryKey(),
   expeditionId: varchar('expedition_id', { length: 36 }).notNull(),
-  pinId: varchar('pin_id', { length: 36 }).notNull(),
+  stopId: varchar('stop_id', { length: 36 }).notNull(),
   studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),
-  
-  // Estado del pin para este estudiante
-  status: expeditionProgressStatusEnum.notNull().default('LOCKED'), // LOCKED, UNLOCKED, IN_PROGRESS, PASSED, FAILED, COMPLETED
-  
-  // Decisión del profesor (null = pendiente, true = pasó, false = no pasó)
-  teacherDecision: boolean('teacher_decision'),
-  teacherDecisionAt: datetime('teacher_decision_at'),
-  
-  // Timestamps
-  unlockedAt: datetime('unlocked_at'),
-  completedAt: datetime('completed_at'),
-  createdAt: datetime('created_at').notNull(),
-  updatedAt: datetime('updated_at').notNull(),
-}, (table) => ({
-  expeditionIdx: index('idx_pin_progress_expedition').on(table.expeditionId),
-  pinIdx: index('idx_pin_progress_pin').on(table.pinId),
-  studentIdx: index('idx_pin_progress_student').on(table.studentProfileId),
-  uniquePinProgress: unique('unique_pin_student').on(table.pinId, table.studentProfileId),
-}));
-
-export const expeditionPinProgressRelations = relations(expeditionPinProgress, ({ one }) => ({
-  expedition: one(expeditions, {
-    fields: [expeditionPinProgress.expeditionId],
-    references: [expeditions.id],
-  }),
-  pin: one(expeditionPins, {
-    fields: [expeditionPinProgress.pinId],
-    references: [expeditionPins.id],
-  }),
-  student: one(studentProfiles, {
-    fields: [expeditionPinProgress.studentProfileId],
-    references: [studentProfiles.id],
-  }),
-}));
-
-// Entregas de tareas de expedición
-export const expeditionSubmissions = mysqlTable('expedition_submissions', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  expeditionId: varchar('expedition_id', { length: 36 }).notNull(),
-  pinId: varchar('pin_id', { length: 36 }).notNull(),
-  studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),
-  
-  // Archivos entregados
   files: json('files').$type<string[]>().notNull(),
-  comment: text('comment'), // Comentario opcional del estudiante
-  
-  // Estado
-  isEarlySubmission: boolean('is_early_submission').notNull().default(false),
-  
+  note: text('note'),
   submittedAt: datetime('submitted_at').notNull(),
 }, (table) => ({
-  expeditionIdx: index('idx_submissions_expedition').on(table.expeditionId),
-  pinIdx: index('idx_submissions_pin').on(table.pinId),
-  studentIdx: index('idx_submissions_student').on(table.studentProfileId),
+  stopIdx: index('idx_expedition_evidence_stop').on(table.stopId, table.studentProfileId),
+  studentIdx: index('idx_expedition_evidence_student').on(table.studentProfileId),
 }));
 
-export const expeditionSubmissionsRelations = relations(expeditionSubmissions, ({ one }) => ({
-  expedition: one(expeditions, {
-    fields: [expeditionSubmissions.expeditionId],
-    references: [expeditions.id],
-  }),
-  pin: one(expeditionPins, {
-    fields: [expeditionSubmissions.pinId],
-    references: [expeditionPins.id],
-  }),
-  student: one(studentProfiles, {
-    fields: [expeditionSubmissions.studentProfileId],
-    references: [studentProfiles.id],
-  }),
+// Llegada a la meta: una fila por alumno; la recompensa final se paga una sola vez.
+export const expeditionFinishes = mysqlTable('expedition_finishes', {
+  expeditionId: varchar('expedition_id', { length: 36 }).notNull(),
+  studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),
+  finishedAt: datetime('finished_at').notNull(),
+  rewardedAt: datetime('rewarded_at'),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.expeditionId, table.studentProfileId] }),
+  studentIdx: index('idx_expedition_finishes_student').on(table.studentProfileId),
 }));
 
-// Expedition types
 export type Expedition = typeof expeditions.$inferSelect;
 export type NewExpedition = typeof expeditions.$inferInsert;
-export type ExpeditionPin = typeof expeditionPins.$inferSelect;
-export type NewExpeditionPin = typeof expeditionPins.$inferInsert;
-export type ExpeditionConnection = typeof expeditionConnections.$inferSelect;
-export type NewExpeditionConnection = typeof expeditionConnections.$inferInsert;
-export type ExpeditionStudentProgress = typeof expeditionStudentProgress.$inferSelect;
-export type ExpeditionPinProgress = typeof expeditionPinProgress.$inferSelect;
-export type ExpeditionSubmission = typeof expeditionSubmissions.$inferSelect;
+export type ExpeditionStop = typeof expeditionStops.$inferSelect;
+export type ExpeditionStopProgress = typeof expeditionStopProgress.$inferSelect;
 export type ExpeditionStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
-export type ExpeditionPinType = 'INTRO' | 'OBJECTIVE' | 'FINAL';
-export type ExpeditionProgressStatus = 'LOCKED' | 'UNLOCKED' | 'IN_PROGRESS' | 'PASSED' | 'FAILED' | 'COMPLETED';
+export type ExpeditionStopKind = typeof EXPEDITION_STOP_KINDS[number];
 
 // ==================== REPORTES DE BUGS ====================
 
@@ -2409,254 +2293,6 @@ export type NewCompletedAlbum = typeof completedAlbums.$inferInsert;
 export type CardRarity = 'COMMON' | 'UNCOMMON' | 'RARE' | 'EPIC' | 'LEGENDARY';
 export type PackType = 'SINGLE' | 'PACK_5' | 'PACK_10' | 'PACK' | 'WELCOME';
 export type ImageStyle = 'CARTOON' | 'REALISTIC' | 'PIXEL_ART' | 'ANIME' | 'WATERCOLOR' | 'MINIMALIST';
-
-// ==================== EXPEDICIONES DE JIRO ====================
-
-export const jiroExpeditionModeEnum = mysqlEnum('jiro_expedition_mode', ['ASYNC', 'EXAM']);
-export const jiroExpeditionStatusEnum = mysqlEnum('jiro_expedition_status', ['DRAFT', 'OPEN', 'IN_PROGRESS', 'CLOSED']);
-export const jiroDeliveryFileTypeEnum = mysqlEnum('jiro_delivery_file_type', ['PDF', 'IMAGE', 'WORD', 'EXCEL']);
-export const jiroStudentStatusEnum = mysqlEnum('jiro_student_status', ['NOT_STARTED', 'IN_PROGRESS', 'PENDING_REVIEW', 'COMPLETED']);
-export const jiroDeliveryStatusEnum = mysqlEnum('jiro_delivery_status', ['PENDING', 'APPROVED', 'REJECTED']);
-
-// Expediciones (actividad principal)
-export const jiroExpeditions = mysqlTable('jiro_expeditions', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
-  questionBankId: varchar('question_bank_id', { length: 36 }).notNull(),
-  
-  // Info básica
-  name: varchar('name', { length: 255 }).notNull(),
-  description: text('description'),
-  coverImageUrl: varchar('cover_image_url', { length: 500 }),
-  
-  // Modo y estado
-  mode: mysqlEnum('mode', ['ASYNC', 'EXAM']).notNull().default('ASYNC'),
-  status: mysqlEnum('status', ['DRAFT', 'OPEN', 'IN_PROGRESS', 'CLOSED']).notNull().default('DRAFT'),
-  
-  // Configuración de tiempo (solo EXAM)
-  timeLimitMinutes: int('time_limit_minutes'),
-  
-  // Configuración de energía
-  initialEnergy: int('initial_energy').notNull().default(5),
-  energyRegenMinutes: int('energy_regen_minutes').notNull().default(30),
-  energyPurchasePrice: int('energy_purchase_price').notNull().default(5),
-  
-  // Recompensas
-  rewardXpPerCorrect: int('reward_xp_per_correct').notNull().default(10),
-  rewardGpPerCorrect: int('reward_gp_per_correct').notNull().default(2),
-  
-  // Integración con calificaciones
-  gradeWeight: decimal('grade_weight', { precision: 5, scale: 2 }),
-  competencyId: varchar('competency_id', { length: 36 }),
-  
-  // Control
-  requiresReview: boolean('requires_review').notNull().default(false),
-  startedAt: datetime('started_at'),
-  endsAt: datetime('ends_at'),
-  
-  createdAt: datetime('created_at').notNull(),
-  updatedAt: datetime('updated_at').notNull(),
-}, (table) => ({
-  classroomIdx: index('idx_jiro_expeditions_classroom').on(table.classroomId),
-  questionBankIdx: index('idx_jiro_expeditions_bank').on(table.questionBankId),
-  statusIdx: index('idx_jiro_expeditions_status').on(table.status),
-}));
-
-export const jiroExpeditionsRelations = relations(jiroExpeditions, ({ one, many }) => ({
-  classroom: one(classrooms, {
-    fields: [jiroExpeditions.classroomId],
-    references: [classrooms.id],
-  }),
-  questionBank: one(questionBanks, {
-    fields: [jiroExpeditions.questionBankId],
-    references: [questionBanks.id],
-  }),
-  deliveryStations: many(jiroDeliveryStations),
-  studentExpeditions: many(jiroStudentExpeditions),
-  competencies: many(jiroExpeditionCompetencies),
-}));
-
-// Estaciones de entrega
-export const jiroDeliveryStations = mysqlTable('jiro_delivery_stations', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  expeditionId: varchar('expedition_id', { length: 36 }).notNull(),
-  
-  name: varchar('name', { length: 255 }).notNull(),
-  description: text('description'),
-  instructions: text('instructions'),
-  orderIndex: int('order_index').notNull().default(0),
-  
-  // Tipos de archivo permitidos
-  allowedFileTypes: json('allowed_file_types').$type<string[]>().notNull().default(['PDF', 'IMAGE']),
-  maxFileSizeMb: int('max_file_size_mb').notNull().default(10),
-  
-  createdAt: datetime('created_at').notNull(),
-  updatedAt: datetime('updated_at').notNull(),
-}, (table) => ({
-  expeditionIdx: index('idx_jiro_delivery_stations_expedition').on(table.expeditionId),
-}));
-
-export const jiroDeliveryStationsRelations = relations(jiroDeliveryStations, ({ one, many }) => ({
-  expedition: one(jiroExpeditions, {
-    fields: [jiroDeliveryStations.expeditionId],
-    references: [jiroExpeditions.id],
-  }),
-  deliveries: many(jiroDeliveries),
-}));
-
-// Progreso del estudiante en expedición
-export const jiroStudentExpeditions = mysqlTable('jiro_student_expeditions', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  expeditionId: varchar('expedition_id', { length: 36 }).notNull(),
-  studentProfileId: varchar('student_profile_id', { length: 36 }).notNull(),
-  
-  status: mysqlEnum('status', ['NOT_STARTED', 'IN_PROGRESS', 'PENDING_REVIEW', 'COMPLETED']).notNull().default('NOT_STARTED'),
-  
-  // Energía
-  currentEnergy: int('current_energy').notNull(),
-  lastEnergyRegenAt: datetime('last_energy_regen_at'),
-  
-  // Progreso
-  correctAnswers: int('correct_answers').notNull().default(0),
-  wrongAnswers: int('wrong_answers').notNull().default(0),
-  completedStations: json('completed_stations').$type<string[]>().notNull().default([]),
-  
-  // Recompensas finales
-  earnedXp: int('earned_xp').notNull().default(0),
-  earnedGp: int('earned_gp').notNull().default(0),
-  finalScore: decimal('final_score', { precision: 5, scale: 2 }),
-  
-  // Tracking
-  startedAt: datetime('started_at'),
-  completedAt: datetime('completed_at'),
-  reviewedAt: datetime('reviewed_at'),
-  reviewedBy: varchar('reviewed_by', { length: 36 }),
-  
-  createdAt: datetime('created_at').notNull(),
-  updatedAt: datetime('updated_at').notNull(),
-}, (table) => ({
-  expeditionIdx: index('idx_jiro_student_expeditions_expedition').on(table.expeditionId),
-  studentIdx: index('idx_jiro_student_expeditions_student').on(table.studentProfileId),
-  statusIdx: index('idx_jiro_student_expeditions_status').on(table.status),
-  uniqueStudentExpedition: unique('unique_jiro_student_expedition').on(table.expeditionId, table.studentProfileId),
-}));
-
-export const jiroStudentExpeditionsRelations = relations(jiroStudentExpeditions, ({ one, many }) => ({
-  expedition: one(jiroExpeditions, {
-    fields: [jiroStudentExpeditions.expeditionId],
-    references: [jiroExpeditions.id],
-  }),
-  studentProfile: one(studentProfiles, {
-    fields: [jiroStudentExpeditions.studentProfileId],
-    references: [studentProfiles.id],
-  }),
-  reviewer: one(users, {
-    fields: [jiroStudentExpeditions.reviewedBy],
-    references: [users.id],
-  }),
-  questionAnswers: many(jiroQuestionAnswers),
-  deliveries: many(jiroDeliveries),
-}));
-
-// Respuestas a preguntas
-export const jiroQuestionAnswers = mysqlTable('jiro_question_answers', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  studentExpeditionId: varchar('student_expedition_id', { length: 36 }).notNull(),
-  questionId: varchar('question_id', { length: 36 }).notNull(),
-  
-  answer: json('answer'),
-  isCorrect: boolean('is_correct').notNull(),
-  energyLost: int('energy_lost').notNull().default(0),
-  
-  answeredAt: datetime('answered_at').notNull(),
-}, (table) => ({
-  studentExpeditionIdx: index('idx_jiro_answers_student_expedition').on(table.studentExpeditionId),
-  questionIdx: index('idx_jiro_answers_question').on(table.questionId),
-  uniqueAnswer: unique('unique_jiro_answer').on(table.studentExpeditionId, table.questionId),
-}));
-
-export const jiroQuestionAnswersRelations = relations(jiroQuestionAnswers, ({ one }) => ({
-  studentExpedition: one(jiroStudentExpeditions, {
-    fields: [jiroQuestionAnswers.studentExpeditionId],
-    references: [jiroStudentExpeditions.id],
-  }),
-  question: one(questions, {
-    fields: [jiroQuestionAnswers.questionId],
-    references: [questions.id],
-  }),
-}));
-
-// Entregas de archivos
-export const jiroDeliveries = mysqlTable('jiro_deliveries', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  studentExpeditionId: varchar('student_expedition_id', { length: 36 }).notNull(),
-  deliveryStationId: varchar('delivery_station_id', { length: 36 }).notNull(),
-  
-  fileUrl: varchar('file_url', { length: 500 }).notNull(),
-  fileName: varchar('file_name', { length: 255 }).notNull(),
-  fileType: mysqlEnum('file_type', ['PDF', 'IMAGE', 'WORD', 'EXCEL']).notNull(),
-  fileSizeBytes: int('file_size_bytes').notNull(),
-  
-  status: mysqlEnum('status', ['PENDING', 'APPROVED', 'REJECTED']).notNull().default('PENDING'),
-  feedback: text('feedback'),
-  
-  submittedAt: datetime('submitted_at').notNull(),
-  reviewedAt: datetime('reviewed_at'),
-}, (table) => ({
-  studentExpeditionIdx: index('idx_jiro_deliveries_student_expedition').on(table.studentExpeditionId),
-  deliveryStationIdx: index('idx_jiro_deliveries_station').on(table.deliveryStationId),
-  statusIdx: index('idx_jiro_deliveries_status').on(table.status),
-  uniqueDelivery: unique('unique_jiro_delivery').on(table.studentExpeditionId, table.deliveryStationId),
-}));
-
-export const jiroDeliveriesRelations = relations(jiroDeliveries, ({ one }) => ({
-  studentExpedition: one(jiroStudentExpeditions, {
-    fields: [jiroDeliveries.studentExpeditionId],
-    references: [jiroStudentExpeditions.id],
-  }),
-  deliveryStation: one(jiroDeliveryStations, {
-    fields: [jiroDeliveries.deliveryStationId],
-    references: [jiroDeliveryStations.id],
-  }),
-}));
-
-// Competencias de expedición (relación muchos-a-muchos)
-export const jiroExpeditionCompetencies = mysqlTable('jiro_expedition_competencies', {
-  id: varchar('id', { length: 36 }).primaryKey(),
-  expeditionId: varchar('expedition_id', { length: 36 }).notNull(),
-  competencyId: varchar('competency_id', { length: 36 }).notNull(),
-  createdAt: datetime('created_at').notNull(),
-}, (table) => ({
-  expeditionIdx: index('idx_jiro_exp_comp_expedition').on(table.expeditionId),
-  competencyIdx: index('idx_jiro_exp_comp_competency').on(table.competencyId),
-  uniqueExpComp: unique('unique_jiro_exp_competency').on(table.expeditionId, table.competencyId),
-}));
-
-export const jiroExpeditionCompetenciesRelations = relations(jiroExpeditionCompetencies, ({ one }) => ({
-  expedition: one(jiroExpeditions, {
-    fields: [jiroExpeditionCompetencies.expeditionId],
-    references: [jiroExpeditions.id],
-  }),
-}));
-
-// Types para Expediciones de Jiro
-export type JiroExpedition = typeof jiroExpeditions.$inferSelect;
-export type NewJiroExpedition = typeof jiroExpeditions.$inferInsert;
-export type JiroExpeditionCompetency = typeof jiroExpeditionCompetencies.$inferSelect;
-export type NewJiroExpeditionCompetency = typeof jiroExpeditionCompetencies.$inferInsert;
-export type JiroDeliveryStation = typeof jiroDeliveryStations.$inferSelect;
-export type NewJiroDeliveryStation = typeof jiroDeliveryStations.$inferInsert;
-export type JiroStudentExpedition = typeof jiroStudentExpeditions.$inferSelect;
-export type NewJiroStudentExpedition = typeof jiroStudentExpeditions.$inferInsert;
-export type JiroQuestionAnswer = typeof jiroQuestionAnswers.$inferSelect;
-export type NewJiroQuestionAnswer = typeof jiroQuestionAnswers.$inferInsert;
-export type JiroDelivery = typeof jiroDeliveries.$inferSelect;
-export type NewJiroDelivery = typeof jiroDeliveries.$inferInsert;
-export type JiroExpeditionMode = 'ASYNC' | 'EXAM';
-export type JiroExpeditionStatus = 'DRAFT' | 'OPEN' | 'IN_PROGRESS' | 'CLOSED';
-export type JiroStudentStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'PENDING_REVIEW' | 'COMPLETED';
-export type JiroDeliveryFileType = 'PDF' | 'IMAGE' | 'WORD' | 'EXCEL';
-export type JiroDeliveryStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
 // ==================== SISTEMA DE ESCUELAS ====================
 

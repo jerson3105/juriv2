@@ -3,8 +3,7 @@ import {
   studentProfiles, classrooms, users, pointLogs, notifications, classroomCompetencyIndicators, shopItems,
   studentAvatarPurchases, studentEquippedItems, studentGrades, studentActivityScores,
   badgeProgress, studentBadges, loginStreaks, studentStreaks, attendanceRecords,
-  purchases, itemUsages, powerUsages, expeditionSubmissions, expeditionStudentProgress,
-  jiroStudentExpeditions, jiroQuestionAnswers, jiroDeliveries,
+  purchases, itemUsages, powerUsages, expeditionStopProgress, expeditionAnswers, expeditionEvidence, expeditionFinishes,
   studentCollectibles, scrolls, scrollReactions,
   collectibleCards, collectibleAlbums, collectiblePurchases, collectibleWelcomePacks, collectibleBoxItems, completedAlbums, classroomCharacterClasses,
   stories,
@@ -1092,21 +1091,11 @@ export class StudentService {
       // 8. Power usages
       await tx.delete(powerUsages).where(eq(powerUsages.studentId, studentId));
 
-      // 9. Expeditions
-      await tx.delete(expeditionSubmissions).where(eq(expeditionSubmissions.studentProfileId, studentId));
-      await tx.delete(expeditionStudentProgress).where(eq(expeditionStudentProgress.studentProfileId, studentId));
-
-      // 10. Jiro expeditions
-      const jiroStudentExps = await tx.query.jiroStudentExpeditions.findMany({
-        where: eq(jiroStudentExpeditions.studentProfileId, studentId),
-        columns: { id: true },
-      });
-      const jiroStudentExpIds = jiroStudentExps.map(e => e.id);
-      if (jiroStudentExpIds.length > 0) {
-        await tx.delete(jiroQuestionAnswers).where(inArray(jiroQuestionAnswers.studentExpeditionId, jiroStudentExpIds));
-        await tx.delete(jiroDeliveries).where(inArray(jiroDeliveries.studentExpeditionId, jiroStudentExpIds));
-      }
-      await tx.delete(jiroStudentExpeditions).where(eq(jiroStudentExpeditions.studentProfileId, studentId));
+      // 9. Expediciones (avance, respuestas, evidencias y metas)
+      await tx.delete(expeditionAnswers).where(eq(expeditionAnswers.studentProfileId, studentId));
+      await tx.delete(expeditionEvidence).where(eq(expeditionEvidence.studentProfileId, studentId));
+      await tx.delete(expeditionStopProgress).where(eq(expeditionStopProgress.studentProfileId, studentId));
+      await tx.delete(expeditionFinishes).where(eq(expeditionFinishes.studentProfileId, studentId));
 
       // 12. Collectibles (figuritas, sobres abiertos, bienvenida y álbumes completados)
       await tx.delete(studentCollectibles).where(eq(studentCollectibles.studentProfileId, studentId));

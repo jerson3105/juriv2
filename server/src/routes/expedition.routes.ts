@@ -1,102 +1,43 @@
 import { Router } from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { expeditionUploadLimiter } from '../middleware/security.js';
-import * as expeditionController from '../controllers/expedition.controller.js';
+import { expeditionController as c, uploadExpeditionFile } from '../controllers/expedition.controller.js';
 
+// Expedición unificada. Cada controlador revisa además la clase: el docente dueño (o el admin) para
+// gestionar, y el alumno con perfil activo en la clase (sale de la sesión) para jugar.
 const router = Router();
-
-// Todas las rutas requieren autenticación
 router.use(authenticate);
 
-// Las lecturas son del docente de la clase, de sus alumnos o del admin; cada controlador revisa además la
-// clase. Antes solo pedían sesión: una familia recién registrada leía expediciones y progreso de cualquiera.
-const readers = authorize('TEACHER', 'STUDENT', 'ADMIN');
+const teacher = authorize('TEACHER', 'ADMIN');
+const student = authorize('STUDENT');
 
-// ==================== EXPEDITION CRUD (TEACHER) ====================
+// Subidas: recursos del docente y evidencias del alumno (máximo 5 MB, 60 por hora).
+router.post('/upload', authorize('TEACHER', 'STUDENT'), expeditionUploadLimiter, ...uploadExpeditionFile, c.upload);
 
-// Crear expedición
-router.post('/', authorize('TEACHER'), expeditionController.createExpedition);
+// Alumno (antes que '/:id' para que «mine» y «stops» no se lean como id).
+router.get('/mine/:classroomId', student, c.mine);
+router.get('/stops/:stopId/challenge', student, c.challenge);
+router.post('/stops/:stopId/continue', student, c.continueStory);
+router.post('/stops/:stopId/answer', student, c.answer);
+router.post('/stops/:stopId/evidence', student, c.evidence);
+router.get('/:id/play', student, c.play);
 
-// Obtener expedición por ID
-router.get('/:id', readers, expeditionController.getExpedition);
-
-// Obtener expediciones de un classroom
-router.get('/classroom/:classroomId', readers, expeditionController.getClassroomExpeditions);
-
-// Obtener estadísticas de expediciones de un classroom
-router.get('/classroom/:classroomId/stats', authorize('TEACHER'), expeditionController.getClassroomStats);
-
-// Actualizar expedición
-router.put('/:id', authorize('TEACHER'), expeditionController.updateExpedition);
-
-// Publicar expedición
-router.post('/:id/publish', authorize('TEACHER'), expeditionController.publishExpedition);
-
-// Archivar expedición
-router.post('/:id/archive', authorize('TEACHER'), expeditionController.archiveExpedition);
-
-// Eliminar expedición
-router.delete('/:id', authorize('TEACHER'), expeditionController.deleteExpedition);
-
-// ==================== PINS ====================
-
-// Crear pin
-router.post('/:expeditionId/pins', authorize('TEACHER'), expeditionController.createPin);
-
-// Obtener pin
-router.get('/pins/:pinId', readers, expeditionController.getPin);
-
-// Actualizar pin
-router.put('/pins/:pinId', authorize('TEACHER'), expeditionController.updatePin);
-
-// Eliminar pin
-router.delete('/pins/:pinId', authorize('TEACHER'), expeditionController.deletePin);
-
-// ==================== CONNECTIONS ====================
-
-// Crear conexión
-router.post('/:expeditionId/connections', authorize('TEACHER'), expeditionController.createConnection);
-
-// Actualizar conexión
-router.put('/connections/:connectionId', authorize('TEACHER'), expeditionController.updateConnection);
-
-// Eliminar conexión
-router.delete('/connections/:connectionId', authorize('TEACHER'), expeditionController.deleteConnection);
-
-// ==================== PROGRESS (TEACHER) ====================
-
-// Obtener progreso de todos los estudiantes en un pin
-router.get('/pins/:pinId/progress', authorize('TEACHER'), expeditionController.getPinProgress);
-
-// Establecer decisión del profesor para un estudiante
-router.post('/pins/:pinId/decision', authorize('TEACHER'), expeditionController.setTeacherDecision);
-
-// Establecer decisiones en bulk
-router.post('/pins/:pinId/decisions', authorize('TEACHER'), expeditionController.setTeacherDecisionBulk);
-
-// Obtener entregas de un pin
-router.get('/pins/:pinId/submissions', authorize('TEACHER'), expeditionController.getPinSubmissions);
-
-// ==================== STUDENT ROUTES ====================
-
-// Obtener expediciones del estudiante en un classroom
-router.get('/student/:classroomId/:studentProfileId', readers, expeditionController.getStudentExpeditions);
-
-// Obtener detalle de expedición para estudiante
-router.get('/student/:expeditionId/detail/:studentProfileId', readers, expeditionController.getStudentExpeditionDetail);
-
-// Obtener progreso del estudiante
-router.get('/:expeditionId/progress/:studentProfileId', readers, expeditionController.getStudentProgress);
-
-// Crear entrega de tarea
-router.post('/:expeditionId/pins/:pinId/submit', authorize('STUDENT'), expeditionController.createSubmission);
-
-// Completar un pin (estudiante avanza al siguiente)
-router.post('/pins/:pinId/complete', authorize('STUDENT'), expeditionController.completePin);
-
-// ==================== UPLOAD ====================
-
-// Subir archivo (recurso del docente o entrega del alumno; máximo 5MB)
-router.post('/upload', authorize('TEACHER', 'STUDENT'), expeditionUploadLimiter, expeditionController.uploadExpeditionFile, expeditionController.handleExpeditionUpload);
+// Docente
+router.get('/classroom/:classroomId', teacher, c.list);
+router.post('/', teacher, c.create);
+router.patch('/stops/:stopId', teacher, c.updateStop);
+router.delete('/stops/:stopId', teacher, c.deleteStop);
+router.post('/stops/:stopId/class', teacher, c.markClass);
+router.get('/:id', teacher, c.get);
+router.patch('/:id', teacher, c.update);
+router.delete('/:id', teacher, c.remove);
+router.post('/:id/publish', teacher, c.publish);
+router.post('/:id/close', teacher, c.close);
+router.post('/:id/reopen', teacher, c.reopen);
+router.post('/:id/stops', teacher, c.addStop);
+router.put('/:id/stops/order', teacher, c.reorder);
+router.get('/:id/board', teacher, c.board);
+router.get('/:id/review', teacher, c.reviewQueue);
+router.post('/:id/review', teacher, c.review);
 
 export default router;
