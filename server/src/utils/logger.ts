@@ -10,17 +10,43 @@ const __dirname = path.dirname(__filename);
 const isProduction = process.env.NODE_ENV === 'production';
 const isDevelopment = process.env.NODE_ENV === 'development';
 
+// Datos que nunca deben quedar en los logs: contraseñas, PIN, tokens y documentos de identidad. Se tapan por nombre
+// de campo, en objetos y también dentro de textos con JSON (console.error con objetos serializados).
+const SENSITIVE_FIELDS = 'password|currentPassword|newPassword|pin|currentPin|newPin|pinHash|token|accessToken|refreshToken|dni|document|documentNumber|birthDate';
+const SENSITIVE_KEY = new RegExp(`^(${SENSITIVE_FIELDS})$`, 'i');
+const SENSITIVE_JSON = new RegExp(`"(${SENSITIVE_FIELDS})"\\s*:\\s*("(?:[^"\\\\]|\\\\.)*"|-?\\d+)`, 'gi');
+const REDACTED = '[redactado]';
+
+const redactValue = (value: unknown, depth: number): unknown => {
+  if (typeof value === 'string') return value.replace(SENSITIVE_JSON, `"$1":"${REDACTED}"`);
+  if (depth > 6 || value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map((item) => redactValue(item, depth + 1));
+  if (Object.getPrototypeOf(value) !== Object.prototype) return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [key, SENSITIVE_KEY.test(key) ? REDACTED : redactValue(item, depth + 1)])
+  );
+};
+
+export const redactSensitive = winston.format((info) => {
+  for (const key of Object.keys(info)) {
+    info[key] = SENSITIVE_KEY.test(key) ? REDACTED : redactValue(info[key], 1);
+  }
+  return info;
+});
+
 // Formato de logs
 const logFormat = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
   winston.format.errors({ stack: true }),
   winston.format.splat(),
+  redactSensitive(),
   winston.format.json()
 );
 
 // Formato para consola (más legible)
 const consoleFormat = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+  redactSensitive(),
   winston.format.colorize(),
   winston.format.printf(({ timestamp, level, message, ...meta }) => {
     let msg = `${timestamp} [${level}]: ${message}`;

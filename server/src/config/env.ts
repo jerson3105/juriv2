@@ -32,6 +32,12 @@ const envSchema = z.object({
 
   // IA (Gemini)
   GEMINI_API_KEY: z.string().optional(),
+
+  // Datos personales (DNI y otros documentos): llave de cifrado AES-256-GCM y llave del índice ciego HMAC-SHA256.
+  // 32 bytes en base64 cada una y distintas entre sí. Viven solo aquí (no en la base ni en sus respaldos): si se
+  // pierden, los documentos guardados no se pueden leer. Genéralas con scripts/generate-secrets.js.
+  PII_ENC_KEY: z.string().optional(),
+  PII_INDEX_KEY: z.string().optional(),
 });
 
 // Valores de ejemplo publicados en el repositorio (.env.example, docs): nunca válidos en producción
@@ -46,6 +52,28 @@ const findWeakSecrets = (data: z.infer<typeof envSchema>): Record<string, string
   }
   if (data.JWT_SECRET === data.JWT_REFRESH_SECRET) {
     issues.JWT_REFRESH_SECRET = [...(issues.JWT_REFRESH_SECRET ?? []), 'Debe ser distinto de JWT_SECRET'];
+  }
+  return issues;
+};
+
+/** Llave de 32 bytes en base64 canónico; null si falta o no lo es. */
+const decodeKey = (value: string | undefined): Buffer | null => {
+  if (!value) return null;
+  const key = Buffer.from(value.trim(), 'base64');
+  return key.length === 32 && key.toString('base64') === value.trim() ? key : null;
+};
+
+// Sin documentos guardados todavía, las llaves pueden faltar (el cifrado se niega a funcionar sin ellas);
+// si están, deben ser válidas.
+const findPiiKeyIssues = (data: z.infer<typeof envSchema>): Record<string, string[]> => {
+  const issues: Record<string, string[]> = {};
+  if (!data.PII_ENC_KEY && !data.PII_INDEX_KEY) return issues;
+  for (const key of ['PII_ENC_KEY', 'PII_INDEX_KEY'] as const) {
+    if (!data[key]) issues[key] = ['Falta: las dos llaves van juntas'];
+    else if (!decodeKey(data[key])) issues[key] = ['Debe ser de 32 bytes en base64; genérala con scripts/generate-secrets.js'];
+  }
+  if (data.PII_ENC_KEY && data.PII_ENC_KEY === data.PII_INDEX_KEY) {
+    issues.PII_INDEX_KEY = [...(issues.PII_INDEX_KEY ?? []), 'Debe ser distinta de PII_ENC_KEY'];
   }
   return issues;
 };
@@ -68,6 +96,16 @@ const parseEnv = () => {
       process.exit(1);
     }
     console.warn('⚠️ Secretos JWT inseguros (bloquearían el arranque en producción):', weakSecrets);
+  }
+
+  const piiKeyIssues = findPiiKeyIssues(parsed.data);
+  if (Object.keys(piiKeyIssues).length > 0) {
+    if (parsed.data.NODE_ENV === 'production') {
+      console.error('❌ Llaves de datos personales inválidas:');
+      console.error(piiKeyIssues);
+      process.exit(1);
+    }
+    console.warn('⚠️ Llaves de datos personales inválidas (bloquearían el arranque en producción):', piiKeyIssues);
   }
 
   return parsed.data;
@@ -103,4 +141,10 @@ export const config_app = {
   },
   
   clientUrl: env.CLIENT_URL,
+
+  // null si faltan o no son válidas: el cifrado de documentos (utils/piiCrypto) no funciona sin las dos.
+  pii: {
+    encKey: decodeKey(env.PII_ENC_KEY),
+    indexKey: decodeKey(env.PII_INDEX_KEY),
+  },
 };
