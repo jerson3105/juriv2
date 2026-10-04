@@ -10,9 +10,12 @@ import { errorMessage } from '../../auth/authHelpers';
 import { QUESTION_TYPE_LABELS, questionBankApi } from '../../../lib/questionBankApi';
 import {
   expeditionApi, expeditionKeys,
-  type ExpeditionResource, type StopKind, type StopPatch, type TeacherExpedition, type TeacherStop,
+  type ClassActivity, type ExpeditionResource, type StopKind, type StopPatch, type TeacherExpedition, type TeacherStop,
 } from '../../../lib/expeditionApi';
-import { KIND_INFO, KIND_ORDER, MAX_QUESTIONS, MAX_REWARD, MAX_UPLOAD_BYTES, compressImage, fromLocalInput, resourceLabel, toLocalInput } from '../expeditionHelpers';
+import {
+  CLASS_ACTIVITIES, CLASS_ACTIVITY_INFO, GRADED_KINDS, KIND_INFO, KIND_ORDER, MAX_GRADE_WEIGHT, MAX_QUESTIONS, MAX_REWARD, MAX_UPLOAD_BYTES,
+  compressImage, fromLocalInput, resourceLabel, toLocalInput,
+} from '../expeditionHelpers';
 
 const SUGGESTED: Record<StopKind, { xpPercent: number; gold: number }> = {
   STORY: { xpPercent: 0, gold: 0 }, CHALLENGE: { xpPercent: 10, gold: 0 }, EVIDENCE: { xpPercent: 15, gold: 5 }, CLASS: { xpPercent: 10, gold: 0 },
@@ -33,6 +36,9 @@ interface Draft {
   dueAt: string;
   rewardXp: string;
   rewardGold: string;
+  competencyId: string | null;
+  gradeWeight: string;
+  classActivity: ClassActivity | null;
 }
 
 const toDraft = (stop: TeacherStop): Draft => ({
@@ -50,7 +56,16 @@ const toDraft = (stop: TeacherStop): Draft => ({
   dueAt: toLocalInput(stop.dueAt),
   rewardXp: String(stop.rewardXp),
   rewardGold: String(stop.rewardGold),
+  competencyId: stop.competencyId,
+  gradeWeight: String(stop.gradeWeight),
+  classActivity: stop.classActivity,
 });
+
+const weightError = (value: string) => {
+  const n = Number(value);
+  if (value.trim() === '' || !Number.isInteger(n)) return 'Escribe un número entero';
+  return n < 1 || n > MAX_GRADE_WEIGHT ? `Entre 1 y ${MAX_GRADE_WEIGHT}` : null;
+};
 
 /** Solo lo que cambió (el servidor valida con lista blanca). */
 const patchOf = (stop: TeacherStop, draft: Draft): StopPatch => {
@@ -69,6 +84,13 @@ const patchOf = (stop: TeacherStop, draft: Draft): StopPatch => {
   if (draft.dueAt !== base.dueAt) patch.dueAt = fromLocalInput(draft.dueAt);
   if (draft.rewardXp !== base.rewardXp) patch.rewardXp = Number(draft.rewardXp);
   if (draft.rewardGold !== base.rewardGold) patch.rewardGold = Number(draft.rewardGold);
+  // La nota solo va en reto y evidencia, y la actividad del Observatorio solo en «en clase» (al cambiar de tipo,
+  // el servidor las quita solo).
+  if (GRADED_KINDS.includes(draft.kind)) {
+    if (draft.competencyId !== base.competencyId) patch.competencyId = draft.competencyId;
+    if (draft.gradeWeight !== base.gradeWeight) patch.gradeWeight = Number(draft.gradeWeight);
+  }
+  if (draft.kind === 'CLASS' && draft.classActivity !== base.classActivity) patch.classActivity = draft.classActivity;
   return patch;
 };
 
@@ -144,6 +166,43 @@ const QuestionPicker = ({ classroomId, bankId, questionIds, bankLocked, onChange
   );
 };
 
+/** Banco con el que se juega la parada «en clase» (opcional: la actividad también deja elegirlo al empezar). */
+const BankSelect = ({ classroomId, bankId, onChange }: { classroomId: string; bankId: string | null; onChange: (bankId: string | null) => void }) => {
+  const banks = useQuery({ queryKey: ['questionBanks', classroomId], queryFn: () => questionBankApi.getBanks(classroomId) });
+  return (
+    <label className="block">
+      <span className={labelClass}>Banco de preguntas <span className="font-normal text-gray-700 dark:text-gray-300">(opcional)</span></span>
+      <select value={bankId ?? ''} onChange={(event) => onChange(event.target.value || null)} className={`${inputClass} mt-1.5 min-h-[44px]`}>
+        <option value="">Lo elijo al empezar</option>
+        {(banks.data ?? []).map((bank) => <option key={bank.id} value={bank.id}>{bank.name}</option>)}
+      </select>
+    </label>
+  );
+};
+
+/** «Cuenta para la nota»: una competencia de la clase y el peso de esta parada (de 1 a 30, como una observación). */
+const GradeSettings = ({ kind, competencies, competencyId, weight, weightError: error, onCompetency, onWeight }: {
+  kind: StopKind; competencies: { id: string; name: string }[]; competencyId: string | null; weight: string; weightError: string | null;
+  onCompetency: (id: string | null) => void; onWeight: (value: string) => void;
+}) => (
+  <fieldset className="space-y-2 rounded-xl border border-[var(--pg-line)] p-3">
+    <legend className={`${labelClass} px-1`}>Cuenta para la nota <span className="font-normal text-gray-700 dark:text-gray-300">(opcional)</span></legend>
+    <select value={competencyId ?? ''} onChange={(event) => onCompetency(event.target.value || null)} aria-label="Competencia" className={`${inputClass} min-h-[44px]`}>
+      <option value="">No cuenta para la nota</option>
+      {competencies.map((competency) => <option key={competency.id} value={competency.id}>{competency.name}</option>)}
+    </select>
+    {competencyId && (
+      <NumberField label="Peso en la nota" value={weight} onChange={onWeight} min={1} max={MAX_GRADE_WEIGHT} error={error}
+        hint="De 1 a 30, como una observación (una insignia legendaria pesa 30)." />
+    )}
+    <p className="text-sm text-gray-700 dark:text-gray-300">
+      {kind === 'CHALLENGE'
+        ? 'Cuenta el % de su primer intento: el reintento es para aprender. Lo jugado en clase no da nota.'
+        : 'Al aprobar eliges el nivel en la escala de tu clase. Sin nivel, no cuenta.'}
+    </p>
+  </fieldset>
+);
+
 const ResourceEditor = ({ resources, onChange }: { resources: ExpeditionResource[]; onChange: (next: ExpeditionResource[]) => void }) => {
   const [link, setLink] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -207,11 +266,13 @@ const ResourceEditor = ({ resources, onChange }: { resources: ExpeditionResource
  * Panel de una parada: campos según el tipo, recompensa sugerida y guardar solo si hay cambios. El tipo se puede
  * cambiar mientras nadie la haya empezado.
  */
-export const StopPanel = ({ expedition, stop, index, xpPerLevel, placing, onPlace, onMarkClass, onDeleted }: {
+export const StopPanel = ({ expedition, stop, index, xpPerLevel, competencies, placing, onPlace, onMarkClass, onDeleted }: {
   expedition: TeacherExpedition;
   stop: TeacherStop;
   index: number;
   xpPerLevel: number;
+  /** Competencias de la clase (vacío si la clase no usa competencias: no se ofrece la nota). */
+  competencies: { id: string; name: string }[];
   placing: boolean;
   onPlace: (placing: boolean) => void;
   onMarkClass: () => void;
@@ -227,7 +288,9 @@ export const StopPanel = ({ expedition, stop, index, xpPerLevel, placing, onPlac
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((current) => ({ ...current, [key]: value }));
   const xpError = rewardError(draft.rewardXp);
   const goldError = rewardError(draft.rewardGold);
-  const invalid = !draft.title.trim() || !!xpError || !!goldError;
+  const graded = GRADED_KINDS.includes(draft.kind) && !!draft.competencyId;
+  const gradeWeightError = graded ? weightError(draft.gradeWeight) : null;
+  const invalid = !draft.title.trim() || !!xpError || !!goldError || !!gradeWeightError;
   const started = stop.stats.started + stop.stats.waiting + stop.stats.done + stop.stats.pending + stop.stats.needsWork > 0;
   const suggested = SUGGESTED[draft.kind];
   const suggestion = `Sugerido: ${Math.round((xpPerLevel * suggested.xpPercent) / 100)} XP${suggested.gold ? ` y ${suggested.gold} de oro` : ''}`;
@@ -314,6 +377,10 @@ export const StopPanel = ({ expedition, stop, index, xpPerLevel, placing, onPlac
             <span className="mt-1 block text-sm text-gray-700 dark:text-gray-300">Si no llega, reintenta solo las que falló (ve la explicación) y lo supera igual. Con 80 % o más al primer intento gana una estrella dorada.</span>
           </label>
           {textArea('story', 'Lo que cuenta Jiro antes del reto (opcional)', 'Ej.: Para cruzar el río hay que saber cuándo el agua hierve.', 3)}
+          {competencies.length > 0 && (
+            <GradeSettings kind="CHALLENGE" competencies={competencies} competencyId={draft.competencyId} weight={draft.gradeWeight} weightError={gradeWeightError}
+              onCompetency={(id) => set('competencyId', id)} onWeight={(value) => set('gradeWeight', value)} />
+          )}
         </>
       )}
 
@@ -338,12 +405,33 @@ export const StopPanel = ({ expedition, stop, index, xpPerLevel, placing, onPlac
           </label>
           <ResourceEditor resources={draft.resources} onChange={(next) => set('resources', next)} />
           {textArea('story', 'Lo que cuenta Jiro (opcional)', 'Ej.: El hielo guarda un secreto…', 3)}
+          {competencies.length > 0 && (
+            <GradeSettings kind="EVIDENCE" competencies={competencies} competencyId={draft.competencyId} weight={draft.gradeWeight} weightError={gradeWeightError}
+              onCompetency={(id) => set('competencyId', id)} onWeight={(value) => set('gradeWeight', value)} />
+          )}
         </>
       )}
 
       {draft.kind === 'CLASS' && (
         <>
           {textArea('mission', '¿Qué harán en clase?', 'Ej.: Hervimos agua juntos y anotamos qué pasa con el vapor.')}
+          <fieldset>
+            <legend className={labelClass}>Cómo la juegan</legend>
+            <div className="pg-seg mt-1.5 flex-wrap" role="group" aria-label="Cómo la juegan">
+              <button type="button" aria-pressed={!draft.classActivity} onClick={() => set('classActivity', null)} className="pg-seg-item">Solo marcar presentes</button>
+              {CLASS_ACTIVITIES.map((activity) => (
+                <button key={activity} type="button" aria-pressed={draft.classActivity === activity} onClick={() => set('classActivity', activity)} className="pg-seg-item">
+                  <span aria-hidden="true">{CLASS_ACTIVITY_INFO[activity].emoji}</span> {CLASS_ACTIVITY_INFO[activity].label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">
+              {draft.classActivity
+                ? `${CLASS_ACTIVITY_INFO[draft.classActivity].hint} Se abre desde «Proyectar»; al entregar la recompensa de su Bitácora, la parada queda lograda para los presentes (sin pagarla dos veces).`
+                : 'Hacen la actividad en el aula y tú marcas a los presentes (también desde «Proyectar»).'}
+            </p>
+          </fieldset>
+          {draft.classActivity && <BankSelect classroomId={expedition.classroomId} bankId={draft.bankId} onChange={(bankId) => set('bankId', bankId)} />}
           {expedition.status === 'PUBLISHED' && (
             <button type="button" onClick={onMarkClass} className="pg-btn"><School size={16} aria-hidden="true" /> Marcar a los presentes</button>
           )}

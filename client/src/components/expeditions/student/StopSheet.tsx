@@ -230,6 +230,11 @@ export const StopSheet = ({ expedition, stop, number, previousTitle, preview = f
         <StateLine stop={stop} />
         {stop.goldStar && <span className="pg-gold px-3 py-1 text-sm font-bold">⭐ Estrella dorada</span>}
       </div>
+      {stop.state === 'DONE' && stop.doneInClass && stop.kind !== 'EVIDENCE' && (
+        <p className="flex items-start gap-2 rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-50">
+          <School size={18} className="mt-0.5 flex-shrink-0" aria-hidden="true" /> La hicieron juntos en clase.
+        </p>
+      )}
 
       {locked && (
         <p className="text-sm text-gray-800 dark:text-gray-200">
@@ -287,7 +292,7 @@ export const StopSheet = ({ expedition, stop, number, previousTitle, preview = f
               )}
               {stop.review === 'APPROVED' && (
                 <p className="rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-50">
-                  ¡Tu profe aprobó tu evidencia!{stop.feedback ? ` «${stop.feedback}»` : ''}
+                  {stop.doneInClass ? '¡Tu profe la vio en clase y la aprobó!' : '¡Tu profe aprobó tu evidencia!'}{stop.feedback ? ` «${stop.feedback}»` : ''}
                 </p>
               )}
               {stop.review === 'PENDING' && (

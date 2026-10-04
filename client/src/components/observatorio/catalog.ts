@@ -114,7 +114,8 @@ export interface Recommendation {
  * descansando, o la actividad que más tiempo lleva sin jugarse.
  */
 export const recommend = (overview: ActivityOverview | undefined, restingCount: number): Recommendation => {
-  const active = overview?.active[0] ?? null;
+  // La primera partida a medias de una actividad del catálogo (la expedición proyectada se retoma desde su editor).
+  const active = overview?.active.find((session) => entryForSession(session.activityType)) ?? null;
   const activeEntry = active ? entryForSession(active.activityType) : null;
   if (active && activeEntry) {
     return { line: `Dejamos ${activeEntry.name} a medias. ¿La seguimos?`, entry: activeEntry, resume: active };

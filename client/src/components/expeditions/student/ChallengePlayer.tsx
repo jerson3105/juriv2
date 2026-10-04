@@ -164,13 +164,19 @@ export const ChallengePlayer = ({ stop, onExit }: { stop: StudentStop; onExit: (
     );
   }
 
-  // Resultado de una vuelta completa (o reto ya terminado).
-  const roundEnded = feedback?.roundComplete || (!feedback && pending.length === 0);
-  if (roundEnded && !feedback) {
+  // Resultado de una vuelta completa o de un reto ya terminado (aunque no haya respondido nada: lo hicieron en
+  // clase, o el docente cambió las preguntas después).
+  if (!feedback && (state.status === 'DONE' || pending.length === 0)) {
     const finished = state.status === 'DONE';
     return (
       <div className="space-y-4 py-2 text-center" aria-live="polite">
-        {finished ? (
+        {finished && state.doneInClass && state.firstScore === null ? (
+          <>
+            <div className="mx-auto text-4xl" aria-hidden="true">🏫</div>
+            <h3 className="text-xl font-extrabold text-gray-900 dark:text-white">¡Lo resolvieron juntos en clase!</h3>
+            <p className="text-sm text-gray-800 dark:text-gray-200">Tu profe marcó este reto como hecho en clase.</p>
+          </>
+        ) : finished ? (
           <>
             <div className="mx-auto flex w-fit items-center gap-2 text-4xl" aria-hidden="true">{state.goldStar ? '⭐' : '🎯'}</div>
             <h3 className="text-xl font-extrabold text-gray-900 dark:text-white">{state.goldStar ? '¡Reto superado con estrella!' : '¡Reto superado!'}</h3>

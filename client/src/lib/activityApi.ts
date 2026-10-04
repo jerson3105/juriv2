@@ -2,7 +2,8 @@ import api from './api';
 import type { AwardedBadgeInfo, LevelUpInfo } from './behaviorApi';
 
 // Observatorio de Jiro: partidas de las actividades de clase (reanudar, Bitácora y recompensa).
-export type ActivityType = 'DESCANSO' | 'ESTRELLAS' | 'CONQUISTA' | 'CORREO' | 'ERROR';
+// EXPEDICION: la expedición proyectada en clase (cierra con la Bitácora).
+export type ActivityType = 'DESCANSO' | 'ESTRELLAS' | 'CONQUISTA' | 'CORREO' | 'ERROR' | 'EXPEDICION';
 export type SelfAssessment = 'GREEN' | 'YELLOW' | 'RED';
 export type ActivityStatus = 'ACTIVE' | 'FINISHED' | 'ABANDONED';
 
@@ -20,6 +21,8 @@ export interface ActivitySession<S = Record<string, unknown>, R = Record<string,
   activityType: ActivityType;
   status: ActivityStatus;
   title: string | null;
+  /** Jugada desde una parada «en clase»: al entregar la recompensa se marca esa parada. */
+  expeditionStopId?: string | null;
   result: R | null;
   selfAssessment: SelfAssessment | null;
   reward: ActivityReward | null;
@@ -52,6 +55,8 @@ export interface ActivityRewardResult {
   restingSkipped: number;
   studentsAffected: number;
   chapter: ChapterProgress | null;
+  /** La parada de la expedición que se marcó con esta recompensa (sin pagarla otra vez). */
+  expeditionStop?: { title: string; marked: number } | null;
 }
 
 export type RewardInput = { studentIds: string[] } & ({ behaviorId: string } | { xp: number; gp: number });
@@ -85,7 +90,7 @@ export const activityApi = {
     return response.data.data;
   },
 
-  create: async <S>(classroomId: string, activityType: ActivityType, data: { title?: string | null; state?: S } = {}): Promise<ActivitySession<S>> => {
+  create: async <S>(classroomId: string, activityType: ActivityType, data: { title?: string | null; state?: S; expeditionStopId?: string | null } = {}): Promise<ActivitySession<S>> => {
     const response = await api.post(`/activities/classroom/${classroomId}/sessions`, { activityType, ...data });
     return response.data.data;
   },

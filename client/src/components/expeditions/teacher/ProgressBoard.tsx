@@ -5,7 +5,36 @@ import { SidePanel } from '../../gradebook/SidePanel';
 import { primaryButton } from '../../home/homeHelpers';
 import { secondaryButton } from '../../gradebook/gradebookHelpers';
 import { expeditionApi, expeditionKeys, type BoardStudent, type ExpeditionBoard, type StopState } from '../../../lib/expeditionApi';
-import { KIND_INFO, plural } from '../expeditionHelpers';
+import { KIND_INFO, REFLECTIONS, REFLECTION_INFO, plural } from '../expeditionHelpers';
+
+/** «¿Cómo les fue?»: lo que respondió cada alumno al llegar a la meta. Proyectando, solo los conteos. */
+const Reflections = ({ students, projecting }: { students: BoardStudent[]; projecting: boolean }) => {
+  const answered = students.filter((student) => student.reflection);
+  if (answered.length === 0) return null;
+  const notes = answered.filter((student) => student.reflection?.note);
+  return (
+    <section aria-labelledby="exp-reflections" className="pg-surface space-y-2 p-3">
+      <h2 id="exp-reflections" className="font-bold pg-fg">¿Cómo les fue? <span className="font-normal pg-fg2">({plural(answered.length, 'respondió', 'respondieron')})</span></h2>
+      <ul className="flex flex-wrap gap-2">
+        {REFLECTIONS.map((value) => (
+          <li key={value} className="pg-chip min-h-[36px] text-sm">
+            <span aria-hidden="true">{REFLECTION_INFO[value].emoji}</span> {REFLECTION_INFO[value].label}: <strong>{answered.filter((s) => s.reflection?.value === value).length}</strong>
+          </li>
+        ))}
+      </ul>
+      {!projecting && notes.length > 0 && (
+        <ul className="divide-y divide-[var(--pg-line)]">
+          {notes.map((student) => (
+            <li key={student.id} className="py-2 text-sm">
+              <span className="font-semibold pg-fg"><span aria-hidden="true">{REFLECTION_INFO[student.reflection!.value].emoji}</span> {student.name}:</span>{' '}
+              <span className="pg-fg2">«{student.reflection!.note}»</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+};
 
 const CELL: Record<StopState, { label: string; node: ReactNode; className: string }> = {
   DONE: { label: 'Lograda', node: <Check size={14} strokeWidth={3} aria-hidden="true" />, className: 'bg-emerald-700 text-white' },
@@ -99,6 +128,7 @@ export const ProgressBoard = ({ expeditionId, projecting, onMarkClass }: { exped
     return (
       <div className="space-y-3">
         {counts}
+        <Reflections students={board.students} projecting />
         <p className="text-sm pg-fg2">Mientras proyectas se ocultan los nombres: solo se ven cuántos hay en cada parada.</p>
       </div>
     );
@@ -107,6 +137,7 @@ export const ProgressBoard = ({ expeditionId, projecting, onMarkClass }: { exped
   return (
     <div className="space-y-3">
       {counts}
+      <Reflections students={board.students} projecting={false} />
       {board.students.length === 0 ? (
         <p className="py-6 text-center text-sm pg-fg2">Esta clase aún no tiene alumnos.</p>
       ) : (
@@ -140,12 +171,13 @@ export const ProgressBoard = ({ expeditionId, projecting, onMarkClass }: { exped
                   </th>
                   {student.states.map((cell, i) => {
                     const look = CELL[cell.state];
-                    const label = `${board.stops[i].title}: ${look.label}${cell.goldStar ? ', con estrella' : ''}${cell.firstScore !== null ? `, ${cell.firstScore} %` : ''}`;
+                    const label = `${board.stops[i].title}: ${look.label}${cell.inClass ? ' en clase' : ''}${cell.goldStar ? ', con estrella' : ''}${cell.firstScore !== null ? `, ${cell.firstScore} %` : ''}${cell.gradeLabel ? `, nivel ${cell.gradeLabel}` : ''}`;
                     return (
                       <td key={cell.stopId} className="px-1 py-2 text-center">
                         <span className={`relative mx-auto flex h-6 w-6 items-center justify-center rounded-full ${look.className}`} title={label} role="img" aria-label={label}>
                           {look.node}
                           {cell.goldStar && <Star size={10} fill="currentColor" className="absolute -right-1 -top-1 text-amber-500" aria-hidden="true" />}
+                          {cell.inClass && <School size={10} className="absolute -bottom-1 -right-1 rounded-full bg-[var(--pg-surface)] text-gray-700 dark:text-gray-200" aria-hidden="true" />}
                         </span>
                       </td>
                     );
@@ -163,6 +195,7 @@ export const ProgressBoard = ({ expeditionId, projecting, onMarkClass }: { exped
             <span className={`flex h-4 w-4 items-center justify-center rounded-full ${CELL[state].className}`}>{CELL[state].node}</span>{CELL[state].label}
           </span>
         ))}
+        <span className="inline-flex items-center gap-1.5"><School size={12} aria-hidden="true" /> Lograda en clase</span>
       </p>
     </div>
   );

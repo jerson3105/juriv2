@@ -1,10 +1,29 @@
 import { BookOpen, Camera, CircleHelp, School, type LucideIcon } from 'lucide-react';
 import { CONSTELLATIONS, constellationById, type Constellation } from '../observatorio/descanso/constellations';
-import type { ExpeditionResource, StopKind, StopState, TeacherExpedition } from '../../lib/expeditionApi';
+import type { ClassActivity, ExpeditionResource, Reflection, StopKind, StopState, TeacherExpedition } from '../../lib/expeditionApi';
 
 export const MAX_STOPS = 10;
 export const MAX_QUESTIONS = 20;
 export const MAX_REWARD = 500;
+export const MAX_GRADE_WEIGHT = 30;
+/** Solo dan nota el reto (su % del primer intento) y la evidencia (el nivel al aprobar). */
+export const GRADED_KINDS: StopKind[] = ['CHALLENGE', 'EVIDENCE'];
+
+/** Actividades del Observatorio con las que se juega una parada «en clase» (con el banco de la parada). */
+export const CLASS_ACTIVITY_INFO: Record<ClassActivity, { label: string; emoji: string; hint: string }> = {
+  ESTRELLAS: { label: 'Estrellas en Movimiento', emoji: '🌟', hint: 'Verdadero o falso con el cuerpo, con las preguntas V/F o de opción única del banco.' },
+  CONQUISTA: { label: 'Conquista del Cielo', emoji: '🛡️', hint: 'Por clanes o equipos, con las preguntas del banco.' },
+  ERROR: { label: 'El Error de Jiro', emoji: '🔎', hint: 'Buscan el paso equivocado, con el banco o con IA.' },
+};
+export const CLASS_ACTIVITIES: ClassActivity[] = ['ESTRELLAS', 'CONQUISTA', 'ERROR'];
+
+/** «¿Cómo me fue?» (y su resumen en Progreso). */
+export const REFLECTION_INFO: Record<Reflection, { emoji: string; label: string }> = {
+  GREEN: { emoji: '🟢', label: 'Lo logré' },
+  YELLOW: { emoji: '🟡', label: 'Casi' },
+  RED: { emoji: '🔴', label: 'Me costó' },
+};
+export const REFLECTIONS: Reflection[] = ['GREEN', 'YELLOW', 'RED'];
 
 export const KIND_INFO: Record<StopKind, { label: string; emoji: string; icon: LucideIcon; hint: string; action: string }> = {
   STORY: { label: 'Relato', emoji: '📖', icon: BookOpen, hint: 'Jiro cuenta algo; el alumno lo lee y sigue.', action: 'Lee el relato' },

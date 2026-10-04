@@ -89,6 +89,8 @@ interface BitacoraProps {
   onSessionChange: (session: AnySession) => void;
   onPlayAgain?: () => void;
   onExit: () => void;
+  /** Texto del botón de salida (la expedición proyectada vuelve a su editor). */
+  exitLabel?: string;
 }
 
 /**
@@ -97,6 +99,7 @@ interface BitacoraProps {
  */
 export const Bitacora = ({
   session, activityName, allowGradeBehaviors = true, classroomId, students, showCharacterName, achievements, podium, suggestedXp = 20, onSessionChange, onPlayAgain, onExit,
+  exitLabel = 'Volver al Observatorio',
 }: BitacoraProps) => {
   const queryClient = useQueryClient();
   const presence = useTodayPresence(classroomId, students);
@@ -254,6 +257,11 @@ export const Bitacora = ({
               <Check size={22} aria-hidden="true" />
               Entregado a {session.reward!.studentIds.length} presentes: {rewardSummary}
             </p>
+            {lastResult?.expeditionStop && lastResult.expeditionStop.marked > 0 && (
+              <p className="flex items-center gap-2 text-base font-semibold text-amber-100">
+                <span aria-hidden="true">🗺️</span> Expedición: «{lastResult.expeditionStop.title}» quedó lograda para {lastResult.expeditionStop.marked} presentes
+              </p>
+            )}
             {lastResult && lastResult.restingSkipped > 0 && (
               <p className="flex items-center gap-2 text-sm font-semibold text-indigo-100">
                 <Moon size={16} aria-hidden="true" /> {lastResult.restingSkipped} descansando: no reciben HP
@@ -377,6 +385,9 @@ export const Bitacora = ({
               {reward.isPending ? <Loader2 size={20} className="animate-spin" aria-hidden="true" /> : <Gift size={20} aria-hidden="true" />}
               Entregar {pendingSummary} a {presence.presentIds.size} presentes
             </button>
+            {session.expeditionStopId && (
+              <p className="text-sm text-indigo-100">Al entregarla, la parada de la expedición queda lograda para los presentes (sin pagarla otra vez).</p>
+            )}
           </div>
         )}
       </section>
@@ -388,7 +399,7 @@ export const Bitacora = ({
           </button>
         )}
         <button type="button" onClick={onExit} className={`${stagePrimaryClass} px-6 text-base`}>
-          Volver al Observatorio
+          {exitLabel}
         </button>
       </div>
     </div>

@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { Check } from 'lucide-react';
 import { NumberField, SaveBar } from '../../settings/settingsUi';
 import { inputClass, labelClass } from '../../home/homeHelpers';
 import { errorMessage } from '../../auth/authHelpers';
+import { badgeApi } from '../../../lib/badgeApi';
 import { expeditionMapApi } from '../../../lib/expeditionMapApi';
 import { assetUrl, expeditionApi, expeditionKeys, type ExpeditionPatch, type ExpeditionScenario, type TeacherExpedition } from '../../../lib/expeditionApi';
 import { ExpeditionThumb } from '../ExpeditionStage';
@@ -19,6 +21,8 @@ interface Draft {
   scenario: ExpeditionScenario;
   constellationId: string;
   mapImageUrl: string | null;
+  finishBadgeId: string | null;
+  perseveranceBadgeId: string | null;
 }
 
 const toDraft = (expedition: TeacherExpedition): Draft => ({
@@ -30,6 +34,8 @@ const toDraft = (expedition: TeacherExpedition): Draft => ({
   scenario: expedition.scenario,
   constellationId: stageConstellation(expedition.constellationId, expedition.stops.length).id,
   mapImageUrl: expedition.mapImageUrl,
+  finishBadgeId: expedition.finishBadgeId,
+  perseveranceBadgeId: expedition.perseveranceBadgeId,
 });
 
 const numberError = (value: string) => {
@@ -43,6 +49,9 @@ export const ExpeditionSettingsPanel = ({ expedition, xpPerLevel }: { expedition
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<Draft>(() => toDraft(expedition));
   const maps = useQuery({ queryKey: ['expedition-maps-active'], queryFn: expeditionMapApi.getActive, enabled: draft.scenario === 'MAP' });
+  const badges = useQuery({ queryKey: ['badges', expedition.classroomId], queryFn: () => badgeApi.getClassroomBadges(expedition.classroomId) });
+  // Solo las insignias activas de esta clase (las del sistema no se otorgan desde aquí).
+  const classBadges = (badges.data ?? []).filter((badge) => badge.classroomId === expedition.classroomId && badge.isActive);
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((current) => ({ ...current, [key]: value }));
 
   const patch = useMemo(() => {
@@ -56,6 +65,8 @@ export const ExpeditionSettingsPanel = ({ expedition, xpPerLevel }: { expedition
     if (draft.scenario !== base.scenario) next.scenario = draft.scenario;
     if (draft.constellationId !== base.constellationId) next.constellationId = draft.constellationId;
     if (draft.mapImageUrl !== base.mapImageUrl) next.mapImageUrl = draft.mapImageUrl;
+    if (draft.finishBadgeId !== base.finishBadgeId) next.finishBadgeId = draft.finishBadgeId;
+    if (draft.perseveranceBadgeId !== base.perseveranceBadgeId) next.perseveranceBadgeId = draft.perseveranceBadgeId;
     return next;
   }, [draft, expedition]);
   const dirty = Object.keys(patch).length > 0;
@@ -96,6 +107,34 @@ export const ExpeditionSettingsPanel = ({ expedition, xpPerLevel }: { expedition
         <NumberField label="Oro al llegar a la meta" value={draft.finishGold} onChange={(value) => set('finishGold', value)} min={0} max={MAX_REWARD}
           error={goldError} hint="Sugerido: 10 de oro" />
       </div>
+
+      <fieldset className="space-y-3">
+        <legend className={labelClass}>Insignias <span className="font-normal text-gray-700 dark:text-gray-300">(opcional)</span></legend>
+        {badges.isSuccess && classBadges.length === 0 ? (
+          <p className="text-sm text-gray-800 dark:text-gray-200">
+            Esta clase aún no tiene insignias propias. <Link to={`/classroom/${expedition.classroomId}/badges`} className="font-semibold underline">Crea una</Link> para darla al llegar a la meta.
+          </p>
+        ) : (
+          <>
+            <label className="block">
+              <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Al llegar a la meta</span>
+              <select value={draft.finishBadgeId ?? ''} onChange={(event) => set('finishBadgeId', event.target.value || null)} className={`${inputClass} mt-1 min-h-[44px]`}>
+                <option value="">Sin insignia</option>
+                {classBadges.map((badge) => <option key={badge.id} value={badge.id}>{badge.icon} {badge.name}</option>)}
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Perseverancia</span>
+              <select value={draft.perseveranceBadgeId ?? ''} onChange={(event) => set('perseveranceBadgeId', event.target.value || null)} className={`${inputClass} mt-1 min-h-[44px]`}>
+                <option value="">Sin insignia</option>
+                {classBadges.map((badge) => <option key={badge.id} value={badge.id}>{badge.icon} {badge.name}</option>)}
+              </select>
+              <span className="mt-1 block text-sm text-gray-700 dark:text-gray-300">Se gana cuando apruebas una evidencia que antes le pediste mejorar.</span>
+            </label>
+            <p className="text-sm text-gray-700 dark:text-gray-300">Cada alumno la recibe hasta el tope que tenga la insignia (por defecto, una vez).</p>
+          </>
+        )}
+      </fieldset>
 
       <fieldset>
         <legend className={labelClass}>Escenario</legend>

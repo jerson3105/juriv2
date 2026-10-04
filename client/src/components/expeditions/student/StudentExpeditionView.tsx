@@ -1,9 +1,14 @@
 import { useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import { CalendarClock, ChevronRight, Flag } from 'lucide-react';
-import type { StudentExpedition, StudentStop } from '../../../lib/expeditionApi';
+import { expeditionApi, expeditionKeys, type Reflection, type StudentExpedition, type StudentStop } from '../../../lib/expeditionApi';
+import { errorMessage } from '../../auth/authHelpers';
+import { primaryButton } from '../../home/homeHelpers';
+import { secondaryButton } from '../../gradebook/gradebookHelpers';
 import { ExpeditionStage } from '../ExpeditionStage';
-import { KIND_INFO, STATE_INFO, dueLabel, isOverdue, plural, rewardLabel } from '../expeditionHelpers';
+import { KIND_INFO, REFLECTIONS, REFLECTION_INFO, STATE_INFO, dueLabel, isOverdue, plural, rewardLabel } from '../expeditionHelpers';
 import { StopSheet } from './StopSheet';
 
 const NUMBER_TONE: Record<StudentStop['state'], string> = {
@@ -29,7 +34,7 @@ const StopRow = ({ stop, number, current, onOpen }: { stop: StudentStop; number:
           <span className="flex flex-wrap items-center gap-x-2 text-sm text-gray-700 dark:text-gray-300">
             <span><span aria-hidden="true">{kind.emoji}</span> {kind.label}</span>
             <span aria-hidden="true">·</span>
-            <span className="font-semibold">{state.label}{stop.goldStar ? ' ⭐' : ''}</span>
+            <span className="font-semibold">{state.label}{stop.state === 'DONE' && stop.doneInClass ? ' en clase' : ''}{stop.goldStar ? ' ⭐' : ''}</span>
             {due && (
               <span className={`inline-flex items-center gap-1 ${isOverdue(stop.dueAt) ? 'font-bold text-red-700 dark:text-red-300' : ''}`}>
                 <CalendarClock size={14} aria-hidden="true" /> {due}
@@ -43,7 +48,60 @@ const StopRow = ({ stop, number, current, onOpen }: { stop: StudentStop; number:
   );
 };
 
-const FinishCard = ({ expedition }: { expedition: StudentExpedition }) => {
+/** «¿Cómo me fue?»: tres opciones y lo más difícil (opcional). No paga nada; se puede cambiar. */
+const ReflectionBox = ({ expedition, preview }: { expedition: StudentExpedition; preview: boolean }) => {
+  const queryClient = useQueryClient();
+  const saved = expedition.reflection;
+  const [editing, setEditing] = useState(!saved);
+  const [value, setValue] = useState<Reflection | null>(saved?.value ?? null);
+  const [note, setNote] = useState(saved?.note ?? '');
+  const save = useMutation({
+    mutationFn: () => expeditionApi.reflect(expedition.id, { value: value!, note: note.trim() || null }),
+    onSuccess: (data) => {
+      queryClient.setQueryData(expeditionKeys.play(expedition.id), data);
+      setEditing(false);
+      toast.success('¡Gracias! Tu profe lo verá');
+    },
+    onError: (error) => toast.error(errorMessage(error, 'No se pudo guardar tu respuesta')),
+  });
+
+  if (saved && !editing) {
+    return (
+      <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl bg-white/70 px-3 py-2 text-sm text-amber-950 dark:bg-black/20 dark:text-amber-50">
+        <span>Respondiste: <strong><span aria-hidden="true">{REFLECTION_INFO[saved.value].emoji}</span> {REFLECTION_INFO[saved.value].label}</strong>{saved.note ? ` · «${saved.note}»` : ''}</span>
+        <button type="button" onClick={() => setEditing(true)} className="min-h-[36px] font-semibold underline">Cambiar</button>
+      </p>
+    );
+  }
+  return (
+    <div className="mt-3 space-y-3 rounded-xl bg-white/70 p-3 dark:bg-black/20">
+      <p id={`reflection-${expedition.id}`} className="font-bold text-amber-950 dark:text-amber-50">¿Cómo te fue?</p>
+      <div className="flex flex-wrap gap-2" role="radiogroup" aria-labelledby={`reflection-${expedition.id}`}>
+        {REFLECTIONS.map((option) => (
+          <button key={option} type="button" role="radio" aria-checked={value === option} onClick={() => setValue(option)} disabled={preview}
+            className={`inline-flex min-h-[48px] items-center gap-2 rounded-xl border-2 px-4 text-base font-bold ${value === option
+              ? 'border-amber-800 bg-amber-200 text-amber-950 dark:border-amber-200 dark:bg-amber-800/70 dark:text-white'
+              : 'border-amber-300 bg-white text-amber-950 hover:bg-amber-100 dark:border-amber-700 dark:bg-transparent dark:text-amber-50 dark:hover:bg-amber-900/40'}`}>
+            <span aria-hidden="true">{REFLECTION_INFO[option].emoji}</span> {REFLECTION_INFO[option].label}
+          </button>
+        ))}
+      </div>
+      <label className="block">
+        <span className="text-sm font-semibold text-amber-950 dark:text-amber-50">¿Qué fue lo más difícil? <span className="font-normal">(opcional)</span></span>
+        <textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={200} rows={2} disabled={preview}
+          className="mt-1 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-amber-700 dark:bg-gray-900 dark:text-gray-100" />
+      </label>
+      <div className="flex flex-wrap justify-end gap-2">
+        {saved && (
+          <button type="button" onClick={() => { setEditing(false); setValue(saved.value); setNote(saved.note ?? ''); }} className={secondaryButton}>Cancelar</button>
+        )}
+        <button type="button" disabled={!value || save.isPending || preview} onClick={() => save.mutate()} className={primaryButton}>Guardar</button>
+      </div>
+    </div>
+  );
+};
+
+const FinishCard = ({ expedition, preview }: { expedition: StudentExpedition; preview: boolean }) => {
   const evidence = expedition.stops.filter((s) => s.kind === 'EVIDENCE' && s.evidence).length;
   // El mejor resultado de cada reto (después del reintento, si lo hubo).
   const scores = expedition.stops.map((s) => s.finalScore ?? s.firstScore).filter((score): score is number => score !== null);
@@ -53,12 +111,14 @@ const FinishCard = ({ expedition }: { expedition: StudentExpedition }) => {
       <h2 className="flex items-center gap-2 text-xl font-extrabold text-amber-950 dark:text-amber-50">
         <Flag size={22} aria-hidden="true" /> ¡Llegaste a la meta!
       </h2>
+      <ReflectionBox expedition={expedition} preview={preview} />
       {expedition.closingText && (
-        <blockquote className="mt-2 whitespace-pre-line text-base text-amber-950 dark:text-amber-50">
+        <blockquote className="mt-3 whitespace-pre-line text-base text-amber-950 dark:text-amber-50">
           <span className="font-bold">Jiro: </span>«{expedition.closingText}»
         </blockquote>
       )}
-      <ul className="mt-3 flex flex-wrap gap-2 text-sm font-semibold text-amber-950 dark:text-amber-50">
+      <p className="mt-3 text-sm font-bold text-amber-950 dark:text-amber-50">Lo que lograste</p>
+      <ul className="mt-1 flex flex-wrap gap-2 text-sm font-semibold text-amber-950 dark:text-amber-50">
         <li className="rounded-full bg-white/70 px-3 py-1 dark:bg-black/20">{plural(expedition.stops.length, 'parada lograda', 'paradas logradas')}</li>
         {evidence > 0 && <li className="rounded-full bg-white/70 px-3 py-1 dark:bg-black/20">{plural(evidence, 'evidencia', 'evidencias')}</li>}
         {scores.length > 0 && <li className="rounded-full bg-white/70 px-3 py-1 dark:bg-black/20">Mejor reto: {Math.max(...scores)} %</li>}
@@ -112,7 +172,7 @@ export const StudentExpeditionView = ({ expedition, here, preview = false, heade
         </div>
       </div>
 
-      {expedition.finished && <FinishCard expedition={expedition} />}
+      {expedition.finished && <FinishCard expedition={expedition} preview={preview} />}
       {!expedition.finished && expedition.description && (
         <p className="rounded-xl bg-indigo-50 p-3 text-base text-indigo-950 dark:bg-indigo-950/50 dark:text-indigo-50">
           <span className="font-bold">Jiro: </span>{expedition.description}

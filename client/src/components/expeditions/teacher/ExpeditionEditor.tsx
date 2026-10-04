@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, CheckCircle2, Eye, Loader2, MoreVertical, Plus, Rocket, Settings2 } from 'lucide-react';
+import { AlertTriangle, ArrowDown, ArrowLeft, ArrowUp, CheckCircle2, Eye, Loader2, MonitorPlay, MoreVertical, Plus, Rocket, Settings2 } from 'lucide-react';
 import { SidePanel } from '../../gradebook/SidePanel';
 import { HomeModal } from '../../home/HomeModal';
 import { Popover } from '../../ui/Popover';
@@ -13,6 +13,8 @@ import { secondaryButton } from '../../gradebook/gradebookHelpers';
 import { errorMessage } from '../../auth/authHelpers';
 import { useProjectorStore } from '../../../store/projectorStore';
 import { useIsDesktop } from '../../layout/sidebar/useSidebarState';
+import { useClassroomCompetencies } from '../../../hooks/useClassroomCompetencies';
+import type { Classroom, Student } from '../../../lib/classroomApi';
 import {
   expeditionApi, expeditionKeys,
   type ExpeditionBoard, type StopKind, type StudentExpedition, type TeacherExpedition,
@@ -26,6 +28,7 @@ import { ExpeditionSettingsPanel } from './ExpeditionSettingsPanel';
 import { settingsPanelKey, stopPanelKey } from './panelKeys';
 import { ClassMarkPanel, ProgressBoard } from './ProgressBoard';
 import { ReviewQueue } from './ReviewQueue';
+import { ExpeditionProjection } from './ExpeditionProjection';
 import { useUndoable } from './useUndoable';
 
 type Tab = 'stops' | 'progress' | 'review';
@@ -48,13 +51,15 @@ const previewOf = (expedition: TeacherExpedition): StudentExpedition => ({
   closingText: null,
   finishedAt: null,
   finished: false,
+  reflection: null,
   currentStopId: expedition.stops[0]?.id ?? null,
   stops: expedition.stops.map((stop, index) => ({
     id: stop.id, sortOrder: stop.sortOrder, kind: stop.kind, title: stop.title, story: stop.story, goal: stop.goal,
     successCriteria: stop.successCriteria, mission: stop.mission, resources: stop.resources, dueAt: stop.dueAt,
     rewardXp: stop.rewardXp, rewardGold: stop.rewardGold, passPercent: stop.passPercent, reviewMode: stop.reviewMode,
     questionCount: stop.questionIds.length, mapX: stop.mapX, mapY: stop.mapY,
-    state: index === 0 ? 'AVAILABLE' : 'LOCKED', review: null, feedback: null, firstScore: null, finalScore: null, goldStar: false, evidence: null,
+    state: index === 0 ? 'AVAILABLE' : 'LOCKED', review: null, feedback: null, firstScore: null, finalScore: null, goldStar: false,
+    doneInClass: false, evidence: null,
   })),
 });
 
@@ -74,8 +79,14 @@ const Checklist = ({ expedition, issues }: { expedition: TeacherExpedition; issu
   </div>
 );
 
-export const ExpeditionEditor = ({ classroomId, expeditionId, xpPerLevel }: { classroomId: string; expeditionId: string; xpPerLevel: number }) => {
+export const ExpeditionEditor = ({ classroom, expeditionId }: { classroom: Classroom & { students?: Student[]; xpPerLevel?: number }; expeditionId: string }) => {
+  const classroomId = classroom.id;
+  const xpPerLevel = classroom.xpPerLevel || 100;
   const queryClient = useQueryClient();
+  // Competencias de la clase: solo si la clase las usa (sin eso, las paradas no ofrecen la nota).
+  const { competencies: classroomCompetencies } = useClassroomCompetencies(classroomId, !!classroom.useCompetencies && !!classroom.curriculumAreaId);
+  const competencies = classroomCompetencies.filter((c) => c.isActive).map((c) => ({ id: c.id, name: c.shortName || c.name }));
+  const [classMode, setClassMode] = useState(false);
   const [params, setParams] = useSearchParams();
   const tab = (['stops', 'progress', 'review'] as const).find((t) => t === params.get('tab')) ?? 'stops';
   const setTab = (next: Tab) => setParams((current) => {
@@ -186,7 +197,7 @@ export const ExpeditionEditor = ({ classroomId, expeditionId, xpPerLevel }: { cl
   };
 
   const sideContent = selected ? (
-    <StopPanel key={stopPanelKey(selected)} expedition={expedition} stop={selected} index={selectedIndex} xpPerLevel={xpPerLevel}
+    <StopPanel key={stopPanelKey(selected)} expedition={expedition} stop={selected} index={selectedIndex} xpPerLevel={xpPerLevel} competencies={competencies}
       placing={placing} onPlace={setPlacing} onMarkClass={() => void openMarking(selected.id)} onDeleted={() => setSide(null)} />
   ) : side?.kind === 'settings' ? (
     <ExpeditionSettingsPanel key={settingsPanelKey(expedition)} expedition={expedition} xpPerLevel={xpPerLevel} />
@@ -206,6 +217,9 @@ export const ExpeditionEditor = ({ classroomId, expeditionId, xpPerLevel }: { cl
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {expedition.status === 'PUBLISHED' && stops.length > 0 && (
+              <button type="button" onClick={() => setClassMode(true)} className={secondaryButton}><MonitorPlay size={16} aria-hidden="true" /> Proyectar</button>
+            )}
             <button type="button" onClick={() => setPreviewing(true)} disabled={stops.length === 0} className={secondaryButton}><Eye size={16} aria-hidden="true" /> Vista alumno</button>
             {expedition.status === 'DRAFT' && (
               <button type="button" onClick={() => setConfirm('publish')} disabled={issues.length > 0 || statusAction.isPending} className={primaryButton}
@@ -340,6 +354,10 @@ export const ExpeditionEditor = ({ classroomId, expeditionId, xpPerLevel }: { cl
       )}
 
       {marking && <ClassMarkPanel board={marking.board} stopId={marking.stopId} onClose={() => setMarking(null)} onConfirm={markClass} />}
+
+      {classMode && expedition.status === 'PUBLISHED' && (
+        <ExpeditionProjection classroom={classroom} expedition={expedition} onExit={() => setClassMode(false)} />
+      )}
 
       <AnimatePresence>
         {previewing && (

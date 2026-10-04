@@ -1,4 +1,5 @@
 import { api } from './api';
+import type { GradeScaleOptions, GradeScaleType } from './gradeApi';
 
 // Expedición unificada (2026-10-03): paradas en lista (relato, reto del banco, evidencia y en clase) sobre una
 // constelación de Jiro o un mapa de la biblioteca. El alumno sale siempre de la sesión: nunca va en la URL.
@@ -9,6 +10,11 @@ export type StopKind = 'STORY' | 'CHALLENGE' | 'EVIDENCE' | 'CLASS';
 export type StopState = 'LOCKED' | 'AVAILABLE' | 'STARTED' | 'WAITING' | 'NEEDS_WORK' | 'DONE';
 export type ReviewMode = 'ADVANCE' | 'WAIT';
 export type ReviewStatus = 'PENDING' | 'APPROVED' | 'NEEDS_WORK';
+/** Actividad del Observatorio con la que se juega una parada «en clase». */
+export type ClassActivity = 'ESTRELLAS' | 'CONQUISTA' | 'ERROR';
+/** «¿Cómo me fue?» al llegar a la meta. */
+export type Reflection = 'GREEN' | 'YELLOW' | 'RED';
+export interface ReflectionAnswer { value: Reflection; note: string | null }
 
 export interface ExpeditionResource {
   kind: 'FILE' | 'LINK';
@@ -28,6 +34,9 @@ interface ExpeditionBase {
   closingText: string | null;
   finishXp: number;
   finishGold: number;
+  /** Insignias que elige el docente: al llegar a la meta y por perseverancia. */
+  finishBadgeId: string | null;
+  perseveranceBadgeId: string | null;
   status: ExpeditionStatus;
   publishedAt: string | null;
   createdAt: string;
@@ -59,6 +68,10 @@ export interface TeacherStop {
   dueAt: string | null;
   rewardXp: number;
   rewardGold: number;
+  /** Nota: solo reto y evidencia, con una competencia de la clase y un peso de 1 a 30. */
+  competencyId: string | null;
+  gradeWeight: number;
+  classActivity: ClassActivity | null;
   mapX: number | null;
   mapY: number | null;
   stats: StopStats;
@@ -84,11 +97,19 @@ export interface BoardStudent {
   doneCount: number;
   finished: boolean;
   current: { stopId: string; state: StopState } | null;
-  states: { stopId: string; state: StopState; review: ReviewStatus | null; firstScore: number | null; goldStar: boolean }[];
+  reflection: ReflectionAnswer | null;
+  states: {
+    stopId: string; state: StopState; review: ReviewStatus | null; firstScore: number | null; goldStar: boolean;
+    /** Lograda en clase (proyectada o con el Observatorio). */
+    inClass: boolean;
+    /** Nivel elegido al aprobar la evidencia (AD, A, 17…). */
+    gradeLabel: string | null;
+  }[];
 }
 
 export interface ExpeditionBoard {
-  stops: { id: string; sortOrder: number; kind: StopKind; title: string; here: number }[];
+  /** here: cuántos tienen esa parada como siguiente · done: cuántos la lograron. */
+  stops: { id: string; sortOrder: number; kind: StopKind; title: string; here: number; done: number }[];
   students: BoardStudent[];
 }
 
@@ -100,6 +121,8 @@ export interface ReviewItem {
   reviewMode: ReviewMode;
   rewardXp: number;
   rewardGold: number;
+  /** La parada cuenta para la nota: al aprobar se puede elegir el nivel. */
+  competency: { id: string; name: string } | null;
   review: ReviewStatus;
   feedback: string | null;
   reviewedAt: string | null;
@@ -110,6 +133,9 @@ export interface ReviewItem {
 export interface ReviewQueue {
   expeditionId: string;
   stopCount: number;
+  /** Escala de notas de la clase (para el nivel al aprobar). */
+  scale: GradeScaleOptions;
+  scaleType: GradeScaleType | null;
   pending: ReviewItem[];
   needsWork: ReviewItem[];
 }
@@ -120,6 +146,8 @@ export interface ReviewDecision {
   feedback?: string | null;
   /** La entrega que vio el docente: si el alumno la cambió, el servidor salta la decisión. */
   evidenceId?: string | null;
+  /** Nivel en la escala de la clase (solo si la parada cuenta para la nota). */
+  level?: string | null;
 }
 
 export interface ReviewResult { approved: number; needsWork: number; skipped: number; changed: number }
@@ -141,6 +169,9 @@ export interface StopPatch {
   rewardGold?: number;
   mapX?: number;
   mapY?: number;
+  competencyId?: string | null;
+  gradeWeight?: number;
+  classActivity?: ClassActivity | null;
 }
 
 export interface ExpeditionPatch {
@@ -152,6 +183,8 @@ export interface ExpeditionPatch {
   scenario?: ExpeditionScenario;
   constellationId?: string;
   mapImageUrl?: string | null;
+  finishBadgeId?: string | null;
+  perseveranceBadgeId?: string | null;
 }
 
 // ── Alumno ──
@@ -187,6 +220,8 @@ export interface StudentStop {
   firstScore: number | null;
   finalScore: number | null;
   goldStar: boolean;
+  /** La hizo con la clase (proyectada o con el Observatorio). */
+  doneInClass: boolean;
   evidence: StudentEvidence | null;
 }
 
@@ -204,6 +239,8 @@ export interface StudentExpedition {
   closingText: string | null;
   finishedAt: string | null;
   finished: boolean;
+  /** «¿Cómo me fue?» (al llegar a la meta). */
+  reflection: ReflectionAnswer | null;
   currentStopId: string | null;
   stops: StudentStop[];
 }
@@ -247,6 +284,8 @@ export interface ChallengeState {
   firstScore: number | null;
   finalScore: number | null;
   goldStar: boolean;
+  /** Lo jugaron juntos en clase: logrado, sin % propio. */
+  doneInClass: boolean;
   /** El reto aún no tiene preguntas (el docente las está eligiendo): el alumno espera. */
   preparing: boolean;
   questions: ChallengeQuestion[];
@@ -318,7 +357,8 @@ export const expeditionApi = {
     (await api.get(`/expeditions/${expeditionId}/review`)).data.data,
   review: async (expeditionId: string, decisions: ReviewDecision[]): Promise<ReviewResult> =>
     (await api.post(`/expeditions/${expeditionId}/review`, { decisions })).data.data,
-  markClass: async (stopId: string, studentProfileIds: string[]): Promise<{ marked: number; skipped: number }> =>
+  /** Presentes en una parada hecha en clase (cualquier tipo): quien ya la tenía se salta. */
+  markClass: async (stopId: string, studentProfileIds: string[]): Promise<{ marked: number; skipped: number; stopTitle: string }> =>
     (await api.post(`/expeditions/stops/${stopId}/class`, { studentProfileIds })).data.data,
   /** Recurso del docente o evidencia del alumno (imagen o PDF, máximo 5 MB). */
   upload: async (file: File): Promise<{ url: string; name: string | null }> => {
@@ -340,4 +380,6 @@ export const expeditionApi = {
     (await api.post(`/expeditions/stops/${stopId}/answer`, { questionId, answer })).data.data,
   submitEvidence: async (stopId: string, input: { files: string[]; note: string | null }): Promise<StudentExpedition> =>
     (await api.post(`/expeditions/stops/${stopId}/evidence`, input)).data.data,
+  reflect: async (expeditionId: string, input: { value: Reflection; note: string | null }): Promise<StudentExpedition> =>
+    (await api.post(`/expeditions/${expeditionId}/reflection`, input)).data.data,
 };

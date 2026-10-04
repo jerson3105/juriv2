@@ -6,12 +6,14 @@ const SAVE_DELAY_MS = 1500;
 
 /**
  * Partida de una actividad del Observatorio: la crea, autoguarda el estado (agrupado cada 1,5 s y
- * al salir) para reanudar otro día, y la termina con su resumen para la Bitácora.
+ * al salir) para reanudar otro día, y la termina con su resumen para la Bitácora. Con `expeditionStopId`
+ * se juega desde una parada «en clase»: su recompensa marca la parada (sin pagarla dos veces).
  */
 export const useActivitySession = <S, R = Record<string, unknown>>(
   classroomId: string,
   type: ActivityType,
   resume?: ActivitySession<S, R> | null,
+  expeditionStopId?: string | null,
 ) => {
   const queryClient = useQueryClient();
   const [session, setSession] = useState<ActivitySession<S, R> | null>(resume ?? null);
@@ -43,13 +45,13 @@ export const useActivitySession = <S, R = Record<string, unknown>>(
   }, []);
 
   const start = useCallback(async (state: S, title?: string | null) => {
-    const created = await activityApi.create<S>(classroomId, type, { title: title ?? null, state });
+    const created = await activityApi.create<S>(classroomId, type, { title: title ?? null, state, expeditionStopId: expeditionStopId ?? null });
     const typed = created as ActivitySession<S, R>;
     sessionRef.current = typed;
     setSession(typed);
     refreshOverview();
     return typed;
-  }, [classroomId, type, refreshOverview]);
+  }, [classroomId, type, expeditionStopId, refreshOverview]);
 
   const save = useCallback((state: S) => {
     pending.current = state;

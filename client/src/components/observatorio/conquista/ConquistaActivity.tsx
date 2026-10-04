@@ -72,6 +72,8 @@ interface ConquistaActivityProps {
   resume?: ActivitySession<unknown, unknown> | null;
   /** Banco elegido desde el Banco de preguntas ("Usar en clase"). */
   initialBankId?: string | null;
+  /** Parada «en clase» de una expedición desde la que se juega: la recompensa la marca. */
+  expeditionStopId?: string | null;
   onExit: () => void;
 }
 
@@ -81,12 +83,12 @@ interface ConquistaActivityProps {
  * (despejar el cielo) con algo de competencia: la región toma el color de quien más estrellas
  * puso y lo premia con +3. Cartas de Jiro solo positivas. Se guarda para seguir otro día.
  */
-export const ConquistaActivity = ({ classroom, resume, initialBankId, onExit }: ConquistaActivityProps) => {
+export const ConquistaActivity = ({ classroom, resume, initialBankId, expeditionStopId, onExit }: ConquistaActivityProps) => {
   const students = useMemo(() => classroom.students ?? [], [classroom.students]);
   const studentById = useMemo(() => new Map(students.map((s) => [s.id, s])), [students]);
   const soundState = useStageSound();
   const { sound } = soundState;
-  const game = useActivitySession<ConquistaState, ConquistaResult>(classroom.id, 'CONQUISTA', resume as ActivitySession<ConquistaState, ConquistaResult> | null | undefined);
+  const game = useActivitySession<ConquistaState, ConquistaResult>(classroom.id, 'CONQUISTA', resume as ActivitySession<ConquistaState, ConquistaResult> | null | undefined, expeditionStopId);
   const saved = (resume?.status === 'ACTIVE' ? resume.state : null) as ConquistaState | null;
   const presence = useTodayPresence(classroom.id, students);
 

@@ -52,6 +52,8 @@ interface ErrorActivityProps {
   resume?: ActivitySession<unknown, unknown> | null;
   /** Banco elegido desde el Banco de preguntas ("Usar en clase"). */
   initialBankId?: string | null;
+  /** Parada «en clase» de una expedición desde la que se juega: la recompensa la marca. */
+  expeditionStopId?: string | null;
   onExit: () => void;
 }
 
@@ -60,11 +62,11 @@ interface ErrorActivityProps {
  * lo buscan y lo explican; el docente revela y marca si la mayoría lo encontró. Las preguntas se
  * guardan en el banco como opción única ("Paso 1…4"), generadas con IA o escritas por el docente.
  */
-export const ErrorActivity = ({ classroom, resume, initialBankId, onExit }: ErrorActivityProps) => {
+export const ErrorActivity = ({ classroom, resume, initialBankId, expeditionStopId, onExit }: ErrorActivityProps) => {
   const students = useMemo(() => classroom.students ?? [], [classroom.students]);
   const soundState = useStageSound();
   const { sound } = soundState;
-  const game = useActivitySession<ErrorState, ErrorResult>(classroom.id, 'ERROR', resume as ActivitySession<ErrorState, ErrorResult> | null | undefined);
+  const game = useActivitySession<ErrorState, ErrorResult>(classroom.id, 'ERROR', resume as ActivitySession<ErrorState, ErrorResult> | null | undefined, expeditionStopId);
   const saved = (resume?.status === 'ACTIVE' ? resume.state : null) as ErrorState | null;
   const presence = useTodayPresence(classroom.id, students);
 

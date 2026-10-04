@@ -58,6 +58,8 @@ interface EstrellasActivityProps {
   resume?: ActivitySession<unknown, unknown> | null;
   /** Banco elegido desde el Banco de preguntas ("Usar en clase"). */
   initialBankId?: string | null;
+  /** Parada «en clase» de una expedición desde la que se juega: la recompensa la marca. */
+  expeditionStopId?: string | null;
   onExit: () => void;
 }
 
@@ -66,11 +68,11 @@ interface EstrellasActivityProps {
  * agachados = falso; o a una esquina A–D). Nadie queda eliminado: el docente marca si la
  * mayoría acertó y cada acierto enciende una estrella; las rachas dan estrellas extra.
  */
-export const EstrellasActivity = ({ classroom, resume, initialBankId, onExit }: EstrellasActivityProps) => {
+export const EstrellasActivity = ({ classroom, resume, initialBankId, expeditionStopId, onExit }: EstrellasActivityProps) => {
   const students = useMemo(() => classroom.students ?? [], [classroom.students]);
   const soundState = useStageSound();
   const { sound } = soundState;
-  const game = useActivitySession<EstrellasState, EstrellasResult>(classroom.id, 'ESTRELLAS', resume as ActivitySession<EstrellasState, EstrellasResult> | null | undefined);
+  const game = useActivitySession<EstrellasState, EstrellasResult>(classroom.id, 'ESTRELLAS', resume as ActivitySession<EstrellasState, EstrellasResult> | null | undefined, expeditionStopId);
   const saved = (resume?.status === 'ACTIVE' ? resume.state : null) as EstrellasState | null;
 
   const [phase, setPhase] = useState<'setup' | 'playing' | 'bitacora'>(resume?.status === 'FINISHED' ? 'bitacora' : saved ? 'playing' : 'setup');

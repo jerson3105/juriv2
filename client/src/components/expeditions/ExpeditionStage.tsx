@@ -29,8 +29,12 @@ interface ExpeditionStageProps {
   /** Mapa (docente): tocar el mapa ubica esta parada. */
   placingId?: string | null;
   onPlace?: (x: number, y: number) => void;
-  /** «plan»: editor del docente (todas encendidas, sin estados). */
-  variant?: 'play' | 'plan';
+  /** «plan»: editor del docente (todas encendidas, sin estados). «class»: la capa de la clase proyectada. */
+  variant?: 'play' | 'plan' | 'class';
+  /** Capa de la clase: cuántos lograron cada parada (se encienden las que tienen al menos uno). */
+  classDone?: Record<string, number>;
+  /** Capa de la clase: mostrar «N ✓» bajo cada estrella (se ocultan, por ejemplo, al empezar). */
+  showCounts?: boolean;
   label: string;
   className?: string;
 }
@@ -53,9 +57,26 @@ const useJustLit = (litKeys: string[]) => {
 };
 
 /** Estrella con número: forma e ícono además de color (bloqueada, tu turno, esperando, mejorar, lograda). */
-const StopStar = ({ number, stop, current, selected, justLit, twinkleDelay, plan }: {
+const StopStar = ({ number, stop, current, selected, justLit, twinkleDelay, plan, classLayer }: {
   number: number; stop: StageStop; current: boolean; selected: boolean; justLit: boolean; twinkleDelay: number; plan: boolean;
+  /** Proyectada: encendida si alguien la logró, con el conteo debajo (más grande, para la pizarra). */
+  classLayer?: { lit: boolean; count: number | null };
 }) => {
+  if (classLayer) {
+    return (
+      <span className={`relative flex h-12 w-12 items-center justify-center rounded-full text-lg font-extrabold tabular-nums ${classLayer.lit
+        ? 'bg-amber-300 text-amber-950 shadow-[0_0_0_5px_rgb(253_230_138/0.28),0_0_22px_rgb(253_230_138/0.6)] exp-lit-glow'
+        : 'border-2 border-dashed border-indigo-200/70 bg-indigo-200/15 text-indigo-50'} ${justLit ? 'exp-just-lit' : ''} ${selected ? 'outline outline-[3px] outline-offset-2 outline-white' : ''}`}
+        style={{ '--d': `${twinkleDelay}s` } as CSSProperties}>
+        {number}
+        {classLayer.count !== null && (
+          <span className="absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#0b1026]/85 px-2 py-0.5 text-base font-bold text-amber-100 ring-1 ring-amber-200/40">
+            {classLayer.count} <span aria-hidden="true">✓</span>
+          </span>
+        )}
+      </span>
+    );
+  }
   if (plan) {
     // Editor: la figura completa, sin estados ni animación.
     return (
@@ -113,13 +134,17 @@ const StopStar = ({ number, stop, current, selected, justLit, twinkleDelay, plan
  */
 export const ExpeditionStage = ({
   scenario, constellationId, mapImageUrl, stops, finished = false, currentStopId, here,
-  selectedId, onSelect, placingId, onPlace, variant = 'play', label, className = '',
+  selectedId, onSelect, placingId, onPlace, variant = 'play', classDone, showCounts = true, label, className = '',
 }: ExpeditionStageProps) => {
   const motion = useMotionBudget();
   const [ratio, setRatio] = useState(16 / 9);
   const constellation = stageConstellation(constellationId, stops.length);
   const isMap = scenario === 'MAP' && !!mapImageUrl;
   const plan = variant === 'plan';
+  const classView = variant === 'class';
+  const doneOf = (stopId: string) => classDone?.[stopId] ?? 0;
+  // En la capa de la clase, una parada brilla cuando alguien la logró.
+  const isOn = (stop: StageStop) => (classView ? doneOf(stop.id) > 0 : isLit(stop.state));
 
   // Posición de cada parada en % del escenario.
   const points = stops.map((stop, index) => {
@@ -130,13 +155,13 @@ export const ExpeditionStage = ({
 
   // Estrellas encendidas: las paradas logradas y, al llegar a la meta, todas las de la figura (en el editor, las
   // paradas: así el docente ve la forma de su constelación).
-  const stopLit = (index: number) => plan || isLit(stops[index].state);
+  const stopLit = (index: number) => plan || isOn(stops[index]);
   const litStar = (index: number) => (index < stops.length ? stopLit(index) : finished);
   const litLines = isMap
     ? stops.slice(1).map((_, i) => (stopLit(i) && stopLit(i + 1) ? `m${i}` : null)).filter((key): key is string => !!key)
     : constellation.lines.filter(([a, b]) => litStar(a) && litStar(b)).map(([a, b]) => `${a}-${b}`);
   const litKeys = plan ? [] : [
-    ...stops.filter((stop) => isLit(stop.state)).map((stop) => stop.id),
+    ...stops.filter((stop) => isOn(stop)).map((stop) => stop.id),
     ...(!isMap && finished ? constellation.stars.slice(stops.length).map((_, i) => `meta${i}`) : []),
     ...litLines.map((key) => `line:${key}`),
   ];
@@ -222,9 +247,12 @@ export const ExpeditionStage = ({
       {stops.map((stop, index) => {
         const point = points[index];
         const info = STATE_INFO[stop.state];
+        const done = doneOf(stop.id);
         const name = plan
           ? `Parada ${index + 1}: ${stop.title}. ${KIND_INFO[stop.kind].label}`
-          : `Parada ${index + 1}: ${stop.title}. ${KIND_INFO[stop.kind].label}. ${info.label}${stop.goldStar ? ', con estrella dorada' : ''}`;
+          : classView
+            ? `Parada ${index + 1}: ${stop.title}. ${KIND_INFO[stop.kind].label}. ${done === 1 ? '1 la logró' : `${done} la lograron`}`
+            : `Parada ${index + 1}: ${stop.title}. ${KIND_INFO[stop.kind].label}. ${info.label}${stop.goldStar ? ', con estrella dorada' : ''}`;
         const star = (
           <StopStar
             number={index + 1}
@@ -234,17 +262,19 @@ export const ExpeditionStage = ({
             justLit={justLit.has(stop.id)}
             twinkleDelay={(index * 0.7) % 3}
             plan={plan}
+            classLayer={classView ? { lit: done > 0, count: showCounts ? done : null } : undefined}
           />
         );
+        const size = classView ? 'h-14 w-14' : 'h-11 w-11';
         return (
           <div key={stop.id} className="absolute -translate-x-1/2 -translate-y-1/2" style={{ left: `${point.x}%`, top: `${point.y}%` }}>
             {onSelect ? (
               <button type="button" onClick={() => onSelect(stop.id)} aria-label={name} title={stop.title}
-                className="flex h-11 w-11 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-1 focus-visible:outline-amber-300">
+                className={`flex ${size} items-center justify-center rounded-full focus-visible:outline focus-visible:outline-[3px] focus-visible:outline-offset-1 focus-visible:outline-amber-300`}>
                 {star}
               </button>
             ) : (
-              <span role="img" aria-label={name} className="flex h-11 w-11 items-center justify-center">{star}</span>
+              <span role="img" aria-label={name} className={`flex ${size} items-center justify-center`}>{star}</span>
             )}
           </div>
         );

@@ -3,7 +3,18 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { Check, FileText, Hourglass, Loader2, MessageSquareQuote, RotateCcw } from 'lucide-react';
 import { assetUrl, expeditionApi, expeditionKeys, type ReviewDecision, type ReviewItem } from '../../../lib/expeditionApi';
+import type { GradeScaleOptions, GradeScaleType } from '../../../lib/gradeApi';
+import { ScaleValuePicker } from '../../gradebook/ScaleValuePicker';
 import { isImageFile, plural, rewardLabel } from '../expeditionHelpers';
+
+/** ¿El nivel escrito vale en la escala de la clase? (letras: una de la lista; números: dentro del rango). */
+const validLevel = (scale: GradeScaleOptions, value: string) => {
+  const text = value.trim();
+  if (!text) return false;
+  if (scale.kind === 'letters') return scale.values.some((v) => v.label.toUpperCase() === text.toUpperCase());
+  const n = Number(text.replace(',', '.'));
+  return Number.isFinite(n) && n >= scale.min && n <= scale.max && (scale.step < 1 || Number.isInteger(n));
+};
 
 const QUICK_FEEDBACK = [
   'La foto se ve borrosa: vuelve a tomarla con más luz.',
@@ -41,11 +52,13 @@ const Evidence = ({ item }: { item: ReviewItem }) => {
   );
 };
 
-const PendingRow = ({ item, selected, onSelect, onDecide }: {
+const PendingRow = ({ item, selected, onSelect, onDecide, scale, scaleType, level, onLevel }: {
   item: ReviewItem; selected: boolean; onSelect: () => void; onDecide: (decision: ReviewDecision) => void;
+  scale: GradeScaleOptions; scaleType: GradeScaleType | null; level: string; onLevel: (value: string) => void;
 }) => {
   const [asking, setAsking] = useState(false);
   const [feedback, setFeedback] = useState('');
+  const levelOk = !level.trim() || validLevel(scale, level);
   return (
     <li className="pg-row border-b p-3 last:border-b-0" data-selected={selected}>
       <div className="flex items-start gap-3">
@@ -62,6 +75,17 @@ const PendingRow = ({ item, selected, onSelect, onDecide }: {
             </p>
           )}
           <Evidence item={item} />
+          {item.competency && !asking && (
+            <div className="space-y-1">
+              <p className="text-sm font-semibold pg-fg">Nivel para la nota <span className="font-normal pg-fg2">({item.competency.name} · opcional)</span></p>
+              <div className="flex flex-wrap items-center gap-2">
+                <ScaleValuePicker scale={scale} scaleType={scaleType} value={level || null} label={`Nivel de ${item.student.name}`} size="sm"
+                  onChange={(value) => onLevel(scale.kind === 'letters' && value.toUpperCase() === level.toUpperCase() ? '' : value)} />
+                {level && scale.kind === 'letters' && <button type="button" onClick={() => onLevel('')} className="pg-btn pg-btn-ghost text-sm">Sin nivel</button>}
+              </div>
+              {!levelOk && <p className="text-sm font-semibold text-[var(--pg-alert)]">Ese valor no es de la escala de tu clase.</p>}
+            </div>
+          )}
           {asking ? (
             <div className="space-y-2 rounded-xl border border-[var(--pg-line)] p-2">
               <div className="flex flex-wrap gap-1.5">
@@ -81,8 +105,10 @@ const PendingRow = ({ item, selected, onSelect, onDecide }: {
             </div>
           ) : (
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => onDecide({ progressId: item.progressId, decision: 'APPROVE', evidenceId: item.evidence?.id ?? null })} className="pg-btn pg-btn-give">
-                <Check size={16} aria-hidden="true" /> Aprobar <span className="font-normal">({rewardLabel(item.rewardXp, item.rewardGold)})</span>
+              <button type="button" disabled={!levelOk}
+                onClick={() => onDecide({ progressId: item.progressId, decision: 'APPROVE', evidenceId: item.evidence?.id ?? null, level: item.competency && level.trim() ? level.trim() : null })}
+                className="pg-btn pg-btn-give">
+                <Check size={16} aria-hidden="true" /> Aprobar{item.competency && level.trim() && levelOk ? ` con ${level.trim().toUpperCase()}` : ''} <span className="font-normal">({rewardLabel(item.rewardXp, item.rewardGold)})</span>
               </button>
               <button type="button" onClick={() => setAsking(true)} className="pg-btn pg-btn-fix">
                 <RotateCcw size={16} aria-hidden="true" /> Pedir mejora
@@ -108,6 +134,8 @@ export const ReviewQueue = ({ expeditionId, projecting, undoable }: {
   const query = useQuery({ queryKey: expeditionKeys.review(expeditionId), queryFn: () => expeditionApi.reviewQueue(expeditionId) });
   const [hidden, setHidden] = useState<Set<string>>(() => new Set());
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  // Nivel elegido en cada fila (también viaja con «Aprobar todas»).
+  const [levels, setLevels] = useState<Record<string, string>>({});
 
   if (projecting) {
     return (
@@ -123,7 +151,14 @@ export const ReviewQueue = ({ expeditionId, projecting, undoable }: {
 
   const pending = query.data.pending.filter((item) => !hidden.has(item.progressId));
   const needsWork = query.data.needsWork;
-  const approval = (item: ReviewItem): ReviewDecision => ({ progressId: item.progressId, decision: 'APPROVE', evidenceId: item.evidence?.id ?? null });
+  const { scale, scaleType } = query.data;
+  const approval = (item: ReviewItem): ReviewDecision => {
+    const level = (levels[item.progressId] ?? '').trim();
+    return {
+      progressId: item.progressId, decision: 'APPROVE', evidenceId: item.evidence?.id ?? null,
+      level: item.competency && level && validLevel(scale, level) ? level : null,
+    };
+  };
   const decide = (decisions: ReviewDecision[]) => {
     const ids = decisions.map((d) => d.progressId);
     setHidden((current) => new Set([...current, ...ids]));
@@ -181,6 +216,8 @@ export const ReviewQueue = ({ expeditionId, projecting, undoable }: {
           <ul>
             {pending.map((item) => (
               <PendingRow key={item.progressId} item={item} selected={selected.has(item.progressId)}
+                scale={scale} scaleType={scaleType} level={levels[item.progressId] ?? ''}
+                onLevel={(value) => setLevels((current) => ({ ...current, [item.progressId]: value }))}
                 onSelect={() => setSelected((current) => {
                   const next = new Set(current);
                   if (next.has(item.progressId)) next.delete(item.progressId); else next.add(item.progressId);
