@@ -8,6 +8,8 @@ export interface CatalogEntry {
   name: string;
   description: string;
   pose: JiroPose;
+  /** Portada 4:3 de la tarjeta (ilustración de la actividad). Sin portada, la tarjeta muestra la pose sobre el cielo. */
+  cover?: string;
   /** Duración típica en clase. */
   duration: string;
   requirements: { icon: string; label: string }[];
@@ -25,6 +27,7 @@ export const CATALOG: CatalogEntry[] = [
     name: 'Descanso de Jiro',
     description: 'Mientras hay calma, Jiro sueña y dibuja una constelación. El ruido solo pausa.',
     pose: 'dormido',
+    cover: '/assets/jiro/actividades/descanso.webp',
     duration: '3–10 min',
     requirements: [{ icon: '🎤', label: 'Micrófono o manual' }],
     sessionType: 'DESCANSO',
@@ -34,6 +37,7 @@ export const CATALOG: CatalogEntry[] = [
     name: 'Estrellas en Movimiento',
     description: 'Verdadero o falso con el cuerpo: de pie o agachados. Las rachas encienden estrellas.',
     pose: 'emocionado',
+    cover: '/assets/jiro/actividades/estrellas.webp',
     duration: '10–15 min',
     requirements: [{ icon: '📚', label: 'Banco, IA o modo libre' }],
     sessionType: 'ESTRELLAS',
@@ -43,6 +47,7 @@ export const CATALOG: CatalogEntry[] = [
     name: 'Conquista del Cielo',
     description: 'Todos los equipos responden a la vez para despejar la Niebla. Se guarda para seguir otro día.',
     pose: 'senalando',
+    cover: '/assets/jiro/actividades/conquista.webp',
     duration: '15–30 min',
     requirements: [{ icon: '🛡️', label: 'Clanes o equipos' }, { icon: '📚', label: 'Banco o IA' }],
     sessionType: 'CONQUISTA',
@@ -52,6 +57,7 @@ export const CATALOG: CatalogEntry[] = [
     name: 'El Error de Jiro',
     description: 'Jiro resolvió un ejercicio y se equivocó en un paso. En parejas o en clan, encuéntrenlo y explíquenlo.',
     pose: 'confundido',
+    cover: '/assets/jiro/actividades/error.webp',
     duration: '10–20 min',
     requirements: [{ icon: '📚', label: 'Banco o IA' }],
     sessionType: 'ERROR',
@@ -61,6 +67,7 @@ export const CATALOG: CatalogEntry[] = [
     name: 'Correo Estelar',
     description: 'Cada uno escribe a una estrella secreta. En papel o desde su cuenta; Jiro entrega las cartas.',
     pose: 'emocionado',
+    cover: '/assets/jiro/actividades/correo.webp',
     duration: '15 min + entrega',
     requirements: [{ icon: '📝', label: 'Papel o cuentas' }],
     sessionType: 'CORREO',
@@ -79,6 +86,7 @@ export const CATALOG: CatalogEntry[] = [
     name: 'Expediciones',
     description: 'Un viaje por paradas: relatos de Jiro, retos de tu banco, evidencias y actividades en clase.',
     pose: 'senalando',
+    cover: '/assets/jiro/actividades/expediciones.webp',
     duration: 'Varias clases',
     requirements: [{ icon: '👤', label: 'Cuentas de alumnos' }],
   },

@@ -29,15 +29,19 @@ const Loading = () => (
   </div>
 );
 
-// Tarjeta del catálogo: blanca, con un recuadro nocturno y la pose de Jiro.
+// Tarjeta del catálogo: blanca, con la portada 4:3 de la actividad (o la pose de Jiro sobre el cielo si aún no tiene).
 const ActivityCard = ({ entry, lastPlayedAt, badge, onOpen }: { entry: CatalogEntry; lastPlayedAt?: string | null; badge?: string | null; onOpen: () => void }) => (
   <button
     type="button"
     onClick={onOpen}
     className="group flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white text-left shadow-sm transition-shadow hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:border-gray-700 dark:bg-gray-800 dark:focus-visible:outline-indigo-300"
   >
-    <span className="obs-sky relative flex h-36 items-end justify-center overflow-hidden" aria-hidden="true">
-      <img src={JIRO_POSES[entry.pose]} alt="" loading="lazy" className="h-32 select-none object-contain transition-transform duration-200 group-hover:-translate-y-1" />
+    <span className="obs-sky relative flex aspect-[4/3] items-end justify-center overflow-hidden" aria-hidden="true">
+      {entry.cover ? (
+        <img src={entry.cover} alt="" loading="lazy" draggable={false} className="absolute inset-0 h-full w-full select-none object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
+      ) : (
+        <img src={JIRO_POSES[entry.pose]} alt="" loading="lazy" className="h-[85%] select-none object-contain transition-transform duration-200 group-hover:-translate-y-1" />
+      )}
     </span>
     <span className="flex flex-1 flex-col p-4">
       <span className="text-lg font-bold text-gray-900 dark:text-white">{entry.name}</span>
