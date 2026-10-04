@@ -21,6 +21,7 @@ import {
   Medal,
   ArrowRightLeft,
   Trophy,
+  Flag,
 } from 'lucide-react';
 import { clanApi, CLAN_EMBLEMS, type ClanWithMembers, type ClanMember, type CreateClanData } from '../../lib/clanApi';
 import { classroomApi } from '../../lib/classroomApi';
@@ -469,14 +470,22 @@ export const ClansPage = () => {
                     const isXp = entry.action === 'XP_CONTRIBUTED' || entry.action === 'GP_CONTRIBUTED';
                     const isJoin = entry.action === 'MEMBER_JOINED';
                     const isLeave = entry.action === 'MEMBER_LEFT';
+                    // El clan llegó a la meta de una expedición (premio del clan, sin alumno).
+                    const isGoal = entry.action === 'EXPEDITION_GOAL';
                     return (
                       <li key={entry.id} className="flex items-start gap-2.5 px-3 py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/40">
                         <span className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                          isXp ? 'bg-amber-100 dark:bg-amber-900/40' : isJoin ? 'bg-emerald-100 dark:bg-emerald-900/40' : 'bg-red-100 dark:bg-red-900/40'
+                          isXp || isGoal ? 'bg-amber-100 dark:bg-amber-900/40' : isJoin ? 'bg-emerald-100 dark:bg-emerald-900/40' : 'bg-red-100 dark:bg-red-900/40'
                         }`} aria-hidden="true">
-                          {isXp ? <Zap size={14} className="text-amber-600 dark:text-amber-300" /> : isJoin ? <UserPlus size={14} className="text-emerald-600 dark:text-emerald-300" /> : <UserMinus size={14} className="text-red-600 dark:text-red-300" />}
+                          {isGoal ? <Flag size={14} className="text-amber-600 dark:text-amber-300" /> : isXp ? <Zap size={14} className="text-amber-600 dark:text-amber-300" /> : isJoin ? <UserPlus size={14} className="text-emerald-600 dark:text-emerald-300" /> : <UserMinus size={14} className="text-red-600 dark:text-red-300" />}
                         </span>
                         <span className="min-w-0 flex-1">
+                          {isGoal ? (
+                            <span className="block text-sm text-gray-800 dark:text-gray-100">
+                              <span className="font-medium">{CLAN_EMBLEMS[entry.clanEmblem] || '🛡️'} {entry.clanName}</span> llegó a la meta de una expedición
+                              {entry.xpAmount > 0 && <> (<span className="font-bold text-amber-700 dark:text-amber-300">+{entry.xpAmount} XP</span>)</>}
+                            </span>
+                          ) : (
                           <span className="block text-sm text-gray-800 dark:text-gray-100">
                             <span className="font-semibold">{entry.studentName || `${entry.firstName} ${entry.lastName}`}</span>
                             {isXp && (
@@ -488,6 +497,7 @@ export const ClansPage = () => {
                             {isLeave && ' dejó '}
                             <span className="font-medium">{CLAN_EMBLEMS[entry.clanEmblem] || '🛡️'} {entry.clanName}</span>
                           </span>
+                          )}
                           {entry.reason && <span className="block text-xs text-gray-600 dark:text-gray-400 truncate mt-0.5">{entry.reason}</span>}
                         </span>
                         <span className="text-xs text-gray-600 dark:text-gray-400 flex-shrink-0 flex items-center gap-1 mt-0.5">

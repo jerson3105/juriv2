@@ -37,6 +37,13 @@ interface ExpeditionBase {
   /** Insignias que elige el docente: al llegar a la meta y por perseverancia. */
   finishBadgeId: string | null;
   perseveranceBadgeId: string | null;
+  /** Por clanes: XP para el clan cuando llega a la meta. */
+  clanXp: number;
+  /** Meta de la clase (null = sin meta). */
+  goalPercent: number | null;
+  goalDueAt: string | null;
+  goalXp: number;
+  goalReachedAt: string | null;
   status: ExpeditionStatus;
   publishedAt: string | null;
   createdAt: string;
@@ -107,10 +114,34 @@ export interface BoardStudent {
   }[];
 }
 
+/** Capa de clanes: una parada cuenta para el clan cuando la logra más de la mitad de sus miembros. */
+export interface ClanProgress {
+  id: string;
+  name: string;
+  color: string;
+  emblem: string;
+  members: number;
+  countedStopIds: string[];
+  finished: boolean;
+}
+
+/** Meta de la clase: si el % llega a la meta (antes de la fecha), XP para quienes llegaron. */
+export interface ClassGoal {
+  percent: number;
+  dueAt: string | null;
+  xp: number;
+  reachedAt: string | null;
+  finished: number;
+  total: number;
+}
+
 export interface ExpeditionBoard {
   /** here: cuántos tienen esa parada como siguiente · done: cuántos la lograron. */
   stops: { id: string; sortOrder: number; kind: StopKind; title: string; here: number; done: number }[];
   students: BoardStudent[];
+  groupMode: 'INDIVIDUAL' | 'CLAN';
+  clans: ClanProgress[];
+  goal: ClassGoal | null;
 }
 
 export interface ReviewItem {
@@ -185,6 +216,11 @@ export interface ExpeditionPatch {
   mapImageUrl?: string | null;
   finishBadgeId?: string | null;
   perseveranceBadgeId?: string | null;
+  groupMode?: 'INDIVIDUAL' | 'CLAN';
+  clanXp?: number;
+  goalPercent?: number | null;
+  goalDueAt?: string | null;
+  goalXp?: number;
 }
 
 // ── Alumno ──
@@ -241,6 +277,11 @@ export interface StudentExpedition {
   finished: boolean;
   /** «¿Cómo me fue?» (al llegar a la meta). */
   reflection: ReflectionAnswer | null;
+  groupMode: 'INDIVIDUAL' | 'CLAN';
+  /** Su clan (modo por clanes y si tiene clan). */
+  clan: Omit<ClanProgress, 'id'> | null;
+  /** La meta de la clase y si ya cobró su premio. */
+  goal: (ClassGoal & { rewarded: boolean }) | null;
   currentStopId: string | null;
   stops: StudentStop[];
 }

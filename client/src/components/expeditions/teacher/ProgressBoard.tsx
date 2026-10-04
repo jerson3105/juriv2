@@ -6,6 +6,7 @@ import { primaryButton } from '../../home/homeHelpers';
 import { secondaryButton } from '../../gradebook/gradebookHelpers';
 import { expeditionApi, expeditionKeys, type BoardStudent, type ExpeditionBoard, type StopState } from '../../../lib/expeditionApi';
 import { KIND_INFO, REFLECTIONS, REFLECTION_INFO, plural } from '../expeditionHelpers';
+import { ClanCards, ClassGoalBar } from '../ClanAndGoal';
 
 /** «¿Cómo les fue?»: lo que respondió cada alumno al llegar a la meta. Proyectando, solo los conteos. */
 const Reflections = ({ students, projecting }: { students: BoardStudent[]; projecting: boolean }) => {
@@ -123,11 +124,19 @@ export const ProgressBoard = ({ expeditionId, projecting, onMarkClass }: { exped
       <li className="pg-surface flex items-center gap-2 px-3 py-2 text-sm font-semibold pg-fg"><Flag size={16} aria-hidden="true" /> {plural(finished, 'llegó a la meta', 'llegaron a la meta')}</li>
     </ul>
   );
+  // Meta de la clase y clanes: sin nombres de alumnos, se ven también proyectando.
+  const together = (board.goal || (board.groupMode === 'CLAN' && board.clans.length > 0)) && (
+    <div className="space-y-3">
+      {board.goal && <ClassGoalBar goal={board.goal} tone="page" />}
+      {board.groupMode === 'CLAN' && <ClanCards clans={board.clans} stopIds={board.stops.map((s) => s.id)} tone="page" />}
+    </div>
+  );
 
   if (projecting) {
     return (
       <div className="space-y-3">
         {counts}
+        {together}
         <Reflections students={board.students} projecting />
         <p className="text-sm pg-fg2">Mientras proyectas se ocultan los nombres: solo se ven cuántos hay en cada parada.</p>
       </div>
@@ -137,6 +146,7 @@ export const ProgressBoard = ({ expeditionId, projecting, onMarkClass }: { exped
   return (
     <div className="space-y-3">
       {counts}
+      {together}
       <Reflections students={board.students} projecting={false} />
       {board.students.length === 0 ? (
         <p className="py-6 text-center text-sm pg-fg2">Esta clase aún no tiene alumnos.</p>

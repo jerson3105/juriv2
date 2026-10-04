@@ -10,7 +10,7 @@ import { badgeApi } from '../../../lib/badgeApi';
 import { expeditionMapApi } from '../../../lib/expeditionMapApi';
 import { assetUrl, expeditionApi, expeditionKeys, type ExpeditionPatch, type ExpeditionScenario, type TeacherExpedition } from '../../../lib/expeditionApi';
 import { ExpeditionThumb } from '../ExpeditionStage';
-import { MAX_REWARD, constellationsFor, stageConstellation } from '../expeditionHelpers';
+import { MAX_REWARD, constellationsFor, fromLocalInput, stageConstellation, toLocalInput } from '../expeditionHelpers';
 
 interface Draft {
   name: string;
@@ -23,6 +23,12 @@ interface Draft {
   mapImageUrl: string | null;
   finishBadgeId: string | null;
   perseveranceBadgeId: string | null;
+  groupMode: 'INDIVIDUAL' | 'CLAN';
+  clanXp: string;
+  goalOn: boolean;
+  goalPercent: string;
+  goalXp: string;
+  goalDueAt: string;
 }
 
 const toDraft = (expedition: TeacherExpedition): Draft => ({
@@ -36,6 +42,13 @@ const toDraft = (expedition: TeacherExpedition): Draft => ({
   mapImageUrl: expedition.mapImageUrl,
   finishBadgeId: expedition.finishBadgeId,
   perseveranceBadgeId: expedition.perseveranceBadgeId,
+  groupMode: expedition.groupMode,
+  clanXp: String(expedition.clanXp),
+  goalOn: expedition.goalPercent !== null,
+  // Sin meta todavía: arranca con lo sugerido (70 % y 10 XP).
+  goalPercent: String(expedition.goalPercent ?? 70),
+  goalXp: String(expedition.goalPercent !== null ? expedition.goalXp : 10),
+  goalDueAt: toLocalInput(expedition.goalDueAt),
 });
 
 const numberError = (value: string) => {
@@ -43,9 +56,14 @@ const numberError = (value: string) => {
   if (value.trim() === '' || !Number.isInteger(n)) return 'Escribe un número entero';
   return n < 0 || n > MAX_REWARD ? `Entre 0 y ${MAX_REWARD}` : null;
 };
+const percentError = (value: string) => {
+  const n = Number(value);
+  if (value.trim() === '' || !Number.isInteger(n)) return 'Escribe un número entero';
+  return n < 10 || n > 100 ? 'Entre 10 y 100' : null;
+};
 
 /** Ajustes de la expedición. El padre lo monta con key={settingsPanelKey(expedition)}. */
-export const ExpeditionSettingsPanel = ({ expedition, xpPerLevel }: { expedition: TeacherExpedition; xpPerLevel: number }) => {
+export const ExpeditionSettingsPanel = ({ expedition, xpPerLevel, clansEnabled }: { expedition: TeacherExpedition; xpPerLevel: number; clansEnabled: boolean }) => {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<Draft>(() => toDraft(expedition));
   const maps = useQuery({ queryKey: ['expedition-maps-active'], queryFn: expeditionMapApi.getActive, enabled: draft.scenario === 'MAP' });
@@ -67,12 +85,26 @@ export const ExpeditionSettingsPanel = ({ expedition, xpPerLevel }: { expedition
     if (draft.mapImageUrl !== base.mapImageUrl) next.mapImageUrl = draft.mapImageUrl;
     if (draft.finishBadgeId !== base.finishBadgeId) next.finishBadgeId = draft.finishBadgeId;
     if (draft.perseveranceBadgeId !== base.perseveranceBadgeId) next.perseveranceBadgeId = draft.perseveranceBadgeId;
+    if (draft.groupMode !== base.groupMode) next.groupMode = draft.groupMode;
+    if (draft.groupMode === 'CLAN' && draft.clanXp !== base.clanXp) next.clanXp = Number(draft.clanXp);
+    // Meta de la clase: al activarla se mandan sus valores; al quitarla, sin porcentaje.
+    if (!draft.goalOn && base.goalOn) next.goalPercent = null;
+    if (draft.goalOn) {
+      const turnedOn = !base.goalOn;
+      if (turnedOn || draft.goalPercent !== base.goalPercent) next.goalPercent = Number(draft.goalPercent);
+      if (turnedOn || draft.goalXp !== base.goalXp) next.goalXp = Number(draft.goalXp);
+      if ((turnedOn && draft.goalDueAt) || draft.goalDueAt !== base.goalDueAt) next.goalDueAt = fromLocalInput(draft.goalDueAt);
+    }
     return next;
   }, [draft, expedition]);
   const dirty = Object.keys(patch).length > 0;
   const xpError = numberError(draft.finishXp);
   const goldError = numberError(draft.finishGold);
-  const invalid = !draft.name.trim() || !!xpError || !!goldError || (draft.scenario === 'MAP' && !draft.mapImageUrl);
+  const clanXpError = draft.groupMode === 'CLAN' ? numberError(draft.clanXp) : null;
+  const goalPercentError = draft.goalOn ? percentError(draft.goalPercent) : null;
+  const goalXpError = draft.goalOn ? numberError(draft.goalXp) : null;
+  const invalid = !draft.name.trim() || !!xpError || !!goldError || !!clanXpError || !!goalPercentError || !!goalXpError
+    || (draft.scenario === 'MAP' && !draft.mapImageUrl);
 
   const save = useMutation({
     mutationFn: () => expeditionApi.update(expedition.id, patch),
@@ -133,6 +165,51 @@ export const ExpeditionSettingsPanel = ({ expedition, xpPerLevel }: { expedition
             </label>
             <p className="text-sm text-gray-700 dark:text-gray-300">Cada alumno la recibe hasta el tope que tenga la insignia (por defecto, una vez).</p>
           </>
+        )}
+      </fieldset>
+
+      <fieldset className="space-y-2">
+        <legend className={labelClass}>Cómo avanzan</legend>
+        <div className="pg-seg mt-1.5" role="group" aria-label="Cómo avanzan">
+          <button type="button" aria-pressed={draft.groupMode === 'INDIVIDUAL'} onClick={() => set('groupMode', 'INDIVIDUAL')} className="pg-seg-item">Individual</button>
+          <button type="button" aria-pressed={draft.groupMode === 'CLAN'} disabled={!clansEnabled && draft.groupMode !== 'CLAN'}
+            onClick={() => setDraft((current) => ({
+              ...current,
+              groupMode: 'CLAN',
+              // Sin premio todavía: arranca con el sugerido.
+              clanXp: current.clanXp === '0' ? String(Math.round(xpPerLevel * 0.3)) : current.clanXp,
+            }))}
+            className="pg-seg-item disabled:cursor-not-allowed disabled:opacity-50">Por clanes</button>
+        </div>
+        <p className="text-sm text-gray-700 dark:text-gray-300">
+          {draft.groupMode === 'CLAN'
+            ? 'Cada uno avanza a su ritmo. Una parada cuenta para el clan cuando la logra más de la mitad de sus miembros; con todas, el clan llega a la meta.'
+            : clansEnabled ? 'Cada uno avanza a su ritmo.' : 'Para jugar por clanes, activa los clanes de la clase.'}
+        </p>
+        {draft.groupMode === 'CLAN' && (
+          <NumberField label="XP para el clan al llegar a la meta" value={draft.clanXp} onChange={(value) => set('clanXp', value)} min={0} max={MAX_REWARD}
+            error={clanXpError} hint={`Sugerido: ${Math.round(xpPerLevel * 0.3)} XP · suma al XP del clan`} />
+        )}
+      </fieldset>
+
+      <fieldset className="space-y-2">
+        <legend className={labelClass}>Meta de la clase <span className="font-normal text-gray-700 dark:text-gray-300">(opcional)</span></legend>
+        <label className="flex min-h-[44px] items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+          <input type="checkbox" className="pg-check" checked={draft.goalOn} onChange={(event) => set('goalOn', event.target.checked)} />
+          Poner una meta para toda la clase
+        </label>
+        {draft.goalOn && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <NumberField label="% de la clase que debe llegar" value={draft.goalPercent} onChange={(value) => set('goalPercent', value)} min={10} max={100}
+              error={goalPercentError} hint="Por ejemplo, 70 %" />
+            <NumberField label="XP para quienes llegaron" value={draft.goalXp} onChange={(value) => set('goalXp', value)} min={0} max={MAX_REWARD}
+              error={goalXpError} hint={`Sugerido: ${Math.round(xpPerLevel * 0.1)} XP`} />
+            <label className="block sm:col-span-2">
+              <span className="block text-sm font-semibold text-gray-900 dark:text-gray-100">Hasta <span className="font-normal text-gray-700 dark:text-gray-300">(opcional)</span></span>
+              <input type="datetime-local" value={draft.goalDueAt} onChange={(event) => set('goalDueAt', event.target.value)} className={`${inputClass} mt-1 min-h-[44px] max-w-xs`} />
+            </label>
+            <p className="text-sm text-gray-700 dark:text-gray-300 sm:col-span-2">Si la logran, el premio va a quienes llegaron a la meta (y a quien llegue antes de la fecha). Se ve en la proyección y en la vista del alumno.</p>
+          </div>
         )}
       </fieldset>
 

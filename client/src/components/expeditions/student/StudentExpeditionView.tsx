@@ -8,6 +8,7 @@ import { errorMessage } from '../../auth/authHelpers';
 import { primaryButton } from '../../home/homeHelpers';
 import { secondaryButton } from '../../gradebook/gradebookHelpers';
 import { ExpeditionStage } from '../ExpeditionStage';
+import { ClassGoalBar, MyClanCard } from '../ClanAndGoal';
 import { KIND_INFO, REFLECTIONS, REFLECTION_INFO, STATE_INFO, dueLabel, isOverdue, plural, rewardLabel } from '../expeditionHelpers';
 import { StopSheet } from './StopSheet';
 
@@ -171,6 +172,13 @@ export const StudentExpeditionView = ({ expedition, here, preview = false, heade
           <div className="h-full rounded-full bg-amber-400" style={{ width: `${percent}%` }} />
         </div>
       </div>
+
+      {(expedition.clan || expedition.goal) && (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {expedition.clan && <MyClanCard clan={expedition.clan} stopIds={stops.map((stop) => stop.id)} />}
+          {expedition.goal && <ClassGoalBar goal={expedition.goal} tone="page" studentRewarded={expedition.goal.rewarded} />}
+        </div>
+      )}
 
       {expedition.finished && <FinishCard expedition={expedition} preview={preview} />}
       {!expedition.finished && expedition.description && (

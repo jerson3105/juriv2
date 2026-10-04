@@ -16,6 +16,7 @@ import { answerOf, questionSizeClass } from '../../observatorio/questionHelpers'
 import { StageEndButton } from '../../observatorio/StageEndButton';
 import { useTodayPresence } from '../../observatorio/usePresence';
 import { ExpeditionStage } from '../ExpeditionStage';
+import { ClanCards, ClassGoalBar } from '../ClanAndGoal';
 import { CLASS_ACTIVITY_INFO, KIND_INFO, isImageFile, plural, resourceLabel } from '../expeditionHelpers';
 
 const EstrellasActivity = lazy(() => import('../../observatorio/estrellas/EstrellasActivity').then((m) => ({ default: m.EstrellasActivity })));
@@ -387,13 +388,19 @@ export const ExpeditionProjection = ({ classroom, expedition, onExit }: {
   // ── Mapa con la capa de la clase ──
   const selected = stops[Math.min(selectedIndex, stops.length - 1)] ?? null;
   const everyoneFinished = students.length > 0 && finishedCount >= students.length;
+  const goal = board.data?.goal ?? null;
+  const clans = board.data?.groupMode === 'CLAN' ? board.data.clans : [];
+  // El escenario deja lugar a la meta y a los clanes para que todo quepa en la pizarra.
+  const reserve = 15 + (goal ? 6 : 0) + (clans.length ? 9 : 0);
   return (
     <EscenarioObservatorio
       label={`Expedición «${expedition.name}»`}
       onClose={onExit}
       jiro={everyoneFinished
         ? { pose: 'celebrando', line: '¡Toda la clase llegó a la meta!' }
-        : { pose: 'senalando', line: selected ? `¿Vamos a la parada ${selectedIndex + 1}?` : null }}
+        : goal?.reachedAt
+          ? { pose: 'celebrando', line: '¡La clase logró su meta!' }
+          : { pose: 'senalando', line: selected ? `¿Vamos a la parada ${selectedIndex + 1}?` : null }}
       primary={selected ? { label: `Abrir parada ${selectedIndex + 1}`, onClick: () => openStop(selectedIndex) } : null}
       onPrev={() => setSelectedIndex((i) => Math.max(0, i - 1))}
       onNext={() => setSelectedIndex((i) => Math.min(stops.length - 1, i + 1))}
@@ -415,9 +422,10 @@ export const ExpeditionProjection = ({ classroom, expedition, onExit }: {
       )}
     >
       <div className="grid w-full max-w-7xl items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)]">
-        <div className="w-full">
-          <h2 className="stage-option mb-4 text-center font-black text-white">{expedition.name}</h2>
-          <div className="mx-auto w-full" style={{ maxWidth: 'calc((100vh - 15rem) / 0.7)' }}>
+        <div className="w-full space-y-4">
+          <h2 className="stage-option text-center font-black text-white">{expedition.name}</h2>
+          {goal && <ClassGoalBar goal={goal} tone="stage" />}
+          <div className="mx-auto w-full" style={{ maxWidth: `max(20rem, calc((100vh - ${reserve}rem) / 0.7))` }}>
             <ExpeditionStage
               scenario={expedition.scenario}
               constellationId={expedition.constellationId}
@@ -432,7 +440,8 @@ export const ExpeditionProjection = ({ classroom, expedition, onExit }: {
               label={`${expedition.name}: ${plural(stops.length, 'parada', 'paradas')}. Cuántos lograron cada una, sin nombres.`}
             />
           </div>
-          {lastMark && <p role="status" className="mt-4 text-center text-xl font-bold text-emerald-200">✓ {lastMark}</p>}
+          {lastMark && <p role="status" className="text-center text-xl font-bold text-emerald-200">✓ {lastMark}</p>}
+          {clans.length > 0 && <ClanCards clans={clans} stopIds={stops.map((s) => s.id)} tone="stage" />}
         </div>
         <ol className="space-y-2" aria-label="Paradas">
           {stops.map((s, index) => (

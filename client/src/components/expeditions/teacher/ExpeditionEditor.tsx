@@ -52,6 +52,9 @@ const previewOf = (expedition: TeacherExpedition): StudentExpedition => ({
   finishedAt: null,
   finished: false,
   reflection: null,
+  groupMode: expedition.groupMode,
+  clan: null,
+  goal: null,
   currentStopId: expedition.stops[0]?.id ?? null,
   stops: expedition.stops.map((stop, index) => ({
     id: stop.id, sortOrder: stop.sortOrder, kind: stop.kind, title: stop.title, story: stop.story, goal: stop.goal,
@@ -200,7 +203,7 @@ export const ExpeditionEditor = ({ classroom, expeditionId }: { classroom: Class
     <StopPanel key={stopPanelKey(selected)} expedition={expedition} stop={selected} index={selectedIndex} xpPerLevel={xpPerLevel} competencies={competencies}
       placing={placing} onPlace={setPlacing} onMarkClass={() => void openMarking(selected.id)} onDeleted={() => setSide(null)} />
   ) : side?.kind === 'settings' ? (
-    <ExpeditionSettingsPanel key={settingsPanelKey(expedition)} expedition={expedition} xpPerLevel={xpPerLevel} />
+    <ExpeditionSettingsPanel key={settingsPanelKey(expedition)} expedition={expedition} xpPerLevel={xpPerLevel} clansEnabled={!!classroom.clansEnabled} />
   ) : null;
   const sideTitle = selected ? `Parada ${selectedIndex + 1} · ${KIND_INFO[selected.kind].label}` : 'Ajustes de la expedición';
 
