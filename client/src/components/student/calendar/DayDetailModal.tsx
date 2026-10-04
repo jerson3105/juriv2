@@ -1,7 +1,7 @@
 import { HomeModal } from '../../home/HomeModal';
 import { cancelButton } from '../../home/homeHelpers';
 import { TodoRow } from '../home/TodoRow';
-import { jiroAction, stations } from '../home/nextGoal';
+import { expeditionAction, expeditionStep } from '../home/nextGoal';
 import { NOTE_CATEGORY, longDayLabel } from '../home/studentHomeHelpers';
 import { ATTENDANCE, relativeDay, type CalendarDay } from './calendarHelpers';
 
@@ -27,14 +27,14 @@ export const DayDetailModal = ({ day, today, onClose }: { day: CalendarDay; toda
           {day.attendance!.xpAwarded > 0 && ` · +${day.attendance!.xpAwarded} XP`}
         </p>
       )}
-      {(day.notes.length > 0 || day.jiro.length > 0) && (
+      {(day.notes.length > 0 || day.expeditions.length > 0) && (
         <ul className="divide-y divide-gray-200 dark:divide-gray-700">
-          {day.jiro.map((expedition) => (
+          {day.expeditions.map((expedition) => (
             <TodoRow
               key={expedition.id}
               chipless
               onOpen={noop}
-              item={{ key: expedition.id, chip: '', today: false, label: 'Cierra la expedición', text: `«${expedition.name}» · ${stations(expedition)}`, action: jiroAction(expedition) }}
+              item={{ key: expedition.id, chip: '', today: false, label: 'Vence en la expedición', text: `«${expedition.name}» · ${expeditionStep(expedition)}`, action: expeditionAction(expedition) }}
             />
           ))}
           {day.notes.map((note) => (

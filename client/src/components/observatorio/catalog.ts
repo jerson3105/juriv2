@@ -77,7 +77,7 @@ export const CATALOG: CatalogEntry[] = [
   {
     id: 'expediciones',
     name: 'Expediciones',
-    description: 'Aventuras con mapas: los alumnos exploran y completan misiones.',
+    description: 'Un viaje por paradas: relatos de Jiro, retos de tu banco, evidencias y actividades en clase.',
     pose: 'senalando',
     duration: 'Varias clases',
     requirements: [{ icon: '👤', label: 'Cuentas de alumnos' }],

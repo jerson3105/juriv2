@@ -1,377 +1,337 @@
-import api from './api';
+import { api } from './api';
 
-// ==================== TYPES ====================
+// Expedición unificada (2026-10-03): paradas en lista (relato, reto del banco, evidencia y en clase) sobre una
+// constelación de Jiro o un mapa de la biblioteca. El alumno sale siempre de la sesión: nunca va en la URL.
 
 export type ExpeditionStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
-export type ExpeditionPinType = 'INTRO' | 'OBJECTIVE' | 'FINAL';
-export type ExpeditionProgressStatus = 'LOCKED' | 'UNLOCKED' | 'IN_PROGRESS' | 'PASSED' | 'FAILED' | 'COMPLETED';
+export type ExpeditionScenario = 'CONSTELLATION' | 'MAP';
+export type StopKind = 'STORY' | 'CHALLENGE' | 'EVIDENCE' | 'CLASS';
+export type StopState = 'LOCKED' | 'AVAILABLE' | 'STARTED' | 'WAITING' | 'NEEDS_WORK' | 'DONE';
+export type ReviewMode = 'ADVANCE' | 'WAIT';
+export type ReviewStatus = 'PENDING' | 'APPROVED' | 'NEEDS_WORK';
 
-export interface Expedition {
+export interface ExpeditionResource {
+  kind: 'FILE' | 'LINK';
+  url: string;
+  name: string | null;
+}
+
+interface ExpeditionBase {
   id: string;
   classroomId: string;
   name: string;
   description: string | null;
-  mapImageUrl: string;
+  scenario: ExpeditionScenario;
+  constellationId: string | null;
+  mapImageUrl: string | null;
+  groupMode: 'INDIVIDUAL' | 'CLAN';
+  closingText: string | null;
+  finishXp: number;
+  finishGold: number;
   status: ExpeditionStatus;
-  autoProgress: boolean;
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
-  pins?: ExpeditionPin[];
-  connections?: ExpeditionConnection[];
 }
 
-export interface ExpeditionPin {
+export interface StopStats {
+  started: number;
+  waiting: number;
+  pending: number;
+  needsWork: number;
+  done: number;
+}
+
+export interface TeacherStop {
   id: string;
-  expeditionId: string;
-  pinType: ExpeditionPinType;
-  positionX: number;
-  positionY: number;
-  name: string;
-  storyContent: string | null;
-  storyFiles: string[] | null;
-  taskName: string | null;
-  taskContent: string | null;
-  taskFiles: string[] | null;
-  requiresSubmission: boolean;
-  dueDate: string | null;
+  sortOrder: number;
+  kind: StopKind;
+  title: string;
+  story: string | null;
+  goal: string | null;
+  successCriteria: string | null;
+  mission: string | null;
+  resources: ExpeditionResource[];
+  bankId: string | null;
+  questionIds: string[];
+  passPercent: number;
+  reviewMode: ReviewMode;
+  dueAt: string | null;
   rewardXp: number;
-  rewardGp: number;
-  earlySubmissionEnabled: boolean;
-  earlySubmissionDate: string | null;
-  earlyBonusXp: number;
-  earlyBonusGp: number;
-  autoProgress: boolean | null;
-  orderIndex: number;
-  createdAt: string;
-  updatedAt: string;
+  rewardGold: number;
+  mapX: number | null;
+  mapY: number | null;
+  stats: StopStats;
 }
 
-export interface ExpeditionConnection {
-  id: string;
-  expeditionId: string;
-  fromPinId: string;
-  toPinId: string;
-  onSuccess: boolean | null; // true = ✅, false = ❌, null = lineal
-  createdAt: string;
+export interface TeacherExpedition extends ExpeditionBase {
+  stops: TeacherStop[];
 }
 
-export interface ExpeditionStudentProgress {
-  id: string;
-  expeditionId: string;
-  studentProfileId: string;
-  isCompleted: boolean;
-  completedAt: string | null;
-  currentPinId: string | null;
-  startedAt: string;
-  updatedAt: string;
-  pinProgress?: ExpeditionPinProgress[];
-  submissions?: ExpeditionSubmission[];
+export interface TeacherExpeditionSummary extends ExpeditionBase {
+  stopsCount: number;
+  studentsCount: number;
+  startedCount: number;
+  finishedCount: number;
+  pendingReviews: number;
 }
 
-export interface ExpeditionPinProgress {
+export interface BoardStudent {
   id: string;
-  expeditionId: string;
-  pinId: string;
-  studentProfileId: string;
-  status: ExpeditionProgressStatus;
-  teacherDecision: boolean | null;
-  teacherDecisionAt: string | null;
-  unlockedAt: string | null;
-  completedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-  student?: {
-    id: string;
-    characterName: string | null;
-    avatarUrl: string | null;
-    user?: {
-      displayName: string;
-    };
-  };
+  name: string;
+  characterName: string | null;
+  hasAccount: boolean;
+  doneCount: number;
+  finished: boolean;
+  current: { stopId: string; state: StopState } | null;
+  states: { stopId: string; state: StopState; review: ReviewStatus | null; firstScore: number | null; goldStar: boolean }[];
 }
 
-export interface ExpeditionSubmission {
-  id: string;
+export interface ExpeditionBoard {
+  stops: { id: string; sortOrder: number; kind: StopKind; title: string; here: number }[];
+  students: BoardStudent[];
+}
+
+export interface ReviewItem {
+  progressId: string;
+  stopId: string;
+  stopTitle: string;
+  stopNumber: number;
+  reviewMode: ReviewMode;
+  rewardXp: number;
+  rewardGold: number;
+  review: ReviewStatus;
+  feedback: string | null;
+  reviewedAt: string | null;
+  student: { id: string; name: string; characterName: string | null };
+  evidence: { files: string[]; note: string | null; submittedAt: string } | null;
+}
+
+export interface ReviewQueue {
   expeditionId: string;
-  pinId: string;
-  studentProfileId: string;
+  stopCount: number;
+  pending: ReviewItem[];
+  needsWork: ReviewItem[];
+}
+
+export interface ReviewDecision {
+  progressId: string;
+  decision: 'APPROVE' | 'NEEDS_WORK';
+  feedback?: string | null;
+}
+
+export interface StopPatch {
+  kind?: StopKind;
+  title?: string;
+  story?: string | null;
+  goal?: string | null;
+  successCriteria?: string | null;
+  mission?: string | null;
+  resources?: ExpeditionResource[];
+  bankId?: string | null;
+  questionIds?: string[];
+  passPercent?: number;
+  reviewMode?: ReviewMode;
+  dueAt?: string | null;
+  rewardXp?: number;
+  rewardGold?: number;
+  mapX?: number;
+  mapY?: number;
+}
+
+export interface ExpeditionPatch {
+  name?: string;
+  description?: string | null;
+  closingText?: string | null;
+  finishXp?: number;
+  finishGold?: number;
+  scenario?: ExpeditionScenario;
+  constellationId?: string;
+  mapImageUrl?: string | null;
+}
+
+// ── Alumno ──
+
+export interface StudentEvidence {
   files: string[];
-  comment: string | null;
-  isEarlySubmission: boolean;
+  note: string | null;
   submittedAt: string;
-  student?: {
-    id: string;
-    characterName: string | null;
-    avatarUrl: string | null;
-  };
 }
 
-// ==================== CREATE DTOs ====================
+export interface StudentStop {
+  id: string;
+  sortOrder: number;
+  kind: StopKind;
+  title: string;
+  /** null mientras la parada está bloqueada: el contenido se ve al llegar. */
+  story: string | null;
+  goal: string | null;
+  successCriteria: string | null;
+  mission: string | null;
+  resources: ExpeditionResource[];
+  dueAt: string | null;
+  rewardXp: number;
+  rewardGold: number;
+  passPercent: number;
+  reviewMode: ReviewMode;
+  questionCount: number;
+  mapX: number | null;
+  mapY: number | null;
+  state: StopState;
+  review: ReviewStatus | null;
+  feedback: string | null;
+  firstScore: number | null;
+  finalScore: number | null;
+  goldStar: boolean;
+  evidence: StudentEvidence | null;
+}
 
-export interface CreateExpeditionDto {
+export interface StudentExpedition {
+  id: string;
   classroomId: string;
   name: string;
-  description?: string;
-  mapImageUrl: string;
-  competencyIds?: string[];
-  competencyIndicatorIds?: string[];
-}
-
-export interface CreatePinDto {
-  pinType: ExpeditionPinType;
-  positionX: number;
-  positionY: number;
-  name: string;
-  storyContent?: string;
-  storyFiles?: string[];
-  taskName?: string;
-  taskContent?: string;
-  taskFiles?: string[];
-  requiresSubmission?: boolean;
-  dueDate?: string;
-  rewardXp?: number;
-  rewardGp?: number;
-  earlySubmissionEnabled?: boolean;
-  earlySubmissionDate?: string;
-  earlyBonusXp?: number;
-  earlyBonusGp?: number;
-  autoProgress?: boolean;
-}
-
-export interface UpdatePinDto extends Partial<CreatePinDto> {}
-
-export interface CreateConnectionDto {
-  fromPinId: string;
-  toPinId: string;
-  onSuccess?: boolean | null;
-}
-
-export interface CreateSubmissionDto {
-  studentProfileId: string;
-  files: string[];
-  comment?: string;
-}
-
-export interface ExpeditionStatsSummary {
-  totalExpeditions: number;
-  published: number;
-  draft: number;
-  archived: number;
-  totalStudents: number;
-  totalStarted: number;
-  totalCompleted: number;
-  totalPendingReviews: number;
-  overallCompletionRate: number;
-}
-
-export interface ExpeditionStatItem {
-  expeditionId: string;
-  name: string;
+  description: string | null;
+  scenario: ExpeditionScenario;
+  constellationId: string | null;
+  mapImageUrl: string | null;
   status: ExpeditionStatus;
-  mapImageUrl: string;
-  autoProgress: boolean;
+  finishXp: number;
+  finishGold: number;
+  closingText: string | null;
+  finishedAt: string | null;
+  finished: boolean;
+  currentStopId: string | null;
+  stops: StudentStop[];
+}
+
+export interface StudentExpeditionSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  scenario: ExpeditionScenario;
+  constellationId: string | null;
+  mapImageUrl: string | null;
+  status: ExpeditionStatus;
   publishedAt: string | null;
-  createdAt: string;
-  pinsCount: number;
-  totalStudents: number;
-  startedCount: number;
-  completedCount: number;
-  inProgressCount: number;
-  completionRate: number;
-  totalXp: number;
-  totalGp: number;
-  pendingReviews: number;
-  lastActivity: string | null;
+  stopsCount: number;
+  doneCount: number;
+  finished: boolean;
+  current: { id: string; title: string; kind: StopKind; state: StopState; dueAt: string | null } | null;
+  /** Una evidencia que su profe le pidió mejorar (aunque ya haya seguido avanzando). */
+  needsWork: { id: string; title: string } | null;
+  /** ¿Puede hacer algo ahora? (no cuenta lo que espera al docente ni las paradas en clase). */
+  actionable: boolean;
 }
 
-export interface ExpeditionStats {
-  summary: ExpeditionStatsSummary;
-  expeditions: ExpeditionStatItem[];
+export type QuestionType = 'TRUE_FALSE' | 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE' | 'MATCHING';
+export type ChallengeAnswer = boolean | number | number[];
+
+export interface ChallengeQuestion {
+  id: string;
+  type: QuestionType;
+  text: string;
+  imageUrl: string | null;
+  options?: { key: number; text: string }[];
+  left?: { key: number; text: string }[];
+  right?: { key: number; text: string }[];
 }
 
-export interface TeacherDecisionDto {
-  studentProfileId: string;
+export interface ChallengeState {
+  status: 'STARTED' | 'WAITING' | 'DONE';
+  attempt: number;
+  passPercent: number;
+  firstScore: number | null;
+  finalScore: number | null;
+  goldStar: boolean;
+  questions: ChallengeQuestion[];
+  /** Las preguntas de la vuelta actual (1 = todas; 2 = las falladas). */
+  round: string[];
+  answers: { questionId: string; attempt: number; isCorrect: boolean; explanation: string | null; correctAnswer: ChallengeAnswer | null }[];
+}
+
+export interface AnswerResult {
+  isCorrect: boolean;
+  explanation: string | null;
+  /** Solo en el reintento: en la primera vuelta se muestra la explicación. */
+  correctAnswer: ChallengeAnswer | null;
+  roundComplete: boolean;
+  attempt: number;
+  score: number | null;
   passed: boolean;
+  done: boolean;
+  goldStar: boolean;
+  retry: string[];
 }
 
-// ==================== MAPAS PREDEFINIDOS ====================
+const API_ORIGIN = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace(/\/api\/?$/, '');
 
-export const EXPEDITION_MAPS = [
-  { id: 'map1', name: 'Isla Aventura', url: '/expedition-maps/island-adventure.jpg' },
-];
+/** URL de un archivo propio (/api/uploads/...) o externa. */
+export const assetUrl = (url: string | null | undefined) => (!url ? '' : /^https?:\/\//.test(url) ? url : `${API_ORIGIN}${url}`);
 
-// ==================== API FUNCTIONS ====================
+export const expeditionKeys = {
+  list: (classroomId: string) => ['expeditions', classroomId] as const,
+  detail: (expeditionId: string) => ['expedition', expeditionId] as const,
+  board: (expeditionId: string) => ['expedition-board', expeditionId] as const,
+  review: (expeditionId: string) => ['expedition-review', expeditionId] as const,
+  mine: (classroomId: string) => ['my-expeditions', classroomId] as const,
+  play: (expeditionId: string) => ['expedition-play', expeditionId] as const,
+  challenge: (stopId: string) => ['expedition-challenge', stopId] as const,
+};
 
 export const expeditionApi = {
-  // ==================== EXPEDITION CRUD ====================
-  
-  // Crear expedición
-  create: async (data: CreateExpeditionDto): Promise<Expedition> => {
-    const response = await api.post('/expeditions', data);
-    return response.data;
+  // Docente
+  list: async (classroomId: string): Promise<TeacherExpeditionSummary[]> =>
+    (await api.get(`/expeditions/classroom/${classroomId}`)).data.data,
+  create: async (input: { classroomId: string; name: string; description?: string | null; scenario?: ExpeditionScenario; mapImageUrl?: string | null }): Promise<TeacherExpedition> =>
+    (await api.post('/expeditions', input)).data.data,
+  get: async (expeditionId: string): Promise<TeacherExpedition> =>
+    (await api.get(`/expeditions/${expeditionId}`)).data.data,
+  update: async (expeditionId: string, patch: ExpeditionPatch): Promise<TeacherExpedition> =>
+    (await api.patch(`/expeditions/${expeditionId}`, patch)).data.data,
+  publish: async (expeditionId: string): Promise<TeacherExpedition> =>
+    (await api.post(`/expeditions/${expeditionId}/publish`)).data.data,
+  close: async (expeditionId: string): Promise<TeacherExpedition> =>
+    (await api.post(`/expeditions/${expeditionId}/close`)).data.data,
+  reopen: async (expeditionId: string): Promise<TeacherExpedition> =>
+    (await api.post(`/expeditions/${expeditionId}/reopen`)).data.data,
+  remove: async (expeditionId: string): Promise<void> => {
+    await api.delete(`/expeditions/${expeditionId}`);
   },
-  
-  // Obtener expedición por ID
-  getById: async (id: string): Promise<Expedition> => {
-    const response = await api.get(`/expeditions/${id}`);
-    return response.data;
+  addStop: async (expeditionId: string, kind: StopKind): Promise<TeacherStop> =>
+    (await api.post(`/expeditions/${expeditionId}/stops`, { kind })).data.data,
+  updateStop: async (stopId: string, patch: StopPatch): Promise<TeacherStop> =>
+    (await api.patch(`/expeditions/stops/${stopId}`, patch)).data.data,
+  deleteStop: async (stopId: string): Promise<void> => {
+    await api.delete(`/expeditions/stops/${stopId}`);
   },
-  
-  // Obtener expediciones de un classroom
-  getByClassroom: async (classroomId: string, status?: ExpeditionStatus): Promise<Expedition[]> => {
-    const params = status ? { status } : {};
-    const response = await api.get(`/expeditions/classroom/${classroomId}`, { params });
-    return response.data;
-  },
-
-  // Obtener estadísticas de expediciones de un classroom
-  getClassroomStats: async (classroomId: string): Promise<ExpeditionStats> => {
-    const response = await api.get(`/expeditions/classroom/${classroomId}/stats`);
-    return response.data;
-  },
-  
-  // Actualizar expedición
-  update: async (id: string, data: Partial<CreateExpeditionDto & { autoProgress?: boolean }>): Promise<Expedition> => {
-    const response = await api.put(`/expeditions/${id}`, data);
-    return response.data;
-  },
-  
-  // Publicar expedición
-  publish: async (id: string): Promise<Expedition> => {
-    const response = await api.post(`/expeditions/${id}/publish`);
-    return response.data;
-  },
-  
-  // Archivar expedición
-  archive: async (id: string): Promise<Expedition> => {
-    const response = await api.post(`/expeditions/${id}/archive`);
-    return response.data;
-  },
-  
-  // Eliminar expedición
-  delete: async (id: string): Promise<void> => {
-    await api.delete(`/expeditions/${id}`);
-  },
-  
-  // ==================== PINS ====================
-  
-  // Crear pin
-  createPin: async (expeditionId: string, data: CreatePinDto): Promise<ExpeditionPin> => {
-    const response = await api.post(`/expeditions/${expeditionId}/pins`, data);
-    return response.data;
-  },
-  
-  // Obtener pin
-  getPin: async (pinId: string): Promise<ExpeditionPin> => {
-    const response = await api.get(`/expeditions/pins/${pinId}`);
-    return response.data;
-  },
-  
-  // Actualizar pin
-  updatePin: async (pinId: string, data: UpdatePinDto): Promise<ExpeditionPin> => {
-    const response = await api.put(`/expeditions/pins/${pinId}`, data);
-    return response.data;
-  },
-  
-  // Eliminar pin
-  deletePin: async (pinId: string): Promise<void> => {
-    await api.delete(`/expeditions/pins/${pinId}`);
-  },
-  
-  // ==================== CONNECTIONS ====================
-  
-  // Crear conexión
-  createConnection: async (expeditionId: string, data: CreateConnectionDto): Promise<ExpeditionConnection> => {
-    const response = await api.post(`/expeditions/${expeditionId}/connections`, data);
-    return response.data;
-  },
-  
-  // Actualizar conexión
-  updateConnection: async (connectionId: string, onSuccess: boolean | null): Promise<ExpeditionConnection> => {
-    const response = await api.put(`/expeditions/connections/${connectionId}`, { onSuccess });
-    return response.data;
-  },
-  
-  // Eliminar conexión
-  deleteConnection: async (connectionId: string): Promise<void> => {
-    await api.delete(`/expeditions/connections/${connectionId}`);
-  },
-  
-  // ==================== PROGRESS (TEACHER) ====================
-  
-  // Obtener progreso de todos los estudiantes en un pin
-  getPinProgress: async (pinId: string): Promise<ExpeditionPinProgress[]> => {
-    const response = await api.get(`/expeditions/pins/${pinId}/progress`);
-    return response.data;
-  },
-  
-  // Establecer decisión del profesor
-  setTeacherDecision: async (pinId: string, data: TeacherDecisionDto): Promise<ExpeditionPinProgress> => {
-    const response = await api.post(`/expeditions/pins/${pinId}/decision`, data);
-    return response.data;
-  },
-  
-  // Establecer decisiones en bulk
-  setTeacherDecisionBulk: async (pinId: string, decisions: TeacherDecisionDto[]): Promise<ExpeditionPinProgress[]> => {
-    const response = await api.post(`/expeditions/pins/${pinId}/decisions`, { decisions });
-    return response.data;
-  },
-  
-  // Obtener entregas de un pin
-  getPinSubmissions: async (pinId: string): Promise<ExpeditionSubmission[]> => {
-    const response = await api.get(`/expeditions/pins/${pinId}/submissions`);
-    return response.data;
-  },
-  
-  // ==================== STUDENT ROUTES ====================
-  
-  // Obtener expediciones del estudiante
-  getStudentExpeditions: async (classroomId: string, studentProfileId: string): Promise<(Expedition & { studentProgress: ExpeditionStudentProgress })[]> => {
-    const response = await api.get(`/expeditions/student/${classroomId}/${studentProfileId}`);
-    return response.data;
-  },
-  
-  // Obtener detalle de expedición para estudiante
-  getStudentExpeditionDetail: async (expeditionId: string, studentProfileId: string): Promise<Expedition & { studentProgress: ExpeditionStudentProgress }> => {
-    const response = await api.get(`/expeditions/student/${expeditionId}/detail/${studentProfileId}`);
-    return response.data;
-  },
-  
-  // Obtener progreso del estudiante
-  getStudentProgress: async (expeditionId: string, studentProfileId: string): Promise<ExpeditionStudentProgress> => {
-    const response = await api.get(`/expeditions/${expeditionId}/progress/${studentProfileId}`);
-    return response.data;
-  },
-  
-  // Crear entrega de tarea
-  createSubmission: async (expeditionId: string, pinId: string, data: CreateSubmissionDto): Promise<ExpeditionSubmission> => {
-    const response = await api.post(`/expeditions/${expeditionId}/pins/${pinId}/submit`, data);
-    return response.data;
+  reorder: async (expeditionId: string, stopIds: string[]): Promise<TeacherExpedition> =>
+    (await api.put(`/expeditions/${expeditionId}/stops/order`, { stopIds })).data.data,
+  board: async (expeditionId: string): Promise<ExpeditionBoard> =>
+    (await api.get(`/expeditions/${expeditionId}/board`)).data.data,
+  reviewQueue: async (expeditionId: string): Promise<ReviewQueue> =>
+    (await api.get(`/expeditions/${expeditionId}/review`)).data.data,
+  review: async (expeditionId: string, decisions: ReviewDecision[]): Promise<{ approved: number; needsWork: number; skipped: number }> =>
+    (await api.post(`/expeditions/${expeditionId}/review`, { decisions })).data.data,
+  markClass: async (stopId: string, studentProfileIds: string[]): Promise<{ marked: number; skipped: number }> =>
+    (await api.post(`/expeditions/stops/${stopId}/class`, { studentProfileIds })).data.data,
+  /** Recurso del docente o evidencia del alumno (imagen o PDF, máximo 5 MB). */
+  upload: async (file: File): Promise<{ url: string; name: string | null }> => {
+    const form = new FormData();
+    form.append('file', file);
+    return (await api.post('/expeditions/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } })).data.data;
   },
 
-  // Completar un pin (estudiante avanza al siguiente)
-  completePin: async (pinId: string, studentProfileId: string): Promise<ExpeditionPinProgress> => {
-    const response = await api.post(`/expeditions/pins/${pinId}/complete`, { studentProfileId });
-    return response.data;
-  },
+  // Alumno
+  mine: async (classroomId: string): Promise<StudentExpeditionSummary[]> =>
+    (await api.get(`/expeditions/mine/${classroomId}`)).data.data,
+  play: async (expeditionId: string): Promise<StudentExpedition> =>
+    (await api.get(`/expeditions/${expeditionId}/play`)).data.data,
+  continueStory: async (stopId: string): Promise<StudentExpedition> =>
+    (await api.post(`/expeditions/stops/${stopId}/continue`)).data.data,
+  challenge: async (stopId: string): Promise<ChallengeState> =>
+    (await api.get(`/expeditions/stops/${stopId}/challenge`)).data.data,
+  answer: async (stopId: string, questionId: string, answer: ChallengeAnswer): Promise<AnswerResult> =>
+    (await api.post(`/expeditions/stops/${stopId}/answer`, { questionId, answer })).data.data,
+  submitEvidence: async (stopId: string, input: { files: string[]; note: string | null }): Promise<StudentExpedition> =>
+    (await api.post(`/expeditions/stops/${stopId}/evidence`, input)).data.data,
 };
-
-// ==================== PIN TYPE CONFIG ====================
-
-export const PIN_TYPE_CONFIG: Record<ExpeditionPinType, { label: string; icon: string; color: string }> = {
-  INTRO: { label: 'Introducción', icon: '🏠', color: 'from-green-500 to-emerald-500' },
-  OBJECTIVE: { label: 'Objetivo', icon: '📍', color: 'from-blue-500 to-indigo-500' },
-  FINAL: { label: 'Final', icon: '🏁', color: 'from-amber-500 to-orange-500' },
-};
-
-export const PROGRESS_STATUS_CONFIG: Record<ExpeditionProgressStatus, { label: string; color: string; bgColor: string }> = {
-  LOCKED: { label: 'Bloqueado', color: 'text-gray-400', bgColor: 'bg-gray-100 dark:bg-gray-800' },
-  UNLOCKED: { label: 'Desbloqueado', color: 'text-blue-500', bgColor: 'bg-blue-100 dark:bg-blue-900/30' },
-  IN_PROGRESS: { label: 'En progreso', color: 'text-yellow-500', bgColor: 'bg-yellow-100 dark:bg-yellow-900/30' },
-  PASSED: { label: 'Aprobado', color: 'text-green-500', bgColor: 'bg-green-100 dark:bg-green-900/30' },
-  FAILED: { label: 'No aprobado', color: 'text-red-500', bgColor: 'bg-red-100 dark:bg-red-900/30' },
-  COMPLETED: { label: 'Completado', color: 'text-purple-500', bgColor: 'bg-purple-100 dark:bg-purple-900/30' },
-};
-
-export default expeditionApi;

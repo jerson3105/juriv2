@@ -2,7 +2,7 @@ import { Check, Clock, FileText, X, type LucideIcon } from 'lucide-react';
 import type { AttendanceStatus, MyAttendanceDay } from '../../../lib/attendanceApi';
 import type { ClassNote } from '../../../lib/classNoteApi';
 import { NOTE_CATEGORY, activeNotes, dayLabel, longDayLabel, noteDateKey, plural } from '../home/studentHomeHelpers';
-import { jiroAction, jiroEndsKey, openJiro, stations, type JiroItem, type TodoItem } from '../home/nextGoal';
+import { expeditionAction, expeditionDueKey, expeditionStep, openExpeditions, type ExpeditionItem, type TodoItem } from '../home/nextGoal';
 
 interface AttendanceStyle {
   /** Leyenda y conteos. */
@@ -49,51 +49,51 @@ export interface CalendarDay {
   key: string;
   attendance: MyAttendanceDay | null;
   notes: ClassNote[];
-  /** Expediciones de Jiro que cierran ese día. */
-  jiro: JiroItem[];
+  /** Expediciones cuya parada actual vence ese día. */
+  expeditions: ExpeditionItem[];
 }
 
 /** En el calendario: los avisos vigentes y, en días pasados, también los que el docente ya cerró (historial). */
 const visibleNote = (note: ClassNote, today: string) => !!note.dueDate && (!note.isCompleted || noteDateKey(note.dueDate) < today);
 
 /** Todo lo que tiene fecha para el alumno, por día (AAAA-MM-DD). */
-export const buildCalendar = (attendance: MyAttendanceDay[], notes: ClassNote[], jiro: JiroItem[], today: string) => {
+export const buildCalendar = (attendance: MyAttendanceDay[], notes: ClassNote[], expeditions: ExpeditionItem[], today: string) => {
   const days = new Map<string, CalendarDay>();
   const dayOf = (key: string) => {
     const existing = days.get(key);
     if (existing) return existing;
-    const created: CalendarDay = { key, attendance: null, notes: [], jiro: [] };
+    const created: CalendarDay = { key, attendance: null, notes: [], expeditions: [] };
     days.set(key, created);
     return created;
   };
   attendance.forEach((record) => { dayOf(record.day).attendance = record; });
   notes.filter((note) => visibleNote(note, today)).forEach((note) => dayOf(noteDateKey(note.dueDate!)).notes.push(note));
-  openJiro(jiro).forEach((expedition) => {
-    const key = jiroEndsKey(expedition);
-    if (key && key >= today) dayOf(key).jiro.push(expedition);
+  openExpeditions(expeditions).forEach((expedition) => {
+    const key = expeditionDueKey(expedition);
+    if (key && key >= today) dayOf(key).expeditions.push(expedition);
   });
   return days;
 };
 
-/** "Lo próximo": avisos vigentes desde hoy (de cualquier mes) y cierres de expediciones, por fecha. */
-export const upcomingItems = (notes: ClassNote[], jiro: JiroItem[], today: string): TodoItem[] => {
+/** "Lo próximo": avisos vigentes desde hoy (de cualquier mes) y entregas de expediciones, por fecha. */
+export const upcomingItems = (notes: ClassNote[], expeditions: ExpeditionItem[], today: string): TodoItem[] => {
   const dated: Array<{ sort: string; item: TodoItem }> = [];
   activeNotes(notes, today).forEach((note) => {
     const key = noteDateKey(note.dueDate!);
     dated.push({ sort: `${key}|1`, item: { key: `note:${note.id}`, chip: dayLabel(key, today), today: key === today, label: NOTE_CATEGORY[note.category], text: note.content } });
   });
-  openJiro(jiro).forEach((expedition) => {
-    const key = jiroEndsKey(expedition);
+  openExpeditions(expeditions).forEach((expedition) => {
+    const key = expeditionDueKey(expedition);
     if (!key || key < today) return;
     dated.push({
       sort: `${key}|0`,
       item: {
-        key: `jiro:${expedition.id}`,
-        chip: `Cierra ${dayLabel(key, today).toLowerCase()}`,
+        key: `exp:${expedition.id}`,
+        chip: `Vence ${dayLabel(key, today).toLowerCase()}`,
         today: key === today,
         label: 'Expedición',
-        text: `«${expedition.name}» · ${stations(expedition)}`,
-        action: jiroAction(expedition),
+        text: `«${expedition.name}» · ${expeditionStep(expedition)}`,
+        action: expeditionAction(expedition),
       },
     });
   });
@@ -131,6 +131,6 @@ export const dayAriaLabel = (day: CalendarDay) => {
   if (day.notes.length) {
     parts.push(`${plural(day.notes.length, 'aviso', 'avisos')}: ${day.notes.map((note) => `${NOTE_CATEGORY[note.category]}: ${note.content}`).join('; ')}`);
   }
-  day.jiro.forEach((expedition) => parts.push(`cierra la expedición «${expedition.name}»`));
+  day.expeditions.forEach((expedition) => parts.push(`vence ${expeditionStep(expedition)} de la expedición «${expedition.name}»`));
   return parts.join('. ');
 };

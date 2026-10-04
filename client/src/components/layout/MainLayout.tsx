@@ -12,8 +12,7 @@ import { useStudentStore } from '../../store/studentStore';
 import { useThemeStore } from '../../store/themeStore';
 import { useAnnouncer } from '../../store/announcerStore';
 import { useCurrentStudentProfile } from '../../hooks/useCurrentStudentProfile';
-import { expeditionApi } from '../../lib/expeditionApi';
-import { jiroExpeditionApi } from '../../lib/jiroExpeditionApi';
+import { expeditionApi, expeditionKeys } from '../../lib/expeditionApi';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { NotificationsBell, NotificationsPanel } from '../NotificationsPanel';
 import { BugReportButton } from '../BugReportButton';
@@ -75,19 +74,14 @@ export const MainLayout = () => {
     [currentProfile?.classroom?.themeConfig],
   );
 
-  // Expediciones de la clase (el menú las muestra si hay; el punto, si alguna sigue en curso).
+  // Expediciones de la clase (misma caché que el Inicio y el calendario): el menú las muestra si hay; el punto,
+  // solo si hay algo que el alumno pueda hacer (no si espera a su profe).
   const { data: studentExpeditions = [] } = useQuery({
-    queryKey: ['student-expeditions', currentProfile?.classroomId, currentProfile?.id],
-    queryFn: () => expeditionApi.getStudentExpeditions(currentProfile!.classroomId, currentProfile!.id),
-    enabled: !isTeacher && !!currentProfile?.classroomId && !!currentProfile?.id,
+    queryKey: expeditionKeys.mine(currentProfile?.classroomId ?? ''),
+    queryFn: () => expeditionApi.mine(currentProfile!.classroomId),
+    enabled: !isTeacher && !!currentProfile?.classroomId,
   });
-  const hasActiveExpeditions = studentExpeditions.some((exp) => !exp.studentProgress?.isCompleted);
-  // Expediciones de Jiro (misma caché que el Inicio y el calendario): sin ninguna, no aparece en el menú.
-  const { data: jiroExpeditions } = useQuery({
-    queryKey: ['jiro-available-expeditions', currentProfile?.id],
-    queryFn: () => jiroExpeditionApi.getAvailable(currentProfile!.id),
-    enabled: !isTeacher && !!currentProfile?.id,
-  });
+  const hasActiveExpeditions = studentExpeditions.some((expedition) => expedition.actionable);
 
   const matchesPath = (path: string, mode: 'exact' | 'startsWith' = 'exact') => {
     if (mode === 'startsWith') {
@@ -109,9 +103,7 @@ export const MainLayout = () => {
     { path: '/my-shop', mode: 'exact' as const },
     { path: '/my-badges', mode: 'exact' as const },
     { path: '/my-avatar', mode: 'exact' as const },
-    { path: '/expeditions', mode: 'exact' as const },
-    { path: '/jiro-expeditions', mode: 'exact' as const },
-    { path: '/jiro-expedition', mode: 'startsWith' as const },
+    { path: '/expeditions', mode: 'startsWith' as const },
     { path: '/collectibles', mode: 'exact' as const },
     { path: '/my-story', mode: 'exact' as const },
   ].some((route) => matchesPath(route.path, route.mode));
@@ -154,7 +146,6 @@ export const MainLayout = () => {
         pathname,
         expeditions: studentExpeditions.length,
         hasActiveExpeditions,
-        jiroExpeditions: jiroExpeditions ? jiroExpeditions.length : null,
         hasStoryTheme,
       })
       : studentEmptyNav(pathname);

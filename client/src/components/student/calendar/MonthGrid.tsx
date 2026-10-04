@@ -25,7 +25,7 @@ export const MonthGrid = ({ year, month, today, days, onSelect, onMove, onToday,
   const isCurrent = today.startsWith(prefix);
   const statuses = new Set(inMonth.flatMap((day) => (day.attendance ? [day.attendance.status] : [])));
   const hasNotes = inMonth.some((day) => day.notes.length > 0);
-  const hasJiro = inMonth.some((day) => day.jiro.length > 0);
+  const hasExpeditions = inMonth.some((day) => day.expeditions.length > 0);
   const nextKey = inMonth.length === 0
     ? [...days.keys()].filter((key) => key >= today && !key.startsWith(prefix)).sort()[0] ?? null
     : null;
@@ -81,7 +81,7 @@ export const MonthGrid = ({ year, month, today, days, onSelect, onMove, onToday,
               <span className="flex w-full items-start justify-between gap-0.5">
                 {number}
                 <span className="flex items-center gap-0.5">
-                  {day.jiro.length > 0 && <Compass size={14} className="text-violet-700 dark:text-violet-300" aria-hidden="true" />}
+                  {day.expeditions.length > 0 && <Compass size={14} className="text-violet-700 dark:text-violet-300" aria-hidden="true" />}
                   {day.notes.length > 0 && <Pin size={14} className="text-indigo-700 dark:text-indigo-300" aria-hidden="true" />}
                   {day.notes.length > 1 && <span className="hidden text-xs font-bold sm:inline">{day.notes.length}</span>}
                 </span>
@@ -105,7 +105,7 @@ export const MonthGrid = ({ year, month, today, days, onSelect, onMove, onToday,
               );
             })}
             {hasNotes && <li className="flex items-center gap-1.5 text-xs text-gray-800 dark:text-gray-100"><Pin size={14} className="text-indigo-700 dark:text-indigo-300" aria-hidden="true" />Aviso de tu profe</li>}
-            {hasJiro && <li className="flex items-center gap-1.5 text-xs text-gray-800 dark:text-gray-100"><Compass size={14} className="text-violet-700 dark:text-violet-300" aria-hidden="true" />Cierre de expedición</li>}
+            {hasExpeditions && <li className="flex items-center gap-1.5 text-xs text-gray-800 dark:text-gray-100"><Compass size={14} className="text-violet-700 dark:text-violet-300" aria-hidden="true" />Entrega de expedición</li>}
           </ul>
           <p className={`mt-2 ${cardText}`}>Toca un día para ver el detalle.</p>
         </div>

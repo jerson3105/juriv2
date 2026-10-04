@@ -67,7 +67,7 @@ const FEATURE_INFO: Record<string, { emoji: string; description: string }> = {
   attendance: { emoji: '\u{1F4CB}', description: 'Registra la asistencia diaria de tus estudiantes desde el aula.' },
   collectibles: { emoji: '\u{1F4E6}', description: 'Tus estudiantes completan álbumes de figuritas abriendo sobres con su oro.' },
   storytelling: { emoji: '\u{1F4D6}', description: 'Crea una historia narrativa de fondo para tu clase que ambienta la experiencia.' },
-  expedition: { emoji: '\u{1F5FA}\uFE0F', description: 'Aventuras de aprendizaje con mapas interactivos donde los estudiantes exploran y completan misiones. Incluye la Expedición de Jiro con bancos de preguntas y sistema de energía.' },
+  expedition: { emoji: '\u{1F5FA}\uFE0F', description: 'Viajes por paradas sobre una constelación de Jiro: relatos, retos de tu banco de preguntas, evidencias y actividades en clase.' },
   question_bank: { emoji: '\u2753', description: 'Crea y organiza preguntas para el Observatorio de Jiro y las Expediciones.' },
   activities: { emoji: '\u26A1', description: 'Actividades para jugar en clase con Jiro de guía: Descanso de Jiro, Conquista, Pergaminos del Aula y Expediciones.' },
 };

@@ -54,8 +54,7 @@ const StudentScrollsPage = lazyPage(() => import('./pages/student/StudentScrolls
 const StudentGradesPage = lazyPage(() => import('./pages/student/StudentGradesPage').then((m) => ({ default: m.StudentGradesPage })));
 const StudentExpeditionsPage = lazyPage(() => import('./pages/student/StudentExpeditionsPage').then((m) => ({ default: m.StudentExpeditionsPage })));
 const StudentCollectiblesPage = lazyPage(() => import('./pages/student/StudentCollectiblesPage').then((m) => ({ default: m.StudentCollectiblesPage })));
-const StudentJiroExpeditionPage = lazyPage(() => import('./pages/student/StudentJiroExpeditionPage').then((m) => ({ default: m.StudentJiroExpeditionPage })));
-const StudentJiroExpeditionsPage = lazyPage(() => import('./pages/student/StudentJiroExpeditionsPage').then((m) => ({ default: m.StudentJiroExpeditionsPage })));
+const StudentExpeditionPage = lazyPage(() => import('./pages/student/StudentExpeditionPage').then((m) => ({ default: m.StudentExpeditionPage })));
 const StudentStoryPage = lazyPage(() => import('./pages/student/StudentStoryPage').then((m) => ({ default: m.StudentStoryPage })));
 const StudentProgressPage = lazyPage(() => import('./pages/student/StudentProgressPage').then((m) => ({ default: m.StudentProgressPage })));
 const StudentItemsShopPage = lazyPage(() => import('./pages/student/StudentItemsShopPage').then((m) => ({ default: m.StudentItemsShopPage })));
@@ -272,6 +271,7 @@ function App() {
               <Route path="question-banks" element={<QuestionBanksPage />} />
               <Route path="question-banks/:bankId" element={<QuestionBanksPage />} />
               <Route path="expeditions" element={<ExpeditionsPage />} />
+              <Route path="expeditions/:expeditionId" element={<ExpeditionsPage />} />
               <Route path="collectibles" element={<CollectiblesPage />} />
               <Route path="storytelling" element={<StorytellingPage />} />
               <Route path="families" element={<FamilyRoomPage />} />
@@ -299,8 +299,10 @@ function App() {
             <Route path="my-badges" element={<StudentBadgesPage />} />
             <Route path="my-avatar" element={<StudentAvatarPage />} />
             <Route path="expeditions" element={<StudentExpeditionsPage />} />
-            <Route path="jiro-expeditions" element={<StudentJiroExpeditionsPage />} />
-            <Route path="jiro-expedition/:expeditionId" element={<StudentJiroExpeditionPage />} />
+            <Route path="expeditions/:expeditionId" element={<StudentExpeditionPage />} />
+            {/* La Expedición de Jiro se unió a Expediciones. */}
+            <Route path="jiro-expeditions" element={<Navigate to="/expeditions" replace />} />
+            <Route path="jiro-expedition/:expeditionId" element={<Navigate to="/expeditions" replace />} />
             <Route path="collectibles" element={<StudentCollectiblesPage />} />
             <Route path="my-story" element={<StudentStoryPage />} />
             

@@ -893,6 +893,7 @@ class ExpeditionService {
         const states = computeStates(own, progressMap);
         const frontier = frontierOf(states);
         const done = isFinished(states);
+        const needsWork = states.find((s) => s.state === 'NEEDS_WORK');
         return {
           id: expedition.id,
           name: expedition.name,
@@ -906,6 +907,7 @@ class ExpeditionService {
           doneCount: states.filter((s) => s.row?.status === 'DONE').length,
           finished: finished.has(expedition.id) || done,
           current: frontier ? { id: frontier.stop.id, title: frontier.stop.title, kind: frontier.stop.kind, state: frontier.state, dueAt: frontier.stop.dueAt } : null,
+          needsWork: expedition.status === 'PUBLISHED' && needsWork ? { id: needsWork.stop.id, title: needsWork.stop.title } : null,
           actionable: expedition.status === 'PUBLISHED' && hasActionable(states),
         };
       })

@@ -12,8 +12,7 @@ import { badgeApi } from '../../../lib/badgeApi';
 import { classNoteApi } from '../../../lib/classNoteApi';
 import { clanApi } from '../../../lib/clanApi';
 import { correoApi, correoKeys } from '../../../lib/correoApi';
-import { expeditionApi } from '../../../lib/expeditionApi';
-import { jiroExpeditionApi } from '../../../lib/jiroExpeditionApi';
+import { expeditionApi, expeditionKeys } from '../../../lib/expeditionApi';
 import { recoveryApi } from '../../../lib/recoveryApi';
 import { shopApi } from '../../../lib/shopApi';
 import { accentGradient, type StoryAccent } from '../../../lib/storyTheme';
@@ -86,8 +85,8 @@ export const StudentHome = ({ profile, firstName, storyAccent }: StudentHomeProp
   const { data: notes = [] } = useQuery({ queryKey: ['class-notes', classroomId], queryFn: () => classNoteApi.list(classroomId) });
   const { data: energy } = useQuery({ queryKey: ['my-energy', id], queryFn: () => recoveryApi.mine(id), enabled: resting, staleTime: 30_000 });
   const { data: correo } = useQuery({ queryKey: correoKeys.mine(id), queryFn: () => correoApi.mine(id), staleTime: 30_000 });
-  const { data: jiro = [] } = useQuery({ queryKey: ['jiro-available-expeditions', id], queryFn: () => jiroExpeditionApi.getAvailable(id) });
-  const { data: classic = [] } = useQuery({ queryKey: ['student-expeditions', classroomId, id], queryFn: () => expeditionApi.getStudentExpeditions(classroomId, id) });
+  // Misma caché que el menú, el calendario y «Expediciones».
+  const { data: expeditions = [] } = useQuery({ queryKey: expeditionKeys.mine(classroomId), queryFn: () => expeditionApi.mine(classroomId) });
   // La misma vista que «Mis insignias»: mismo criterio de «te falta poco» y mismo conteo.
   const { data: badgeView } = useQuery({
     queryKey: myBadgesKey(id),
@@ -123,8 +122,7 @@ export const StudentHome = ({ profile, firstName, storyAccent }: StudentHomeProp
     initial,
     mission: energy?.mission?.text ?? null,
     notes,
-    jiro,
-    classic,
+    expeditions,
     correo: correoItem,
     role: {
       needsChoice: canChooseRole && !profile.characterClassId,

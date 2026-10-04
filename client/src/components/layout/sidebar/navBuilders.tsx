@@ -120,7 +120,8 @@ export const teacherClassNav = (input: TeacherClassNavInput) => {
       label: 'Aprendizaje',
       icon: icon(GraduationCap),
       items: [
-        item(`${base}/activities`, 'Observatorio de Jiro', Telescope, 'activities'),
+        // Expediciones vive dentro del Observatorio (su tarjeta abre /expeditions).
+        item(`${base}/activities`, 'Observatorio de Jiro', Telescope, 'activities', { active: at(`${base}/activities`) || at(`${base}/expeditions`) }),
         item(`${base}/question-banks`, 'Preguntas', BookOpen, 'question_bank'),
         // Siempre visible: sin configurar, Calificaciones muestra cómo empezar.
         item(`${base}/gradebook`, 'Calificaciones', ClipboardList, 'grades'),
@@ -168,11 +169,9 @@ export const teacherHomeNav = (pathname: string): NavNode[] => [
 interface StudentNavInput {
   profile: MyClass;
   pathname: string;
-  /** Expediciones de la clase (0 = no hay) y si alguna sigue en curso. */
+  /** Expediciones de la clase (0 = no hay) y si en alguna tiene algo que hacer ahora. */
   expeditions: number;
   hasActiveExpeditions: boolean;
-  /** Expediciones de Jiro disponibles; null mientras se cargan (no se oculta por las dudas). */
-  jiroExpeditions: number | null;
   hasStoryTheme: boolean;
 }
 
@@ -212,18 +211,12 @@ export const studentClassNav = (input: StudentNavInput): NavNode[] => {
     ...(has.badges ? [link('/my-badges', 'Mis insignias', Medal)] : []),
     ...(has.collectibles ? [link('/collectibles', 'Coleccionables', Album)] : []),
   ];
-  const showJiro = input.jiroExpeditions === null || input.jiroExpeditions > 0 || at('/jiro-expeditions') || pathname.startsWith('/jiro-expedition/');
+  const inExpeditions = at('/expeditions') || pathname.startsWith('/expeditions/');
   const adventures: NavItem[] = [
-    ...(showJiro ? [{
-      id: '/jiro-expeditions',
-      label: 'Expedición de Jiro',
-      to: '/jiro-expeditions',
-      icon: <span className="text-sm leading-none" aria-hidden="true">🦊</span>,
-      active: at('/jiro-expeditions') || pathname.startsWith('/jiro-expedition/'),
-    }] : []),
-    ...(input.expeditions > 0 ? [link('/expeditions', 'Expediciones', Map, input.hasActiveExpeditions && !at('/expeditions')
-      ? { badge: { kind: 'dot', label: 'Hay algo nuevo en Expediciones' } }
-      : {})] : []),
+    ...(input.expeditions > 0 || inExpeditions ? [link('/expeditions', 'Expediciones', Map, {
+      active: inExpeditions,
+      ...(input.hasActiveExpeditions && !inExpeditions ? { badge: { kind: 'dot', label: 'Tienes algo que hacer en Expediciones' } } : {}),
+    })] : []),
     ...(has.scrolls ? [link('/scrolls', 'Pergaminos', ScrollText, profile.classroom?.scrollsOpen && !at('/scrolls')
       ? { badge: { kind: 'dot', label: 'Hay algo nuevo en Pergaminos' } }
       : {})] : []),

@@ -1,4 +1,5 @@
 import type { ClassNote } from '../../../lib/classNoteApi';
+import type { StudentExpeditionSummary } from '../../../lib/expeditionApi';
 import { NOTE_CATEGORY, activeNotes, addDaysKey, dayLabel, localDateKey, noteDateKey, plural, weekdayName } from './studentHomeHelpers';
 
 /** Lo que hace un botón del inicio: ir a una página o abrir un modal del propio inicio. */
@@ -6,20 +7,7 @@ export type HomeAction =
   | { kind: 'link'; to: string; label: string }
   | { kind: 'correo' | 'role' | 'energy'; label: string };
 
-export interface JiroItem {
-  id: string;
-  name: string;
-  status: string;
-  endsAt: string | null;
-  totalStations: number;
-  studentProgress: { status: string; completedStations: number } | null;
-}
-
-export interface ClassicItem {
-  id: string;
-  name: string;
-  studentProgress?: { isCompleted: boolean } | null;
-}
+export type ExpeditionItem = StudentExpeditionSummary;
 
 export interface CorreoItem {
   prompt: string;
@@ -32,8 +20,8 @@ export interface HomeInput {
   initial: boolean;
   mission: string | null;
   notes: ClassNote[];
-  jiro: JiroItem[];
-  classic: ClassicItem[];
+  /** Expediciones de su clase (publicadas y cerradas); solo cuentan las que tienen algo que hacer. */
+  expeditions: ExpeditionItem[];
   /** Carta por escribir (o por reescribir); null si no hay. */
   correo: CorreoItem | null;
   role: { needsChoice: boolean; current: string; others: string[] };
@@ -76,19 +64,24 @@ export interface TodoItem {
 
 const calendarLink: HomeAction = { kind: 'link', to: '/my-calendar', label: 'Ver mi calendario' };
 
-// Expediciones de Jiro abiertas y sin terminar, las que cierran antes primero.
-export const openJiro = (jiro: JiroItem[]) =>
-  jiro
-    .filter((e) => (e.status === 'OPEN' || e.status === 'IN_PROGRESS') && e.studentProgress?.status !== 'COMPLETED' && e.studentProgress?.status !== 'PENDING_REVIEW')
-    .sort((a, b) => (a.endsAt ?? '9999').localeCompare(b.endsAt ?? '9999'));
+// Expediciones donde el alumno puede hacer algo ahora (no las que esperan a su profe ni una parada en clase),
+// las que vencen antes primero. Así el inicio nunca promete lo que no existe.
+export const openExpeditions = (items: ExpeditionItem[]) =>
+  items
+    .filter((e) => e.actionable)
+    .sort((a, b) => (a.current?.dueAt ?? '9999').localeCompare(b.current?.dueAt ?? '9999'));
 
-export const jiroEndsKey = (e: JiroItem) => (e.endsAt ? localDateKey(new Date(e.endsAt)) : null);
-export const stations = (e: JiroItem) => `${e.studentProgress?.completedStations ?? 0} de ${plural(e.totalStations, 'estación', 'estaciones')}`;
-export const jiroAction = (e: JiroItem): HomeAction => ({
+export const expeditionDueKey = (e: ExpeditionItem) => (e.current?.dueAt ? localDateKey(new Date(e.current.dueAt)) : null);
+export const expeditionProgress = (e: ExpeditionItem) => `${e.doneCount} de ${plural(e.stopsCount, 'parada', 'paradas')}`;
+export const expeditionAction = (e: ExpeditionItem): HomeAction => ({
   kind: 'link',
-  to: `/jiro-expedition/${e.id}`,
-  label: e.studentProgress && e.studentProgress.status !== 'NOT_STARTED' ? 'Continuar' : 'Empezar',
+  // Abre directo la parada que toca (o la que su profe pidió mejorar).
+  to: `/expeditions/${e.id}${e.needsWork ? `?parada=${e.needsWork.id}` : e.current && e.current.kind !== 'CLASS' ? `?parada=${e.current.id}` : ''}`,
+  label: e.needsWork ? 'Mejorar' : e.doneCount > 0 ? 'Continuar' : 'Empezar',
 });
+/** La parada que toca, en palabras (la mejora pedida va primero). */
+export const expeditionStep = (e: ExpeditionItem) =>
+  e.needsWork ? `mejorar «${e.needsWork.title}»` : e.current ? `«${e.current.title}»` : expeditionProgress(e);
 
 /**
  * "Tu próxima meta": gana la primera que se cumpla. Nunca es negativa y nunca promete lo que no
@@ -109,10 +102,10 @@ export const nextGoal = (input: HomeInput): Goal => {
   }
 
   // 2. Algo vence hoy: primero una expedición (se puede hacer aquí), después un aviso.
-  const jiro = openJiro(input.jiro);
-  const closingToday = jiro.find((e) => jiroEndsKey(e) === today);
-  if (closingToday) {
-    return { key: `jiro:${closingToday.id}`, emoji: '🦊', title: 'Tu expedición cierra hoy', body: `«${closingToday.name}» · ${stations(closingToday)}`, primary: jiroAction(closingToday) };
+  const expeditions = openExpeditions(input.expeditions);
+  const dueToday = expeditions.find((e) => expeditionDueKey(e) === today);
+  if (dueToday) {
+    return { key: `exp:${dueToday.id}`, emoji: '🧭', title: 'Tu expedición vence hoy', body: `«${dueToday.name}» · ${expeditionStep(dueToday)}`, primary: expeditionAction(dueToday) };
   }
   const noteToday = activeNotes(input.notes, today).find((n) => noteDateKey(n.dueDate!) === today);
   if (noteToday) {
@@ -125,17 +118,17 @@ export const nextGoal = (input: HomeInput): Goal => {
       ? { key: 'correo', emoji: '💌', title: 'Tu profe te pide reescribir tu carta', body: 'Con un mensaje amable.', primary: { kind: 'correo', label: 'Reescribir' } }
       : { key: 'correo', emoji: '💌', title: 'Tienes una carta por escribir', body: `«${input.correo.prompt}»`, primary: { kind: 'correo', label: 'Escribir mi carta' } };
   }
-  const nextJiro = jiro[0];
-  if (nextJiro) {
-    const started = !!nextJiro.studentProgress && nextJiro.studentProgress.status !== 'NOT_STARTED';
-    const ends = jiroEndsKey(nextJiro);
-    return started
-      ? { key: `jiro:${nextJiro.id}`, emoji: '🦊', title: 'Sigue tu expedición', body: `«${nextJiro.name}» · ${stations(nextJiro)}${ends ? ` · cierra el ${weekdayName(ends)}` : ''}`, primary: jiroAction(nextJiro) }
-      : { key: `jiro:${nextJiro.id}`, emoji: '🦊', title: 'Nueva expedición', body: `«${nextJiro.name}»${ends ? ` · cierra el ${weekdayName(ends)}` : ''}`, primary: jiroAction(nextJiro) };
+  const toImprove = expeditions.find((e) => e.needsWork);
+  if (toImprove) {
+    return { key: `exp:${toImprove.id}`, emoji: '✏️', title: 'Tu profe te pide mejorar', body: `«${toImprove.needsWork!.title}» en «${toImprove.name}»`, primary: expeditionAction(toImprove) };
   }
-  const classic = input.classic.find((e) => !e.studentProgress?.isCompleted);
-  if (classic) {
-    return { key: `classic:${classic.id}`, emoji: '🗺️', title: 'Sigue tu expedición', body: `«${classic.name}»`, primary: { kind: 'link', to: '/expeditions', label: 'Continuar' } };
+  const nextExpedition = expeditions[0];
+  if (nextExpedition) {
+    const ends = expeditionDueKey(nextExpedition);
+    const due = ends ? ` · vence el ${weekdayName(ends)}` : '';
+    return nextExpedition.doneCount > 0
+      ? { key: `exp:${nextExpedition.id}`, emoji: '🧭', title: 'Sigue tu expedición', body: `«${nextExpedition.name}» · ${expeditionStep(nextExpedition)}${due}`, primary: expeditionAction(nextExpedition) }
+      : { key: `exp:${nextExpedition.id}`, emoji: '🧭', title: 'Nueva expedición', body: `«${nextExpedition.name}»${due}`, primary: expeditionAction(nextExpedition) };
   }
 
   // 4. Primer paso pendiente: elegir su rol
@@ -195,36 +188,33 @@ export const todoItems = (input: HomeInput, goalKey: string): TodoItem[] => {
   const { today } = input;
   const until = addDaysKey(today, TODO_DAYS);
   const notes = activeNotes(input.notes, today).filter((n) => noteDateKey(n.dueDate!) <= until);
-  const jiro = openJiro(input.jiro);
+  const expeditions = openExpeditions(input.expeditions);
   const items: TodoItem[] = [];
 
   const noteItem = (n: ClassNote): TodoItem => {
     const key = noteDateKey(n.dueDate!);
     return { key: `note:${n.id}`, chip: dayLabel(key, today), today: key === today, label: NOTE_CATEGORY[n.category], text: n.content };
   };
-  const jiroItem = (e: JiroItem): TodoItem => {
-    const ends = jiroEndsKey(e);
+  const expeditionItem = (e: ExpeditionItem): TodoItem => {
+    const due = expeditionDueKey(e);
     return {
-      key: `jiro:${e.id}`,
-      chip: ends ? `Cierra ${dayLabel(ends, today).toLowerCase()}` : '',
-      today: ends === today,
+      key: `exp:${e.id}`,
+      chip: due ? `Vence ${dayLabel(due, today).toLowerCase()}` : '',
+      today: due === today,
       label: 'Expedición',
-      text: `«${e.name}» · ${stations(e)}`,
-      action: jiroAction(e),
+      text: `«${e.name}» · ${expeditionStep(e)}`,
+      action: expeditionAction(e),
     };
   };
 
   // 1. Hoy
-  jiro.filter((e) => jiroEndsKey(e) === today).forEach((e) => items.push(jiroItem(e)));
+  expeditions.filter((e) => expeditionDueKey(e) === today).forEach((e) => items.push(expeditionItem(e)));
   notes.filter((n) => noteDateKey(n.dueDate!) === today).forEach((n) => items.push(noteItem(n)));
   // 2. Esperando en la plataforma
   if (input.correo) {
     items.push({ key: 'correo', chip: '', today: false, label: 'Correo Estelar', text: input.correo.rejected ? 'Reescribe tu carta' : 'Escribe tu carta', action: { kind: 'correo', label: input.correo.rejected ? 'Reescribir' : 'Escribir' } });
   }
-  jiro.filter((e) => jiroEndsKey(e) !== today).forEach((e) => items.push(jiroItem(e)));
-  input.classic.filter((e) => !e.studentProgress?.isCompleted).forEach((e) => items.push({
-    key: `classic:${e.id}`, chip: '', today: false, label: 'Expedición', text: `«${e.name}»`, action: { kind: 'link', to: '/expeditions', label: 'Continuar' },
-  }));
+  expeditions.filter((e) => expeditionDueKey(e) !== today).forEach((e) => items.push(expeditionItem(e)));
   // 3. Próximos avisos
   notes.filter((n) => noteDateKey(n.dueDate!) !== today).forEach((n) => items.push(noteItem(n)));
 

@@ -1,11 +1,11 @@
 import { Suspense, lazy, useEffect, useState, type ReactNode } from 'react';
-import { useOutletContext, useSearchParams } from 'react-router-dom';
+import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { ClipboardCheck, Clock, Gift, Loader2, Moon, Play, Users } from 'lucide-react';
 import { activityApi, activityKeys, type ActivitySession } from '../../lib/activityApi';
 import type { Classroom, Student } from '../../lib/classroomApi';
-import ExpeditionTypeModal from '../../components/modals/ExpeditionTypeModal';
+import { expeditionApi, expeditionKeys } from '../../lib/expeditionApi';
 import { Jiro } from '../../components/observatorio/Jiro';
 import { JIRO_POSES, preloadJiro } from '../../components/observatorio/jiroPoses';
 import { CATALOG, entryForSession, lastPlayedLabel, recommend, type CatalogEntry, type ObservatorioActivityId } from '../../components/observatorio/catalog';
@@ -14,15 +14,13 @@ import { useTodayPresence } from '../../components/observatorio/usePresence';
 // Cada actividad se descarga solo al abrirla.
 const ScrollsActivity = lazy(() => import('../../components/activities/ScrollsActivity').then((m) => ({ default: m.ScrollsActivity })));
 const ConquistaActivity = lazy(() => import('../../components/observatorio/conquista/ConquistaActivity').then((m) => ({ default: m.ConquistaActivity })));
-const ExpeditionsActivity = lazy(() => import('../../components/activities/ExpeditionsActivity').then((m) => ({ default: m.ExpeditionsActivity })));
 const DescansoActivity = lazy(() => import('../../components/observatorio/descanso/DescansoActivity').then((m) => ({ default: m.DescansoActivity })));
 const EstrellasActivity = lazy(() => import('../../components/observatorio/estrellas/EstrellasActivity').then((m) => ({ default: m.EstrellasActivity })));
 const ErrorActivity = lazy(() => import('../../components/observatorio/error/ErrorActivity').then((m) => ({ default: m.ErrorActivity })));
 const CorreoActivity = lazy(() => import('../../components/observatorio/correo/CorreoActivity').then((m) => ({ default: m.CorreoActivity })));
-const JiroExpeditionsActivity = lazy(() => import('../../components/activities/JiroExpeditionsActivity').then((m) => ({ default: m.JiroExpeditionsActivity })));
 
 type ClassroomWithStudents = Classroom & { students?: Student[] };
-type Selected = ObservatorioActivityId | 'expeditions' | 'jiro-expeditions';
+type Selected = ObservatorioActivityId;
 
 const Loading = () => (
   <div className="flex min-h-[50vh] items-center justify-center" role="status">
@@ -32,7 +30,7 @@ const Loading = () => (
 );
 
 // Tarjeta del catálogo: blanca, con un recuadro nocturno y la pose de Jiro.
-const ActivityCard = ({ entry, lastPlayedAt, onOpen }: { entry: CatalogEntry; lastPlayedAt?: string | null; onOpen: () => void }) => (
+const ActivityCard = ({ entry, lastPlayedAt, badge, onOpen }: { entry: CatalogEntry; lastPlayedAt?: string | null; badge?: string | null; onOpen: () => void }) => (
   <button
     type="button"
     onClick={onOpen}
@@ -50,6 +48,7 @@ const ActivityCard = ({ entry, lastPlayedAt, onOpen }: { entry: CatalogEntry; la
           <span key={r.label} className="inline-flex items-center gap-1"><span aria-hidden="true">{r.icon}</span> {r.label}</span>
         ))}
         {entry.sessionType && <span className="font-semibold text-indigo-700 dark:text-indigo-300">{lastPlayedLabel(lastPlayedAt)}</span>}
+        {badge && <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-900 dark:bg-amber-900/50 dark:text-amber-100">{badge}</span>}
       </span>
     </span>
   </button>
@@ -77,7 +76,10 @@ export const ObservatorioPage = () => {
     next.delete('banco');
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
-  const [showExpeditionModal, setShowExpeditionModal] = useState(false);
+  const navigate = useNavigate();
+  // Expediciones: evidencias por revisar en la tarjeta del catálogo.
+  const { data: expeditionList } = useQuery({ queryKey: expeditionKeys.list(classroom.id), queryFn: () => expeditionApi.list(classroom.id), enabled: !!classroom.id });
+  const pendingReviews = (expeditionList ?? []).reduce((sum, expedition) => sum + expedition.pendingReviews, 0);
   const presence = useTodayPresence(classroom.id, students);
   useEffect(preloadJiro, []);
 
@@ -102,7 +104,7 @@ export const ObservatorioPage = () => {
 
   const [resuming, setResuming] = useState(false);
   const open = async (id: ObservatorioActivityId, resume?: ActivitySession | null) => {
-    if (id === 'expediciones') return setShowExpeditionModal(true);
+    if (id === 'expediciones') return navigate(`/classroom/${classroom.id}/expeditions`);
     if (!resume) return setSelected({ id });
     // La portada lista las partidas sin su estado: se trae completa para reanudarla.
     setResuming(true);
@@ -125,8 +127,6 @@ export const ObservatorioPage = () => {
         {selected.id === 'error' && <ErrorActivity classroom={classroom} resume={selected.resume} initialBankId={selected.bankId} onExit={back} />}
         {selected.id === 'correo' && <CorreoActivity classroom={classroom} resume={selected.resume} onExit={back} />}
         {selected.id === 'pergaminos' && <ScrollsActivity classroom={classroom} onBack={back} />}
-        {selected.id === 'expeditions' && <ExpeditionsActivity classroom={classroom} onBack={back} />}
-        {selected.id === 'jiro-expeditions' && <JiroExpeditionsActivity classroom={classroom} onBack={back} />}
       </Suspense>
     );
   }
@@ -211,17 +211,12 @@ export const ObservatorioPage = () => {
               key={entry.id}
               entry={entry}
               lastPlayedAt={entry.sessionType ? lastByType.get(entry.sessionType) : undefined}
+              badge={entry.id === 'expediciones' && pendingReviews > 0 ? `${pendingReviews} por revisar` : null}
               onOpen={() => void open(entry.id)}
             />
           ))}
         </div>
       </section>
-
-      <ExpeditionTypeModal
-        isOpen={showExpeditionModal}
-        onClose={() => setShowExpeditionModal(false)}
-        onSelectOption={(id) => setSelected({ id: id as Selected })}
-      />
     </div>
   );
 };

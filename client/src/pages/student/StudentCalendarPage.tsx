@@ -6,7 +6,7 @@ import { useCurrentStudentProfile } from '../../hooks/useCurrentStudentProfile';
 import { studentApi } from '../../lib/studentApi';
 import { attendanceApi } from '../../lib/attendanceApi';
 import { classNoteApi } from '../../lib/classNoteApi';
-import { jiroExpeditionApi } from '../../lib/jiroExpeditionApi';
+import { expeditionApi, expeditionKeys } from '../../lib/expeditionApi';
 import type { StoryAccent } from '../../lib/storyTheme';
 import { ErrorCard, StudentPageHeader } from '../../components/student/StudentPageHeader';
 import { HomeEmptyState } from '../../components/student/home/HomeEmptyState';
@@ -31,22 +31,22 @@ const Skeleton = () => (
  * (solo si tiene registros, sin porcentaje ni rachas) y el mes con el detalle de cada día.
  */
 const CalendarContent = ({ profile, storyAccent }: { profile: MyClass; storyAccent: StoryAccent | null }) => {
-  const { id, classroomId } = profile;
+  const { classroomId } = profile;
   const today = localDateKey();
   const [view, setView] = useState(() => ({ year: new Date().getFullYear(), month: new Date().getMonth() }));
   const [selected, setSelected] = useState<string | null>(null);
 
   const notesQuery = useQuery({ queryKey: ['class-notes', classroomId], queryFn: () => classNoteApi.list(classroomId) });
   const attendanceQuery = useQuery({ queryKey: ['my-attendance', classroomId], queryFn: () => attendanceApi.getMyAttendance(classroomId) });
-  const jiroQuery = useQuery({ queryKey: ['jiro-available-expeditions', id], queryFn: () => jiroExpeditionApi.getAvailable(id) });
+  const expeditionsQuery = useQuery({ queryKey: expeditionKeys.mine(classroomId), queryFn: () => expeditionApi.mine(classroomId) });
 
   const notes = useMemo(() => notesQuery.data ?? [], [notesQuery.data]);
-  const jiro = useMemo(() => jiroQuery.data ?? [], [jiroQuery.data]);
+  const expeditions = useMemo(() => expeditionsQuery.data ?? [], [expeditionsQuery.data]);
   const history = useMemo(() => attendanceQuery.data?.history ?? [], [attendanceQuery.data]);
-  const days = useMemo(() => buildCalendar(history, notes, jiro, today), [history, notes, jiro, today]);
-  const upcoming = useMemo(() => upcomingItems(notes, jiro, today), [notes, jiro, today]);
+  const days = useMemo(() => buildCalendar(history, notes, expeditions, today), [history, notes, expeditions, today]);
+  const upcoming = useMemo(() => upcomingItems(notes, expeditions, today), [notes, expeditions, today]);
   const hasAttendance = (attendanceQuery.data?.stats.total ?? 0) > 0;
-  const loading = notesQuery.isLoading || attendanceQuery.isLoading || jiroQuery.isLoading;
+  const loading = notesQuery.isLoading || attendanceQuery.isLoading || expeditionsQuery.isLoading;
   const failed = notesQuery.isError || attendanceQuery.isError;
   const nothing = !loading && !failed && days.size === 0;
 
