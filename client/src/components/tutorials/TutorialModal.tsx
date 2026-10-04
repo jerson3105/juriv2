@@ -1,0 +1,62 @@
+import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { ExternalLink } from 'lucide-react';
+import { HomeModal } from '../home/HomeModal';
+
+/**
+ * Tutoriales en video para docentes: páginas estáticas en public/tutoriales (se arman con
+ * tutoriales/motor/build.mjs). Apache las sirve como archivos: no pasan por la API.
+ */
+export const TUTORIALS = {
+  comportamientos: { title: 'Comportamientos', src: '/tutoriales/comportamientos.html', minutes: 1 },
+} as const;
+
+export type TutorialId = keyof typeof TUTORIALS;
+
+/** Reproduce un tutorial en un modal ancho. Esc lo cierra, también con el foco dentro del video. */
+export const TutorialModal = ({ id, onClose }: { id: TutorialId; onClose: () => void }) => {
+  const tutorial = TUTORIALS[id];
+  const frameRef = useRef<HTMLIFrameElement>(null);
+
+  // El reproductor avisa con postMessage cuando se pulsa Esc dentro de él (el teclado no sale del iframe).
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin || event.source !== frameRef.current?.contentWindow) return;
+      if ((event.data as { type?: unknown } | null)?.type === 'juried-tutorial:close') onClose();
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [onClose]);
+
+  // En body y sobre el layout de la clase (z-[100]): dentro del contenido (z-10) la barra lateral taparía el borde
+  // de un modal tan ancho. El contexto de AnimatePresence pasa igual a través del portal.
+  return createPortal(
+    <div className="relative z-[150]">
+      <HomeModal
+        title={`Tutorial: ${tutorial.title}`}
+        subtitle={`${tutorial.minutes} minuto · para docentes`}
+        onClose={onClose}
+        size="xl"
+        footer={(
+          <a href={tutorial.src} target="_blank" rel="noopener noreferrer"
+            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg px-3 text-sm font-semibold text-primary-700 hover:bg-primary-50 dark:text-primary-200 dark:hover:bg-primary-900/30">
+            Abrir en otra pestaña <ExternalLink size={15} aria-hidden="true" />
+          </a>
+        )}
+      >
+        {/* El alto cabe en la pantalla: el ancho se limita por la altura disponible (cabecera y pie del modal). */}
+        <div className="mx-auto w-full" style={{ maxWidth: 'calc((90vh - 190px) * 1.6)' }}>
+          <iframe
+            ref={frameRef}
+            src={tutorial.src}
+            title={`Tutorial: ${tutorial.title}`}
+            allow="fullscreen"
+            allowFullScreen
+            className="block aspect-[16/10] w-full rounded-xl border-0 bg-[#05081a]"
+          />
+        </div>
+      </HomeModal>
+    </div>,
+    document.body,
+  );
+};

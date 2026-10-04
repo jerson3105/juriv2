@@ -1,0 +1,74 @@
+/* Reproductor de los tutoriales de Juried: escenario 16:9 escalado + barra de controles. */
+:root {
+  --night: #0b1026;
+  --night-2: #141b3d;
+  --sky: #1aa3ec;
+  --sky-soft: #8fd3fb;
+  --gold: #fbbf24;
+  --violet: #6d5bd0;
+  --violet-soft: #c4b5fd;
+  --mint: #34d399;
+  --rose: #fb7185;
+  --ink: #0f172a;
+  --paper: #ffffff;
+  --line: #e2e8f0;
+  --muted: #475569;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #05081a; color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; }
+#shell { position: fixed; inset: 0; display: flex; flex-direction: column; background: #05081a; }
+#viewport { position: relative; flex: 1; overflow: hidden; }
+#stage {
+  position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px; transform-origin: 50% 50%;
+  overflow: hidden; background: var(--night); color: #f8fafc;
+}
+#stage * { will-change: auto; }
+
+/* Botón grande del inicio */
+#big-play {
+  position: absolute; inset: 0; margin: auto; width: max-content; height: max-content; z-index: 20;
+  display: inline-flex; align-items: center; gap: 14px; padding: 18px 30px; border: 0; border-radius: 999px;
+  background: var(--sky); color: #fff; font: 800 22px/1 'Inter', system-ui, sans-serif; cursor: pointer;
+  box-shadow: 0 18px 50px rgba(26, 163, 236, .45);
+}
+#big-play[hidden] { display: none; }
+#big-play:hover { filter: brightness(1.06); }
+#big-play:focus-visible, #controls button:focus-visible, #range:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
+#big-play svg { width: 26px; height: 26px; }
+
+/* Barra de controles */
+#controls { display: flex; align-items: center; gap: 12px; padding: 10px 16px 12px; background: #0b1026; border-top: 1px solid #1e2a5a; }
+#controls button {
+  display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; flex: 0 0 auto;
+  border: 0; border-radius: 12px; background: #1b2550; color: #e2e8f0; cursor: pointer;
+}
+#controls button:hover { background: #26346e; }
+#controls svg { width: 22px; height: 22px; }
+#play[data-playing="true"] .i-play, #play[data-playing="false"] .i-pause { display: none; }
+#mute[data-muted="true"] .i-sound, #mute[data-muted="false"] .i-muted, #mute:not([data-muted]) .i-muted { display: none; }
+#bar { position: relative; flex: 1; height: 44px; display: flex; align-items: center; }
+#range {
+  --progress: 0%;
+  width: 100%; height: 8px; margin: 0; appearance: none; -webkit-appearance: none; border-radius: 999px; cursor: pointer;
+  background: linear-gradient(to right, var(--sky) var(--progress), #26346e var(--progress));
+}
+#range::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 3px solid var(--sky); }
+#range::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 3px solid var(--sky); }
+.tick {
+  position: absolute; top: 50%; width: 6px !important; height: 18px !important; padding: 0; margin: 0;
+  transform: translate(-50%, -50%); border-radius: 3px !important; background: var(--gold) !important; opacity: .9;
+}
+#meta { display: flex; flex-direction: column; min-width: 150px; line-height: 1.2; }
+#time { font: 700 14px/1.2 'Inter', system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+#chapter { font: 600 13px/1.2 'Inter', system-ui, sans-serif; color: var(--sky-soft); white-space: nowrap; }
+/* Pantallas angostas (celular o el modal en un teléfono): controles compactos para que la barra de progreso se vea. */
+@media (max-width: 640px) {
+  #controls { gap: 8px; padding: 6px 8px 8px; }
+  #controls button { width: 36px; height: 36px; border-radius: 10px; }
+  #controls svg { width: 18px; height: 18px; }
+  #meta { min-width: 0; }
+  #chapter { display: none; }
+  #time { font-size: 12px; }
+  #big-play { padding: 12px 20px; font-size: 17px; }
+}
+@media (max-width: 420px) { #meta { display: none; } }

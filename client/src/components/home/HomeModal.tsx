@@ -8,7 +8,8 @@ interface HomeModalProps {
   onClose: () => void;
   footer?: ReactNode;
   children: ReactNode;
-  size?: 'md' | 'lg';
+  /** xl: para videos y tutoriales (el contenido ancho se lee mejor). */
+  size?: 'md' | 'lg' | 'xl';
   header?: ReactNode; // cabecera propia (p. ej. con imagen); sustituye al título estándar
   /** «night»: panel oscuro y opaco en los dos temas (la mesa donde se abren los sobres de figuritas). */
   tone?: 'light' | 'night';
@@ -105,7 +106,7 @@ export const HomeModal = ({ title, subtitle, onClose, footer, children, size = '
         aria-modal="true"
         aria-label={title}
         // Al cerrar se oculta al instante (invisible: ni clics ni foco mientras el fondo se desvanece).
-        className={`home-modal-pop relative flex max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl shadow-2xl ${colors.panel} ${size === 'lg' ? 'max-w-2xl' : 'max-w-lg'} ${isPresent ? '' : 'invisible'}`}
+        className={`home-modal-pop relative flex max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl shadow-2xl ${colors.panel} ${size === 'xl' ? 'max-w-6xl' : size === 'lg' ? 'max-w-2xl' : 'max-w-lg'} ${isPresent ? '' : 'invisible'}`}
       >
         {header ?? (
           <div className={`flex items-start justify-between gap-3 border-b px-5 py-4 ${colors.header}`}>

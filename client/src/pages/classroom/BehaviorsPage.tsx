@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
-import { Check, Heart, Plus, Share2, Sparkles, X } from 'lucide-react';
+import { Check, Heart, PlayCircle, Plus, Share2, Sparkles, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { Classroom } from '../../lib/classroomApi';
 import { behaviorApi, type Behavior, type GeneratedBehavior } from '../../lib/behaviorApi';
@@ -11,6 +11,7 @@ import { BehaviorRow } from '../../components/behaviors/BehaviorRow';
 import { BehaviorFormModal, type BehaviorFormData, type BehaviorFormTarget } from '../../components/behaviors/BehaviorFormModal';
 import { AIBehaviorModal } from '../../components/behaviors/AIBehaviorModal';
 import { ExportBehaviorsModal } from '../../components/behaviors/ExportBehaviorsModal';
+import { TutorialModal } from '../../components/tutorials/TutorialModal';
 import { readSort, saveSort, sortBehaviors, type BehaviorSort } from '../../components/behaviors/behaviorHelpers';
 import { SwitchRow } from '../../components/settings/settingsUi';
 import { useClassroomSettingsSave } from '../../components/settings/settingsHooks';
@@ -44,6 +45,7 @@ export const BehaviorsPage = () => {
   const [formTarget, setFormTarget] = useState<BehaviorFormTarget | null>(null);
   const [showAIModal, setShowAIModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sort, setSort] = useState<BehaviorSort>(readSort);
@@ -218,7 +220,18 @@ export const BehaviorsPage = () => {
             <Sparkles size={22} />
           </span>
           <div>
-            <h1 className="text-lg font-bold text-gray-900 dark:text-white">Comportamientos</h1>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <h1 className="text-lg font-bold text-gray-900 dark:text-white">Comportamientos</h1>
+              {/* Tutorial en video (1 min): siempre a mano, sin competir con las acciones de la página. */}
+              <button
+                type="button"
+                onClick={() => setShowTutorial(true)}
+                className="inline-flex min-h-[32px] items-center gap-1.5 rounded-full bg-primary-50 px-3 text-xs font-bold text-primary-700 ring-1 ring-primary-200 hover:bg-primary-100 dark:bg-primary-900/40 dark:text-primary-200 dark:ring-primary-800 dark:hover:bg-primary-900/60"
+              >
+                <PlayCircle size={15} aria-hidden="true" />
+                Ver tutorial · 1 min
+              </button>
+            </div>
             <p className="text-sm text-gray-600 dark:text-gray-300">Acciones rápidas para dar o quitar puntos en clase</p>
           </div>
         </div>
@@ -341,6 +354,17 @@ export const BehaviorsPage = () => {
                     <Plus size={16} aria-hidden="true" />
                     Crear el primero
                   </button>
+                  {/* Clase nueva (sin comportamientos): el momento en que el tutorial más ayuda. */}
+                  {column.isPositive && behaviors.length === 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowTutorial(true)}
+                      className="mx-auto mt-2 flex min-h-[44px] items-center gap-2 rounded-xl px-3 text-sm font-semibold text-primary-700 hover:bg-primary-50 dark:text-primary-200 dark:hover:bg-primary-900/30"
+                    >
+                      <PlayCircle size={16} aria-hidden="true" />
+                      ¿Primera vez? Mira el tutorial de 1 minuto
+                    </button>
+                  )}
                 </div>
               ) : (
                 <ul className="space-y-2 p-3">
@@ -397,6 +421,10 @@ export const BehaviorsPage = () => {
             }}
           />
         )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showTutorial && <TutorialModal key="tutorial" id="comportamientos" onClose={() => setShowTutorial(false)} />}
       </AnimatePresence>
     </div>
   );

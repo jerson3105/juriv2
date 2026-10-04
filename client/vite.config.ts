@@ -55,8 +55,10 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+        // Los tutoriales en video (public/tutoriales) se abren a pedido: no van al precache de cada dispositivo.
+        globIgnores: ['**/tutoriales/**'],
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3 MB
-        navigateFallbackDenylist: [/^\/api/], // No interceptar rutas de API
+        navigateFallbackDenylist: [/^\/api/, /^\/tutoriales\//], // No interceptar la API ni los tutoriales (son páginas propias)
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/api\..*/i,

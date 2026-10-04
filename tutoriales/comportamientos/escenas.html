@@ -1,0 +1,841 @@
+<!-- titulo: Comportamientos -->
+<!--
+  Tutorial 1 para docentes: «Comportamientos» (qué son, cómo crear uno y cómo darlo en clase). ~82 s, 16:9.
+  Las pantallas son recreaciones fieles de la plataforma (BehaviorsPage, BehaviorFormModal, StudentsPage:
+  Ficha y Lista, PointsModal) con los textos reales. Arma el archivo final con:
+    node tutoriales/motor/build.mjs comportamientos
+-->
+<style>
+#stage { font-family: 'Inter', system-ui, sans-serif; }
+#stage.loading > * { opacity: 0; }
+.abs { position: absolute; }
+.display { font-family: 'Poppins', 'Inter', system-ui, sans-serif; }
+
+/* ---------- Cielo nocturno (tema espacial) ---------- */
+#sky {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(1100px 700px at 72% 18%, rgba(67, 56, 202, .38), transparent 62%),
+    radial-gradient(900px 600px at 12% 92%, rgba(56, 189, 248, .14), transparent 60%),
+    #0b1026;
+}
+.star { position: absolute; border-radius: 50%; background: #fff; }
+#constellation { position: absolute; left: 1210px; top: 70px; width: 600px; height: 320px; }
+#constellation line { stroke: #fde68a; stroke-width: 2.5; stroke-linecap: round; }
+#constellation circle { fill: #fde68a; }
+
+/* ---------- Escena A: portada ---------- */
+#a-logo { left: 150px; top: 120px; height: 92px; }
+#a-eyebrow { left: 156px; top: 330px; color: #fde68a; font: 800 30px/1 'Inter', sans-serif; letter-spacing: .16em; text-transform: uppercase; }
+#a-title { left: 148px; top: 390px; color: #fff; font: 800 120px/1.05 'Poppins', sans-serif; letter-spacing: -.02em; }
+#a-sub { left: 156px; top: 588px; color: #c7d2fe; font: 600 42px/1.3 'Inter', sans-serif; }
+#a-chips { left: 156px; top: 690px; display: flex; gap: 16px; }
+#a-chips span { padding: 12px 22px; border-radius: 999px; background: rgba(255, 255, 255, .1); border: 2px solid rgba(255, 255, 255, .16); color: #e0e7ff; font: 700 26px/1 'Inter', sans-serif; }
+#a-jiro { left: 1330px; top: 300px; height: 760px; }
+
+/* ---------- Escena B: ¿para qué sirven? ---------- */
+#b-jiro { left: 40px; top: 330px; height: 740px; }
+.bubble {
+  position: absolute; left: 470px; top: 92px; width: 1330px; min-height: 196px; padding: 36px 48px;
+  background: #fff; color: #111827; border-radius: 40px; box-shadow: 0 30px 90px rgba(0, 0, 0, .35);
+  font: 700 50px/1.28 'Poppins', sans-serif;
+}
+.bubble::after {
+  content: ''; position: absolute; left: 70px; bottom: -34px; width: 0; height: 0;
+  border-left: 26px solid transparent; border-right: 26px solid transparent; border-top: 40px solid #fff; transform: skewX(-22deg);
+}
+.bubble span[data-typing="true"]::after { content: '|'; color: #2563eb; margin-left: 2px; }
+.example { position: absolute; top: 380px; width: 580px; background: #fff; border-radius: 30px; color: #111827; overflow: hidden; box-shadow: 0 30px 80px rgba(0, 0, 0, .35); }
+.example header { height: 70px; display: flex; align-items: center; gap: 12px; padding: 0 28px; font: 800 28px/1 'Inter', sans-serif; }
+.example.pos header { background: #ecfdf5; color: #065f46; }
+.example.neg header { background: #fef2f2; color: #991b1b; }
+.example .row { display: flex; align-items: center; gap: 24px; padding: 30px 28px; }
+.example .icon { width: 104px; height: 104px; border-radius: 24px; display: grid; place-items: center; font-size: 60px; flex: 0 0 auto; }
+.example.pos .icon { background: #d1fae5; }
+.example.neg .icon { background: #fee2e2; }
+.example .name { font: 800 40px/1.1 'Inter', sans-serif; margin-bottom: 12px; }
+.pills { display: flex; gap: 10px; flex-wrap: wrap; }
+.pill { display: inline-flex; align-items: center; padding: 8px 16px; border-radius: 999px; font: 800 26px/1 'Inter', sans-serif; }
+.pill.xp { background: #d1fae5; color: #065f46; }
+.pill.hp { background: #fee2e2; color: #991b1b; }
+.pill.gp { background: #fef3c7; color: #92400e; }
+#b-pos { left: 600px; }
+#b-neg { left: 1220px; }
+.ptype {
+  position: absolute; top: 720px; width: 386px; height: 270px; padding: 30px 32px; border-radius: 30px;
+  background: rgba(255, 255, 255, .08); border: 2px solid rgba(255, 255, 255, .16);
+}
+.ptype .big { width: 76px; height: 76px; border-radius: 22px; display: grid; place-items: center; font-size: 44px; }
+.ptype h3 { margin: 18px 0 8px; color: #fff; font: 800 36px/1.1 'Poppins', sans-serif; }
+.ptype p { margin: 0; color: #c7d2fe; font: 600 27px/1.32 'Inter', sans-serif; }
+#b-xp { left: 600px; } #b-xp .big { background: #10b981; }
+#b-hp { left: 1010px; } #b-hp .big { background: #ef4444; }
+#b-gp { left: 1420px; } #b-gp .big { background: #f59e0b; }
+
+/* ---------- Marco de la plataforma (escenas C y D) ---------- */
+#app {
+  left: 150px; top: 46px; width: 1620px; height: 872px; border-radius: 22px; overflow: hidden;
+  background: #f5f7ff; color: #111827; box-shadow: 0 40px 120px rgba(0, 0, 0, .55);
+}
+.browser { position: absolute; left: 0; top: 0; right: 0; height: 40px; background: #e7eaf4; display: flex; align-items: center; gap: 8px; padding: 0 16px; }
+.browser i { width: 12px; height: 12px; border-radius: 50%; }
+.browser .url { margin-left: 16px; height: 26px; padding: 0 18px; border-radius: 999px; background: #fff; color: #475569; font: 600 14px/26px 'Inter', sans-serif; }
+.sidebar { position: absolute; left: 0; top: 40px; width: 280px; bottom: 0; background: #fff; border-right: 1px solid #e5e7eb; }
+.band { position: absolute; left: 0; top: 0; right: 0; height: 112px; background: #0b1026; overflow: hidden; }
+.band img { position: absolute; left: 16px; top: 12px; height: 36px; }
+.band .dot { position: absolute; width: 2px; height: 2px; border-radius: 50%; background: #fff; opacity: .7; }
+.classchip { position: absolute; left: 16px; top: 58px; display: flex; align-items: center; gap: 10px; color: #fff; font: 700 16px/1.2 'Inter', sans-serif; }
+.classchip b { width: 40px; height: 40px; border-radius: 12px; background: #e11d48; display: grid; place-items: center; font: 800 15px/1 'Inter', sans-serif; }
+.classchip small { display: block; margin-top: 3px; font: 700 11px/1 'Inter', sans-serif; color: #c7d2fe; letter-spacing: .06em; }
+.nav { position: absolute; left: 14px; right: 14px; top: 124px; }
+.nav .item { position: relative; height: 40px; display: flex; align-items: center; gap: 12px; padding: 0 12px; border-radius: 10px; color: #334155; font: 600 16px/1 'Inter', sans-serif; }
+.nav .item .ic { width: 22px; text-align: center; font-size: 16px; }
+.nav .item.sub { padding-left: 38px; font-weight: 500; }
+.nav .item.active { background: #eef2ff; color: #3730a3; font-weight: 700; }
+.nav .item.active::before { content: '✦'; position: absolute; left: 16px; color: #f59e0b; font-size: 14px; }
+.nav .item .chev { margin-left: auto; color: #94a3b8; font-size: 13px; }
+.header { position: absolute; left: 280px; right: 0; top: 40px; height: 62px; background: #fff; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; gap: 12px; padding: 0 24px; }
+.header .cls { width: 36px; height: 36px; border-radius: 10px; background: #6366f1; color: #fff; display: grid; place-items: center; font-size: 18px; }
+.header .who b { display: block; font: 700 16px/1.2 'Inter', sans-serif; }
+.header .who small { color: #64748b; font: 500 13px/1.2 'Inter', sans-serif; }
+.header .tools { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.header .tools span { height: 40px; padding: 0 14px; display: inline-flex; align-items: center; gap: 8px; border-radius: 10px; border: 1px solid #e5e7eb; color: #334155; font: 600 14px/1 'Inter', sans-serif; }
+.header .tools .av { width: 38px; padding: 0; justify-content: center; border-radius: 50%; background: #e0e7ff; border: 0; font-weight: 800; color: #3730a3; }
+.content { position: absolute; left: 280px; right: 0; top: 102px; bottom: 0; background: linear-gradient(135deg, #f8faff, #eef2ff); }
+.page { position: absolute; inset: 0; }
+.btn { position: absolute; height: 48px; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 12px; border: 1.5px solid #e2e8f0; background: #fff; color: #1f2937; font: 700 17px/1 'Inter', sans-serif; }
+.btn.primary { background: #4f46e5; border-color: #4f46e5; color: #fff; }
+.btn.green { background: #047857; border-color: #047857; color: #fff; }
+.btn.outline-blue { border-color: #4f46e5; color: #3730a3; }
+
+/* Página Comportamientos */
+.ptitle { position: absolute; left: 32px; top: 30px; display: flex; align-items: center; gap: 16px; }
+.ptitle .tile { width: 56px; height: 56px; border-radius: 16px; background: linear-gradient(135deg, #2563eb, #4f46e5); color: #fff; display: grid; place-items: center; font-size: 28px; }
+.ptitle h2 { margin: 0; font: 800 28px/1.1 'Inter', sans-serif; }
+.ptitle p { margin: 4px 0 0; color: #475569; font: 500 16px/1.2 'Inter', sans-serif; }
+.sortrow { position: absolute; right: 32px; top: 100px; display: flex; align-items: center; gap: 10px; color: #475569; font: 600 15px/1 'Inter', sans-serif; }
+.seg { display: inline-flex; padding: 3px; border-radius: 12px; background: #fff; border: 1px solid #e2e8f0; }
+.seg span { padding: 9px 14px; border-radius: 9px; font: 700 15px/1 'Inter', sans-serif; color: #334155; }
+.seg span.on { background: #4f46e5; color: #fff; }
+.col { position: absolute; top: 152px; width: 624px; height: 372px; background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; overflow: hidden; }
+.col header { height: 60px; display: flex; align-items: center; gap: 12px; padding: 0 20px; font: 800 18px/1 'Inter', sans-serif; }
+.col header .badge { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; color: #fff; font-size: 16px; }
+.col header em { font-style: normal; font-weight: 700; color: #64748b; }
+.col header .add { margin-left: auto; color: #1f2937; font: 700 15px/1 'Inter', sans-serif; }
+.col.pos header { background: #ecfdf5; color: #065f46; } .col.pos .badge { background: #047857; }
+.col.neg header { background: #fef2f2; color: #991b1b; } .col.neg .badge { background: #dc2626; }
+.col .empty { position: absolute; left: 50px; right: 50px; top: 104px; text-align: center; color: #334155; font: 500 17px/1.5 'Inter', sans-serif; }
+.col .empty .btn { position: relative; margin: 18px auto 0; width: 230px; }
+.toggle-row { position: absolute; left: 20px; right: 20px; top: 76px; display: flex; align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid #f1f5f9; }
+.toggle-row b { display: block; font: 700 16px/1.2 'Inter', sans-serif; }
+.toggle-row small { color: #475569; font: 500 14px/1.3 'Inter', sans-serif; }
+.switch { margin-left: auto; width: 54px; height: 30px; border-radius: 999px; background: #4f46e5; position: relative; flex: 0 0 auto; }
+.switch::after { content: ''; position: absolute; right: 4px; top: 4px; width: 22px; height: 22px; border-radius: 50%; background: #fff; }
+.beh-card { position: absolute; left: 16px; top: 76px; width: 592px; height: 92px; border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; display: flex; align-items: center; gap: 16px; padding: 0 18px; }
+.beh-card .ic { width: 58px; height: 58px; border-radius: 16px; background: #d1fae5; display: grid; place-items: center; font-size: 30px; }
+.beh-card b { display: block; font: 800 19px/1.2 'Inter', sans-serif; margin-bottom: 7px; }
+.beh-card .mini { display: flex; gap: 8px; align-items: center; color: #64748b; font: 500 14px/1 'Inter', sans-serif; }
+.mpill { display: inline-flex; padding: 5px 10px; border-radius: 999px; font: 800 14px/1 'Inter', sans-serif; }
+.mpill.xp { background: #d1fae5; color: #065f46; } .mpill.gp { background: #fef3c7; color: #92400e; } .mpill.hp { background: #fee2e2; color: #991b1b; }
+.beh-card .acts { margin-left: auto; display: flex; gap: 16px; color: #64748b; font-size: 18px; }
+
+/* Modal «Nuevo comportamiento» */
+#overlay { left: 0; top: 0; width: 1620px; height: 872px; background: rgba(15, 23, 42, .45); }
+#modal { left: 490px; top: 40px; width: 640px; height: 820px; background: #fff; border-radius: 22px; box-shadow: 0 30px 80px rgba(15, 23, 42, .35); }
+#modal .m { position: absolute; }
+.m-title { left: 28px; top: 22px; font: 800 22px/1 'Inter', sans-serif; }
+.m-close { right: 26px; top: 20px; color: #64748b; font: 600 22px/1 'Inter', sans-serif; }
+.m-line { left: 0; right: 0; top: 64px; height: 1px; background: #f1f5f9; }
+.m-tg { top: 78px; width: 286px; height: 54px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font: 800 18px/1 'Inter', sans-serif; border: 2px solid #e2e8f0; color: #1f2937; background: #fff; }
+.m-tg.give { left: 28px; } .m-tg.take { left: 326px; }
+.m-tg.give.on { background: #047857; border-color: #047857; color: #fff; }
+.m-tg.take.on { background: #dc2626; border-color: #dc2626; color: #fff; }
+.m-label { font: 700 15px/1 'Inter', sans-serif; color: #111827; }
+.m-label em { font-style: normal; font-weight: 500; color: #64748b; }
+.m-icon { left: 28px; top: 172px; width: 58px; height: 58px; border-radius: 14px; border: 2px solid #a7f3d0; background: #ecfdf5; display: grid; place-items: center; font-size: 30px; }
+.m-icon.neg { border-color: #fecaca; background: #fef2f2; }
+.m-name { left: 98px; top: 172px; width: 514px; height: 58px; border-radius: 14px; border: 2px solid #c7d2fe; display: flex; align-items: center; padding: 0 18px; font: 600 19px/1 'Inter', sans-serif; color: #111827; }
+.m-name .ph { color: #94a3b8; font-weight: 500; }
+.m-name span[data-typing="true"]::after { content: '|'; color: #4f46e5; margin-left: 1px; }
+.m-row { left: 28px; width: 584px; height: 46px; display: flex; align-items: center; gap: 8px; border-radius: 12px; background: #f8fafc; padding: 0 8px 0 14px; }
+.m-row .lbl { width: 128px; display: flex; align-items: center; gap: 8px; font: 700 16px/1 'Inter', sans-serif; color: #1f2937; }
+.chip { position: relative; width: 54px; height: 36px; border-radius: 10px; border: 1.5px solid #e2e8f0; background: #fff; display: grid; place-items: center; font: 700 15px/1 'Inter', sans-serif; color: #1f2937; }
+.chip.on { background: #047857; border-color: #047857; color: #fff; }
+.chip.on-red { background: #dc2626; border-color: #dc2626; color: #fff; }
+.m-row .num { margin-left: auto; width: 88px; height: 36px; border-radius: 10px; border: 1.5px solid #e2e8f0; background: #fff; display: flex; align-items: center; justify-content: flex-end; padding: 0 12px; font: 700 16px/1 'Inter', sans-serif; }
+.m-hint { left: 28px; font: 500 13px/1.3 'Inter', sans-serif; color: #64748b; }
+.m-area { left: 28px; top: 506px; width: 584px; height: 54px; border-radius: 12px; border: 1.5px solid #e2e8f0; padding: 14px 16px; color: #94a3b8; font: 500 15px/1 'Inter', sans-serif; }
+.m-select { left: 28px; top: 606px; width: 584px; height: 48px; border-radius: 12px; border: 1.5px solid #e2e8f0; display: flex; align-items: center; padding: 0 16px; gap: 10px; font: 600 15px/1 'Inter', sans-serif; color: #334155; }
+.m-select .note { margin-left: auto; padding: 5px 10px; border-radius: 999px; background: #f5f3ff; color: #5b21b6; font: 700 12px/1 'Inter', sans-serif; }
+.m-preview { left: 28px; top: 698px; width: 584px; height: 58px; border-radius: 14px; border: 2px solid #a7f3d0; background: #fff; display: flex; align-items: center; gap: 12px; padding: 0 16px; font: 600 17px/1 'Inter', sans-serif; }
+.m-preview.neg { border-color: #fecaca; }
+.m-preview .ic { font-size: 24px; }
+.m-preview .nm { color: #111827; }
+.m-preview .nm.ph { color: #64748b; font-style: italic; font-weight: 500; }
+.m-preview .pls { margin-left: auto; display: flex; gap: 6px; }
+.m-foot { left: 0; right: 0; bottom: 0; height: 60px; border-top: 1px solid #f1f5f9; }
+.m-foot .btn { top: 8px; height: 44px; font-size: 15px; }
+.picker { left: 28px; top: 236px; width: 412px; padding: 14px; border-radius: 16px; background: #fff; border: 1px solid #e2e8f0; box-shadow: 0 20px 50px rgba(15, 23, 42, .2); z-index: 2; }
+.picker small { display: block; margin-bottom: 8px; color: #64748b; font: 800 11px/1 'Inter', sans-serif; letter-spacing: .08em; }
+.picker .grid { display: grid; grid-template-columns: repeat(10, 36px); gap: 2px; }
+.picker .grid span { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 8px; font-size: 21px; }
+.picker .grid span.hl { background: #e0e7ff; outline: 2px solid #4f46e5; }
+
+/* Aviso (toast) */
+.toast { position: absolute; right: 24px; top: 56px; height: 54px; display: flex; align-items: center; gap: 12px; padding: 0 10px 0 18px; border-radius: 14px; background: #111827; color: #fff; font: 700 17px/1 'Inter', sans-serif; box-shadow: 0 16px 40px rgba(15, 23, 42, .35); z-index: 5; }
+.toast .ok { width: 22px; height: 22px; border-radius: 50%; background: #10b981; display: grid; place-items: center; font-size: 13px; }
+.toast .undo { margin-left: 8px; padding: 9px 12px; border-radius: 10px; background: #1f2937; border: 1px solid #374151; font: 800 15px/1 'Inter', sans-serif; }
+
+/* Página Estudiantes (Ficha y Lista) */
+.stools { position: absolute; left: 32px; right: 32px; top: 24px; height: 48px; display: flex; align-items: center; gap: 14px; }
+.stools .seg span { padding: 11px 16px; }
+.search { width: 300px; height: 46px; border-radius: 12px; border: 1px solid #e2e8f0; background: #fff; display: flex; align-items: center; gap: 10px; padding: 0 14px; color: #94a3b8; font: 500 15px/1 'Inter', sans-serif; }
+.stools .right { margin-left: auto; display: flex; gap: 10px; }
+.stools .right span { height: 46px; padding: 0 16px; border-radius: 12px; border: 1px solid #e2e8f0; background: #fff; display: inline-flex; align-items: center; gap: 8px; font: 700 15px/1 'Inter', sans-serif; color: #1f2937; }
+.fchips { position: absolute; left: 32px; top: 90px; display: flex; gap: 10px; }
+.fchips span { height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid #e2e8f0; background: #fff; display: inline-flex; align-items: center; gap: 6px; font: 700 15px/1 'Inter', sans-serif; color: #334155; }
+.fchips span.on { border-color: #4f46e5; background: #eef2ff; color: #3730a3; }
+.slist { position: absolute; left: 32px; top: 150px; width: 320px; height: 590px; background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 12px; }
+.srow { position: relative; height: 54px; display: flex; align-items: center; gap: 12px; padding: 0 14px; border-radius: 12px; font: 700 17px/1 'Inter', sans-serif; color: #1f2937; }
+.srow.sel { background: #eef2ff; }
+.srow .st { width: 20px; text-align: center; color: #cbd5e1; font-size: 18px; position: relative; }
+.srow .st .lit { position: absolute; left: 0; top: -2px; width: 20px; color: #f59e0b; }
+.srow .lv { margin-left: auto; color: #64748b; font: 600 14px/1 'Inter', sans-serif; }
+.focus { position: absolute; left: 376px; top: 150px; width: 932px; height: 590px; background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; }
+.avcard { position: absolute; left: 24px; top: 24px; width: 300px; height: 420px; border-radius: 18px; overflow: hidden; background: radial-gradient(200px 120px at 50% 92%, rgba(129, 140, 248, .55), transparent 70%), #0b1026; }
+.avcard img { position: absolute; left: 50%; bottom: 22px; height: 372px; transform: translateX(-50%); }
+.avcard .dot { position: absolute; width: 2px; height: 2px; border-radius: 50%; background: #fff; opacity: .8; }
+.info { position: absolute; left: 354px; top: 28px; width: 552px; }
+.info h3 { margin: 0; display: flex; align-items: center; gap: 12px; font: 800 40px/1 'Inter', sans-serif; }
+.info h3 span { padding: 6px 12px; border-radius: 999px; background: #f1f5f9; color: #334155; font: 800 15px/1 'Inter', sans-serif; }
+.info .cls { margin-top: 14px; color: #334155; font: 600 16px/1 'Inter', sans-serif; }
+.info .cls em { font-style: normal; color: #4f46e5; margin-left: 8px; }
+.info .need { margin-top: 26px; font: 800 18px/1 'Inter', sans-serif; }
+.bar { position: relative; margin-top: 14px; width: 520px; height: 12px; border-radius: 999px; background: #e2e8f0; overflow: hidden; }
+.bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: linear-gradient(90deg, #10b981, #34d399); border-radius: 999px; }
+.info .tot { margin-top: 10px; color: #475569; font: 600 15px/1 'Inter', sans-serif; }
+.info .give-h { margin-top: 26px; display: flex; font: 800 17px/1 'Inter', sans-serif; }
+.info .give-h em { margin-left: auto; font-style: normal; color: #4f46e5; }
+.ggrid { margin-top: 14px; display: grid; grid-template-columns: 264px 264px; gap: 12px; }
+.gbtn { position: relative; height: 68px; border-radius: 14px; border: 1.5px solid #d1fae5; background: #f0fdf4; display: flex; align-items: center; gap: 12px; padding: 0 14px; }
+.gbtn .ic { font-size: 26px; }
+.gbtn b { display: block; font: 800 15px/1.2 'Inter', sans-serif; color: #111827; }
+.gbtn small { display: block; margin-top: 4px; color: #047857; font: 800 13px/1 'Inter', sans-serif; }
+.info .more { margin-top: 16px; display: flex; gap: 10px; }
+.info .more span { height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid #e2e8f0; display: inline-flex; align-items: center; gap: 6px; font: 700 14px/1 'Inter', sans-serif; color: #334155; }
+.today { position: absolute; left: 354px; top: 492px; width: 552px; }
+.today b { display: block; font: 800 17px/1 'Inter', sans-serif; }
+.today .none { margin-top: 12px; color: #64748b; font: 500 15px/1 'Inter', sans-serif; }
+.today .entry { position: absolute; left: 0; top: 30px; width: 552px; height: 40px; display: flex; align-items: center; gap: 14px; font: 600 15px/1 'Inter', sans-serif; color: #1f2937; }
+.today .entry time { color: #64748b; }
+.today .entry .pts { margin-left: auto; color: #047857; font-weight: 800; }
+.plus { position: absolute; font: 800 30px/1 'Poppins', sans-serif; color: #10b981; text-shadow: 0 2px 0 #fff; }
+.table { position: absolute; left: 32px; top: 150px; width: 1276px; height: 384px; background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; overflow: hidden; }
+.trow { position: absolute; left: 0; width: 1276px; height: 54px; display: flex; align-items: center; border-bottom: 1px solid #f1f5f9; font: 700 16px/1 'Inter', sans-serif; color: #1f2937; }
+.trow.head { top: 0; height: 46px; color: #64748b; font: 800 12px/1 'Inter', sans-serif; letter-spacing: .08em; background: #fff; }
+.trow .ck { position: relative; margin-left: 20px; width: 22px; height: 22px; border-radius: 6px; border: 2px solid #94a3b8; background: #fff; }
+.trow .ck i { position: absolute; inset: -2px; border-radius: 6px; background: #4f46e5; color: #fff; display: grid; place-items: center; font-style: normal; font-size: 14px; font-weight: 900; }
+.trow .who { margin-left: 22px; width: 560px; display: flex; align-items: center; gap: 12px; }
+.trow .who .face { width: 30px; height: 30px; border-radius: 50%; background: #e0e7ff; display: grid; place-items: center; font-size: 15px; }
+.trow .lvl { width: 100px; text-align: center; }
+.trow .td { width: 100px; display: flex; justify-content: center; position: relative; }
+.trow .td i { width: 10px; height: 10px; border-radius: 50%; background: #cbd5e1; }
+.trow .td i.gold { position: absolute; background: #f59e0b; box-shadow: 0 0 0 4px #fef3c7; }
+.trow .gb { margin-left: auto; height: 40px; padding: 0 14px; border-radius: 10px; border: 1.5px solid #a7f3d0; color: #065f46; display: inline-flex; align-items: center; gap: 8px; font: 800 14px/1 'Inter', sans-serif; position: relative; }
+.trow .gb small { color: #047857; font: 800 12px/1 'Inter', sans-serif; }
+.trow .gb .fill { position: absolute; inset: -1.5px; border-radius: 10px; background: #047857; color: #fff; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.trow .dots { width: 60px; text-align: center; color: #64748b; font-size: 20px; }
+.selbar { position: absolute; left: 330px; top: 676px; height: 64px; display: flex; align-items: center; gap: 12px; padding: 0 14px; border-radius: 18px; background: #fff; border: 1px solid #e2e8f0; box-shadow: 0 16px 40px rgba(15, 23, 42, .18); font: 700 16px/1 'Inter', sans-serif; color: #1f2937; }
+.selbar .n { width: 30px; height: 30px; border-radius: 50%; background: #4f46e5; color: #fff; display: grid; place-items: center; font: 800 15px/1 'Inter', sans-serif; }
+.selbar span { height: 42px; padding: 0 14px; border-radius: 11px; border: 1px solid #e2e8f0; display: inline-flex; align-items: center; gap: 6px; }
+.selbar span.give { background: #047857; border-color: #047857; color: #fff; }
+#pmodal { left: 450px; top: 170px; width: 720px; height: 470px; background: #fff; border-radius: 22px; box-shadow: 0 30px 80px rgba(15, 23, 42, .35); }
+#pmodal .m { position: absolute; }
+.pm-sub { left: 28px; top: 54px; color: #475569; font: 600 15px/1 'Inter', sans-serif; }
+.pm-tabs { left: 28px; top: 88px; }
+.pm-hint { left: 28px; top: 146px; color: #64748b; font: 500 14px/1 'Inter', sans-serif; }
+.pm-sec { left: 28px; top: 178px; color: #065f46; font: 800 13px/1 'Inter', sans-serif; letter-spacing: .08em; }
+.pcard { width: 324px; height: 72px; border-radius: 14px; border: 1.5px solid #d1fae5; background: #f0fdf4; display: flex; align-items: center; gap: 12px; padding: 0 14px; }
+.pcard .ic { font-size: 26px; }
+.pcard b { display: block; font: 800 16px/1.2 'Inter', sans-serif; color: #111827; }
+.pcard small { display: block; margin-top: 4px; color: #047857; font: 800 13px/1 'Inter', sans-serif; }
+
+/* Cursor y clics */
+#cursor { left: 0; top: 0; width: 44px; height: 54px; z-index: 30; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .35)); }
+.ripple { position: absolute; width: 70px; height: 70px; margin: -35px 0 0 -35px; border-radius: 50%; border: 4px solid #fbbf24; z-index: 29; }
+.glow { position: absolute; border-radius: 16px; box-shadow: 0 0 0 4px #fbbf24, 0 0 40px 10px rgba(251, 191, 36, .45); z-index: 3; pointer-events: none; }
+
+/* Subtítulos de los pasos */
+/* Centrado con márgenes (no con transform: el motor reescribe transform al animar). */
+.cap {
+  position: absolute; left: 0; right: 0; margin: 0 auto; width: max-content; max-width: 1820px; top: 948px; display: flex; align-items: center; gap: 18px;
+  padding: 18px 30px 18px 18px; border-radius: 26px; background: rgba(255, 255, 255, .97); color: #111827;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .35); white-space: nowrap; font: 700 34px/1.2 'Inter', sans-serif;
+}
+.cap .n { min-width: 58px; height: 58px; padding: 0 14px; border-radius: 18px; background: #4f46e5; color: #fff; display: grid; place-items: center; font: 800 28px/1 'Poppins', sans-serif; }
+.cap .n.idea { background: #f59e0b; }
+.cap .n.ok { background: #047857; }
+.cap q { quotes: '«' '»'; color: #3730a3; }
+.capwrap { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; pointer-events: none; }
+
+/* Celebración */
+#celebra { inset: 0; background: rgba(11, 16, 38, .86); }
+#cel-jiro { left: 280px; top: 210px; height: 760px; }
+#cel-title { left: 980px; top: 330px; color: #fbbf24; font: 800 110px/1 'Poppins', sans-serif; }
+#cel-sub { left: 990px; top: 470px; color: #e0e7ff; font: 700 46px/1.25 'Inter', sans-serif; }
+#cel-who { left: 990px; top: 560px; display: flex; align-items: center; gap: 22px; }
+#cel-who img { height: 300px; }
+#cel-who div { color: #fff; font: 800 44px/1.2 'Inter', sans-serif; }
+#cel-who small { display: block; color: #a5b4fc; font: 700 30px/1.3 'Inter', sans-serif; }
+.confetti { position: absolute; top: 0; width: 16px; height: 26px; border-radius: 4px; }
+
+/* ---------- Escena E: consejos y cierre ---------- */
+#e-title { left: 160px; top: 110px; color: #fff; font: 800 84px/1.1 'Poppins', sans-serif; }
+#e-title span { color: #fde68a; }
+.tip { position: absolute; left: 160px; width: 1100px; display: flex; align-items: center; gap: 28px; padding: 28px 36px; border-radius: 30px; background: rgba(255, 255, 255, .08); border: 2px solid rgba(255, 255, 255, .15); }
+.tip .ck { width: 70px; height: 70px; border-radius: 22px; background: #10b981; color: #fff; display: grid; place-items: center; font: 900 38px/1 'Inter', sans-serif; flex: 0 0 auto; }
+.tip b { display: block; color: #fff; font: 800 38px/1.2 'Poppins', sans-serif; }
+.tip small { display: block; margin-top: 8px; color: #c7d2fe; font: 600 27px/1.3 'Inter', sans-serif; }
+#e-t1 { top: 270px; } #e-t2 { top: 470px; } #e-t3 { top: 670px; }
+#e-jiro { left: 1300px; top: 300px; height: 720px; }
+#e-end { inset: 0; display: grid; place-items: center; text-align: center; }
+#e-end .box { display: flex; flex-direction: column; align-items: center; }
+#e-end img.jiro { height: 460px; }
+#e-end h2 { margin: 6px 0 0; color: #fff; font: 800 76px/1.1 'Poppins', sans-serif; }
+#e-end p { margin: 18px 0 0; color: #c7d2fe; font: 600 36px/1.3 'Inter', sans-serif; }
+#e-end .brand { margin-top: 34px; display: flex; align-items: center; gap: 24px; }
+#e-end .brand img { height: 74px; }
+#e-end .brand span { color: #fde68a; font: 700 34px/1 'Inter', sans-serif; }
+</style>
+
+<!-- Fondo -->
+<div id="sky">
+  <svg id="constellation" viewBox="0 0 600 320" aria-hidden="true">
+    <line x1="40" y1="250" x2="150" y2="170"/><line x1="150" y1="170" x2="260" y2="200"/><line x1="260" y1="200" x2="360" y2="90"/>
+    <line x1="360" y1="90" x2="470" y2="130"/><line x1="470" y1="130" x2="560" y2="40"/>
+    <circle cx="40" cy="250" r="6"/><circle cx="150" cy="170" r="7"/><circle cx="260" cy="200" r="5"/><circle cx="360" cy="90" r="8"/><circle cx="470" cy="130" r="5"/><circle cx="560" cy="40" r="7"/>
+  </svg>
+</div>
+
+<!-- Escena A: portada -->
+<img id="a-logo" class="abs" src="asset:logo.png?h=200" alt="Juried">
+<div id="a-eyebrow" class="abs">Tutorial para docentes</div>
+<div id="a-title" class="abs">Comportamientos</div>
+<div id="a-sub" class="abs">Qué son, cómo crear uno y cómo darlo en clase</div>
+<div id="a-chips" class="abs"><span>⏱ 1 minuto</span><span>✨ Gamificación</span></div>
+<img id="a-jiro" class="abs" src="asset:assets/jiro/emocionado.webp" alt="">
+
+<!-- Escena B: ¿para qué sirven? -->
+<img id="b-jiro" class="abs" src="asset:assets/jiro/senalando.webp" alt="">
+<div id="b-bubble1" class="bubble"><span id="b-text1"></span></div>
+<div id="b-bubble2" class="bubble"><span id="b-text2"></span></div>
+<div id="b-pos" class="example pos">
+  <header>✦ Para dar puntos</header>
+  <div class="row"><div class="icon">⭐</div><div><div class="name">Participación</div><div class="pills"><span class="pill xp">+10 XP</span></div></div></div>
+</div>
+<div id="b-neg" class="example neg">
+  <header>♥ Para quitar puntos</header>
+  <div class="row"><div class="icon">💔</div><div><div class="name">Interrumpe la clase</div><div class="pills"><span class="pill hp">−5 HP</span></div></div></div>
+</div>
+<div id="b-xp" class="ptype"><div class="big">⚡</div><h3>Experiencia</h3><p>XP para subir de nivel.</p></div>
+<div id="b-hp" class="ptype"><div class="big">❤️</div><h3>Vida</h3><p>HP: mide la convivencia, nunca las notas.</p></div>
+<div id="b-gp" class="ptype"><div class="big">🪙</div><h3>Oro</h3><p>Para comprar en la Tienda de la clase.</p></div>
+
+<!-- Escenas C y D: la plataforma -->
+<div id="app" class="abs">
+  <div class="browser"><i style="background:#f87171"></i><i style="background:#fbbf24"></i><i style="background:#34d399"></i><div class="url">plataformajuried.com</div></div>
+  <div class="sidebar">
+    <div class="band" id="band">
+      <img src="asset:logo.png?h=200" alt="">
+      <div class="classchip"><b>3B</b><div>3.° B · Ciencia<small>CÓDIGO W69HBRAN</small></div></div>
+    </div>
+    <div class="nav" id="nav-gam">
+      <div class="item"><span class="ic">👥</span>Estudiantes<span class="chev">▾</span></div>
+      <div class="item"><span class="ic">🎮</span>Gamificación<span class="chev">▴</span></div>
+      <div class="item sub active" id="nav-beh">Comportamientos</div>
+      <div class="item sub">Insignias</div>
+      <div class="item sub">Tienda</div>
+      <div class="item sub">Coleccionables</div>
+      <div class="item sub">Rankings</div>
+      <div class="item sub">Historia de clase</div>
+      <div class="item"><span class="ic">🎓</span>Aprendizaje<span class="chev">▾</span></div>
+      <div class="item"><span class="ic">💬</span>Comunicación<span class="chev">▾</span></div>
+    </div>
+    <div class="nav" id="nav-est">
+      <div class="item"><span class="ic">👥</span>Estudiantes<span class="chev">▴</span></div>
+      <div class="item sub active">Lista</div>
+      <div class="item sub">Clanes</div>
+      <div class="item sub">Asistencia</div>
+      <div class="item"><span class="ic">🎮</span>Gamificación<span class="chev">▾</span></div>
+      <div class="item"><span class="ic">🎓</span>Aprendizaje<span class="chev">▾</span></div>
+      <div class="item"><span class="ic">💬</span>Comunicación<span class="chev">▾</span></div>
+    </div>
+  </div>
+  <div class="header">
+    <div class="cls">🎓</div><div class="who"><b>3.° B · Ciencia</b><small>6 estudiantes</small></div>
+    <div class="tools"><span>🖥 Modo clase ▾</span><span>🔧 Herramientas</span><span>🔔</span><span class="av">DP</span></div>
+  </div>
+  <div class="content">
+    <!-- Página: Comportamientos -->
+    <div class="page" id="page-beh">
+      <div class="ptitle"><div class="tile">✨</div><div><h2>Comportamientos</h2><p>Acciones rápidas para dar o quitar puntos en clase</p></div></div>
+      <div class="btn" id="btn-export" style="left:820px;top:32px;width:140px">↗ Exportar</div>
+      <div class="btn" id="btn-ia" style="left:972px;top:32px;width:196px">✨ Generar con IA</div>
+      <div class="btn primary" id="btn-new" style="left:1180px;top:32px;width:128px">＋ Nuevo</div>
+      <div class="sortrow">Ordenar <div class="seg"><span class="on">Más usados</span><span>Nombre</span></div></div>
+      <div class="col pos" style="left:32px">
+        <header><span class="badge">✦</span>Para dar puntos <em id="pos-count">(0)</em><span class="add">＋ Añadir</span></header>
+        <div class="empty" id="pos-empty">Premia con un clic acciones como "Participación" o "Tarea completa".<div class="btn outline-blue">＋ Crear el primero</div></div>
+        <div class="beh-card" id="new-card">
+          <div class="ic">💚</div>
+          <div><b>Ayuda a un compañero</b><div class="mini"><span class="mpill xp">+10 XP</span><span class="mpill gp">+5 GP</span><span>Sin usar en 30 días</span></div></div>
+          <div class="acts"><span>⧉</span><span>✎</span><span style="color:#dc2626">🗑</span></div>
+        </div>
+      </div>
+      <div class="col neg" style="left:684px">
+        <header><span class="badge">♥</span>Para quitar puntos <em>(0)</em><span class="add">＋ Añadir</span></header>
+        <div class="toggle-row"><div><b>Usarlos al dar puntos</b><small>Aparecen en la Lista, el perfil del alumno y la barra rápida.</small></div><div class="switch"></div></div>
+        <div class="empty" style="top:190px">Descuenta puntos por acciones como "Interrumpe la clase" o "Tarea incompleta".<div class="btn outline-blue">＋ Crear el primero</div></div>
+      </div>
+    </div>
+
+    <!-- Página: Estudiantes (Ficha) -->
+    <div class="page" id="page-ficha">
+      <div class="stools"><div class="seg"><span class="on">Ficha</span><span>Lista</span><span>Por clan</span></div><div class="search">🔍 Buscar alumno</div><div class="right"><span>📋 Pasar lista</span><span>Gestionar ▾</span></div></div>
+      <div class="fchips"><span class="on">Todos (6)</span><span>✦ Sin reconocimiento hoy (<b id="sin-rec">6</b>)</span></div>
+      <div class="slist">
+        <div class="srow sel"><span class="st">★<span class="lit" id="ana-star">★</span></span>Ana<span class="lv">Nv 1</span></div>
+        <div class="srow"><span class="st">★</span>Bruno<span class="lv">Nv 1</span></div>
+        <div class="srow"><span class="st">★</span>Carla<span class="lv">Nv 1</span></div>
+        <div class="srow"><span class="st">★</span>Diego<span class="lv">Nv 1</span></div>
+        <div class="srow"><span class="st">★</span>Elsa<span class="lv">Nv 1</span></div>
+        <div class="srow"><span class="st">★</span>Fabio<span class="lv">Nv 1</span></div>
+      </div>
+      <div class="focus">
+        <div class="avcard" id="avcard"><img src="asset:avatars/base/skin-initial-f.png?h=760" alt=""></div>
+        <div class="info">
+          <h3>Ana <span>Nivel 1</span></h3>
+          <div class="cls">🧭 Explorador<em>Cambiar</em></div>
+          <div class="need">Le faltan <span id="ana-need">100</span> XP para el nivel 2</div>
+          <div class="bar"><i id="ana-bar"></i></div>
+          <div class="tot"><span id="ana-xp">0</span> XP · <span id="ana-gold">0</span> de oro</div>
+          <div class="give-h">Dar a Ana<em>Más opciones</em></div>
+          <div class="ggrid">
+            <div class="gbtn" id="g-help"><span class="ic">💚</span><div><b>Ayuda a un compañero</b><small>+10 XP · +5 oro</small></div></div>
+            <div class="gbtn"><span class="ic">⭐</span><div><b>Participación</b><small>+10 XP</small></div></div>
+            <div class="gbtn"><span class="ic">🎯</span><div><b>Tarea completa</b><small>+15 XP</small></div></div>
+            <div class="gbtn"><span class="ic">💡</span><div><b>Buena idea</b><small>+5 XP</small></div></div>
+          </div>
+          <div class="more"><span>Corregir ▾</span><span>🏅 Insignia</span><span>👁 Ver perfil</span></div>
+        </div>
+        <div class="today"><b>Hoy con Ana</b><div class="none" id="today-none">Aún nada hoy.</div>
+          <div class="entry" id="today-entry"><time>08:15</time>💚 Ayuda a un compañero<span class="pts">+10 XP · +5 oro</span><span style="color:#64748b">↺</span></div>
+        </div>
+      </div>
+      <div class="plus" id="plus1" style="left:540px;top:470px">+10 XP</div>
+      <div class="plus" id="plus2" style="left:690px;top:470px;color:#f59e0b">+5 oro</div>
+    </div>
+
+    <!-- Página: Estudiantes (Lista) -->
+    <div class="page" id="page-lista">
+      <div class="stools"><div class="seg"><span>Ficha</span><span class="on">Lista</span><span>Por clan</span></div><div class="search">🔍 Buscar alumno</div><div class="right"><span>📋 Pasar lista</span><span>Gestionar ▾</span></div></div>
+      <div class="fchips"><span class="on">Todos (6)</span><span>✦ Sin reconocimiento hoy (<b id="sin-rec2">5</b>)</span></div>
+      <div class="table">
+        <div class="trow head"><span class="ck"></span><span class="who">ALUMNO</span><span class="lvl">NIVEL</span><span class="td">HOY</span></div>
+        <div class="trow" style="top:46px"><span class="ck"></span><span class="who"><span class="face">👧</span>Ana</span><span class="lvl">1</span><span class="td"><i></i><i class="gold"></i></span><span class="gb">＋ Ayuda a un compañero <small>+10 XP</small></span><span class="dots">⋯</span></div>
+        <div class="trow" style="top:100px"><span class="ck" id="ck-bruno"><i id="ck-bruno-on">✓</i></span><span class="who"><span class="face">👦</span>Bruno</span><span class="lvl" id="bruno-lvl">1</span><span class="td"><i></i><i class="gold" id="gold-bruno"></i></span><span class="gb">＋ Ayuda a un compañero <small>+10 XP</small><span class="fill" id="fill-bruno">＋ Ayuda a un compañero <small style="color:#d1fae5">+10 XP</small></span></span><span class="dots">⋯</span></div>
+        <div class="trow" style="top:154px"><span class="ck"></span><span class="who"><span class="face">👧</span>Carla</span><span class="lvl">1</span><span class="td"><i></i></span><span class="gb">＋ Ayuda a un compañero <small>+10 XP</small></span><span class="dots">⋯</span></div>
+        <div class="trow" style="top:208px"><span class="ck" id="ck-diego"><i id="ck-diego-on">✓</i></span><span class="who"><span class="face">👦</span>Diego</span><span class="lvl">1</span><span class="td"><i></i><i class="gold" id="gold-diego"></i></span><span class="gb">＋ Ayuda a un compañero <small>+10 XP</small><span class="fill" id="fill-diego">＋ Ayuda a un compañero <small style="color:#d1fae5">+10 XP</small></span></span><span class="dots">⋯</span></div>
+        <div class="trow" style="top:262px"><span class="ck" id="ck-elsa"><i id="ck-elsa-on">✓</i></span><span class="who"><span class="face">👧</span>Elsa</span><span class="lvl">1</span><span class="td"><i></i><i class="gold" id="gold-elsa"></i></span><span class="gb">＋ Ayuda a un compañero <small>+10 XP</small><span class="fill" id="fill-elsa">＋ Ayuda a un compañero <small style="color:#d1fae5">+10 XP</small></span></span><span class="dots">⋯</span></div>
+        <div class="trow" style="top:316px;border-bottom:0"><span class="ck"></span><span class="who"><span class="face">👦</span>Fabio</span><span class="lvl">1</span><span class="td"><i></i></span><span class="gb">＋ Ayuda a un compañero <small>+10 XP</small></span><span class="dots">⋯</span></div>
+      </div>
+      <div class="selbar" id="selbar"><span class="n">3</span>seleccionados<span class="give" id="sel-give">＋ Dar puntos</span><span>Corregir</span><span>🏅 Insignia</span><span>Rol ▴</span><span style="border:0">✕</span></div>
+    </div>
+
+    <div class="toast" id="toast-d1"><span class="ok">✓</span>Ana: Ayuda a un compañero +10 XP · +5 oro<span class="undo" id="undo-d1">Deshacer</span></div>
+    <div class="toast" id="toast-d2"><span class="ok">✓</span>3 estudiantes: Participación +10 XP<span class="undo">Deshacer</span></div>
+  </div>
+
+  <!-- Modal «Nuevo comportamiento» (sobre todo el marco) -->
+  <div id="overlay" class="abs"></div>
+  <div id="modal" class="abs">
+    <div class="m m-title">Nuevo comportamiento</div><div class="m m-close">✕</div><div class="m m-line"></div>
+    <div class="m m-tg give" id="tg-give-off">＋ Dar puntos</div><div class="m m-tg give on" id="tg-give-on">＋ Dar puntos</div>
+    <div class="m m-tg take" id="tg-take-off">− Quitar puntos</div><div class="m m-tg take on" id="tg-take-on">− Quitar puntos</div>
+    <div class="m m-label" style="left:28px;top:148px">Icono</div><div class="m m-label" style="left:98px;top:148px">Nombre</div>
+    <div class="m m-icon" id="ic-star">⭐</div><div class="m m-icon neg" id="ic-heart">💔</div><div class="m m-icon" id="ic-green">💚</div>
+    <div class="m m-name" id="m-name"><span class="ph" id="ph-pos">Ej: Participación</span><span class="ph" id="ph-neg" style="position:absolute;left:18px">Ej: Interrumpe la clase</span><span id="name-typed" style="position:absolute;left:18px"></span></div>
+    <div class="m m-label" style="left:28px;top:252px" id="lbl-give">Puntos que da <em>(puedes combinar)</em></div>
+    <div class="m m-label" style="left:28px;top:252px" id="lbl-take">Puntos que quita <em>(puedes combinar)</em></div>
+    <!-- Filas al dar puntos -->
+    <div class="m m-row" id="row-xp" style="top:278px"><div class="lbl"><span style="color:#10b981">✦</span>Experiencia</div><span class="chip">+5</span><span class="chip on" id="xp10">+10</span><span class="chip">+15</span><span class="chip">+20</span><div class="num">10</div></div>
+    <div class="m m-row" id="row-hp" style="top:332px"><div class="lbl"><span style="color:#ef4444">♥</span>Vida</div><span class="chip">+5</span><span class="chip">+10</span><span class="chip">+15</span><span class="chip">+20</span><div class="num">0</div></div>
+    <div class="m m-row" id="row-gp" style="top:386px"><div class="lbl"><span style="color:#f59e0b">●</span>Oro</div><span class="chip" id="gp5"><span id="gp5-on" class="chip on" style="position:absolute;margin:-1.5px">+5</span>+5</span><span class="chip">+10</span><span class="chip">+15</span><span class="chip">+20</span><div class="num"><span id="gp-num">0</span></div></div>
+    <!-- Filas al quitar puntos (el oro no se quita) -->
+    <div class="m m-row" id="row-xp-neg" style="top:278px"><div class="lbl"><span style="color:#10b981">✦</span>Experiencia</div><span class="chip">−5</span><span class="chip">−10</span><span class="chip">−15</span><span class="chip">−20</span><div class="num">0</div></div>
+    <div class="m m-row" id="row-hp-neg" style="top:332px"><div class="lbl"><span style="color:#ef4444">♥</span>Vida</div><span class="chip on-red">−5</span><span class="chip">−10</span><span class="chip">−15</span><span class="chip">−20</span><div class="num">5</div></div>
+    <div class="m m-hint" style="top:442px" id="hint-give">Toca otra vez un valor marcado para quitarlo.</div>
+    <div class="m m-hint" style="top:394px" id="hint-take">Toca otra vez un valor marcado para quitarlo.<br>El oro no se quita: solo baja cuando el alumno lo gasta.</div>
+    <div class="m m-label" style="left:28px;top:480px">Descripción <em>(opcional)</em></div>
+    <div class="m m-area">Qué acción se reconoce o se corrige</div>
+    <div class="m m-label" style="left:28px;top:580px">Competencia <em>(opcional)</em></div>
+    <div class="m m-select" id="m-comp">Sin competencia ▾<span class="note">Solo si tu clase usa competencias</span></div>
+    <div class="m m-label" style="left:28px;top:672px">Así se verá al dar puntos</div>
+    <div class="m m-preview" id="pv-pos"><span class="ic" id="pv-ic-star">⭐</span><span class="ic" id="pv-ic-green" style="position:absolute;left:16px">💚</span><span class="nm ph" id="pv-ph">Nombre del comportamiento</span><span class="nm" id="pv-name" style="position:absolute;left:56px"></span><span class="pls"><span class="mpill xp">+10 XP</span><span class="mpill gp" id="pv-gp">+5 GP</span></span></div>
+    <div class="m m-preview neg" id="pv-neg"><span class="ic">💔</span><span class="nm ph">Nombre del comportamiento</span><span class="pls"><span class="mpill hp">−5 HP</span></span></div>
+    <div class="m m-foot"><div class="btn" style="left:192px;width:100px">Cancelar</div><div class="btn" style="left:304px;width:200px">Guardar y crear otro</div><div class="btn primary" id="btn-create" style="left:516px;width:96px">Crear</div></div>
+    <div class="m picker" id="picker"><small>SÍMBOLOS</small><div class="grid"><span>❤️</span><span>💜</span><span>💙</span><span class="hl" id="pick-green">💚</span><span>🧡</span><span>💛</span><span>🤍</span><span>🖤</span><span>♟️</span><span>🃏</span><span>♠️</span><span>♦️</span><span>♣️</span><span>♥️</span><span>✨</span><span>💫</span><span>🌟</span><span>⚜️</span><span>🔱</span><span>☯️</span></div></div>
+  </div>
+  <div class="toast" id="toast-c"><span class="ok">✓</span>Creado: Ayuda a un compañero</div>
+
+  <!-- «Dar puntos» a varios (PointsModal) -->
+  <div id="pmodal" class="abs">
+    <div class="m m-title">Dar puntos</div><div class="m m-close">✕</div>
+    <div class="m pm-sub">Para Bruno, Diego y Elsa</div>
+    <div class="m pm-tabs"><div class="seg"><span class="on">Comportamientos</span><span>Manual</span></div></div>
+    <div class="m pm-hint">Toca un comportamiento para aplicarlo.</div>
+    <div class="m pm-sec">POSITIVOS</div>
+    <div class="m pcard" style="left:28px;top:204px"><span class="ic">💚</span><div><b>Ayuda a un compañero</b><small>+10 XP · +5 oro</small></div></div>
+    <div class="m pcard" id="pc-part" style="left:368px;top:204px"><span class="ic">⭐</span><div><b>Participación</b><small>+10 XP</small></div></div>
+    <div class="m pcard" style="left:28px;top:288px"><span class="ic">🎯</span><div><b>Tarea completa</b><small>+15 XP</small></div></div>
+    <div class="m pcard" style="left:368px;top:288px"><span class="ic">💡</span><div><b>Buena idea</b><small>+5 XP</small></div></div>
+  </div>
+</div>
+
+<!-- Resaltados, subtítulos, celebración, consejos y cursor -->
+<div id="glow-nav" class="glow"></div>
+<div id="glow-ia" class="glow"></div>
+<div id="glow-preview" class="glow"></div>
+<div id="glow-undo" class="glow"></div>
+<div class="capwrap" id="caps"></div>
+
+<div id="celebra" class="abs">
+  <img id="cel-jiro" class="abs" src="asset:assets/jiro/celebrando.webp" alt="">
+  <div id="cel-title" class="abs">¡Subió de nivel!</div>
+  <div id="cel-sub" class="abs">Toda la clase lo celebra en la pantalla.</div>
+  <div id="cel-who" class="abs"><img src="asset:avatars/base/skin-initial-m.png?h=760" alt=""><div>Bruno<small>Nivel 1 → 2</small></div></div>
+</div>
+
+<div id="e-title" class="abs">3 consejos <span>para empezar</span></div>
+<div id="e-t1" class="tip"><div class="ck">✓</div><div><b>Empieza con pocos y claros</b><small>4 a 6 para dar y 1 o 2 para quitar: son los que tienes a mano en la Lista.</small></div></div>
+<div id="e-t2" class="tip"><div class="ck">✓</div><div><b>Más para dar que para quitar</b><small>Reconoce lo que quieres ver más seguido en tu clase.</small></div></div>
+<div id="e-t3" class="tip"><div class="ck">✓</div><div><b>Da oro en los positivos</b><small>Sin oro, nadie puede comprar en la Tienda de la clase.</small></div></div>
+<img id="e-jiro" class="abs" src="asset:assets/jiro/senalando.webp" alt="" style="transform-origin:50% 100%">
+<div id="e-end" class="abs"><div class="box">
+  <img class="jiro" src="asset:assets/jiro/celebrando.webp" alt="">
+  <h2>¡Listo! Ya puedes reconocer a tu clase</h2>
+  <p>Gamificación › Comportamientos › «Nuevo»</p>
+  <div class="brand"><img src="asset:logo.png?h=200" alt="Juried"><span>plataformajuried.com</span></div>
+</div></div>
+
+<svg id="cursor" class="abs" viewBox="0 0 44 54" aria-hidden="true"><path d="M3 2 L3 40 L13 31 L20 48 L28 44 L21 28 L35 28 Z" fill="#fff" stroke="#111827" stroke-width="3" stroke-linejoin="round"/></svg>
+
+<script>
+(() => {
+  const { key, show, type, count, cue, chapter, every, start } = window.Motor;
+  const stage = document.getElementById('stage');
+  stage.classList.add('loading');
+  const $ = (s) => document.querySelector(s);
+
+  // ---------- Utilidades del guion ----------
+  /** Centro de un elemento en coordenadas del escenario (sin transformaciones). */
+  const center = (selector, dx = 0, dy = 0) => {
+    let el = $(selector);
+    let x = el.offsetWidth / 2 + dx;
+    let y = el.offsetHeight / 2 + dy;
+    while (el && el !== stage) { x += el.offsetLeft; y += el.offsetTop; el = el.offsetParent; }
+    return { x, y };
+  };
+  /** Ubica un resaltado sobre un elemento (con margen). */
+  const placeGlow = (glow, selector, pad = 6) => {
+    const c = center(selector);
+    const el = $(selector);
+    const g = $(glow);
+    g.style.left = `${c.x - el.offsetWidth / 2 - pad}px`;
+    g.style.top = `${c.y - el.offsetHeight / 2 - pad}px`;
+    g.style.width = `${el.offsetWidth + pad * 2}px`;
+    g.style.height = `${el.offsetHeight + pad * 2}px`;
+  };
+  /** Algo que aparece de golpe en t (y se va en t1 si se indica). */
+  const appear = (selector, t0, t1 = null, fade = 0.2) => {
+    const frames = [[t0, { o: 0 }], [t0 + fade, { o: 1 }]];
+    if (t1 !== null) frames.push([t1, { o: 1 }], [t1 + fade, { o: 0 }]);
+    key(selector, frames, 'out');
+  };
+  /** Clic: onda dorada en (x, y) y su sonido. */
+  const ripple = (t, p) => {
+    const r = document.createElement('div');
+    r.className = 'ripple';
+    r.style.left = `${p.x}px`;
+    r.style.top = `${p.y}px`;
+    stage.appendChild(r);
+    key(r, [[t, { o: 0, s: 0.3 }], [t + 0.02, { o: 0.9, s: 0.35 }], [t + 0.5, { o: 0, s: 1.4, ease: 'out' }]]);
+    cue(t, 'click');
+  };
+  /** Texto escrito con su tecleo. */
+  const typing = (selector, t0, t1, text) => {
+    type(selector, t0, t1, text);
+    for (let t = t0; t < t1; t += 0.085) cue(t, 'type');
+  };
+  /** Subtítulo de paso: número (o ícono) + texto, entre t0 y t1. */
+  const caption = (t0, t1, badge, html, kind = '') => {
+    const c = document.createElement('div');
+    c.className = 'cap';
+    c.innerHTML = `<span class="n ${kind}">${badge}</span><span>${html}</span>`;
+    $('#caps').appendChild(c);
+    key(c, [[t0, { o: 0, y: 30 }], [t0 + 0.35, { o: 1, y: 0, ease: 'out' }], [t1 - 0.3, { o: 1, y: 0 }], [t1, { o: 0, y: -10, ease: 'in' }]]);
+  };
+
+  // ---------- Fondo: estrellas que titilan ----------
+  const stars = [];
+  let seed = 7;
+  const rand = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+  for (let i = 0; i < 150; i++) {
+    const s = document.createElement('div');
+    const size = rand() < 0.12 ? 4 : rand() < 0.5 ? 3 : 2;
+    s.className = 'star';
+    s.style.cssText = `left:${rand() * 1920}px;top:${rand() * 1080}px;width:${size}px;height:${size}px`;
+    $('#sky').appendChild(s);
+    stars.push({ el: s, base: 0.35 + rand() * 0.5, speed: 0.6 + rand() * 1.8, phase: rand() * 6.3 });
+  }
+  for (let i = 0; i < 26; i++) {
+    const d = document.createElement('i');
+    d.className = 'dot';
+    d.style.cssText = `left:${rand() * 280}px;top:${rand() * 112}px`;
+    $('#band').appendChild(d);
+  }
+  for (let i = 0; i < 22; i++) {
+    const d = document.createElement('i');
+    d.className = 'dot';
+    d.style.cssText = `left:${rand() * 300}px;top:${rand() * 300}px`;
+    $('#avcard').appendChild(d);
+  }
+  every((t) => {
+    for (const s of stars) s.el.style.opacity = (s.base + 0.35 * Math.sin(t * s.speed + s.phase)).toFixed(2);
+  });
+
+  // ---------- Confeti (determinista) ----------
+  const confetti = [];
+  const colors = ['#fbbf24', '#34d399', '#60a5fa', '#f472b6', '#a78bfa', '#fb7185'];
+  for (let i = 0; i < 70; i++) {
+    const c = document.createElement('div');
+    c.className = 'confetti';
+    c.style.left = `${rand() * 1920}px`;
+    c.style.background = colors[i % colors.length];
+    $('#celebra').appendChild(c);
+    confetti.push({ el: c, delay: rand() * 1.2, speed: 380 + rand() * 420, spin: (rand() - 0.5) * 900, drift: (rand() - 0.5) * 220 });
+  }
+  const CEL0 = 63.2;
+  every((t) => {
+    for (const c of confetti) {
+      const k = t - CEL0 - c.delay;
+      if (k < 0 || k > 4) { c.el.style.opacity = '0'; continue; }
+      c.el.style.opacity = '1';
+      c.el.style.transform = `translate(${(c.drift * Math.sin(k * 2)).toFixed(1)}px, ${(-60 + k * c.speed).toFixed(1)}px) rotate(${(k * c.spin).toFixed(1)}deg)`;
+    }
+  });
+
+  // =============== Guion (segundos) ===============
+  const END = 82;
+  chapter(0, 'Inicio');
+  chapter(6.5, '¿Para qué sirven?');
+  chapter(20, 'Crear un comportamiento');
+  chapter(48, 'Darlo en clase');
+  chapter(68, 'Consejos');
+
+  // ----- A · Portada (0–6.5) -----
+  show('#a-logo', 0.2, 6.3, { from: { y: -20 } });
+  show('#a-eyebrow', 0.5, 6.3);
+  key('#a-title', [[0.8, { o: 0, s: 0.9, y: 30 }], [1.4, { o: 1, s: 1, y: 0, ease: 'pop' }], [6.0, { o: 1 }], [6.4, { o: 0, y: -20, ease: 'in' }]]);
+  show('#a-sub', 1.5, 6.3);
+  show('#a-chips', 2.0, 6.3);
+  key('#a-jiro', [[1.0, { o: 0, x: 260 }], [1.8, { o: 1, x: 0, ease: 'back' }], [3.4, { y: -14 }], [4.8, { y: 0 }], [6.0, { o: 1, x: 0 }], [6.5, { o: 0, x: 200, ease: 'in' }]]);
+  key('#constellation', [[0, { o: 0 }], [2, { o: 0.8 }], [18, { o: 0.8 }], [20, { o: 0 }], [68, { o: 0 }], [70, { o: 0.8 }]]);
+  cue(0.3, 'whoosh'); cue(1.2, 'pop'); cue(1.6, 'chime');
+
+  // ----- B · ¿Para qué sirven? (6.5–20) -----
+  key('#b-jiro', [[6.5, { o: 0, x: -240 }], [7.2, { o: 1, x: 0, ease: 'back' }], [19.3, { o: 1, x: 0 }], [19.9, { o: 0, x: -200, ease: 'in' }]]);
+  key('#b-bubble1', [[7.0, { o: 0, s: 0.92, y: 20 }], [7.4, { o: 1, s: 1, y: 0, ease: 'back' }], [15.0, { o: 1 }], [15.3, { o: 0 }]]);
+  typing('#b-text1', 7.5, 10.4, 'Los comportamientos son acciones rápidas para dar o quitar puntos en clase.');
+  key('#b-pos', [[10.6, { o: 0, y: 60, s: 0.95 }], [11.1, { o: 1, y: 0, s: 1, ease: 'back' }], [19.3, { o: 1 }], [19.8, { o: 0, y: -30, ease: 'in' }]]);
+  key('#b-neg', [[11.4, { o: 0, y: 60, s: 0.95 }], [11.9, { o: 1, y: 0, s: 1, ease: 'back' }], [19.3, { o: 1 }], [19.8, { o: 0, y: -30, ease: 'in' }]]);
+  for (const [sel, t] of [['#b-xp', 13.0], ['#b-hp', 13.5], ['#b-gp', 14.0]]) {
+    key(sel, [[t, { o: 0, y: 50 }], [t + 0.45, { o: 1, y: 0, ease: 'back' }], [19.3, { o: 1 }], [19.8, { o: 0, y: 30, ease: 'in' }]]);
+    cue(t, 'pop');
+  }
+  key('#b-bubble2', [[15.2, { o: 0, s: 0.92 }], [15.5, { o: 1, s: 1, ease: 'back' }], [19.3, { o: 1 }], [19.8, { o: 0 }]]);
+  typing('#b-text2', 15.6, 18.4, 'Un toque, y el alumno los recibe al instante: queda anotado en su historial.');
+  cue(6.6, 'whoosh'); cue(7.1, 'pop'); cue(10.7, 'pop'); cue(11.5, 'pop'); cue(15.3, 'pop');
+
+  // ----- C · Crear un comportamiento (20–48) -----
+  key('#app', [[20.0, { o: 0, s: 0.94, y: 30 }], [20.7, { o: 1, s: 1, y: 0, ease: 'out' }], [67.4, { o: 1, s: 1 }], [68.0, { o: 0, s: 0.96, ease: 'in' }]]);
+  cue(20.0, 'whoosh');
+  // Páginas y menú lateral
+  key('#page-beh', [[0, { o: 1 }], [47.6, { o: 1 }], [48.2, { o: 0 }]]);
+  key('#nav-gam', [[0, { o: 1 }], [47.6, { o: 1 }], [48.2, { o: 0 }]]);
+  key('#page-ficha', [[0, { o: 0 }], [47.8, { o: 0, x: 40 }], [48.4, { o: 1, x: 0, ease: 'out' }], [56.6, { o: 1 }], [57.0, { o: 0 }]]);
+  key('#nav-est', [[0, { o: 0 }], [47.8, { o: 0 }], [48.4, { o: 1 }]]);
+  key('#page-lista', [[0, { o: 0 }], [56.7, { o: 0 }], [57.1, { o: 1 }]]);
+  // Estado inicial: sin modal, sin tarjeta nueva
+  appear('#overlay', 24.1, 40.9, 0.25);
+  key('#modal', [[24.1, { o: 0, s: 0.92, y: 20 }], [24.5, { o: 1, s: 1, y: 0, ease: 'back' }], [40.9, { o: 1, s: 1 }], [41.2, { o: 0, s: 0.96, ease: 'in' }]]);
+  appear('#toast-c', 41.3, 44.6, 0.25);
+  key('#pos-empty', [[0, { o: 1 }], [41.3, { o: 1 }], [41.45, { o: 0 }]]);
+  key('#new-card', [[0, { o: 0 }], [41.4, { o: 0, s: 0.9 }], [41.8, { o: 1, s: 1, ease: 'pop' }]]);
+  count('#pos-count', 41.4, 41.45, 0, 1, (v) => `(${Math.round(v)})`);
+  cue(41.3, 'chime'); cue(41.5, 'pop');
+  // Tipo: muestra «Quitar puntos» y vuelve a «Dar puntos»
+  const giveOn = [[0, { o: 1 }], [26.6, { o: 1 }], [26.62, { o: 0 }], [27.6, { o: 0 }], [27.62, { o: 1 }]];
+  const giveOff = [[0, { o: 0 }], [26.6, { o: 0 }], [26.62, { o: 1 }], [27.6, { o: 1 }], [27.62, { o: 0 }]];
+  key('#tg-give-on', giveOn); key('#tg-take-off', giveOn);
+  key('#tg-give-off', giveOff); key('#tg-take-on', giveOff);
+  for (const sel of ['#ic-star', '#ph-pos', '#lbl-give', '#row-xp', '#row-hp', '#row-gp', '#hint-give', '#pv-pos']) key(sel, giveOn);
+  for (const sel of ['#ic-heart', '#ph-neg', '#lbl-take', '#row-xp-neg', '#row-hp-neg', '#hint-take', '#pv-neg']) key(sel, giveOff);
+  // Ícono 💚 y nombre
+  key('#picker', [[0, { o: 0 }], [29.0, { o: 0, s: 0.95, y: -8 }], [29.25, { o: 1, s: 1, y: 0, ease: 'out' }], [30.0, { o: 1 }], [30.2, { o: 0 }]]);
+  key('#ic-star', [[0, { o: 1 }], [26.6, { o: 1 }], [26.62, { o: 0 }], [27.6, { o: 0 }], [27.62, { o: 1 }], [30.0, { o: 1 }], [30.05, { o: 0 }]]);
+  key('#ic-green', [[0, { o: 0 }], [30.0, { o: 0, s: 0.6 }], [30.25, { o: 1, s: 1, ease: 'pop' }]]);
+  key('#pv-ic-star', [[0, { o: 1 }], [30.0, { o: 1 }], [30.05, { o: 0 }]]);
+  key('#pv-ic-green', [[0, { o: 0 }], [30.0, { o: 0 }], [30.1, { o: 1 }]]);
+  key('#ph-pos', [[0, { o: 1 }], [26.6, { o: 1 }], [26.62, { o: 0 }], [27.6, { o: 0 }], [27.62, { o: 1 }], [30.7, { o: 1 }], [30.72, { o: 0 }]]);
+  key('#pv-ph', [[0, { o: 1 }], [30.7, { o: 1 }], [30.72, { o: 0 }]]);
+  typing('#name-typed', 30.7, 32.7, 'Ayuda a un compañero');
+  typing('#pv-name', 30.7, 32.7, 'Ayuda a un compañero');
+  // Oro +5 (puedes combinar)
+  key('#gp5-on', [[0, { o: 0 }], [35.0, { o: 0 }], [35.05, { o: 1 }]]);
+  count('#gp-num', 35.0, 35.05, 0, 5);
+  key('#pv-gp', [[0, { o: 0 }], [35.0, { o: 0, s: 0.6 }], [35.25, { o: 1, s: 1, ease: 'pop' }]]);
+  cue(35.1, 'coin');
+
+  // Cursor (coordenadas tomadas de la maqueta)
+  const P = {
+    rest: { x: 1180, y: 760 },
+    nav: center('#nav-beh', -60),
+    nuevo: center('#btn-new'),
+    take: center('#tg-take-off'),
+    give: center('#tg-give-off'),
+    icon: center('#ic-star'),
+    green: center('#pick-green'),
+    name: center('#m-name', -150),
+    gp5: center('#gp5'),
+    comp: center('#m-comp', -120),
+    preview: center('#pv-pos', 120),
+    create: center('#btn-create'),
+    ia: center('#btn-ia'),
+    help: center('#g-help'),
+    undo: center('#undo-d1'),
+    bruno: center('#ck-bruno'),
+    diego: center('#ck-diego'),
+    elsa: center('#ck-elsa'),
+    selGive: center('#sel-give'),
+    part: center('#pc-part'),
+  };
+  const at = (p) => ({ x: p.x, y: p.y });
+  key('#cursor', [
+    [0, { o: 0, ...at(P.rest) }],
+    [20.6, { o: 0, ...at(P.rest) }], [21.0, { o: 1 }],
+    [22.2, { ...at(P.nav), ease: 'inOut' }], [23.2, { ...at(P.nav) }],
+    [23.9, { ...at(P.nuevo), ease: 'inOut' }], [25.4, { ...at(P.nuevo) }],
+    [26.4, { ...at(P.take), ease: 'inOut' }], [26.9, { ...at(P.take) }],
+    [27.4, { ...at(P.give), ease: 'inOut' }], [28.2, { ...at(P.give) }],
+    [28.7, { ...at(P.icon), ease: 'inOut' }], [29.2, { ...at(P.icon) }],
+    [29.8, { ...at(P.green), ease: 'inOut' }], [30.1, { ...at(P.green) }],
+    [30.6, { ...at(P.name), ease: 'inOut' }], [33.6, { ...at(P.name) }],
+    [34.8, { ...at(P.gp5), ease: 'inOut' }], [36.3, { ...at(P.gp5) }],
+    [37.1, { ...at(P.comp), ease: 'inOut' }], [38.9, { ...at(P.comp) }],
+    [39.6, { ...at(P.preview), ease: 'inOut' }], [40.2, { ...at(P.preview) }],
+    [40.8, { ...at(P.create), ease: 'inOut' }], [41.6, { ...at(P.create) }],
+    [43.2, { ...at(P.ia), ease: 'inOut' }], [46.6, { ...at(P.ia) }],
+    [47.4, { o: 0, ...at(P.ia) }],
+    [49.4, { o: 0, ...at(P.rest) }], [49.8, { o: 1 }],
+    [50.8, { ...at(P.help), ease: 'inOut' }], [52.6, { ...at(P.help) }],
+    [53.6, { ...at(P.undo), ease: 'inOut' }], [56.2, { ...at(P.undo) }],
+    [57.6, { ...at(P.bruno), ease: 'inOut' }], [58.1, { ...at(P.bruno) }],
+    [58.5, { ...at(P.diego), ease: 'inOut' }], [58.75, { ...at(P.diego) }],
+    [59.15, { ...at(P.elsa), ease: 'inOut' }], [59.5, { ...at(P.elsa) }],
+    [60.2, { ...at(P.selGive), ease: 'inOut' }], [60.6, { ...at(P.selGive) }],
+    [61.4, { ...at(P.part), ease: 'inOut' }], [62.2, { ...at(P.part) }],
+    [62.7, { o: 0, ...at(P.part) }],
+  ]);
+  ripple(23.0, P.nav); ripple(24.0, P.nuevo); ripple(26.6, P.take); ripple(27.6, P.give);
+  ripple(28.9, P.icon); ripple(30.0, P.green); ripple(30.65, P.name); ripple(35.0, P.gp5); ripple(41.0, P.create);
+
+  placeGlow('#glow-nav', '#nav-beh', 4);
+  placeGlow('#glow-ia', '#btn-ia', 6);
+  placeGlow('#glow-preview', '#pv-pos', 6);
+  placeGlow('#glow-undo', '#undo-d1', 5);
+  appear('#glow-nav', 22.2, 23.6, 0.25);
+  key('#glow-ia', [[0, { o: 0 }], [43.4, { o: 0 }], [43.7, { o: 1 }], [44.6, { o: 0.45 }], [45.5, { o: 1 }], [46.6, { o: 1 }], [47.0, { o: 0 }]]);
+  appear('#glow-preview', 39.4, 40.6, 0.25);
+
+  caption(20.8, 23.8, '1', 'Entra a <b>Gamificación › Comportamientos</b>');
+  caption(23.9, 25.9, '2', 'Toca <q>Nuevo</q>');
+  caption(26.0, 28.4, '3', 'Elige <q>Dar puntos</q> o <q>Quitar puntos</q>');
+  caption(28.5, 33.6, '4', 'Ponle un ícono y un nombre');
+  caption(33.7, 36.6, '5', 'Puntos: Experiencia, Vida y Oro. <b>Puedes combinar.</b>');
+  caption(36.7, 39.3, '6', '¿Usas competencias? Vincúlalo y <b>contará en la nota</b>');
+  caption(39.4, 42.9, '7', 'Revisa cómo se verá y toca <q>Crear</q>');
+  caption(43.0, 47.4, '💡', '¿Sin ideas? <q>Generar con IA</q> te propone una lista', 'idea');
+
+  // ----- D · Darlo en clase (48–68) -----
+  cue(48.0, 'whoosh');
+  caption(48.6, 53.3, '1', 'En <b>Estudiantes › Lista</b>, toca el comportamiento. ¡Listo!', 'ok');
+  ripple(51.0, P.help);
+  appear('#toast-d1', 51.2, 56.4, 0.25);
+  key('#ana-bar', [[0, { w: 0 }], [51.2, { w: 0 }], [52.3, { w: 10, ease: 'out' }]]);
+  count('#ana-xp', 51.2, 52.3, 0, 10);
+  count('#ana-gold', 51.2, 52.3, 0, 5);
+  count('#ana-need', 51.2, 52.3, 100, 90);
+  count('#sin-rec', 51.3, 51.35, 6, 5);
+  key('#ana-star', [[0, { o: 0 }], [51.3, { o: 0, s: 0.4 }], [51.7, { o: 1, s: 1, ease: 'pop' }]]);
+  key('#today-none', [[0, { o: 1 }], [51.3, { o: 1 }], [51.4, { o: 0 }]]);
+  key('#today-entry', [[0, { o: 0 }], [51.4, { o: 0, y: 10 }], [51.8, { o: 1, y: 0, ease: 'out' }]]);
+  key('#plus1', [[0, { o: 0 }], [51.1, { o: 0, y: 0, s: 0.8 }], [51.4, { o: 1, y: -30, s: 1.1, ease: 'out' }], [52.4, { o: 0, y: -110 }]]);
+  key('#plus2', [[0, { o: 0 }], [51.25, { o: 0, y: 0, s: 0.8 }], [51.55, { o: 1, y: -30, s: 1.1, ease: 'out' }], [52.6, { o: 0, y: -110 }]]);
+  cue(51.2, 'coin');
+  caption(53.4, 56.5, '↺', '¿Te equivocaste? Toca <q>Deshacer</q> (tienes 8 segundos)');
+  appear('#glow-undo', 53.8, 56.2, 0.25);
+  caption(56.6, 62.9, '2', 'A varios a la vez: márcalos en <q>Lista</q> y toca <q>Dar puntos</q>', 'ok');
+  for (const [name, t] of [['bruno', 58.0], ['diego', 58.65], ['elsa', 59.35]]) {
+    ripple(t, P[name]);
+    key(`#ck-${name}-on`, [[0, { o: 0 }], [t, { o: 0, s: 0.5 }], [t + 0.15, { o: 1, s: 1, ease: 'pop' }], [61.6, { o: 1 }], [61.8, { o: 0 }]]);
+    key(`#fill-${name}`, [[0, { o: 0 }], [t, { o: 0 }], [t + 0.15, { o: 1 }], [61.6, { o: 1 }], [61.8, { o: 0 }]]);
+    key(`#gold-${name}`, [[0, { o: 0 }], [61.7, { o: 0, s: 0.3 }], [62.0, { o: 1, s: 1, ease: 'pop' }]]);
+  }
+  key('#selbar', [[0, { o: 0 }], [58.05, { o: 0, y: 40 }], [58.4, { o: 1, y: 0, ease: 'out' }], [61.6, { o: 1, y: 0 }], [61.9, { o: 0, y: 30 }]]);
+  ripple(60.5, P.selGive);
+  key('#pmodal', [[0, { o: 0 }], [60.6, { o: 0, s: 0.93 }], [60.9, { o: 1, s: 1, ease: 'back' }], [61.9, { o: 1 }], [62.1, { o: 0, s: 0.97 }]]);
+  key('#overlay', [[0, { o: 0 }], [24.1, { o: 0 }], [24.35, { o: 1 }], [40.9, { o: 1 }], [41.15, { o: 0 }], [60.6, { o: 0 }], [60.8, { o: 1 }], [61.9, { o: 1 }], [62.1, { o: 0 }]]);
+  ripple(61.8, P.part);
+  appear('#toast-d2', 62.0, 63.4, 0.2);
+  count('#sin-rec2', 62.0, 62.05, 5, 2);
+  cue(62.0, 'coin');
+  // Celebración por subir de nivel
+  key('#celebra', [[0, { o: 0 }], [CEL0, { o: 0 }], [CEL0 + 0.4, { o: 1 }], [67.0, { o: 1 }], [67.5, { o: 0 }]]);
+  key('#cel-jiro', [[CEL0, { o: 0, y: 80, s: 0.9 }], [CEL0 + 0.6, { o: 1, y: 0, s: 1, ease: 'back' }], [65.6, { y: -16 }], [66.6, { y: 0 }]]);
+  key('#cel-title', [[CEL0 + 0.3, { o: 0, s: 0.6 }], [CEL0 + 0.8, { o: 1, s: 1, ease: 'pop' }]]);
+  show('#cel-sub', CEL0 + 0.9, null);
+  show('#cel-who', CEL0 + 1.2, null, { from: { x: 60 } });
+  count('#bruno-lvl', CEL0, CEL0 + 0.05, 1, 2);
+  cue(CEL0 + 0.2, 'levelup');
+
+  // ----- E · Consejos y cierre (68–82) -----
+  cue(68.0, 'whoosh');
+  show('#e-title', 68.3, 75.6);
+  for (const [sel, t] of [['#e-t1', 69.0], ['#e-t2', 71.0], ['#e-t3', 73.0]]) {
+    key(sel, [[t, { o: 0, x: -60 }], [t + 0.5, { o: 1, x: 0, ease: 'back' }], [75.4, { o: 1, x: 0 }], [75.9, { o: 0, x: -40, ease: 'in' }]]);
+    cue(t, 'pop');
+  }
+  key('#e-jiro', [[68.6, { o: 0, x: 200 }], [69.3, { o: 1, x: 0, ease: 'back' }], [75.4, { o: 1, x: 0 }], [75.9, { o: 0, x: 160, ease: 'in' }]]);
+  key('#e-end', [[0, { o: 0 }], [76.0, { o: 0, s: 0.94 }], [76.7, { o: 1, s: 1, ease: 'out' }], [81.3, { o: 1 }], [82, { o: 0 }]]);
+  cue(76.2, 'chime');
+
+  // Arranca cuando la tipografía está lista (máx. 1,5 s): así los botones quedan donde los apunta el cursor.
+  const go = () => { if (stage.dataset.ready) return; stage.dataset.ready = '1'; stage.classList.remove('loading'); start({ length: END }); };
+  if (document.fonts && document.fonts.ready) {
+    Promise.race([document.fonts.ready, new Promise((resolve) => setTimeout(resolve, 1500))]).then(go);
+  } else {
+    go();
+  }
+})();
+</script>
