@@ -90,7 +90,7 @@ export const CreateClassModal = ({ schools, onClose, onCreated }: CreateClassMod
 
   const header = (
     <div className="relative h-28 flex-shrink-0 overflow-hidden">
-      <img src="/assets/mascot/jiro-crearclase.jpg" alt="" className="absolute inset-0 h-full w-full object-cover object-top" />
+      <img src="/assets/jiro/inicio/nueva-clase.webp" alt="" className="absolute inset-0 h-full w-full object-cover object-right" />
       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
       <button type="button" onClick={onClose} aria-label="Cerrar" className="absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-lg bg-black/40 text-white hover:bg-black/60">
         <X size={18} aria-hidden="true" />

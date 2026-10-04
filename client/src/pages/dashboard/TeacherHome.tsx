@@ -233,7 +233,7 @@ export const TeacherHome = () => {
         </div>
       ) : classrooms.length === 0 ? (
         <section className="flex flex-col items-center gap-6 rounded-3xl bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 px-6 py-10 text-center text-white md:flex-row md:text-left">
-          <img src="/jiro-mascot.png" alt="" className="h-32 w-32 flex-shrink-0 object-contain drop-shadow-xl" />
+          <img src="/assets/jiro/inicio/primera-clase.webp" alt="" className="h-32 w-32 flex-shrink-0 object-contain drop-shadow-xl" />
           <div className="space-y-3">
             <h2 className="text-2xl font-black">Crea tu primera clase</h2>
             <p className="max-w-xl text-indigo-100">Tus estudiantes se unen con un código y empiezan a ganar XP, oro e insignias desde el primer día.</p>
@@ -322,7 +322,7 @@ export const TeacherHome = () => {
 
           {/* Consejo de Jiro (uno por visita, sin rotación automática) */}
           <aside className="flex items-center gap-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
-            <img src="/jiro-mascot.png" alt="" className="h-14 w-14 flex-shrink-0 object-contain" />
+            <img src="/assets/jiro/inicio/consejo.webp" alt="" className="h-14 w-14 flex-shrink-0 object-contain" />
             <div>
               <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-700 dark:text-gray-300">
                 <Lightbulb size={14} aria-hidden="true" />
