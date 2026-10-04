@@ -13,6 +13,9 @@ import { logger } from './logger.js';
 export type AuditAction =
   | 'auth.admin_login'
   | 'auth.admin_login_failed'
+  | 'auth.admin_totp_enabled'
+  | 'auth.admin_totp_disabled'
+  | 'auth.admin_totp_failed'
   | 'admin.teacher_created'
   | 'admin.role_changed'
   | 'admin.account_activated'

@@ -12,6 +12,7 @@ import { SessionError } from '../utils/jwt.js';
 import { teacherVerificationService } from '../services/teacherVerification.service.js';
 import { studentPinService } from '../services/studentPin.service.js';
 import { recordAudit } from '../utils/audit.js';
+import { adminTotpService } from '../services/adminTotp.service.js';
 import jwt from 'jsonwebtoken';
 
 // Schema de validación de contraseña robusta
@@ -468,12 +469,35 @@ export const login = async (req: Request, res: Response): Promise<void> => {
   try {
     const validatedData = loginSchema.parse(req.body);
     const result = await authService.login(validatedData, { ip: req.ip ?? null });
+    if ('totpRequired' in result) {
+      // Sin sesión todavía: el cliente pide el código y lo manda a /auth/login/totp con este pase.
+      res.json({ success: true, message: 'Escribe el código de verificación', data: { totpRequired: true, challenge: result.challenge } });
+      return;
+    }
     if (result.user.role === 'ADMIN') {
-      await recordAudit({ action: 'auth.admin_login', actor: { id: result.user.id, role: 'ADMIN' }, metadata: { provider: 'LOCAL' }, ip: req.ip ?? null });
+      await recordAudit({ action: 'auth.admin_login', actor: { id: result.user.id, role: 'ADMIN' }, metadata: { provider: 'LOCAL', mfa: false }, ip: req.ip ?? null });
     }
     sendAuth(res, 200, 'Inicio de sesión exitoso', result);
   } catch (error) {
     handleAuthError(res, error);
+  }
+};
+
+/**
+ * POST /api/auth/login/totp
+ * Segundo paso de las cuentas de administración: el código de 6 números de la app.
+ */
+export const loginWithTotp = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { challenge, code } = z.object({
+      challenge: z.string().uuid(),
+      code: z.string().trim().regex(/^\d{6}$/, 'El código tiene 6 números'),
+    }).parse(req.body);
+    const result = await adminTotpService.verifyChallenge(challenge, code, { ip: req.ip ?? null, userAgent: req.get('user-agent') });
+    await recordAudit({ action: 'auth.admin_login', actor: { id: result.user.id, role: 'ADMIN' }, metadata: { provider: 'LOCAL', mfa: true }, ip: req.ip ?? null });
+    sendAuth(res, 200, 'Inicio de sesión exitoso', result);
+  } catch (error) {
+    handleAuthError(res, error, 'No se pudo revisar el código');
   }
 };
 

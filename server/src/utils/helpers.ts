@@ -1,5 +1,15 @@
 import crypto from 'crypto';
 
+/** Duración legible para mensajes: «15 minutos», «1 hora», «24 horas». */
+export const formatDuration = (ms: number): string => {
+  if (ms >= 3_600_000) {
+    const hours = Math.round(ms / 3_600_000);
+    return hours === 1 ? '1 hora' : `${hours} horas`;
+  }
+  const minutes = Math.round(ms / 60_000);
+  return minutes === 1 ? '1 minuto' : `${minutes} minutos`;
+};
+
 /**
  * Código aleatorio legible (sin I, O, 0, 1 para evitar confusión) generado con un
  * CSPRNG. Los códigos de clase y de vinculación actúan como secretos: con

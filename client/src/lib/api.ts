@@ -142,7 +142,11 @@ export const authApi = {
     api.put<ApiResponse<{ accessToken: string }>>('/auth/pin', data),
 
   login: (data: { email: string; password: string }) =>
-    api.post<ApiResponse<AuthData>>('/auth/login', data),
+    api.post<ApiResponse<AuthData | TotpChallenge>>('/auth/login', data),
+
+  /** Segundo paso de la administración: el código de 6 números de la app. */
+  loginTotp: (data: { challenge: string; code: string }) =>
+    api.post<ApiResponse<AuthData>>('/auth/login/totp', data),
 
   /** Cierra la sesión de este dispositivo (la cookie la identifica). */
   logout: () => api.post<ApiResponse<null>>('/auth/logout'),
@@ -189,6 +193,12 @@ export interface AuthData {
   user: User;
   /** El refresh no viaja en el cuerpo: va en una cookie httpOnly. */
   accessToken: string;
+}
+
+/** Cuenta de administración con verificación en dos pasos: la contraseña da un pase para escribir el código. */
+export interface TotpChallenge {
+  totpRequired: true;
+  challenge: string;
 }
 
 export interface PinAuthData extends AuthData {

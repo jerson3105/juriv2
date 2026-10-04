@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db, users, studentProfiles, classrooms } from '../db/index.js';
 import { generateTokenPair, revokeAllUserTokens, type SessionTokens } from '../utils/jwt.js';
 import { AppError, ConflictError, ForbiddenError, NotFoundError, RateLimitError, UnauthorizedError, ValidationError, isDuplicateEntry } from '../utils/errors.js';
-import { generateRandomCode } from '../utils/helpers.js';
+import { formatDuration, generateRandomCode } from '../utils/helpers.js';
 import { avatarService } from './avatar.service.js';
 import { splitOfficialStudentName } from './auth.service.js';
 import { teacherVerificationService, UNVERIFIED_CLASS_MESSAGE } from './teacherVerification.service.js';
@@ -26,8 +26,6 @@ const PIN_COST = 10;
 const CLOSED_CLASS_MESSAGE = 'Esta clase no está recibiendo estudiantes ahora. Pídele tu tarjeta a tu profe.';
 const RESET_MESSAGE = 'Tu profe restableció tu acceso: crea un PIN nuevo con la tarjeta que te dio.';
 const BLOCKED_MESSAGE = 'Tu acceso quedó bloqueado por seguridad. Pídele a tu profe que lo restablezca.';
-
-const durationText = (ms: number) => (ms >= 3_600_000 ? (ms === 3_600_000 ? '1 hora' : `${ms / 3_600_000} horas`) : `${ms / 60_000} minutos`);
 
 export type RosterState = 'new' | 'pin' | 'account';
 export interface ClassRoster {
@@ -307,7 +305,7 @@ class StudentPinService {
         const next = level === PIN_LOCK_STEPS_MS.length
           ? ` Si fallas ${PIN_MAX_ATTEMPTS} más, tu profe tendrá que restablecer tu acceso.`
           : ' Si no lo recuerdas, pídele ayuda a tu profe.';
-        return { error: new RateLimitError(`Fallaste ${PIN_MAX_ATTEMPTS} veces${level > 1 ? ' otra vez' : ''}: tu PIN quedó bloqueado ${durationText(lockMs)}.${next}`), lock };
+        return { error: new RateLimitError(`Fallaste ${PIN_MAX_ATTEMPTS} veces${level > 1 ? ' otra vez' : ''}: tu PIN quedó bloqueado ${formatDuration(lockMs)}.${next}`), lock };
       }
       await tx.update(users).set({ pinFailedAttempts: attempts }).where(eq(users.id, userId));
       const left = PIN_MAX_ATTEMPTS - attempts;

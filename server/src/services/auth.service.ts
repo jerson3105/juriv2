@@ -15,6 +15,8 @@ import { ConflictError, ForbiddenError, NotFoundError, ValidationError, isDuplic
 import { maskPersonName } from '../utils/helpers.js';
 import { teacherVerificationService, UNVERIFIED_CLASS_MESSAGE } from './teacherVerification.service.js';
 import { recordAudit } from '../utils/audit.js';
+import { config_app } from '../config/env.js';
+import { adminTotpService } from './adminTotp.service.js';
 
 // Tipos
 type UserRole = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'PARENT';
@@ -510,7 +512,10 @@ export const registerStudentWithCode = async (input: {
 /**
  * Iniciar sesión con email y contraseña
  */
-export const login = async (input: LoginInput, context: { ip?: string | null } = {}): Promise<AuthResponse> => {
+/** Administración con verificación en dos pasos: la contraseña sola no da sesión, da un pase para el código. */
+export type TotpChallenge = { totpRequired: true; challenge: string };
+
+export const login = async (input: LoginInput, context: { ip?: string | null } = {}): Promise<AuthResponse | TotpChallenge> => {
   const { email, password } = input;
   const normalizedEmail = normalizeEmail(email);
   
@@ -533,6 +538,13 @@ export const login = async (input: LoginInput, context: { ip?: string | null } =
   if (bcrypt.getRounds(user.password) < SALT_ROUNDS) {
     const upgraded = await bcrypt.hash(password, SALT_ROUNDS);
     await db.update(users).set({ password: upgraded }).where(eq(users.id, user.id));
+  }
+
+  if (user.role === 'ADMIN') {
+    if (await adminTotpService.isEnabled(user.id)) return { totpRequired: true, challenge: adminTotpService.issueChallenge(user.id) };
+    if (config_app.adminTotpRequired) {
+      throw new ForbiddenError('Esta cuenta de administración necesita la verificación en dos pasos. Actívala desde el servidor.');
+    }
   }
   
   // Generar tokens

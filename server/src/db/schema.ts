@@ -2921,3 +2921,20 @@ export const auditEvents = mysqlTable('audit_events', {
 
 export type AuditEvent = typeof auditEvents.$inferSelect;
 export type NewAuditEvent = typeof auditEvents.$inferInsert;
+
+// ==================== VERIFICACIÓN EN DOS PASOS (ADMINISTRACIÓN) ====================
+
+// Código de 6 números (TOTP) de las cuentas de administración, con la clave cifrada (utils/piiCrypto). Se activa
+// solo desde el servidor (src/scripts/adminTotp.ts). Sin fila = la cuenta entra solo con contraseña.
+export const userTotp = mysqlTable('user_totp', {
+  userId: varchar('user_id', { length: 36 }).primaryKey(),
+  secretEncrypted: varchar('secret_encrypted', { length: 255 }).notNull(),
+  enabledAt: datetime('enabled_at', { fsp: 3 }).notNull(),
+  // Último paso de 30 s usado: el mismo código no vale dos veces.
+  lastStep: int('last_step'),
+  failedAttempts: int('failed_attempts').notNull().default(0),
+  lockLevel: tinyint('lock_level').notNull().default(0),
+  lockedUntil: datetime('locked_until'),
+});
+
+export type UserTotp = typeof userTotp.$inferSelect;

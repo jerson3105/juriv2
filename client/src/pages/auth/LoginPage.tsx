@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Backpack, ChevronRight, Lock, Mail } from 'lucide-react';
+import { Backpack, ChevronRight, Lock, Mail, ShieldCheck } from 'lucide-react';
 import { Input } from '../../components/ui/Input';
 import { AuthShell } from '../../components/auth/AuthShell';
 import { GoogleButton, OrDivider } from '../../components/auth/GoogleButton';
@@ -11,10 +11,13 @@ import { useAuthStore } from '../../store/authStore';
 export const LoginPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { login, isLoading, clearError } = useAuthStore();
+  const { login, loginTotp, isLoading, clearError } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
+  // Administración con verificación en dos pasos: tras la contraseña, el pase para escribir el código.
+  const [challenge, setChallenge] = useState<string | null>(null);
+  const [code, setCode] = useState('');
 
   const errorCode = searchParams.get('error');
   const notice = errorCode ? AUTH_ERROR_MESSAGES[errorCode] ?? AUTH_ERROR_MESSAGES.google_auth_failed : null;
@@ -26,7 +29,12 @@ export const LoginPage = () => {
     clearError();
     setFormError(null);
     try {
-      await login(email, password);
+      const { totpChallenge } = await login(email, password);
+      if (totpChallenge) {
+        setChallenge(totpChallenge);
+        setPassword('');
+        return;
+      }
       navigate(landingFor(useAuthStore.getState().user?.role));
     } catch (err) {
       const message = errorMessage(err, 'No se pudo iniciar sesión');
@@ -35,6 +43,57 @@ export const LoginPage = () => {
         : message);
     }
   };
+
+  const submitCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!challenge || code.length !== 6) return;
+    clearError();
+    setFormError(null);
+    try {
+      await loginTotp(challenge, code);
+      navigate(landingFor(useAuthStore.getState().user?.role));
+    } catch (err) {
+      setCode('');
+      setFormError(errorMessage(err, 'No se pudo revisar el código'));
+    }
+  };
+
+  const backToPassword = () => {
+    setChallenge(null);
+    setCode('');
+    setFormError(null);
+  };
+
+  if (challenge) {
+    return (
+      <AuthShell
+        title="Código de verificación"
+        subtitle="Abre tu app de autenticación y escribe el código de 6 números de Juried."
+        back={{ onClick: backToPassword, label: 'Volver' }}
+      >
+        <form onSubmit={submitCode} className="space-y-4" noValidate>
+          <Input
+            label="Código"
+            name="one-time-code"
+            autoComplete="one-time-code"
+            inputMode="numeric"
+            maxLength={6}
+            value={code}
+            onChange={(e) => { setCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setFormError(null); }}
+            leftIcon={<ShieldCheck size={18} />}
+            autoFocus
+            required
+          />
+          {formError && (
+            <p className="text-sm font-medium text-red-700 dark:text-red-300" role="alert">{formError}</p>
+          )}
+          <button type="submit" disabled={isLoading || code.length !== 6} className={`${primaryButton} ${pressable} w-full`}>
+            {isLoading ? 'Revisando…' : 'Entrar'}
+          </button>
+        </form>
+      </AuthShell>
+    );
+  }
 
   return (
     <AuthShell

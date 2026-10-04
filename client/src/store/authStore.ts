@@ -17,7 +17,9 @@ interface AuthState {
   error: string | null;
 
   // Acciones
-  login: (email: string, password: string) => Promise<void>;
+  /** Devuelve `totpChallenge` si la cuenta pide el código de verificación (aún sin sesión). */
+  login: (email: string, password: string) => Promise<{ totpChallenge?: string }>;
+  loginTotp: (challenge: string, code: string) => Promise<void>;
   register: (data: {
     email: string;
     password: string;
@@ -91,11 +93,30 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           const response = await authApi.login({ email, password });
+          const data = response.data.data;
+          if (data && 'totpRequired' in data) return { totpChallenge: data.challenge };
+          if (response.data.success && data) {
+            get().setAuth(data);
+          }
+          return {};
+        } catch (error) {
+          const message = (error as ApiError).response?.data?.message || 'Error al iniciar sesión';
+          set({ error: message });
+          throw new Error(message);
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      loginTotp: async (challenge: string, code: string) => {
+        set({ isLoading: true, error: null });
+        try {
+          const response = await authApi.loginTotp({ challenge, code });
           if (response.data.success && response.data.data) {
             get().setAuth(response.data.data);
           }
         } catch (error) {
-          const message = (error as ApiError).response?.data?.message || 'Error al iniciar sesión';
+          const message = (error as ApiError).response?.data?.message || 'No se pudo revisar el código';
           set({ error: message });
           throw new Error(message);
         } finally {

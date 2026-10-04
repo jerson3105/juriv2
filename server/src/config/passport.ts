@@ -9,6 +9,7 @@ import { isDuplicateEntry } from '../utils/errors.js';
 import { revokeAllUserTokens } from '../utils/jwt.js';
 import { teacherVerificationService } from '../services/teacherVerification.service.js';
 import { recordAudit } from '../utils/audit.js';
+import { adminTotpService } from '../services/adminTotp.service.js';
 
 type UserRole = 'TEACHER' | 'STUDENT' | 'PARENT';
 
@@ -98,6 +99,10 @@ export const configurePassport = () => {
             if (user.role === 'ADMIN' && (user.provider !== 'GOOGLE' || user.googleId !== googleId)) {
               await recordAudit({ action: 'auth.admin_login_failed', target: { type: 'user', id: user.id }, metadata: { provider: 'GOOGLE' }, ip: req.ip ?? null });
               return done(null, false, fail('admin_google_disabled'));
+            }
+            // Con la verificación en dos pasos (activa u obligatoria), Google no puede ser un atajo sin código.
+            if (user.role === 'ADMIN' && (config_app.adminTotpRequired || (await adminTotpService.isEnabled(user.id)))) {
+              return done(null, false, fail('admin_totp_required'));
             }
 
             // Usuario existe - actualizar vínculo con Google si hace falta

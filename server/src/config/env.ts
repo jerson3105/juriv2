@@ -38,6 +38,10 @@ const envSchema = z.object({
   // pierden, los documentos guardados no se pueden leer. Genéralas con scripts/generate-secrets.js.
   PII_ENC_KEY: z.string().optional(),
   PII_INDEX_KEY: z.string().optional(),
+
+  // true: ninguna cuenta de administración entra sin la verificación en dos pasos (se activa en el servidor con
+  // npm run admin:totp). Encenderlo después de activarla, o la administración queda sin acceso.
+  ADMIN_TOTP_REQUIRED: z.enum(['true', 'false']).default('false'),
 });
 
 // Valores de ejemplo publicados en el repositorio (.env.example, docs): nunca válidos en producción
@@ -141,6 +145,8 @@ export const config_app = {
   },
   
   clientUrl: env.CLIENT_URL,
+
+  adminTotpRequired: env.ADMIN_TOTP_REQUIRED === 'true',
 
   // null si faltan o no son válidas: el cifrado de documentos (utils/piiCrypto) no funciona sin las dos.
   pii: {
