@@ -1,0 +1,406 @@
+<!-- titulo: Coleccionables -->
+<!-- base: comun -->
+<!--
+  Tutorial 4 para docentes: «Coleccionables» (qué son, cómo crear un álbum y cómo los consiguen sus estudiantes).
+  ~82 s, 16:9. Pantallas recreadas de la plataforma (AlbumListView, AlbumFormModal, AlbumDetailView, CardFormModal,
+  ProgressView, OpenPackModal y BoxModal) con sus textos reales. Arma el archivo final con:
+    node tutoriales/motor/build.mjs coleccionables
+-->
+<style>
+/* Figuritas (marco por rareza, como CollectibleCardView) */
+.card { position: relative; width: 150px; height: 200px; border-radius: 14px; border: 4px solid var(--fr); background: linear-gradient(160deg, #ffffff, var(--bg)); box-shadow: 0 8px 18px rgba(15, 23, 42, .18); overflow: hidden; flex: 0 0 auto; }
+.card .num { position: absolute; left: 8px; top: 8px; padding: 3px 8px; border-radius: 999px; background: #111827; color: #fff; font: 800 12px/1 'Inter', sans-serif; }
+.card .emo { position: absolute; left: 0; right: 0; top: 38px; text-align: center; font-size: 62px; line-height: 1; }
+.card .foot { position: absolute; left: 0; right: 0; bottom: 0; padding: 8px 6px 10px; background: #fff; text-align: center; }
+.card .foot b { display: block; font: 800 15px/1.1 'Inter', sans-serif; color: #111827; }
+.card .foot span { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 999px; background: var(--bg); color: #1f2937; font: 800 11px/1 'Inter', sans-serif; }
+.card.md { width: 120px; height: 160px; border-width: 3px; }
+.card.md .emo { top: 30px; font-size: 48px; }
+.card.md .foot b { font-size: 13px; }
+.card.sm { width: 76px; height: 102px; border-width: 3px; border-radius: 10px; }
+.card.sm .num { left: 5px; top: 5px; padding: 2px 5px; font-size: 9px; }
+.card.sm .emo { top: 18px; font-size: 34px; }
+.card.sm .foot { padding: 4px 2px 5px; }
+.card.sm .foot b { font-size: 10px; }
+.card.sm .foot span { display: none; }
+.card.empty { border: 3px dashed #cbd5e1; background: rgba(255, 255, 255, .55); box-shadow: none; }
+.card.empty .num { background: #cbd5e1; color: #475569; }
+.card.empty .foot { background: transparent; }
+.card.empty .foot b { color: #94a3b8; }
+.card.back { border-color: #5b3412; background: radial-gradient(circle at 50% 40%, #a16207, #78350f 70%); }
+.card.back .emo { top: 30px; }
+.r-comun { --fr: #94a3b8; --bg: #f1f5f9; } .r-poco { --fr: #10b981; --bg: #d1fae5; } .r-rara { --fr: #3b82f6; --bg: #dbeafe; }
+.r-epica { --fr: #a855f7; --bg: #f3e8ff; } .r-legend { --fr: #f59e0b; --bg: #fef3c7; }
+
+/* Álbum abierto (escena B) */
+.book { position: absolute; left: 600px; top: 316px; width: 1180px; height: 380px; display: flex; filter: drop-shadow(0 30px 60px rgba(0, 0, 0, .45)); }
+.bpage { flex: 1; padding: 24px 26px; display: grid; grid-template-columns: repeat(3, 120px); grid-auto-rows: 160px; gap: 14px 30px; justify-content: center; background: linear-gradient(90deg, #fdf6e3, #f6e7c4); border-radius: 18px 4px 4px 18px; }
+.bpage.right { background: linear-gradient(270deg, #fdf6e3, #f6e7c4); border-radius: 4px 18px 18px 4px; border-left: 2px solid #e7d3a6; }
+
+/* Página Coleccionables */
+.aheader { position: absolute; left: 32px; right: 32px; top: 28px; display: flex; align-items: center; gap: 14px; }
+.aheader h2 { margin: 0; font: 800 26px/1 'Inter', sans-serif; }
+.aheader .badge { padding: 5px 10px; border-radius: 999px; background: #dcfce7; color: #166534; font: 800 13px/1 'Inter', sans-serif; }
+.aheader .acts { margin-left: auto; display: flex; gap: 10px; }
+.aheader .acts span { height: 44px; padding: 0 16px; border-radius: 12px; border: 1.5px solid #e2e8f0; background: #fff; display: inline-flex; align-items: center; gap: 8px; font: 700 15px/1 'Inter', sans-serif; }
+.stats { position: absolute; left: 32px; right: 32px; top: 96px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.stat { position: relative; height: 84px; border-radius: 14px; background: #fff; border: 1px solid #e2e8f0; padding: 12px 16px; }
+.stat small { display: block; color: #64748b; font: 800 12px/1 'Inter', sans-serif; letter-spacing: .06em; }
+.stat b { display: block; margin-top: 8px; font: 800 22px/1 'Inter', sans-serif; }
+.stat em { display: block; margin-top: 6px; color: #64748b; font: 500 13px/1 'Inter', sans-serif; font-style: normal; }
+.stat .alt { position: absolute; left: 16px; top: 12px; right: 16px; background: #fff; }
+.addrow { position: absolute; left: 32px; top: 200px; display: flex; gap: 12px; }
+.addrow span { height: 44px; padding: 0 16px; border-radius: 12px; border: 1.5px solid #e2e8f0; background: #fff; display: inline-flex; align-items: center; gap: 8px; font: 700 15px/1 'Inter', sans-serif; }
+.agrid { position: absolute; left: 32px; top: 262px; width: 1276px; display: grid; grid-template-columns: repeat(8, 120px); gap: 16px 36px; }
+.agrid .card { position: relative; }
+
+/* Formularios */
+.portada { left: 24px; top: 70px; width: 130px; height: 162px; border-radius: 14px; background: linear-gradient(160deg, #fef3c7, #fde68a); border: 2px dashed #f59e0b; display: grid; place-items: center; color: #92400e; font: 800 15px/1.3 'Inter', sans-serif; text-align: center; }
+.info-box { left: 24px; width: 592px; color: #475569; font: 500 13px/1.4 'Inter', sans-serif; }
+.info-box b { color: #111827; font-size: 15px; }
+.sel { height: 46px; border-radius: 12px; border: 1.5px solid #e2e8f0; background: #fff; display: flex; align-items: center; padding: 0 14px; font: 600 15px/1 'Inter', sans-serif; color: #334155; }
+.boxopt { left: 24px; top: 616px; width: 592px; height: 92px; border-radius: 14px; border: 1px solid #e2e8f0; background: #f8fafc; display: flex; gap: 12px; padding: 14px; }
+.boxopt i { width: 20px; height: 20px; border-radius: 5px; background: #4f46e5; color: #fff; display: grid; place-items: center; font-style: normal; font-size: 13px; flex: 0 0 auto; }
+.boxopt b { display: block; font: 800 15px/1.2 'Inter', sans-serif; }
+.boxopt small { display: block; margin-top: 4px; color: #475569; font: 500 13px/1.35 'Inter', sans-serif; }
+.rchip { height: 40px; padding: 0 14px; border-radius: 12px; border: 2px solid #e2e8f0; background: #fff; display: inline-flex; align-items: center; gap: 6px; font: 700 14px/1 'Inter', sans-serif; }
+.rchip.on { border-color: #3b82f6; background: #eff6ff; }
+.emopick { left: 250px; top: 336px; padding: 8px; border-radius: 14px; background: #fff; border: 1px solid #e2e8f0; box-shadow: 0 16px 40px rgba(15, 23, 42, .2); display: flex; gap: 4px; z-index: 2; }
+.emopick span { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; font-size: 24px; }
+.emopick span.hl { background: #e0e7ff; outline: 2px solid #4f46e5; }
+
+/* Progreso */
+.prog-h { position: absolute; left: 32px; top: 28px; }
+.prog-h h2 { margin: 0; font: 800 26px/1 'Inter', sans-serif; }
+.prog-h p { margin: 6px 0 0; color: #475569; font: 500 15px/1 'Inter', sans-serif; }
+.pstats { position: absolute; left: 32px; top: 96px; display: flex; gap: 14px; }
+.pstats div { width: 200px; height: 76px; border-radius: 14px; background: #fff; border: 1px solid #e2e8f0; padding: 12px 16px; }
+.pstats small { display: block; color: #64748b; font: 800 12px/1 'Inter', sans-serif; letter-spacing: .06em; }
+.pstats b { display: block; margin-top: 8px; font: 800 24px/1 'Inter', sans-serif; }
+.pfilters { position: absolute; left: 32px; top: 192px; display: flex; gap: 10px; }
+.pfilters span { height: 38px; padding: 0 14px; border-radius: 999px; border: 1px solid #e2e8f0; background: #fff; display: inline-flex; align-items: center; font: 700 14px/1 'Inter', sans-serif; }
+.pfilters span.on { border-color: #4f46e5; background: #eef2ff; color: #3730a3; }
+.plist { position: absolute; left: 32px; top: 248px; width: 760px; background: #fff; border: 1px solid #e2e8f0; border-radius: 16px; padding: 8px 16px; }
+.prow { height: 56px; display: flex; align-items: center; gap: 14px; border-bottom: 1px solid #f1f5f9; font: 700 16px/1 'Inter', sans-serif; }
+.prow:last-child { border-bottom: 0; }
+.prow .pb { flex: 1; height: 10px; border-radius: 999px; background: #e2e8f0; overflow: hidden; }
+.prow .pb i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.prow em { width: 120px; text-align: right; color: #475569; font: 700 14px/1 'Inter', sans-serif; font-style: normal; }
+
+/* Teléfono: sobres y caja */
+.ph-top { position: absolute; left: 0; right: 0; top: 0; height: 140px; background: linear-gradient(135deg, #0b1026, #312e81); color: #fff; padding: 62px 26px 0; }
+.ph-top b { display: block; font: 800 28px/1.1 'Poppins', sans-serif; }
+.ph-top small { display: block; margin-top: 6px; color: #c7d2fe; font: 600 15px/1 'Inter', sans-serif; }
+.envelope { position: absolute; left: 0; right: 0; top: 190px; margin: 0 auto; width: 210px; height: 270px; border-radius: 12px; background: linear-gradient(160deg, #fde68a, #f59e0b 60%, #d97706); box-shadow: 0 16px 40px rgba(180, 83, 9, .4); }
+.envelope .emb { position: absolute; left: 0; right: 0; top: 104px; text-align: center; font-size: 70px; }
+.strip { position: absolute; left: 0; right: 0; top: 190px; margin: 0 auto; width: 210px; height: 44px; border-radius: 12px 12px 0 0; background: linear-gradient(#fcd34d, #f59e0b); border-bottom: 3px dashed rgba(120, 53, 15, .55); transform-origin: 0 100%; }
+.cost { position: absolute; left: 0; right: 0; top: 482px; text-align: center; color: #475569; font: 700 15px/1.3 'Inter', sans-serif; }
+.openbtn { position: absolute; left: 0; right: 0; top: 520px; margin: 0 auto; width: 300px; height: 54px; border-radius: 14px; background: #4f46e5; color: #fff; display: grid; place-items: center; font: 800 17px/1 'Inter', sans-serif; }
+.deal { position: absolute; left: 16px; right: 16px; top: 200px; display: flex; justify-content: space-between; }
+.slot5 { position: relative; width: 76px; height: 102px; }
+.slot5 .card { position: absolute; left: 0; top: 0; }
+.slot5 .lab { position: absolute; left: -6px; right: -6px; top: 110px; text-align: center; font: 800 11px/1.25 'Inter', sans-serif; }
+.lab.nueva { color: #047857; } .lab.rep { color: #b45309; }
+.summary { position: absolute; left: 24px; right: 24px; top: 380px; padding: 16px; border-radius: 18px; background: #fff; border: 1px solid #e2e8f0; text-align: center; color: #1f2937; font: 700 16px/1.4 'Inter', sans-serif; }
+.summary .go { margin: 12px auto 0; width: 220px; height: 46px; border-radius: 12px; background: #4f46e5; color: #fff; display: grid; place-items: center; font: 800 15px/1 'Inter', sans-serif; }
+.boxscreen { position: absolute; left: 0; right: 0; top: 0; bottom: 0; background: #f8fafc; }
+.boxscreen .intro { position: absolute; left: 22px; right: 22px; top: 158px; color: #334155; font: 600 15px/1.4 'Inter', sans-serif; }
+.boxscreen h5 { position: absolute; left: 22px; margin: 0; font: 800 16px/1 'Inter', sans-serif; }
+.brow { position: absolute; left: 20px; right: 20px; height: 80px; border-radius: 16px; background: #fff; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 12px; padding: 0 12px; }
+.brow b { display: block; font: 800 16px/1.2 'Inter', sans-serif; }
+.brow small { display: block; margin-top: 3px; color: #64748b; font: 600 13px/1 'Inter', sans-serif; }
+.brow .go { margin-left: auto; height: 42px; padding: 0 14px; border-radius: 12px; background: #4f46e5; color: #fff; display: grid; place-items: center; font: 800 14px/1 'Inter', sans-serif; }
+.brow .go.soft { background: #eef2ff; color: #3730a3; }
+</style>
+
+<script>
+(() => {
+  const G = Guion.init();
+  const LOGO = 'asset:logo.png?h=200';
+  const END = 82;
+  G.chapter(0, 'Inicio');
+  G.chapter(6.5, '¿Qué son?');
+  G.chapter(19, 'Crear un álbum');
+  G.chapter(46, 'Sobres y la caja');
+  G.chapter(68, 'Consejos');
+
+  // Figurita en HTML (rareza: comun | poco | rara | epica | legend)
+  const R = { comun: 'Común', poco: 'Poco común', rara: 'Rara', epica: 'Épica', legend: 'Legendaria' };
+  const card = (n, emo, name, r, size = '', id = '') => `<div class="card ${size} r-${r}"${id ? ` id="${id}"` : ''}><span class="num">${n}</span><div class="emo">${emo}</div><div class="foot"><b>${name}</b><span>${R[r]}</span></div></div>`;
+  const empty = (n, name, size = '') => `<div class="card ${size} empty"><span class="num">${n}</span><div class="foot"><b>${name}</b></div></div>`;
+
+  // =============== A · Portada (0–6.5) ===============
+  G.cielo([[0, 19], [68, 82]]);
+  G.portada({ titulo: 'Coleccionables', sub: 'Álbumes de figuritas que tus estudiantes completan', chips: ['⏱ 1 minuto', '📖 Gamificación'], jiro: 'asset:assets/jiro/emocionado.webp', logo: LOGO });
+
+  // =============== B · ¿Qué son? (6.5–19) ===============
+  G.guia('b-jiro', 'asset:assets/jiro/senalando.webp', 6.6, 19);
+  G.burbuja('b-b1', 7.0, 12.8, 'Tus estudiantes abren sobres con su oro y pegan figuritas en su álbum.');
+  const leftCards = [[1, '🦁', 'León', 'rara'], [2, '🐘', 'Elefante', 'comun'], [3, '🦒', 'Jirafa', 'poco'], [4, '🐼', 'Panda', 'epica'], [5, '', 'Cebra', ''], [6, '', 'Tigre', '']];
+  const rightCards = [[7, '🐧', 'Pingüino', 'comun'], [8, '', 'Koala', ''], [9, '🦅', 'Águila', 'legend'], [10, '', 'Delfín', ''], [11, '', 'Búho', ''], [12, '', 'Lobo', '']];
+  const pageHtml = (list) => list.map(([n, e, nm, r]) => (r ? card(n, e, nm, r, 'md') : empty(n, nm, 'md'))).join('');
+  G.el('div', 'book', `<div class="bpage">${pageHtml(leftCards)}</div><div class="bpage right">${pageHtml(rightCards)}</div>`, G.stage, 'book');
+  G.key('#book', [[0, { o: 0, y: 40, s: 0.94 }], [9.2, { o: 0, y: 40, s: 0.94 }], [9.8, { o: 1, y: 0, s: 1, ease: 'out' }], [18.4, { o: 1 }], [18.9, { o: 0, y: -20, ease: 'in' }]]);
+  [...G.$('#book').querySelectorAll('.card:not(.empty)')].forEach((c, i) => {
+    const t = 10.0 + i * 0.3;
+    G.key(c, [[0, { o: 0, s: 0.6 }], [t, { o: 0, s: 0.6 }], [t + 0.3, { o: 1, s: 1, ease: 'pop' }]]);
+    G.cue(t, 'pop');
+  });
+  G.burbuja('b-b2', 13.0, 19, 'Al completarlo ganan un premio. ¡Y comparten las repetidas!');
+  [['🎁', '#f59e0b', 'Sobres de 5', 'Con su oro, hasta 2 al día.'], ['🏆', '#6366f1', 'Premio', 'Insignia u oro al completarlo.'], ['📦', '#10b981', 'Caja de la clase', 'Donan repetidas; otro compañero las toma.']].forEach(([ic, bg, h, p], i) => {
+    const c = G.el('div', 'ptype', `<div class="big" style="background:${bg}">${ic}</div><h3>${h}</h3><p>${p}</p>`, G.stage, `b-c${i}`);
+    c.style.cssText += `left:${600 + i * 410}px;top:716px`;
+    const t = 14.6 + i * 0.5;
+    G.key(c, [[0, { o: 0, y: 50 }], [t, { o: 0, y: 50 }], [t + 0.45, { o: 1, y: 0, ease: 'back' }], [18.4, { o: 1 }], [18.9, { o: 0, y: 30, ease: 'in' }]]);
+    G.cue(t, 'pop');
+  });
+
+  // =============== C y D · La plataforma (19–68) ===============
+  const frame = G.app({ id: 'app', logo: LOGO, navs: [{ id: 'nav-gam', abierto: 'Gamificación', activo: 'Coleccionables' }] });
+  const C = '#app-content';
+  // Lista vacía
+  G.el('div', 'page', `
+    <div class="ptitle"><div class="tile" style="background:linear-gradient(135deg,#d97706,#92400e)">📖</div><div><h2>Coleccionables</h2><p>Álbumes de figuritas que tus estudiantes completan abriendo sobres</p></div></div>
+    <div class="btn" style="left:834px;top:32px;width:130px">⬇ Importar</div>
+    <div class="btn" style="left:976px;top:32px;width:160px">✨ Crear con IA</div>
+    <div class="btn primary" style="left:1148px;top:32px;width:160px">＋ Nuevo álbum</div>
+    <div class="emptybox"><div class="emos"><span>📖</span></div><h3>Crea tu primer álbum</h3><p>Tus estudiantes abren sobres con su oro, pegan las figuritas y ganan un premio al completarlo.</p><div class="row"><div class="btn inline primary">✨ Crear con IA</div><div class="btn inline" id="b-mano">＋ Crear a mano</div></div></div>
+  `, C, 'pg-list');
+  // Detalle del álbum
+  const aiCards = [[2, '🐘', 'Elefante', 'comun'], [3, '🦒', 'Jirafa', 'poco'], [4, '🐼', 'Panda', 'epica'], [5, '🦓', 'Cebra', 'comun'], [6, '🐯', 'Tigre', 'rara'], [7, '🐧', 'Pingüino', 'comun'], [8, '🐨', 'Koala', 'poco'], [9, '🦅', 'Águila', 'legend'], [10, '🐬', 'Delfín', 'rara'], [11, '🦉', 'Búho', 'comun'], [12, '🐺', 'Lobo', 'poco'], [13, '🦜', 'Loro', 'comun']];
+  G.el('div', 'page', `
+    <div class="aheader"><span style="font-size:22px">←</span><h2>Animales del mundo</h2><span class="badge">A la venta</span><div class="acts"><span>📖 Hojear álbum</span><span id="b-prog">👥 Progreso</span><span>··· Más</span></div></div>
+    <div class="stats">
+      <div class="stat"><small>FIGURITAS</small><b id="n-cards">0</b><em id="n-pages">1 página</em></div>
+      <div class="stat"><small>SOBRE</small><b>20 de oro</b><em>de 5 · hasta 2 al día</em></div>
+      <div class="stat"><small>COMPLETARLO</small><b id="n-cost">—</b><em id="n-cost2">añade figuritas</em><div class="alt" id="cost-full"><small>COMPLETARLO</small><b>~90 de oro</b><em>≈ 2,3 semanas de oro</em></div></div>
+      <div class="stat"><small>PREMIO</small><b>🦁 Insignia</b><em>al completarlo</em></div>
+    </div>
+    <div class="addrow"><span id="b-addcard">＋ Añadir figurita</span><span id="b-addia">✨ Añadir con IA</span></div>
+    <div class="agrid" id="agrid">${card(1, '🦁', 'León', 'rara', 'md', 'c-leon')}${aiCards.map(([n, e, nm, r]) => card(n, e, nm, r, 'md', `c-ai${n}`)).join('')}</div>
+  `, C, 'pg-album');
+  // Progreso
+  const prog = [['Ana', 100, '13 de 13 ✓'], ['Bruno', 77, '10 de 13'], ['Carla', 62, '8 de 13'], ['Diego', 46, '6 de 13'], ['Elsa', 38, '5 de 13'], ['Fabio', 23, '3 de 13']];
+  G.el('div', 'page', `
+    <div class="prog-h"><h2>Progreso · Animales del mundo</h2><p>Quién colecciona y a quién le faltan figuritas</p></div>
+    <div class="pstats"><div><small>PROMEDIO</small><b>58%</b></div><div><small>COMPLETARON</small><b>1</b></div><div><small>COLECCIONAN</small><b>6</b></div></div>
+    <div class="pfilters"><span class="on">Todos</span><span>A punto (75%+)</span><span>Completados</span><span>Sin figuritas</span></div>
+    <div class="plist">${prog.map(([n, p, l], i) => `<div class="prow">${n}<div class="pb"><i id="pb-${i}" style="width:${p}%"></i></div><em>${l}</em></div>`).join('')}</div>
+  `, C, 'pg-prog');
+  G.el('div', 'toast', '<span class="ok">✓</span>Álbum creado: Animales del mundo', C, 'toast-a').classList.add('solo');
+  G.el('div', 'toast', '<span class="ok">✓</span>Pegado en el álbum: León', C, 'toast-p').classList.add('solo');
+
+  // Modal «Nuevo álbum»
+  G.el('div', 'overlay', '', frame, 'ov');
+  G.el('div', 'modal', `
+    <div class="m m-title">Nuevo álbum</div><div class="m m-close">✕</div>
+    <div class="m portada">🖼<br>Portada</div>
+    <div class="m m-label" style="left:172px;top:70px">Nombre</div>
+    <div class="m field focus" id="al-name" style="left:172px;top:92px;width:444px"><span class="ph" id="al-ph">Ej: Animales del mundo</span><span id="al-typed" style="position:absolute;left:18px"></span></div>
+    <div class="m m-label" style="left:172px;top:162px">Descripción <em>(opcional)</em></div>
+    <div class="m field" style="left:172px;top:184px;width:444px;height:48px;font-size:15px"><span class="ph">De qué trata el álbum</span></div>
+    <div class="m m-label" style="left:24px;top:256px">Precio de los sobres</div>
+    <div class="m" style="left:24px;top:278px"><div class="seg"><span>Más barato</span><span class="on">Normal</span><span>Más caro</span></div></div>
+    <div class="m info-box" style="top:336px"><b>📦 Sobre de 5: 20 de oro · hasta 2 al día</b><br>Calculado con el oro que gana tu clase (unos 40 de oro por semana), como la ropa del avatar. En cada sobre, 1 de cada 5 figuritas sale repetida.</div>
+    <div class="m m-label" style="left:24px;top:428px">Premio al completarlo</div>
+    <div class="m m-label" style="left:24px;top:456px;font-size:14px">Insignia <em>(recomendado)</em></div>
+    <div class="m sel" id="al-badge" style="left:24px;top:478px;width:592px"><span id="bd-none">Sin insignia ▾</span><span id="bd-lion" style="position:absolute;left:14px">🦁 Rey de la selva ▾</span></div>
+    <div class="m m-label" style="left:24px;top:546px;font-size:14px">Oro <em>(opcional)</em></div>
+    <div class="m field" style="left:130px;top:536px;width:120px;height:40px;font-size:15px">0</div>
+    <div class="m" style="left:24px;top:588px;color:#64748b;font:500 13px/1 Inter,sans-serif">Sin XP: lo que se compra con oro no sube de nivel.</div>
+    <div class="m boxopt" id="al-box"><i>✓</i><div><b>Caja de la clase</b><small>Tus estudiantes donan sus repetidas y un compañero al que le falta la toma (hasta 3 al día). Es anónima para ellos; tú ves quién dona y quién toma.</small></div></div>
+    <div class="m m-foot"><div class="btn" style="left:356px;width:110px">Cancelar</div><div class="btn primary" id="b-crear" style="left:478px;width:138px">Crear álbum</div></div>
+  `, frame, 'malbum').style.cssText = 'left:490px;top:26px;width:640px;height:780px';
+
+  // Modal «Nueva figurita»
+  G.el('div', 'modal', `
+    <div class="m m-title">Nueva figurita · casilla 1</div><div class="m m-close">✕</div>
+    <div class="m" style="left:24px;top:70px">
+      <div class="card r-comun" id="pv-c" style="position:absolute;width:200px;height:266px"><span class="num">1</span><div class="emo" style="top:58px;font-size:84px">⭐</div><div class="foot"><b id="pv-c-n">Nombre de la figurita</b><span>Común</span></div></div>
+      <div class="card r-rara" id="pv-r" style="width:200px;height:266px"><span class="num">1</span><div class="emo" style="top:58px;font-size:84px"><span id="pv-star">⭐</span><span id="pv-lion" style="position:absolute;left:0;right:0">🦁</span></div><div class="foot"><b id="pv-r-n">León</b><span>Rara</span></div></div>
+      <div style="margin-top:10px;width:200px;text-align:center;color:#64748b;font:500 13px/1 Inter,sans-serif">Así se verá en el álbum</div></div>
+    <div class="m m-label" style="left:250px;top:70px">Nombre</div>
+    <div class="m field focus" id="cd-name" style="left:250px;top:92px;width:406px"><span class="ph" id="cd-ph">Ej: Tiranosaurio</span><span id="cd-typed" style="position:absolute;left:18px"></span></div>
+    <div class="m m-label" style="left:250px;top:162px">Rareza <em>(solo cambia el marco)</em></div>
+    <div class="m" style="left:250px;top:186px;display:flex;flex-wrap:wrap;gap:8px;width:420px">
+      <span class="rchip">⭐ Común</span><span class="rchip">🍀 Poco común</span><span class="rchip" id="rc-rara" style="position:relative">💎 Rara<span class="rchip on" id="rc-rara-on" style="position:absolute;left:-2px;top:-2px">💎 Rara</span></span><span class="rchip">🔮 Épica</span><span class="rchip">👑 Legendaria</span></div>
+    <div class="m m-label" style="left:250px;top:290px">Emoji</div>
+    <div class="m field" id="cd-emoji" style="left:250px;top:312px;width:56px;height:52px;padding:0;justify-content:center;font-size:26px"><span id="em-star">⭐</span><span id="em-lion" style="position:absolute">🦁</span></div>
+    <div class="m btn" style="left:318px;top:312px;width:150px;height:52px;font-size:15px">⬆ Subir imagen</div>
+    <div class="m emopick" id="emopick"><span class="hl" id="pick-lion">🦁</span><span>🐘</span><span>🦒</span><span>🐼</span><span>🐧</span><span>🦜</span></div>
+    <div class="m m-label" style="left:250px;top:386px">Dato curioso <em>(opcional)</em></div>
+    <div class="m field" id="cd-fact" style="left:250px;top:408px;width:406px;height:52px;font-size:15px"><span class="ph" id="fact-ph">Algo que aprenderán al conseguirlo</span><span id="fact-typed" style="position:absolute;left:18px"></span></div>
+    <div class="m m-foot"><div class="btn" style="left:188px;width:100px">Cancelar</div><div class="btn" style="left:300px;width:196px">Guardar y crear otro</div><div class="btn primary" id="b-pegar" style="left:508px;width:148px">Pegar en el álbum</div></div>
+  `, frame, 'mcard').style.cssText = 'left:470px;top:140px;width:680px;height:540px';
+
+  // Teléfono: abrir un sobre y la caja de la clase
+  const pack = [['🐘', 'Elefante', 'comun', 'Nueva'], ['🦒', 'Jirafa', 'poco', 'Nueva'], ['🐧', 'Pingüino', 'comun', 'Nueva'], ['🦁', 'León', 'rara', 'Repetida · tienes 2'], ['🐬', 'Delfín', 'rara', 'Nueva']];
+  G.el('div', 'phone', `<div class="screen"><div class="notch"></div>
+    <div class="ph-top"><b>Coleccionables</b><small>llena tu álbum de figuritas</small></div>
+    <div id="ph-pack">
+      <div class="envelope"><div class="emb">📖</div></div><div class="strip" id="strip"></div>
+      <div class="cost" id="cost">Tu oro 46 · Cuesta 20 · Te quedarán 26</div>
+      <div class="openbtn" id="ph-open">Abrir por 20 de oro</div>
+    </div>
+    <div class="deal" id="deal">${pack.map(([e, n, r, l], i) => `<div class="slot5"><div class="card sm back" id="bk-${i}"><div class="emo">📖</div></div><div id="fr-${i}" style="position:absolute;left:0;top:0">${card([2, 3, 7, 1, 10][i], e, n, r, 'sm')}</div><div class="lab ${l === 'Nueva' ? 'nueva' : 'rep'}" id="lb-${i}">${l}</div></div>`).join('')}</div>
+    <div class="summary" id="summary">Te salieron 5: 4 nuevas y 1 repetida.<br>Tu álbum va en 9 de 13.<div class="go">Ver en mi álbum</div></div>
+    <div class="boxscreen" id="box">
+      <div class="ph-top"><b>📦 Caja de la clase</b><small>Animales del mundo</small></div>
+      <div class="intro">Dona tus repetidas y toma las que te faltan. Nadie ve quién dona.</div>
+      <h5 style="top:236px">Tus repetidas</h5>
+      <div class="brow" style="top:264px"><div class="card sm r-rara" style="position:relative"><span class="num">1</span><div class="emo">🦁</div><div class="foot"><b>León</b></div></div><div><b>León</b><small style="position:relative;height:14px"><span id="rep-2">Tienes 2</span><span id="rep-1" style="position:absolute;left:0;top:0">Tienes 1</span></small></div><div class="go" id="b-donar">Donar una</div></div>
+      <h5 style="top:376px">Te faltan y están en la caja</h5>
+      <div class="brow" style="top:404px"><div class="card sm r-comun" style="position:relative"><span class="num">5</span><div class="emo">🦓</div><div class="foot"><b>Cebra</b></div></div><div><b>Cebra</b><small>Te falta</small></div><div class="go soft">Tomar</div></div>
+    </div>
+  </div>`, G.stage, 'phone').style.cssText = 'left:200px;top:110px';
+
+  // =============== Consejos y cierre (68–82) ===============
+  G.consejos({ t0: 68, t1: 76, jiro: 'asset:assets/jiro/senalando.webp', items: [
+    ['Elige un tema de tu curso', 'Animales, planetas o personajes: aprenden con cada dato curioso.'],
+    ['Pon una insignia de premio', 'Completar el álbum se vuelve una meta de toda la clase.'],
+    ['Deja la caja encendida', 'Las repetidas ayudan a quien le falta una figurita.'],
+  ] });
+  G.final({ t0: 76.2, fin: END, titulo: '¡Listo! Tu primer álbum está a la venta', ruta: 'Gamificación › Coleccionables › «Nuevo álbum»', jiro: 'asset:assets/jiro/celebrando.webp', logo: LOGO });
+
+  G.capas();
+
+  // =============== Línea de tiempo de la plataforma ===============
+  G.key('#app', [[0, { o: 0 }], [19.0, { o: 0, s: 0.94, y: 30 }], [19.7, { o: 1, s: 1, y: 0, ease: 'out' }], [67.4, { o: 1, s: 1 }], [68.0, { o: 0, s: 0.96, ease: 'in' }]]);
+  G.cue(19.0, 'whoosh');
+  G.key('#pg-list', [[0, { o: 1 }], [33.9, { o: 1 }], [34.05, { o: 0 }]]);
+  G.key('#pg-album', [[0, { o: 0 }], [33.9, { o: 0 }], [34.1, { o: 1 }], [62.4, { o: 1 }], [62.6, { o: 0 }]]);
+  G.key('#pg-prog', [[0, { o: 0 }], [62.5, { o: 0, x: 40 }], [63.0, { o: 1, x: 0, ease: 'out' }]]);
+  prog.forEach((p, i) => G.key(`#pb-${i}`, [[0, { w: 0 }], [63.0, { w: 0 }], [63.8 + i * 0.1, { w: p[1], ease: 'out' }]]));
+  G.appear('#toast-a', 34.0, 36.8, 0.25);
+  G.cue(34.0, 'chime');
+
+  // Nuevo álbum
+  G.key('#ov', [[0, { o: 0 }], [23.3, { o: 0 }], [23.55, { o: 1 }], [33.8, { o: 1 }], [34.0, { o: 0 }], [36.9, { o: 0 }], [37.1, { o: 1 }], [41.4, { o: 1 }], [41.6, { o: 0 }]]);
+  G.pop('#malbum', 23.3, 33.8);
+  G.typing('#al-typed', 25.0, 26.6, 'Animales del mundo');
+  G.key('#al-ph', [[0, { o: 1 }], [25.0, { o: 1 }], [25.02, { o: 0 }]]);
+  G.key('#bd-none', [[0, { o: 1 }], [30.2, { o: 1 }], [30.22, { o: 0 }]]);
+  G.key('#bd-lion', [[0, { o: 0 }], [30.2, { o: 0 }], [30.22, { o: 1 }]]);
+
+  // Figuritas: contador (0 → 1 con León → 13 con la IA), páginas (6 por página) y costo
+  const nCards = G.$('#n-cards');
+  const nPages = G.$('#n-pages');
+  G.every((t) => {
+    const n = t < 41.5 ? 0 : t < 43.3 ? 1 : Math.min(13, 1 + Math.round(12 * Math.min(1, (t - 43.3) / 1.3)));
+    nCards.textContent = String(n);
+    const pages = Math.max(1, Math.ceil(n / 6));
+    nPages.textContent = `${pages} ${pages === 1 ? 'página' : 'páginas'}`;
+  });
+  G.key('#cost-full', [[0, { o: 0 }], [44.6, { o: 0 }], [44.8, { o: 1 }]]);
+
+  // Nueva figurita
+  G.pop('#mcard', 36.9, 41.4);
+  G.typing('#cd-typed', 37.9, 38.6, 'León');
+  G.key('#cd-ph', [[0, { o: 1 }], [37.9, { o: 1 }], [37.92, { o: 0 }]]);
+  G.typing('#pv-c-n', 37.9, 38.6, 'León');
+  G.key('#pv-c', [[0, { o: 1 }], [39.0, { o: 1 }], [39.02, { o: 0 }]]);
+  G.key('#pv-r', [[0, { o: 0, s: 0.9 }], [39.0, { o: 0, s: 0.9 }], [39.25, { o: 1, s: 1, ease: 'pop' }]]);
+  G.key('#rc-rara-on', [[0, { o: 0 }], [39.0, { o: 0 }], [39.02, { o: 1 }]]);
+  G.key('#emopick', [[0, { o: 0 }], [39.7, { o: 0, y: -8 }], [39.9, { o: 1, y: 0, ease: 'out' }], [40.3, { o: 1 }], [40.45, { o: 0 }]]);
+  for (const [a, b] of [['#em-star', '#em-lion'], ['#pv-star', '#pv-lion']]) {
+    G.key(a, [[0, { o: 1 }], [40.3, { o: 1 }], [40.32, { o: 0 }]]);
+    G.key(b, [[0, { o: 0 }], [40.3, { o: 0 }], [40.35, { o: 1 }]]);
+  }
+  G.typing('#fact-typed', 40.5, 41.0, 'Su rugido se oye a 8 km.');
+  G.key('#fact-ph', [[0, { o: 1 }], [40.5, { o: 1 }], [40.52, { o: 0 }]]);
+  G.key('#c-leon', [[0, { o: 0 }], [41.5, { o: 0, s: 0.7 }], [41.8, { o: 1, s: 1, ease: 'pop' }]]);
+  G.appear('#toast-p', 41.5, 43.0, 0.2);
+  G.cue(41.5, 'pop');
+  aiCards.forEach(([n], i) => {
+    const t = 43.3 + i * 0.1;
+    G.key(`#c-ai${n}`, [[0, { o: 0 }], [t, { o: 0, s: 0.6 }], [t + 0.25, { o: 1, s: 1, ease: 'pop' }]]);
+  });
+  G.cue(43.3, 'whoosh'); G.cue(44.5, 'chime');
+
+  // Teléfono: sobre
+  G.key('#phone', [[0, { o: 0, x: -120 }], [46.0, { o: 0, x: -120 }], [46.6, { o: 1, x: 0, ease: 'back' }], [61.0, { o: 1, x: 0 }], [61.6, { o: 0, x: -80, ease: 'in' }]]);
+  G.key('#ph-pack', [[0, { o: 1 }], [48.9, { o: 1 }], [49.2, { o: 0 }]]);
+  G.key('#strip', [[0, { o: 1 }], [48.3, { o: 1, r: 0, y: 0 }], [48.8, { o: 0, r: -16, y: -90, ease: 'out' }]]);
+  G.key('#deal', [[0, { o: 0 }], [49.0, { o: 0 }], [49.2, { o: 1 }], [56.0, { o: 1 }], [56.2, { o: 0 }]]);
+  pack.forEach((_, i) => {
+    const deal = 49.1 + i * 0.12;
+    const flip = 50.0 + i * 0.42;
+    G.key(`#bk-${i}`, [[0, { o: 0, y: -60 }], [deal, { o: 0, y: -60 }], [deal + 0.25, { o: 1, y: 0, ease: 'out' }], [flip, { o: 1, s: 1 }], [flip + 0.12, { o: 0, s: 0.9 }]]);
+    G.key(`#fr-${i}`, [[0, { o: 0, s: 0.8 }], [flip + 0.08, { o: 0, s: 0.8 }], [flip + 0.3, { o: 1, s: 1, ease: 'pop' }]]);
+    G.key(`#lb-${i}`, [[0, { o: 0 }], [flip + 0.2, { o: 0 }], [flip + 0.35, { o: 1 }]]);
+    G.cue(flip, i === 3 ? 'soft' : 'pop');
+  });
+  G.key('#summary', [[0, { o: 0, y: 20 }], [52.4, { o: 0, y: 20 }], [52.8, { o: 1, y: 0, ease: 'out' }], [56.0, { o: 1 }], [56.2, { o: 0 }]]);
+  G.cue(48.3, 'whoosh'); G.cue(52.4, 'chime');
+  // Caja de la clase
+  G.key('#box', [[0, { o: 0 }], [56.1, { o: 0, x: 60 }], [56.5, { o: 1, x: 0, ease: 'out' }]]);
+  G.key('#rep-2', [[0, { o: 1 }], [58.6, { o: 1 }], [58.62, { o: 0 }]]);
+  G.key('#rep-1', [[0, { o: 0 }], [58.6, { o: 0 }], [58.62, { o: 1 }]]);
+  G.cue(58.6, 'pop');
+
+  // Cursor
+  const P = {
+    rest: { x: 1180, y: 760 },
+    nav: G.center('#nav-gam-on', -60),
+    mano: G.center('#b-mano'),
+    name: G.center('#al-name', -120),
+    badge: G.center('#al-badge', -150),
+    box: G.center('#al-box', -200),
+    crear: G.center('#b-crear'),
+    addcard: G.center('#b-addcard'),
+    cdname: G.center('#cd-name', -120),
+    rara: G.center('#rc-rara'),
+    emoji: G.center('#cd-emoji'),
+    lion: G.center('#pick-lion'),
+    pegar: G.center('#b-pegar'),
+    addia: G.center('#b-addia'),
+    open: G.center('#ph-open'),
+    donar: G.center('#b-donar'),
+    prog: G.center('#b-prog'),
+  };
+  G.cursor([
+    [0, P.rest, { o: 0 }], [19.6, P.rest, { o: 0 }], [20.0, P.rest, { o: 1 }],
+    [21.2, P.nav], [22.2, P.nav],
+    [23.0, P.mano], [24.2, P.mano],
+    [24.9, P.name], [27.4, P.name],
+    [28.2, P.badge], [31.0, P.badge],
+    [31.8, P.box], [32.8, P.box],
+    [33.5, P.crear], [34.4, P.crear],
+    [36.3, P.addcard], [37.2, P.addcard],
+    [37.7, P.cdname], [38.6, P.cdname],
+    [38.9, P.rara], [39.3, P.rara],
+    [39.6, P.emoji], [39.85, P.emoji],
+    [40.2, P.lion], [40.5, P.lion],
+    [41.0, P.pegar], [41.7, P.pegar],
+    [42.6, P.addia], [45.6, P.addia],
+    [45.9, P.addia, { o: 0 }], [46.6, P.open, { o: 0 }], [47.0, P.open, { o: 1 }],
+    [48.0, P.open], [48.6, P.open],
+    [49.2, P.open, { o: 0 }], [56.6, P.donar, { o: 0 }], [57.0, P.donar, { o: 1 }],
+    [58.4, P.donar], [59.4, P.donar],
+    [60.0, P.donar, { o: 0 }], [61.8, P.prog, { o: 0 }], [62.0, P.prog, { o: 1 }],
+    [62.3, P.prog], [63.4, P.prog],
+    [64.0, P.prog, { o: 0 }],
+  ]);
+  G.ripple(22.0, P.nav); G.ripple(23.2, P.mano); G.ripple(24.95, P.name); G.ripple(30.2, P.badge);
+  G.ripple(33.7, P.crear); G.ripple(36.8, P.addcard); G.ripple(37.8, P.cdname); G.ripple(39.0, P.rara);
+  G.ripple(39.7, P.emoji); G.ripple(40.3, P.lion); G.ripple(41.3, P.pegar);
+  G.ripple(48.2, P.open); G.ripple(58.5, P.donar); G.ripple(62.4, P.prog);
+  G.glow('#nav-gam-on', 20.6, 22.2, 4);
+  G.glow('#al-box', 31.6, 33.0, 6);
+  G.glow('#b-addia', 42.6, 45.6, 6, true);
+
+  G.caption(19.8, 22.6, '1', 'Entra a <b>Gamificación › Coleccionables</b>');
+  G.caption(22.7, 24.8, '2', 'Toca <q>Crear a mano</q> (o <q>Crear con IA</q>)');
+  G.caption(24.9, 27.7, '3', 'Ponle nombre y portada');
+  G.caption(27.8, 31.4, '4', 'Premio al completarlo: una <b>insignia</b> u oro');
+  G.caption(31.5, 33.4, '5', 'Deja encendida la <q>Caja de la clase</q>');
+  G.caption(33.5, 36.0, '6', 'Toca <q>Crear álbum</q>');
+  G.caption(36.1, 42.4, '7', 'Añade figuritas: emoji o imagen, rareza y un dato curioso');
+  G.caption(42.5, 45.8, '💡', 'Con <q>Añadir con IA</q> te propone el resto de la colección', 'idea');
+  G.caption(46.2, 55.9, '1', 'Tus estudiantes abren sobres con su oro: <b>hasta 2 al día</b>', 'ok');
+  G.caption(56.0, 61.6, '2', 'En la caja donan repetidas y un compañero las toma', 'ok');
+  G.caption(61.7, 67.8, '3', 'En <q>Progreso</q> ves a quién le faltan figuritas', 'ok');
+
+  G.arrancar(END);
+})();
+</script>

@@ -9,6 +9,9 @@ import { HomeModal } from '../home/HomeModal';
  */
 export const TUTORIALS = {
   comportamientos: { title: 'Comportamientos', src: '/tutoriales/comportamientos.html', minutes: 1 },
+  insignias: { title: 'Insignias', src: '/tutoriales/insignias.html', minutes: 1 },
+  tienda: { title: 'Tienda', src: '/tutoriales/tienda.html', minutes: 1 },
+  coleccionables: { title: 'Coleccionables', src: '/tutoriales/coleccionables.html', minutes: 1 },
 } as const;
 
 export type TutorialId = keyof typeof TUTORIALS;

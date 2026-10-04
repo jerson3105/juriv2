@@ -17,6 +17,7 @@ import { ShopSettingsBar } from '../../components/shop/ShopSettingsBar';
 import { InventoryPanel } from '../../components/shop/InventoryPanel';
 import { AIShopModal, type GeneratedShopItem } from '../../components/shop/AIShopModal';
 import { DEFAULT_WEEKLY_GOLD, ITEM_EXAMPLES, SHOP_RARITY_ORDER, SHOP_RARITY_STYLE, shopEconomyKey, shopInventoryKey, weeksPrice } from '../../components/shop/shopHelpers';
+import { TutorialButton } from '../../components/tutorials/TutorialButton';
 
 type SortKey = 'rarity' | 'price' | 'sold' | 'name';
 const SORT_KEY = 'juried:shop-sort';
@@ -236,7 +237,10 @@ export const ShopPage = () => {
             <ShoppingBag size={22} />
           </span>
           <div>
-            <h1 className="text-lg font-bold text-gray-900 dark:text-white">Tienda</h1>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <h1 className="text-lg font-bold text-gray-900 dark:text-white">Tienda</h1>
+              <TutorialButton id="tienda" />
+            </div>
             <p className="text-sm text-gray-700 dark:text-gray-300">
               {items.length === 0 ? 'Premios y privilegios que tus estudiantes compran con su oro' : `${items.length} artículo${items.length !== 1 ? 's' : ''} a la venta · ${totalSold} vendido${totalSold !== 1 ? 's' : ''}`}
             </p>
@@ -361,6 +365,7 @@ export const ShopPage = () => {
                   Surtir con IA
                 </button>
               </div>
+              <TutorialButton id="tienda" variant="link" />
             </div>
           ) : (
             <>

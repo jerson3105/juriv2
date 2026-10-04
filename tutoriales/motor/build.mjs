@@ -40,9 +40,11 @@ for (const [, path, height] of source.matchAll(/asset:([\w./-]+)(?:\?h=(\d+))?/g
 }
 const keyOf = (path, height) => assets.get(`${path}?h=${height ?? ''}`).key;
 
-// 2) <img src="asset:..."> → data-asset="aN"; un script pone cada src desde un solo mapa.
+// 2) <img src="asset:..."> → data-asset="aN"; un script pone cada src desde un solo mapa. En los guiones,
+//    'asset:ruta' (comillas simples) pasa a ASSETS.aN: la imagen tampoco se repite.
 const html = source
   .replace(/src="asset:([\w./-]+)(?:\?h=(\d+))?"/g, (_, path, height) => `data-asset="${keyOf(path, height)}"`)
+  .replace(/'asset:([\w./-]+)(?:\?h=(\d+))?'/g, (_, path, height) => `ASSETS.${keyOf(path, height)}`)
   .replace(/asset:([\w./-]+)(?:\?h=(\d+))?/g, (_, path, height) => assets.get(`${path}?h=${height ?? ''}`).uri);
 const styles = [...html.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((m) => m[1]).join('\n');
 const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]).join('\n');
@@ -50,8 +52,10 @@ const stage = html.replace(/<style>[\s\S]*?<\/style>/g, '').replace(/<script>[\s
 const assetMap = `const ASSETS = {${[...assets.values()].map((a) => `${a.key}:'${a.uri}'`).join(',')}};
 for (const img of document.querySelectorAll('img[data-asset]')) img.src = ASSETS[img.dataset.asset];`;
 
-const css = readFileSync(join(here, 'player.css'), 'utf8');
-const js = readFileSync(join(here, 'player.js'), 'utf8');
+// Base común opcional (cielo, marco de la plataforma, cursor, subtítulos, consejos…): solo si la escena la pide.
+const usesBase = /<!--\s*base:\s*comun\s*-->/.test(source);
+const css = readFileSync(join(here, 'player.css'), 'utf8') + (usesBase ? `\n${readFileSync(join(here, 'comun.css'), 'utf8')}` : '');
+const js = readFileSync(join(here, 'player.js'), 'utf8') + (usesBase ? `\n${readFileSync(join(here, 'guion.js'), 'utf8')}` : '');
 const ICON = {
   play: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>',
   pause: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4.5" height="14" rx="1.2"/><rect x="13.5" y="5" width="4.5" height="14" rx="1.2"/></svg>',

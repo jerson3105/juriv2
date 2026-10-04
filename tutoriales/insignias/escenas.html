@@ -1,0 +1,401 @@
+<!-- titulo: Insignias -->
+<!-- base: comun -->
+<!--
+  Tutorial 2 para docentes: «Insignias» (qué son, cómo crear una y cómo darla en clase). ~80 s, 16:9.
+  Pantallas recreadas de la plataforma (BadgesPage, BadgeFormModal, AwardBadgeModal, GiveBadgeModal, «Mis insignias»)
+  con sus textos reales. Arma el archivo final con: node tutoriales/motor/build.mjs insignias
+-->
+<style>
+/* Medallones (como BadgeMedallion: plata, azul, violeta y dorado) */
+.medal { position: relative; width: 150px; height: 150px; border-radius: 50%; display: grid; place-items: center; font-size: 70px; }
+.medal span { filter: drop-shadow(0 4px 6px rgba(0, 0, 0, .25)); line-height: 1; }
+.medal.sm { width: 96px; height: 96px; font-size: 44px; }
+.medal.xs { width: 64px; height: 64px; font-size: 30px; }
+.medal.comun { background: radial-gradient(circle at 35% 30%, #ffffff, #e2e8f0 45%, #94a3b8); box-shadow: inset 0 -6px 12px rgba(0, 0, 0, .15), 0 10px 24px rgba(0, 0, 0, .25); }
+.medal.rara { background: radial-gradient(circle at 35% 30%, #e0f2fe, #60a5fa 45%, #1d4ed8); box-shadow: 0 0 0 6px rgba(147, 197, 253, .5), 0 12px 28px rgba(29, 78, 216, .35); }
+.medal.epica { background: radial-gradient(circle at 35% 30%, #f5f3ff, #a78bfa 45%, #6d28d9); box-shadow: 0 0 0 6px rgba(196, 181, 253, .55), 0 0 40px rgba(139, 92, 246, .6); }
+.medal.legend { background: radial-gradient(circle at 35% 30%, #fffbeb, #fbbf24 45%, #b45309); box-shadow: 0 0 0 6px rgba(253, 230, 138, .6), 0 0 60px rgba(251, 191, 36, .75); }
+.medal.legend::after { content: '✦'; position: absolute; right: -6px; top: -4px; color: #fde68a; font-size: 34px; }
+.rarity-row { position: absolute; top: 360px; display: flex; flex-direction: column; align-items: center; gap: 16px; width: 240px; }
+.rarity-row b { color: #fff; font: 800 30px/1 'Poppins', sans-serif; }
+.rdot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
+
+/* Página Insignias */
+.filters { position: absolute; left: 32px; right: 32px; top: 100px; display: flex; align-items: center; gap: 12px; }
+.filters .search { width: 280px; height: 44px; border-radius: 12px; border: 1px solid #e2e8f0; background: #fff; display: flex; align-items: center; padding: 0 14px; color: #94a3b8; font: 500 15px/1 'Inter', sans-serif; }
+.sec-label { position: absolute; left: 32px; top: 168px; font: 800 17px/1 'Inter', sans-serif; }
+.btile { position: absolute; left: 32px; top: 196px; width: 270px; height: 318px; border-radius: 18px; border: 2px solid #bfdbfe; background: #fff; display: flex; flex-direction: column; align-items: center; padding: 18px 16px; }
+.btile b { margin-top: 12px; font: 800 18px/1.2 'Inter', sans-serif; }
+.btile .chip { margin-top: 8px; }
+.btile .how { align-self: stretch; margin-top: 16px; padding-top: 12px; border-top: 1px solid #f1f5f9; color: #334155; font: 600 14px/1 'Inter', sans-serif; }
+.btile .pills { align-self: stretch; margin-top: 10px; display: flex; gap: 6px; }
+.btile .holders { position: relative; align-self: stretch; height: 18px; margin-top: 10px; color: #64748b; font: italic 500 14px/18px 'Inter', sans-serif; }
+.btile .holders span { position: absolute; left: 0; top: 0; }
+.btile .btn { position: relative; align-self: stretch; margin-top: 12px; height: 44px; }
+
+/* Formulario «Nueva insignia» */
+.medal-prev { left: 24px; top: 14px; }
+.m-head small { display: block; color: #64748b; font: 600 14px/1 'Inter', sans-serif; }
+.m-head b { display: block; margin-top: 6px; font: 800 26px/1.1 'Inter', sans-serif; }
+.m-head b.ph { color: #475569; font-style: italic; }
+.m-head .chips { margin-top: 8px; display: flex; gap: 6px; }
+.m-line2 { left: 0; right: 0; top: 124px; height: 1px; background: #f1f5f9; }
+.rbtn { top: 258px; width: 140px; height: 46px; border-radius: 12px; border: 2px solid #e2e8f0; background: #fff; display: flex; align-items: center; justify-content: center; font: 700 15px/1 'Inter', sans-serif; color: #1f2937; }
+.rbtn.on { border-color: #93c5fd; background: #eff6ff; }
+.cond { left: 24px; top: 436px; width: 592px; height: 150px; border-radius: 14px; background: #f8fafc; border: 1px solid #e2e8f0; padding: 14px 16px; }
+.cond .sel { margin-top: 10px; height: 40px; border-radius: 10px; border: 1.5px solid #e2e8f0; background: #fff; display: flex; align-items: center; padding: 0 12px; font: 600 15px/1 'Inter', sans-serif; }
+.cond .row2 { display: flex; gap: 10px; }
+.cond .ok { margin-top: 10px; color: #065f46; font: 700 14px/1.3 'Inter', sans-serif; }
+.desc { left: 24px; top: 460px; width: 592px; height: 62px; border-radius: 12px; border: 1.5px solid #e2e8f0; padding: 14px 16px; color: #94a3b8; font: 500 15px/1.3 'Inter', sans-serif; }
+.secret { left: 24px; top: 536px; width: 592px; height: 50px; border-radius: 12px; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 12px; padding: 0 14px; font: 700 15px/1 'Inter', sans-serif; }
+.secret i { width: 20px; height: 20px; border-radius: 5px; border: 2px solid #94a3b8; }
+.secret small { color: #64748b; font: 500 13px/1 'Inter', sans-serif; margin-left: 4px; }
+.rew { top: 624px; width: 290px; height: 52px; border-radius: 12px; background: #f8fafc; display: flex; align-items: center; padding: 0 12px 0 16px; font: 700 15px/1 'Inter', sans-serif; }
+.rew .num { margin-left: auto; width: 90px; height: 38px; border-radius: 10px; border: 1.5px solid #e2e8f0; background: #fff; display: grid; place-items: center; font: 700 16px/1 'Inter', sans-serif; }
+
+/* Otorgar / Dar insignia */
+.stu { width: 330px; height: 56px; border-radius: 12px; border: 1.5px solid #e2e8f0; background: #fff; display: flex; align-items: center; gap: 12px; padding: 0 12px; }
+.stu .av { position: relative; width: 34px; height: 34px; border-radius: 50%; background: #f1f5f9; display: grid; place-items: center; font: 800 14px/1 'Inter', sans-serif; color: #334155; }
+.stu .av i { position: absolute; inset: 0; border-radius: 50%; background: #4f46e5; color: #fff; display: grid; place-items: center; font-style: normal; font-size: 16px; }
+.stu b { display: block; font: 700 15px/1.1 'Inter', sans-serif; }
+.stu small { color: #64748b; font: 500 12px/1 'Inter', sans-serif; }
+.stu-on { position: absolute; inset: -1.5px; border-radius: 12px; border: 2px solid #6366f1; background: rgba(238, 242, 255, .5); }
+.qchips { display: flex; gap: 8px; }
+.qchips span { height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid #e2e8f0; display: inline-flex; align-items: center; font: 600 12px/1 'Inter', sans-serif; color: #334155; }
+.qchips span.on { background: #4f46e5; border-color: #4f46e5; color: #fff; }
+.gtile { width: 200px; height: 150px; border-radius: 14px; border: 2px solid #e2e8f0; background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+.gtile b { font: 800 14px/1.1 'Inter', sans-serif; }
+.gtile-on { position: absolute; inset: -2px; border-radius: 14px; border: 3px solid #6366f1; }
+
+/* Celebración «¡Nueva insignia!» */
+.celcard { position: absolute; left: 550px; top: 56px; width: 520px; height: 112px; border-radius: 18px; background: #fff; box-shadow: 0 20px 60px rgba(15, 23, 42, .35); display: flex; align-items: center; gap: 18px; padding: 0 22px; border-bottom: 5px solid #f59e0b; z-index: 6; }
+.celcard b { display: block; font: 800 24px/1.1 'Poppins', sans-serif; }
+.celcard small { display: block; margin-top: 6px; color: #475569; font: 600 15px/1.2 'Inter', sans-serif; }
+
+/* Página Estudiantes (Ficha, simplificada) */
+.stools { position: absolute; left: 32px; right: 32px; top: 24px; height: 48px; display: flex; align-items: center; gap: 14px; }
+.stools .seg span { padding: 11px 16px; }
+.slist { position: absolute; left: 32px; top: 100px; width: 300px; height: 520px; background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; padding: 12px; }
+.srow { height: 52px; display: flex; align-items: center; gap: 12px; padding: 0 14px; border-radius: 12px; font: 700 17px/1 'Inter', sans-serif; color: #1f2937; }
+.srow.sel { background: #eef2ff; }
+.srow em { margin-left: auto; color: #64748b; font: 600 14px/1 'Inter', sans-serif; font-style: normal; }
+.focus { position: absolute; left: 356px; top: 100px; width: 952px; height: 520px; background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; }
+.avcard { position: absolute; left: 24px; top: 24px; width: 280px; height: 400px; border-radius: 18px; overflow: hidden; background: radial-gradient(200px 120px at 50% 92%, rgba(129, 140, 248, .55), transparent 70%), #0b1026; }
+.avcard img { position: absolute; left: 0; right: 0; margin: 0 auto; bottom: 22px; height: 352px; }
+.info { position: absolute; left: 334px; top: 30px; width: 590px; }
+.info h3 { margin: 0; display: flex; align-items: center; gap: 12px; font: 800 38px/1 'Inter', sans-serif; }
+.info h3 span { padding: 6px 12px; border-radius: 999px; background: #f1f5f9; color: #334155; font: 800 15px/1 'Inter', sans-serif; }
+.info .give-h { margin-top: 28px; display: flex; font: 800 17px/1 'Inter', sans-serif; }
+.info .give-h em { margin-left: auto; font-style: normal; color: #4f46e5; }
+.ggrid { margin-top: 14px; display: grid; grid-template-columns: 280px 280px; gap: 12px; }
+.gbtn { height: 66px; border-radius: 14px; border: 1.5px solid #d1fae5; background: #f0fdf4; display: flex; align-items: center; gap: 12px; padding: 0 14px; }
+.gbtn .ic { font-size: 26px; }
+.gbtn b { display: block; font: 800 15px/1.2 'Inter', sans-serif; }
+.gbtn small { display: block; margin-top: 4px; color: #047857; font: 800 13px/1 'Inter', sans-serif; }
+.more { margin-top: 18px; display: flex; gap: 10px; }
+.more span { height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid #e2e8f0; display: inline-flex; align-items: center; gap: 8px; font: 700 15px/1 'Inter', sans-serif; color: #334155; }
+
+/* Alumno: «Mis insignias» en el teléfono */
+.ph-top { position: absolute; left: 0; right: 0; top: 0; height: 150px; background: linear-gradient(135deg, #0b1026, #312e81); color: #fff; padding: 62px 26px 0; }
+.ph-top b { display: block; font: 800 30px/1.1 'Poppins', sans-serif; }
+.ph-top small { display: block; margin-top: 6px; color: #c7d2fe; font: 600 15px/1 'Inter', sans-serif; }
+.vitrina { position: absolute; left: 20px; right: 20px; top: 170px; padding: 18px; border-radius: 20px; background: #fff; border: 1px solid #e2e8f0; }
+.vitrina h4 { margin: 0 0 14px; font: 800 18px/1 'Inter', sans-serif; }
+.vitrina .row { display: flex; justify-content: space-around; }
+.vitrina .lock { width: 64px; height: 64px; border-radius: 50%; border: 2px dashed #cbd5e1; display: grid; place-items: center; color: #94a3b8; font-size: 22px; }
+.ph-cel { position: absolute; left: 20px; right: 20px; top: 330px; padding: 26px 22px; border-radius: 26px; background: #fff; box-shadow: 0 20px 60px rgba(15, 23, 42, .35); text-align: center; border: 1px solid #e2e8f0; }
+.ph-cel h4 { margin: 14px 0 0; font: 800 28px/1.1 'Poppins', sans-serif; }
+.ph-cel p { margin: 10px 0 0; color: #334155; font: 600 16px/1.35 'Inter', sans-serif; }
+.ph-cel .b { margin-top: 18px; display: flex; gap: 10px; justify-content: center; }
+.ph-cel .b span { height: 44px; padding: 0 16px; border-radius: 12px; display: inline-flex; align-items: center; font: 800 15px/1 'Inter', sans-serif; border: 1.5px solid #e2e8f0; }
+.ph-cel .b span.p { background: #4f46e5; border-color: #4f46e5; color: #fff; }
+.bell { position: absolute; right: 24px; top: 120px; width: 470px; padding: 16px 18px; border-radius: 16px; background: #fff; border: 1px solid #e2e8f0; box-shadow: 0 16px 40px rgba(15, 23, 42, .25); display: flex; gap: 14px; align-items: center; z-index: 5; }
+.bell b { display: block; font: 800 17px/1.2 'Inter', sans-serif; }
+.bell small { display: block; margin-top: 4px; color: #475569; font: 600 14px/1.3 'Inter', sans-serif; }
+</style>
+
+<script>
+(() => {
+  const G = Guion.init();
+  const LOGO = 'asset:logo.png?h=200';
+  const END = 80;
+  G.chapter(0, 'Inicio');
+  G.chapter(6.5, '¿Para qué sirven?');
+  G.chapter(19, 'Crear una insignia');
+  G.chapter(45, 'Darla en clase');
+  G.chapter(66, 'Consejos');
+
+  // =============== A · Portada (0–6.5) ===============
+  G.cielo([[0, 19], [66, 80]]);
+  G.portada({ titulo: 'Insignias', sub: 'Qué son, cómo crear una y cómo darla en clase', chips: ['⏱ 1 minuto', '🏅 Gamificación'], jiro: 'asset:assets/jiro/celebrando.webp', logo: LOGO });
+
+  // =============== B · ¿Para qué sirven? (6.5–19) ===============
+  G.guia('b-jiro', 'asset:assets/jiro/senalando.webp', 6.6, 19);
+  G.burbuja('b-b1', 7.0, 12.6, 'Las insignias son logros que tus estudiantes coleccionan para siempre.');
+  const rarities = [['comun', 'Común', '🏆'], ['rara', 'Rara', '💡'], ['epica', 'Épica', '🚀'], ['legend', 'Legendaria', '👑']];
+  rarities.forEach(([cls, label, emoji], i) => {
+    const r = G.el('div', 'rarity-row', `<div class="medal ${cls}"><span>${emoji}</span></div><b>${label}</b>`, G.stage, `b-r${i}`);
+    r.style.left = `${600 + i * 300}px`;
+    const t = 9.4 + i * 0.35;
+    G.key(r, [[0, { o: 0, y: 40, s: 0.8 }], [t, { o: 0, y: 40, s: 0.8 }], [t + 0.45, { o: 1, y: 0, s: 1, ease: 'back' }], [18.4, { o: 1 }], [18.9, { o: 0, y: -20, ease: 'in' }]]);
+    G.cue(t, 'pop');
+  });
+  G.burbuja('b-b2', 12.8, 19, 'Tú las das cuando quieras, o se ganan solas al cumplir una meta.');
+  [['✋', '#4f46e5', 'La das tú', 'Cuando quieras; se puede ganar varias veces.'], ['⚡', '#f59e0b', 'Se gana sola', 'Al cumplir una meta, una vez.'], ['🎁', '#10b981', 'Con premio', 'Al ganarla recibe XP y oro.']].forEach(([ic, bg, h, p], i) => {
+    const c = G.el('div', 'ptype', `<div class="big" style="background:${bg}">${ic}</div><h3>${h}</h3><p>${p}</p>`, G.stage, `b-c${i}`);
+    c.style.cssText += `left:${600 + i * 410}px;top:690px`;
+    const t = 14.6 + i * 0.5;
+    G.key(c, [[0, { o: 0, y: 50 }], [t, { o: 0, y: 50 }], [t + 0.45, { o: 1, y: 0, ease: 'back' }], [18.4, { o: 1 }], [18.9, { o: 0, y: 30, ease: 'in' }]]);
+    G.cue(t, 'pop');
+  });
+
+  // =============== C y D · La plataforma (19–66) ===============
+  G.app({ id: 'app', logo: LOGO, navs: [{ id: 'nav-gam', abierto: 'Gamificación', activo: 'Insignias' }, { id: 'nav-est', abierto: 'Estudiantes', activo: 'Lista' }] });
+  const C = '#app-content';
+  // Página Insignias: encabezado común + vacío / lista
+  G.el('div', 'page', `
+    <div class="ptitle"><div class="tile">🏅</div><div><h2>Insignias</h2><p style="position:relative;height:19px"><span id="sub-a" style="position:absolute;white-space:nowrap">Logros que tus estudiantes coleccionan</span><span id="sub-b" style="position:absolute;white-space:nowrap">1 insignia · otorgadas 2 veces · 2 estudiantes con insignias</span></p></div></div>
+    <div class="btn" style="left:824px;top:32px;width:150px">🏆 Ganadores</div>
+    <div class="btn" id="b-ia" style="left:986px;top:32px;width:190px">✨ Generar con IA</div>
+    <div class="btn primary" id="b-new" style="left:1188px;top:32px;width:120px">＋ Nueva</div>
+    <div class="emptybox" id="pg-empty"><div class="emos"><span>🥉</span><span>🏆</span><span>💎</span></div><h3>Crea la primera insignia de tu clase</h3><p>Reconoce logros especiales: tú las das cuando quieras o se ganan solas al cumplir una meta.</p><div class="row"><div class="btn inline primary">＋ Crear insignia</div><div class="btn inline">✨ Generar con IA</div></div></div>
+    <div id="pg-list">
+      <div class="filters"><div class="search">🔍 Buscar insignias</div><div class="seg"><span class="on">Todas</span><span>Común</span><span>Rara</span><span>Épica</span><span>Legendaria</span></div><div class="seg"><span class="on">Todas</span><span>Las doy yo</span><span>Solas</span></div></div>
+      <div class="sec-label">De tu clase (1)</div>
+      <div class="btile" id="tile"><div class="medal sm rara"><span>🏆</span></div><b>Gran explicador</b><span class="mpill rara chip">Rara</span>
+        <div class="how">✋ La das tú</div><div class="pills"><span class="mpill xp">+25 XP</span><span class="mpill gp">+15 oro</span></div>
+        <div class="holders"><span id="hold-0">Nadie la tiene aún</span><span id="hold-2">2 alumnos la tienen</span></div>
+        <div class="btn primary" id="b-otorgar">🎁 Otorgar</div></div>
+    </div>`, C, 'pg-badges');
+  // Página Estudiantes (Ficha)
+  G.el('div', 'page', `
+    <div class="stools"><div class="seg"><span class="on">Ficha</span><span>Lista</span><span>Por clan</span></div></div>
+    <div class="slist"><div class="srow sel">Ana<em>Nv 1</em></div><div class="srow">Bruno<em>Nv 1</em></div><div class="srow">Carla<em>Nv 1</em></div><div class="srow">Diego<em>Nv 1</em></div><div class="srow">Elsa<em>Nv 1</em></div><div class="srow">Fabio<em>Nv 1</em></div></div>
+    <div class="focus"><div class="avcard" id="avcard"><img src="asset:avatars/base/skin-initial-f.png?h=760" alt=""></div>
+      <div class="info"><h3>Ana <span>Nivel 1</span></h3>
+        <div class="give-h">Dar a Ana<em>Más opciones</em></div>
+        <div class="ggrid"><div class="gbtn"><span class="ic">💚</span><div><b>Ayuda a un compañero</b><small>+10 XP · +5 oro</small></div></div><div class="gbtn"><span class="ic">⭐</span><div><b>Participación</b><small>+10 XP</small></div></div></div>
+        <div class="more"><span>Corregir ▾</span><span id="b-ins">🏅 Insignia</span><span>👁 Ver perfil</span></div>
+      </div></div>`, C, 'pg-stu');
+  G.puntos('#avcard', 22, 280, 300);
+  G.el('div', 'toast', '<span class="ok">✓</span>Creada: Gran explicador', C, 'toast-c').classList.add('solo');
+  G.el('div', 'toast', '🏆 Gran explicador para 2 estudiantes<span class="undo">Deshacer</span>', C, 'toast-award');
+  G.el('div', 'toast', '🏆 Gran explicador para Ana<span class="undo">Deshacer</span>', C, 'toast-give');
+  G.el('div', 'bell', '<div class="medal xs epica"><span>🔥</span></div><div><b>🏅 ¡Insignia ganada!</b><small>Carla ganó la insignia «Constancia»</small></div>', C, 'bell-auto');
+
+  // Modal «Nueva insignia»
+  const frame = G.$('#app');
+  G.el('div', 'overlay', '', frame, 'ov');
+  G.el('div', 'modal', `
+    <div class="m medal-prev"><div class="medal sm comun" id="pv-comun" style="position:absolute"><span>🏆</span></div><div class="medal sm rara" id="pv-rara"><span>🏆</span></div></div>
+    <div class="m m-head" style="left:136px;top:26px"><small>Nueva insignia</small><b style="position:relative;height:30px;width:440px"><span class="ph" id="nm-ph" style="position:absolute;font-style:italic;color:#475569">Nombre de la insignia</span><span id="nm-head" style="position:absolute"></span></b>
+      <div class="chips" style="position:relative;height:24px"><span class="mpill comun" id="ch-comun" style="position:absolute">Común</span><span class="mpill rara" id="ch-rara" style="position:absolute">Rara</span></div></div>
+    <div class="m m-close">✕</div><div class="m m-line2"></div>
+    <div class="m m-label" style="left:24px;top:142px">Icono</div><div class="m m-label" style="left:92px;top:142px">Nombre</div>
+    <div class="m field" style="left:24px;top:164px;width:54px;padding:0;justify-content:center;font-size:26px">🏆</div>
+    <div class="m field focus" id="nm-field" style="left:92px;top:164px;width:400px"><span class="ph" id="nm-ph2">Ej: Lector del mes</span><span id="nm-typed" style="position:absolute;left:18px"></span></div>
+    <div class="m btn" style="left:504px;top:164px;width:112px;height:54px">🖼 Imagen</div>
+    <div class="m m-label" style="left:24px;top:238px">Rareza</div>
+    <div class="m rbtn" id="r-comun" style="left:24px"><span class="rdot" style="background:#cbd5e1"></span>Común</div>
+    <div class="m rbtn" id="r-rara" style="left:172px"><span class="rdot" style="background:#60a5fa"></span>Rara</div>
+    <div class="m rbtn" style="left:320px"><span class="rdot" style="background:#a78bfa"></span>Épica</div>
+    <div class="m rbtn" style="left:468px"><span class="rdot" style="background:#fbbf24"></span>Legendaria</div>
+    <div class="m rbtn on" id="r-comun-on" style="left:24px"><span class="rdot" style="background:#cbd5e1"></span>Común</div>
+    <div class="m rbtn on" id="r-rara-on" style="left:172px"><span class="rdot" style="background:#60a5fa"></span>Rara</div>
+    <div class="m m-label" style="left:24px;top:326px">¿Cómo se gana?</div>
+    <div class="m choice" id="h-yo" style="left:24px;top:348px;width:188px;height:76px"><b>✋ La doy yo</b><small>Se puede ganar varias veces</small></div>
+    <div class="m choice" id="h-sola" style="left:222px;top:348px;width:188px;height:76px"><b>⚡ Sola</b><small>Al cumplir una condición, una vez</small></div>
+    <div class="m choice" style="left:420px;top:348px;width:196px;height:76px"><b>✨ Ambas</b><small>Sola o cuando tú la des</small></div>
+    <div class="m choice on" id="h-yo-on" style="left:24px;top:348px;width:188px;height:76px"><b>✋ La doy yo</b><small>Se puede ganar varias veces</small></div>
+    <div class="m choice on" id="h-sola-on" style="left:222px;top:348px;width:188px;height:76px"><b>⚡ Sola</b><small>Al cumplir una condición, una vez</small></div>
+    <div class="m m-label" id="desc-l" style="left:24px;top:438px">¿Cuándo la das? <em>(opcional, la verán los estudiantes)</em></div>
+    <div class="m desc" id="desc">Ej.: cuando explicas a un compañero cómo lo resolviste</div>
+    <div class="m secret" id="secret"><i></i>🔒 Secreta<small>Los estudiantes no la ven hasta ganarla</small></div>
+    <div class="m cond" id="cond"><div class="m-label">Se gana sola cuando el estudiante…</div><div class="sel">reciba un comportamiento positivo concreto ▾</div>
+      <div class="row2"><div class="sel" style="flex:1">💚 Ayuda a un compañero ▾</div><div class="sel" style="width:120px">Veces: 5</div></div>
+      <div class="ok">Se otorgará al recibir «Ayuda a un compañero» 5 veces.</div></div>
+    <div class="m m-label" style="left:24px;top:600px">Recompensa al ganarla</div>
+    <div class="m rew" id="rew-xp" style="left:24px">XP<span class="num" id="xp-n">10</span></div>
+    <div class="m rew" id="rew-gp" style="left:326px">Oro<span class="num" id="gp-n">5</span></div>
+    <div class="m m-foot"><div class="btn" style="left:180px;width:100px">Cancelar</div><div class="btn" style="left:292px;width:200px">Guardar y crear otra</div><div class="btn primary" id="b-create" style="left:504px;width:112px">Crear</div></div>
+  `, frame, 'mnew').style.cssText = 'left:490px;top:36px;width:640px;height:800px';
+
+  // Modal «Otorgar insignia»
+  const students = ['Ana', 'Bruno', 'Carla', 'Diego', 'Elsa', 'Fabio'];
+  G.el('div', 'modal', `
+    <div class="m medal-prev" style="left:24px;top:12px"><div class="medal sm rara"><span>🏆</span></div></div>
+    <div class="m m-head" style="left:136px;top:22px"><small>Otorgar insignia</small><b>Gran explicador</b><div class="chips"><span class="mpill rara">Rara</span><span class="mpill xp">+25 XP</span><span class="mpill gp">+15 oro</span></div></div>
+    <div class="m m-close">✕</div>
+    <div class="m field" style="left:24px;top:128px;width:560px;height:46px;font-size:15px"><span class="ph">🔍 Buscar estudiante</span></div>
+    <div class="m btn" style="left:596px;top:128px;width:100px;height:46px">👥 Todos</div>
+    ${students.map((s, i) => `<div class="m stu" id="st-${i}" style="left:${24 + (i % 2) * 342}px;top:${188 + Math.floor(i / 2) * 66}px"><div class="av">${s[0]}<i id="st-${i}-ck">✓</i></div><div><b>${s}</b><small>Nivel 1</small></div><div class="stu-on" id="st-${i}-on"></div></div>`).join('')}
+    <div class="m m-label" style="left:24px;top:396px">Motivo <em>(opcional, lo verá el estudiante)</em></div>
+    <div class="m field" style="left:24px;top:420px;width:672px;height:48px;font-size:15px"><span class="ph" id="mot-ph">Ej: Por su excelente participación</span><span id="mot" style="position:absolute;left:18px">Ayudó a un compañero</span></div>
+    <div class="m qchips" style="left:24px;top:480px"><span>Excelente participación</span><span id="q-help" style="position:relative">Ayudó a un compañero<span class="on" id="q-help-on" style="position:absolute;inset:-1px;display:inline-flex;align-items:center;padding:0 12px;border-radius:999px;background:#4f46e5;color:#fff">Ayudó a un compañero</span></span><span>Gran esfuerzo</span><span>Superó un reto</span></div>
+    <div class="m btn" style="left:400px;top:526px;width:100px;height:44px;font-size:15px">Cancelar</div>
+    <div class="m btn" style="left:512px;top:526px;width:184px;height:44px;font-size:15px;background:#e2e8f0;border-color:#e2e8f0;color:#64748b">🎁 Elige estudiantes</div>
+    <div class="m btn primary" id="b-give2" style="left:512px;top:526px;width:184px;height:44px;font-size:15px">🎁 Otorgar a 2</div>
+  `, frame, 'maward').style.cssText = 'left:450px;top:150px;width:720px;height:590px';
+
+  // Modal «Dar insignia» (desde la Ficha)
+  G.el('div', 'modal', `
+    <div class="m m-title">Dar insignia</div><div class="m" style="left:28px;top:54px;color:#475569;font:600 15px/1 Inter,sans-serif">Para Ana</div><div class="m m-close">✕</div>
+    ${[['rara', '🏆', 'Gran explicador', 'Rara'], ['comun', '📚', 'Lector del mes', 'Común'], ['epica', '🚀', 'Mente creativa', 'Épica']].map(([cls, e, n, r], i) => `<div class="m gtile" id="gt-${i}" style="left:${28 + i * 214}px;top:92px"><div class="medal xs ${cls}"><span>${e}</span></div><b>${n}</b><span class="mpill ${cls}">${r}</span>${i === 0 ? '<div class="gtile-on" id="gt-0-on"></div>' : ''}</div>`).join('')}
+    <div class="m m-label" style="left:28px;top:266px">Motivo <em>(opcional, lo verá el estudiante)</em></div>
+    <div class="m field" style="left:28px;top:290px;width:624px;height:48px;font-size:15px"><span>Explicó la tarea a su grupo</span></div>
+    <div class="m btn" style="left:330px;top:440px;width:100px;height:44px;font-size:15px">Cancelar</div>
+    <div class="m btn primary" id="b-dar" style="left:442px;top:440px;width:210px;height:44px;font-size:15px">Dar «Gran explicador»</div>
+  `, frame, 'mgive').style.cssText = 'left:470px;top:170px;width:680px;height:510px';
+
+  // Celebración en la plataforma
+  const celLayer = G.el('div', 'abs', '', G.stage, 'cel-layer');
+  celLayer.style.cssText = 'left:0;top:0;width:1920px;height:1080px;pointer-events:none';
+  G.el('div', 'celcard', '<div class="medal xs rara"><span>🏆</span></div><div><b>¡Nueva insignia!</b><small>Gran explicador · Rara · Ana y Bruno</small></div>', frame, 'celcard');
+  G.confeti('#cel-layer', 50.4, 3.6);
+
+  // Alumno: teléfono con «Mis insignias»
+  G.el('div', 'phone', `<div class="screen"><div class="notch"></div>
+    <div class="ph-top"><b>Mis insignias</b><small>3.° B · tus logros y cómo ganar más</small></div>
+    <div class="vitrina"><h4>Tu vitrina</h4><div class="row"><div class="medal xs rara"><span>🏆</span></div><div class="medal xs comun"><span>📚</span></div><div class="lock">🔒</div><div class="lock">🔒</div></div></div>
+    <div class="ph-cel" id="ph-cel"><div class="medal sm rara" style="margin:0 auto"><span>🏆</span></div><h4>¡Ganaste una insignia!</h4><p>Gran explicador<br>Te la dio tu profe: «Ayudó a un compañero»</p><div class="b"><span class="p">¡Genial!</span><span>Ver mis insignias</span></div></div>
+  </div>`, G.stage, 'phone').style.cssText = 'left:200px;top:110px';
+
+  // =============== Consejos y cierre (66–80) ===============
+  G.consejos({ t0: 66, t1: 74, jiro: 'asset:assets/jiro/senalando.webp', items: [
+    ['Mezcla las que das tú y las automáticas', 'Las automáticas premian la constancia sin que estés pendiente.'],
+    ['Usa la rareza con intención', 'Común para el día a día; Legendaria para logros únicos.'],
+    ['Dalas en lote al final de la clase', 'Elige varios estudiantes y otórgala de una vez.'],
+  ] });
+  G.final({ t0: 74.2, fin: END, titulo: '¡Listo! Ya puedes reconocer sus logros', ruta: 'Gamificación › Insignias › «Nueva»', jiro: 'asset:assets/jiro/emocionado.webp', logo: LOGO });
+
+  G.capas();
+
+  // =============== Línea de tiempo de la plataforma ===============
+  G.key('#app', [[0, { o: 0 }], [19.0, { o: 0, s: 0.94, y: 30 }], [19.7, { o: 1, s: 1, y: 0, ease: 'out' }], [65.4, { o: 1, s: 1 }], [66.0, { o: 0, s: 0.96, ease: 'in' }]]);
+  G.cue(19.0, 'whoosh');
+  G.key('#pg-badges', [[0, { o: 1 }], [53.8, { o: 1 }], [54.3, { o: 0 }]]);
+  G.key('#nav-gam', [[0, { o: 1 }], [53.8, { o: 1 }], [54.3, { o: 0 }]]);
+  G.key('#pg-stu', [[0, { o: 0 }], [54.0, { o: 0, x: 40 }], [54.6, { o: 1, x: 0, ease: 'out' }]]);
+  G.key('#nav-est', [[0, { o: 0 }], [54.0, { o: 0 }], [54.6, { o: 1 }]]);
+  G.key('#pg-empty', [[0, { o: 1 }], [41.3, { o: 1 }], [41.45, { o: 0 }]]);
+  G.key('#pg-list', [[0, { o: 0 }], [41.3, { o: 0 }], [41.45, { o: 1 }]]);
+  G.key('#sub-a', [[0, { o: 1 }], [41.3, { o: 1 }], [41.4, { o: 0 }]]);
+  G.key('#sub-b', [[0, { o: 0 }], [41.3, { o: 0 }], [41.4, { o: 1 }]]);
+  G.key('#tile', [[0, { o: 0 }], [41.4, { o: 0, s: 0.9 }], [41.8, { o: 1, s: 1, ease: 'pop' }]]);
+  G.key('#hold-0', [[0, { o: 1 }], [50.3, { o: 1 }], [50.4, { o: 0 }]]);
+  G.key('#hold-2', [[0, { o: 0 }], [50.3, { o: 0 }], [50.4, { o: 1 }]]);
+  G.appear('#toast-c', 41.3, 44.4, 0.25);
+  G.cue(41.3, 'chime'); G.cue(41.5, 'pop');
+
+  // Modal «Nueva insignia»: abrir, nombre, rareza, cómo se gana, crear
+  G.key('#ov', [[0, { o: 0 }], [22.9, { o: 0 }], [23.15, { o: 1 }], [40.9, { o: 1 }], [41.15, { o: 0 }], [46.3, { o: 0 }], [46.5, { o: 1 }], [50.1, { o: 1 }], [50.3, { o: 0 }], [56.3, { o: 0 }], [56.5, { o: 1 }], [58.7, { o: 1 }], [58.9, { o: 0 }]]);
+  G.pop('#mnew', 22.9, 40.9);
+  G.typing('#nm-typed', 25.6, 27.4, 'Gran explicador');
+  G.typing('#nm-head', 25.6, 27.4, 'Gran explicador');
+  G.key('#nm-ph', [[0, { o: 1 }], [25.6, { o: 1 }], [25.62, { o: 0 }]]);
+  G.key('#nm-ph2', [[0, { o: 1 }], [25.6, { o: 1 }], [25.62, { o: 0 }]]);
+  const sw = (on, t) => [[0, { o: on ? 1 : 0 }], [t, { o: on ? 1 : 0 }], [t + 0.02, { o: on ? 0 : 1 }]];
+  G.key('#r-comun-on', sw(true, 29.0)); G.key('#pv-comun', sw(true, 29.0)); G.key('#ch-comun', sw(true, 29.0));
+  G.key('#r-rara-on', sw(false, 29.0)); G.key('#pv-rara', [[0, { o: 0, s: 0.7 }], [29.0, { o: 0, s: 0.7 }], [29.3, { o: 1, s: 1, ease: 'pop' }]]); G.key('#ch-rara', sw(false, 29.0));
+  G.count('#xp-n', 29.0, 29.6, 10, 25); G.count('#gp-n', 29.0, 29.6, 5, 15);
+  G.cue(29.0, 'coin');
+  // «Sola» con su condición y vuelta a «La doy yo»
+  const yoOn = [[0, { o: 1 }], [33.0, { o: 1 }], [33.02, { o: 0 }], [36.2, { o: 0 }], [36.22, { o: 1 }]];
+  const solaOn = [[0, { o: 0 }], [33.0, { o: 0 }], [33.02, { o: 1 }], [36.2, { o: 1 }], [36.22, { o: 0 }]];
+  G.key('#h-yo-on', yoOn); G.key('#desc-l', yoOn); G.key('#desc', yoOn); G.key('#secret', yoOn);
+  G.key('#h-sola-on', solaOn);
+  G.key('#cond', [[0, { o: 0 }], [33.0, { o: 0, y: 10 }], [33.3, { o: 1, y: 0, ease: 'out' }], [36.1, { o: 1 }], [36.22, { o: 0 }]]);
+
+  // Otorgar (desde la página)
+  G.pop('#maward', 46.3, 50.0);
+  [[0, 47.6], [1, 48.2]].forEach(([i, t]) => {
+    G.key(`#st-${i}-ck`, [[0, { o: 0 }], [t, { o: 0, s: 0.5 }], [t + 0.15, { o: 1, s: 1, ease: 'pop' }]]);
+    G.key(`#st-${i}-on`, [[0, { o: 0 }], [t, { o: 0 }], [t + 0.15, { o: 1 }]]);
+  });
+  G.key('#q-help-on', [[0, { o: 0 }], [48.9, { o: 0 }], [49.0, { o: 1 }]]);
+  G.key('#mot', [[0, { o: 0 }], [48.9, { o: 0 }], [49.0, { o: 1 }]]);
+  G.key('#mot-ph', [[0, { o: 1 }], [48.9, { o: 1 }], [49.0, { o: 0 }]]);
+  G.key('#b-give2', [[0, { o: 0 }], [47.6, { o: 0 }], [47.7, { o: 1 }]]);
+  G.key('#celcard', [[0, { o: 0, y: -40 }], [50.4, { o: 0, y: -40 }], [50.8, { o: 1, y: 0, ease: 'back' }], [53.4, { o: 1, y: 0 }], [53.8, { o: 0, y: -30, ease: 'in' }]]);
+  G.appear('#toast-award', 50.4, 53.6, 0.25);
+  G.cue(50.4, 'levelup');
+
+  // Dar insignia (desde la Ficha)
+  G.pop('#mgive', 56.3, 58.7);
+  G.key('#gt-0-on', [[0, { o: 0 }], [57.3, { o: 0 }], [57.4, { o: 1 }]]);
+  G.appear('#toast-give', 58.8, 60.6, 0.25);
+  G.cue(58.8, 'chime');
+
+  // Alumno y automáticas
+  G.key('#phone', [[0, { o: 0, x: -120 }], [60.4, { o: 0, x: -120 }], [61.0, { o: 1, x: 0, ease: 'back' }], [65.2, { o: 1, x: 0 }], [65.8, { o: 0, x: -80, ease: 'in' }]]);
+  G.key('#ph-cel', [[0, { o: 0, s: 0.85 }], [61.2, { o: 0, s: 0.85 }], [61.6, { o: 1, s: 1, ease: 'pop' }]]);
+  G.key('#bell-auto', [[0, { o: 0, y: -20 }], [62.6, { o: 0, y: -20 }], [63.0, { o: 1, y: 0, ease: 'back' }], [65.2, { o: 1 }], [65.6, { o: 0 }]]);
+  G.cue(61.2, 'levelup'); G.cue(62.6, 'pop');
+
+  // Cursor (coordenadas tomadas de la maqueta)
+  const P = {
+    rest: { x: 1180, y: 760 },
+    nav: G.center('#nav-gam-on', -60),
+    nuevo: G.center('#b-new'),
+    name: G.center('#nm-field', -120),
+    rara: G.center('#r-rara'),
+    sola: G.center('#h-sola'),
+    yo: G.center('#h-yo'),
+    rew: G.center('#rew-gp', 60),
+    crear: G.center('#b-create'),
+    ia: G.center('#b-ia'),
+    otorgar: G.center('#b-otorgar'),
+    ana: G.center('#st-0'),
+    bruno: G.center('#st-1'),
+    help: G.center('#q-help'),
+    give2: G.center('#b-give2'),
+    ins: G.center('#b-ins'),
+    gt0: G.center('#gt-0'),
+    dar: G.center('#b-dar'),
+  };
+  G.cursor([
+    [0, P.rest, { o: 0 }], [19.6, P.rest, { o: 0 }], [20.0, P.rest, { o: 1 }],
+    [21.2, P.nav], [22.2, P.nav],
+    [22.8, P.nuevo], [24.6, P.nuevo],
+    [25.4, P.name], [28.2, P.name],
+    [28.8, P.rara], [31.6, P.rara],
+    [32.8, P.sola], [35.6, P.sola],
+    [36.1, P.yo], [37.4, P.yo],
+    [38.2, P.rew], [39.9, P.rew],
+    [40.7, P.crear], [41.6, P.crear],
+    [43.3, P.ia], [44.6, P.ia, { o: 1 }],
+    [45.6, P.otorgar], [46.6, P.otorgar],
+    [47.4, P.ana], [47.8, P.ana],
+    [48.1, P.bruno], [48.4, P.bruno],
+    [48.85, P.help], [49.2, P.help],
+    [49.8, P.give2], [50.6, P.give2],
+    [51.2, P.give2, { o: 0 }],
+    [54.8, P.rest, { o: 0 }], [55.2, P.rest, { o: 1 }],
+    [56.1, P.ins], [56.6, P.ins],
+    [57.2, P.gt0], [57.8, P.gt0],
+    [58.5, P.dar], [59.2, P.dar],
+    [59.8, P.dar, { o: 0 }],
+  ]);
+  G.ripple(22.0, P.nav); G.ripple(22.9, P.nuevo); G.ripple(25.5, P.name); G.ripple(29.0, P.rara);
+  G.ripple(33.0, P.sola); G.ripple(36.2, P.yo); G.ripple(40.8, P.crear);
+  G.ripple(46.2, P.otorgar); G.ripple(47.6, P.ana); G.ripple(48.2, P.bruno); G.ripple(48.9, P.help); G.ripple(49.95, P.give2);
+  G.ripple(56.2, P.ins); G.ripple(57.4, P.gt0); G.ripple(58.65, P.dar);
+  G.glow('#nav-gam-on', 20.6, 22.2, 4);
+  G.glow('#rew-xp', 37.6, 39.9, 6);
+  G.glow('#b-ia', 43.2, 44.6, 6, true);
+
+  G.caption(19.8, 22.6, '1', 'Entra a <b>Gamificación › Insignias</b>');
+  G.caption(22.7, 25.2, '2', 'Toca <q>Nueva</q>');
+  G.caption(25.3, 28.4, '3', 'Ponle un ícono y un nombre');
+  G.caption(28.5, 32.4, '4', 'La rareza cambia el medallón y el premio sugerido');
+  G.caption(32.5, 37.3, '5', 'Tú la das, o <b>se gana sola</b> al cumplir una meta');
+  G.caption(37.4, 40.2, '6', 'Al ganarla recibe <b>XP y oro</b> (puedes cambiarlos)');
+  G.caption(40.3, 42.9, '7', 'Toca <q>Crear</q>');
+  G.caption(43.0, 45.0, '💡', '¿Sin ideas? <q>Generar con IA</q> te propone insignias', 'idea');
+  G.caption(45.3, 53.8, '1', 'Toca <q>Otorgar</q>, elige estudiantes y un motivo', 'ok');
+  G.caption(53.9, 60.2, '2', 'También desde <b>Estudiantes › Lista</b>: botón <q>Insignia</q>', 'ok');
+  G.caption(60.3, 65.8, '3', 'El alumno la ve en <q>Mis insignias</q>; las automáticas llegan solas', 'ok');
+
+  G.arrancar(END);
+})();
+</script>

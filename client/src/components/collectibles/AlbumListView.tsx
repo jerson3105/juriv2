@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Album, BookOpen, Download, Plus, RotateCcw, Sparkles } from 'lucide-react';
 import { collectibleImageUrl, type CollectibleAlbum } from '../../lib/collectibleApi';
 import { gold } from './collectibleHelpers';
+import { TutorialButton } from '../tutorials/TutorialButton';
 
 interface AlbumListViewProps {
   albums: CollectibleAlbum[];
@@ -50,7 +51,10 @@ export const AlbumListView = ({ albums, onOpen, onBrowse, onCreate, onCreateWith
             <Album size={22} />
           </span>
           <div>
-            <h1 className="text-lg font-bold text-gray-900 dark:text-white">Coleccionables</h1>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <h1 className="text-lg font-bold text-gray-900 dark:text-white">Coleccionables</h1>
+              <TutorialButton id="coleccionables" />
+            </div>
             <p className="text-sm text-gray-700 dark:text-gray-300">Álbumes de figuritas que tus estudiantes completan abriendo sobres</p>
           </div>
         </div>
@@ -95,6 +99,7 @@ export const AlbumListView = ({ albums, onOpen, onBrowse, onCreate, onCreateWith
               Crear a mano
             </button>
           </div>
+          <TutorialButton id="coleccionables" variant="link" />
         </div>
       ) : visible.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-700 dark:border-gray-600 dark:text-gray-300">No hay álbumes aquí.</p>

@@ -1,0 +1,350 @@
+<!-- titulo: Tienda -->
+<!-- base: comun -->
+<!--
+  Tutorial 3 para docentes: «Tienda» (cómo funciona, cómo crear un premio y cómo se compra y canjea). ~82 s, 16:9.
+  Pantallas recreadas de la plataforma (ShopPage, ShopItemFormModal, PendingTray, GiveItemModal y la tienda del alumno)
+  con sus textos reales. Arma el archivo final con: node tutoriales/motor/build.mjs tienda
+-->
+<style>
+/* Flujo del oro (fondo oscuro) */
+.flow { position: absolute; top: 360px; width: 360px; padding: 26px 28px; border-radius: 30px; background: #fff; color: #111827; box-shadow: 0 30px 80px rgba(0, 0, 0, .35); text-align: center; }
+.flow .big { font-size: 58px; line-height: 1; }
+.flow h3 { margin: 14px 0 10px; font: 800 30px/1.15 'Poppins', sans-serif; }
+.flow .pill { display: inline-flex; padding: 8px 16px; border-radius: 999px; font: 800 24px/1 'Inter', sans-serif; }
+.pill.gp { background: #fef3c7; color: #92400e; }
+.pill.prize { background: #eef2ff; color: #3730a3; }
+
+/* Página Tienda */
+.settings { position: absolute; left: 32px; right: 32px; top: 156px; height: 64px; border-radius: 16px; background: #f0fdf4; border: 1px solid #bbf7d0; display: flex; align-items: center; gap: 18px; padding: 0 18px; font: 700 15px/1.2 'Inter', sans-serif; }
+.settings .shop-ic { width: 38px; height: 38px; border-radius: 10px; background: #047857; color: #fff; display: grid; place-items: center; font-size: 18px; }
+.settings small { display: block; color: #475569; font: 500 13px/1.2 'Inter', sans-serif; }
+.sw { width: 50px; height: 28px; border-radius: 999px; background: #4f46e5; position: relative; flex: 0 0 auto; }
+.sw::after { content: ''; position: absolute; right: 4px; top: 4px; width: 20px; height: 20px; border-radius: 50%; background: #fff; }
+.sw.off { background: #cbd5e1; }
+.sw.off::after { right: auto; left: 4px; }
+.settings .lim { height: 38px; padding: 0 14px; border-radius: 10px; border: 1px solid #e2e8f0; background: #fff; display: inline-flex; align-items: center; color: #94a3b8; font-weight: 500; }
+.ideas { margin: 18px auto 0; width: 820px; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.ideas span { height: 40px; padding: 0 16px; border-radius: 999px; border: 1px solid #e2e8f0; background: #fff; display: inline-flex; align-items: center; gap: 8px; font: 700 15px/1 'Inter', sans-serif; color: #1f2937; }
+.econ { position: absolute; left: 32px; right: 32px; top: 240px; height: 92px; border-radius: 16px; background: #fff; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 16px; padding: 0 20px; }
+.econ .coin { width: 44px; height: 44px; border-radius: 12px; background: #fef3c7; display: grid; place-items: center; font-size: 22px; }
+.econ b { display: block; font: 800 17px/1.2 'Inter', sans-serif; }
+.econ small { display: block; margin-top: 4px; color: #475569; font: 500 15px/1.3 'Inter', sans-serif; }
+.item { position: absolute; left: 32px; top: 350px; width: 300px; height: 352px; border-radius: 18px; background: #fff; border: 1px solid #e2e8f0; overflow: hidden; }
+.awning { height: 22px; background: repeating-linear-gradient(90deg, #4f6bed 0 22px, #ffffff 22px 44px); }
+.item .show { position: relative; height: 128px; background: linear-gradient(#f8fafc, #eef2ff); display: grid; place-items: center; }
+.item .show .emo { font-size: 58px; position: relative; top: -6px; }
+.item .show .ped { position: absolute; bottom: 16px; left: 0; right: 0; margin: 0 auto; width: 96px; height: 14px; border-radius: 50%; background: rgba(15, 23, 42, .12); }
+.item .rar { position: absolute; left: 12px; top: 10px; }
+.item .body { padding: 14px 16px; }
+.item .body .top { display: flex; align-items: center; justify-content: space-between; }
+.item .body b { font: 800 18px/1.2 'Inter', sans-serif; }
+.item .body p { margin: 8px 0 0; color: #475569; font: 500 14px/1.3 'Inter', sans-serif; }
+.item .body .meta { margin-top: 10px; color: #475569; font: 600 13px/1 'Inter', sans-serif; }
+.item .body .btn { position: relative; margin-top: 14px; height: 44px; }
+.tag { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 10px; background: #fbbf24; color: #78350f; font: 800 15px/1 'Inter', sans-serif; box-shadow: 0 4px 10px rgba(180, 83, 9, .25); }
+.tag::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: #fff7ed; }
+.tray { position: absolute; left: 32px; right: 32px; top: 240px; border-radius: 16px; background: #fff; border: 2px solid #fbbf24; box-shadow: 0 10px 30px rgba(15, 23, 42, .12); padding: 14px 18px; }
+.tray h4 { margin: 0 0 10px; font: 800 17px/1 'Inter', sans-serif; display: flex; align-items: center; gap: 8px; }
+.tray h4 span { padding: 3px 9px; border-radius: 999px; background: #f59e0b; color: #fff; font: 800 13px/1 'Inter', sans-serif; }
+.prow { display: flex; align-items: center; gap: 14px; }
+.prow .av { width: 38px; height: 38px; border-radius: 50%; background: #eef2ff; display: grid; place-items: center; font: 800 15px/1 'Inter', sans-serif; color: #3730a3; }
+.prow b { font: 700 16px/1.2 'Inter', sans-serif; }
+.prow .chip { margin-left: 10px; padding: 4px 10px; border-radius: 999px; background: #f1f5f9; color: #334155; font: 700 12px/1 'Inter', sans-serif; }
+.prow .warn { display: block; margin-top: 4px; color: #b45309; font: 600 13px/1.2 'Inter', sans-serif; }
+.prow .acts { margin-left: auto; display: flex; gap: 10px; }
+.prow .acts .btn { position: relative; height: 42px; padding: 0 16px; font-size: 15px; }
+.btn.dis { background: #e2e8f0; border-color: #e2e8f0; color: #94a3b8; }
+
+/* Formulario «Nuevo artículo» */
+.prev { left: 24px; top: 26px; width: 120px; height: 90px; border-radius: 14px; background: linear-gradient(#f8fafc, #eef2ff); display: grid; place-items: center; font-size: 44px; }
+.m-head small { display: block; color: #64748b; font: 600 14px/1 'Inter', sans-serif; }
+.m-head b { display: block; margin-top: 6px; font: 800 26px/1.1 'Inter', sans-serif; }
+.m-head .chips { margin-top: 10px; display: flex; gap: 8px; align-items: center; position: relative; height: 30px; }
+.typ { top: 262px; width: 290px; height: 84px; border-radius: 14px; border: 2px solid #e2e8f0; background: #fff; padding: 12px 14px; }
+.typ b { display: block; font: 800 16px/1.1 'Inter', sans-serif; }
+.typ small { display: block; margin-top: 6px; color: #64748b; font: 500 13px/1.3 'Inter', sans-serif; }
+.typ.on { border-color: #6366f1; background: #eef2ff; }
+.pchip { top: 388px; width: 98px; height: 58px; border-radius: 12px; border: 2px solid #e2e8f0; background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
+.pchip b { font: 800 17px/1 'Inter', sans-serif; }
+.pchip small { color: #64748b; font: 600 12px/1 'Inter', sans-serif; }
+.pchip.on { border-color: #f59e0b; background: #fffbeb; }
+.hint { left: 24px; width: 592px; color: #475569; font: 500 13px/1.35 'Inter', sans-serif; }
+.hint b { color: #111827; }
+
+/* Teléfono: tienda del alumno */
+.ph-top { position: absolute; left: 0; right: 0; top: 0; height: 140px; background: linear-gradient(135deg, #0b1026, #312e81); color: #fff; padding: 62px 26px 0; }
+.ph-top b { display: block; font: 800 30px/1.1 'Poppins', sans-serif; }
+.ph-top small { display: block; margin-top: 6px; color: #c7d2fe; font: 600 15px/1 'Inter', sans-serif; }
+.gold { position: absolute; left: 20px; right: 20px; top: 160px; padding: 18px 20px; border-radius: 20px; background: linear-gradient(135deg, #fef3c7, #fde68a); border: 1px solid #fcd34d; }
+.gold small { display: block; color: #92400e; font: 700 15px/1 'Inter', sans-serif; }
+.gold b { display: block; margin-top: 6px; color: #78350f; font: 800 46px/1 'Poppins', sans-serif; }
+.gold em { display: block; margin-top: 6px; color: #92400e; font: 600 14px/1 'Inter', sans-serif; font-style: normal; }
+.ph-sec { position: absolute; left: 24px; top: 322px; font: 800 18px/1 'Inter', sans-serif; }
+.prize { position: absolute; left: 20px; right: 20px; top: 352px; padding: 16px; border-radius: 20px; background: #fff; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 14px; }
+.prize .emo { width: 64px; height: 64px; border-radius: 16px; background: #eef2ff; display: grid; place-items: center; font-size: 34px; }
+.prize b { display: block; font: 800 18px/1.2 'Inter', sans-serif; }
+.prize small { display: block; margin-top: 4px; color: #64748b; font: 600 13px/1 'Inter', sans-serif; }
+.prize .buy { margin-left: auto; height: 44px; padding: 0 16px; border-radius: 12px; background: #4f46e5; color: #fff; display: grid; place-items: center; font: 800 15px/1 'Inter', sans-serif; }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; padding: 26px 24px 34px; border-radius: 30px 30px 0 0; background: #fff; box-shadow: 0 -20px 50px rgba(15, 23, 42, .25); text-align: center; }
+.sheet h4 { margin: 0; font: 800 22px/1.2 'Inter', sans-serif; }
+.sheet p { margin: 10px 0 0; color: #475569; font: 600 15px/1.4 'Inter', sans-serif; }
+.sheet .go { margin-top: 18px; height: 52px; border-radius: 14px; background: #4f46e5; color: #fff; display: grid; place-items: center; font: 800 17px/1 'Inter', sans-serif; }
+.yours { position: absolute; left: 20px; right: 20px; top: 300px; padding: 30px 20px; border-radius: 26px; background: #fff; box-shadow: 0 20px 60px rgba(15, 23, 42, .3); text-align: center; border: 1px solid #e2e8f0; }
+.yours .emo { font-size: 64px; }
+.yours h4 { margin: 10px 0 0; font: 800 34px/1.1 'Poppins', sans-serif; }
+.yours p { margin: 8px 0 0; color: #475569; font: 600 16px/1.3 'Inter', sans-serif; }
+.yours .go { margin: 18px auto 0; width: 220px; height: 48px; border-radius: 14px; border: 1.5px solid #e2e8f0; display: grid; place-items: center; font: 800 15px/1 'Inter', sans-serif; }
+
+/* Dar o canjear */
+.gstu { width: 312px; height: 56px; border-radius: 12px; border: 1.5px solid #e2e8f0; background: #fff; display: flex; align-items: center; gap: 12px; padding: 0 12px; }
+.gstu .ck { position: relative; width: 22px; height: 22px; border-radius: 6px; border: 2px solid #94a3b8; flex: 0 0 auto; }
+.gstu .ck i { position: absolute; inset: -2px; border-radius: 6px; background: #4f46e5; color: #fff; display: grid; place-items: center; font-style: normal; font-size: 14px; font-weight: 900; }
+.gstu b { display: block; font: 700 15px/1.1 'Inter', sans-serif; }
+.gstu small { display: block; margin-top: 3px; color: #64748b; font: 600 12px/1 'Inter', sans-serif; }
+.gstu.no { background: #f8fafc; color: #94a3b8; }
+.gstu.no small { color: #b45309; }
+</style>
+
+<script>
+(() => {
+  const G = Guion.init();
+  const LOGO = 'asset:logo.png?h=200';
+  const END = 82;
+  G.chapter(0, 'Inicio');
+  G.chapter(6.5, '¿Cómo funciona?');
+  G.chapter(19, 'Crear un premio');
+  G.chapter(46, 'Compras y canjes');
+  G.chapter(68, 'Consejos');
+
+  // =============== A · Portada (0–6.5) ===============
+  G.cielo([[0, 19], [68, 82]]);
+  G.portada({ titulo: 'Tienda', sub: 'Premios y privilegios que tus estudiantes compran con su oro', chips: ['⏱ 1 minuto', '🛍️ Gamificación'], jiro: 'asset:assets/jiro/emocionado.webp', logo: LOGO });
+
+  // =============== B · ¿Cómo funciona? (6.5–19) ===============
+  G.guia('b-jiro', 'asset:assets/jiro/senalando.webp', 6.6, 19);
+  G.burbuja('b-b1', 7.0, 12.8, 'Tus estudiantes ganan oro en clase y lo cambian por premios que tú creas.');
+  [['💚', 'Comportamiento positivo', '<span class="pill gp">+5 de oro</span>'], ['🪙', 'Ahorra su oro', '<span class="pill gp">24 de oro</span>'], ['🛍️', 'Lo cambia por un premio', '<span class="pill prize">💺 Elegir asiento</span>']].forEach(([e, h, p], i) => {
+    const f = G.el('div', 'flow', `<div class="big">${e}</div><h3>${h}</h3>${p}`, G.stage, `b-f${i}`);
+    f.style.left = `${560 + i * 430}px`;
+    const t = 9.6 + i * 0.6;
+    G.key(f, [[0, { o: 0, y: 50, s: 0.9 }], [t, { o: 0, y: 50, s: 0.9 }], [t + 0.45, { o: 1, y: 0, s: 1, ease: 'back' }], [18.4, { o: 1 }], [18.9, { o: 0, y: -20, ease: 'in' }]]);
+    G.cue(t, 'pop');
+    if (i < 2) {
+      const a = G.el('div', 'flow-arrow', '→', G.stage, `b-a${i}`);
+      a.style.cssText += `left:${930 + i * 430}px;top:470px`;
+      G.key(a, [[0, { o: 0, x: -20 }], [t + 0.3, { o: 0, x: -20 }], [t + 0.6, { o: 1, x: 0, ease: 'out' }], [18.4, { o: 1 }], [18.9, { o: 0 }]]);
+    }
+  });
+  G.burbuja('b-b2', 13.0, 19, 'El oro nunca se quita: solo baja cuando lo gastan.');
+  [['🧪', '#6366f1', 'Consumible', 'Se gasta al usarlo; tú apruebas cada uso.'], ['⭐', '#f59e0b', 'Permanente', 'No se gasta; el beneficio lo aplicas tú.'], ['🛡️', '#10b981', 'Tú decides', 'Abres o cierras la tienda y apruebas compras.']].forEach(([ic, bg, h, p], i) => {
+    const c = G.el('div', 'ptype', `<div class="big" style="background:${bg}">${ic}</div><h3>${h}</h3><p>${p}</p>`, G.stage, `b-c${i}`);
+    c.style.cssText += `left:${600 + i * 410}px;top:690px`;
+    const t = 14.6 + i * 0.5;
+    G.key(c, [[0, { o: 0, y: 50 }], [t, { o: 0, y: 50 }], [t + 0.45, { o: 1, y: 0, ease: 'back' }], [18.4, { o: 1 }], [18.9, { o: 0, y: 30, ease: 'in' }]]);
+    G.cue(t, 'pop');
+  });
+
+  // =============== C y D · La plataforma (19–68) ===============
+  const frame = G.app({ id: 'app', logo: LOGO, navs: [{ id: 'nav-gam', abierto: 'Gamificación', activo: 'Tienda' }] });
+  const C = '#app-content';
+  G.el('div', 'page', `
+    <div class="ptitle"><div class="tile">🛍️</div><div><h2>Tienda</h2><p style="position:relative;height:19px"><span id="sub-a" style="position:absolute;white-space:nowrap">Premios y privilegios que tus estudiantes compran con su oro</span><span id="sub-b" style="position:absolute;white-space:nowrap">1 artículo a la venta · 0 vendidos</span></p></div></div>
+    <div class="btn" style="left:794px;top:32px;width:140px">🏪 Inventario</div>
+    <div class="btn" id="b-ia" style="left:946px;top:32px;width:170px">✨ Surtir con IA</div>
+    <div class="btn primary" style="left:1128px;top:32px;width:180px">＋ Nuevo artículo</div>
+    <div style="position:absolute;left:32px;top:100px"><div class="seg"><span class="on">🛍️ Artículos</span><span>👕 Avatares</span></div></div>
+    <div class="settings" id="settings"><div class="shop-ic">🏪</div><div>Tienda abierta<small>Tus estudiantes pueden comprar</small></div><div class="sw"></div>
+      <div class="sw off" style="margin-left:18px"></div><div>Aprobar cada compra</div><div style="margin-left:18px">Compras por día</div><div class="lim">Sin límite</div></div>
+    <div class="emptybox" id="pg-empty" style="top:240px;height:380px"><div class="emos"><span>💺</span><span>🛍️</span><span>⭐</span></div><h3>Abre tu tienda</h3><p>Tus estudiantes gastan el oro que ganan en premios y privilegios. Tú apruebas cuándo se usan.</p>
+      <div class="ideas"><span id="idea-seat">💺 Elegir asiento</span><span>🎵 DJ por un día</span><span>🎲 Elegir el juego</span><span>🧑‍🏫 Ayudante del profe</span><span>📖 Elegir el cuento</span><span>💌 Carta a tu familia</span></div></div>
+    <div class="econ" id="econ"><div class="coin">🪙</div><div><b>Economía de la tienda</b><small>Tus estudiantes ganan unos 20 de oro por semana. Común: 20–40 · raro: 60–100 · legendario: 160–240 de oro.</small></div></div>
+    <div class="tray" id="tray1"><h4>Por atender <span>1</span></h4><div class="prow"><div class="av">A</div><div><b>Ana quiere usar Elegir asiento</b><span class="chip">Uso</span></div><div class="acts"><span class="btn">Rechazar</span><span class="btn green" id="b-aprobar">Aprobar</span></div></div></div>
+    <div class="tray" id="tray2"><h4>Por atender <span>1</span></h4><div class="prow"><div class="av">D</div><div><b>Diego quiere comprar DJ por un día</b><span class="chip">Compra · 30 de oro</span><span class="warn">🌙 Está descansando: podrás aprobarlo cuando vuelva</span></div><div class="acts"><span class="btn">Rechazar</span><span class="btn dis">Aprobar</span></div></div></div>
+    <div class="item" id="item"><div class="awning"></div><div class="show"><span class="mpill comun rar">Común</span><span class="emo">💺</span><span class="ped"></span></div>
+      <div class="body"><div class="top"><b>Elegir asiento</b><span class="tag">20 oro</span></div><p>Elige dónde sentarte por un día</p><div class="meta">🧪 Consumible · Sin límite · Sin ventas</div><div class="btn primary" id="b-dar">🎁 Dar o canjear</div></div></div>
+  `, C, 'pg-shop');
+  G.el('div', 'toast', '<span class="ok">✓</span>A la venta: Elegir asiento', C, 'toast-c').classList.add('solo');
+  G.el('div', 'toast', '<span class="ok">✓</span>Uso aprobado: Elegir asiento', C, 'toast-ok').classList.add('solo');
+  G.el('div', 'toast', '💺 Elegir asiento canjeado por 2 estudiantes<span class="undo">Deshacer</span>', C, 'toast-canje');
+
+  // Modal «Nuevo artículo»
+  G.el('div', 'overlay', '', frame, 'ov');
+  G.el('div', 'modal', `
+    <div class="m" style="left:0;right:0;top:0;height:14px;border-radius:22px 22px 0 0;overflow:hidden"><div class="awning" style="height:14px"></div></div>
+    <div class="m prev">💺</div>
+    <div class="m m-head" style="left:164px;top:28px"><small>Nuevo artículo</small><b>Elegir asiento</b>
+      <div class="chips"><span class="tag" id="tag-20" style="position:absolute">20 oro</span><span class="tag" id="tag-80" style="position:absolute">80 oro</span><span class="mpill comun" id="ch-c" style="position:absolute;left:96px;top:6px">Común</span><span class="mpill rara" id="ch-r" style="position:absolute;left:96px;top:6px">Raro</span></div></div>
+    <div class="m m-close">✕</div>
+    <div class="m m-label" style="left:24px;top:140px">Icono</div><div class="m m-label" style="left:92px;top:140px">Nombre</div>
+    <div class="m field" style="left:24px;top:162px;width:54px;padding:0;justify-content:center;font-size:26px">💺</div>
+    <div class="m field" style="left:92px;top:162px;width:400px">Elegir asiento</div>
+    <div class="m btn" style="left:504px;top:162px;width:112px;height:54px">🖼 Imagen</div>
+    <div class="m m-label" style="left:24px;top:240px">Tipo</div>
+    <div class="m typ" id="t-cons" style="left:24px"><b>🧪 Consumible</b><small>Se gasta al usarlo; tú apruebas cada uso (ej: elegir asiento)</small></div>
+    <div class="m typ" id="t-perm" style="left:326px"><b>⭐ Permanente</b><small>No se gasta; el beneficio lo aplicas tú (ej: amuleto, título)</small></div>
+    <div class="m typ on" id="t-cons-on" style="left:24px"><b>🧪 Consumible</b><small>Se gasta al usarlo; tú apruebas cada uso (ej: elegir asiento)</small></div>
+    <div class="m typ on" id="t-perm-on" style="left:326px"><b>⭐ Permanente</b><small>No se gasta; el beneficio lo aplicas tú (ej: amuleto, título)</small></div>
+    <div class="m m-label" style="left:24px;top:364px">Precio en oro <em>(en semanas de oro de tu clase)</em></div>
+    ${[[20, '1 sem'], [40, '2 sem'], [80, '4 sem'], [160, '8 sem'], [240, '12 sem']].map(([p, w], i) => `<div class="m pchip" id="pc-${i}" style="left:${24 + i * 108}px"><b>${p}</b><small>${w}</small></div>`).join('')}
+    <div class="m pchip on" id="pc-0-on" style="left:24px"><b>20</b><small>1 sem</small></div>
+    <div class="m pchip on" id="pc-2-on" style="left:240px"><b>80</b><small>4 sem</small></div>
+    <div class="m hint" style="top:458px"><span id="h1"><b>≈ 1 semana de oro</b> de un estudiante · Común</span><span id="h4" style="position:absolute;left:0"><b>≈ 4 semanas de oro</b> de un estudiante · Raro</span><br>La rareza sale del precio: común hasta 2 semanas, raro hasta 5 y legendario más. Conviene tener siempre un primer premio de una semana o menos.</div>
+    <div class="m m-label" style="left:24px;top:530px">Unidades disponibles</div>
+    <div class="m" style="left:24px;top:552px"><div class="seg"><span class="on">Sin límite</span><span id="u-lim">Limitadas</span></div></div>
+    <div class="m m-label" style="left:24px;top:616px">Descripción <em>(opcional, la verán los estudiantes)</em></div>
+    <div class="m field" style="left:24px;top:640px;width:592px;height:62px;font-size:16px;font-weight:500">Elige dónde sentarte por un día</div>
+    <div class="m m-foot"><div class="btn" style="left:150px;width:100px">Cancelar</div><div class="btn" style="left:262px;width:196px">Guardar y crear otro</div><div class="btn primary" id="b-sell" style="left:470px;width:146px">Poner a la venta</div></div>
+  `, frame, 'mnew').style.cssText = 'left:490px;top:28px;width:640px;height:812px';
+
+  // Modal «Dar o canjear»
+  const roster = [['Ana', 4], ['Bruno', 30], ['Carla', 45], ['Diego', 22], ['Elsa', 8], ['Fabio', 26]];
+  G.el('div', 'modal', `
+    <div class="m m-title">Dar o canjear · 💺 Elegir asiento</div><div class="m m-close">✕</div>
+    <div class="m" style="left:28px;top:64px"><div class="seg" style="position:relative"><span id="g-free">🎁 Gratis</span><span id="g-canje">🪙 Con su oro (canje)</span><span id="g-free-on" class="on" style="position:absolute;left:3px;top:3px">🎁 Gratis</span><span id="g-canje-on" class="on" style="position:absolute;right:3px;top:3px">🪙 Con su oro (canje)</span></div></div>
+    <div class="m hint" id="g-text" style="top:122px;width:640px">Para canjear en clase: a cada uno se le descuentan <b>20 de oro</b> y lo verá en su historial.</div>
+    <div class="m" style="left:28px;top:150px;font:600 14px/1 Inter,sans-serif;color:#334155">☐ Usar ahora (queda registrado como usado)</div>
+    ${roster.map(([n, g], i) => {
+      const no = g < 20;
+      return `<div class="m gstu${no ? ' no' : ''}" id="gs-${i}" style="left:${28 + (i % 2) * 330}px;top:${186 + Math.floor(i / 2) * 66}px"><span class="ck">${!no ? `<i id="gs-${i}-ck">✓</i>` : ''}</span><div><b>${n}</b><small>${no ? `Le faltan ${20 - g} de oro` : `${g} de oro`}</small></div></div>`;
+    }).join('')}
+    <div class="m btn" style="left:356px;top:410px;width:100px;height:44px;font-size:15px">Cancelar</div>
+    <div class="m btn dis" style="left:468px;top:410px;width:200px;height:44px;font-size:15px">Elige estudiantes</div>
+    <div class="m btn primary" id="b-canjear" style="left:468px;top:410px;width:200px;height:44px;font-size:15px">Canjear a 2</div>
+  `, frame, 'mgive').style.cssText = 'left:460px;top:170px;width:696px;height:474px';
+
+  // Alumno: tienda en el teléfono
+  G.el('div', 'phone', `<div class="screen"><div class="notch"></div>
+    <div class="ph-top"><b>Tienda</b><small>3.° B · cambia tu oro por premios</small></div>
+    <div class="gold"><small>🪙 Tu oro</small><b id="gold-n">24</b><em>Ganas oro cuando participas y cumples en clase.</em></div>
+    <div class="ph-sec">Ya te alcanza</div>
+    <div class="prize"><div class="emo">💺</div><div><b>Elegir asiento</b><small>Se usa una vez · 20 oro</small></div><div class="buy" id="ph-buy">Comprar</div></div>
+    <div class="sheet" id="ph-sheet"><h4>¿Comprar «Elegir asiento»?</h4><p>Tu oro 24 · Cuesta 20 · Te quedarán 4</p><div class="go" id="ph-go">Comprar por 20 de oro</div></div>
+    <div class="yours" id="ph-yours"><div class="emo">🎉</div><h4>¡Es tuyo!</h4><p>💺 Elegir asiento</p><div class="go">Ver mis premios</div></div>
+  </div>`, G.stage, 'phone').style.cssText = 'left:200px;top:110px';
+
+  // =============== Consejos y cierre (68–82) ===============
+  G.consejos({ t0: 68, t1: 76, jiro: 'asset:assets/jiro/senalando.webp', items: [
+    ['Ten un premio barato', 'Uno de una semana de oro o menos: así todos llegan pronto.'],
+    ['Da oro en tus comportamientos positivos', 'Sin oro, nadie puede comprar.'],
+    ['Premios que no toquen notas', 'Privilegios y experiencias: elegir asiento, ser DJ, ayudar al profe.'],
+  ] });
+  G.final({ t0: 76.2, fin: END, titulo: '¡Listo! Tu tienda está abierta', ruta: 'Gamificación › Tienda › «Nuevo artículo»', jiro: 'asset:assets/jiro/celebrando.webp', logo: LOGO });
+
+  G.capas();
+
+  // =============== Línea de tiempo de la plataforma ===============
+  G.key('#app', [[0, { o: 0 }], [19.0, { o: 0, s: 0.94, y: 30 }], [19.7, { o: 1, s: 1, y: 0, ease: 'out' }], [67.4, { o: 1, s: 1 }], [68.0, { o: 0, s: 0.96, ease: 'in' }]]);
+  G.cue(19.0, 'whoosh');
+  G.key('#pg-empty', [[0, { o: 1 }], [36.5, { o: 1 }], [36.65, { o: 0 }]]);
+  G.key('#sub-a', [[0, { o: 1 }], [36.5, { o: 1 }], [36.6, { o: 0 }]]);
+  G.key('#sub-b', [[0, { o: 0 }], [36.5, { o: 0 }], [36.6, { o: 1 }]]);
+  G.key('#econ', [[0, { o: 0 }], [36.6, { o: 0 }], [36.9, { o: 1 }], [51.2, { o: 1 }], [51.4, { o: 0 }], [54.5, { o: 0 }], [54.8, { o: 1 }], [64.3, { o: 1 }], [64.5, { o: 0 }]]);
+  G.key('#item', [[0, { o: 0 }], [36.6, { o: 0, s: 0.9 }], [37.0, { o: 1, s: 1, ease: 'pop' }]]);
+  G.appear('#toast-c', 36.6, 39.6, 0.25);
+  G.cue(36.6, 'chime'); G.cue(36.8, 'pop');
+
+  // Modal: abrir desde la idea, tipo, precio, unidades, poner a la venta
+  G.key('#ov', [[0, { o: 0 }], [22.9, { o: 0 }], [23.15, { o: 1 }], [36.4, { o: 1 }], [36.6, { o: 0 }], [58.6, { o: 0 }], [58.8, { o: 1 }], [62.0, { o: 1 }], [62.2, { o: 0 }]]);
+  G.pop('#mnew', 22.9, 36.4);
+  const flip = (t1, t2) => [[0, { o: 1 }], [t1, { o: 1 }], [t1 + 0.02, { o: 0 }], [t2, { o: 0 }], [t2 + 0.02, { o: 1 }]];
+  const flop = (t1, t2) => [[0, { o: 0 }], [t1, { o: 0 }], [t1 + 0.02, { o: 1 }], [t2, { o: 1 }], [t2 + 0.02, { o: 0 }]];
+  G.key('#t-cons-on', flip(26.3, 27.6)); G.key('#t-perm-on', flop(26.3, 27.6));
+  for (const sel of ['#pc-0-on', '#tag-20', '#ch-c', '#h1']) G.key(sel, flip(29.2, 31.4));
+  for (const sel of ['#pc-2-on', '#tag-80', '#ch-r', '#h4']) G.key(sel, flop(29.2, 31.4));
+  G.cue(29.2, 'coin'); G.cue(31.4, 'coin');
+
+  // Alumno compra
+  G.key('#phone', [[0, { o: 0, x: -120 }], [46.0, { o: 0, x: -120 }], [46.6, { o: 1, x: 0, ease: 'back' }], [50.6, { o: 1, x: 0 }], [51.2, { o: 0, x: -80, ease: 'in' }]]);
+  G.key('#ph-sheet', [[0, { o: 0, y: 200 }], [48.0, { o: 0, y: 200 }], [48.35, { o: 1, y: 0, ease: 'out' }], [49.1, { o: 1, y: 0 }], [49.3, { o: 0, y: 200 }]]);
+  G.key('#ph-yours', [[0, { o: 0, s: 0.85 }], [49.2, { o: 0, s: 0.85 }], [49.6, { o: 1, s: 1, ease: 'pop' }]]);
+  G.count('#gold-n', 49.2, 49.9, 24, 4);
+  G.cue(49.2, 'coin'); G.cue(49.4, 'chime');
+
+  // Por atender: aprobar un uso
+  G.key('#tray1', [[0, { o: 0, y: -10 }], [51.5, { o: 0, y: -10 }], [51.9, { o: 1, y: 0, ease: 'out' }], [54.3, { o: 1 }], [54.6, { o: 0 }]]);
+  G.appear('#toast-ok', 54.2, 57.0, 0.25);
+  G.cue(51.6, 'pop'); G.cue(54.2, 'chime');
+
+  // Dar o canjear
+  G.pop('#mgive', 58.6, 62.0);
+  G.key('#g-canje-on', [[0, { o: 0 }], [59.4, { o: 0 }], [59.42, { o: 1 }]]);
+  G.key('#g-free-on', [[0, { o: 1 }], [59.4, { o: 1 }], [59.42, { o: 0 }]]);
+  for (const [i, t] of [[1, 60.2], [2, 60.7]]) G.key(`#gs-${i}-ck`, [[0, { o: 0 }], [t, { o: 0, s: 0.5 }], [t + 0.15, { o: 1, s: 1, ease: 'pop' }]]);
+  for (const i of [0, 3, 5]) { const ck = G.$(`#gs-${i}-ck`); if (ck) G.key(ck, [[0, { o: 0 }]]); }
+  G.key('#b-canjear', [[0, { o: 0 }], [60.2, { o: 0 }], [60.3, { o: 1 }]]);
+  G.appear('#toast-canje', 62.1, 64.4, 0.25);
+  G.cue(62.1, 'coin');
+
+  // Descansando
+  G.key('#tray2', [[0, { o: 0, y: -10 }], [64.6, { o: 0, y: -10 }], [65.0, { o: 1, y: 0, ease: 'out' }], [67.2, { o: 1 }]]);
+  G.cue(64.6, 'soft');
+
+  // Cursor
+  const P = {
+    rest: { x: 1180, y: 760 },
+    nav: G.center('#nav-gam-on', -60),
+    seat: G.center('#idea-seat'),
+    perm: G.center('#t-perm'),
+    cons: G.center('#t-cons'),
+    p4: G.center('#pc-2'),
+    p1: G.center('#pc-0'),
+    lim: G.center('#u-lim'),
+    sell: G.center('#b-sell'),
+    ia: G.center('#b-ia'),
+    buy: G.center('#ph-buy'),
+    go: G.center('#ph-go'),
+    aprobar: G.center('#b-aprobar'),
+    dar: G.center('#b-dar'),
+    canje: G.center('#g-canje'),
+    bruno: G.center('#gs-1'),
+    carla: G.center('#gs-2'),
+    canjear: G.center('#b-canjear'),
+  };
+  G.cursor([
+    [0, P.rest, { o: 0 }], [19.6, P.rest, { o: 0 }], [20.0, P.rest, { o: 1 }],
+    [21.2, P.nav], [22.1, P.nav],
+    [22.7, P.seat], [24.4, P.seat],
+    [26.1, P.perm], [26.8, P.perm],
+    [27.4, P.cons], [28.6, P.cons],
+    [29.1, P.p4], [30.6, P.p4],
+    [31.3, P.p1], [33.2, P.p1],
+    [34.0, P.lim], [35.6, P.lim],
+    [36.4, P.sell], [37.2, P.sell],
+    [42.7, P.ia], [45.4, P.ia],
+    [45.9, P.ia, { o: 0 }], [46.6, P.buy, { o: 0 }], [47.0, P.buy, { o: 1 }],
+    [47.9, P.buy], [48.3, P.buy],
+    [48.9, P.go], [49.6, P.go],
+    [50.2, P.go, { o: 0 }], [51.8, P.aprobar, { o: 0 }], [52.2, P.aprobar, { o: 1 }],
+    [53.9, P.aprobar], [55.0, P.aprobar],
+    [58.3, P.dar], [58.8, P.dar],
+    [59.3, P.canje], [59.8, P.canje],
+    [60.1, P.bruno], [60.4, P.bruno],
+    [60.6, P.carla], [61.0, P.carla],
+    [61.7, P.canjear], [62.4, P.canjear],
+    [63.0, P.canjear, { o: 0 }],
+  ]);
+  G.ripple(22.0, P.nav); G.ripple(22.8, P.seat); G.ripple(26.3, P.perm); G.ripple(27.6, P.cons);
+  G.ripple(29.2, P.p4); G.ripple(31.4, P.p1); G.ripple(36.5, P.sell);
+  G.ripple(48.0, P.buy); G.ripple(49.05, P.go); G.ripple(54.0, P.aprobar);
+  G.ripple(58.5, P.dar); G.ripple(59.4, P.canje); G.ripple(60.2, P.bruno); G.ripple(60.7, P.carla); G.ripple(61.85, P.canjear);
+  G.glow('#nav-gam-on', 20.6, 22.2, 4);
+  G.glow('#u-lim', 34.1, 35.8, 4);
+  G.glow('#settings', 38.8, 42.3, 6);
+  G.glow('#b-ia', 42.6, 45.6, 6, true);
+
+  G.caption(19.8, 22.5, '1', 'Entra a <b>Gamificación › Tienda</b>');
+  G.caption(22.6, 25.4, '2', 'Toca una idea rápida o <q>Nuevo artículo</q>');
+  G.caption(25.5, 28.4, '3', 'Elige el tipo: <q>Consumible</q> o <q>Permanente</q>');
+  G.caption(28.5, 32.9, '4', 'El precio va en <b>semanas de oro</b>: la rareza sale del precio');
+  G.caption(33.0, 35.9, '5', 'Unidades: sin límite o limitadas');
+  G.caption(36.0, 38.6, '6', 'Toca <q>Poner a la venta</q>');
+  G.caption(38.7, 42.4, '7', 'Arriba decides: tienda abierta, aprobar compras y compras por día');
+  G.caption(42.5, 45.8, '💡', '¿Sin ideas? <q>Surtir con IA</q> te propone premios', 'idea');
+  G.caption(46.2, 51.2, '1', 'Tus estudiantes compran desde su <b>Tienda</b> con su oro', 'ok');
+  G.caption(51.3, 57.4, '2', 'Cuando quieren usarlo, te lo piden: apruebas en <q>Por atender</q>', 'ok');
+  G.caption(57.5, 64.4, '3', 'En clase: <q>Dar o canjear</q> descuenta su oro al instante', 'ok');
+  G.caption(64.5, 67.8, '4', 'Si alguien está <q>Descansando</q>, su compra espera a que vuelva', 'ok');
+
+  G.arrancar(END);
+})();
+</script>

@@ -15,6 +15,7 @@ import { AIBadgeModal } from '../../components/badges/AIBadgeModal';
 import { celebrateBadgeAward } from '../../components/celebrations/celebrationHelpers';
 import { RARITY_ORDER, badgeAwardCountsKey } from '../../components/badges/badgeHelpers';
 import { useClassroomCompetencies } from '../../hooks/useClassroomCompetencies';
+import { TutorialButton } from '../../components/tutorials/TutorialButton';
 
 type ModeFilter = 'ALL' | 'MANUAL' | 'AUTO';
 type SortKey = 'awards' | 'rarity' | 'name';
@@ -249,7 +250,10 @@ export const BadgesPage = () => {
             <Award size={22} />
           </span>
           <div>
-            <h1 className="text-lg font-bold text-gray-900 dark:text-white">Insignias</h1>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <h1 className="text-lg font-bold text-gray-900 dark:text-white">Insignias</h1>
+              <TutorialButton id="insignias" />
+            </div>
             <p className="text-sm text-gray-700 dark:text-gray-300">
               {badges.length === 0
                 ? 'Logros que tus estudiantes coleccionan'
@@ -340,6 +344,7 @@ export const BadgesPage = () => {
               Generar con IA
             </button>
           </div>
+          <TutorialButton id="insignias" variant="link" />
         </div>
       ) : visible.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-700 dark:border-gray-600 dark:text-gray-300">
