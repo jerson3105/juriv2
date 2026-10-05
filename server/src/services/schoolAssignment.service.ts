@@ -198,15 +198,29 @@ export const schoolAssignmentService = {
       assignments: all.filter((a) => a.teacherUserId === m.userId).length,
       tutorOf: sections.filter((s) => s.tutorUserId === m.userId).map((s) => sectionLabel.get(s.id)!),
     }));
+    // Totales de todos los niveles (Inicio los usa para su lista de pasos).
+    const plans = new Map<SchoolLevel, PlanArea[]>();
+    for (const l of levels) plans.set(l, (await effectivePlan(yearId, l)).areas);
+    const sectionById = new Map(sections.map((s) => [s.id, s]));
+    const missing = await missingByAssignment(yearId, all.filter((a) => a.classroomId).map((a) => a.id));
+    const allCells = all.filter((a) => {
+      const s = sectionById.get(a.sectionId);
+      return !!s && (plans.get(s.level) ?? []).some((p) => p.areaId === a.areaId && p.grades.includes(s.grade));
+    });
+    const overall = {
+      required: sections.reduce((sum, s) => sum + (plans.get(s.level) ?? []).filter((p) => p.grades.includes(s.grade)).length, 0),
+      assigned: allCells.length,
+      withoutClass: allCells.filter((a) => !a.classroomId).length,
+      missing: allCells.reduce((sum, a) => sum + (missing.get(a.id) ?? 0), 0),
+    };
     if (!chosen) {
-      return { levels, level: null, plan: [], sections: [], assignments: [], teachers, counts: { required: 0, assigned: 0, withoutClass: 0, missing: 0 } };
+      return { levels, level: null, plan: [], sections: [], assignments: [], teachers, counts: { required: 0, assigned: 0, withoutClass: 0, missing: 0 }, overall };
     }
-    const plan = (await effectivePlan(yearId, chosen)).areas;
+    const plan = plans.get(chosen) ?? [];
     const levelSections = sections.filter((s) => s.level === chosen);
     const enrolled = await enrolledBySection(yearId, levelSections.map((s) => s.id));
     const levelIds = new Set(levelSections.map((s) => s.id));
     const assignments = all.filter((a) => levelIds.has(a.sectionId));
-    const missing = await missingByAssignment(yearId, assignments.filter((a) => a.classroomId).map((a) => a.id));
     const classStudents = await studentsByClassroom(assignments.map((a) => a.classroomId).filter((id): id is string => !!id));
     const byUser = new Map(team.map((m) => [m.userId, m]));
     const inPlan = (sectionGrade: number, areaId: string) => plan.some((p) => p.areaId === areaId && p.grades.includes(sectionGrade));
@@ -240,6 +254,7 @@ export const schoolAssignmentService = {
         withoutClass: cells.filter((a) => !a.classroomId).length,
         missing: cells.reduce((sum, a) => sum + (missing.get(a.id) ?? 0), 0),
       },
+      overall,
     };
   },
 

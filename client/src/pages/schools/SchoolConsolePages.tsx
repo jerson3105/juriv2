@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useSchoolConsole } from '../../components/layout/schoolConsoleContext';
 import { useSchoolPanelData } from '../../components/schools/useSchoolPanelData';
 import { TeachersTab } from '../../components/schools/TeachersTab';
@@ -6,6 +7,7 @@ import { ClassesTab } from '../../components/schools/ClassesTab';
 import { LibraryTab } from '../../components/schools/LibraryTab';
 import { ReportsTab, SummaryTab } from '../../components/schools/ReportsTab';
 import { useAuthStore } from '../../store/authStore';
+import { AssignmentsTab } from '../../components/schools/console/AssignmentsTab';
 
 /**
  * Páginas de la consola que reutilizan las pestañas de «Mi Escuela» (docentes, clases, informes, biblioteca). Las
@@ -20,9 +22,21 @@ const PageHeader = ({ title, subtitle }: { title: string; subtitle: string }) =>
 );
 
 export const SchoolTeachersPage = () => {
-  const { school, manager } = useSchoolConsole();
+  const { school, manager, activeYear } = useSchoolConsole();
   const { user } = useAuthStore();
+  const [params, setParams] = useSearchParams();
   const { detail, classrooms, teachers, requests, loadingTeachers } = useSchoolPanelData(school, manager);
+  // Equipo | Asignaciones (solo la administración); la vista va en la URL.
+  const view = manager && params.get('vista') === 'asignaciones' ? 'assignments' : 'team';
+  const setView = (next: 'team' | 'assignments') => {
+    const updated = new URLSearchParams(params);
+    if (next === 'assignments') updated.set('vista', 'asignaciones');
+    else {
+      updated.delete('vista');
+      updated.delete('nivel');
+    }
+    setParams(updated, { replace: true });
+  };
   const subtitle = [
     loadingTeachers ? null : `${teachers.length} ${teachers.length === 1 ? 'docente' : 'docentes'}`,
     manager && requests.length > 0 ? `${requests.length} ${requests.length === 1 ? 'solicitud para unirse' : 'solicitudes para unirse'}` : null,
@@ -30,6 +44,21 @@ export const SchoolTeachersPage = () => {
   return (
     <div className="mx-auto max-w-6xl">
       <PageHeader title="Docentes" subtitle={subtitle} />
+      {manager && (
+        <div className="pg-seg mb-4" role="group" aria-label="Docentes">
+          <button type="button" className="pg-seg-item pg-focus" aria-pressed={view === 'team'} onClick={() => setView('team')}>
+            Equipo <span className="tabular-nums opacity-80">{teachers.length}</span>
+          </button>
+          <button type="button" className="pg-seg-item pg-focus" aria-pressed={view === 'assignments'} onClick={() => setView('assignments')}>Asignaciones</button>
+        </div>
+      )}
+      {view === 'assignments' ? (
+        activeYear ? <AssignmentsTab schoolId={school.id} yearId={activeYear.id} /> : (
+          <p className="rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-700 dark:border-gray-600 dark:text-gray-300">
+            Las asignaciones son de un año escolar: <Link to={`/escuela/${school.id}/anio`} className="font-semibold text-primary-700 underline-offset-2 hover:underline dark:text-primary-300">prepara el año</Link>.
+          </p>
+        )
+      ) : (
       <TeachersTab
         school={school}
         manage={manager}
@@ -41,6 +70,7 @@ export const SchoolTeachersPage = () => {
         inviteExpiresAt={detail?.inviteExpiresAt ?? null}
         isLoading={loadingTeachers}
       />
+      )}
     </div>
   );
 };

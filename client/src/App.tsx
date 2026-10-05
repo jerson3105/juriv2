@@ -86,6 +86,8 @@ const SchoolSectionsPage = lazyPage(() => import('./pages/schools/SchoolSections
 const SchoolStudentsPage = lazyPage(() => import('./pages/schools/SchoolStudentsPage').then((m) => ({ default: m.SchoolStudentsPage })));
 const SchoolRosterBuilderPage = lazyPage(() => import('./pages/schools/SchoolRosterBuilderPage').then((m) => ({ default: m.SchoolRosterBuilderPage })));
 const SchoolRosterImportPage = lazyPage(() => import('./pages/schools/SchoolRosterImportPage').then((m) => ({ default: m.SchoolRosterImportPage })));
+const SchoolMyLoadPage = lazyPage(() => import('./pages/schools/SchoolMyLoadPage').then((m) => ({ default: m.SchoolMyLoadPage })));
+const SchoolTutoringPage = lazyPage(() => import('./pages/schools/SchoolMyLoadPage').then((m) => ({ default: m.SchoolTutoringPage })));
 const SchoolTeachersPage = lazyPage(() => import('./pages/schools/SchoolConsolePages').then((m) => ({ default: m.SchoolTeachersPage })));
 const SchoolClassesPage = lazyPage(() => import('./pages/schools/SchoolConsolePages').then((m) => ({ default: m.SchoolClassesPage })));
 const SchoolReportsPage = lazyPage(() => import('./pages/schools/SchoolConsolePages').then((m) => ({ default: m.SchoolReportsPage })));
@@ -271,6 +273,8 @@ function App() {
               <Route path="estudiantes" element={<SchoolStudentsPage />} />
               <Route path="estudiantes/armar" element={<SchoolRosterBuilderPage />} />
               <Route path="estudiantes/importar" element={<SchoolRosterImportPage />} />
+              <Route path="mi-carga" element={<SchoolMyLoadPage />} />
+              <Route path="mi-tutoria/:sectionId" element={<SchoolTutoringPage />} />
               <Route path="docentes" element={<SchoolTeachersPage />} />
               <Route path="clases" element={<SchoolClassesPage />} />
               <Route path="informes" element={<SchoolReportsPage />} />

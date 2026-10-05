@@ -8,6 +8,7 @@ import { currentPeriod, formatDay, formatRange, LEVEL_LABEL, PERIOD_NAME, PERIOD
 import { schoolYearApi, schoolYearKeys } from '../../lib/schoolYearApi';
 import { schoolSectionApi, schoolSectionKeys } from '../../lib/schoolSectionApi';
 import { schoolRosterApi, schoolRosterKeys } from '../../lib/schoolRosterApi';
+import { assignmentApi, assignmentKeys } from '../../lib/schoolAssignmentApi';
 
 const card = 'pg-surface p-4';
 const smallBtn = 'pg-btn pg-focus flex-shrink-0';
@@ -43,6 +44,13 @@ export const SchoolHomePage = () => {
     enabled: manager && !!activeYear,
   });
   const rosterCounts = roster.data?.counts;
+  // Asignaciones y matrícula automática: los totales de todos los niveles.
+  const assignments = useQuery({
+    queryKey: assignmentKeys.matrix(school.id, activeYear?.id ?? '', null),
+    queryFn: () => assignmentApi.matrix(school.id, activeYear!.id),
+    enabled: manager && !!activeYear && sections.length > 0,
+  });
+  const overall = assignments.data?.overall;
   const withoutTutor = sections.filter((s) => !s.tutor);
   const base = `/escuela/${school.id}`;
   const detail = year.data;
@@ -72,6 +80,7 @@ export const SchoolHomePage = () => {
     !activeYear && !year.isLoading && { icon: CalendarCheck, title: 'Prepara el año escolar', detail: 'Fechas, bimestres o trimestres y niveles: lo primero de la consola', action: 'Preparar', to: `${base}/anio` },
     (rosterCounts?.incomplete ?? 0) > 0 && { icon: GraduationCap, title: `${rosterCounts!.incomplete} ${rosterCounts!.incomplete === 1 ? 'estudiante con datos por completar' : 'estudiantes con datos por completar'}`, detail: 'Les falta el DNI o la fecha de nacimiento', action: 'Completar datos', to: `${base}/estudiantes?filtro=incomplete` },
     (rosterCounts?.no_section ?? 0) > 0 && { icon: GraduationCap, title: `${rosterCounts!.no_section} ${rosterCounts!.no_section === 1 ? 'estudiante sin sección' : 'estudiantes sin sección'}`, detail: 'Asígnales su sección desde la ficha', action: 'Ver estudiantes', to: `${base}/estudiantes?filtro=no_section` },
+    (overall?.missing ?? 0) > 0 && { icon: GraduationCap, title: `${overall!.missing} ${overall!.missing === 1 ? 'estudiante aún no está en su clase' : 'estudiantes aún no están en sus clases'}`, detail: 'La matrícula automática quedó a medias: sincroniza la clase marcada', action: 'Ver asignaciones', to: `${base}/docentes?vista=asignaciones` },
     withoutTutor.length > 0 && { icon: Users, title: `${withoutTutor.length} ${withoutTutor.length === 1 ? 'sección sin tutoría' : 'secciones sin tutoría'}`, detail: 'Elige un tutor en cada tarjeta de sección', action: 'Asignar', to: `${base}/secciones` },
     requests.length > 0 && { icon: UserPlus, title: `${requests.length} ${requests.length === 1 ? 'solicitud para unirse' : 'solicitudes para unirse'}`, detail: 'Docentes que esperan tu respuesta', action: 'Revisar', to: `${base}/docentes` },
     teachersWithoutClasses.length > 0 && { icon: Users, title: `${teachersWithoutClasses.length} ${teachersWithoutClasses.length === 1 ? 'docente sin clases' : 'docentes sin clases'}`, detail: 'Aún no ponen sus clases en la escuela', action: 'Ver docentes', to: `${base}/docentes` },
@@ -107,8 +116,23 @@ export const SchoolHomePage = () => {
       done: sections.length > 0 && withoutTutor.length === 0,
       action: sections.length > 0 ? (withoutTutor.length === 0 ? { label: 'Editar', to: `${base}/secciones`, quiet: true } : { label: 'Asignar', to: `${base}/secciones` }) : undefined,
     },
-    { title: 'Asignaciones', detail: 'Qué docente enseña cada área en cada sección', done: false },
-    { title: 'Matrícula automática', detail: 'Pone a cada estudiante en las clases de su sección', done: false },
+    {
+      title: 'Asignaciones',
+      detail: overall && overall.required > 0 ? `${overall.assigned} de ${overall.required} áreas con docente` : 'Qué docente enseña cada área en cada sección',
+      done: !!overall && overall.required > 0 && overall.assigned === overall.required,
+      action: sections.length > 0
+        ? { label: overall && overall.assigned > 0 ? 'Continuar' : 'Empezar', to: `${base}/docentes?vista=asignaciones`, quiet: !!overall && overall.assigned === overall.required }
+        : undefined,
+    },
+    {
+      title: 'Matrícula automática',
+      detail: !overall || overall.assigned === 0 ? 'Pone a cada estudiante en las clases de su sección'
+        : overall.missing > 0 ? `Faltan ${overall.missing} ${overall.missing === 1 ? 'estudiante' : 'estudiantes'} en sus clases`
+          : overall.withoutClass > 0 ? `${overall.withoutClass} ${overall.withoutClass === 1 ? 'asignación' : 'asignaciones'} sin clase vinculada`
+            : 'Cada estudiante está en las clases de su sección',
+      done: !!overall && overall.assigned > 0 && overall.missing === 0 && overall.withoutClass === 0,
+      action: overall && overall.assigned > 0 ? { label: 'Ver', to: `${base}/docentes?vista=asignaciones`, quiet: true } : undefined,
+    },
     { title: 'Acceso con DNI y PIN', detail: 'Código del colegio o QR → DNI → PIN de 4 números', done: false },
   ];
   const ready = steps.filter((s) => s.done).length;
