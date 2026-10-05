@@ -93,9 +93,11 @@ class Flow {
 const drawHeader = (doc: Doc, report: SectionReport, student: StudentReport, images: { logo: Buffer | null; minedu: Buffer | null }) => {
   const x = COL_X[0];
   const box = 54;
-  // Izquierda: escudo del MINEDU (si el colegio tiene la imagen) o el texto.
+  // Izquierda: el escudo (con «República del Perú») y debajo «Ministerio de Educación», como en el formato; sin la imagen, el texto.
   if (images.minedu) {
-    try { doc.image(images.minedu, x, MARGIN, { fit: [box, box], align: 'center', valign: 'center' }); } catch { /* imagen dañada: sin escudo */ }
+    try { doc.image(images.minedu, x, MARGIN, { fit: [box, box - 12], align: 'center', valign: 'center' }); } catch { /* imagen dañada: sin escudo */ }
+    doc.font('Helvetica-Bold').fontSize(4.8).fillColor(TEXT)
+      .text('MINISTERIO DE\nEDUCACIÓN', x, MARGIN + box - 10, { width: box, align: 'center', lineGap: 0 });
   } else {
     doc.font('Helvetica-Bold').fontSize(5.6).fillColor(TEXT)
       .text('REPÚBLICA DEL PERÚ\n\nMINISTERIO DE EDUCACIÓN', x, MARGIN + 14, { width: box, align: 'center', lineGap: 0 });

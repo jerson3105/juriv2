@@ -6,7 +6,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\" && tsc",
+    "build": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\" && node --max-old-space-size=2048 node_modules/typescript/bin/tsc",
     "start": "node dist/index.js",
     "admin:totp": "node dist/scripts/adminTotp.js",
     "db:generate": "drizzle-kit generate",
