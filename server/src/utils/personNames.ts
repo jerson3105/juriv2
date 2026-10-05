@@ -54,6 +54,9 @@ const capitalize = (word: string, first: boolean) => {
 /** Cada palabra con su mayúscula, salvo que ya venga en mayúsculas y minúsculas mezcladas (se respeta). */
 const tidy = (words: string[]) => words.map((w, i) => (w === w.toUpperCase() || w === w.toLowerCase() ? capitalize(w, i === 0) : w));
 
+/** «QUISPE DE LA CRUZ» → «Quispe de la Cruz» (para nombres que llegan de un Excel). */
+export const tidyName = (raw: string) => tidy(displayWords(raw)).join(' ');
+
 /** Une partículas con la palabra siguiente para no cortar «de | la Cruz». Devuelve grupos de palabras. */
 const chunk = (words: string[]) => {
   const chunks: string[][] = [];

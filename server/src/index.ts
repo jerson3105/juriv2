@@ -403,6 +403,19 @@ const startServer = async () => {
     };
     setInterval(retireStale, 24 * 60 * 60 * 1000);
     void retireStale();
+
+    // Importaciones del padrón: lo vencido (filas cifradas de más de 24 horas) se borra cada hora.
+    const { schoolRosterImportService } = await import('./services/schoolRosterImport.service.js');
+    const purgeImports = async () => {
+      try {
+        const purged = await schoolRosterImportService.purgeExpired();
+        if (purged > 0) logger.info(`Importaciones del padrón vencidas limpiadas: ${purged}`);
+      } catch (error) {
+        logger.error('Error limpiando importaciones del padrón:', { error });
+      }
+    };
+    setInterval(purgeImports, 60 * 60 * 1000);
+    void purgeImports();
     
     // Iniciar servidor HTTP
     httpServer.listen(config_app.port, () => {

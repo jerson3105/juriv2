@@ -56,7 +56,7 @@ const assertSection = async (schoolId: string, yearId: string, sectionId: string
 };
 
 /** Valida, normaliza y cifra el documento (atado al estudiante). Sin llaves en el servidor, no se guarda. */
-const prepareDocument = (schoolId: string, studentId: string, document: { type: DocumentType; number: string }) => {
+export const prepareDocument = (schoolId: string, studentId: string, document: { type: DocumentType; number: string }) => {
   if (!piiReady()) throw new ConflictError('El servidor aún no tiene las llaves para guardar documentos. Avísale al equipo de Juried.');
   const normalized = parseDocument(document.type, document.number);
   if (!normalized) throw new ValidationError(document.type === 'DNI' ? 'El DNI tiene 8 números' : 'Revisa el número del documento');

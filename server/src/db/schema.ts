@@ -2,6 +2,7 @@ import {
   mysqlTable, tinyint, date, 
   varchar, 
   text, 
+  mediumtext,
   boolean, 
   int, 
   datetime, 
@@ -3124,4 +3125,35 @@ export const schoolRosterBuilds = mysqlTable('school_roster_builds', {
   undoneAt: datetime('undone_at', { fsp: 3 }),
 }, (table) => ({
   schoolYearIdx: index('idx_school_roster_builds_school_year').on(table.schoolId, table.yearId, table.createdAt),
+}));
+
+// Importar el padrón desde Excel: el archivo (filas) y sus correcciones van cifrados con su contexto
+// (school_import:<id>:rows / :fixes) y se borran a las 24 horas. result: solo ids y campos completados, para deshacer.
+export const importBatchStatusEnum = mysqlEnum('status', ['REVIEW', 'CONFIRMED', 'UNDONE']);
+export const schoolImportBatches = mysqlTable('school_import_batches', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  schoolId: varchar('school_id', { length: 36 }).notNull(),
+  yearId: varchar('year_id', { length: 36 }).notNull(),
+  actorUserId: varchar('actor_user_id', { length: 36 }).notNull(),
+  status: importBatchStatusEnum.notNull().default('REVIEW'),
+  source: varchar('source', { length: 10 }).notNull(),
+  rowCount: int('row_count').notNull(),
+  mapping: json('mapping').$type<Array<string | null>>().notNull(),
+  rowsEncrypted: mediumtext('rows_encrypted'),
+  fixesEncrypted: mediumtext('fixes_encrypted'),
+  revision: int('revision').notNull().default(0),
+  createdCount: int('created_count').notNull().default(0),
+  updatedCount: int('updated_count').notNull().default(0),
+  result: json('result').$type<{
+    createdStudentIds: string[];
+    updates: Array<{ studentId: string; fields: string[]; enrollment: 'created' | 'assigned' | null }>;
+  }>(),
+  createdAt: datetime('created_at', { fsp: 3 }).notNull(),
+  updatedAt: datetime('updated_at', { fsp: 3 }).notNull(),
+  confirmedAt: datetime('confirmed_at', { fsp: 3 }),
+  undoneAt: datetime('undone_at', { fsp: 3 }),
+  expiresAt: datetime('expires_at', { fsp: 3 }).notNull(),
+}, (table) => ({
+  schoolYearIdx: index('idx_school_import_batches_school_year').on(table.schoolId, table.yearId, table.createdAt),
+  expiresIdx: index('idx_school_import_batches_expires').on(table.expiresAt),
 }));

@@ -160,6 +160,19 @@ export const expeditionUploadLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Importar el padrón desde Excel: leer el archivo cuesta CPU y memoria. Cuenta por usuario (o IP).
+export const rosterImportLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hora
+  max: config_app.isDev ? 300 : 30,
+  keyGenerator: (req) => (req as any).user?.id ?? ipKey(req),
+  message: {
+    success: false,
+    message: 'Subiste muchos archivos en la última hora. Espera un rato y vuelve a intentarlo.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Rate limiter para funciones con IA (Gemini). Cualquiera puede registrarse como profesor:
 // sin este límite la app servía de proxy gratuito de Gemini. Cuenta por usuario (o IP).
 export const aiLimiter = rateLimit({

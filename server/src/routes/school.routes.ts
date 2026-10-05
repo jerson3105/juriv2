@@ -4,7 +4,9 @@ import { schoolYearController } from '../controllers/schoolYear.controller.js';
 import { schoolSectionController } from '../controllers/schoolSection.controller.js';
 import { schoolRosterController } from '../controllers/schoolRoster.controller.js';
 import { schoolRosterBuilderController } from '../controllers/schoolRosterBuilder.controller.js';
+import { schoolRosterImportController } from '../controllers/schoolRosterImport.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { rosterImportLimiter } from '../middleware/security.js';
 
 const router = Router();
 
@@ -80,6 +82,18 @@ router.put('/:schoolId/years/:yearId/roster-builder/decisions', authorize('TEACH
 router.post('/:schoolId/years/:yearId/roster-builder/confirm', authorize('TEACHER'), schoolRosterBuilderController.confirm);
 router.get('/:schoolId/years/:yearId/roster-builder/last', authorize('TEACHER'), schoolRosterBuilderController.lastBuild);
 router.post('/:schoolId/years/:yearId/roster-builder/builds/:buildId/undo', authorize('TEACHER'), schoolRosterBuilderController.undo);
+
+// Importar el padrón desde Excel (plantilla de Juried o nómina del SIAGIE)
+router.get('/:schoolId/years/:yearId/roster-import/template', authorize('TEACHER'), schoolRosterImportController.template);
+router.get('/:schoolId/years/:yearId/roster-import/current', authorize('TEACHER'), schoolRosterImportController.current);
+router.post('/:schoolId/years/:yearId/roster-import', authorize('TEACHER'), rosterImportLimiter, schoolRosterImportController.upload);
+router.get('/:schoolId/years/:yearId/roster-import/:batchId', authorize('TEACHER'), schoolRosterImportController.get);
+router.put('/:schoolId/years/:yearId/roster-import/:batchId/mapping', authorize('TEACHER'), schoolRosterImportController.saveMapping);
+router.patch('/:schoolId/years/:yearId/roster-import/:batchId/rows/:line', authorize('TEACHER'), schoolRosterImportController.fixRow);
+router.post('/:schoolId/years/:yearId/roster-import/:batchId/confirm', authorize('TEACHER'), schoolRosterImportController.confirm);
+router.post('/:schoolId/years/:yearId/roster-import/:batchId/undo', authorize('TEACHER'), schoolRosterImportController.undo);
+router.get('/:schoolId/years/:yearId/roster-import/:batchId/errors', authorize('TEACHER'), schoolRosterImportController.errorRows);
+router.delete('/:schoolId/years/:yearId/roster-import/:batchId', authorize('TEACHER'), schoolRosterImportController.discard);
 
 // Asignar/desasignar clase
 router.post('/:schoolId/classrooms/:classroomId', authorize('TEACHER'), schoolController.assignClassroom.bind(schoolController));
