@@ -54,6 +54,7 @@ import {
   completedAlbums,
   studentCollectibles,
   curriculumAreas,
+  schoolStudents,
 } from '../db/schema.js';
 import { eq, and, desc, inArray, sql, count, asc, or, gt } from 'drizzle-orm';
 import { calculateLevel, generateClassCode } from '../utils/helpers.js';
@@ -580,6 +581,8 @@ export class ClassroomService {
       pinBlocked: sql<number>`(${users.provider} = 'PIN' AND ${users.pinLockLevel} >= ${PIN_BLOCK_LEVEL})`,
       realName: users.firstName,
       realLastName: users.lastName,
+      // Sexo del padrón del colegio (null en una clase independiente o si aún no se registra).
+      sex: schoolStudents.sex,
       // Datos del clan
       clanName: teams.name,
       clanColor: teams.color,
@@ -588,6 +591,7 @@ export class ClassroomService {
     }).from(studentProfiles)
       .leftJoin(users, eq(studentProfiles.userId, users.id))
       .leftJoin(teams, eq(studentProfiles.teamId, teams.id))
+      .leftJoin(schoolStudents, eq(schoolStudents.id, studentProfiles.schoolStudentId))
       // Retirados y trasladados ya no son de la clase: su historial queda en la ficha del colegio.
       .where(and(eq(studentProfiles.classroomId, classroomId), eq(studentProfiles.isActive, true)));
   }

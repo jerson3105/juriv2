@@ -12,6 +12,8 @@ export interface SchoolSection {
   name: string;
   shift: SchoolShift;
   tutor: { userId: string; firstName: string; lastName: string } | null;
+  /** Estudiantes activos de la sección (mujeres y hombres; el resto, sin registrar). */
+  students?: { total: number; women: number; men: number };
 }
 
 export interface SectionItem {

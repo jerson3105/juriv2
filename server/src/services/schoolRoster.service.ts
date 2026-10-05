@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, inArray, isNull, like, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, like, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/mysql-core';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
@@ -9,6 +9,7 @@ import { ConflictError, NotFoundError, ValidationError, isDuplicateEntry } from 
 import { decryptPii, encryptPii, piiReady } from '../utils/piiCrypto.js';
 import { documentIndex, normalizeDocument, parseDocument, type DocumentType } from '../utils/personalDocument.js';
 import { escapeLike } from '../utils/textClean.js';
+import { avatarCatalogService } from './avatarCatalog.service.js';
 import { accessOf, accessStates } from './schoolAccessState.js';
 import { schoolAutoEnrollService } from './schoolAutoEnroll.service.js';
 import { sectionDisplayName } from './schoolSection.service.js';
@@ -19,6 +20,9 @@ import { sectionDisplayName } from './schoolSection.service.js';
  */
 
 export type RosterFilter = 'all' | 'no_section' | 'incomplete' | 'withdrawn';
+export type StudentSex = 'FEMALE' | 'MALE';
+/** Filtro por sexo del padrón: NONE = sin registrar. */
+export type SexFilter = StudentSex | 'NONE';
 export const ROSTER_PAGE_SIZE = 50;
 
 export interface StudentInput {
@@ -28,6 +32,7 @@ export interface StudentInput {
   birthDate?: string | null;
   email?: string | null;
   siagieCode?: string | null;
+  sex?: StudentSex | null;
 }
 
 const documentContext = (studentId: string) => `school_student:${studentId}:document`;
@@ -87,16 +92,39 @@ const serializeStudent = (s: typeof schoolStudents.$inferSelect) => ({
   birthDate: s.birthDate,
   email: s.institutionalEmail,
   siagieCode: s.siagieCode,
+  sex: s.sex,
   status: s.status,
   hasAccount: !!s.userId,
 });
+
+/**
+ * El sexo del padrón llega al avatar de los perfiles que el estudiante aún no usa (sin cuenta): toman ese cuerpo. Si ya
+ * entró con su cuenta, su personaje se respeta (lo cambia en «Mi personaje»).
+ */
+export const applySexToAvatars = async (studentIds: string[]) => {
+  if (studentIds.length === 0) return 0;
+  const rows = await db.select({ profileId: studentProfiles.id, gender: studentProfiles.avatarGender, sex: schoolStudents.sex })
+    .from(studentProfiles).innerJoin(schoolStudents, eq(schoolStudents.id, studentProfiles.schoolStudentId))
+    .where(and(
+      inArray(studentProfiles.schoolStudentId, studentIds), isNull(studentProfiles.userId), eq(studentProfiles.isActive, true),
+      eq(studentProfiles.isDemo, false), isNotNull(schoolStudents.sex),
+    ));
+  let changed = 0;
+  for (const row of rows) {
+    if (row.sex && row.gender !== row.sex) {
+      await avatarCatalogService.setBody(row.profileId, row.sex);
+      changed++;
+    }
+  }
+  return changed;
+};
 
 export const insertEvent = (executor: Pick<typeof db, 'insert'>, event: Omit<typeof schoolEnrollmentEvents.$inferInsert, 'id' | 'createdAt'>) =>
   executor.insert(schoolEnrollmentEvents).values({ id: uuidv4(), createdAt: new Date(), ...event });
 
 export const schoolRosterService = {
   async list(schoolId: string, yearId: string, params: {
-    filter: RosterFilter; level?: string; grade?: number; sectionId?: string; q?: string; page: number;
+    filter: RosterFilter; level?: string; grade?: number; sectionId?: string; q?: string; sex?: SexFilter; page: number;
   }) {
     await loadYear(schoolId, yearId, false);
     const joinEnrollment = and(eq(schoolEnrollments.studentId, schoolStudents.id), eq(schoolEnrollments.yearId, yearId));
@@ -111,6 +139,9 @@ export const schoolRosterService = {
     if (params.level) conditions.push(eq(schoolSections.level, params.level as 'INICIAL' | 'PRIMARIA' | 'SECUNDARIA'));
     if (params.grade) conditions.push(eq(schoolSections.grade, params.grade));
     if (params.sectionId) conditions.push(eq(schoolEnrollments.sectionId, params.sectionId));
+    // Mujeres y hombres de lo que se mira (nivel, grado o sección; activos), antes de buscar o filtrar por sexo.
+    const scope = and(...conditions.filter((c) => c !== byFilter[params.filter]), byFilter.all);
+    if (params.sex) conditions.push(params.sex === 'NONE' ? isNull(schoolStudents.sex) : eq(schoolStudents.sex, params.sex));
     const q = params.q?.trim();
     if (q) {
       const pattern = `%${escapeLike(q)}%`;
@@ -135,6 +166,7 @@ export const schoolRosterService = {
       documentIndex: schoolStudents.documentIndex,
       birthDate: schoolStudents.birthDate,
       email: schoolStudents.institutionalEmail,
+      sex: schoolStudents.sex,
       status: schoolStudents.status,
       sectionId: schoolEnrollments.sectionId,
       sectionLevel: schoolSections.level,
@@ -173,6 +205,12 @@ export const schoolRosterService = {
       incomplete: await countFor(byFilter.incomplete),
       withdrawn: await countFor(byFilter.withdrawn),
     };
+    const bySex = await db.select({ sex: schoolStudents.sex, n: count() }).from(schoolStudents)
+      .leftJoin(schoolEnrollments, joinEnrollment)
+      .leftJoin(schoolSections, eq(schoolSections.id, schoolEnrollments.sectionId))
+      .where(scope)
+      .groupBy(schoolStudents.sex);
+    const sexCount = (sex: StudentSex | null) => Number(bySex.find((r) => r.sex === sex)?.n ?? 0);
 
     return {
       items: rows.map((r) => ({
@@ -184,6 +222,7 @@ export const schoolRosterService = {
         hasDocument: !!r.documentIndex,
         birthDate: r.birthDate,
         email: r.email,
+        sex: r.sex,
         status: r.status,
         section: r.sectionId && r.sectionLevel
           ? { id: r.sectionId, level: r.sectionLevel, grade: r.sectionGrade!, name: r.sectionName! }
@@ -194,6 +233,7 @@ export const schoolRosterService = {
       page: params.page,
       pageSize: ROSTER_PAGE_SIZE,
       counts,
+      sexCounts: { women: sexCount('FEMALE'), men: sexCount('MALE'), unknown: sexCount(null) },
       piiReady: piiReady(),
     };
   },
@@ -308,6 +348,7 @@ export const schoolRosterService = {
           birthDate: input.birthDate ?? null,
           institutionalEmail: input.email ?? null,
           siagieCode: input.siagieCode ?? null,
+          sex: input.sex ?? null,
           createdBy: actorId, createdAt: now, updatedAt: now,
         });
         await tx.insert(schoolEnrollments).values({
@@ -353,6 +394,7 @@ export const schoolRosterService = {
     if (patch.birthDate !== undefined && patch.birthDate !== student.birthDate) { values.birthDate = patch.birthDate; changed.push('birthDate'); }
     if (patch.email !== undefined && patch.email !== student.institutionalEmail) { values.institutionalEmail = patch.email; changed.push('email'); }
     if (patch.siagieCode !== undefined && patch.siagieCode !== student.siagieCode) { values.siagieCode = patch.siagieCode; changed.push('siagieCode'); }
+    if (patch.sex !== undefined && patch.sex !== student.sex) { values.sex = patch.sex; changed.push('sex'); }
 
     const [enrollment] = await db.select().from(schoolEnrollments)
       .where(and(eq(schoolEnrollments.studentId, studentId), eq(schoolEnrollments.yearId, yearId)));
@@ -383,6 +425,7 @@ export const schoolRosterService = {
       throw error;
     }
     if (assignSection) await schoolAutoEnrollService.syncStudents(schoolId, yearId, [studentId]);
+    if (changed.includes('sex')) await applySexToAvatars([studentId]);
     return { detail: await this.get(schoolId, yearId, studentId), changed: [...changed, ...(assignSection ? ['section'] : [])] };
   },
 

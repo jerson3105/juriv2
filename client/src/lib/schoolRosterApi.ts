@@ -1,6 +1,7 @@
 import api from './api';
 import type { StudentAccessInfo } from './schoolAccessApi';
 import type { SchoolLevel } from './schoolYearApi';
+import type { StudentSex } from './studentSex';
 
 /** Consola escolar: padrón de estudiantes del año, ficha y documento (siempre enmascarado salvo «Mostrar»). */
 
@@ -26,6 +27,7 @@ export interface RosterStudent {
   hasDocument: boolean;
   birthDate: string | null;
   email: string | null;
+  sex: StudentSex | null;
   status: 'ACTIVE' | 'WITHDRAWN';
   section: RosterSection | null;
   classes: number;
@@ -37,6 +39,8 @@ export interface RosterPage {
   page: number;
   pageSize: number;
   counts: Record<RosterFilter, number>;
+  /** Mujeres, hombres y sin registrar de lo que se mira (nivel, grado o sección), antes de buscar o filtrar por sexo. */
+  sexCounts: { women: number; men: number; unknown: number };
   /** El servidor tiene las llaves para guardar documentos. */
   piiReady: boolean;
 }
@@ -52,6 +56,7 @@ export interface StudentDetail {
     birthDate: string | null;
     email: string | null;
     siagieCode: string | null;
+    sex: StudentSex | null;
     status: 'ACTIVE' | 'WITHDRAWN';
     hasAccount: boolean;
   };
@@ -117,11 +122,14 @@ export interface StudentInput {
   birthDate?: string | null;
   email?: string | null;
   siagieCode?: string | null;
+  sex?: StudentSex | null;
   sectionId?: string | null;
 }
 
 export interface RosterQuery {
   filter: RosterFilter;
+  /** NONE = sin registrar. */
+  sex?: StudentSex | 'NONE';
   level?: SchoolLevel;
   grade?: number;
   sectionId?: string;
@@ -144,6 +152,7 @@ export const schoolRosterApi = {
     if (query.grade) params.set('grade', String(query.grade));
     if (query.sectionId) params.set('sectionId', query.sectionId);
     if (query.q) params.set('q', query.q);
+    if (query.sex) params.set('sex', query.sex);
     const response = await api.get(`/schools/${schoolId}/years/${yearId}/students?${params.toString()}`);
     return response.data.data;
   },

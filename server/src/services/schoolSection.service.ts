@@ -1,7 +1,7 @@
-import { and, asc, count, eq, ne } from 'drizzle-orm';
+import { and, asc, count, eq, isNotNull, ne } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
-import { classrooms, schoolEnrollments, schoolMembers, schoolSections, schoolTeachingAssignments, schoolWorkshopSections, schoolYearLevels, schoolYears, users } from '../db/schema.js';
+import { classrooms, schoolEnrollments, schoolMembers, schoolSections, schoolStudents, schoolTeachingAssignments, schoolWorkshopSections, schoolYearLevels, schoolYears, users } from '../db/schema.js';
 import { ConflictError, NotFoundError, ValidationError, isDuplicateEntry } from '../utils/errors.js';
 import { cleanText, comparableText } from '../utils/textClean.js';
 import type { SchoolLevel } from './schoolYear.service.js';
@@ -78,7 +78,16 @@ export const schoolSectionService = {
     const rows = await selectSections()
       .where(and(eq(schoolSections.yearId, yearId), eq(schoolSections.schoolId, schoolId)))
       .orderBy(asc(schoolSections.level), asc(schoolSections.grade), asc(schoolSections.name));
-    return rows.map(serialize);
+    // Estudiantes activos de cada sección, por sexo (sin registrar cuenta en el total).
+    const enrolled = await db.select({ sectionId: schoolEnrollments.sectionId, sex: schoolStudents.sex, n: count() }).from(schoolEnrollments)
+      .innerJoin(schoolStudents, eq(schoolStudents.id, schoolEnrollments.studentId))
+      .where(and(eq(schoolEnrollments.yearId, yearId), eq(schoolEnrollments.status, 'ACTIVE'), eq(schoolStudents.status, 'ACTIVE'), isNotNull(schoolEnrollments.sectionId)))
+      .groupBy(schoolEnrollments.sectionId, schoolStudents.sex);
+    return rows.map((row) => {
+      const own = enrolled.filter((e) => e.sectionId === row.id);
+      const of = (sex: 'FEMALE' | 'MALE') => Number(own.find((e) => e.sex === sex)?.n ?? 0);
+      return { ...serialize(row), students: { total: own.reduce((sum, e) => sum + Number(e.n), 0), women: of('FEMALE'), men: of('MALE') } };
+    });
   },
 
   /** Crea varias de una vez; las que ya existen (o se repiten en el pedido) se omiten y se devuelven aparte. */

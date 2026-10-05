@@ -11,6 +11,7 @@ export const FIELD_OPTIONS: { id: ImportField; label: string }[] = [
   { id: 'documentType', label: 'Tipo de documento' },
   { id: 'documentNumber', label: 'Número de documento (DNI)' },
   { id: 'birthDate', label: 'Fecha de nacimiento' },
+  { id: 'sex', label: 'Sexo' },
   { id: 'email', label: 'Correo institucional' },
   { id: 'siagieCode', label: 'Código SIAGIE' },
   { id: 'level', label: 'Nivel' },
@@ -21,7 +22,7 @@ export const FIELD_OPTIONS: { id: ImportField; label: string }[] = [
 
 export const FIX_FIELD_LABEL: Record<FixValueField, string> = {
   lastNames: 'Apellidos', firstNames: 'Nombres', documentType: 'Tipo de documento', documentNumber: 'Número de documento',
-  birthDate: 'Fecha de nacimiento', email: 'Correo institucional', siagieCode: 'Código SIAGIE',
+  birthDate: 'Fecha de nacimiento', email: 'Correo institucional', siagieCode: 'Código SIAGIE', sex: 'Sexo',
 };
 
 export const SOURCE_LABEL: Record<ImportBatch['source'], string> = {
@@ -31,7 +32,7 @@ export const SOURCE_LABEL: Record<ImportBatch['source'], string> = {
 };
 
 const CHANGE_LABEL: Record<ImportRow['changes'][number], string> = {
-  document: 'DNI', birthDate: 'fecha de nacimiento', email: 'correo', siagieCode: 'código SIAGIE', section: 'sección', enrollment: 'matrícula del año',
+  document: 'DNI', birthDate: 'fecha de nacimiento', email: 'correo', siagieCode: 'código SIAGIE', sex: 'sexo', section: 'sección', enrollment: 'matrícula del año',
 };
 
 /** Errores primero, luego avisos, omitidas y listas; dentro, por fila. */

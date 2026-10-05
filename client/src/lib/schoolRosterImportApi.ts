@@ -5,10 +5,10 @@ import type { SchoolLevel } from './schoolYearApi';
 
 export const IMPORT_FIELDS = [
   'juriedCode', 'fullName', 'lastNames', 'lastName1', 'lastName2', 'firstNames', 'documentType', 'documentNumber',
-  'birthDate', 'email', 'siagieCode', 'level', 'grade', 'section', 'gradeSection',
+  'birthDate', 'email', 'siagieCode', 'level', 'grade', 'section', 'gradeSection', 'sex',
 ] as const;
 export type ImportField = (typeof IMPORT_FIELDS)[number];
-export type FixValueField = 'lastNames' | 'firstNames' | 'documentType' | 'documentNumber' | 'birthDate' | 'email' | 'siagieCode';
+export type FixValueField = 'lastNames' | 'firstNames' | 'documentType' | 'documentNumber' | 'birthDate' | 'email' | 'siagieCode' | 'sex';
 export type ImportRowStatus = 'READY' | 'WARNING' | 'ERROR' | 'SKIPPED';
 
 export interface ImportIssue {
@@ -32,10 +32,11 @@ export interface ImportRow {
   /** Enmascarado (•••••678). */
   document: string | null;
   birthDate: string | null;
+  sex: 'FEMALE' | 'MALE' | null;
   section: { id: string; label: string } | null;
   sectionText: string | null;
   match: { studentId: string; name: string; by: 'CODE' | 'DOCUMENT' | 'NAME'; section: string | null } | null;
-  changes: Array<'document' | 'birthDate' | 'email' | 'siagieCode' | 'section' | 'enrollment'>;
+  changes: Array<'document' | 'birthDate' | 'email' | 'siagieCode' | 'sex' | 'section' | 'enrollment'>;
   issues: ImportIssue[];
   fix: { skip: boolean; newPerson: boolean; sectionId: string | null | 'auto'; corrected: FixValueField[] } | null;
 }

@@ -8,6 +8,7 @@ import { errorMessage } from '../../components/auth/authHelpers';
 import { primaryButton } from '../../components/home/homeHelpers';
 import { ageOf, formatWhen, rosterName } from '../../components/schools/console/rosterHelpers';
 import { assignmentApi, assignmentKeys, type ClassroomChoice, type MyLoad, type MyLoadAssignment, type Workshop } from '../../lib/schoolAssignmentApi';
+import { countBySex, sexSummary } from '../../lib/studentSex';
 import { accessLabel, schoolAccessApi } from '../../lib/schoolAccessApi';
 import { AccessActions } from '../../components/schools/console/StudentAccess';
 
@@ -364,7 +365,7 @@ export const SchoolTutoringPage = () => {
         <Link to={`/escuela/${school.id}/mis-asignaciones`} className="pg-icon-btn pg-focus" aria-label="Volver a Mis asignaciones"><ArrowLeft size={20} aria-hidden="true" /></Link>
         <div className="min-w-0 flex-1">
           <h1 className="text-xl font-black text-gray-900 dark:text-white sm:text-2xl">Mi tutoría{data ? ` · ${data.section.label}` : ''}</h1>
-          <p className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{data ? `${data.students.length} ${data.students.length === 1 ? 'estudiante' : 'estudiantes'}${data.section.tutor ? ` · tutoría de ${data.section.tutor}` : ''}` : 'Tu sección'}</p>
+          <p className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{data ? [`${data.students.length} ${data.students.length === 1 ? 'estudiante' : 'estudiantes'}`, sexSummary(countBySex(data.students)), data.section.tutor ? `tutoría de ${data.section.tutor}` : null].filter(Boolean).join(' · ') : 'Tu sección'}</p>
         </div>
         {data && data.students.length > 0 && (
           <button type="button" className="pg-btn pg-focus" disabled={printing || withoutPin === 0} onClick={() => void printCards()} title={withoutPin === 0 ? 'Todos ya tienen su PIN' : undefined}>

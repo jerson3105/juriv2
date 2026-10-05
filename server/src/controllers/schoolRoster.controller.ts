@@ -37,6 +37,7 @@ const studentFields = {
   birthDate: birthDateSchema.nullable().optional(),
   email: z.string().trim().toLowerCase().email('Escribe un correo válido').max(255).nullable().optional(),
   siagieCode: z.string().trim().toUpperCase().regex(/^[0-9A-Z]{4,20}$/, 'El código SIAGIE tiene de 4 a 20 letras o números').nullable().optional(),
+  sex: z.enum(['FEMALE', 'MALE'], { errorMap: () => ({ message: 'Elige Mujer u Hombre' }) }).nullable().optional(),
   sectionId: z.string().uuid().nullable().optional(),
 };
 const createSchema = z.object(studentFields).strict();
@@ -52,6 +53,7 @@ const listSchema = z.object({
   grade: z.coerce.number().int().min(1).max(6).optional(),
   sectionId: z.string().uuid().optional(),
   q: z.string().trim().max(100).optional(),
+  sex: z.enum(['FEMALE', 'MALE', 'NONE']).optional(),
   page: z.coerce.number().int().min(1).max(10_000).default(1),
 });
 

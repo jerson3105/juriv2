@@ -101,6 +101,8 @@ export interface Student {
   characterClass: 'GUARDIAN' | 'ARCANE' | 'EXPLORER' | 'ALCHEMIST';
   characterClassId?: string | null;
   avatarGender: 'MALE' | 'FEMALE';
+  /** Sexo del padrón del colegio (null en una clase independiente o si aún no se registra). */
+  sex?: 'FEMALE' | 'MALE' | null;
   displayName?: string | null;
   linkCode?: string | null;
   linkedEmail?: string | null;

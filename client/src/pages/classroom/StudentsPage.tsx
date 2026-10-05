@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { Copy, PlayCircle, RotateCcw, UserPlus } from 'lucide-react';
 import { classroomApi, type Classroom, type Student } from '../../lib/classroomApi';
+import { countBySex, sexSummary } from '../../lib/studentSex';
 import { behaviorApi, type ApplyResult, type Behavior } from '../../lib/behaviorApi';
 import { studentApi } from '../../lib/studentApi';
 import { characterClassApi } from '../../lib/characterClassApi';
@@ -535,6 +536,7 @@ const StudentsPageInner = ({ classroom }: ClassroomContext) => {
             onClanFilterChange={setClanFilter}
             total={allStudents.length}
             shown={rows.length}
+            bySex={sexSummary(countBySex(allStudents))}
             projecting={projecting}
             unrecognized={unrecognizedCount}
             resting={restingCount}

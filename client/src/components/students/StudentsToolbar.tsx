@@ -23,6 +23,8 @@ interface StudentsToolbarProps {
   onClanFilterChange: (clanId: string | null) => void;
   total: number;
   shown: number;
+  /** Clase del colegio: «17 mujeres · 15 hombres» según el padrón (null si no hay el dato). */
+  bySex?: string | null;
   projecting: boolean;
   /** null mientras carga el pulso de hoy. */
   unrecognized: number | null;
@@ -187,6 +189,7 @@ export const StudentsToolbar = (props: StudentsToolbarProps) => {
             </Popover>
           </>
         )}
+        {props.bySex && !projecting && <span className="text-sm pg-fg2">{props.bySex}</span>}
         {filtered && (
           <span className="inline-flex items-center gap-1 text-sm pg-fg2" role="status">
             {props.shown} de {props.total}

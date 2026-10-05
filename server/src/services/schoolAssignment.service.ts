@@ -551,7 +551,7 @@ export const schoolAssignmentService = {
     if (!actor.manager && section.tutorUserId !== actor.id) throw new ForbiddenError('No eres tutor de esta sección');
     const students = await db.select({
       id: schoolStudents.id, firstNames: schoolStudents.firstNames, lastNames: schoolStudents.lastNames,
-      hasDocument: sql<number>`${schoolStudents.documentIndex} IS NOT NULL`, birthDate: schoolStudents.birthDate,
+      hasDocument: sql<number>`${schoolStudents.documentIndex} IS NOT NULL`, birthDate: schoolStudents.birthDate, sex: schoolStudents.sex,
     }).from(schoolEnrollments)
       .innerJoin(schoolStudents, eq(schoolStudents.id, schoolEnrollments.studentId))
       .where(and(eq(schoolEnrollments.yearId, yearId), eq(schoolEnrollments.sectionId, sectionId), eq(schoolEnrollments.status, 'ACTIVE'), eq(schoolStudents.status, 'ACTIVE')))
@@ -568,7 +568,7 @@ export const schoolAssignmentService = {
     return {
       section: { id: section.id, label: sectionDisplayName(section.level, section.grade, section.name), tutor: tutor ? fullName(tutor) : null },
       students: students.map((s) => ({
-        id: s.id, firstNames: s.firstNames, lastNames: s.lastNames, hasDocument: !!Number(s.hasDocument), birthDate: s.birthDate,
+        id: s.id, firstNames: s.firstNames, lastNames: s.lastNames, hasDocument: !!Number(s.hasDocument), birthDate: s.birthDate, sex: s.sex,
         classes: classesOf.get(s.id) ?? 0,
         access: accessOf(access.get(s.id)),
       })),

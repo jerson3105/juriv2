@@ -13,6 +13,7 @@ import {
   type NameStyle,
 } from '../../components/schools/console/sectionHelpers';
 import { schoolSectionApi, schoolSectionKeys, type SchoolSection, type SchoolShift } from '../../lib/schoolSectionApi';
+import { sexSummary } from '../../lib/studentSex';
 import { schoolYearApi, schoolYearKeys, type SchoolLevel } from '../../lib/schoolYearApi';
 import type { SchoolTeacher } from '../../lib/schoolApi';
 
@@ -365,6 +366,14 @@ const SectionCard = ({ section, tutors, manager }: { section: SchoolSection; tut
             </>
           )}
         </div>
+      )}
+
+      {section.students && (
+        <p className="mt-1 text-xs text-gray-700 dark:text-gray-300">
+          {section.students.total === 0
+            ? 'Sin estudiantes aún'
+            : [`${section.students.total} ${section.students.total === 1 ? 'estudiante' : 'estudiantes'}`, sexSummary({ ...section.students, unknown: section.students.total - section.students.women - section.students.men })].filter(Boolean).join(' · ')}
+        </p>
       )}
 
       {confirmDelete ? (

@@ -18,6 +18,7 @@ import type { SchoolSection } from '../../../lib/schoolSectionApi';
 import { ReinstateModal, TransferModal, UndoTransfer, WithdrawModal } from './StudentMoves';
 import { AccessActions } from './StudentAccess';
 import { accessLabel } from '../../../lib/schoolAccessApi';
+import { SEX_LABEL, type StudentSex } from '../../../lib/studentSex';
 
 export type DrawerState = { mode: 'view' | 'edit' | 'transfer' | 'withdraw' | 'reinstate'; studentId: string } | { mode: 'create' };
 
@@ -126,6 +127,10 @@ const StudentView = ({ schoolId, yearId, detail, sections, onMode }: { schoolId:
         <div>
           <dt className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">Nacimiento</dt>
           <dd className="mt-0.5 text-gray-900 dark:text-white">{student.birthDate ? `${formatBirthDate(student.birthDate)} · ${age} años` : <span className="font-semibold text-amber-800 dark:text-amber-200">Falta la fecha</span>}</dd>
+        </div>
+        <div>
+          <dt className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">Sexo</dt>
+          <dd className="mt-0.5 text-gray-900 dark:text-white">{student.sex ? SEX_LABEL[student.sex] : <span className="text-gray-600 dark:text-gray-300">Sin registrar</span>}</dd>
         </div>
         <div>
           <dt className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">Código SIAGIE</dt>
@@ -328,10 +333,11 @@ const StudentForm = ({ schoolId, yearId, sections, piiReady, detail, onCancel, o
   const [birthDate, setBirthDate] = useState(student?.birthDate ?? '');
   const [email, setEmail] = useState(student?.email ?? '');
   const [siagieCode, setSiagieCode] = useState(student?.siagieCode ?? '');
+  const [sex, setSex] = useState<StudentSex | ''>(student?.sex ?? '');
   const [sectionId, setSectionId] = useState('');
   const [error, setError] = useState<string | null>(null);
   const canPickSection = !detail || !detail.enrollment?.section;
-  const ids = { type: useId(), section: useId() };
+  const ids = { type: useId(), section: useId(), sex: useId() };
 
   const payload = (): Partial<StudentInput> => {
     const body: Partial<StudentInput> = {};
@@ -345,6 +351,7 @@ const StudentForm = ({ schoolId, yearId, sections, piiReady, detail, onCancel, o
     put('birthDate', birthDate || null, student?.birthDate ?? null);
     put('email', email.trim() || null, student?.email ?? null);
     put('siagieCode', siagieCode.trim() || null, student?.siagieCode ?? null);
+    put('sex', sex || null, student?.sex ?? null);
     if (canPickSection && sectionId) body.sectionId = sectionId;
     return body;
   };
@@ -408,8 +415,16 @@ const StudentForm = ({ schoolId, yearId, sections, piiReady, detail, onCancel, o
         )}
       </fieldset>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-3">
         <Input label="Fecha de nacimiento" type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} />
+        <label htmlFor={ids.sex} className={label}>
+          Sexo
+          <select id={ids.sex} className={select} value={sex} onChange={(e) => setSex(e.target.value as StudentSex | '')}>
+            <option value="">Sin registrar</option>
+            <option value="FEMALE">Mujer</option>
+            <option value="MALE">Hombre</option>
+          </select>
+        </label>
         <Input label="Código SIAGIE" value={siagieCode} onChange={(e) => setSiagieCode(e.target.value)} maxLength={20} autoComplete="off" />
       </div>
       <Input label="Correo institucional" type="email" value={email} onChange={(e) => setEmail(e.target.value)} maxLength={255} autoComplete="off" />

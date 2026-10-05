@@ -13,11 +13,11 @@ import { documentIndex, maskDocument, normalizeDocument, parseDocument, type Doc
 import { matchWords, sameWord, splitPersonName, tidyName } from '../utils/personNames.js';
 import {
   cellText, detectMapping, detectSource, isHeaderRow, isHeaderText, isMaskedDocument, isPlausibleBirthDate, parseDate, parseDocumentType, parseGradeSection, parseLevel,
-  sectionLabelFrom, type ImportField,
+  parseSex, sectionLabelFrom, sexColumnUsesF, type ImportField,
 } from '../utils/rosterImportParsing.js';
 import { cleanText, comparableText } from '../utils/textClean.js';
 import { assertSafeXlsx } from '../utils/xlsxSafety.js';
-import { prepareDocument } from './schoolRoster.service.js';
+import { applySexToAvatars, prepareDocument } from './schoolRoster.service.js';
 import { schoolAutoEnrollService } from './schoolAutoEnroll.service.js';
 import { LEVEL_GRADES, sectionDisplayName } from './schoolSection.service.js';
 import type { SchoolLevel } from './schoolYear.service.js';
@@ -55,7 +55,7 @@ interface StoredFile {
   rows: StoredRow[];
 }
 
-export const FIX_VALUE_FIELDS = ['lastNames', 'firstNames', 'documentType', 'documentNumber', 'birthDate', 'email', 'siagieCode'] as const;
+export const FIX_VALUE_FIELDS = ['lastNames', 'firstNames', 'documentType', 'documentNumber', 'birthDate', 'email', 'siagieCode', 'sex'] as const;
 export type FixValueField = (typeof FIX_VALUE_FIELDS)[number];
 /** Corrección de una fila: omitirla, «No es esta persona», elegir su sección o corregir un valor del archivo. */
 export interface RowFix {
@@ -85,7 +85,7 @@ export interface Issue {
   duplicateOf?: number;
   createSection?: { level: SchoolLevel; grade: number; name: string; label: string };
 }
-export type ChangeField = 'document' | 'birthDate' | 'email' | 'siagieCode' | 'section' | 'enrollment';
+export type ChangeField = 'document' | 'birthDate' | 'email' | 'siagieCode' | 'sex' | 'section' | 'enrollment';
 type RowStatus = 'READY' | 'WARNING' | 'ERROR' | 'SKIPPED';
 
 interface ImportResult {
@@ -203,6 +203,7 @@ const loadContext = async (schoolId: string, yearId: string) => {
     birthDate: schoolStudents.birthDate,
     email: schoolStudents.institutionalEmail,
     siagieCode: schoolStudents.siagieCode,
+    sex: schoolStudents.sex,
     status: schoolStudents.status,
     enrollmentId: schoolEnrollments.id,
     sectionId: schoolEnrollments.sectionId,
@@ -226,6 +227,7 @@ interface PlannedRow {
   birthDate: string | null;
   email: string | null;
   siagieCode: string | null;
+  sex: 'FEMALE' | 'MALE' | null;
   sectionId: string | null;
   sectionText: string | null;
   match: { student: StudentRow; by: 'CODE' | 'DOCUMENT' | 'NAME' } | null;
@@ -247,6 +249,9 @@ const evaluate = (schoolId: string, file: StoredFile, mapping: Array<ImportField
   }
   const column = new Map<ImportField, number>();
   mapping.forEach((field, i) => { if (field) column.set(field, i); });
+  // «M» es Mujer (H/M del SIAGIE), salvo que la columna escriba a las mujeres con F: entonces es Masculino.
+  const sexColumn = column.get('sex');
+  const mIsMale = sexColumn !== undefined && sexColumnUsesF(file.rows.map((r) => r.cells[sexColumn] ?? ''));
   const defaultLevel = ctx.levels.length === 1 ? ctx.levels[0] : null;
 
   /** La sección de la fila: la elegida al corregir, o la que dice el archivo si existe una sola así. */
@@ -321,7 +326,7 @@ const evaluate = (schoolId: string, file: StoredFile, mapping: Array<ImportField
     if (isHeaderRow(row.cells)) {
       return {
         line: row.line, status: 'READY', action: 'NONE', names: { lastNames: '', firstNames: '' }, document: null, documentMasked: false,
-        birthDate: null, email: null, siagieCode: null, sectionId: null, sectionText: null, match: null, changes: [], fix,
+        birthDate: null, email: null, siagieCode: null, sex: null, sectionId: null, sectionText: null, match: null, changes: [], fix,
         issues: [{ code: 'header_row', severity: 'error', message: 'Es una fila de encabezados: no se importa' }],
       };
     }
@@ -436,9 +441,11 @@ const evaluate = (schoolId: string, file: StoredFile, mapping: Array<ImportField
     const email = emailText && emailSchema.safeParse(emailText).success ? emailText : null;
     const siagieText = value('siagieCode', cell('siagieCode')).trim().toUpperCase();
     const siagieCode = /^[0-9A-Z]{4,20}$/.test(siagieText) ? siagieText : null;
+    const sexText = value('sex', cell('sex')).trim();
+    const sex = parseSex(sexText, mIsMale);
 
     const changes: ChangeField[] = [];
-    const fill = (field: 'birthDate' | 'email' | 'siagieCode', next: string | null, current: string | null, raw: string, problem: string, other: string) => {
+    const fill = (field: 'birthDate' | 'email' | 'siagieCode' | 'sex', next: string | null, current: string | null, raw: string, problem: string, other: string) => {
       if (current) {
         if (next && next !== current) warning(`${field}_other`, other);
         return;
@@ -452,6 +459,7 @@ const evaluate = (schoolId: string, file: StoredFile, mapping: Array<ImportField
         'Su fecha de nacimiento registrada es otra: no se cambia');
       fill('email', email, s?.email ?? null, emailText, 'El correo no es válido', 'Su correo registrado es otro: no se cambia');
       fill('siagieCode', siagieCode, s?.siagieCode ?? null, siagieText, 'El código SIAGIE tiene de 4 a 20 letras o números', 'Su código SIAGIE registrado es otro: no se cambia');
+      fill('sex', sex, s?.sex ?? null, sexText, 'No entiendo el sexo (escribe Mujer u Hombre, o M y H)', 'Su sexo registrado es otro: no se cambia');
     };
 
     let action: PlannedRow['action'] = 'NONE';
@@ -483,7 +491,7 @@ const evaluate = (schoolId: string, file: StoredFile, mapping: Array<ImportField
     }
 
     return {
-      line: row.line, status: 'READY', action, names: { lastNames, firstNames }, document, documentMasked, birthDate, email, siagieCode,
+      line: row.line, status: 'READY', action, names: { lastNames, firstNames }, document, documentMasked, birthDate, email, siagieCode, sex,
       sectionId: section.sectionId, sectionText: section.text, match, changes, issues, fix,
     };
   };
@@ -662,6 +670,7 @@ export const schoolRosterImportService = {
       documentType: schoolStudents.documentType,
       documentHint: schoolStudents.documentHint,
       birthDate: schoolStudents.birthDate,
+      sex: schoolStudents.sex,
       email: schoolStudents.institutionalEmail,
       siagieCode: schoolStudents.siagieCode,
       level: schoolSections.level,
@@ -688,6 +697,7 @@ export const schoolRosterImportService = {
       { header: 'Tipo de documento', key: 'documentType', width: 18 },
       { header: 'Número de documento', key: 'document', width: 20, style: { numFmt: '@' } },
       { header: 'Fecha de nacimiento', key: 'birthDate', width: 18, style: { numFmt: 'dd/mm/yyyy' } },
+      { header: 'Sexo', key: 'sex', width: 10 },
       { header: 'Correo institucional', key: 'email', width: 32 },
       { header: 'Código SIAGIE', key: 'siagieCode', width: 18, style: { numFmt: '@' } },
       { header: 'Nivel', key: 'level', width: 12 },
@@ -702,6 +712,7 @@ export const schoolRosterImportService = {
       'DNI, CE, PTP o Pasaporte (elige de la lista). Si lo dejas vacío, es DNI.',
       'DNI: 8 números (si Excel borra el 0 del inicio, Juried lo completa). Carné, PTP o pasaporte: de 6 a 12 letras y números.',
       'Día/mes/año. Ej.: 14/03/2012 (también sirve 2012-03-14).',
+      'Mujer u Hombre (elige de la lista). También sirven M y H, como en el SIAGIE.',
       'Opcional. Ej.: luz.quispe@colegio.edu.pe',
       'Opcional: su código del SIAGIE, tal como figura allí.',
       'Inicial, Primaria o Secundaria (elige de la lista).',
@@ -718,7 +729,7 @@ export const schoolRosterImportService = {
     const sample = sections[0] ?? { level: 'SECUNDARIA' as const, grade: 4, name: 'A' };
     const example = sheet.addRow({
       id: 'EJEMPLO (no se importa)', lastNames: 'Quispe Mamani', firstNames: 'Luz Clara', documentType: 'DNI', document: '12345678',
-      birthDate: new Date('2012-03-14T00:00:00Z'), email: 'luz.quispe@colegio.edu.pe', siagieCode: '',
+      birthDate: new Date('2012-03-14T00:00:00Z'), sex: 'Mujer', email: 'luz.quispe@colegio.edu.pe', siagieCode: '',
       level: LEVEL_NAME[sample.level], grade: sample.grade, section: sample.name,
     });
     example.font = { italic: true, color: { argb: 'FF6B7280' } };
@@ -731,6 +742,7 @@ export const schoolRosterImportService = {
         documentType: row.documentType ? DOCUMENT_LABEL[row.documentType] : '',
         document: row.documentHint ? `•••••${row.documentHint}` : '',
         birthDate: row.birthDate ? new Date(`${row.birthDate}T00:00:00Z`) : '',
+        sex: row.sex === 'FEMALE' ? 'Mujer' : row.sex === 'MALE' ? 'Hombre' : '',
         email: row.email ?? '',
         siagieCode: row.siagieCode ?? '',
         level: row.level ? LEVEL_NAME[row.level] : '',
@@ -751,10 +763,11 @@ export const schoolRosterImportService = {
       sheet.getCell(r, 4).dataValidation = { type: 'list', allowBlank: true, formulae: ['"DNI,CE,PTP,Pasaporte"'], ...ask('Tipo de documento', 'DNI, CE, PTP o Pasaporte. Vacío = DNI.'), ...warn('Elige DNI, CE, PTP o Pasaporte.') };
       sheet.getCell(r, 5).dataValidation = { type: 'textLength', operator: 'between', allowBlank: true, formulae: [6, 12], ...ask('Número de documento', 'DNI: 8 números. Carné o pasaporte: de 6 a 12 letras y números.'), ...warn('El documento tiene de 6 a 12 caracteres (el DNI, 8 números).') };
       sheet.getCell(r, 6).dataValidation = { type: 'date', operator: 'between', allowBlank: true, formulae: [new Date(Date.UTC(1990, 0, 1)), new Date()], ...ask('Fecha de nacimiento', 'Día/mes/año. Ej.: 14/03/2012'), ...warn('Escribe una fecha como 14/03/2012.') };
-      sheet.getCell(r, 7).dataValidation = { type: 'textLength', operator: 'lessThanOrEqual', allowBlank: true, formulae: [255], ...ask('Correo institucional', 'Opcional. Ej.: luz.quispe@colegio.edu.pe') };
-      sheet.getCell(r, 9).dataValidation = { type: 'list', allowBlank: true, formulae: ['"Inicial,Primaria,Secundaria"'], ...ask('Nivel', 'Inicial, Primaria o Secundaria.'), ...warn('Elige Inicial, Primaria o Secundaria.') };
-      sheet.getCell(r, 10).dataValidation = { type: 'whole', operator: 'between', allowBlank: true, formulae: [1, 6], ...ask('Grado', 'Un número: 1 a 6 (en Inicial, la edad: 3, 4 o 5).'), ...warn('El grado es un número del 1 al 6.') };
-      sheet.getCell(r, 11).dataValidation = sectionNames.length && sectionList.length <= 255
+      sheet.getCell(r, 7).dataValidation = { type: 'list', allowBlank: true, formulae: ['"Mujer,Hombre"'], ...ask('Sexo', 'Mujer u Hombre (también M y H, como en el SIAGIE).'), ...warn('Elige Mujer u Hombre.') };
+      sheet.getCell(r, 8).dataValidation = { type: 'textLength', operator: 'lessThanOrEqual', allowBlank: true, formulae: [255], ...ask('Correo institucional', 'Opcional. Ej.: luz.quispe@colegio.edu.pe') };
+      sheet.getCell(r, 10).dataValidation = { type: 'list', allowBlank: true, formulae: ['"Inicial,Primaria,Secundaria"'], ...ask('Nivel', 'Inicial, Primaria o Secundaria.'), ...warn('Elige Inicial, Primaria o Secundaria.') };
+      sheet.getCell(r, 11).dataValidation = { type: 'whole', operator: 'between', allowBlank: true, formulae: [1, 6], ...ask('Grado', 'Un número: 1 a 6 (en Inicial, la edad: 3, 4 o 5).'), ...warn('El grado es un número del 1 al 6.') };
+      sheet.getCell(r, 12).dataValidation = sectionNames.length && sectionList.length <= 255
         ? { type: 'list', allowBlank: true, formulae: [sectionList], ...ask('Sección', `Secciones de este año: ${sectionNames.join(', ')}`.slice(0, 255)), ...warn('Esa sección no está en «Grados y secciones».') }
         : { type: 'textLength', operator: 'lessThanOrEqual', allowBlank: true, formulae: [40], ...ask('Sección', 'Como está en «Grados y secciones». Ej.: A') };
     }
@@ -770,7 +783,7 @@ export const schoolRosterImportService = {
       ['   mayúsculas se ordenan solos (QUISPE MAMANI → Quispe Mamani).', 'text'],
       ['4. El DNI tiene 8 números. Si Excel borra el 0 del inicio, Juried lo completa al importar.', 'text'],
       ['5. Los documentos que ves como •••••678 ya están registrados: déjalos así.', 'text'],
-      ['6. La fecha de nacimiento va en día/mes/año (14/03/2012). También sirve 2012-03-14.', 'text'],
+      ['6. La fecha de nacimiento va en día/mes/año (14/03/2012). También sirve 2012-03-14. El sexo: Mujer u Hombre (o M y H).', 'text'],
       ['7. Importar completa los datos vacíos y da sección a quien aún no tiene. No cambia nombres, documentos ya', 'text'],
       ['   registrados ni secciones: eso se hace en la ficha del estudiante o con «Trasladar».', 'text'],
       ['8. No ordenes solo una columna: Excel desordenaría las filas. Si ordenas, selecciona toda la tabla.', 'text'],
@@ -879,6 +892,7 @@ export const schoolRosterImportService = {
             ? maskDocument(row.document.normalized)
             : row.documentMasked && row.match?.student.documentHint ? `•••••${row.match.student.documentHint}` : null,
           birthDate: row.birthDate,
+          sex: row.sex,
           section: row.sectionId ? { id: row.sectionId, label: label.get(row.sectionId) ?? '' } : null,
           sectionText: row.sectionText,
           match: row.match
@@ -1003,7 +1017,7 @@ export const schoolRosterImportService = {
           students.push({
             id, schoolId, ...row.names,
             ...(row.document ? prepareDocument(schoolId, id, { type: row.document.type, number: row.document.normalized }) : {}),
-            birthDate: row.birthDate, institutionalEmail: row.email, siagieCode: row.siagieCode,
+            birthDate: row.birthDate, institutionalEmail: row.email, siagieCode: row.siagieCode, sex: row.sex,
             createdBy: actorId, createdAt: now, updatedAt: now,
           });
           enrollments.push({ id: uuidv4(), schoolId, yearId, studentId: id, sectionId: row.sectionId, createdAt: now, updatedAt: now });
@@ -1016,7 +1030,7 @@ export const schoolRosterImportService = {
           const studentId = row.match!.student.id;
           const [current] = await tx.select({
             documentIndex: schoolStudents.documentIndex, birthDate: schoolStudents.birthDate, email: schoolStudents.institutionalEmail,
-            siagieCode: schoolStudents.siagieCode, status: schoolStudents.status,
+            siagieCode: schoolStudents.siagieCode, sex: schoolStudents.sex, status: schoolStudents.status,
           }).from(schoolStudents).where(and(eq(schoolStudents.id, studentId), eq(schoolStudents.schoolId, schoolId))).for('update');
           if (!current || current.status !== 'ACTIVE') continue;
           const values: Partial<typeof schoolStudents.$inferInsert> = {};
@@ -1028,6 +1042,7 @@ export const schoolRosterImportService = {
           if (row.changes.includes('birthDate') && !current.birthDate) { values.birthDate = row.birthDate; fields.push('birthDate'); }
           if (row.changes.includes('email') && !current.email) { values.institutionalEmail = row.email; fields.push('email'); }
           if (row.changes.includes('siagieCode') && !current.siagieCode) { values.siagieCode = row.siagieCode; fields.push('siagieCode'); }
+          if (row.changes.includes('sex') && !current.sex) { values.sex = row.sex; fields.push('sex'); }
           let enrollment: 'created' | 'assigned' | null = null;
           if (row.changes.includes('enrollment') || row.changes.includes('section')) {
             const [existing] = await tx.select({ id: schoolEnrollments.id, sectionId: schoolEnrollments.sectionId }).from(schoolEnrollments)
@@ -1064,6 +1079,8 @@ export const schoolRosterImportService = {
     const counts = summarize(rows);
     // Matrícula automática: los nuevos y los que recibieron sección entran a las clases vinculadas de su sección.
     const auto = await schoolAutoEnrollService.syncStudents(schoolId, yearId, sectionedStudents({ createdStudentIds, updates }));
+    // A quien se le registró el sexo: sus perfiles aún sin usar toman ese cuerpo de avatar.
+    await applySexToAvatars(updates.filter((u) => u.fields.includes('sex')).map((u) => u.studentId));
     return {
       created: createdStudentIds.length, updated: updates.length, errors: counts.error, skipped: counts.skipped,
       autoEnrolled: auto.created + auto.linked,
@@ -1107,6 +1124,7 @@ export const schoolRosterImportService = {
         if (update.fields.includes('birthDate')) values.birthDate = null;
         if (update.fields.includes('email')) values.institutionalEmail = null;
         if (update.fields.includes('siagieCode')) values.siagieCode = null;
+        if (update.fields.includes('sex')) values.sex = null;
         if (Object.keys(values).length) {
           await tx.update(schoolStudents).set({ ...values, updatedAt: now })
             .where(and(eq(schoolStudents.id, update.studentId), eq(schoolStudents.schoolId, schoolId)));

@@ -9,7 +9,7 @@ import { comparableText } from './textClean.js';
 
 export const IMPORT_FIELDS = [
   'juriedCode', 'fullName', 'lastNames', 'lastName1', 'lastName2', 'firstNames', 'documentType', 'documentNumber',
-  'birthDate', 'email', 'siagieCode', 'level', 'grade', 'section', 'gradeSection',
+  'birthDate', 'email', 'siagieCode', 'level', 'grade', 'section', 'gradeSection', 'sex',
 ] as const;
 export type ImportField = (typeof IMPORT_FIELDS)[number];
 
@@ -30,6 +30,7 @@ const SYNONYMS: Record<ImportField, string[]> = {
   grade: ['grado', 'ano', 'grado ano'],
   section: ['seccion', 'aula seccion'],
   gradeSection: ['grado y seccion', 'aula', 'grado seccion', 'salon'],
+  sex: ['sexo', 'genero', 'sexo h m', 'sexo hm', 'sexo m f', 'sexo mf', 'sexo m h', 'sexo mh'],
 };
 
 const headerKey = (header: string) => comparableText(header).replace(/[^a-z0-9]+/g, ' ').trim();
@@ -54,6 +55,24 @@ export const detectMapping = (headers: string[]): Array<ImportField | null> => {
     return field ?? null;
   });
 };
+
+const sexKey = (raw: string) => comparableText(raw).replace(/[^a-z]+/g, '');
+
+/**
+ * Sexo: H, Hombre, Masculino o Varón → MALE; Mujer, Femenino o F → FEMALE. «M» es Mujer, como en el SIAGIE, salvo que la
+ * columna escriba a las mujeres con F (entonces su M es Masculino: ver sexColumnUsesF).
+ */
+export const parseSex = (raw: string, mIsMale = false): 'FEMALE' | 'MALE' | null => {
+  const key = sexKey(raw);
+  if (!key) return null;
+  if (['h', 'hombre', 'masculino', 'masc', 'varon'].includes(key)) return 'MALE';
+  if (['mujer', 'femenino', 'fem', 'f'].includes(key)) return 'FEMALE';
+  if (key === 'm') return mIsMale ? 'MALE' : 'FEMALE';
+  return null;
+};
+
+/** ¿La columna escribe a las mujeres con F? Entonces su M es Masculino (M/F) y no Mujer (H/M del SIAGIE). */
+export const sexColumnUsesF = (values: string[]) => values.some((value) => sexKey(value) === 'f');
 
 /** De dónde viene el archivo, para el subtítulo del asistente. */
 export const detectSource = (headers: string[]): 'JURIED' | 'SIAGIE' | 'OTHER' => {

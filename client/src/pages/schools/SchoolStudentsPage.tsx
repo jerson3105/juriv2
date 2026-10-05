@@ -17,6 +17,7 @@ import { schoolRosterApi, schoolRosterKeys, type RosterFilter, type RosterQuery 
 import { rosterImportApi } from '../../lib/schoolRosterImportApi';
 import { schoolSectionApi, schoolSectionKeys } from '../../lib/schoolSectionApi';
 import type { SchoolLevel } from '../../lib/schoolYearApi';
+import { sexSummary, type StudentSex } from '../../lib/studentSex';
 
 const FILTERS: { id: RosterFilter; label: string; attention?: boolean }[] = [
   { id: 'all', label: 'Todos' },
@@ -25,6 +26,14 @@ const FILTERS: { id: RosterFilter; label: string; attention?: boolean }[] = [
   { id: 'withdrawn', label: 'Retirados', attention: true },
 ];
 const select = 'pg-focus min-h-[40px] rounded-lg border border-gray-300 bg-white px-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100';
+
+// Filtro por sexo en la URL (?sexo=mujeres|hombres|sin).
+const SEX_PARAM: Record<string, StudentSex | 'NONE' | undefined> = { mujeres: 'FEMALE', hombres: 'MALE', sin: 'NONE' };
+const SEX_OPTIONS: Array<{ param: string; value: StudentSex | 'NONE'; label: string; count: 'women' | 'men' | 'unknown' }> = [
+  { param: 'mujeres', value: 'FEMALE', label: 'Mujeres', count: 'women' },
+  { param: 'hombres', value: 'MALE', label: 'Hombres', count: 'men' },
+  { param: 'sin', value: 'NONE', label: 'Sexo sin registrar', count: 'unknown' },
+];
 
 /** Padrón del año: chips de estado, filtros, búsqueda por nombre o DNI completo, y la ficha en un cajón. */
 export const SchoolStudentsPage = () => {
@@ -37,6 +46,7 @@ export const SchoolStudentsPage = () => {
     grade: Number(params.get('grado')) || undefined,
     sectionId: params.get('seccion') || undefined,
     q: params.get('q') || undefined,
+    sex: SEX_PARAM[params.get('sexo') ?? ''],
     page: Math.max(1, Number(params.get('pagina')) || 1),
   };
   const [search, setSearch] = useState(query.q ?? '');
@@ -95,7 +105,9 @@ export const SchoolStudentsPage = () => {
 
   const data = roster.data;
   const counts = data?.counts;
-  const filtered = !!(query.level || query.grade || query.sectionId || query.q);
+  const filtered = !!(query.level || query.grade || query.sectionId || query.q || query.sex);
+  // Mujeres y hombres de lo que se mira (sin buscar ni filtrar por sexo: entonces el total es el mismo).
+  const sexLine = data && !query.q && !query.sex ? sexSummary(data.sexCounts) : null;
   const pages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
   const gradesForLevel = query.level ? LEVEL_GRADES[query.level] : [];
   const sectionsForFilter = allSections.filter((s) => (!query.level || s.level === query.level) && (!query.grade || s.grade === query.grade));
@@ -189,14 +201,18 @@ export const SchoolStudentsPage = () => {
               <option value="">Todas las secciones</option>
               {sectionsForFilter.map((s) => <option key={s.id} value={s.id}>{sectionName(s)}{query.level ? '' : ` · ${LEVEL_LABEL[s.level]}`}</option>)}
             </select>
+            <select aria-label="Sexo" className={select} value={SEX_OPTIONS.find((o) => o.value === query.sex)?.param ?? ''} onChange={(e) => setParam({ sexo: e.target.value || undefined })}>
+              <option value="">Mujeres y hombres</option>
+              {SEX_OPTIONS.map((o) => <option key={o.param} value={o.param}>{o.label}{data ? ` · ${data.sexCounts[o.count]}` : ''}</option>)}
+            </select>
           </div>
 
           <p className="text-sm text-gray-700 dark:text-gray-300" aria-live="polite">
-            {data ? `${data.total} ${data.total === 1 ? 'estudiante' : 'estudiantes'} · por apellidos` : 'Cargando…'}
+            {data ? `${data.total} ${data.total === 1 ? 'estudiante' : 'estudiantes'}${sexLine ? ` · ${sexLine}` : ''} · por apellidos` : 'Cargando…'}
             {filtered && (
               <>
                 {' · '}
-                <button type="button" className="pg-focus rounded font-semibold text-primary-700 underline-offset-2 hover:underline dark:text-primary-300" onClick={() => { setSearch(''); setParam({ q: undefined, nivel: undefined, grado: undefined, seccion: undefined }); }}>
+                <button type="button" className="pg-focus rounded font-semibold text-primary-700 underline-offset-2 hover:underline dark:text-primary-300" onClick={() => { setSearch(''); setParam({ q: undefined, nivel: undefined, grado: undefined, seccion: undefined, sexo: undefined }); }}>
                   Quitar filtros
                 </button>
               </>
@@ -211,7 +227,7 @@ export const SchoolStudentsPage = () => {
           ) : data && data.items.length === 0 ? (
             <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-700 dark:border-gray-600 dark:text-gray-300">
               Ningún estudiante coincide.{' '}
-              {filtered && <button type="button" className="font-semibold text-primary-700 underline-offset-2 hover:underline dark:text-primary-300" onClick={() => { setSearch(''); setParam({ q: undefined, nivel: undefined, grado: undefined, seccion: undefined }); }}>Quitar filtros</button>}
+              {filtered && <button type="button" className="font-semibold text-primary-700 underline-offset-2 hover:underline dark:text-primary-300" onClick={() => { setSearch(''); setParam({ q: undefined, nivel: undefined, grado: undefined, seccion: undefined, sexo: undefined }); }}>Quitar filtros</button>}
             </div>
           ) : (
             <div className="pg-surface overflow-hidden">

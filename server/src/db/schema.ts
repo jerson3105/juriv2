@@ -3074,6 +3074,8 @@ export const schoolStudents = mysqlTable('school_students', {
   createdBy: varchar('created_by', { length: 36 }).notNull(),
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
+  // Sexo como en el SIAGIE (Mujer / Hombre); null = sin registrar. Con él se cuenta por sección y el avatar nace con su cuerpo.
+  sex: mysqlEnum('sex', ['FEMALE', 'MALE']),
 }, (table) => ({
   documentUnique: unique('uq_school_students_document').on(table.schoolId, table.documentIndex),
   schoolNameIdx: index('idx_school_students_school_name').on(table.schoolId, table.lastNames, table.firstNames),

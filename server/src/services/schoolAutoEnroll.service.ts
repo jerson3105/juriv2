@@ -157,7 +157,7 @@ export const schoolAutoEnrollService = {
     // Una clase archivada o que ya no es de la escuela no recibe a nadie.
     if (!classroom || !classroom.isActive || classroom.schoolId !== schoolId) return ZERO;
 
-    const enrolled = await tx.select({ studentId: schoolStudents.id, firstNames: schoolStudents.firstNames, lastNames: schoolStudents.lastNames, userId: schoolStudents.userId })
+    const enrolled = await tx.select({ studentId: schoolStudents.id, firstNames: schoolStudents.firstNames, lastNames: schoolStudents.lastNames, userId: schoolStudents.userId, sex: schoolStudents.sex })
       .from(schoolEnrollments)
       .innerJoin(schoolStudents, eq(schoolStudents.id, schoolEnrollments.studentId))
       .where(and(
@@ -227,7 +227,8 @@ export const schoolAutoEnrollService = {
     const usableSchoolAccounts = schoolAccountIds.length === 0 ? new Set<string>() : new Set((await tx.select({ id: users.id }).from(users)
       .where(and(inArray(users.id, schoolAccountIds), eq(users.role, 'STUDENT'), eq(users.isActive, true)))).map((u) => u.id));
 
-    // 3) Crear los que faltan: con su cuenta (su nombre de héroe y su género de avatar) o por reclamar con tarjeta.
+    // 3) Crear los que faltan: con su cuenta (su nombre de héroe y su género de avatar) o por reclamar con tarjeta. Sin un
+    //    personaje suyo, el avatar nace con el cuerpo de su sexo del padrón.
     const toCreate: Array<{ studentId: string; name: string; userId: string | null; characterName: string; gender: 'MALE' | 'FEMALE' }> = [];
     for (const student of missing) {
       const schoolAccount = student.userId && usableSchoolAccounts.has(student.userId) ? student.userId : null;
@@ -242,13 +243,13 @@ export const schoolAutoEnrollService = {
             linked++;
             continue;
           }
-          toCreate.push({ studentId: student.studentId, name, userId: null, characterName: name, gender: 'MALE' });
+          toCreate.push({ studentId: student.studentId, name, userId: null, characterName: name, gender: student.sex ?? 'MALE' });
           continue;
         }
         const latest = [...own].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0];
-        toCreate.push({ studentId: student.studentId, name, userId: userIds[0], characterName: latest?.characterName || name, gender: latest?.avatarGender ?? 'MALE' });
+        toCreate.push({ studentId: student.studentId, name, userId: userIds[0], characterName: latest?.characterName || name, gender: latest?.avatarGender ?? student.sex ?? 'MALE' });
       } else {
-        toCreate.push({ studentId: student.studentId, name, userId: null, characterName: name, gender: 'MALE' });
+        toCreate.push({ studentId: student.studentId, name, userId: null, characterName: name, gender: student.sex ?? 'MALE' });
       }
     }
 

@@ -599,7 +599,7 @@ const FixEditor = ({ row, field, busy, onSave, onCancel }: {
   const issue = row.issues.find((i) => i.field === field);
   const [values, setValues] = useState<Partial<Record<FixValueField, string>>>(() => (isName
     ? { lastNames: row.fileNames.lastNames, firstNames: row.fileNames.firstNames }
-    : { [field]: field === 'documentType' ? 'DNI' : issue?.value ?? '' }));
+    : { [field]: field === 'documentType' ? 'DNI' : field === 'sex' ? 'Mujer' : issue?.value ?? '' }));
   const set = (key: FixValueField, value: string) => setValues((current) => ({ ...current, [key]: value }));
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -619,6 +619,14 @@ const FixEditor = ({ row, field, busy, onSave, onCancel }: {
             <input id={`${id}-first`} className={`${input} mt-1 block w-48`} value={values.firstNames ?? ''} onChange={(e) => set('firstNames', e.target.value)} maxLength={100} autoComplete="off" />
           </label>
         </>
+      ) : field === 'sex' ? (
+        <label className="text-xs font-semibold text-gray-700 dark:text-gray-200" htmlFor={id}>
+          Sexo
+          <select id={id} className={`${select} mt-1 block`} value={values.sex ?? 'Mujer'} onChange={(e) => set('sex', e.target.value)}>
+            <option value="Mujer">Mujer</option>
+            <option value="Hombre">Hombre</option>
+          </select>
+        </label>
       ) : field === 'documentType' ? (
         <label className="text-xs font-semibold text-gray-700 dark:text-gray-200" htmlFor={id}>
           Tipo de documento
