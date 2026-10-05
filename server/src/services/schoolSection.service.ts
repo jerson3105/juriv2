@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import { schoolMembers, schoolSections, schoolYearLevels, schoolYears, users } from '../db/schema.js';
 import { ConflictError, NotFoundError, ValidationError, isDuplicateEntry } from '../utils/errors.js';
+import { cleanText, comparableText } from '../utils/textClean.js';
 import type { SchoolLevel } from './schoolYear.service.js';
 
 /**
@@ -17,14 +18,11 @@ export const LEVEL_GRADES: Record<SchoolLevel, number[]> = {
   SECUNDARIA: [1, 2, 3, 4, 5],
 };
 
-// Caracteres de control e invisibles (incluye los de dirección del texto): no deben quedar en un nombre.
-const INVISIBLE = new RegExp('[\\u0000-\\u001f\\u007f\\u200b-\\u200f\\u202a-\\u202e\\u2066-\\u2069\\ufeff]', 'g');
-
 /** Nombre limpio: sin invisibles ni espacios repetidos. */
-export const cleanSectionName = (raw: string) => raw.normalize('NFC').replace(INVISIBLE, '').replace(/\s+/g, ' ').trim();
+export const cleanSectionName = cleanText;
 
 /** Como compara la base: sin mayúsculas ni tildes. */
-const comparable = (name: string) => name.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+const comparable = comparableText;
 const keyOf = (level: string, grade: number, name: string) => `${level}|${grade}|${comparable(name)}`;
 
 export const sectionDisplayName = (level: string, grade: number, name: string) =>

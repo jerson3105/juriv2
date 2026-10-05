@@ -306,6 +306,8 @@ export const classrooms = mysqlTable('classrooms', {
   
   // Escuela asociada (opcional)
   schoolId: varchar('school_id', { length: 36 }),
+  // Sección del año a la que pertenece (consola escolar). Null = no es de una sección (taller, demo…).
+  schoolSectionId: varchar('school_section_id', { length: 36 }),
   
   // Tema visual del aula (independiente de storytelling)
   themeConfig: json('theme_config').$type<{
@@ -418,10 +420,13 @@ export const studentProfiles = mysqlTable('student_profiles', {
   shopGoalKind: mysqlEnum('shop_goal_kind', ['ITEM', 'AVATAR']), // ITEM = premio de la tienda; AVATAR = prenda
   avatarGiftAt: datetime('avatar_gift_at'), // cuándo eligió su prenda de regalo (null = aún la tiene)
   restingSince: datetime('resting_since'), // HP en 0: desde cuándo descansa (null = tiene energía)
+  // Estudiante del padrón de la escuela al que pertenece este perfil (un estudiante tiene un perfil por clase).
+  schoolStudentId: varchar('school_student_id', { length: 36 }),
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
 }, (table) => ({
   classroomIdx: index('idx_student_profiles_classroom').on(table.classroomId),
+  schoolStudentIdx: index('idx_student_profiles_school_student').on(table.schoolStudentId),
   userIdx: index('idx_student_profiles_user').on(table.userId),
   teamIdx: index('idx_student_profiles_team').on(table.teamId),
   activeIdx: index('idx_student_profiles_active').on(table.isActive),
@@ -3021,3 +3026,82 @@ export const schoolSections = mysqlTable('school_sections', {
 }));
 
 export type SchoolSection = typeof schoolSections.$inferSelect;
+
+// ==================== CONSOLA ESCOLAR: PADRÓN Y MATRÍCULA ====================
+
+export const documentTypeEnum = mysqlEnum('document_type', ['DNI', 'CE', 'PTP', 'PASAPORTE']);
+export const schoolStudentStatusEnum = mysqlEnum('student_status', ['ACTIVE', 'WITHDRAWN']);
+export const enrollmentStatusEnum = mysqlEnum('enrollment_status', ['ACTIVE', 'WITHDRAWN']);
+export const enrollmentEventTypeEnum = mysqlEnum('event_type', ['ENROLLED', 'BUILT_FROM_CLASSES', 'DATA_UPDATED', 'SECTION_CHANGED', 'WITHDRAWN', 'REINSTATED']);
+
+// Estudiante único de la escuela (un perfil por cada clase en student_profiles). El documento va cifrado con su
+// contexto (school_student:<id>:document), con índice ciego por escuela y sus 3 últimos caracteres para enmascararlo.
+export const schoolStudents = mysqlTable('school_students', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  schoolId: varchar('school_id', { length: 36 }).notNull(),
+  firstNames: varchar('first_names', { length: 100 }).notNull(),
+  lastNames: varchar('last_names', { length: 100 }).notNull(),
+  documentType: documentTypeEnum,
+  documentEncrypted: varchar('document_encrypted', { length: 255 }),
+  documentIndex: varchar('document_index', { length: 64 }),
+  documentHint: varchar('document_hint', { length: 3 }),
+  birthDate: date('birth_date', { mode: 'string' }),
+  institutionalEmail: varchar('institutional_email', { length: 255 }),
+  siagieCode: varchar('siagie_code', { length: 20 }),
+  userId: varchar('user_id', { length: 36 }),
+  status: schoolStudentStatusEnum.notNull().default('ACTIVE'),
+  createdBy: varchar('created_by', { length: 36 }).notNull(),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  documentUnique: unique('uq_school_students_document').on(table.schoolId, table.documentIndex),
+  schoolNameIdx: index('idx_school_students_school_name').on(table.schoolId, table.lastNames, table.firstNames),
+  userIdx: index('idx_school_students_user').on(table.userId),
+}));
+
+// Matrícula: un estudiante por año, en una sección (o aún sin sección).
+export const schoolEnrollments = mysqlTable('school_enrollments', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  schoolId: varchar('school_id', { length: 36 }).notNull(),
+  yearId: varchar('year_id', { length: 36 }).notNull(),
+  studentId: varchar('student_id', { length: 36 }).notNull(),
+  sectionId: varchar('section_id', { length: 36 }),
+  status: enrollmentStatusEnum.notNull().default('ACTIVE'),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  yearStudentUnique: unique('uq_school_enrollments_year_student').on(table.yearId, table.studentId),
+  sectionIdx: index('idx_school_enrollments_section').on(table.sectionId),
+  schoolIdx: index('idx_school_enrollments_school').on(table.schoolId),
+}));
+
+// Historial del estudiante (la ficha lo muestra en «Movimientos»). metadata sin datos personales.
+export const schoolEnrollmentEvents = mysqlTable('school_enrollment_events', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  schoolId: varchar('school_id', { length: 36 }).notNull(),
+  studentId: varchar('student_id', { length: 36 }).notNull(),
+  yearId: varchar('year_id', { length: 36 }),
+  type: enrollmentEventTypeEnum.notNull(),
+  fromSectionId: varchar('from_section_id', { length: 36 }),
+  toSectionId: varchar('to_section_id', { length: 36 }),
+  metadata: json('metadata').$type<Record<string, string | number | boolean | null>>(),
+  actorUserId: varchar('actor_user_id', { length: 36 }),
+  createdAt: datetime('created_at', { fsp: 3 }).notNull(),
+}, (table) => ({
+  studentIdx: index('idx_school_enrollment_events_student').on(table.studentId, table.createdAt),
+  schoolIdx: index('idx_school_enrollment_events_school').on(table.schoolId, table.createdAt),
+}));
+
+// Borrador de «Armar desde clases» (mapeo de clases y decisiones de unión), para seguir después.
+export const schoolRosterDrafts = mysqlTable('school_roster_drafts', {
+  schoolId: varchar('school_id', { length: 36 }).notNull(),
+  yearId: varchar('year_id', { length: 36 }).notNull(),
+  data: json('data').$type<Record<string, unknown>>().notNull(),
+  updatedBy: varchar('updated_by', { length: 36 }).notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.schoolId, table.yearId] }),
+}));
+
+export type SchoolStudent = typeof schoolStudents.$inferSelect;
+export type SchoolEnrollment = typeof schoolEnrollments.$inferSelect;

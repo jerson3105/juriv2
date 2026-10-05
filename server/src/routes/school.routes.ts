@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { schoolController, schoolManagementController } from '../controllers/school.controller.js';
 import { schoolYearController } from '../controllers/schoolYear.controller.js';
 import { schoolSectionController } from '../controllers/schoolSection.controller.js';
+import { schoolRosterController } from '../controllers/schoolRoster.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 
 const router = Router();
@@ -62,6 +63,13 @@ router.get('/:schoolId/years/:yearId/sections', authorize('TEACHER'), schoolSect
 router.post('/:schoolId/years/:yearId/sections', authorize('TEACHER'), schoolSectionController.createMany);
 router.patch('/:schoolId/sections/:sectionId', authorize('TEACHER'), schoolSectionController.update);
 router.delete('/:schoolId/sections/:sectionId', authorize('TEACHER'), schoolSectionController.remove);
+
+// Padrón: estudiantes del año, ficha y documento
+router.get('/:schoolId/years/:yearId/students', authorize('TEACHER'), schoolRosterController.list);
+router.post('/:schoolId/years/:yearId/students', authorize('TEACHER'), schoolRosterController.create);
+router.get('/:schoolId/years/:yearId/students/:studentId', authorize('TEACHER'), schoolRosterController.get);
+router.patch('/:schoolId/years/:yearId/students/:studentId', authorize('TEACHER'), schoolRosterController.update);
+router.post('/:schoolId/students/:studentId/document/reveal', authorize('TEACHER'), schoolRosterController.revealDocument);
 
 // Asignar/desasignar clase
 router.post('/:schoolId/classrooms/:classroomId', authorize('TEACHER'), schoolController.assignClassroom.bind(schoolController));

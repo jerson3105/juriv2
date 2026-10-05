@@ -38,7 +38,10 @@ export type AuditAction =
   | 'classroom.deleted'
   | 'student.removed'
   | 'student.access_reset'
-  | 'student.pin_locked';
+  | 'student.pin_locked'
+  | 'student.enrolled'
+  | 'student.data_updated'
+  | 'student.document_revealed';
 
 export type AuditMetadata = Record<string, string | number | boolean | null>;
 
