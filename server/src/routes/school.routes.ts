@@ -3,6 +3,7 @@ import { schoolController, schoolManagementController } from '../controllers/sch
 import { schoolYearController } from '../controllers/schoolYear.controller.js';
 import { schoolSectionController } from '../controllers/schoolSection.controller.js';
 import { schoolRosterController } from '../controllers/schoolRoster.controller.js';
+import { schoolRosterBuilderController } from '../controllers/schoolRosterBuilder.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 
 const router = Router();
@@ -70,6 +71,13 @@ router.post('/:schoolId/years/:yearId/students', authorize('TEACHER'), schoolRos
 router.get('/:schoolId/years/:yearId/students/:studentId', authorize('TEACHER'), schoolRosterController.get);
 router.patch('/:schoolId/years/:yearId/students/:studentId', authorize('TEACHER'), schoolRosterController.update);
 router.post('/:schoolId/students/:studentId/document/reveal', authorize('TEACHER'), schoolRosterController.revealDocument);
+
+// Armar el padrón desde las clases
+router.get('/:schoolId/years/:yearId/roster-builder', authorize('TEACHER'), schoolRosterBuilderController.overview);
+router.put('/:schoolId/years/:yearId/roster-builder/mapping', authorize('TEACHER'), schoolRosterBuilderController.saveMapping);
+router.get('/:schoolId/years/:yearId/roster-builder/proposal', authorize('TEACHER'), schoolRosterBuilderController.proposal);
+router.put('/:schoolId/years/:yearId/roster-builder/decisions', authorize('TEACHER'), schoolRosterBuilderController.saveDecisions);
+router.post('/:schoolId/years/:yearId/roster-builder/confirm', authorize('TEACHER'), schoolRosterBuilderController.confirm);
 
 // Asignar/desasignar clase
 router.post('/:schoolId/classrooms/:classroomId', authorize('TEACHER'), schoolController.assignClassroom.bind(schoolController));
