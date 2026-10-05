@@ -13,6 +13,7 @@ import { useThemeStore } from '../../store/themeStore';
 import { useAnnouncer } from '../../store/announcerStore';
 import { useCurrentStudentProfile } from '../../hooks/useCurrentStudentProfile';
 import { expeditionApi, expeditionKeys } from '../../lib/expeditionApi';
+import { mySeasonsKey, seasonApi } from '../../lib/seasonApi';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { NotificationsBell, NotificationsPanel } from '../NotificationsPanel';
 import { BugReportButton } from '../BugReportButton';
@@ -86,6 +87,15 @@ export const MainLayout = () => {
   });
   const hasActiveExpeditions = studentExpeditions.some((expedition) => expedition.actionable);
 
+  // «Mis temporadas»: el menú la muestra cuando ya tiene un año escolar cerrado (también sin clases, en vacaciones).
+  const { data: seasons = [] } = useQuery({
+    queryKey: mySeasonsKey,
+    queryFn: seasonApi.mine,
+    enabled: user?.role === 'STUDENT',
+    staleTime: 5 * 60 * 1000,
+  });
+  const hasSeasons = seasons.length > 0;
+
   const matchesPath = (path: string, mode: 'exact' | 'startsWith' = 'exact') => {
     if (mode === 'startsWith') {
       return location.pathname === path || location.pathname.startsWith(`${path}/`);
@@ -95,7 +105,7 @@ export const MainLayout = () => {
 
   const hasCompetencyOverview = !!myClasses?.some((profile) => profile.classroom?.useCompetencies);
   // Vistas de todas las clases: la barra superior no muestra los datos de una sola.
-  const isStudentOverviewZone = !isTeacher && ['/dashboard', '/my-classes', '/my-skills', '/join-class'].some((path) => matchesPath(path));
+  const isStudentOverviewZone = !isTeacher && ['/dashboard', '/my-classes', '/my-skills', '/join-class', '/my-seasons'].some((path) => matchesPath(path));
   const isStudentClassThemeRoute = !isTeacher && [
     { path: '/my-class', mode: 'exact' as const },
     { path: '/my-clan', mode: 'exact' as const },
@@ -150,8 +160,9 @@ export const MainLayout = () => {
         expeditions: studentExpeditions.length,
         hasActiveExpeditions,
         hasStoryTheme,
+        hasSeasons,
       })
-      : studentEmptyNav(pathname);
+      : studentEmptyNav(pathname, hasSeasons);
 
   // El cielo de la clase (el mismo de su Inicio), encendido con su nivel; fuera de una clase, Orión.
   const sky: BandSky = !isTeacher && currentProfile

@@ -13,6 +13,7 @@ import {
   Gamepad2,
   GraduationCap,
   HeartHandshake,
+  HistoryIcon,
   House,
   Layers,
   LayoutDashboard,
@@ -232,6 +233,8 @@ interface StudentNavInput {
   expeditions: number;
   hasActiveExpeditions: boolean;
   hasStoryTheme: boolean;
+  /** Tiene clases de un año escolar ya cerrado («Mis temporadas»). */
+  hasSeasons: boolean;
 }
 
 // Qué secciones tiene una clase (también decide si al cambiar de clase la página sigue existiendo).
@@ -263,6 +266,7 @@ export const studentClassNav = (input: StudentNavInput): NavNode[] => {
     link('/my-calendar', 'Mi calendario', Calendar),
     link('/my-progress', 'Mi progreso', BarChart3),
     ...(has.grades ? [link('/my-grades', 'Mis calificaciones', BookOpen)] : []),
+    ...(input.hasSeasons ? [link('/my-seasons', 'Mis temporadas', HistoryIcon)] : []),
   ];
   const rewards: NavItem[] = [
     ...(has.shop ? [link('/my-shop', 'Tienda', ShoppingBag, { badge: { kind: 'gold', value: profile.gp } })] : []),
@@ -290,10 +294,13 @@ export const studentClassNav = (input: StudentNavInput): NavNode[] => {
   return nodes;
 };
 
-/** Sin clases: entrar a una. */
-export const studentEmptyNav = (pathname: string): NavNode[] => [
+/** Sin clases: entrar a una (en vacaciones, también sus temporadas). */
+export const studentEmptyNav = (pathname: string, hasSeasons = false): NavNode[] => [
   { kind: 'link', item: { id: 'classes', label: 'Mis clases', to: '/dashboard', icon: icon(Users), active: pathname === '/dashboard' || pathname === '/my-classes' } },
   { kind: 'link', item: { id: 'join', label: 'Unirme a una clase', to: '/join-class', icon: icon(Plus), active: pathname === '/join-class' } },
+  ...(hasSeasons
+    ? [{ kind: 'link' as const, item: { id: 'seasons', label: 'Mis temporadas', to: '/my-seasons', icon: icon(HistoryIcon), active: pathname === '/my-seasons' } }]
+    : []),
 ];
 
 // Página del alumno → sección que necesita (las demás existen en toda clase).

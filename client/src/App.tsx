@@ -59,6 +59,7 @@ const StudentStoryPage = lazyPage(() => import('./pages/student/StudentStoryPage
 const StudentProgressPage = lazyPage(() => import('./pages/student/StudentProgressPage').then((m) => ({ default: m.StudentProgressPage })));
 const StudentItemsShopPage = lazyPage(() => import('./pages/student/StudentItemsShopPage').then((m) => ({ default: m.StudentItemsShopPage })));
 const StudentBadgesPage = lazyPage(() => import('./pages/student/StudentBadgesPage').then((m) => ({ default: m.StudentBadgesPage })));
+const StudentSeasonsPage = lazyPage(() => import('./pages/student/StudentSeasonsPage').then((m) => ({ default: m.StudentSeasonsPage })));
 const StudentAvatarPage = lazyPage(() => import('./pages/student/StudentAvatarPage').then((m) => ({ default: m.StudentAvatarPage })));
 
 // Settings
@@ -334,6 +335,7 @@ function App() {
             <Route path="my-progress" element={<StudentProgressPage />} />
             <Route path="my-shop" element={<StudentItemsShopPage />} />
             <Route path="my-badges" element={<StudentBadgesPage />} />
+            <Route path="my-seasons" element={<StudentSeasonsPage />} />
             <Route path="my-avatar" element={<StudentAvatarPage />} />
             <Route path="expeditions" element={<StudentExpeditionsPage />} />
             <Route path="expeditions/:expeditionId" element={<StudentExpeditionPage />} />

@@ -4,6 +4,7 @@ import { familyRoomController } from '../controllers/familyRoom.controller.js';
 import { classNoteController } from '../controllers/classNote.controller.js';
 import { characterClassController } from '../controllers/characterClass.controller.js';
 import { rankingController } from '../controllers/ranking.controller.js';
+import { seasonController } from '../controllers/season.controller.js';
 import { classroomOverviewController } from '../controllers/classroomOverview.controller.js';
 import { studentSummaryController } from '../controllers/studentSummary.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
@@ -33,6 +34,7 @@ router.post('/:id/reset-points', authorize('TEACHER'), classroomController.reset
 router.post('/:id/reset-selective', authorize('TEACHER'), classroomController.resetClassroomSelective.bind(classroomController));
 router.get('/:id/rankings', authorize('TEACHER', 'ADMIN'), rankingController.getDeltas.bind(rankingController));
 router.get('/:id/rankings/pulse', authorize('TEACHER', 'ADMIN'), rankingController.getPulse.bind(rankingController));
+router.get('/:id/rankings/season', authorize('TEACHER', 'ADMIN'), seasonController.classroom.bind(seasonController));
 router.get('/:id/competencies', authorize('TEACHER', 'STUDENT'), classroomController.getCompetencies.bind(classroomController));
 router.post('/:id/competencies', authorize('TEACHER'), classroomController.addCompetencies.bind(classroomController));
 router.delete('/:id/competencies/:competencyId', authorize('TEACHER'), classroomController.removeCompetency.bind(classroomController));

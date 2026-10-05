@@ -3350,6 +3350,17 @@ export const schoolSectionPromotions = mysqlTable('school_section_promotions', {
   schoolIdx: index('idx_school_section_promotions_school').on(table.schoolId),
 }));
 
+// Clase del colegio sin asignación, taller ni sección que quedó en un año al cerrarlo (archivada con él): ya no sigue al
+// año siguiente, no se restaura y es una temporada de sus estudiantes (migrations/school_console_e2_4b.sql).
+export const schoolYearClassrooms = mysqlTable('school_year_classrooms', {
+  classroomId: varchar('classroom_id', { length: 36 }).primaryKey(),
+  schoolId: varchar('school_id', { length: 36 }).notNull(),
+  yearId: varchar('year_id', { length: 36 }).notNull(),
+  createdAt: datetime('created_at').notNull(),
+}, (table) => ({
+  yearIdx: index('idx_school_year_classrooms_year').on(table.yearId),
+}));
+
 export const schoolAreaCoordinators = mysqlTable('school_area_coordinators', {
   id: varchar('id', { length: 36 }).primaryKey(),
   schoolId: varchar('school_id', { length: 36 }).notNull(),

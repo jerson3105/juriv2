@@ -3,6 +3,7 @@ import { studentController } from '../controllers/student.controller.js';
 import { celebrationController } from '../controllers/celebration.controller.js';
 import { studentNewsController } from '../controllers/studentNews.controller.js';
 import { studentProgressController } from '../controllers/studentProgress.controller.js';
+import { seasonController } from '../controllers/season.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { codeRedemptionLimiter } from '../middleware/security.js';
 
@@ -16,6 +17,8 @@ router.post('/verify-code', authorize('STUDENT'), codeRedemptionLimiter, student
 router.post('/join', authorize('STUDENT'), codeRedemptionLimiter, studentController.joinClass.bind(studentController));
 router.post('/join-roster', authorize('STUDENT'), codeRedemptionLimiter, studentController.joinRoster.bind(studentController));
 router.get('/my-classes', studentController.getMyClasses.bind(studentController));
+// «Mis temporadas»: sus clases de años escolares cerrados.
+router.get('/me/seasons', authorize('STUDENT'), seasonController.mine.bind(seasonController));
 router.get('/profile/:classroomId', studentController.getMyProfile.bind(studentController));
 router.put('/profile/:classroomId', studentController.updateProfile.bind(studentController));
 router.get('/profiles/:profileId/celebrations', authorize('STUDENT'), celebrationController.getPending.bind(celebrationController));

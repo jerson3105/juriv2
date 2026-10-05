@@ -6,9 +6,10 @@ import { useCountUp } from '../../../hooks/useCountUp';
 import { MovementChip } from '../RankingList';
 import { classIcon, formatNumber, type ClassMap, type DayStars, type RankRow } from '../rankingHelpers';
 
-export type CeremonyMode = 'today' | 'total';
+// «Temporada»: la del año que termina (cifras, reconocimientos que no compiten y desfile), sin podio.
+export type CeremonyMode = 'today' | 'total' | 'season';
 
-const ActTitle = ({ kicker, title }: { kicker?: string; title: string }) => {
+export const ActTitle = ({ kicker, title }: { kicker?: string; title: string }) => {
   const reduce = useReducedMotion();
   return (
     <motion.header
@@ -42,6 +43,7 @@ export const SetupAct = ({ classroomName, mode, onMode, todayScorers, muted, onT
       disabled: todayScorers === 0,
     },
     { id: 'total', title: 'XP total', text: 'La clasificación de siempre, con quién escaló hoy.' },
+    { id: 'season', title: 'Temporada', text: 'Cifras del año, reconocimientos y el desfile de cada estudiante. Sin podio.' },
   ];
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col items-center text-center">
@@ -51,7 +53,7 @@ export const SetupAct = ({ classroomName, mode, onMode, todayScorers, muted, onT
 
       <fieldset className="mt-8 w-full">
         <legend className="mb-3 text-sm font-bold text-indigo-100">¿Qué premiamos hoy?</legend>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3 sm:grid-cols-3">
           {options.map((opt) => (
             <button
               key={opt.id}
@@ -104,7 +106,7 @@ const StatTile = ({ label, value, delay }: { label: string; value: number; delay
   );
 };
 
-export const OpeningAct = ({ stats }: { stats: { label: string; value: number }[] }) => {
+export const OpeningAct = ({ stats, title = '¡Resultados de la clase!' }: { stats: { label: string; value: number }[]; title?: string }) => {
   const reduce = useReducedMotion();
   return (
     <div className="flex w-full flex-col items-center">
@@ -114,9 +116,9 @@ export const OpeningAct = ({ stats }: { stats: { label: string; value: number }[
         transition={{ type: 'spring', stiffness: 120, damping: 14 }}
         className="text-center text-4xl font-black text-white drop-shadow-[0_6px_30px_rgba(252,211,77,0.35)] sm:text-7xl"
       >
-        ¡Resultados de la clase!
+        {title}
       </motion.h2>
-      <div className="mt-10 grid w-full max-w-4xl gap-4 sm:grid-cols-3">
+      <div className={`mt-10 grid w-full max-w-4xl gap-4 ${stats.length === 3 ? 'sm:grid-cols-3' : stats.length === 2 ? 'sm:grid-cols-2' : ''}`}>
         {stats.map((s, i) => <StatTile key={s.label} label={s.label} value={s.value} delay={0.5 + i * 0.25} />)}
       </div>
     </div>

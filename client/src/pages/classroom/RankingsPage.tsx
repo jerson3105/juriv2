@@ -219,6 +219,7 @@ export const RankingsPage = () => {
             clans={clans}
             classMap={classMap}
             showCharacterName={showCharacterName}
+            archived={classroom.isActive === false}
           onClose={() => setShowCeremony(false)}
         />
       )}

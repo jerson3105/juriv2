@@ -1,9 +1,9 @@
-import { and, asc, eq, inArray, isNotNull, or } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import {
   classrooms, purchases, schoolEnrollmentEvents, schoolEnrollments, schoolPeriods, schools, schoolSectionPromotions, schoolSections, schoolStudents,
-  schoolYearLevels, schoolYears, studentProfiles,
+  schoolYearClassrooms, schoolYearLevels, schoolYears, studentProfiles,
 } from '../db/schema.js';
 import { ConflictError, NotFoundError, ValidationError } from '../utils/errors.js';
 import { comparableText } from '../utils/textClean.js';
@@ -304,13 +304,14 @@ export const schoolPromotionService = {
   /**
    * Cierra el año: todos sus bimestres cerrados, el año siguiente en preparación y cada estudiante con su sección (si
    * sigue). Deja la situación final en cada matrícula, matricula a quienes siguen en el año siguiente (sin entrar aún a
-   * sus clases), marca a quienes no continúan o egresan, archiva las clases del año y las del colegio sin vincular, y
-   * cierra el año. Todo o nada.
+   * sus clases), marca a quienes no continúan o egresan, archiva las clases del año y las del colegio sin vincular (que
+   * quedan en este año), y cierra el año. Todo o nada.
    */
   async close(schoolId: string, yearId: string, actorId: string) {
     const now = new Date();
-    // Las clases que se archivan: las del año y las del colegio que no son de ningún año (se leen antes de cerrar).
-    const classIds = [...new Set([...(await yearClassroomIds(yearId)), ...(await unlinkedClassroomIds(schoolId))])];
+    // Las clases que se archivan: las del año y las activas del colegio que no son de ningún año (se leen antes de cerrar).
+    const loose = await unlinkedClassroomIds(schoolId);
+    const classIds = [...new Set([...(await yearClassroomIds(yearId)), ...loose])];
     const result = await db.transaction(async (tx) => {
       // Fila de la escuela bloqueada: no se cruza con crear o preparar otro año.
       await tx.select({ id: schools.id }).from(schools).where(eq(schools.id, schoolId)).for('update');
@@ -369,6 +370,11 @@ export const schoolPromotionService = {
             .where(and(eq(purchases.status, 'PENDING'), or(inArray(purchases.studentId, part), inArray(purchases.buyerId, part))));
         }
         await tx.update(classrooms).set({ isActive: false, updatedAt: now }).where(and(inArray(classrooms.id, classIds), eq(classrooms.schoolId, schoolId)));
+        // Las sueltas quedan en este año: ya no siguen al siguiente y son una temporada de sus estudiantes.
+        for (let i = 0; i < loose.length; i += 500) {
+          await tx.insert(schoolYearClassrooms).values(loose.slice(i, i + 500).map((classroomId) => ({ classroomId, schoolId, yearId, createdAt: now })))
+            .onDuplicateKeyUpdate({ set: { yearId: sql`year_id` } });
+        }
       }
       return { year: year.name, target: target.name, counts, archived: classIds.length };
     });

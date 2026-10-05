@@ -56,6 +56,7 @@ import {
   studentCollectibles,
   curriculumAreas,
   schoolStudents,
+  schoolYearClassrooms,
 } from '../db/schema.js';
 import { eq, and, desc, inArray, sql, count, asc, or, gt } from 'drizzle-orm';
 import { calculateLevel, generateClassCode } from '../utils/helpers.js';
@@ -1982,7 +1983,8 @@ export class ClassroomService {
         await tx.delete(studentProfiles).where(inArray(studentProfiles.id, studentIds));
       }
 
-      // 18. Finalmente eliminar la clase
+      // 18. Finalmente eliminar la clase (y el año en que la dejó un cierre, si era suelta)
+      await tx.delete(schoolYearClassrooms).where(eq(schoolYearClassrooms.classroomId, classroomId));
       await tx.delete(classrooms).where(eq(classrooms.id, classroomId));
     });
 

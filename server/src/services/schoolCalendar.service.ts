@@ -1,12 +1,12 @@
 import { and, eq, inArray, isNotNull, isNull, ne, or } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { classrooms, schoolPeriods, schoolSections, schoolTeachingAssignments, schoolWorkshops, schoolYears, schools } from '../db/schema.js';
+import { classrooms, schoolPeriods, schoolSections, schoolTeachingAssignments, schoolWorkshops, schoolYearClassrooms, schoolYears, schools } from '../db/schema.js';
 
 /**
  * Calendario del colegio para Calificaciones. Una clase vinculada a un año del colegio (por su asignación, su taller o
  * su sección) sigue ese año, en preparación, en curso o cerrado: sus bimestres, fechas y cierres los maneja la
- * administración («Año escolar»). Una clase del colegio que aún no está vinculada sigue el año activo. Sin año, la clase
- * maneja sus propios bimestres, como la de un docente independiente.
+ * administración («Año escolar»). Una clase del colegio que aún no está vinculada sigue el año activo; al cerrarlo se archiva
+ * y queda en él (school_year_classrooms). Sin año, la clase maneja sus propios bimestres, como la de un docente independiente.
  */
 
 // Perú no tiene horario de verano: la medianoche de Lima es a las 05:00 UTC.
@@ -110,28 +110,30 @@ export const schoolCalendars = async (schoolIds: string[]) => {
   return result;
 };
 
-/** El año al que está vinculada cada clase: por su asignación, su taller o su sección (en ese orden). */
+/** El año al que está vinculada cada clase: por su asignación, su taller, su sección o el cierre que la archivó (en ese orden). */
 export const classroomYearIds = async (classroomIds: string[]) => {
   const result = new Map<string, string>();
   const ids = [...new Set(classroomIds)];
   if (ids.length === 0) return result;
   const rows = await db.select({
     id: classrooms.id, byAssignment: schoolTeachingAssignments.yearId, byWorkshop: schoolWorkshops.yearId, bySection: schoolSections.yearId,
+    byClosing: schoolYearClassrooms.yearId,
   }).from(classrooms)
     .leftJoin(schoolTeachingAssignments, eq(schoolTeachingAssignments.classroomId, classrooms.id))
     .leftJoin(schoolWorkshops, eq(schoolWorkshops.classroomId, classrooms.id))
     .leftJoin(schoolSections, eq(schoolSections.id, classrooms.schoolSectionId))
+    .leftJoin(schoolYearClassrooms, eq(schoolYearClassrooms.classroomId, classrooms.id))
     .where(inArray(classrooms.id, ids));
   for (const row of rows) {
-    const yearId = row.byAssignment ?? row.byWorkshop ?? row.bySection;
+    const yearId = row.byAssignment ?? row.byWorkshop ?? row.bySection ?? row.byClosing;
     if (yearId) result.set(row.id, yearId);
   }
   return result;
 };
 
-/** Las clases vinculadas a un año: las de sus asignaciones, sus talleres y sus secciones. */
+/** Las clases vinculadas a un año: las de sus asignaciones, sus talleres, sus secciones y las sueltas que archivó su cierre. */
 export const yearClassroomIds = async (yearId: string) => {
-  const [byAssignment, byWorkshop, bySection] = await Promise.all([
+  const [byAssignment, byWorkshop, bySection, byClosing] = await Promise.all([
     db.select({ id: schoolTeachingAssignments.classroomId }).from(schoolTeachingAssignments)
       .where(and(eq(schoolTeachingAssignments.yearId, yearId), isNotNull(schoolTeachingAssignments.classroomId))),
     db.select({ id: schoolWorkshops.classroomId }).from(schoolWorkshops)
@@ -139,8 +141,9 @@ export const yearClassroomIds = async (yearId: string) => {
     db.select({ id: classrooms.id }).from(classrooms)
       .innerJoin(schoolSections, eq(schoolSections.id, classrooms.schoolSectionId))
       .where(eq(schoolSections.yearId, yearId)),
+    db.select({ id: schoolYearClassrooms.classroomId }).from(schoolYearClassrooms).where(eq(schoolYearClassrooms.yearId, yearId)),
   ]);
-  return [...new Set([...byAssignment, ...byWorkshop, ...bySection].map((r) => r.id).filter((id): id is string => !!id))];
+  return [...new Set([...byAssignment, ...byWorkshop, ...bySection, ...byClosing].map((r) => r.id).filter((id): id is string => !!id))];
 };
 
 /** Las clases de los años cerrados de un colegio: su historia no cambia (retiros, salida de docentes). */
@@ -151,12 +154,16 @@ export const closedYearClassroomIds = async (schoolId: string) => {
   return [...ids];
 };
 
-/** Las clases del colegio que no están vinculadas a ningún año: siguen el año activo. */
+/** Las clases activas del colegio que no están vinculadas a ningún año: siguen el año activo (una archivada, a ninguno). */
 export const unlinkedClassroomIds = async (schoolId: string) => {
   const rows = await db.select({ id: classrooms.id }).from(classrooms)
     .leftJoin(schoolTeachingAssignments, eq(schoolTeachingAssignments.classroomId, classrooms.id))
     .leftJoin(schoolWorkshops, eq(schoolWorkshops.classroomId, classrooms.id))
-    .where(and(eq(classrooms.schoolId, schoolId), isNull(classrooms.schoolSectionId), isNull(schoolTeachingAssignments.id), isNull(schoolWorkshops.id)));
+    .leftJoin(schoolYearClassrooms, eq(schoolYearClassrooms.classroomId, classrooms.id))
+    .where(and(
+      eq(classrooms.schoolId, schoolId), eq(classrooms.isActive, true), isNull(classrooms.schoolSectionId),
+      isNull(schoolTeachingAssignments.id), isNull(schoolWorkshops.id), isNull(schoolYearClassrooms.classroomId),
+    ));
   return rows.map((r) => r.id);
 };
 

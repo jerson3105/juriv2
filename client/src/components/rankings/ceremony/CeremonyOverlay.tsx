@@ -7,17 +7,20 @@ import { ChevronLeft, ChevronRight, Loader2, Maximize2, Minimize2, Volume2, Volu
 import type { Student } from '../../../lib/classroomApi';
 import type { ClanWithMembers } from '../../../lib/clanApi';
 import { rankingApi, rankingDeltasKey } from '../../../lib/rankingApi';
+import { classSeasonKey, seasonApi } from '../../../lib/seasonApi';
+import { studentLabel } from '../../badges/badgeHelpers';
 import {
   activeStudents, buildDayStars, buildRace, buildRows, classIcon, deltaMap, periodStart, type ClassMap,
 } from '../rankingHelpers';
 import { AwardsAct, CountdownAct, OpeningAct, SetupAct, type CeremonyMode } from './CeremonyActs';
+import { ParadeAct, RecognitionsAct, type ParadeRow, type SeasonRecognition } from './CeremonySeasonActs';
 import { CeremonyPodium } from './CeremonyPodium';
 import { CeremonyRace } from './CeremonyRace';
 import { CeremonyTable } from './CeremonyTable';
 import { CeremonyBackdrop, JiroPresenter, type JiroPose } from './CeremonyStage';
 import { createCeremonySound, readMuted, saveMuted } from './ceremonySound';
 
-type Step = 'setup' | 'opening' | 'awards' | 'countdown' | 'third' | 'second' | 'first' | 'race' | 'table';
+type Step = 'setup' | 'opening' | 'awards' | 'countdown' | 'third' | 'second' | 'first' | 'race' | 'table' | 'recognitions' | 'parade';
 
 const STEP_LABEL: Record<Step, string> = {
   setup: 'Preparación',
@@ -29,6 +32,8 @@ const STEP_LABEL: Record<Step, string> = {
   first: 'Primer lugar',
   race: 'La carrera',
   table: 'Clasificación completa',
+  recognitions: 'Reconocimientos',
+  parade: 'Desfile',
 };
 
 const PODIUM_PLACE: Partial<Record<Step, 0 | 1 | 2>> = { third: 2, second: 1, first: 0 };
@@ -54,12 +59,15 @@ interface CeremonyOverlayProps {
   clans: ClanWithMembers[];
   classMap: ClassMap;
   showCharacterName: boolean;
+  /** Clase archivada (p. ej. de un año que cerró): la gala empieza en «Temporada». */
+  archived?: boolean;
   onClose: () => void;
 }
 
 // Gala de cierre: overlay a pantalla completa que recorre apertura, premios, cuenta atrás, podio con redoble,
-// repetición de la carrera y clasificación completa. El profesor marca el ritmo (Espacio / →).
-export const CeremonyOverlay = ({ classroomId, classroomName, students, clans, classMap, showCharacterName, onClose }: CeremonyOverlayProps) => {
+// repetición de la carrera y clasificación completa. En «Temporada»: cifras del año, reconocimientos que no compiten y
+// el desfile de cada estudiante, sin podio. El profesor marca el ritmo (Espacio / →).
+export const CeremonyOverlay = ({ classroomId, classroomName, students, clans, classMap, showCharacterName, archived = false, onClose }: CeremonyOverlayProps) => {
   const reduce = useReducedMotion();
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -71,6 +79,7 @@ export const CeremonyOverlay = ({ classroomId, classroomName, students, clans, c
   const [stepIndex, setStepIndex] = useState(0);
   const [phase, setPhase] = useState<'drum' | 'shown'>('shown');
   const [countdownShown, setCountdownShown] = useState(0);
+  const [paradeChoice, setParadePage] = useState(0);
 
   const isFullscreen = useSyncExternalStore(subscribeFullscreen, () => !!document.fullscreenElement && document.fullscreenElement === rootRef.current);
   const compact = useSyncExternalStore(subscribeCompact, () => window.matchMedia(COMPACT_QUERY).matches);
@@ -84,8 +93,43 @@ export const CeremonyOverlay = ({ classroomId, classroomName, students, clans, c
   const todayMap = useMemo(() => deltaMap(today), [today]);
   const active = useMemo(() => activeStudents(students), [students]);
   const todayScorers = active.filter((s) => (todayMap.get(s.id)?.xp ?? 0) > 0).length;
-  const mode: CeremonyMode = modeChoice ?? (todayScorers > 0 ? 'today' : 'total');
+  const mode: CeremonyMode = modeChoice ?? (archived ? 'season' : todayScorers > 0 ? 'today' : 'total');
   const plus = mode === 'today';
+  const isSeason = mode === 'season';
+
+  // ── Temporada (solo si se elige) ──
+  const seasonQuery = useQuery({
+    queryKey: classSeasonKey(classroomId),
+    queryFn: () => seasonApi.classroom(classroomId),
+    enabled: isSeason,
+  });
+  const season = seasonQuery.data;
+  // Por orden alfabético: nadie desfila por puesto.
+  const parade = useMemo<ParadeRow[]>(() => {
+    if (!season) return [];
+    const byId = new Map(season.students.map((s) => [s.id, s]));
+    return active
+      .flatMap((student) => {
+        const data = byId.get(student.id);
+        return data ? [{ student, name: studentLabel(student, showCharacterName), season: data }] : [];
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  }, [season, active, showCharacterName]);
+  const recognitions = useMemo<SeasonRecognition[]>(() => {
+    const most = Math.max(0, ...parade.map((row) => row.season.badgeCount));
+    const albums = parade.filter((row) => row.season.albumsCompleted > 0);
+    const perfect = parade.filter((row) => row.season.perfectAttendance);
+    const items: SeasonRecognition[] = [
+      { key: 'badges', icon: '🏅', title: 'Coleccionista de insignias', detail: `${most} ${most === 1 ? 'insignia' : 'insignias'} en la temporada`, people: most > 0 ? parade.filter((row) => row.season.badgeCount === most) : [] },
+      { key: 'albums', icon: '📒', title: 'Álbum completo', detail: albums.length === 1 ? 'Completó un álbum de cartas' : 'Completaron un álbum de cartas', people: albums },
+      { key: 'attendance', icon: '📅', title: 'Asistencia perfecta', detail: perfect.length === 1 ? 'Vino a cada clase de la temporada' : 'Vinieron a cada clase de la temporada', people: perfect },
+    ];
+    return items.filter((item) => item.people.length > 0);
+  }, [parade]);
+  const paradeSize = compact ? 4 : 8;
+  const paradePages = Math.max(1, Math.ceil(parade.length / paradeSize));
+  // Al pasar a pantalla chica hay más páginas; a grande, menos: la elegida se ajusta.
+  const paradePage = Math.min(paradeChoice, paradePages - 1);
 
   const rows = useMemo(
     () => (mode === 'today'
@@ -106,7 +150,18 @@ export const CeremonyOverlay = ({ classroomId, classroomName, students, clans, c
 
   const gainedXp = (today?.students ?? []).reduce((sum, s) => sum + Math.max(0, s.xp), 0);
   const gainedGp = (today?.students ?? []).reduce((sum, s) => sum + Math.max(0, s.gp), 0);
-  const stats = mode === 'today'
+  const seasonStats = season
+    ? [
+        { label: 'Insignias ganadas', value: season.stats.badges },
+        season.stats.albumsCompleted > 0 ? { label: 'Álbumes completos', value: season.stats.albumsCompleted } : { label: 'Cartas reunidas', value: season.stats.cards },
+        { label: 'Días de clase', value: season.stats.attendanceDays },
+        { label: 'XP de toda la clase', value: season.stats.xp },
+        { label: 'Estudiantes', value: season.stats.students },
+      ].filter((s) => s.value > 0).slice(0, 3)
+    : [];
+  const stats = isSeason
+    ? seasonStats
+    : mode === 'today'
     ? [
         { label: 'XP ganado hoy', value: gainedXp },
         { label: 'Oro ganado hoy', value: gainedGp },
@@ -118,17 +173,24 @@ export const CeremonyOverlay = ({ classroomId, classroomName, students, clans, c
         { label: 'Estudiantes', value: active.length },
       ];
 
-  const steps = useMemo<Step[]>(() => [
-    'setup',
-    'opening',
-    ...(hasAwards ? ['awards' as const] : []),
-    ...(countdown.length > 0 ? ['countdown' as const] : []),
-    ...(podium[2] ? ['third' as const] : []),
-    ...(podium[1] ? ['second' as const] : []),
-    ...(podium[0] ? ['first' as const] : []),
-    ...(race ? ['race' as const] : []),
-    'table',
-  ], [hasAwards, countdown.length, podium, race]);
+  const steps = useMemo<Step[]>(() => (isSeason
+    ? [
+        'setup',
+        'opening',
+        ...(recognitions.length > 0 ? ['recognitions' as const] : []),
+        ...(parade.length > 0 ? ['parade' as const] : []),
+      ]
+    : [
+        'setup',
+        'opening',
+        ...(hasAwards ? ['awards' as const] : []),
+        ...(countdown.length > 0 ? ['countdown' as const] : []),
+        ...(podium[2] ? ['third' as const] : []),
+        ...(podium[1] ? ['second' as const] : []),
+        ...(podium[0] ? ['first' as const] : []),
+        ...(race ? ['race' as const] : []),
+        'table',
+      ]), [isSeason, recognitions.length, parade.length, hasAwards, countdown.length, podium, race]);
   const current = steps[Math.min(stepIndex, steps.length - 1)];
   const place = PODIUM_PLACE[current];
 
@@ -172,7 +234,8 @@ export const CeremonyOverlay = ({ classroomId, classroomName, students, clans, c
       setPhase('shown');
     }
     setCountdownShown(instant ? countdown.length : 0);
-    if (!instant && (target === 'opening' || target === 'awards' || target === 'table')) sound.whoosh();
+    setParadePage(0);
+    if (!instant && (target === 'opening' || target === 'awards' || target === 'table' || target === 'recognitions' || target === 'parade')) sound.whoosh();
   }, [steps, sound, countdown.length]);
 
   const start = useCallback(() => {
@@ -185,13 +248,18 @@ export const CeremonyOverlay = ({ classroomId, classroomName, students, clans, c
     if (current === 'setup') return start();
     if (place !== undefined && phase === 'drum') return reveal(place);
     if (current === 'countdown' && countdownShown < countdown.length) return setCountdownShown(countdown.length);
+    if (current === 'parade' && paradePage < paradePages - 1) {
+      sound.whoosh();
+      return setParadePage(paradePage + 1);
+    }
     if (stepIndex < steps.length - 1) go(stepIndex + 1);
     else onClose();
-  }, [current, place, phase, countdownShown, countdown.length, stepIndex, steps.length, start, reveal, go, onClose]);
+  }, [current, place, phase, countdownShown, countdown.length, paradePage, paradePages, stepIndex, steps.length, start, reveal, go, sound, onClose]);
 
   const prev = useCallback(() => {
+    if (current === 'parade' && paradePage > 0) return setParadePage(paradePage - 1);
     if (stepIndex > 1) go(stepIndex - 1, true);
-  }, [stepIndex, go]);
+  }, [current, paradePage, stepIndex, go]);
 
   const toggleMute = useCallback(() => {
     const value = !muted;
@@ -260,7 +328,9 @@ export const CeremonyOverlay = ({ classroomId, classroomName, students, clans, c
   const jiro: { pose: JiroPose; line: string } = (() => {
     switch (current) {
       case 'setup': return { pose: 'cheer', line: '¡Hola! Hoy presento yo.' };
-      case 'opening': return { pose: 'cheer', line: '¡Qué clase! Mira estas cifras.' };
+      case 'opening': return { pose: 'cheer', line: isSeason ? '¡Qué temporada! Mira estas cifras.' : '¡Qué clase! Mira estas cifras.' };
+      case 'recognitions': return { pose: 'point', line: '¡Estos logros merecen un aplauso!' };
+      case 'parade': return { pose: 'cheer', line: '¡Un aplauso para cada uno!' };
       case 'awards': return { pose: 'point', line: 'Primero, los premios especiales…' };
       case 'countdown': return { pose: 'point', line: '¡Estos también brillaron!' };
       case 'third': return phase === 'drum' ? { pose: 'nervous', line: '¿Quién se lleva el bronce…?' } : { pose: 'point', line: `¡Bronce para ${podiumName}!` };
@@ -276,8 +346,12 @@ export const CeremonyOverlay = ({ classroomId, classroomName, students, clans, c
   const revealedFrom = place === undefined ? 0 : phase === 'shown' ? place : place + 1;
   const unit = 'XP';
 
+  // La temporada carga al elegirla: la preparación no la espera (se puede cambiar de modo).
+  const loading = isLoading || (isSeason && current !== 'setup' && seasonQuery.isLoading);
+  const failed = isError || (isSeason && current !== 'setup' && seasonQuery.isError);
+
   const renderAct = () => {
-    if (isLoading) {
+    if (loading) {
       return (
         <p className="flex items-center gap-3 text-xl font-bold text-indigo-100" role="status">
           <Loader2 className="animate-spin" aria-hidden="true" />
@@ -285,7 +359,13 @@ export const CeremonyOverlay = ({ classroomId, classroomName, students, clans, c
         </p>
       );
     }
-    if (isError) return <p className="text-xl font-bold text-white" role="alert">No se pudieron cargar los datos de hoy. Cierra e inténtalo de nuevo.</p>;
+    if (failed) {
+      return (
+        <p className="text-xl font-bold text-white" role="alert">
+          {isError ? 'No se pudieron cargar los datos de hoy.' : 'No se pudieron cargar los datos de la temporada.'} Cierra e inténtalo de nuevo.
+        </p>
+      );
+    }
     switch (current) {
       case 'setup':
         return (
@@ -299,7 +379,9 @@ export const CeremonyOverlay = ({ classroomId, classroomName, students, clans, c
             onStart={start}
           />
         );
-      case 'opening': return <OpeningAct stats={stats} />;
+      case 'opening': return <OpeningAct stats={stats} title={isSeason ? '¡Así fue nuestra temporada!' : undefined} />;
+      case 'recognitions': return <RecognitionsAct items={recognitions} />;
+      case 'parade': return <ParadeAct rows={parade.slice(paradePage * paradeSize, (paradePage + 1) * paradeSize)} page={paradePage} pages={paradePages} />;
       case 'awards': return <AwardsAct stars={stars} mode={mode} />;
       case 'countdown': return <CountdownAct rows={countdown} hiddenTies={countdownHidden} shown={countdownShown} classMap={classMap} unit={unit} plus={plus} />;
       case 'race': return race ? <CeremonyRace race={race} since={since} classIcons={raceIcons} onTick={sound.tick} /> : null;
@@ -315,7 +397,7 @@ export const CeremonyOverlay = ({ classroomId, classroomName, students, clans, c
     }
   };
 
-  const isLast = stepIndex >= steps.length - 1;
+  const isLast = stepIndex >= steps.length - 1 && !(current === 'parade' && paradePage < paradePages - 1);
   const controlButton = 'inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-2 rounded-xl px-3 text-sm font-bold text-white hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 disabled:cursor-not-allowed disabled:opacity-40';
 
   return createPortal(
@@ -326,7 +408,7 @@ export const CeremonyOverlay = ({ classroomId, classroomName, students, clans, c
       <div className="relative z-10 flex min-h-0 flex-1 items-center justify-center overflow-hidden px-4 pb-4 pt-8 sm:px-10 md:pl-[17vw]">
         {/* Solo animación de entrada: cambiar de acto nunca espera a que termine una salida. */}
         <motion.div
-          key={isLoading || isError ? 'status' : actKey}
+          key={loading || failed ? 'status' : actKey}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.35 }}
@@ -336,7 +418,7 @@ export const CeremonyOverlay = ({ classroomId, classroomName, students, clans, c
         </motion.div>
       </div>
 
-      <JiroPresenter pose={jiro.pose} line={jiro.line} hidden={current === 'table' || isLoading} />
+      <JiroPresenter pose={jiro.pose} line={jiro.line} hidden={current === 'table' || loading} />
 
       <nav aria-label="Controles de la gala" className="relative z-30 flex items-center gap-1 border-t border-white/10 bg-slate-950/80 px-2 py-1.5 backdrop-blur sm:gap-2 sm:px-4">
         <button type="button" onClick={onClose} className={controlButton} aria-label="Salir de la gala">
