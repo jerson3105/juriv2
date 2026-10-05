@@ -3047,9 +3047,11 @@ export type SchoolSection = typeof schoolSections.$inferSelect;
 // ==================== CONSOLA ESCOLAR: PADRÓN Y MATRÍCULA ====================
 
 export const documentTypeEnum = mysqlEnum('document_type', ['DNI', 'CE', 'PTP', 'PASAPORTE']);
-export const schoolStudentStatusEnum = mysqlEnum('student_status', ['ACTIVE', 'WITHDRAWN']);
+export const schoolStudentStatusEnum = mysqlEnum('student_status', ['ACTIVE', 'WITHDRAWN', 'GRADUATED']);
 export const enrollmentStatusEnum = mysqlEnum('enrollment_status', ['ACTIVE', 'WITHDRAWN']);
-export const enrollmentEventTypeEnum = mysqlEnum('event_type', ['ENROLLED', 'BUILT_FROM_CLASSES', 'DATA_UPDATED', 'SECTION_CHANGED', 'WITHDRAWN', 'REINSTATED']);
+export const enrollmentEventTypeEnum = mysqlEnum('event_type', ['ENROLLED', 'BUILT_FROM_CLASSES', 'DATA_UPDATED', 'SECTION_CHANGED', 'WITHDRAWN', 'REINSTATED', 'FINAL_SITUATION', 'SITUATION_CHANGED']);
+// Situación final en el año que cierra: Promovido, Permanece, Recuperación (provisional en el grado siguiente), No continúa, Egresa.
+export const finalSituationEnum = mysqlEnum('final_situation', ['PROMOTED', 'REPEATS', 'RECOVERY', 'LEAVES', 'GRADUATED']);
 
 // Estudiante único de la escuela (un perfil por cada clase en student_profiles). El documento va cifrado con su
 // contexto (school_student:<id>:document), con índice ciego por escuela y sus 3 últimos caracteres para enmascararlo.
@@ -3090,6 +3092,11 @@ export const schoolEnrollments = mysqlTable('school_enrollments', {
   studentId: varchar('student_id', { length: 36 }).notNull(),
   sectionId: varchar('section_id', { length: 36 }),
   status: enrollmentStatusEnum.notNull().default('ACTIVE'),
+  // Promoción: antes del cierre, lo que marca la administración (null = lo de su sección); al cerrar, la definitiva.
+  finalSituation: finalSituationEnum,
+  finalSituationAt: datetime('final_situation_at'),
+  // Su sección del año siguiente (si se eligió una distinta de la de su sección).
+  nextSectionId: varchar('next_section_id', { length: 36 }),
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
 }, (table) => ({
@@ -3331,6 +3338,18 @@ export const schoolMoveProfiles = mysqlTable('school_move_profiles', {
 
 // Coordinador de un área por nivel y año (lo nombra la administración): ve la información de las clases y talleres de su
 // área sin entrar a ellas y propone comportamientos e insignias para su área en la Biblioteca.
+// A qué sección del año siguiente pasa una sección (o si egresa). Sin fila: la del grado siguiente con su mismo nombre.
+export const schoolSectionPromotions = mysqlTable('school_section_promotions', {
+  sectionId: varchar('section_id', { length: 36 }).primaryKey(),
+  schoolId: varchar('school_id', { length: 36 }).notNull(),
+  targetSectionId: varchar('target_section_id', { length: 36 }),
+  graduates: boolean('graduates').notNull().default(false),
+  updatedBy: varchar('updated_by', { length: 36 }).notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  schoolIdx: index('idx_school_section_promotions_school').on(table.schoolId),
+}));
+
 export const schoolAreaCoordinators = mysqlTable('school_area_coordinators', {
   id: varchar('id', { length: 36 }).primaryKey(),
   schoolId: varchar('school_id', { length: 36 }).notNull(),

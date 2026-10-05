@@ -53,7 +53,8 @@ export const SchoolLayout = () => {
   const manager = !!school && canManageSchool(school);
   const years = useQuery({ queryKey: schoolYearKeys.list(schoolId), queryFn: () => schoolYearApi.list(schoolId), enabled: verified });
   const requests = useQuery({ queryKey: pendingRequestsKey(schoolId), queryFn: () => schoolApi.getPendingRequests(schoolId), enabled: manager });
-  const activeYearId = years.data?.find((year) => year.status === 'ACTIVE')?.id ?? '';
+  // Mis coordinaciones: las del año en curso; en vacaciones (sin año en curso), las del que se prepara.
+  const activeYearId = (years.data?.find((year) => year.status === 'ACTIVE') ?? years.data?.find((year) => year.status === 'PLANNING'))?.id ?? '';
   const coordinations = useQuery({
     queryKey: coordinatorKeys.mine(schoolId, activeYearId),
     queryFn: () => coordinatorApi.mine(schoolId, activeYearId),

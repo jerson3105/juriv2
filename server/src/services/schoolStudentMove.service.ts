@@ -1,17 +1,18 @@
-import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, ne, notInArray, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/mysql-core';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import {
   attendanceRecords, classrooms, curriculumAreas, gradeEvaluationScores, parentProfiles, parentStudentLinks, pointLogs, purchases,
   schoolAutoProfiles, schoolEnrollments, schoolMoveProfiles, schoolSections, schoolStudentMoves, schoolStudents,
-  schoolTeachingAssignments, schoolWorkshops, schoolWorkshopSections, schoolWorkshopStudents, studentBadges, studentGrades,
+  schoolTeachingAssignments, schoolWorkshops, schoolWorkshopSections, schoolWorkshopStudents, schoolYears, studentBadges, studentGrades,
   studentProfiles, users, type MoveTargetSnapshot,
 } from '../db/schema.js';
 import { ConflictError, NotFoundError, ValidationError } from '../utils/errors.js';
 import { familyRoomService } from './familyRoom.service.js';
 import { runCarryEffects, schoolAutoEnrollService } from './schoolAutoEnroll.service.js';
 import { classEconomy, convertProgress, newEffects, purgeTarget, restoreTarget, type ClassEconomy, type Tx } from './schoolCarry.service.js';
+import { closedYearClassroomIds } from './schoolCalendar.service.js';
 import { insertEvent, loadYear } from './schoolRoster.service.js';
 import { sectionDisplayName } from './schoolSection.service.js';
 
@@ -400,8 +401,15 @@ export const schoolStudentMoveService = {
 
   async withdraw(schoolId: string, yearId: string, studentId: string, actorId: string, input: { effectiveDate: string; reason: WithdrawalReason; note?: string | null }) {
     const year = await loadYear(schoolId, yearId, true);
-    // El retiro saca al estudiante del colegio (también del año en curso): no se hace desde el año que se prepara.
-    if (year.status !== 'ACTIVE') throw new ConflictError('El retiro se hace en el año en curso');
+    // El retiro saca al estudiante del colegio: se hace en el año en curso. Entre el cierre de un año y el inicio del
+    // siguiente (vacaciones, sin año en curso), en el que se prepara.
+    if (year.status !== 'ACTIVE') {
+      const [active] = await db.select({ id: schoolYears.id }).from(schoolYears)
+        .where(and(eq(schoolYears.schoolId, schoolId), eq(schoolYears.status, 'ACTIVE')));
+      if (active) throw new ConflictError('El retiro se hace en el año en curso');
+    }
+    // Sus perfiles en clases de años cerrados quedan como estaban (son la historia del colegio).
+    const closedClasses = await closedYearClassroomIds(schoolId);
     if (!WITHDRAWAL_REASONS.includes(input.reason)) throw new ValidationError('Elige el motivo del retiro');
     if (!isRealDate(input.effectiveDate)) throw new ValidationError('Revisa la fecha');
     const now = new Date();
@@ -415,7 +423,10 @@ export const schoolStudentMoveService = {
       // Todos sus perfiles activos en clases de la escuela (de su sección, talleres y otras).
       const sources = await tx.select({ id: studentProfiles.id, classroomId: studentProfiles.classroomId }).from(studentProfiles)
         .innerJoin(classrooms, eq(classrooms.id, studentProfiles.classroomId))
-        .where(and(eq(studentProfiles.schoolStudentId, studentId), eq(classrooms.schoolId, schoolId), eq(studentProfiles.isActive, true)));
+        .where(and(
+          eq(studentProfiles.schoolStudentId, studentId), eq(classrooms.schoolId, schoolId), eq(studentProfiles.isActive, true),
+          closedClasses.length > 0 ? notInArray(classrooms.id, closedClasses) : undefined,
+        ));
       sourceIds = sources.map((p) => p.id);
       await rejectPendingPurchases(tx, sourceIds);
       const areas = sourceIds.length

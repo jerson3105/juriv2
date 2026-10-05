@@ -11,6 +11,7 @@ import { schoolAccessController } from '../controllers/schoolAccess.controller.j
 import { schoolCoordinatorController } from '../controllers/schoolCoordinator.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { rosterImportLimiter } from '../middleware/security.js';
+import { schoolPromotionController } from '../controllers/schoolPromotion.controller.js';
 
 const router = Router();
 
@@ -73,6 +74,12 @@ router.delete('/:schoolId/years/:yearId', authorize('TEACHER'), schoolYearContro
 // Cerrar y reabrir un bimestre en todas las clases del colegio (Calificaciones)
 router.post('/:schoolId/years/:yearId/periods/:code/close', authorize('TEACHER'), schoolYearController.closePeriod);
 router.post('/:schoolId/years/:yearId/periods/:code/reopen', authorize('TEACHER'), schoolYearController.reopenPeriod);
+// Promoción y cierre del año (administración)
+router.get('/:schoolId/years/:yearId/promotion', authorize('TEACHER'), schoolPromotionController.overview);
+router.get('/:schoolId/years/:yearId/promotion/sections/:sectionId/students', authorize('TEACHER'), schoolPromotionController.sectionStudents);
+router.put('/:schoolId/years/:yearId/promotion/sections/:sectionId', authorize('TEACHER'), schoolPromotionController.setSection);
+router.put('/:schoolId/years/:yearId/promotion/students/:studentId', authorize('TEACHER'), schoolPromotionController.setStudent);
+router.post('/:schoolId/years/:yearId/close', authorize('TEACHER'), schoolPromotionController.close);
 
 // Grados y secciones
 router.get('/:schoolId/years/:yearId/sections', authorize('TEACHER'), schoolSectionController.list);

@@ -143,6 +143,14 @@ export const yearClassroomIds = async (yearId: string) => {
   return [...new Set([...byAssignment, ...byWorkshop, ...bySection].map((r) => r.id).filter((id): id is string => !!id))];
 };
 
+/** Las clases de los años cerrados de un colegio: su historia no cambia (retiros, salida de docentes). */
+export const closedYearClassroomIds = async (schoolId: string) => {
+  const years = await db.select({ id: schoolYears.id }).from(schoolYears).where(and(eq(schoolYears.schoolId, schoolId), eq(schoolYears.status, 'CLOSED')));
+  const ids = new Set<string>();
+  for (const year of years) for (const id of await yearClassroomIds(year.id)) ids.add(id);
+  return [...ids];
+};
+
 /** Las clases del colegio que no están vinculadas a ningún año: siguen el año activo. */
 export const unlinkedClassroomIds = async (schoolId: string) => {
   const rows = await db.select({ id: classrooms.id }).from(classrooms)

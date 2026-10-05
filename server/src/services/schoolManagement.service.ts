@@ -9,7 +9,7 @@ import {
 } from '../db/schema.js';
 import { affectedRows } from '../utils/points.js';
 import { historyService } from './history.service.js';
-import { yearClassroomIds } from './schoolCalendar.service.js';
+import { closedYearClassroomIds } from './schoolCalendar.service.js';
 import { attendanceService } from './attendance.service.js';
 import { teacherVerificationService } from './teacherVerification.service.js';
 
@@ -27,9 +27,7 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 const closedHistory = async (tx: Tx, schoolId: string) => {
   const yearIds = (await tx.select({ id: schoolYears.id }).from(schoolYears)
     .where(and(eq(schoolYears.schoolId, schoolId), eq(schoolYears.status, 'CLOSED')))).map((y) => y.id);
-  const classroomIds = new Set<string>();
-  for (const yearId of yearIds) for (const id of await yearClassroomIds(yearId)) classroomIds.add(id);
-  return { yearIds, classroomIds: [...classroomIds] };
+  return { yearIds, classroomIds: yearIds.length > 0 ? await closedYearClassroomIds(schoolId) : [] };
 };
 
 /**

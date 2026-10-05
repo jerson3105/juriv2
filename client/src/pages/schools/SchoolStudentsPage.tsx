@@ -13,6 +13,7 @@ import { ageOf, initialsOf, maskedDocument, rosterName } from '../../components/
 import { StudentDrawer, type DrawerState } from '../../components/schools/console/StudentDrawer';
 import { UndoBuildBanner } from '../../components/schools/console/UndoBuildBanner';
 import { UndoImportBanner } from '../../components/schools/console/UndoImportBanner';
+import { SITUATION } from '../../components/schools/console/promotionLabels';
 import { schoolRosterApi, schoolRosterKeys, type RosterFilter, type RosterQuery } from '../../lib/schoolRosterApi';
 import { rosterImportApi } from '../../lib/schoolRosterImportApi';
 import { schoolSectionApi, schoolSectionKeys } from '../../lib/schoolSectionApi';
@@ -94,6 +95,8 @@ export const SchoolStudentsPage = () => {
   if (yearsLoading) return <div className="h-64 animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none dark:bg-gray-800" aria-busy="true" aria-label="Cargando" />;
   // El año que se prepara: su padrón llega con la promoción o la plantilla (no desde las clases).
   const preparing = selectedYear?.status === 'PLANNING';
+  // Un año cerrado solo se consulta: su padrón con la situación final de cada uno.
+  const archived = selectedYear?.status === 'CLOSED';
   if (!selectedYear) {
     return (
       <div className="mx-auto max-w-3xl rounded-2xl border-2 border-dashed border-gray-300 bg-white/70 px-6 py-12 text-center dark:border-gray-600 dark:bg-gray-800/60">
@@ -124,7 +127,7 @@ export const SchoolStudentsPage = () => {
             {counts ? `${counts.all} en el padrón ${selectedYear.name}${counts.incomplete ? ` · ${counts.incomplete} con datos por completar` : ''}` : `Padrón ${selectedYear.name}`}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        {!archived && <div className="flex flex-wrap gap-2">
           {!preparing && <Link to={`/escuela/${school.id}/estudiantes/armar`} className="pg-btn pg-focus">Armar desde clases</Link>}
           <Link to={`/escuela/${school.id}/estudiantes/importar`} className="pg-btn pg-focus">
             <Upload size={16} aria-hidden="true" />
@@ -134,7 +137,7 @@ export const SchoolStudentsPage = () => {
             <Plus size={16} aria-hidden="true" />
             Agregar estudiante
           </button>
-        </div>
+        </div>}
       </header>
 
       <UndoBuildBanner schoolId={school.id} yearId={yearId} />
@@ -276,9 +279,13 @@ export const SchoolStudentsPage = () => {
                         </td>
                         <td className="hidden px-3 py-2.5 text-right tabular-nums text-gray-800 dark:text-gray-100 md:table-cell">{s.classes}</td>
                         <td className="block px-4 pb-3 md:table-cell md:px-3 md:py-2.5">
-                          <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${s.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-100' : 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-100'}`}>
-                            {s.status === 'ACTIVE' ? 'Matrícula activa' : 'Retirado'}
-                          </span>
+                          {archived && s.finalSituation ? (
+                            <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${SITUATION[s.finalSituation].chip}`}>{SITUATION[s.finalSituation].label}</span>
+                          ) : (
+                            <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${s.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-100' : 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-100'}`}>
+                              {s.status === 'ACTIVE' ? 'Matrícula activa' : s.status === 'GRADUATED' ? 'Egresado' : 'Retirado'}
+                            </span>
+                          )}
                         </td>
                       </tr>
                     );

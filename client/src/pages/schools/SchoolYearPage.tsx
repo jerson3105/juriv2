@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { AlertCircle, CalendarPlus, Info, Lock, LockOpen, Shuffle, Trash2 } from 'lucide-react';
+import { AlertCircle, ArrowRight, CalendarPlus, Info, Lock, LockOpen, Shuffle, Trash2 } from 'lucide-react';
 import { Input } from '../../components/ui/Input';
 import { HomeModal } from '../../components/home/HomeModal';
 import { useSchoolConsole } from '../../components/layout/schoolConsoleContext';
@@ -165,6 +165,8 @@ export const SchoolYearPage = () => {
   // El aviso aparece desde el último bimestre (o con el año ya cerrado); antes, «Preparar» está en el selector de año.
   const lastStart = year.data?.periods[year.data.periods.length - 1]?.startsOn;
   const offerNext = canPrepare && selectedYear?.id === latest?.id && (latest?.status === 'CLOSED' || (!!lastStart && lastStart <= localToday()));
+  // Con el año siguiente preparado, el año en curso se cierra desde su último bimestre (promoción); ya cerrado, su bandeja.
+  const offerClose = manager && !!planning && ((selectedYear?.status === 'ACTIVE' && !!lastStart && lastStart <= localToday()) || selectedYear?.status === 'CLOSED');
   // La clave remonta el formulario al guardar (el año guardado pasa a ser el punto de partida).
   return (
     <div className="space-y-5">
@@ -181,6 +183,19 @@ export const SchoolYearPage = () => {
           >
             Preparar {Number(latest!.name) + 1}
           </button>
+        </div>
+      )}
+      {offerClose && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-primary-200 bg-primary-50 p-4 dark:border-primary-500/40 dark:bg-primary-900/20 sm:flex-row sm:items-center">
+          <Lock size={22} className="hidden flex-shrink-0 text-primary-700 dark:text-primary-300 sm:block" aria-hidden="true" />
+          <p className="min-w-0 flex-1 text-sm text-gray-900 dark:text-gray-100">
+            {selectedYear?.status === 'CLOSED'
+              ? <><strong>{selectedYear.name} ya cerró.</strong> Si alguien quedó en recuperación, resuélvelo antes de que {planning!.name} empiece.</>
+              : <><strong>Cierra {selectedYear?.name}.</strong> Revisa quién pasa de grado, quién permanece, quién está en recuperación y quién egresa; al cerrar, sus clases se archivan.</>}
+          </p>
+          <Link to={`/escuela/${school.id}/promocion`} className={`${primaryButton} flex-shrink-0`}>
+            {selectedYear?.status === 'CLOSED' ? 'Ver la promoción' : 'Promoción y cierre'}<ArrowRight size={16} aria-hidden="true" />
+          </Link>
         </div>
       )}
       <YearForm

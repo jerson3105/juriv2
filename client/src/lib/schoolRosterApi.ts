@@ -28,7 +28,9 @@ export interface RosterStudent {
   birthDate: string | null;
   email: string | null;
   sex: StudentSex | null;
-  status: 'ACTIVE' | 'WITHDRAWN';
+  status: 'ACTIVE' | 'WITHDRAWN' | 'GRADUATED';
+  /** Solo en un año cerrado: su situación final. */
+  finalSituation?: 'PROMOTED' | 'REPEATS' | 'RECOVERY' | 'LEAVES' | 'GRADUATED' | null;
   section: RosterSection | null;
   classes: number;
 }

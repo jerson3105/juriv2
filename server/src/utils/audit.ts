@@ -40,6 +40,8 @@ export type AuditAction =
   | 'school.year_created'
   | 'school.year_updated'
   | 'school.year_discarded'
+  | 'school.year_closed'
+  | 'school.promotion_updated'
   | 'school.period_closed'
   | 'school.period_reopened'
   | 'school.sections_created'

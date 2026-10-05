@@ -126,15 +126,17 @@ export const schoolRosterService = {
   async list(schoolId: string, yearId: string, params: {
     filter: RosterFilter; level?: string; grade?: number; sectionId?: string; q?: string; sex?: SexFilter; page: number;
   }) {
-    await loadYear(schoolId, yearId, false);
-    // El padrón del año: quienes tienen matrícula en él (con o sin sección). Los de otro año aparecen en el suyo.
+    const year = await loadYear(schoolId, yearId, false);
+    // El padrón del año: quienes tienen matrícula en él (con o sin sección). Los de otro año aparecen en el suyo. En un
+    // año cerrado cuenta su matrícula (quien egresó o no continuó sigue en el padrón de ese año, con su situación final).
     const joinEnrollment = and(eq(schoolEnrollments.studentId, schoolStudents.id), eq(schoolEnrollments.yearId, yearId));
-    const active = eq(schoolStudents.status, 'ACTIVE');
+    const closedYear = year.status === 'CLOSED';
+    const active = closedYear ? eq(schoolEnrollments.status, 'ACTIVE') : eq(schoolStudents.status, 'ACTIVE');
     const byFilter: Record<RosterFilter, SQL | undefined> = {
       all: active,
       no_section: and(active, isNull(schoolEnrollments.sectionId)),
       incomplete: and(active, or(isNull(schoolStudents.documentIndex), isNull(schoolStudents.birthDate))),
-      withdrawn: eq(schoolStudents.status, 'WITHDRAWN'),
+      withdrawn: closedYear ? eq(schoolEnrollments.status, 'WITHDRAWN') : eq(schoolStudents.status, 'WITHDRAWN'),
     };
     const conditions: (SQL | undefined)[] = [eq(schoolStudents.schoolId, schoolId), byFilter[params.filter]];
     if (params.level) conditions.push(eq(schoolSections.level, params.level as 'INICIAL' | 'PRIMARIA' | 'SECUNDARIA'));
@@ -170,6 +172,7 @@ export const schoolRosterService = {
       sex: schoolStudents.sex,
       status: schoolStudents.status,
       sectionId: schoolEnrollments.sectionId,
+      finalSituation: schoolEnrollments.finalSituation,
       sectionLevel: schoolSections.level,
       sectionGrade: schoolSections.grade,
       sectionName: schoolSections.name,
@@ -225,6 +228,8 @@ export const schoolRosterService = {
         email: r.email,
         sex: r.sex,
         status: r.status,
+        // Solo cuando el año ya cerró (antes, la promoción aún puede cambiar).
+        finalSituation: closedYear ? r.finalSituation : null,
         section: r.sectionId && r.sectionLevel
           ? { id: r.sectionId, level: r.sectionLevel, grade: r.sectionGrade!, name: r.sectionName! }
           : null,

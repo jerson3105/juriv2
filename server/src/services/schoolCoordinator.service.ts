@@ -33,10 +33,11 @@ const loadYear = async (schoolId: string, yearId: string, forWrite: boolean) => 
 };
 
 /** El año en curso: los nombramientos que valen hoy (Biblioteca del área). */
+/** El año en curso; entre el cierre de uno y el inicio del siguiente (vacaciones), el que se prepara. */
 const activeYearOf = async (schoolId: string) => {
-  const [year] = await db.select({ id: schoolYears.id }).from(schoolYears)
-    .where(and(eq(schoolYears.schoolId, schoolId), eq(schoolYears.status, 'ACTIVE'))).limit(1);
-  return year?.id ?? null;
+  const years = await db.select({ id: schoolYears.id, status: schoolYears.status }).from(schoolYears)
+    .where(and(eq(schoolYears.schoolId, schoolId), inArray(schoolYears.status, ['ACTIVE', 'PLANNING'])));
+  return (years.find((y) => y.status === 'ACTIVE') ?? (years.length === 1 ? years[0] : null))?.id ?? null;
 };
 
 const levelsOf = async (yearId: string) =>
