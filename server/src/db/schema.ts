@@ -2468,6 +2468,9 @@ export const schoolBehaviors = mysqlTable('school_behaviors', {
   createdBy: varchar('created_by', { length: 36 }).notNull(),
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
+  // Propuesta de un área (la crea su coordinador): null = del colegio.
+  areaId: varchar('area_id', { length: 36 }),
+  level: mysqlEnum('school_level', ['INICIAL', 'PRIMARIA', 'SECUNDARIA']),
 }, (table) => ({
   schoolIdx: index('idx_school_behaviors_school').on(table.schoolId),
   schoolActiveIdx: index('idx_school_behaviors_school_active').on(table.schoolId, table.isActive),
@@ -2503,6 +2506,9 @@ export const schoolBadges = mysqlTable('school_badges', {
   createdBy: varchar('created_by', { length: 36 }).notNull(),
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
+  // Propuesta de un área (la crea su coordinador): null = del colegio.
+  areaId: varchar('area_id', { length: 36 }),
+  level: mysqlEnum('school_level', ['INICIAL', 'PRIMARIA', 'SECUNDARIA']),
 }, (table) => ({
   schoolIdx: index('idx_school_badges_school').on(table.schoolId),
   schoolActiveIdx: index('idx_school_badges_school_active').on(table.schoolId, table.isActive),
@@ -3315,4 +3321,21 @@ export const schoolMoveProfiles = mysqlTable('school_move_profiles', {
   moveIdx: index('idx_school_move_profiles_move').on(table.moveId),
   pendingIdx: index('idx_school_move_profiles_pending').on(table.studentId, table.areaId, table.appliedAt),
   targetIdx: index('idx_school_move_profiles_target').on(table.targetProfileId),
+}));
+
+// Coordinador de un área por nivel y año (lo nombra la administración): ve la información de las clases y talleres de su
+// área sin entrar a ellas y propone comportamientos e insignias para su área en la Biblioteca.
+export const schoolAreaCoordinators = mysqlTable('school_area_coordinators', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  schoolId: varchar('school_id', { length: 36 }).notNull(),
+  yearId: varchar('year_id', { length: 36 }).notNull(),
+  level: schoolLevelEnum.notNull(),
+  areaId: varchar('area_id', { length: 36 }).notNull(),
+  userId: varchar('user_id', { length: 36 }).notNull(),
+  createdBy: varchar('created_by', { length: 36 }).notNull(),
+  createdAt: datetime('created_at').notNull(),
+}, (table) => ({
+  areaUnique: unique('uq_school_area_coordinators').on(table.yearId, table.level, table.areaId),
+  userIdx: index('idx_school_area_coordinators_user').on(table.userId),
+  schoolIdx: index('idx_school_area_coordinators_school').on(table.schoolId),
 }));

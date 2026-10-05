@@ -5,6 +5,7 @@ import { Menu } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { schoolApi } from '../../lib/schoolApi';
 import { schoolYearApi, schoolYearKeys } from '../../lib/schoolYearApi';
+import { coordinatorApi, coordinatorKeys } from '../../lib/schoolCoordinatorApi';
 import type { SchoolConsoleContext } from './schoolConsoleContext';
 import { canManageSchool, canViewSchool, mySchoolsKey, pendingRequestsKey } from '../schools/schoolHelpers';
 import { YearMenu } from '../schools/console/YearMenu';
@@ -41,6 +42,12 @@ export const SchoolLayout = () => {
   const manager = !!school && canManageSchool(school);
   const years = useQuery({ queryKey: schoolYearKeys.list(schoolId), queryFn: () => schoolYearApi.list(schoolId), enabled: verified });
   const requests = useQuery({ queryKey: pendingRequestsKey(schoolId), queryFn: () => schoolApi.getPendingRequests(schoolId), enabled: manager });
+  const activeYearId = years.data?.find((year) => year.status === 'ACTIVE')?.id ?? '';
+  const coordinations = useQuery({
+    queryKey: coordinatorKeys.mine(schoolId, activeYearId),
+    queryFn: () => coordinatorApi.mine(schoolId, activeYearId),
+    enabled: verified && !!activeYearId,
+  });
 
   if (isLoading) {
     return (
@@ -64,7 +71,7 @@ export const SchoolLayout = () => {
   const yearList = years.data ?? [];
   const activeYear = yearList.find((year) => year.status === 'ACTIVE') ?? null;
   const roleLabel = !verified ? 'Por verificar' : manager ? 'Administración' : 'Docente';
-  const context: SchoolConsoleContext = { school, manager, verified, years: yearList, activeYear, yearsLoading: years.isLoading };
+  const context: SchoolConsoleContext = { school, manager, verified, years: yearList, activeYear, yearsLoading: years.isLoading, coordinations: coordinations.data ?? [] };
 
   return (
     <div className={FRAME}>
@@ -75,7 +82,7 @@ export const SchoolLayout = () => {
         twinkle={false}
         logoTo="/dashboard"
         context={<SchoolSealCard name={school.name} roleLabel={roleLabel} onBack={() => navigate('/dashboard')} />}
-        nav={schoolConsoleNav({ schoolId, pathname: location.pathname, manager, verified, pendingRequests: requests.data?.length ?? 0 })}
+        nav={schoolConsoleNav({ schoolId, pathname: location.pathname, manager, verified, pendingRequests: requests.data?.length ?? 0, coordinates: (coordinations.data?.length ?? 0) > 0 })}
         navLabel="Menú de la escuela"
         footer={({ rail }) => <TeacherHomeFooter user={user} rail={rail} onLogout={() => void logout()} roleLabel={roleLabel} />}
         collapsed={collapsed}

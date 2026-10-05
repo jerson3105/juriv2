@@ -8,6 +8,7 @@ import { schoolRosterImportController } from '../controllers/schoolRosterImport.
 import { schoolAssignmentController } from '../controllers/schoolAssignment.controller.js';
 import { schoolTeacherAccountController } from '../controllers/schoolTeacherAccount.controller.js';
 import { schoolAccessController } from '../controllers/schoolAccess.controller.js';
+import { schoolCoordinatorController } from '../controllers/schoolCoordinator.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { rosterImportLimiter } from '../middleware/security.js';
 
@@ -141,6 +142,12 @@ router.put('/:schoolId/workshops/:workshopId/classroom', authorize('TEACHER'), s
 // Mis asignaciones y mi tutoría (cualquier miembro verificado)
 router.get('/:schoolId/years/:yearId/my-load', authorize('TEACHER'), schoolAssignmentController.myLoad);
 router.get('/:schoolId/years/:yearId/sections/:sectionId/tutoring', authorize('TEACHER'), schoolAssignmentController.tutoringSection);
+
+// Coordinadores de área: la administración los nombra; cada uno ve el panel de sus áreas
+router.get('/:schoolId/years/:yearId/coordinators', authorize('TEACHER'), schoolCoordinatorController.list);
+router.put('/:schoolId/years/:yearId/coordinators', authorize('TEACHER'), schoolCoordinatorController.set);
+router.get('/:schoolId/years/:yearId/coordinators/mine', authorize('TEACHER'), schoolCoordinatorController.mine);
+router.get('/:schoolId/years/:yearId/coordination', authorize('TEACHER'), schoolCoordinatorController.panel);
 
 // Asignar/desasignar clase
 router.post('/:schoolId/classrooms/:classroomId', authorize('TEACHER'), schoolController.assignClassroom.bind(schoolController));

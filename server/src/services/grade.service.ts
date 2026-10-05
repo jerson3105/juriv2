@@ -2049,6 +2049,62 @@ class GradeService {
     };
   }
 
+  /**
+   * Avance de una clase por competencia en su bimestre actual, con las notas ya guardadas (sin recalcular ni datos de
+   * cada estudiante): promedio y cuántos van en cada nivel. Lo ve el coordinador de área.
+   */
+  async competencySummary(classroomId: string) {
+    const period = await this.resolveClassroomPeriod(classroomId, 'CURRENT');
+    const [competencies, rows, settings, isClosed, students] = await Promise.all([
+      this.getClassroomCompetencyColumns(classroomId),
+      db.select({
+        competencyId: studentGrades.competencyId, score: studentGrades.score, gradeLabel: studentGrades.gradeLabel,
+        activitiesCount: studentGrades.activitiesCount, isManualOverride: studentGrades.isManualOverride,
+        manualScore: studentGrades.manualScore, manualLabel: studentGrades.manualLabel,
+      })
+        .from(studentGrades)
+        .innerJoin(studentProfiles, eq(studentProfiles.id, studentGrades.studentProfileId))
+        .where(and(
+          eq(studentGrades.classroomId, classroomId), eq(studentGrades.period, period),
+          eq(studentProfiles.classroomId, classroomId), eq(studentProfiles.isActive, true), eq(studentProfiles.isDemo, false),
+        )),
+      this.getClassroomScaleSettings(classroomId),
+      this.isPeriodClosed(classroomId, period),
+      db.select({ n: sql<number>`COUNT(*)` }).from(studentProfiles)
+        .where(and(eq(studentProfiles.classroomId, classroomId), eq(studentProfiles.isActive, true), eq(studentProfiles.isDemo, false))),
+    ]);
+    const { gradeScaleType } = settings;
+    const parsedScaleConfig = this.parseGradeScaleConfig(settings.gradeScaleConfig);
+    // La nota efectiva como en el registro: el ajuste manual manda; en un bimestre cerrado vale la etiqueta guardada.
+    const effective = rows
+      .filter((row) => row.activitiesCount > 0 || row.isManualOverride)
+      .map((row) => {
+        const manual = row.isManualOverride && row.manualScore !== null && row.manualScore !== undefined;
+        const score = this.toNumericScore(manual ? row.manualScore : row.score);
+        const label = isClosed && row.gradeLabel
+          ? row.gradeLabel
+          : row.isManualOverride && row.manualLabel ? row.manualLabel : this.convertToGradeLabel(score, gradeScaleType, parsedScaleConfig);
+        return { competencyId: row.competencyId, score, bucket: this.getPerformanceBucket(score, gradeScaleType, label) };
+      });
+    return {
+      period,
+      isClosed,
+      scaleKind: scaleOptions(gradeScaleType, parsedScaleConfig).kind,
+      students: Number(students[0]?.n ?? 0),
+      competencies: competencies.map((c) => {
+        const graded = effective.filter((g) => g.competencyId === c.id);
+        const distribution: Record<PerformanceBucket, number> = { AD: 0, A: 0, B: 0, C: 0 };
+        for (const g of graded) distribution[g.bucket]++;
+        const average = graded.length ? graded.reduce((sum, g) => sum + g.score, 0) / graded.length : null;
+        const label = average === null ? null : this.convertToGradeLabel(average, gradeScaleType, parsedScaleConfig);
+        return {
+          id: c.id, code: c.code, name: c.name, shortName: c.shortName, graded: graded.length, distribution,
+          average: average === null || label === null ? null : { score: Number(average.toFixed(2)), label, bucket: this.getPerformanceBucket(average, gradeScaleType, label) },
+        };
+      }),
+    };
+  }
+
   async getClassroomGrades(classroomId: string, period: string = 'CURRENT'): Promise<ClassroomGradebookResponse> {
     const resolvedPeriod = await this.resolveClassroomPeriod(classroomId, period);
     await this.autoRecalculate(classroomId, resolvedPeriod);

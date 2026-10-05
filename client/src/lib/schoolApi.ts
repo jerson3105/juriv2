@@ -199,7 +199,15 @@ export interface SchoolBehavior {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  /** Propuesta de un área (la crea su coordinador); null = del colegio. */
+  areaId: string | null;
+  level: LibraryLevel | null;
+  area: LibraryArea | null;
 }
+
+/** Nivel y área de una propuesta de la Biblioteca. */
+export type LibraryLevel = 'INICIAL' | 'PRIMARIA' | 'SECUNDARIA';
+export interface LibraryArea { id: string; name: string; shortName: string | null }
 
 export interface CreateSchoolBehaviorData {
   name: string;
@@ -210,6 +218,8 @@ export interface CreateSchoolBehaviorData {
   hpValue?: number;
   gpValue?: number;
   icon?: string;
+  areaId?: string;
+  level?: LibraryLevel;
 }
 
 export interface SchoolBadge {
@@ -230,6 +240,9 @@ export interface SchoolBadge {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  areaId: string | null;
+  level: LibraryLevel | null;
+  area: LibraryArea | null;
 }
 
 export interface CreateSchoolBadgeData {
@@ -244,6 +257,8 @@ export interface CreateSchoolBadgeData {
   rewardXp?: number;
   rewardGp?: number;
   isSecret?: boolean;
+  areaId?: string;
+  level?: LibraryLevel;
 }
 
 export interface CreateSchoolData {

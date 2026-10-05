@@ -53,6 +53,7 @@ export type AuditAction =
   | 'school.workshop_created'
   | 'school.workshop_updated'
   | 'school.workshop_removed'
+  | 'school.coordinator_set'
   | 'classroom.deleted'
   | 'student.removed'
   | 'student.access_reset'

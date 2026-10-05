@@ -554,6 +554,8 @@ export class SchoolService {
     hpValue?: number;
     gpValue?: number;
     icon?: string;
+    areaId?: string;
+    level?: 'INICIAL' | 'PRIMARIA' | 'SECUNDARIA';
   }) {
     const id = uuidv4();
     const now = new Date();
@@ -577,6 +579,8 @@ export class SchoolService {
       createdBy: userId,
       createdAt: now,
       updatedAt: now,
+      areaId: data.areaId ?? null,
+      level: data.areaId ? data.level ?? null : null,
     });
 
     return this.getSchoolBehaviorById(id);
@@ -632,15 +636,17 @@ export class SchoolService {
 
   // Importar comportamientos de escuela a clases del profesor
   async importBehaviorsToClassrooms(
+    schoolId: string,
     schoolBehaviorIds: string[],
     classroomIds: string[],
     userId: string
   ) {
-    // Obtener los comportamientos de escuela seleccionados
+    // Obtener los comportamientos de escuela seleccionados (solo de esta escuela)
     const schoolBehaviorList = await db
       .select()
       .from(schoolBehaviors)
       .where(and(
+        eq(schoolBehaviors.schoolId, schoolId),
         inArray(schoolBehaviors.id, schoolBehaviorIds),
         eq(schoolBehaviors.isActive, true)
       ));
@@ -709,6 +715,8 @@ export class SchoolService {
     rewardXp?: number;
     rewardGp?: number;
     isSecret?: boolean;
+    areaId?: string;
+    level?: 'INICIAL' | 'PRIMARIA' | 'SECUNDARIA';
   }) {
     const id = uuidv4();
     const now = new Date();
@@ -731,6 +739,8 @@ export class SchoolService {
       createdBy: userId,
       createdAt: now,
       updatedAt: now,
+      areaId: data.areaId ?? null,
+      level: data.areaId ? data.level ?? null : null,
     });
 
     return this.getSchoolBadgeById(id);
@@ -789,15 +799,17 @@ export class SchoolService {
 
   // Importar insignias de escuela a clases del profesor
   async importBadgesToClassrooms(
+    schoolId: string,
     schoolBadgeIds: string[],
     classroomIds: string[],
     userId: string
   ) {
-    // Obtener las insignias de escuela seleccionadas
+    // Obtener las insignias de escuela seleccionadas (solo de esta escuela)
     const schoolBadgeList = await db
       .select()
       .from(schoolBadges)
       .where(and(
+        eq(schoolBadges.schoolId, schoolId),
         inArray(schoolBadges.id, schoolBadgeIds),
         eq(schoolBadges.isActive, true)
       ));

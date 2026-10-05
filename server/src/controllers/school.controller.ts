@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { schoolService } from '../services/school.service.js';
 import { schoolManagementService, SchoolManagementError } from '../services/schoolManagement.service.js';
+import { schoolCoordinatorService } from '../services/schoolCoordinator.service.js';
 import { BADGE_IMAGE_PATTERN } from '../utils/badgeConditions.js';
 import { AppError } from '../utils/errors.js';
 import { auditRequest } from '../utils/audit.js';
@@ -48,6 +49,14 @@ const reviewVerificationSchema = z.object({
   note: z.string().max(500).optional(),
 });
 
+// Propuesta de un área (la crea su coordinador): área del plan y nivel, juntos. Sin ellos, es del colegio.
+// Las áreas del CNEB tienen ids fijos (area-pe-mat…), no UUID.
+const libraryAreaFields = {
+  areaId: z.string().regex(/^[a-z0-9-]{3,36}$/, 'Área inválida').optional(),
+  level: z.enum(['INICIAL', 'PRIMARIA', 'SECUNDARIA']).optional(),
+};
+const bothOrNone = (value: { areaId?: string; level?: string }) => !value.areaId === !value.level;
+
 const createSchoolBehaviorSchema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().max(500).optional(),
@@ -57,7 +66,8 @@ const createSchoolBehaviorSchema = z.object({
   hpValue: z.number().int().min(0).optional(),
   gpValue: z.number().int().min(0).optional(),
   icon: z.string().max(50).optional(),
-});
+  ...libraryAreaFields,
+}).refine(bothOrNone, 'Elige el área y el nivel');
 
 const updateSchoolBehaviorSchema = z.object({
   name: z.string().min(1).max(255).optional(),
@@ -89,7 +99,8 @@ const createSchoolBadgeSchema = z.object({
   rewardXp: z.number().int().min(0).optional(),
   rewardGp: z.number().int().min(0).optional(),
   isSecret: z.boolean().optional(),
-});
+  ...libraryAreaFields,
+}).refine(bothOrNone, 'Elige el área y el nivel');
 
 const updateSchoolBadgeSchema = z.object({
   name: z.string().min(1).max(100).optional(),
@@ -109,6 +120,39 @@ const importBadgesSchema = z.object({
   badgeIds: z.array(z.string().max(36)).min(1),
   classroomIds: z.array(z.string().max(36)).min(1),
 });
+
+// ==================== BIBLIOTECA: COLEGIO Y ÁREAS ====================
+
+/** Qué ve y gestiona el usuario en la Biblioteca (la administración y el ADMIN de la plataforma, todo). */
+const libraryScopeOf = async (req: Request, schoolId: string) => {
+  const user = req.user!;
+  const manager = user.role === 'ADMIN' || isSchoolManagerRole(await verifiedSchoolRole(user.id, schoolId));
+  return schoolCoordinatorService.libraryScope(schoolId, user.id, manager);
+};
+
+/** Crear, editar o quitar: lo del colegio, la administración; lo de un área, también su coordinador del año en curso. */
+const requireLibraryManager = async (req: Request, res: Response, schoolId: string, item: { areaId?: string | null; level?: string | null }) => {
+  if (!item.areaId || !item.level) return requireSchoolManager(req, res, schoolId);
+  if (req.user!.role !== 'ADMIN' && !(await verifiedSchoolRole(req.user!.id, schoolId))) {
+    res.status(403).json({ success: false, message: 'No tienes acceso a esta escuela' });
+    return false;
+  }
+  const scope = await libraryScopeOf(req, schoolId);
+  if (!scope.manages({ areaId: item.areaId, level: item.level })) {
+    res.status(403).json({ success: false, message: 'Solo la coordinación del área o la administración pueden cambiar esto' });
+    return false;
+  }
+  return true;
+};
+
+/** Cada ítem con el nombre de su área (null = del colegio). */
+const withAreas = async <T extends { areaId: string | null }>(items: T[]) => {
+  const names = await schoolCoordinatorService.areaNames(items.map((i) => i.areaId).filter((id): id is string => !!id));
+  return items.map((item) => {
+    const area = item.areaId ? names.get(item.areaId) : undefined;
+    return { ...item, area: item.areaId && area ? { id: item.areaId, name: area.name, shortName: area.shortName } : null };
+  });
+};
 
 // Periodo de un reporte: fechas YYYY-MM-DD en la hora del servidor (la misma con la que se guardan los registros).
 // Sin fechas: del 1 de enero a hoy. Devuelve null si el formato o el orden son inválidos.
@@ -456,8 +500,10 @@ class SchoolController {
 
       if (!(await requireSchoolViewer(req, res, schoolId))) return;
 
-      const behaviors = await schoolService.getSchoolBehaviors(schoolId);
-      res.json({ success: true, data: behaviors });
+      // Las propuestas de un área, solo para quien la enseña o coordina (y la administración).
+      const scope = await libraryScopeOf(req, schoolId);
+      const behaviors = (await schoolService.getSchoolBehaviors(schoolId)).filter(scope.sees);
+      res.json({ success: true, data: await withAreas(behaviors) });
     } catch (error) {
       console.error('Error getting school behaviors:', error);
       res.status(500).json({ success: false, message: 'Error al obtener comportamientos' });
@@ -470,15 +516,18 @@ class SchoolController {
       const { schoolId } = req.params;
       const userId = (req as any).user.id;
 
-      if (!(await requireSchoolManager(req, res, schoolId))) return;
-
+      if (!(await requireSchoolViewer(req, res, schoolId))) return;
       const data = createSchoolBehaviorSchema.parse(req.body);
+      if (!(await requireLibraryManager(req, res, schoolId, data))) return;
+      if (data.areaId && data.level) await schoolCoordinatorService.assertLibraryArea(schoolId, data.level, data.areaId);
+
       const behavior = await schoolService.createSchoolBehavior(schoolId, userId, data);
       res.status(201).json({ success: true, data: behavior });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ success: false, message: 'Datos inválidos', errors: error.errors });
       }
+      if (error instanceof AppError) return res.status(error.statusCode).json({ success: false, message: error.message });
       console.error('Error creating school behavior:', error);
       res.status(500).json({ success: false, message: 'Error al crear comportamiento' });
     }
@@ -495,7 +544,7 @@ class SchoolController {
         return res.status(404).json({ success: false, message: 'Comportamiento no encontrado' });
       }
 
-      if (!(await requireSchoolManager(req, res, behavior.schoolId))) return;
+      if (!(await requireLibraryManager(req, res, behavior.schoolId, behavior))) return;
 
       const data = updateSchoolBehaviorSchema.parse(req.body);
       const updated = await schoolService.updateSchoolBehavior(behaviorId, data);
@@ -520,7 +569,7 @@ class SchoolController {
         return res.status(404).json({ success: false, message: 'Comportamiento no encontrado' });
       }
 
-      if (!(await requireSchoolManager(req, res, behavior.schoolId))) return;
+      if (!(await requireLibraryManager(req, res, behavior.schoolId, behavior))) return;
 
       await schoolService.deleteSchoolBehavior(behaviorId);
       res.json({ success: true, message: 'Comportamiento eliminado' });
@@ -539,7 +588,7 @@ class SchoolController {
       if (!(await requireSchoolViewer(req, res, schoolId))) return;
 
       const data = importBehaviorsSchema.parse(req.body);
-      const result = await schoolService.importBehaviorsToClassrooms(data.behaviorIds, data.classroomIds, userId);
+      const result = await schoolService.importBehaviorsToClassrooms(schoolId, data.behaviorIds, data.classroomIds, userId);
       res.json({ success: true, data: result, message: `Se importaron ${result.imported} comportamientos` });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -563,8 +612,9 @@ class SchoolController {
 
       if (!(await requireSchoolViewer(req, res, schoolId))) return;
 
-      const badges = await schoolService.getSchoolBadges(schoolId);
-      res.json({ success: true, data: badges });
+      const scope = await libraryScopeOf(req, schoolId);
+      const badges = (await schoolService.getSchoolBadges(schoolId)).filter(scope.sees);
+      res.json({ success: true, data: await withAreas(badges) });
     } catch (error) {
       console.error('Error getting school badges:', error);
       res.status(500).json({ success: false, message: 'Error al obtener insignias' });
@@ -577,15 +627,18 @@ class SchoolController {
       const { schoolId } = req.params;
       const userId = (req as any).user.id;
 
-      if (!(await requireSchoolManager(req, res, schoolId))) return;
-
+      if (!(await requireSchoolViewer(req, res, schoolId))) return;
       const data = createSchoolBadgeSchema.parse(req.body);
+      if (!(await requireLibraryManager(req, res, schoolId, data))) return;
+      if (data.areaId && data.level) await schoolCoordinatorService.assertLibraryArea(schoolId, data.level, data.areaId);
+
       const badge = await schoolService.createSchoolBadge(schoolId, userId, data);
       res.status(201).json({ success: true, data: badge });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ success: false, message: 'Datos inválidos', errors: error.errors });
       }
+      if (error instanceof AppError) return res.status(error.statusCode).json({ success: false, message: error.message });
       console.error('Error creating school badge:', error);
       res.status(500).json({ success: false, message: 'Error al crear insignia' });
     }
@@ -602,7 +655,7 @@ class SchoolController {
         return res.status(404).json({ success: false, message: 'Insignia no encontrada' });
       }
 
-      if (!(await requireSchoolManager(req, res, badge.schoolId))) return;
+      if (!(await requireLibraryManager(req, res, badge.schoolId, badge))) return;
 
       const data = updateSchoolBadgeSchema.parse(req.body);
       const updated = await schoolService.updateSchoolBadge(badgeId, data);
@@ -627,7 +680,7 @@ class SchoolController {
         return res.status(404).json({ success: false, message: 'Insignia no encontrada' });
       }
 
-      if (!(await requireSchoolManager(req, res, badge.schoolId))) return;
+      if (!(await requireLibraryManager(req, res, badge.schoolId, badge))) return;
 
       await schoolService.deleteSchoolBadge(badgeId);
       res.json({ success: true, message: 'Insignia eliminada' });
@@ -646,7 +699,7 @@ class SchoolController {
       if (!(await requireSchoolViewer(req, res, schoolId))) return;
 
       const data = importBadgesSchema.parse(req.body);
-      const result = await schoolService.importBadgesToClassrooms(data.badgeIds, data.classroomIds, userId);
+      const result = await schoolService.importBadgesToClassrooms(schoolId, data.badgeIds, data.classroomIds, userId);
       res.json({ success: true, data: result, message: `Se importaron ${result.imported} insignias` });
     } catch (error: any) {
       if (error instanceof z.ZodError) {

@@ -9,6 +9,7 @@ import {
   Calendar,
   CalendarCheck,
   ClipboardList,
+  Compass,
   Gamepad2,
   GraduationCap,
   HeartHandshake,
@@ -176,11 +177,13 @@ interface SchoolConsoleNavInput {
   /** Miembro verificado. Si no, la escuela espera verificación: solo Inicio y Clases. */
   verified: boolean;
   pendingRequests: number;
+  /** Coordina un área este año: suma «Mi coordinación» a Mi trabajo. */
+  coordinates?: boolean;
 }
 
 /** Menú del colegio: como el aula, la consola es un contexto. Cada bloque de la Entrega 1 suma sus páginas. */
 export const schoolConsoleNav = (input: SchoolConsoleNavInput): NavNode[] => {
-  const { schoolId, pathname, manager, verified, pendingRequests } = input;
+  const { schoolId, pathname, manager, verified, pendingRequests, coordinates = false } = input;
   const base = `/escuela/${schoolId}`;
   const entry = (path: string, label: string, Icon: typeof House, extra: Partial<NavItem> = {}): NavItem => {
     const to = path ? `${base}/${path}` : base;
@@ -199,8 +202,17 @@ export const schoolConsoleNav = (input: SchoolConsoleNavInput): NavNode[] => {
     link(entry('docentes', 'Docentes', Users, requests)),
     link(entry('clases', 'Clases', BookOpen)),
     ...(manager ? [link(entry('anio', 'Año escolar', CalendarCheck))] : []),
-    // Mi trabajo: lo que enseño y mi tutoría (también la administración puede enseñar).
-    { kind: 'section', id: 'school-work', label: 'Mi trabajo', icon: icon(Briefcase), items: [entry('mis-asignaciones', 'Mis asignaciones', Briefcase, { active: pathname.startsWith(`${base}/mis-asignaciones`) || pathname.startsWith(`${base}/mi-tutoria`) })] },
+    // Mi trabajo: lo que enseño, mi tutoría y, si coordino un área, su panel (también la administración puede enseñar).
+    {
+      kind: 'section',
+      id: 'school-work',
+      label: 'Mi trabajo',
+      icon: icon(Briefcase),
+      items: [
+        entry('mis-asignaciones', 'Mis asignaciones', Briefcase, { active: pathname.startsWith(`${base}/mis-asignaciones`) || pathname.startsWith(`${base}/mi-tutoria`) }),
+        ...(coordinates ? [entry('coordinacion', 'Mi coordinación', Compass)] : []),
+      ],
+    },
     {
       kind: 'section',
       id: 'school-more',

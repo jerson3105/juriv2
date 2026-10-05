@@ -8,6 +8,7 @@ import { LibraryTab } from '../../components/schools/LibraryTab';
 import { ReportsTab, SummaryTab } from '../../components/schools/ReportsTab';
 import { useAuthStore } from '../../store/authStore';
 import { AssignmentsTab } from '../../components/schools/console/AssignmentsTab';
+import { CoordinatorsTab } from '../../components/schools/console/CoordinatorsTab';
 
 /**
  * Páginas de la consola que reutilizan las pestañas de «Mi Escuela» (docentes, clases, informes, biblioteca). Las
@@ -26,17 +27,24 @@ export const SchoolTeachersPage = () => {
   const { user } = useAuthStore();
   const [params, setParams] = useSearchParams();
   const { detail, classrooms, teachers, requests, loadingTeachers } = useSchoolPanelData(school, manager);
-  // Equipo | Asignaciones (solo la administración); la vista va en la URL.
-  const view = manager && params.get('vista') === 'asignaciones' ? 'assignments' : 'team';
-  const setView = (next: 'team' | 'assignments') => {
+  // Equipo | Asignaciones | Coordinación (las dos últimas, solo la administración); la vista va en la URL.
+  const VIEWS = { asignaciones: 'assignments', coordinacion: 'coordination' } as const;
+  const view: 'team' | 'assignments' | 'coordination' = manager ? VIEWS[params.get('vista') as keyof typeof VIEWS] ?? 'team' : 'team';
+  const setView = (next: typeof view) => {
     const updated = new URLSearchParams(params);
     if (next === 'assignments') updated.set('vista', 'asignaciones');
+    else if (next === 'coordination') updated.set('vista', 'coordinacion');
     else {
       updated.delete('vista');
       updated.delete('nivel');
     }
     setParams(updated, { replace: true });
   };
+  const needsYear = (
+    <p className="rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-700 dark:border-gray-600 dark:text-gray-300">
+      {view === 'coordination' ? 'Los coordinadores' : 'Las asignaciones'} son de un año escolar: <Link to={`/escuela/${school.id}/anio`} className="font-semibold text-primary-700 underline-offset-2 hover:underline dark:text-primary-300">prepara el año</Link>.
+    </p>
+  );
   const subtitle = [
     loadingTeachers ? null : `${teachers.length} ${teachers.length === 1 ? 'docente' : 'docentes'}`,
     manager && requests.length > 0 ? `${requests.length} ${requests.length === 1 ? 'solicitud para unirse' : 'solicitudes para unirse'}` : null,
@@ -50,14 +58,13 @@ export const SchoolTeachersPage = () => {
             Equipo <span className="tabular-nums opacity-80">{teachers.length}</span>
           </button>
           <button type="button" className="pg-seg-item pg-focus" aria-pressed={view === 'assignments'} onClick={() => setView('assignments')}>Asignaciones</button>
+          <button type="button" className="pg-seg-item pg-focus" aria-pressed={view === 'coordination'} onClick={() => setView('coordination')}>Coordinación</button>
         </div>
       )}
       {view === 'assignments' ? (
-        activeYear ? <AssignmentsTab schoolId={school.id} yearId={activeYear.id} /> : (
-          <p className="rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-700 dark:border-gray-600 dark:text-gray-300">
-            Las asignaciones son de un año escolar: <Link to={`/escuela/${school.id}/anio`} className="font-semibold text-primary-700 underline-offset-2 hover:underline dark:text-primary-300">prepara el año</Link>.
-          </p>
-        )
+        activeYear ? <AssignmentsTab schoolId={school.id} yearId={activeYear.id} /> : needsYear
+      ) : view === 'coordination' ? (
+        activeYear ? <CoordinatorsTab schoolId={school.id} yearId={activeYear.id} /> : needsYear
       ) : (
       <TeachersTab
         school={school}
@@ -102,13 +109,13 @@ export const SchoolReportsPage = () => {
 };
 
 export const SchoolLibraryPage = () => {
-  const { school, manager } = useSchoolConsole();
+  const { school, manager, coordinations } = useSchoolConsole();
   const { user } = useAuthStore();
   const { classrooms } = useSchoolPanelData(school, manager);
   return (
     <div className="w-full">
       <PageHeader title="Biblioteca" subtitle="Comportamientos e insignias que la escuela comparte con sus clases" />
-      <LibraryTab schoolId={school.id} manage={manager} myClassrooms={classrooms.filter((c) => c.teacherId === user?.id)} />
+      <LibraryTab schoolId={school.id} manage={manager} myClassrooms={classrooms.filter((c) => c.teacherId === user?.id)} coordinations={coordinations} />
     </div>
   );
 };
