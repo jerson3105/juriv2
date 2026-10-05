@@ -68,6 +68,9 @@ router.get('/:schoolId/years', authorize('TEACHER'), schoolYearController.list);
 router.post('/:schoolId/years', authorize('TEACHER'), schoolYearController.create);
 router.get('/:schoolId/years/:yearId', authorize('TEACHER'), schoolYearController.get);
 router.put('/:schoolId/years/:yearId', authorize('TEACHER'), schoolYearController.update);
+// Cerrar y reabrir un bimestre en todas las clases del colegio (Calificaciones)
+router.post('/:schoolId/years/:yearId/periods/:code/close', authorize('TEACHER'), schoolYearController.closePeriod);
+router.post('/:schoolId/years/:yearId/periods/:code/reopen', authorize('TEACHER'), schoolYearController.reopenPeriod);
 
 // Grados y secciones
 router.get('/:schoolId/years/:yearId/sections', authorize('TEACHER'), schoolSectionController.list);

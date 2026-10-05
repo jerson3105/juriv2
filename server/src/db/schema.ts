@@ -2984,7 +2984,8 @@ export const schoolYears = mysqlTable('school_years', {
   schoolStatusIdx: index('idx_school_years_school_status').on(table.schoolId, table.status),
 }));
 
-// Periodos del año (B1..B4 o T1..T3). El estado es para la libreta (Entrega 3): por ahora todos OPEN.
+// Periodos del año (B1..B4; T1..T3 aún no: Calificaciones va por bimestres). LOCKED = la administración cerró el bimestre en
+// todas sus clases (OPEN al reabrirlo); REVIEW y PUBLISHED son para la libreta (Entrega 3).
 export const schoolPeriods = mysqlTable('school_periods', {
   id: varchar('id', { length: 36 }).primaryKey(),
   schoolId: varchar('school_id', { length: 36 }).notNull(),
@@ -2995,6 +2996,9 @@ export const schoolPeriods = mysqlTable('school_periods', {
   status: schoolPeriodStatusEnum.notNull().default('OPEN'),
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),
+  // Lo cerró la administración (Calificaciones de todas sus clases): cuándo y quién.
+  lockedAt: datetime('locked_at'),
+  lockedBy: varchar('locked_by', { length: 36 }),
 }, (table) => ({
   yearCodeUnique: unique('uq_school_periods_year_code').on(table.yearId, table.code),
   schoolIdx: index('idx_school_periods_school').on(table.schoolId),

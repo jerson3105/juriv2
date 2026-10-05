@@ -416,6 +416,18 @@ const startServer = async () => {
     };
     setInterval(purgeImports, 60 * 60 * 1000);
     void purgeImports();
+
+    // Bimestre en curso de las clases de cada colegio con año activo (cambia con la fecha).
+    const { syncAllCurrentPeriods } = await import('./services/schoolCalendar.service.js');
+    const syncSchoolPeriods = async () => {
+      try {
+        await syncAllCurrentPeriods();
+      } catch (error) {
+        logger.error('No se pudo poner al día el bimestre de los colegios', { error: error instanceof Error ? error.message : String(error) });
+      }
+    };
+    setInterval(syncSchoolPeriods, 60 * 60 * 1000);
+    void syncSchoolPeriods();
     
     // Iniciar servidor HTTP
     httpServer.listen(config_app.port, () => {

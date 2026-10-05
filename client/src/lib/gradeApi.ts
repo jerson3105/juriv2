@@ -198,6 +198,9 @@ export interface BimesterInfo {
   start?: string | null;
   end?: string | null;
   datesConfigured?: boolean;
+  /** Clase de un colegio: las fechas del bimestre como las puso el colegio (AAAA-MM-DD). */
+  startsOn?: string | null;
+  endsOn?: string | null;
 }
 
 export const EVALUATION_KINDS = ['EXAM', 'TASK', 'PROJECT', 'ORAL', 'PRACTICE', 'OTHER'] as const;
@@ -289,6 +292,9 @@ const saveBlob = (data: BlobPart, type: string, filename: string) => {
 };
 
 export interface BimesterStatus {
+  /** SCHOOL: los bimestres los maneja el colegio en «Año escolar» (fechas, cierre y reapertura); CLASS: el docente. */
+  managedBy?: 'SCHOOL' | 'CLASS';
+  school?: { name: string } | null;
   currentBimester: string;
   closedBimesters: Array<{
     period: string;

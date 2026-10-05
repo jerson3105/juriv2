@@ -72,6 +72,11 @@ const ExportMenu = ({ classroomId, period }: { classroomId: string; period: stri
   );
 };
 
+const day = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString('es', { day: 'numeric', month: 'short' }).replace('.', '');
+/** «Del 8 mar al 21 may»: las fechas del bimestre en el año escolar del colegio. */
+const schoolDates = (bimester?: { startsOn?: string | null; endsOn?: string | null }) =>
+  bimester?.startsOn && bimester.endsOn ? `Del ${day(bimester.startsOn)} al ${day(bimester.endsOn)}` : null;
+
 export const GradebookPage = () => {
   const { classroom, refetch } = useOutletContext<{ classroom: Classroom; refetch: () => void }>();
   const [params, setParams] = useSearchParams();
@@ -88,6 +93,9 @@ export const GradebookPage = () => {
     enabled: ready,
   });
   const period = selectedPeriod ?? status?.currentBimester ?? null;
+  // Clase de un colegio con año activo: sus bimestres los maneja la administración.
+  const bySchool = status?.managedBy === 'SCHOOL';
+  const selectedBimester = status?.allBimesters.find((b) => b.period === period);
 
   const { data: book, isLoading, isError, isFetching } = useQuery({
     queryKey: gradebookKey(classroom.id, period ?? 'CURRENT'),
@@ -139,14 +147,24 @@ export const GradebookPage = () => {
             </button>
           ))}
         </div>
-        <button type="button" onClick={() => setShowBimesters(true)} className={secondaryButton}>
-          <CalendarRange size={16} aria-hidden="true" /> Bimestres
-        </button>
+        {bySchool ? (
+          <p className="flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-300">
+            <CalendarRange size={16} aria-hidden="true" />
+            {schoolDates(selectedBimester) ?? 'Fechas del colegio'}{status?.school ? ` · ${status.school.name}` : ''}
+          </p>
+        ) : (
+          <button type="button" onClick={() => setShowBimesters(true)} className={secondaryButton}>
+            <CalendarRange size={16} aria-hidden="true" /> Bimestres
+          </button>
+        )}
       </div>
 
       {book?.isClosed && (
         <p className="flex items-center gap-2 rounded-2xl bg-gray-100 p-3 text-sm text-gray-900 dark:bg-gray-800 dark:text-gray-100">
-          <Lock size={16} aria-hidden="true" /> Este bimestre está cerrado: las notas no cambian. Puedes escribir conclusiones y exportar. Para corregir notas, reábrelo en «Bimestres».
+          <Lock size={16} aria-hidden="true" />
+          {bySchool
+            ? 'Tu colegio cerró este bimestre: las notas no cambian. Puedes escribir conclusiones y exportar; para corregir una nota, pide a la administración que lo reabra.'
+            : 'Este bimestre está cerrado: las notas no cambian. Puedes escribir conclusiones y exportar. Para corregir notas, reábrelo en «Bimestres».'}
         </p>
       )}
 
@@ -187,7 +205,7 @@ export const GradebookPage = () => {
       {detail && book && detailStudent && detailCompetency && detailGrade && (
         <GradeDetailPanel book={book} studentName={detailStudent.studentName} competency={detailCompetency} grade={detailGrade} onClose={() => setDetail(null)} />
       )}
-      {showBimesters && <BimesterModal classroomId={classroom.id} onClose={() => setShowBimesters(false)} />}
+      {showBimesters && !bySchool && <BimesterModal classroomId={classroom.id} onClose={() => setShowBimesters(false)} />}
     </div>
   );
 };

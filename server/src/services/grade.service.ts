@@ -27,6 +27,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { teacherOwnsClassroom } from '../utils/access.js';
 import { affectedRows } from '../utils/points.js';
 import { performanceBucket, scaleOptions, scaleValueToScore, scoreToLabel } from '../utils/gradeScale.js';
+import { ConflictError } from '../utils/errors.js';
+import { classroomCalendar } from './schoolCalendar.service.js';
 
 type ClosedBimesterEntry = {
   period: string;
@@ -357,6 +359,10 @@ class GradeService {
       return normalizedPeriod;
     }
 
+    // Clase de un colegio con año activo: el bimestre en curso del colegio.
+    const calendar = await classroomCalendar(classroomId);
+    if (calendar) return calendar.current;
+
     const [classroom] = await db.select({
       currentBimester: classrooms.currentBimester,
     }).from(classrooms).where(eq(classrooms.id, classroomId));
@@ -401,10 +407,12 @@ class GradeService {
     return { gradeScaleType, parsedScaleConfig: this.parseGradeScaleConfig(gradeScaleConfig) };
   }
 
+  /** Cerrado por la clase (docente independiente, o antes de que su colegio activara el año) o por la administración. */
   async isPeriodClosed(classroomId: string, period: string): Promise<boolean> {
     const [classroom] = await db.select({ closedBimesters: classrooms.closedBimesters })
       .from(classrooms).where(eq(classrooms.id, classroomId));
-    return this.parseClosedBimesters(classroom?.closedBimesters).some((entry) => entry.period === period);
+    if (this.parseClosedBimesters(classroom?.closedBimesters).some((entry) => entry.period === period)) return true;
+    return !!(await classroomCalendar(classroomId))?.periods.find((p) => p.period === period)?.locked;
   }
 
   private async ensurePeriodIsOpen(classroomId: string, period: string): Promise<void> {
@@ -416,9 +424,20 @@ class GradeService {
       throw new Error('Clase no encontrada');
     }
 
-    const closedBimesters = this.parseClosedBimesters(classroom.closedBimesters);
-    if (closedBimesters.some((entry) => entry.period === period)) {
+    const calendar = await classroomCalendar(classroomId);
+    const closedByClass = this.parseClosedBimesters(classroom.closedBimesters).some((entry) => entry.period === period);
+    if (calendar && (closedByClass || calendar.periods.find((p) => p.period === period)?.locked)) {
+      throw new ConflictError('Este bimestre está cerrado: solo la administración de tu colegio puede reabrirlo');
+    }
+    if (closedByClass) {
       throw new Error('El bimestre esta cerrado. Debes reabrirlo para editar calificaciones');
+    }
+  }
+
+  /** Los bimestres de una clase de un colegio con año activo los maneja la administración (fechas, cierre y reapertura). */
+  private async assertManagedByClass(classroomId: string): Promise<void> {
+    if (await classroomCalendar(classroomId)) {
+      throw new ConflictError('Los bimestres de esta clase los maneja tu colegio en «Año escolar»');
     }
   }
 
@@ -491,9 +510,20 @@ class GradeService {
       throw new Error('Clase no encontrada');
     }
 
-    // Fechas configuradas por el docente (o fijadas al cerrar): mandan sobre la lógica de cierres.
+    // En un colegio con año activo, las fechas del colegio (hasta su cierre, si la administración lo cerró antes de
+    // terminar); salvo un bimestre que la clase ya había cerrado por su cuenta, que conserva las suyas.
     const dates = this.parseBimesterDates(classroom.bimesterDates);
     const configured = dates[resolvedPeriod];
+    const closedByClass = this.parseClosedBimesters(classroom.closedBimesters).some((cb) => cb.period === resolvedPeriod);
+    if (!(configured && closedByClass)) {
+      const schoolPeriod = (await classroomCalendar(classroomId))?.periods.find((p) => p.period === resolvedPeriod);
+      if (schoolPeriod) {
+        const end = schoolPeriod.lockedAt && schoolPeriod.lockedAt < schoolPeriod.end ? schoolPeriod.lockedAt : schoolPeriod.end;
+        return { startDate: schoolPeriod.start, endDate: end };
+      }
+    }
+
+    // Fechas configuradas por el docente (o fijadas al cerrar): mandan sobre la lógica de cierres.
     if (configured) {
       return { startDate: new Date(configured.start), endDate: new Date(configured.end) };
     }
@@ -532,6 +562,15 @@ class GradeService {
     const normalizedPeriod = this.normalizePeriod(period);
     if (normalizedPeriod === 'CURRENT') {
       return false;
+    }
+
+    // En un colegio: los bimestres que vienen después del que está en curso (o de su año, si es otro año).
+    const calendar = await classroomCalendar(classroomId);
+    if (calendar) {
+      const index = calendar.periods.findIndex((p) => p.period === normalizedPeriod);
+      const current = calendar.periods.findIndex((p) => p.period === calendar.current);
+      if (index >= 0) return index > current;
+      return this.compareBimesterPeriods(normalizedPeriod, calendar.periods[calendar.periods.length - 1].period) > 0;
     }
 
     const [classroom] = await db.select({
@@ -1030,7 +1069,8 @@ class GradeService {
   async calculateStudentGrades(
     classroomId: string,
     studentProfileId: string,
-    period: string = 'CURRENT'
+    period: string = 'CURRENT',
+    options: { final?: boolean } = {},
   ): Promise<GradeCalculationResult[]> {
     const resolvedPeriod = await this.resolveClassroomPeriod(classroomId, period);
 
@@ -1067,8 +1107,9 @@ class GradeService {
     if (await this.isFuturePeriod(classroomId, resolvedPeriod)) {
       throw new Error('No se pueden calcular calificaciones de un bimestre futuro');
     }
-    // Un bimestre cerrado queda congelado: no se recalcula (hay que reabrirlo para cambiar notas).
-    await this.ensurePeriodIsOpen(classroomId, resolvedPeriod);
+    // Un bimestre cerrado queda congelado: no se recalcula (hay que reabrirlo para cambiar notas). final: la última foto
+    // de un bimestre que cerró la administración (ver finalizeLockedPeriod).
+    if (!options.final) await this.ensurePeriodIsOpen(classroomId, resolvedPeriod);
 
     // 1.6. Obtener el rango de fechas del bimestre
     const dateRange = await this.getBimesterDateRange(classroomId, resolvedPeriod);
@@ -2108,6 +2149,11 @@ class GradeService {
   async getClassroomGrades(classroomId: string, period: string = 'CURRENT'): Promise<ClassroomGradebookResponse> {
     const resolvedPeriod = await this.resolveClassroomPeriod(classroomId, period);
     await this.autoRecalculate(classroomId, resolvedPeriod);
+    try {
+      await this.finalizeLockedPeriod(classroomId, resolvedPeriod);
+    } catch (error) {
+      console.error('Nota final del bimestre cerrado por el colegio falló:', error);
+    }
 
     const [competencies, studentRows, rows, [settings]] = await Promise.all([
       this.getClassroomCompetencyColumns(classroomId),
@@ -2167,9 +2213,9 @@ class GradeService {
     };
   }
 
-  async recalculateClassroomGrades(classroomId: string, period: string = 'CURRENT') {
+  async recalculateClassroomGrades(classroomId: string, period: string = 'CURRENT', options: { final?: boolean } = {}) {
     const resolvedPeriod = await this.resolveClassroomPeriod(classroomId, period);
-    await this.ensurePeriodIsOpen(classroomId, resolvedPeriod);
+    if (!options.final) await this.ensurePeriodIsOpen(classroomId, resolvedPeriod);
 
     const students = await db.select({ id: studentProfiles.id })
       .from(studentProfiles)
@@ -2185,12 +2231,31 @@ class GradeService {
       const chunk = students.slice(i, i + CONCURRENCY);
       const done = await Promise.all(chunk.map(async (student) => ({
         studentId: student.id,
-        grades: await this.calculateStudentGrades(classroomId, student.id, resolvedPeriod),
+        grades: await this.calculateStudentGrades(classroomId, student.id, resolvedPeriod, options),
       })));
       results.push(...done);
     }
 
     return results;
+  }
+
+  /**
+   * Bimestre que cerró la administración del colegio: la nota final se calcula una vez con la evidencia hasta el cierre.
+   * Corre en segundo plano al cerrarlo; si quedó pendiente (o llegaron estudiantes), al abrir el registro.
+   */
+  async finalizeLockedPeriod(classroomId: string, period: string): Promise<boolean> {
+    const locked = (await classroomCalendar(classroomId))?.periods.find((p) => p.period === period);
+    if (!locked?.locked || !locked.lockedAt) return false;
+    const last = await this.lastCalculatedAt(classroomId, period);
+    if (last && last >= locked.lockedAt) return false;
+    const key = `${classroomId}|${period}|final`;
+    let running = recalcInFlight.get(key);
+    if (!running) {
+      running = this.recalculateClassroomGrades(classroomId, period, { final: true }).finally(() => recalcInFlight.delete(key));
+      recalcInFlight.set(key, running);
+    }
+    await running;
+    return true;
   }
 
   /** Recalcula a unos alumnos concretos (p. ej., tras guardar una evaluación). */
@@ -2334,6 +2399,38 @@ class GradeService {
     if (!classroom) throw new Error('Clase no encontrada');
 
     const closedBimesters = this.parseClosedBimesters(classroom.closedBimesters);
+
+    // Clase de un colegio con año activo: sus bimestres, fechas y cierres (los maneja la administración).
+    const calendar = await classroomCalendar(classroomId);
+    if (calendar) {
+      const currentIndex = calendar.periods.findIndex((p) => p.period === calendar.current);
+      return {
+        managedBy: 'SCHOOL' as const,
+        school: { name: calendar.schoolName },
+        currentBimester: calendar.current,
+        closedBimesters,
+        selectedYear: Number(calendar.yearName),
+        availableYears: [Number(calendar.yearName)],
+        allBimesters: calendar.periods.map((p, i) => {
+          const closedByClass = closedBimesters.find((cb) => cb.period === p.period);
+          return {
+            period: p.period,
+            label: `Bimestre ${p.number}`,
+            isCurrent: p.period === calendar.current,
+            isClosed: p.locked || !!closedByClass,
+            isFuture: i > currentIndex,
+            closedAt: p.lockedAt?.toISOString() ?? closedByClass?.closedAt,
+            start: p.start.toISOString(),
+            end: p.end.toISOString(),
+            datesConfigured: true,
+            // Fechas del colegio, como las ve en «Año escolar».
+            startsOn: p.startsOn as string | null,
+            endsOn: p.endsOn as string | null,
+          };
+        }),
+      };
+    }
+
     const configuredDates = this.parseBimesterDates(classroom.bimesterDates);
     const currentYear = new Date().getFullYear();
     const selectedYear = Number.isInteger(year) ? Number(year) : currentYear;
@@ -2378,16 +2475,19 @@ class GradeService {
     }));
 
     return {
+      managedBy: 'CLASS' as const,
+      school: null,
       currentBimester,
       closedBimesters,
       selectedYear,
       availableYears,
-      allBimesters: bimesters,
+      allBimesters: bimesters.map((b) => ({ ...b, startsOn: null as string | null, endsOn: null as string | null })),
     };
   }
 
   /** Fija las fechas de un bimestre (no se puede si está cerrado; no pueden solaparse con otro). */
   async setBimesterDates(classroomId: string, period: string, start: Date, end: Date) {
+    await this.assertManagedByClass(classroomId);
     const normalizedPeriod = this.normalizePeriod(period);
     if (normalizedPeriod === 'CURRENT') throw new Error('Periodo invalido. Usa el formato YYYY-B1..B4');
     if (!(start < end)) throw new Error('La fecha de inicio debe ser anterior a la de fin');
@@ -2411,6 +2511,7 @@ class GradeService {
     if (!userId) {
       throw new Error('Usuario no autorizado');
     }
+    await this.assertManagedByClass(classroomId);
 
     const normalizedPeriod = this.normalizePeriod(period);
     if (normalizedPeriod === 'CURRENT') {
@@ -2445,6 +2546,7 @@ class GradeService {
     if (!userId) {
       throw new Error('Usuario no autorizado');
     }
+    await this.assertManagedByClass(classroomId);
 
     const normalizedPeriod = this.normalizePeriod(period);
     if (normalizedPeriod === 'CURRENT') {
@@ -2526,6 +2628,7 @@ class GradeService {
     if (!userId) {
       throw new Error('Usuario no autorizado');
     }
+    await this.assertManagedByClass(classroomId);
 
     const normalizedPeriod = this.normalizePeriod(period);
     if (normalizedPeriod === 'CURRENT') {

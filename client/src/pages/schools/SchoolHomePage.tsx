@@ -84,7 +84,7 @@ export const SchoolHomePage = () => {
   ];
 
   const attention = manager ? [
-    !activeYear && !year.isLoading && { icon: CalendarCheck, title: 'Prepara el año escolar', detail: 'Fechas, bimestres o trimestres y niveles: lo primero de la consola', action: 'Preparar', to: `${base}/anio` },
+    !activeYear && !year.isLoading && { icon: CalendarCheck, title: 'Prepara el año escolar', detail: 'Fechas, bimestres y niveles: lo primero de la consola', action: 'Preparar', to: `${base}/anio` },
     (rosterCounts?.incomplete ?? 0) > 0 && { icon: GraduationCap, title: `${rosterCounts!.incomplete} ${rosterCounts!.incomplete === 1 ? 'estudiante con datos por completar' : 'estudiantes con datos por completar'}`, detail: 'Les falta el DNI o la fecha de nacimiento', action: 'Completar datos', to: `${base}/estudiantes?filtro=incomplete` },
     (rosterCounts?.no_section ?? 0) > 0 && { icon: GraduationCap, title: `${rosterCounts!.no_section} ${rosterCounts!.no_section === 1 ? 'estudiante sin sección' : 'estudiantes sin sección'}`, detail: 'Asígnales su sección desde la ficha', action: 'Ver estudiantes', to: `${base}/estudiantes?filtro=no_section` },
     (overall?.missing ?? 0) > 0 && { icon: GraduationCap, title: `${overall!.missing} ${overall!.missing === 1 ? 'estudiante aún no está en su clase' : 'estudiantes aún no están en sus clases'}`, detail: 'La matrícula automática quedó a medias: sincroniza la clase marcada', action: 'Ver asignaciones', to: `${base}/docentes?vista=asignaciones` },

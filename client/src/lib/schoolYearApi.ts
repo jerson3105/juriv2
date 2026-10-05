@@ -22,6 +22,10 @@ export interface SchoolPeriod {
   startsOn: string;
   endsOn: string;
   status: 'OPEN' | 'REVIEW' | 'LOCKED' | 'PUBLISHED';
+  /** LOCKED: la administración lo cerró en todas las clases (Calificaciones). */
+  lockedAt: string | null;
+  /** Ya empezó (fecha de Lima): se puede cerrar. */
+  started: boolean;
 }
 
 export interface SchoolYearDetail extends SchoolYearSummary {
@@ -59,4 +63,9 @@ export const schoolYearApi = {
     const response = await api.put(`/schools/${schoolId}/years/${yearId}`, data);
     return response.data.data;
   },
+  /** Cierra o reabre un bimestre en todas las clases del colegio. Devuelve el mensaje para el aviso. */
+  closePeriod: async (schoolId: string, yearId: string, code: string): Promise<string> =>
+    (await api.post(`/schools/${schoolId}/years/${yearId}/periods/${code}/close`)).data.message,
+  reopenPeriod: async (schoolId: string, yearId: string, code: string): Promise<string> =>
+    (await api.post(`/schools/${schoolId}/years/${yearId}/periods/${code}/reopen`)).data.message,
 };

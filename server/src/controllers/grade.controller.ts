@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { gradeService } from '../services/grade.service.js';
 import { gradeExportService } from '../services/gradeExport.service.js';
 import { requireClassroomTeacher } from '../utils/access.js';
+import { AppError } from '../utils/errors.js';
 
 type AuthRole = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'PARENT';
 
@@ -88,6 +89,11 @@ const handleValidationError = (res: Response, error: z.ZodError) => {
 };
 
 const handleControllerError = (res: Response, error: unknown, fallbackMessage: string) => {
+  // Los errores esperados (p. ej., bimestres que maneja el colegio) llevan su código.
+  if (error instanceof AppError) {
+    res.status(error.statusCode).json({ success: false, message: error.message });
+    return;
+  }
   console.error(fallbackMessage, error);
 
   const message = error instanceof Error ? error.message : fallbackMessage;

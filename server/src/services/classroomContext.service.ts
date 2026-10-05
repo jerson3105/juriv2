@@ -1,6 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { schoolPeriods, schoolYears, schools } from '../db/schema.js';
+import { setSchoolCurrentPeriod } from './schoolCalendar.service.js';
 
 /**
  * Colegio, año y periodo de una clase, para la cabecera del docente y del estudiante («San Francisco College · 2026 ·
@@ -38,6 +39,8 @@ export const classroomContexts = async (rows: Array<{ id: string; schoolId: stri
       .where(inArray(schoolPeriods.yearId, years.map((y) => y.id)))
     : [];
   const now = today();
+  // Clases cuyo bimestre guardado quedó atrás del colegio (lo leen familias, progreso y exportación).
+  const stale = new Map<string, string>();
   for (const row of rows) {
     const school = schoolRows.find((s) => s.id === row.schoolId && s.isActive);
     const year = school ? years.find((y) => y.schoolId === school.id) : undefined;
@@ -45,6 +48,7 @@ export const classroomContexts = async (rows: Array<{ id: string; schoolId: stri
       const own = periods.filter((p) => p.yearId === year.id).sort((a, b) => a.startsOn.localeCompare(b.startsOn));
       const current = [...own].reverse().find((p) => p.startsOn <= now) ?? own[0];
       const number = current ? Number(current.code.replace(/\D/g, '')) : 0;
+      if (current && year.periodType === 'BIMESTER' && row.currentBimester !== `${year.name}-${current.code}`) stale.set(school.id, `${year.name}-${current.code}`);
       result.set(row.id, {
         school: { id: school.id, name: school.name },
         year: year.name,
@@ -54,5 +58,6 @@ export const classroomContexts = async (rows: Array<{ id: string; schoolId: stri
       result.set(row.id, { school: school ? { id: school.id, name: school.name } : null, ...fromClassBimester(row.currentBimester) });
     }
   }
+  for (const [schoolId, current] of stale) await setSchoolCurrentPeriod(schoolId, current);
   return result;
 };

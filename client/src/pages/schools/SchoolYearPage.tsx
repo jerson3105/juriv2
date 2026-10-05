@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { AlertCircle, Info, Shuffle } from 'lucide-react';
+import { AlertCircle, Info, Lock, LockOpen, Shuffle } from 'lucide-react';
 import { Input } from '../../components/ui/Input';
+import { HomeModal } from '../../components/home/HomeModal';
 import { useSchoolConsole } from '../../components/layout/schoolConsoleContext';
 import { useSchoolPanelData } from '../../components/schools/useSchoolPanelData';
 import { cancelButton, primaryButton } from '../../components/home/homeHelpers';
@@ -15,6 +16,10 @@ import {
 } from '../../lib/schoolYearApi';
 
 type LevelDraft = Record<SchoolLevel, { on: boolean; scale: GradeScale }>;
+
+// «12 oct»: de una fecha AAAA-MM-DD o un instante ISO.
+const shortDay = (value: string) => new Date(value.length === 10 ? `${value}T12:00:00` : value).toLocaleDateString('es', { day: 'numeric', month: 'short' }).replace('.', '');
+const localToday = () => new Date().toLocaleDateString('en-CA');
 interface Draft {
   name: string;
   startsOn: string;
@@ -64,7 +69,10 @@ const newDraft = (gradeLevels: Array<string | null>): Draft => {
   };
 };
 
-/** Año escolar: fechas, bimestres o trimestres (con reparto automático) y niveles con su escala. */
+/**
+ * Año escolar: fechas, bimestres (con reparto automático) y niveles con su escala. Por ahora sin trimestres: Calificaciones
+ * va por bimestres. La administración cierra y reabre cada bimestre en todas las clases del colegio.
+ */
 export const SchoolYearPage = () => {
   const { school, manager, activeYear, yearsLoading } = useSchoolConsole();
   const { classrooms, loadingDetail } = useSchoolPanelData(school, manager);
@@ -110,6 +118,22 @@ const YearForm = ({ year, manager, gradeLevels }: { year: SchoolYearDetail | nul
   const dirty = JSON.stringify(draft) !== JSON.stringify(initial);
   const readOnly = !manager;
   const closedCodes = new Set(year?.periods.filter((p) => p.status !== 'OPEN').map((p) => p.code));
+  const canLock = !!year && manager && year.status === 'ACTIVE';
+  const [confirm, setConfirm] = useState<{ code: string; label: string; action: 'close' | 'reopen'; endsOn: string } | null>(null);
+  const periodAction = useMutation({
+    mutationFn: (input: { code: string; action: 'close' | 'reopen' }) => (input.action === 'close'
+      ? schoolYearApi.closePeriod(school.id, year!.id, input.code)
+      : schoolYearApi.reopenPeriod(school.id, year!.id, input.code)),
+    onSuccess: (message) => {
+      setConfirm(null);
+      void queryClient.invalidateQueries({ queryKey: schoolYearKeys.detail(school.id, year!.id) });
+      // Calificaciones de las clases del colegio.
+      void queryClient.invalidateQueries({ queryKey: ['bimester-status'] });
+      void queryClient.invalidateQueries({ queryKey: ['classroom-grades'] });
+      toast.success(message);
+    },
+    onError: (error) => toast.error(errorMessage(error, 'No se pudo completar')),
+  });
 
   const save = useMutation({
     mutationFn: () => (year ? schoolYearApi.update(school.id, year.id, input) : schoolYearApi.create(school.id, { name: draft.name, ...input })),
@@ -128,10 +152,6 @@ const YearForm = ({ year, manager, gradeLevels }: { year: SchoolYearDetail | nul
   };
   const setPeriod = (index: number, field: 'startsOn' | 'endsOn', value: string) =>
     update({ periods: draft.periods.map((p, i) => (i === index ? { ...p, [field]: value } : p)) });
-  const setType = (periodType: PeriodType) => {
-    if (periodType === draft.periodType) return;
-    update({ periodType, periods: splitPeriods(draft.startsOn, draft.endsOn, periodType) });
-  };
   const setLevel = (level: SchoolLevel, patch: Partial<LevelDraft[SchoolLevel]>) =>
     update({ levels: { ...draft.levels, [level]: { ...draft.levels[level], ...patch } } });
 
@@ -179,21 +199,7 @@ const YearForm = ({ year, manager, gradeLevels }: { year: SchoolYearDetail | nul
       <fieldset className={card} disabled={readOnly}>
         <legend className="sr-only">Periodos</legend>
         <div className="flex flex-wrap items-center gap-3">
-          <h2 className="text-base font-bold text-gray-900 dark:text-white">Periodos</h2>
-          <div className="pg-seg" role="group" aria-label="Tipo de periodo">
-            {(['BIMESTER', 'TRIMESTER'] as PeriodType[]).map((type) => (
-              <button
-                key={type}
-                type="button"
-                className="pg-seg-item pg-focus"
-                aria-pressed={draft.periodType === type}
-                onClick={() => setType(type)}
-                disabled={readOnly || (closedCodes.size > 0 && draft.periodType !== type)}
-              >
-                {type === 'BIMESTER' ? 'Bimestres' : 'Trimestres'}
-              </button>
-            ))}
-          </div>
+          <h2 className="text-base font-bold text-gray-900 dark:text-white">Bimestres</h2>
           <button
             type="button"
             className="pg-btn pg-focus ml-auto"
@@ -204,7 +210,9 @@ const YearForm = ({ year, manager, gradeLevels }: { year: SchoolYearDetail | nul
             Repartir automáticamente
           </button>
         </div>
-        <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Reparte el año en semanas iguales; luego mueve las fechas para las vacaciones.</p>
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+          Reparte el año en semanas iguales; luego mueve las fechas para las vacaciones. Las clases del colegio siguen estos bimestres en Calificaciones{canLock ? ', y aquí se cierran cuando terminan' : ''}.
+        </p>
         <ol className="mt-3 divide-y divide-gray-200 dark:divide-gray-700">
           {draft.periods.map((period, index) => {
             const rowIssues = issues.filter((issue) => issue.index === index);
@@ -223,6 +231,27 @@ const YearForm = ({ year, manager, gradeLevels }: { year: SchoolYearDetail | nul
                     {period.startsOn && period.endsOn && period.endsOn >= period.startsOn ? `${weeksOf(period.startsOn, period.endsOn)} sem.` : '—'}
                   </p>
                 </div>
+                {canLock && (() => {
+                  const saved = year!.periods.find((p) => p.code === period.code);
+                  if (!saved || (saved.status !== 'LOCKED' && !saved.started)) return null;
+                  const pending = dirty || periodAction.isPending;
+                  return saved.status === 'LOCKED' ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                      <span>Cerrado{saved.lockedAt ? ` el ${shortDay(saved.lockedAt)}` : ''}: las notas de las clases no cambian.</span>
+                      <button type="button" className="pg-btn pg-focus" disabled={pending} title={dirty ? 'Guarda o descarta los cambios primero' : undefined}
+                        onClick={() => setConfirm({ code: saved.code, label: name, action: 'reopen', endsOn: saved.endsOn })}>
+                        <LockOpen size={16} aria-hidden="true" />Reabrir
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="mt-2">
+                      <button type="button" className="pg-btn pg-focus" disabled={pending} title={dirty ? 'Guarda o descarta los cambios primero' : undefined}
+                        onClick={() => setConfirm({ code: saved.code, label: name, action: 'close', endsOn: saved.endsOn })}>
+                        <Lock size={16} aria-hidden="true" />Cerrar {name.toLowerCase()}
+                      </button>
+                    </div>
+                  );
+                })()}
                 {rowIssues.map((issue) => (
                   <p
                     key={issue.text}
@@ -283,6 +312,31 @@ const YearForm = ({ year, manager, gradeLevels }: { year: SchoolYearDetail | nul
             <p key={text} className="flex items-center gap-1.5"><AlertCircle size={14} aria-hidden="true" />{text}</p>
           ))}
         </div>
+      )}
+
+      {confirm && (
+        <HomeModal
+          title={confirm.action === 'close' ? `¿Cerrar el ${confirm.label.toLowerCase()} en todo el colegio?` : `¿Reabrir el ${confirm.label.toLowerCase()}?`}
+          onClose={() => setConfirm(null)}
+          footer={<>
+            <button type="button" onClick={() => setConfirm(null)} className={cancelButton}>Cancelar</button>
+            <button type="button" className={primaryButton} disabled={periodAction.isPending} onClick={() => periodAction.mutate({ code: confirm.code, action: confirm.action })}>
+              {confirm.action === 'close' ? <Lock size={16} aria-hidden="true" /> : <LockOpen size={16} aria-hidden="true" />}
+              {periodAction.isPending ? 'Guardando…' : confirm.action === 'close' ? 'Cerrar bimestre' : 'Reabrir'}
+            </button>
+          </>}
+        >
+          {confirm.action === 'close' ? (
+            <ul className="list-disc space-y-1 pl-5 text-sm text-gray-800 dark:text-gray-100">
+              <li>Las notas de todas las clases se calculan por última vez y quedan congeladas.</li>
+              <li>Los docentes pueden seguir escribiendo conclusiones y exportar.</li>
+              {confirm.endsOn >= localToday() && <li>Aún no termina (va hasta el {shortDay(confirm.endsOn)}): lo que pase desde ahora ya no contará para este bimestre.</li>}
+              <li>Si hay que corregir algo, puedes reabrirlo.</li>
+            </ul>
+          ) : (
+            <p className="text-sm text-gray-800 dark:text-gray-100">Las notas de todas las clases vuelven a cambiar con su evidencia hasta que lo cierres otra vez.</p>
+          )}
+        </HomeModal>
       )}
 
       {!readOnly && (

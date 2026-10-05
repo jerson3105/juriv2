@@ -36,6 +36,8 @@ export type AuditAction =
   | 'school.joined_by_invite'
   | 'school.year_created'
   | 'school.year_updated'
+  | 'school.period_closed'
+  | 'school.period_reopened'
   | 'school.sections_created'
   | 'school.section_updated'
   | 'school.section_deleted'

@@ -14,8 +14,9 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida').refin
 const yearBodySchema = z.object({
   startsOn: isoDate,
   endsOn: isoDate,
-  periodType: z.enum(['BIMESTER', 'TRIMESTER'], { errorMap: () => ({ message: 'Elige bimestres o trimestres' }) }),
-  periods: z.array(z.object({ code: z.string().regex(/^[BT][1-4]$/), startsOn: isoDate, endsOn: isoDate }).strict()).min(3, 'Faltan periodos').max(4, 'Sobran periodos'),
+  // Por ahora solo bimestres: Calificaciones aún no trabaja por trimestres.
+  periodType: z.literal('BIMESTER', { errorMap: () => ({ message: 'Por ahora el año escolar va por bimestres' }) }),
+  periods: z.array(z.object({ code: z.string().regex(/^B[1-4]$/), startsOn: isoDate, endsOn: isoDate }).strict()).min(4, 'Faltan bimestres').max(4, 'Sobran bimestres'),
   levels: z.array(z.object({
     level: z.enum(SCHOOL_LEVELS, { errorMap: () => ({ message: 'Nivel inválido' }) }),
     gradeScale: z.enum(['LITERAL', 'VIGESIMAL'], { errorMap: () => ({ message: 'Escala inválida' }) }),
@@ -27,6 +28,7 @@ const createYearSchema = yearBodySchema.extend({
 }).strict();
 
 const yearIdSchema = z.string().uuid();
+const periodCodeSchema = z.enum(['B1', 'B2', 'B3', 'B4']);
 
 const sendError = (res: Response, error: unknown, fallback: string) => {
   if (error instanceof z.ZodError) {
@@ -98,6 +100,38 @@ export const schoolYearController = {
       res.json({ success: true, data, message: 'Año escolar guardado' });
     } catch (error) {
       return sendError(res, error, 'Error al guardar el año escolar');
+    }
+  },
+
+  // POST /schools/:schoolId/years/:yearId/periods/:code/close — cerrar un bimestre en todas las clases (administración)
+  async closePeriod(req: Request, res: Response) {
+    try {
+      const { schoolId } = req.params;
+      if (!(await requireSchoolRole(req, res, schoolId, SCHOOL_MANAGER_ROLES))) return;
+      const yearId = yearIdSchema.safeParse(req.params.yearId);
+      const code = periodCodeSchema.safeParse(req.params.code);
+      if (!yearId.success || !code.success) return res.status(404).json({ success: false, message: 'Bimestre no encontrado' });
+      const data = await schoolYearService.closePeriod(schoolId, yearId.data, code.data, req.user!.id);
+      await auditRequest(req, { action: 'school.period_closed', schoolId, target: { type: 'school_year', id: yearId.data }, metadata: { code: data.code, classes: data.classes } });
+      res.json({ success: true, data, message: `${data.label} cerrado en ${data.classes} ${data.classes === 1 ? 'clase' : 'clases'}` });
+    } catch (error) {
+      return sendError(res, error, 'Error al cerrar el bimestre');
+    }
+  },
+
+  // POST /schools/:schoolId/years/:yearId/periods/:code/reopen — reabrir un bimestre en todas las clases (administración)
+  async reopenPeriod(req: Request, res: Response) {
+    try {
+      const { schoolId } = req.params;
+      if (!(await requireSchoolRole(req, res, schoolId, SCHOOL_MANAGER_ROLES))) return;
+      const yearId = yearIdSchema.safeParse(req.params.yearId);
+      const code = periodCodeSchema.safeParse(req.params.code);
+      if (!yearId.success || !code.success) return res.status(404).json({ success: false, message: 'Bimestre no encontrado' });
+      const data = await schoolYearService.reopenPeriod(schoolId, yearId.data, code.data);
+      await auditRequest(req, { action: 'school.period_reopened', schoolId, target: { type: 'school_year', id: yearId.data }, metadata: { code: data.code, classes: data.classes } });
+      res.json({ success: true, data, message: `${data.label} reabierto: las notas vuelven a cambiar` });
+    } catch (error) {
+      return sendError(res, error, 'Error al reabrir el bimestre');
     }
   },
 };
