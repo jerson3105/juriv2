@@ -208,7 +208,7 @@ export class SchoolService {
         gradeLevel: classrooms.gradeLevel,
         curriculumAreaId: classrooms.curriculumAreaId,
         curriculumAreaName: curriculumAreas.name,
-        studentCount: sql<number>`(SELECT COUNT(*) FROM student_profiles WHERE classroom_id = ${classrooms.id})`,
+        studentCount: sql<number>`(SELECT COUNT(*) FROM student_profiles WHERE classroom_id = ${classrooms.id} AND is_active = 1)`,
       })
       .from(classrooms)
       .leftJoin(curriculumAreas, eq(classrooms.curriculumAreaId, curriculumAreas.id))
@@ -329,7 +329,7 @@ export class SchoolService {
         useCompetencies: classrooms.useCompetencies,
         curriculumAreaId: classrooms.curriculumAreaId,
         curriculumAreaName: curriculumAreas.name,
-        studentCount: sql<number>`(SELECT COUNT(*) FROM student_profiles WHERE classroom_id = ${classrooms.id})`,
+        studentCount: sql<number>`(SELECT COUNT(*) FROM student_profiles WHERE classroom_id = ${classrooms.id} AND is_active = 1)`,
         createdAt: classrooms.createdAt,
       })
       .from(classrooms)
@@ -893,7 +893,7 @@ export class SchoolService {
       avgHp: sql<number>`COALESCE(AVG(${studentProfiles.hp}), 0)`,
       avgGp: sql<number>`COALESCE(AVG(${studentProfiles.gp}), 0)`,
     }).from(studentProfiles)
-      .where(inArray(studentProfiles.classroomId, classroomIds));
+      .where(and(inArray(studentProfiles.classroomId, classroomIds), eq(studentProfiles.isActive, true)));
 
     const studentIds = await this.getSchoolStudentIds(classroomIds);
 
@@ -1035,7 +1035,7 @@ export class SchoolService {
         hp: studentProfiles.hp,
         gp: studentProfiles.gp,
       }).from(studentProfiles)
-        .where(eq(studentProfiles.classroomId, cls.id));
+        .where(and(eq(studentProfiles.classroomId, cls.id), eq(studentProfiles.isActive, true)));
 
       const studentIds = students.map(s => s.id);
       const studentCount = students.length;
@@ -1181,7 +1181,7 @@ export class SchoolService {
       lastName: users.lastName,
     }).from(studentProfiles)
       .leftJoin(users, eq(studentProfiles.userId, users.id))
-      .where(inArray(studentProfiles.classroomId, classroomIds));
+      .where(and(inArray(studentProfiles.classroomId, classroomIds), eq(studentProfiles.isActive, true)));
 
     const atRisk = [];
 

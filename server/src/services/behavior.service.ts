@@ -326,7 +326,8 @@ export class BehaviorService {
     const students = await db.query.studentProfiles.findMany({
       where: and(
         inArray(studentProfiles.id, data.studentIds),
-        eq(studentProfiles.classroomId, behavior.classroomId)
+        eq(studentProfiles.classroomId, behavior.classroomId),
+        eq(studentProfiles.isActive, true)
       ),
     });
 

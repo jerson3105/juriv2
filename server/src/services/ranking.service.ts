@@ -33,6 +33,7 @@ class RankingService {
   async getDeltas(classroomId: string, since: Date, withTimeline: boolean): Promise<RankingDeltas> {
     const inPeriod = and(
       eq(studentProfiles.classroomId, classroomId),
+      eq(studentProfiles.isActive, true),
       gte(pointLogs.createdAt, since),
       eq(pointLogs.isReverted, false),
     );
@@ -85,6 +86,7 @@ class RankingService {
       .innerJoin(studentProfiles, eq(pointLogs.studentId, studentProfiles.id))
       .where(and(
         eq(studentProfiles.classroomId, classroomId),
+        eq(studentProfiles.isActive, true),
         gte(pointLogs.createdAt, today),
         eq(pointLogs.isReverted, false),
         eq(pointLogs.action, 'ADD'),
@@ -105,6 +107,7 @@ class RankingService {
       .innerJoin(studentProfiles, eq(pointLogs.studentId, studentProfiles.id))
       .where(and(
         eq(studentProfiles.classroomId, classroomId),
+        eq(studentProfiles.isActive, true),
         isNotNull(studentProfiles.teamId),
         gte(pointLogs.createdAt, today),
         eq(pointLogs.isReverted, false),

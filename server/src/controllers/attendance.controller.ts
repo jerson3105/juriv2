@@ -299,11 +299,11 @@ export const attendanceController = {
         return res.status(404).json({ success: false, message: 'Clase no encontrada' });
       }
 
-      // Obtener todos los estudiantes de la clase
+      // Obtener todos los estudiantes de la clase (sin retirados ni trasladados)
       const students = await db
         .select()
         .from(studentProfiles)
-        .where(eq(studentProfiles.classroomId, classroomId));
+        .where(and(eq(studentProfiles.classroomId, classroomId), eq(studentProfiles.isActive, true)));
 
       // Obtener todos los registros de asistencia
       const allRecords = await attendanceService.getAttendanceByDateRange(

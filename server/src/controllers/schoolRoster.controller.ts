@@ -1,6 +1,7 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { schoolRosterService, type RosterFilter } from '../services/schoolRoster.service.js';
+import { schoolStudentMoveService, TRANSFER_REASONS, WITHDRAWAL_REASONS } from '../services/schoolStudentMove.service.js';
 import { SCHOOL_LEVELS } from '../services/schoolYear.service.js';
 import { requireSchoolRole, SCHOOL_MANAGER_ROLES } from '../utils/access.js';
 import { auditRequest } from '../utils/audit.js';
@@ -59,6 +60,23 @@ const revealSchema = z.object({
 }).strict();
 
 const idSchema = z.string().uuid();
+
+// Traslado, retiro y reincorporación: motivo de una lista fija; la nota es interna (solo la administración la ve).
+const moveNote = z.string().max(255, 'La nota: hasta 255 caracteres').nullable().optional();
+const sectionIdSchema = z.string({ required_error: 'Elige la sección' }).uuid('Elige la sección');
+const transferSchema = z.object({
+  sectionId: sectionIdSchema,
+  effectiveDate: isoDate,
+  reason: z.enum(TRANSFER_REASONS, { errorMap: () => ({ message: 'Elige el motivo del traslado' }) }),
+  note: moveNote,
+}).strict();
+const withdrawSchema = z.object({
+  effectiveDate: isoDate,
+  reason: z.enum(WITHDRAWAL_REASONS, { errorMap: () => ({ message: 'Elige el motivo del retiro' }) }),
+  note: moveNote,
+}).strict();
+const reinstateSchema = z.object({ sectionId: sectionIdSchema.nullable().optional(), effectiveDate: isoDate, note: moveNote }).strict();
+const undoSchema = z.object({ moveId: z.string().uuid('Traslado no encontrado') }).strict();
 
 const sendError = (res: Response, error: unknown, fallback: string) => {
   if (error instanceof z.ZodError) {
@@ -153,6 +171,121 @@ export const schoolRosterController = {
       res.json({ success: true, data: detail, message: changed.length > 0 ? 'Datos guardados' : 'No había cambios' });
     } catch (error) {
       return sendError(res, error, 'Error al guardar los datos');
+    }
+  },
+
+  // GET /schools/:schoolId/years/:yearId/students/:studentId/moves — sus movimientos y si se puede deshacer el último traslado
+  async moves(req: Request, res: Response) {
+    try {
+      const scope = await managerScope(req, res);
+      if (!scope) return;
+      const studentId = studentIdOf(req, res);
+      if (!studentId) return;
+      const [history, undo] = await Promise.all([
+        schoolStudentMoveService.history(scope.schoolId, studentId),
+        schoolStudentMoveService.undoState(scope.schoolId, scope.yearId, studentId),
+      ]);
+      res.json({ success: true, data: { history, undo } });
+    } catch (error) {
+      return sendError(res, error, 'Error al obtener sus movimientos');
+    }
+  },
+
+  // GET /schools/:schoolId/years/:yearId/students/:studentId/transfer-preview?sectionId= — «Qué cambia»
+  async transferPreview(req: Request, res: Response) {
+    try {
+      const scope = await managerScope(req, res);
+      if (!scope) return;
+      const studentId = studentIdOf(req, res);
+      if (!studentId) return;
+      const { sectionId } = z.object({ sectionId: sectionIdSchema }).parse(req.query);
+      res.json({ success: true, data: await schoolStudentMoveService.preview(scope.schoolId, scope.yearId, studentId, sectionId) });
+    } catch (error) {
+      return sendError(res, error, 'Error al preparar el traslado');
+    }
+  },
+
+  // POST /schools/:schoolId/years/:yearId/students/:studentId/transfer — trasladar a otra sección
+  async transfer(req: Request, res: Response) {
+    try {
+      const scope = await managerScope(req, res);
+      if (!scope) return;
+      const studentId = studentIdOf(req, res);
+      if (!studentId) return;
+      const input = transferSchema.parse(req.body);
+      const result = await schoolStudentMoveService.transfer(scope.schoolId, scope.yearId, studentId, req.user!.id, input);
+      await auditRequest(req, {
+        action: 'student.transferred',
+        schoolId: scope.schoolId,
+        target: { type: 'school_student', id: studentId },
+        metadata: { moveId: result.moveId, toSection: input.sectionId, reason: input.reason },
+      });
+      res.json({ success: true, data: await schoolRosterService.get(scope.schoolId, scope.yearId, studentId), message: 'Listo: ya está en su sección nueva' });
+    } catch (error) {
+      return sendError(res, error, 'Error al trasladar');
+    }
+  },
+
+  // POST /schools/:schoolId/years/:yearId/students/:studentId/transfer/undo — deshacer su último traslado
+  async undoTransfer(req: Request, res: Response) {
+    try {
+      const scope = await managerScope(req, res);
+      if (!scope) return;
+      const studentId = studentIdOf(req, res);
+      if (!studentId) return;
+      const { moveId } = undoSchema.parse(req.body);
+      await schoolStudentMoveService.undoTransfer(scope.schoolId, scope.yearId, studentId, req.user!.id, moveId);
+      await auditRequest(req, {
+        action: 'student.transfer_undone',
+        schoolId: scope.schoolId,
+        target: { type: 'school_student', id: studentId },
+        metadata: { moveId },
+      });
+      res.json({ success: true, data: await schoolRosterService.get(scope.schoolId, scope.yearId, studentId), message: 'Traslado deshecho: volvió a su sección' });
+    } catch (error) {
+      return sendError(res, error, 'Error al deshacer el traslado');
+    }
+  },
+
+  // POST /schools/:schoolId/years/:yearId/students/:studentId/withdraw — retiro (baja blanda)
+  async withdraw(req: Request, res: Response) {
+    try {
+      const scope = await managerScope(req, res);
+      if (!scope) return;
+      const studentId = studentIdOf(req, res);
+      if (!studentId) return;
+      const input = withdrawSchema.parse(req.body);
+      const result = await schoolStudentMoveService.withdraw(scope.schoolId, scope.yearId, studentId, req.user!.id, input);
+      await auditRequest(req, {
+        action: 'student.withdrawn',
+        schoolId: scope.schoolId,
+        target: { type: 'school_student', id: studentId },
+        metadata: { moveId: result.moveId, reason: input.reason, classes: result.classes },
+      });
+      res.json({ success: true, data: await schoolRosterService.get(scope.schoolId, scope.yearId, studentId), message: 'Retiro registrado' });
+    } catch (error) {
+      return sendError(res, error, 'Error al registrar el retiro');
+    }
+  },
+
+  // POST /schools/:schoolId/years/:yearId/students/:studentId/reinstate — reincorporación
+  async reinstate(req: Request, res: Response) {
+    try {
+      const scope = await managerScope(req, res);
+      if (!scope) return;
+      const studentId = studentIdOf(req, res);
+      if (!studentId) return;
+      const input = reinstateSchema.parse(req.body);
+      const result = await schoolStudentMoveService.reinstate(scope.schoolId, scope.yearId, studentId, req.user!.id, input);
+      await auditRequest(req, {
+        action: 'student.reinstated',
+        schoolId: scope.schoolId,
+        target: { type: 'school_student', id: studentId },
+        metadata: { moveId: result.moveId, toSection: input.sectionId ?? null, recovered: result.recovered },
+      });
+      res.json({ success: true, data: await schoolRosterService.get(scope.schoolId, scope.yearId, studentId), message: 'Volvió al colegio' });
+    } catch (error) {
+      return sendError(res, error, 'Error al reincorporar');
     }
   },
 

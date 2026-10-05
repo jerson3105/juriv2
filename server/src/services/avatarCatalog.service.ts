@@ -580,6 +580,18 @@ class AvatarCatalogService {
     return ensurePriceBase(classroom);
   }
 
+  /**
+   * El mismo oro semanal sin fijar la base (solo lecturas): se puede pedir con la fila de la clase bloqueada en otra
+   * transacción, como la matrícula automática al convertir el oro de un traslado. null si la clase no existe.
+   */
+  async peekWeeklyBase(classroomId: string): Promise<number | null> {
+    const classroom = await loadClassroom(classroomId);
+    if (!classroom) return null;
+    if (classroom.avatarPriceBase) return classroom.avatarPriceBase;
+    const cached = weeklyCache.get(classroom.id);
+    return (cached && Date.now() - cached.at < 600_000 ? cached.value : await avatarWeekly(classroom.id)).base;
+  }
+
   // ==================== DOCENTE ====================
 
   /** Clases del docente para «Aplicar a mis otras clases»; todas deben ser suyas. */

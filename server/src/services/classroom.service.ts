@@ -513,7 +513,7 @@ export class ClassroomService {
         count: count(),
       })
       .from(studentProfiles)
-      .where(inArray(studentProfiles.classroomId, classroomIds))
+      .where(and(inArray(studentProfiles.classroomId, classroomIds), eq(studentProfiles.isActive, true)))
       .groupBy(studentProfiles.classroomId);
 
     // Crear mapa de conteos
@@ -588,7 +588,8 @@ export class ClassroomService {
     }).from(studentProfiles)
       .leftJoin(users, eq(studentProfiles.userId, users.id))
       .leftJoin(teams, eq(studentProfiles.teamId, teams.id))
-      .where(eq(studentProfiles.classroomId, classroomId));
+      // Retirados y trasladados ya no son de la clase: su historial queda en la ficha del colegio.
+      .where(and(eq(studentProfiles.classroomId, classroomId), eq(studentProfiles.isActive, true)));
   }
 
   async update(classroomId: string, teacherId: string, data: UpdateClassroomData) {

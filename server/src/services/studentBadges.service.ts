@@ -21,7 +21,7 @@ import {
   type BadgeConditionShape,
 } from '../utils/badgeConditions.js';
 
-export type AwardOrigin = 'TEACHER' | 'AUTO' | 'STORY' | 'ALBUM';
+export type AwardOrigin = 'TEACHER' | 'AUTO' | 'STORY' | 'ALBUM' | 'TRANSFER';
 type Unit = 'times' | 'xp' | 'level' | 'purchases';
 
 const secondKey = (date: Date) => new Date(date).toISOString().slice(0, 19);
@@ -161,7 +161,9 @@ class StudentBadgesService {
       entry.rows.push(row.award);
       earnedById.set(row.badge.id, entry);
     }
-    const originOf = (award: { awardedBy: string | null; awardReason: string | null }): AwardOrigin => {
+    const originOf = (award: { awardedBy: string | null; awardReason: string | null; originBadgeId: string | null }): AwardOrigin => {
+      // Copia que trajo un traslado («Traída de 3.° C»).
+      if (award.originBadgeId) return 'TRANSFER';
       const reason = award.awardReason ?? '';
       if (reason.startsWith('Historia:')) return 'STORY';
       if (!award.awardedBy && reason.startsWith('Álbum completado:')) return 'ALBUM';

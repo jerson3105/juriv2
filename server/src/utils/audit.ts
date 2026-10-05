@@ -57,7 +57,11 @@ export type AuditAction =
   | 'student.pin_locked'
   | 'student.enrolled'
   | 'student.data_updated'
-  | 'student.document_revealed';
+  | 'student.document_revealed'
+  | 'student.transferred'
+  | 'student.transfer_undone'
+  | 'student.withdrawn'
+  | 'student.reinstated';
 
 export type AuditMetadata = Record<string, string | number | boolean | null>;
 

@@ -158,7 +158,7 @@ class BadgeService {
     })
       .from(studentBadges)
       .innerJoin(studentProfiles, eq(studentBadges.studentProfileId, studentProfiles.id))
-      .where(eq(studentProfiles.classroomId, classroomId));
+      .where(and(eq(studentProfiles.classroomId, classroomId), eq(studentProfiles.isActive, true)));
 
     const grouped = new Map<string, { studentProfileId: string; badgeId: string; count: number; lastStudentBadgeId: string; lastAwardedAt: Date }>();
     for (const row of rows) {
@@ -255,7 +255,7 @@ class BadgeService {
     const classroomBadges = await this.getClassroomBadges(classroomId);
     
     // Obtener estudiantes de la clase
-    const students = await db.select().from(studentProfiles).where(eq(studentProfiles.classroomId, classroomId));
+    const students = await db.select().from(studentProfiles).where(and(eq(studentProfiles.classroomId, classroomId), eq(studentProfiles.isActive, true)));
     
     if (students.length === 0) {
       return {
@@ -429,7 +429,7 @@ class BadgeService {
       })
       .from(studentProfiles)
       .leftJoin(users, eq(studentProfiles.userId, users.id))
-      .where(eq(studentProfiles.classroomId, classroomId));
+      .where(and(eq(studentProfiles.classroomId, classroomId), eq(studentProfiles.isActive, true)));
 
     if (students.length === 0) {
       return {

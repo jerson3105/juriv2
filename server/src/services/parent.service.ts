@@ -359,7 +359,8 @@ class ParentService {
     .innerJoin(classrooms, eq(studentProfiles.classroomId, classrooms.id))
     .where(and(
       eq(parentStudentLinks.parentProfileId, parentProfileId),
-      eq(parentStudentLinks.status, 'ACTIVE')
+      eq(parentStudentLinks.status, 'ACTIVE'),
+      eq(studentProfiles.isActive, true)
     ));
 
     if (links.length === 0) return [];

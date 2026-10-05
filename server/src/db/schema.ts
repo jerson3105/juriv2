@@ -1190,6 +1190,8 @@ export const studentBadges = mysqlTable('student_badges', {
   awardedBy: varchar('awarded_by', { length: 36 }),
   awardReason: varchar('award_reason', { length: 255 }),
   isDisplayed: boolean('is_displayed').notNull().default(false),
+  // Copia que trajo un traslado: la insignia original (la primera de la cadena). null = ganada aquí.
+  originBadgeId: varchar('origin_badge_id', { length: 36 }),
   // Nota: Sin restricción única para permitir insignias acumulables
 });
 
@@ -3250,4 +3252,59 @@ export const schoolWorkshopStudents = mysqlTable('school_workshop_students', {
 }, (table) => ({
   pk: primaryKey({ columns: [table.workshopId, table.studentId] }),
   studentIdx: index('idx_school_workshop_students_student').on(table.studentId),
+}));
+
+// Movimientos del estudiante (traslado, retiro, reincorporación). La nota solo la ve la administración; un traslado se
+// deshace mientras el estudiante no reciba puntos ni notas en su sección nueva.
+export const studentMoveKindEnum = mysqlEnum('kind', ['TRANSFER', 'WITHDRAWAL', 'REINSTATEMENT']);
+export const schoolStudentMoves = mysqlTable('school_student_moves', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  schoolId: varchar('school_id', { length: 36 }).notNull(),
+  yearId: varchar('year_id', { length: 36 }).notNull(),
+  studentId: varchar('student_id', { length: 36 }).notNull(),
+  kind: studentMoveKindEnum.notNull(),
+  fromSectionId: varchar('from_section_id', { length: 36 }),
+  toSectionId: varchar('to_section_id', { length: 36 }),
+  reason: varchar('reason', { length: 24 }).notNull(),
+  note: varchar('note', { length: 255 }),
+  effectiveDate: date('effective_date', { mode: 'string' }).notNull(),
+  actorUserId: varchar('actor_user_id', { length: 36 }).notNull(),
+  createdAt: datetime('created_at', { fsp: 3 }).notNull(),
+  undoneAt: datetime('undone_at', { fsp: 3 }),
+  undoneBy: varchar('undone_by', { length: 36 }),
+}, (table) => ({
+  studentIdx: index('idx_school_student_moves_student').on(table.studentId, table.createdAt),
+  schoolIdx: index('idx_school_student_moves_school').on(table.schoolId, table.createdAt),
+}));
+
+// Perfiles de cada movimiento: el que quedó inactivo (origen) y adónde llegó su progreso (destino). Un origen de un área
+// sin destino espera la clase de esa área en la sección nueva. snapshot: cómo estaba un destino que volvió a activarse.
+export interface MoveTargetSnapshot {
+  xp: number; gp: number; hp: number; level: number; restingSince: string | null;
+  characterName: string | null; characterClass: string; characterClassId: string | null;
+  avatarGender: 'MALE' | 'FEMALE'; avatarGiftAt: string | null;
+  shopGoalItemId: string | null; shopGoalKind: 'ITEM' | 'AVATAR' | null;
+  homeSeenAt: string | null; celebratedAt: string | null;
+  equipped: Array<{ avatarItemId: string; slot: string }>;
+  addedPurchaseIds: string[]; addedBadgeIds: string[]; addedLinkIds: string[];
+}
+export const schoolMoveProfiles = mysqlTable('school_move_profiles', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  moveId: varchar('move_id', { length: 36 }).notNull(),
+  schoolId: varchar('school_id', { length: 36 }).notNull(),
+  studentId: varchar('student_id', { length: 36 }).notNull(),
+  areaId: varchar('area_id', { length: 36 }),
+  sourceProfileId: varchar('source_profile_id', { length: 36 }),
+  sourceLabel: varchar('source_label', { length: 60 }),
+  targetProfileId: varchar('target_profile_id', { length: 36 }),
+  targetReactivated: boolean('target_reactivated').notNull().default(false),
+  targetXp: int('target_xp'),
+  targetGp: int('target_gp'),
+  snapshot: json('snapshot').$type<MoveTargetSnapshot | { reactivatedOnly: true }>(),
+  appliedAt: datetime('applied_at', { fsp: 3 }),
+  createdAt: datetime('created_at', { fsp: 3 }).notNull(),
+}, (table) => ({
+  moveIdx: index('idx_school_move_profiles_move').on(table.moveId),
+  pendingIdx: index('idx_school_move_profiles_pending').on(table.studentId, table.areaId, table.appliedAt),
+  targetIdx: index('idx_school_move_profiles_target').on(table.targetProfileId),
 }));

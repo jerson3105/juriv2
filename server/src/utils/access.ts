@@ -49,7 +49,7 @@ export const teacherOwnsClassroom = async (
   return !!row;
 };
 
-/** ¿El perfil de estudiante `studentProfileId` pertenece al usuario `userId`? */
+/** ¿El perfil de estudiante `studentProfileId` es del usuario `userId` y sigue activo? (retirado o trasladado: ya no opera con él) */
 export const userOwnsStudentProfile = async (
   userId: string,
   studentProfileId: string
@@ -57,7 +57,7 @@ export const userOwnsStudentProfile = async (
   const [row] = await db
     .select({ id: studentProfiles.id })
     .from(studentProfiles)
-    .where(and(eq(studentProfiles.id, studentProfileId), eq(studentProfiles.userId, userId)));
+    .where(and(eq(studentProfiles.id, studentProfileId), eq(studentProfiles.userId, userId), eq(studentProfiles.isActive, true)));
   return !!row;
 };
 
@@ -69,7 +69,7 @@ export const studentInClassroom = async (
   const [row] = await db
     .select({ id: studentProfiles.id })
     .from(studentProfiles)
-    .where(and(eq(studentProfiles.userId, userId), eq(studentProfiles.classroomId, classroomId)));
+    .where(and(eq(studentProfiles.userId, userId), eq(studentProfiles.classroomId, classroomId), eq(studentProfiles.isActive, true)));
   return !!row;
 };
 
@@ -174,7 +174,7 @@ export const classroomIdOfCharacterClass = (characterClassId: string) =>
 /** Clase de una solicitud de uso de artículo de la tienda. */
 export const classroomIdOfItemUsage = (usageId: string) => classroomIdById(itemUsages, usageId);
 
-/** ¿Todos los perfiles de estudiante indicados pertenecen a la clase? */
+/** ¿Todos los perfiles indicados son de la clase y siguen activos? (retirados y trasladados no reciben acciones) */
 export const studentsBelongToClassroom = async (
   studentProfileIds: string[],
   classroomId: string
@@ -187,7 +187,7 @@ export const studentsBelongToClassroom = async (
   const rows = await db
     .select({ id: studentProfiles.id })
     .from(studentProfiles)
-    .where(and(eq(studentProfiles.classroomId, classroomId), inArray(studentProfiles.id, unique)));
+    .where(and(eq(studentProfiles.classroomId, classroomId), inArray(studentProfiles.id, unique), eq(studentProfiles.isActive, true)));
   return rows.length === unique.length;
 };
 

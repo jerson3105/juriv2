@@ -28,7 +28,7 @@ class RecoveryService {
   async listResting(classroomId: string) {
     const resting = await db.select({ id: studentProfiles.id, restingSince: studentProfiles.restingSince })
       .from(studentProfiles)
-      .where(and(eq(studentProfiles.classroomId, classroomId), isNotNull(studentProfiles.restingSince)));
+      .where(and(eq(studentProfiles.classroomId, classroomId), isNotNull(studentProfiles.restingSince), eq(studentProfiles.isActive, true)));
     const missions = resting.length
       ? await db.select().from(recoveryMissions)
         .where(and(inArray(recoveryMissions.studentProfileId, resting.map((r) => r.id)), eq(recoveryMissions.status, 'ASSIGNED')))
@@ -51,7 +51,7 @@ class RecoveryService {
   async assign(classroomId: string, studentId: string, teacherId: string, text: string, complete: boolean) {
     const [student] = await db.select({ id: studentProfiles.id, hp: studentProfiles.hp, userId: studentProfiles.userId })
       .from(studentProfiles)
-      .where(and(eq(studentProfiles.id, studentId), eq(studentProfiles.classroomId, classroomId)));
+      .where(and(eq(studentProfiles.id, studentId), eq(studentProfiles.classroomId, classroomId), eq(studentProfiles.isActive, true)));
     if (!student) throw new NotFoundError('Estudiante no encontrado en esta clase');
     if (student.hp > 0) throw new ConflictError('Este alumno ya no está descansando');
 

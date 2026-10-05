@@ -78,6 +78,13 @@ router.get('/:schoolId/years/:yearId/students', authorize('TEACHER'), schoolRost
 router.post('/:schoolId/years/:yearId/students', authorize('TEACHER'), schoolRosterController.create);
 router.get('/:schoolId/years/:yearId/students/:studentId', authorize('TEACHER'), schoolRosterController.get);
 router.patch('/:schoolId/years/:yearId/students/:studentId', authorize('TEACHER'), schoolRosterController.update);
+// Traslado (con vista previa y deshacer), retiro y reincorporación (administración)
+router.get('/:schoolId/years/:yearId/students/:studentId/moves', authorize('TEACHER'), schoolRosterController.moves);
+router.get('/:schoolId/years/:yearId/students/:studentId/transfer-preview', authorize('TEACHER'), schoolRosterController.transferPreview);
+router.post('/:schoolId/years/:yearId/students/:studentId/transfer', authorize('TEACHER'), schoolRosterController.transfer);
+router.post('/:schoolId/years/:yearId/students/:studentId/transfer/undo', authorize('TEACHER'), schoolRosterController.undoTransfer);
+router.post('/:schoolId/years/:yearId/students/:studentId/withdraw', authorize('TEACHER'), schoolRosterController.withdraw);
+router.post('/:schoolId/years/:yearId/students/:studentId/reinstate', authorize('TEACHER'), schoolRosterController.reinstate);
 router.post('/:schoolId/students/:studentId/document/reveal', authorize('TEACHER'), schoolRosterController.revealDocument);
 
 // Armar el padrón desde las clases

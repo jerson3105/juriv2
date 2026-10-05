@@ -406,7 +406,7 @@ class EventsService {
     const students = await db
       .select()
       .from(studentProfiles)
-      .where(eq(studentProfiles.classroomId, classroomId));
+      .where(and(eq(studentProfiles.classroomId, classroomId), eq(studentProfiles.isActive, true)));
 
     if (students.length === 0) {
       return { success: false, message: 'No hay estudiantes en la clase' };
@@ -560,7 +560,7 @@ class EventsService {
     const students = await db
       .select()
       .from(studentProfiles)
-      .where(eq(studentProfiles.classroomId, classroomId));
+      .where(and(eq(studentProfiles.classroomId, classroomId), eq(studentProfiles.isActive, true)));
 
     if (students.length === 0) {
       return { success: false, message: 'No hay estudiantes en la clase' };
@@ -754,7 +754,7 @@ class EventsService {
     const students = await db
       .select()
       .from(studentProfiles)
-      .where(eq(studentProfiles.classroomId, classroomId));
+      .where(and(eq(studentProfiles.classroomId, classroomId), eq(studentProfiles.isActive, true)));
 
     if (students.length === 0) {
       return { success: false, message: 'No hay estudiantes en la clase' };
@@ -819,7 +819,8 @@ class EventsService {
       .from(studentProfiles)
       .where(and(
         inArray(studentProfiles.id, studentIds),
-        eq(studentProfiles.classroomId, classroomId)
+        eq(studentProfiles.classroomId, classroomId),
+        eq(studentProfiles.isActive, true)
       ));
 
     if (students.length === 0) {

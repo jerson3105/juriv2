@@ -56,7 +56,7 @@ const displayName = (s: { characterName: string | null; realName: string | null 
 class CorreoService {
   async create(classroomId: string, teacherId: string, studentIds: string[], prompt: string, mode: CorreoMode) {
     const rows = await db.select({ id: studentProfiles.id }).from(studentProfiles)
-      .where(and(eq(studentProfiles.classroomId, classroomId), inArray(studentProfiles.id, [...new Set(studentIds)])));
+      .where(and(eq(studentProfiles.classroomId, classroomId), inArray(studentProfiles.id, [...new Set(studentIds)]), eq(studentProfiles.isActive, true)));
     if (rows.length < 2) throw new ValidationError('Se necesitan al menos 2 alumnos presentes');
     const state: CorreoState = { prompt, mode, pairs: secretStars(rows.map((r) => r.id)), delivered: [], announced: [] };
     return activityService.create(classroomId, teacherId, 'CORREO', prompt.slice(0, 120), state);

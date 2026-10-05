@@ -57,6 +57,92 @@ interface UpdateTeacherStudentProfileData {
 
 const LEGACY_CHARACTER_CLASSES = ['GUARDIAN', 'ARCANE', 'EXPLORER', 'ALCHEMIST'] as const;
 
+/**
+ * Borra un perfil de estudiante y todo lo suyo (puntos, prendas, notas, insignias, rachas, asistencia, compras,
+ * expediciones, coleccionables, pergaminos y avisos de esa clase). Lo usan quitar a un alumno y deshacer un traslado.
+ */
+export const deleteStudentProfileData = async (
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  profile: { id: string; userId: string | null; classroomId: string },
+) => {
+  const studentId = profile.id;
+  const classroomId = profile.classroomId;
+  // 1. Point logs
+  await tx.delete(pointLogs).where(eq(pointLogs.studentId, studentId));
+  await tx.delete(levelUpLogs).where(eq(levelUpLogs.studentProfileId, studentId));
+
+  // 2. Avatar purchases & equipped items
+  await tx.delete(studentAvatarPurchases).where(eq(studentAvatarPurchases.studentProfileId, studentId));
+  await tx.delete(studentEquippedItems).where(eq(studentEquippedItems.studentProfileId, studentId));
+
+  // 3. Grades & activity scores
+  await tx.delete(studentGrades).where(eq(studentGrades.studentProfileId, studentId));
+  await tx.delete(studentActivityScores).where(eq(studentActivityScores.studentProfileId, studentId));
+
+  // 4. Badges
+  await tx.delete(badgeProgress).where(eq(badgeProgress.studentProfileId, studentId));
+  await tx.delete(studentBadges).where(eq(studentBadges.studentProfileId, studentId));
+
+  // 5. Login streaks & student streaks
+  await tx.delete(loginStreaks).where(eq(loginStreaks.studentProfileId, studentId));
+  await tx.delete(studentStreaks).where(eq(studentStreaks.studentProfileId, studentId));
+
+  // 6. Attendance
+  await tx.delete(attendanceRecords).where(eq(attendanceRecords.studentProfileId, studentId));
+
+  // 7. Purchases & item usages
+  const studentPurchases = await tx.query.purchases.findMany({
+    where: eq(purchases.studentId, studentId),
+    columns: { id: true },
+  });
+  const purchaseIds = studentPurchases.map(p => p.id);
+  if (purchaseIds.length > 0) {
+    await tx.delete(itemUsages).where(inArray(itemUsages.purchaseId, purchaseIds));
+  }
+  await tx.delete(purchases).where(eq(purchases.studentId, studentId));
+
+  // 8. Power usages
+  await tx.delete(powerUsages).where(eq(powerUsages.studentId, studentId));
+
+  // 9. Expediciones (avance, respuestas, evidencias y metas)
+  await tx.delete(expeditionAnswers).where(eq(expeditionAnswers.studentProfileId, studentId));
+  await tx.delete(expeditionEvidence).where(eq(expeditionEvidence.studentProfileId, studentId));
+  await tx.delete(expeditionStopProgress).where(eq(expeditionStopProgress.studentProfileId, studentId));
+  await tx.delete(expeditionFinishes).where(eq(expeditionFinishes.studentProfileId, studentId));
+  await deleteLegacyExpeditionRowsOfStudent(tx, studentId);
+
+  // 12. Collectibles (figuritas, sobres abiertos, bienvenida y álbumes completados)
+  await tx.delete(studentCollectibles).where(eq(studentCollectibles.studentProfileId, studentId));
+  await tx.delete(collectiblePurchases).where(eq(collectiblePurchases.studentProfileId, studentId));
+  await tx.delete(collectibleWelcomePacks).where(eq(collectibleWelcomePacks.studentProfileId, studentId));
+  await tx.delete(completedAlbums).where(eq(completedAlbums.studentProfileId, studentId));
+  await tx.delete(collectibleBoxItems).where(or(eq(collectibleBoxItems.donorProfileId, studentId), eq(collectibleBoxItems.takerProfileId, studentId)));
+
+  // 13. Scrolls
+  const studentScrolls = await tx.query.scrolls.findMany({
+    where: eq(scrolls.authorId, studentId),
+    columns: { id: true },
+  });
+  const scrollIds = studentScrolls.map(s => s.id);
+  if (scrollIds.length > 0) {
+    await tx.delete(scrollReactions).where(inArray(scrollReactions.scrollId, scrollIds));
+    await tx.delete(scrolls).where(inArray(scrolls.id, scrollIds));
+  }
+
+  // 14. Notifications (if user linked)
+  if (profile.userId) {
+    await tx.delete(notifications).where(
+      and(
+        eq(notifications.userId, profile.userId),
+        eq(notifications.classroomId, classroomId),
+      )
+    );
+  }
+
+  // 15. Finally delete the student profile
+  await tx.delete(studentProfiles).where(eq(studentProfiles.id, studentId));
+};
+
 export class StudentService {
   // Verificar código (detecta si es código de clase o de estudiante)
   async verifyCode(code: string) {
@@ -195,7 +281,8 @@ export class StudentService {
       return db.query.studentProfiles.findFirst({
         where: and(
           eq(studentProfiles.userId, userId),
-          eq(studentProfiles.classroomId, classroomId)
+          eq(studentProfiles.classroomId, classroomId),
+          eq(studentProfiles.isActive, true)
         ),
       });
     }
@@ -391,8 +478,9 @@ export class StudentService {
 
   // Modificar puntos (XP, HP, GP)
   async updatePoints(data: UpdatePointsData) {
+    // Retirado o trasladado: ya no recibe puntos en esta clase.
     const profile = await db.query.studentProfiles.findFirst({
-      where: eq(studentProfiles.id, data.studentId),
+      where: and(eq(studentProfiles.id, data.studentId), eq(studentProfiles.isActive, true)),
     });
 
     if (!profile) {
@@ -1054,82 +1142,7 @@ export class StudentService {
     const classroomId = profile.classroomId;
 
     // Todo o nada: si un borrado falla, el alumno no queda a medio retirar.
-    await db.transaction(async (tx) => {
-      // 1. Point logs
-      await tx.delete(pointLogs).where(eq(pointLogs.studentId, studentId));
-      await tx.delete(levelUpLogs).where(eq(levelUpLogs.studentProfileId, studentId));
-
-      // 2. Avatar purchases & equipped items
-      await tx.delete(studentAvatarPurchases).where(eq(studentAvatarPurchases.studentProfileId, studentId));
-      await tx.delete(studentEquippedItems).where(eq(studentEquippedItems.studentProfileId, studentId));
-
-      // 3. Grades & activity scores
-      await tx.delete(studentGrades).where(eq(studentGrades.studentProfileId, studentId));
-      await tx.delete(studentActivityScores).where(eq(studentActivityScores.studentProfileId, studentId));
-
-      // 4. Badges
-      await tx.delete(badgeProgress).where(eq(badgeProgress.studentProfileId, studentId));
-      await tx.delete(studentBadges).where(eq(studentBadges.studentProfileId, studentId));
-
-      // 5. Login streaks & student streaks
-      await tx.delete(loginStreaks).where(eq(loginStreaks.studentProfileId, studentId));
-      await tx.delete(studentStreaks).where(eq(studentStreaks.studentProfileId, studentId));
-
-      // 6. Attendance
-      await tx.delete(attendanceRecords).where(eq(attendanceRecords.studentProfileId, studentId));
-
-      // 7. Purchases & item usages
-      const studentPurchases = await tx.query.purchases.findMany({
-        where: eq(purchases.studentId, studentId),
-        columns: { id: true },
-      });
-      const purchaseIds = studentPurchases.map(p => p.id);
-      if (purchaseIds.length > 0) {
-        await tx.delete(itemUsages).where(inArray(itemUsages.purchaseId, purchaseIds));
-      }
-      await tx.delete(purchases).where(eq(purchases.studentId, studentId));
-
-      // 8. Power usages
-      await tx.delete(powerUsages).where(eq(powerUsages.studentId, studentId));
-
-      // 9. Expediciones (avance, respuestas, evidencias y metas)
-      await tx.delete(expeditionAnswers).where(eq(expeditionAnswers.studentProfileId, studentId));
-      await tx.delete(expeditionEvidence).where(eq(expeditionEvidence.studentProfileId, studentId));
-      await tx.delete(expeditionStopProgress).where(eq(expeditionStopProgress.studentProfileId, studentId));
-      await tx.delete(expeditionFinishes).where(eq(expeditionFinishes.studentProfileId, studentId));
-      await deleteLegacyExpeditionRowsOfStudent(tx, studentId);
-
-      // 12. Collectibles (figuritas, sobres abiertos, bienvenida y álbumes completados)
-      await tx.delete(studentCollectibles).where(eq(studentCollectibles.studentProfileId, studentId));
-      await tx.delete(collectiblePurchases).where(eq(collectiblePurchases.studentProfileId, studentId));
-      await tx.delete(collectibleWelcomePacks).where(eq(collectibleWelcomePacks.studentProfileId, studentId));
-      await tx.delete(completedAlbums).where(eq(completedAlbums.studentProfileId, studentId));
-      await tx.delete(collectibleBoxItems).where(or(eq(collectibleBoxItems.donorProfileId, studentId), eq(collectibleBoxItems.takerProfileId, studentId)));
-
-      // 13. Scrolls
-      const studentScrolls = await tx.query.scrolls.findMany({
-        where: eq(scrolls.authorId, studentId),
-        columns: { id: true },
-      });
-      const scrollIds = studentScrolls.map(s => s.id);
-      if (scrollIds.length > 0) {
-        await tx.delete(scrollReactions).where(inArray(scrollReactions.scrollId, scrollIds));
-        await tx.delete(scrolls).where(inArray(scrolls.id, scrollIds));
-      }
-
-      // 14. Notifications (if user linked)
-      if (profile.userId) {
-        await tx.delete(notifications).where(
-          and(
-            eq(notifications.userId, profile.userId),
-            eq(notifications.classroomId, classroomId),
-          )
-        );
-      }
-
-      // 15. Finally delete the student profile
-      await tx.delete(studentProfiles).where(eq(studentProfiles.id, studentId));
-    });
+    await db.transaction((tx) => deleteStudentProfileData(tx, { id: studentId, userId: profile.userId, classroomId }));
 
     return {
       success: true,

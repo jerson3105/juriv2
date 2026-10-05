@@ -35,7 +35,7 @@ const actors = alias(users, 'actor');
 const teachers = alias(users, 'teacher');
 
 /** El año de la escuela; para escribir, que no esté cerrado. */
-const loadYear = async (schoolId: string, yearId: string, forWrite: boolean) => {
+export const loadYear = async (schoolId: string, yearId: string, forWrite: boolean) => {
   const [year] = await db.select({ id: schoolYears.id, status: schoolYears.status }).from(schoolYears)
     .where(and(eq(schoolYears.id, yearId), eq(schoolYears.schoolId, schoolId)));
   if (!year) throw new NotFoundError('Año escolar no encontrado');
@@ -90,7 +90,7 @@ const serializeStudent = (s: typeof schoolStudents.$inferSelect) => ({
   hasAccount: !!s.userId,
 });
 
-const insertEvent = (executor: Pick<typeof db, 'insert'>, event: Omit<typeof schoolEnrollmentEvents.$inferInsert, 'id' | 'createdAt'>) =>
+export const insertEvent = (executor: Pick<typeof db, 'insert'>, event: Omit<typeof schoolEnrollmentEvents.$inferInsert, 'id' | 'createdAt'>) =>
   executor.insert(schoolEnrollmentEvents).values({ id: uuidv4(), createdAt: new Date(), ...event });
 
 export const schoolRosterService = {

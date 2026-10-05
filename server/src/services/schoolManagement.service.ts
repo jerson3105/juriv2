@@ -103,7 +103,7 @@ class SchoolManagementService {
         curriculumAreaId: classrooms.curriculumAreaId,
         curriculumAreaName: curriculumAreas.name,
         isActive: classrooms.isActive,
-        studentCount: sql<string>`(SELECT COUNT(*) FROM student_profiles WHERE classroom_id = ${classrooms.id})`,
+        studentCount: sql<string>`(SELECT COUNT(*) FROM student_profiles WHERE classroom_id = ${classrooms.id} AND is_active = 1)`,
       })
       .from(classrooms)
       .innerJoin(users, eq(classrooms.teacherId, users.id))
