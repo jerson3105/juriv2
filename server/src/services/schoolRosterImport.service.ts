@@ -137,6 +137,8 @@ const readSheet = (sheet: ExcelJS.Worksheet) => {
   let used = headers.length;
   while (used > 0 && !headers[used - 1]) used--;
   headers = headers.slice(0, used);
+  const mapping = detectMapping(headers);
+  const codeColumn = mapping.indexOf('juriedCode');
 
   const rows: StoredRow[] = [];
   let tooMany = false;
@@ -144,6 +146,8 @@ const readSheet = (sheet: ExcelJS.Worksheet) => {
     if (rowNumber < dataStart || tooMany) return;
     const { cells, num } = rowTexts(row, used);
     if (!cells.some(Boolean)) return;
+    // La fila de ejemplo de la plantilla («EJEMPLO» en el Código Juried) no es un estudiante.
+    if (codeColumn >= 0 && /^ejemplo/i.test((cells[codeColumn] ?? '').trim())) return;
     if (rows.length >= MAX_ROWS) {
       tooMany = true;
       return;
@@ -151,7 +155,7 @@ const readSheet = (sheet: ExcelJS.Worksheet) => {
     rows.push(num.length ? { line: rowNumber, cells, num } : { line: rowNumber, cells });
   });
   if (tooMany) throw new ValidationError(`El archivo tiene más de ${MAX_ROWS} filas: divídelo en partes`);
-  return { headers, rows, mapping: detectMapping(headers) };
+  return { headers, rows, mapping };
 };
 
 const readWorkbook = async (buffer: Buffer) => {
@@ -670,9 +674,13 @@ export const schoolRosterImportService = {
       .orderBy(sql`${schoolSections.level} IS NULL`, asc(schoolSections.level), asc(schoolSections.grade), asc(schoolSections.name),
         asc(schoolStudents.lastNames), asc(schoolStudents.firstNames));
 
+    const sections = await db.select({ level: schoolSections.level, grade: schoolSections.grade, name: schoolSections.name }).from(schoolSections)
+      .where(and(eq(schoolSections.schoolId, schoolId), eq(schoolSections.yearId, yearId)))
+      .orderBy(asc(schoolSections.level), asc(schoolSections.grade), asc(schoolSections.name));
+
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Juried';
-    const sheet = workbook.addWorksheet('Padrón', { views: [{ state: 'frozen', ySplit: 1 }] });
+    const sheet = workbook.addWorksheet('Padrón', { views: [{ state: 'frozen', ySplit: 2 }] });
     sheet.columns = [
       { header: 'Código Juried (no borrar)', key: 'id', width: 38 },
       { header: 'Apellidos', key: 'lastNames', width: 28 },
@@ -686,9 +694,35 @@ export const schoolRosterImportService = {
       { header: 'Grado', key: 'grade', width: 8 },
       { header: 'Sección', key: 'section', width: 14 },
     ];
+    // Cómo va cada dato: una nota en cada encabezado (se ve al pasar el mouse), con su forma y un ejemplo.
+    const notes = [
+      'No lo borres ni lo cambies: así se reconoce a quien ya está en el padrón. En estudiantes nuevos, déjalo vacío.',
+      'Apellido paterno y materno, como en su DNI. Ej.: Quispe Mamani. Mayúsculas o minúsculas da igual.',
+      'Sus nombres. Ej.: Luz Clara.',
+      'DNI, CE, PTP o Pasaporte (elige de la lista). Si lo dejas vacío, es DNI.',
+      'DNI: 8 números (si Excel borra el 0 del inicio, Juried lo completa). Carné, PTP o pasaporte: de 6 a 12 letras y números.',
+      'Día/mes/año. Ej.: 14/03/2012 (también sirve 2012-03-14).',
+      'Opcional. Ej.: luz.quispe@colegio.edu.pe',
+      'Opcional: su código del SIAGIE, tal como figura allí.',
+      'Inicial, Primaria o Secundaria (elige de la lista).',
+      'Un número: de 1 a 6 en Primaria, de 1 a 5 en Secundaria; en Inicial, la edad (3, 4 o 5).',
+      'Como está en «Grados y secciones». Ej.: A. Mayúsculas o minúsculas da igual.',
+    ];
     const header = sheet.getRow(1);
     header.font = { bold: true };
-    header.eachCell((cell) => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE5E7EB' } }; });
+    header.eachCell((cell, column) => {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE5E7EB' } };
+      cell.note = notes[column - 1];
+    });
+    // Fila 2: un estudiante de ejemplo con cada dato bien escrito. No se importa (el lector salta «EJEMPLO»).
+    const sample = sections[0] ?? { level: 'SECUNDARIA' as const, grade: 4, name: 'A' };
+    const example = sheet.addRow({
+      id: 'EJEMPLO (no se importa)', lastNames: 'Quispe Mamani', firstNames: 'Luz Clara', documentType: 'DNI', document: '12345678',
+      birthDate: new Date('2012-03-14T00:00:00Z'), email: 'luz.quispe@colegio.edu.pe', siagieCode: '',
+      level: LEVEL_NAME[sample.level], grade: sample.grade, section: sample.name,
+    });
+    example.font = { italic: true, color: { argb: 'FF6B7280' } };
+    example.eachCell({ includeEmpty: true }, (cell) => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF9C3' } }; });
     for (const row of rows) {
       sheet.addRow({
         id: row.id,
@@ -706,25 +740,49 @@ export const schoolRosterImportService = {
     }
     sheet.getColumn('id').font = { color: { argb: 'FF6B7280' } };
     header.getCell(1).font = { bold: true };
-    // Listas para el tipo de documento y el nivel (también en filas vacías para agregar estudiantes).
-    for (let r = 2; r <= rows.length + 300; r++) {
-      sheet.getCell(r, 4).dataValidation = { type: 'list', allowBlank: true, formulae: ['"DNI,CE,PTP,Pasaporte"'] };
-      sheet.getCell(r, 9).dataValidation = { type: 'list', allowBlank: true, formulae: ['"Inicial,Primaria,Secundaria"'] };
+    // Al tocar una celda, Excel dice qué escribir; las listas y los rangos avisan antes de importar.
+    const sectionNames = [...new Set(sections.map((s) => s.name))];
+    const sectionList = `"${sectionNames.join(',')}"`;
+    const ask = (title: string, prompt: string) => ({ showInputMessage: true, promptTitle: title, prompt });
+    const warn = (error: string) => ({ showErrorMessage: true, errorStyle: 'warning' as const, errorTitle: 'Revisa este dato', error });
+    for (let r = 3; r <= rows.length + 300; r++) {
+      sheet.getCell(r, 2).dataValidation = { type: 'textLength', operator: 'between', allowBlank: true, formulae: [2, 100], ...ask('Apellidos', 'Paterno y materno. Ej.: Quispe Mamani'), ...warn('Los apellidos tienen de 2 a 100 letras.') };
+      sheet.getCell(r, 3).dataValidation = { type: 'textLength', operator: 'between', allowBlank: true, formulae: [1, 100], ...ask('Nombres', 'Ej.: Luz Clara'), ...warn('Los nombres tienen hasta 100 letras.') };
+      sheet.getCell(r, 4).dataValidation = { type: 'list', allowBlank: true, formulae: ['"DNI,CE,PTP,Pasaporte"'], ...ask('Tipo de documento', 'DNI, CE, PTP o Pasaporte. Vacío = DNI.'), ...warn('Elige DNI, CE, PTP o Pasaporte.') };
+      sheet.getCell(r, 5).dataValidation = { type: 'textLength', operator: 'between', allowBlank: true, formulae: [6, 12], ...ask('Número de documento', 'DNI: 8 números. Carné o pasaporte: de 6 a 12 letras y números.'), ...warn('El documento tiene de 6 a 12 caracteres (el DNI, 8 números).') };
+      sheet.getCell(r, 6).dataValidation = { type: 'date', operator: 'between', allowBlank: true, formulae: [new Date(Date.UTC(1990, 0, 1)), new Date()], ...ask('Fecha de nacimiento', 'Día/mes/año. Ej.: 14/03/2012'), ...warn('Escribe una fecha como 14/03/2012.') };
+      sheet.getCell(r, 7).dataValidation = { type: 'textLength', operator: 'lessThanOrEqual', allowBlank: true, formulae: [255], ...ask('Correo institucional', 'Opcional. Ej.: luz.quispe@colegio.edu.pe') };
+      sheet.getCell(r, 9).dataValidation = { type: 'list', allowBlank: true, formulae: ['"Inicial,Primaria,Secundaria"'], ...ask('Nivel', 'Inicial, Primaria o Secundaria.'), ...warn('Elige Inicial, Primaria o Secundaria.') };
+      sheet.getCell(r, 10).dataValidation = { type: 'whole', operator: 'between', allowBlank: true, formulae: [1, 6], ...ask('Grado', 'Un número: 1 a 6 (en Inicial, la edad: 3, 4 o 5).'), ...warn('El grado es un número del 1 al 6.') };
+      sheet.getCell(r, 11).dataValidation = sectionNames.length && sectionList.length <= 255
+        ? { type: 'list', allowBlank: true, formulae: [sectionList], ...ask('Sección', `Secciones de este año: ${sectionNames.join(', ')}`.slice(0, 255)), ...warn('Esa sección no está en «Grados y secciones».') }
+        : { type: 'textLength', operator: 'lessThanOrEqual', allowBlank: true, formulae: [40], ...ask('Sección', 'Como está en «Grados y secciones». Ej.: A') };
     }
 
     const help = workbook.addWorksheet('Cómo llenarla');
     help.getColumn(1).width = 110;
-    [
-      'Cómo llenar la plantilla del padrón',
-      '1. No borres ni cambies la columna «Código Juried»: así se reconoce a cada estudiante que ya está en el padrón.',
-      '2. Para agregar estudiantes nuevos, escribe filas nuevas al final y deja vacío su Código Juried.',
-      '3. El DNI tiene 8 números. Si Excel borra el 0 del inicio, Juried lo completa al importar.',
-      '4. Los documentos que ves como •••••678 ya están registrados: déjalos así.',
-      '5. La fecha de nacimiento va en día/mes/año (por ejemplo 14/03/2012).',
-      '6. Importar completa los datos vacíos y da sección a quien aún no tiene. No cambia nombres, documentos ya',
-      '   registrados ni secciones: eso se hace en la ficha del estudiante o con «Trasladar».',
-      '7. No ordenes solo una columna: Excel desordenaría las filas. Si ordenas, selecciona toda la tabla.',
-    ].forEach((text, i) => { help.addRow([text]).font = i === 0 ? { bold: true, size: 13 } : {}; });
+    const lines: Array<[string, 'title' | 'subtitle' | 'text']> = [
+      ['Cómo llenar la plantilla del padrón', 'title'],
+      ['La fila 2 (EJEMPLO, en amarillo) muestra cómo va cada dato: no se importa. Al tocar una celda, Excel te dice qué escribir.', 'text'],
+      ['1. No borres ni cambies la columna «Código Juried»: así se reconoce a cada estudiante que ya está en el padrón.', 'text'],
+      ['2. Para agregar estudiantes nuevos, escribe filas nuevas al final y deja vacío su Código Juried.', 'text'],
+      ['3. Mayúsculas, minúsculas y tildes dan igual: «SECUNDARIA», «secundaria» y «Secundaria» valen lo mismo, y los nombres en', 'text'],
+      ['   mayúsculas se ordenan solos (QUISPE MAMANI → Quispe Mamani).', 'text'],
+      ['4. El DNI tiene 8 números. Si Excel borra el 0 del inicio, Juried lo completa al importar.', 'text'],
+      ['5. Los documentos que ves como •••••678 ya están registrados: déjalos así.', 'text'],
+      ['6. La fecha de nacimiento va en día/mes/año (14/03/2012). También sirve 2012-03-14.', 'text'],
+      ['7. Importar completa los datos vacíos y da sección a quien aún no tiene. No cambia nombres, documentos ya', 'text'],
+      ['   registrados ni secciones: eso se hace en la ficha del estudiante o con «Trasladar».', 'text'],
+      ['8. No ordenes solo una columna: Excel desordenaría las filas. Si ordenas, selecciona toda la tabla.', 'text'],
+      ['', 'text'],
+      ['Secciones de este año (escribe el nivel, el grado y la sección así)', 'subtitle'],
+      ...(sections.length
+        ? sections.map((s) => [`Nivel: ${LEVEL_NAME[s.level]} · Grado: ${s.grade} · Sección: ${s.name}`, 'text'] as [string, 'text'])
+        : [['Aún no hay secciones: créalas en «Grados y secciones» (sin ellas, los estudiantes entran sin sección).', 'text'] as [string, 'text']]),
+    ];
+    for (const [text, kind] of lines) {
+      help.addRow([text]).font = kind === 'title' ? { bold: true, size: 13 } : kind === 'subtitle' ? { bold: true } : {};
+    }
 
     const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
     const safeYear = year.name.replace(/[^0-9A-Za-z-]+/g, '-').replace(/^-|-$/g, '') || 'anio';
