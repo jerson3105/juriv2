@@ -26,6 +26,8 @@ export type AuditAction =
   | 'admin.domain_removed'
   | 'admin.domain_school_set'
   | 'admin.school_created'
+  | 'admin.school_updated'
+  | 'admin.school_owner_changed'
   | 'admin.school_verification_reviewed'
   | 'school.join_request_reviewed'
   | 'school.teacher_removed'

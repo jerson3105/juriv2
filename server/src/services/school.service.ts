@@ -511,10 +511,10 @@ export class SchoolService {
       results.push({ ...school, members });
     }
     // Los dominios del correo institucional de cada colegio (con ellos su administración crea las cuentas de sus docentes).
-    const domains = results.length === 0 ? [] : await db.select({ schoolId: verifiedDomains.schoolId, domain: verifiedDomains.domain, scope: verifiedDomains.scope })
+    const domains = results.length === 0 ? [] : await db.select({ id: verifiedDomains.id, schoolId: verifiedDomains.schoolId, domain: verifiedDomains.domain, scope: verifiedDomains.scope })
       .from(verifiedDomains).where(inArray(verifiedDomains.schoolId, results.map((r) => r.id)));
 
-    return results.map((school) => ({ ...school, domains: domains.filter((d) => d.schoolId === school.id).map((d) => ({ domain: d.domain, scope: d.scope })) }));
+    return results.map((school) => ({ ...school, domains: domains.filter((d) => d.schoolId === school.id).map((d) => ({ id: d.id, domain: d.domain, scope: d.scope })) }));
   }
 
   // Obtener todas las escuelas (admin)

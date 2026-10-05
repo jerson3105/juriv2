@@ -35,6 +35,19 @@ const roleChangeSchema = z.object({
   currentPassword: z.string().min(1).max(200).optional(),
 }).strict();
 const userStatusSchema = z.object({ isActive: z.boolean() }).strict();
+// Datos de un colegio y de su responsable (crear y editar desde el panel).
+const schoolDataFields = {
+  name: z.string().max(255),
+  modularCode: z.string().trim().max(10).nullable().optional(),
+  region: z.string().max(100).nullable().optional(),
+  city: z.string().max(100).nullable().optional(),
+  address: z.string().max(300).nullable().optional(),
+};
+const ownerFields = {
+  email: z.string().trim().toLowerCase().email('Escribe el correo del responsable').max(255),
+  firstNames: z.string().max(200).optional(),
+  lastNames: z.string().max(200).optional(),
+};
 
 export const adminController = {
   // ==================== INICIO ====================
@@ -225,16 +238,8 @@ export const adminController = {
   async createSchool(req: Request, res: Response) {
     try {
       const body = z.object({
-        name: z.string().max(255),
-        modularCode: z.string().trim().max(10).nullable().optional(),
-        region: z.string().max(100).nullable().optional(),
-        city: z.string().max(100).nullable().optional(),
-        address: z.string().max(300).nullable().optional(),
-        owner: z.object({
-          email: z.string().trim().toLowerCase().email('Escribe el correo del responsable').max(255),
-          firstNames: z.string().max(200).optional(),
-          lastNames: z.string().max(200).optional(),
-        }).strict(),
+        ...schoolDataFields,
+        owner: z.object(ownerFields).strict(),
         domain: z.object({ domain: z.string().trim().min(3).max(255), scope: z.enum(['TEACHERS_ONLY', 'SHARED']) }).strict().nullable().optional(),
       }).strict().parse(req.body);
       const result = await adminSchoolsService.create(req.user!.id, body);
@@ -255,6 +260,53 @@ export const adminController = {
       }
       console.error('Error creating school:', error);
       res.status(500).json({ success: false, message: 'Error al crear el colegio' });
+    }
+  },
+
+  // PATCH /admin/schools/:schoolId — corregir los datos del colegio
+  async updateSchool(req: Request, res: Response) {
+    try {
+      const schoolId = z.string().uuid().safeParse(req.params.schoolId);
+      if (!schoolId.success) return res.status(404).json({ success: false, message: 'Colegio no encontrado' });
+      const body = z.object(schoolDataFields).strict().parse(req.body);
+      const result = await adminSchoolsService.update(schoolId.data, body);
+      await auditRequest(req, { action: 'admin.school_updated', schoolId: schoolId.data, target: { type: 'school', id: schoolId.data } });
+      res.json({ success: true, data: result, message: 'Datos del colegio guardados' });
+    } catch (error) {
+      if (error instanceof AppError) return res.status(error.statusCode).json({ success: false, message: error.message });
+      if (error instanceof z.ZodError) return res.status(400).json({ success: false, message: 'Revisa los datos del colegio' });
+      console.error('Error updating school:', error);
+      res.status(500).json({ success: false, message: 'Error al guardar el colegio' });
+    }
+  },
+
+  // POST /admin/schools/:schoolId/owner — pasar el rol de responsable (y qué pasa con el anterior)
+  async changeSchoolOwner(req: Request, res: Response) {
+    try {
+      const schoolId = z.string().uuid().safeParse(req.params.schoolId);
+      if (!schoolId.success) return res.status(404).json({ success: false, message: 'Colegio no encontrado' });
+      const body = z.object({
+        ...ownerFields,
+        previous: z.enum(['ADMIN', 'TEACHER', 'REMOVE'], { errorMap: () => ({ message: 'Elige qué pasa con el responsable anterior' }) }),
+      }).strict().parse(req.body);
+      const result = await adminSchoolsService.changeOwner(schoolId.data, body);
+      await auditRequest(req, {
+        action: 'admin.school_owner_changed',
+        schoolId: schoolId.data,
+        target: { type: 'user', id: result.owner.userId },
+        metadata: { ownerCreated: result.owner.created, previous: body.previous, previousOwners: result.previous.length, unassignedClassrooms: result.unassignedClassrooms },
+      });
+      // La clave temporal de una cuenta nueva viaja una sola vez: sin caché intermedia.
+      res.set('Cache-Control', 'no-store');
+      res.json({ success: true, data: result, message: `${result.owner.name || result.owner.email} es el responsable de ${result.schoolName}` });
+    } catch (error) {
+      if (error instanceof AppError) return res.status(error.statusCode).json({ success: false, message: error.message });
+      if (error instanceof z.ZodError) {
+        const issue = error.issues[0];
+        return res.status(400).json({ success: false, message: issue && (issue.path[0] === 'email' || issue.path[0] === 'previous') ? issue.message : 'Revisa los datos del responsable' });
+      }
+      console.error('Error changing school owner:', error);
+      res.status(500).json({ success: false, message: 'Error al cambiar el responsable' });
     }
   },
 

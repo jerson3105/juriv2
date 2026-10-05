@@ -6,10 +6,9 @@ import { schoolApi, type AdminSchoolCreated, type AdminSchoolInput } from '../..
 import { adminOverviewKey } from '../../lib/adminApi';
 import { errorMessage } from '../auth/authHelpers';
 import { primaryButton } from './adminStyles';
+import { schoolFormStyles } from './schoolFormStyles';
 
-const input = 'mt-1 block min-h-[2.5rem] w-full rounded-lg border border-[var(--pg-control)] bg-[var(--pg-surface)] px-3';
-const label = 'block text-sm font-medium';
-const hint = 'pg-fg2 mt-1 text-xs';
+const { input, label, hint } = schoolFormStyles;
 
 /**
  * Crear un colegio desde el panel: queda verificado, con su responsable (si su correo ya es de un docente, se suma; si

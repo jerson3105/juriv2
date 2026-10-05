@@ -135,7 +135,27 @@ export interface AdminSchoolWithMembers {
   createdAt: string;
   members: SchoolMember[];
   /** Dominios del correo institucional ligados al colegio. */
-  domains: Array<{ domain: string; scope: 'TEACHERS_ONLY' | 'SHARED' }>;
+  domains: Array<{ id: string; domain: string; scope: 'TEACHERS_ONLY' | 'SHARED' }>;
+}
+
+/** Datos del colegio que corrige el equipo de Juried. */
+export interface AdminSchoolData {
+  name: string;
+  modularCode: string | null;
+  region: string | null;
+  city: string | null;
+  address: string | null;
+}
+
+/** Al cambiar de responsable: el anterior queda en la administración, como docente o sale del colegio. */
+export type PreviousOwner = 'ADMIN' | 'TEACHER' | 'REMOVE';
+
+export interface AdminOwnerChanged {
+  schoolId: string;
+  schoolName: string;
+  owner: { userId: string; email: string; name: string; created: boolean; temporaryPassword?: string };
+  previous: Array<{ userId: string; name: string; outcome: PreviousOwner }>;
+  unassignedClassrooms: number;
 }
 
 /** El equipo de Juried crea un colegio ya verificado, con su responsable y (opcional) su dominio. */
@@ -538,6 +558,14 @@ export const schoolApi = {
     const response = await api.post('/admin/schools', input);
     return response.data.data;
   },
+
+  /** Corrige los datos del colegio. Devuelve el mensaje para el aviso. */
+  adminUpdateSchool: async (schoolId: string, input: AdminSchoolData): Promise<string> =>
+    (await api.patch(`/admin/schools/${schoolId}`, input)).data.message,
+
+  /** Pasa el rol de responsable (la clave temporal de una cuenta nueva llega una sola vez). */
+  adminChangeSchoolOwner: async (schoolId: string, input: { email: string; firstNames?: string; lastNames?: string; previous: PreviousOwner }): Promise<AdminOwnerChanged> =>
+    (await api.post(`/admin/schools/${schoolId}/owner`, input)).data.data,
 
   // Verificaciones pendientes
   getAdminPendingVerifications: async (): Promise<PendingVerification[]> => {

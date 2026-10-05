@@ -30,6 +30,8 @@ router.patch('/verified-domains/:domainId', adminController.setVerifiedDomainSch
 
 // Colegios creados por el equipo de Juried (ya verificados, con su responsable y su dominio)
 router.post('/schools', adminController.createSchool);
+router.patch('/schools/:schoolId', adminController.updateSchool);
+router.post('/schools/:schoolId/owner', adminController.changeSchoolOwner);
 
 // ==================== PRENDAS DEL AVATAR ====================
 // Cada prenda nace como borrador con la imagen ya preparada en «Completa» (PNG 395×959) y llega a las

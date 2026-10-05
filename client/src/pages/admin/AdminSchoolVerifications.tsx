@@ -1,8 +1,9 @@
 import { useEffect, useId, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { CheckCircle2, Clock, MapPin, Plus, School, X } from 'lucide-react';
+import { CheckCircle2, Clock, MapPin, Pencil, Plus, School, X } from 'lucide-react';
 import { CreateSchoolDialog } from '../../components/admin/CreateSchoolDialog';
+import { EditSchoolDialog } from '../../components/admin/EditSchoolDialog';
 import { schoolApi, type PendingVerification } from '../../lib/schoolApi';
 import { adminOverviewKey } from '../../lib/adminApi';
 import { AdminPageHeader } from '../../components/admin/AdminPageHeader';
@@ -25,6 +26,7 @@ export default function AdminSchoolVerifications() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>('requests');
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
   const [approving, setApproving] = useState<PendingVerification | null>(null);
   const [rejecting, setRejecting] = useState<PendingVerification | null>(null);
   const requests = useQuery({ queryKey: ['admin-school-verifications'], queryFn: schoolApi.getAdminPendingVerifications });
@@ -45,6 +47,8 @@ export default function AdminSchoolVerifications() {
   });
 
   const pending = requests.data ?? [];
+  // El colegio que se edita, siempre con los datos de la lista (se refresca al guardar cada parte).
+  const editingSchool = editing ? schools.data?.find((s) => s.id === editing) ?? null : null;
 
   return (
     <div data-pg="" className="text-[var(--pg-fg)]">
@@ -54,6 +58,7 @@ export default function AdminSchoolVerifications() {
         actions={<button type="button" className={primaryButton} onClick={() => setCreating(true)}><Plus className="h-4 w-4" aria-hidden="true" />Crear colegio</button>}
       />
       {creating && <CreateSchoolDialog onClose={() => { setCreating(false); setTab('schools'); }} />}
+      {editingSchool && <EditSchoolDialog school={editingSchool} onClose={() => setEditing(null)} />}
       <main className="mx-auto max-w-7xl space-y-4 px-4 py-6 sm:px-6">
         <div className="pg-seg" role="tablist" aria-label="Escuelas">
           <button type="button" role="tab" aria-selected={tab === 'requests'} aria-pressed={tab === 'requests'} className="pg-seg-item" onClick={() => setTab('requests')}>
@@ -98,6 +103,10 @@ export default function AdminSchoolVerifications() {
                   <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${school.isVerified ? MEMBER_STATUS.VERIFIED.chip : MEMBER_STATUS.PENDING_ADMIN.chip}`}>
                     {school.isVerified ? 'Verificada' : 'Sin verificar'}
                   </span>
+                  <span className="flex-1" />
+                  <button type="button" className="pg-btn" onClick={() => setEditing(school.id)} aria-label={`Editar ${school.name}`}>
+                    <Pencil className="h-4 w-4" aria-hidden="true" />Editar
+                  </button>
                 </div>
                 <p className="pg-fg2 mt-0.5 text-xs">
                   {[school.modularCode ? `Código modular ${school.modularCode}` : null, [school.city, school.province, school.country].filter(Boolean).join(', '), `registrada el ${fmt(school.createdAt)}`].filter(Boolean).join(' · ')}
@@ -105,7 +114,7 @@ export default function AdminSchoolVerifications() {
                 <p className="pg-fg2 mt-0.5 text-xs">
                   {school.domains.length > 0
                     ? `Correo institucional: ${school.domains.map((d) => `@${d.domain}`).join(', ')}`
-                    : 'Sin dominio de correo: agrégalo en «Docentes por verificar» → Dominios para que cree las cuentas de sus docentes'}
+                    : 'Sin dominio de correo: agrégalo en «Editar» para que su administración cree las cuentas de sus docentes'}
                 </p>
                 {school.members.length === 0 ? (
                   <p className="pg-fg2 mt-3 text-sm">Sin miembros activos.</p>

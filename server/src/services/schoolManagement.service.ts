@@ -19,6 +19,34 @@ const ACTIVITY_WINDOW_MS = 60 * 24 * 60 * 60 * 1000;
 
 const newInviteCode = () => Array.from({ length: INVITE_LENGTH }, () => INVITE_ALPHABET[randomInt(INVITE_ALPHABET.length)]).join('');
 
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Retira a un miembro del colegio dentro de una transacción ajena: sus clases vuelven a ser personales (las conserva),
+ * pierde sus asignaciones, talleres y tutorías y deja de ser miembro. La usan «Retirar» y el cambio de responsable.
+ */
+export const removeMemberIn = async (tx: Tx, schoolId: string, member: { id: string; userId: string }) => {
+  const unassign = await tx.update(classrooms)
+    .set({ schoolId: null, schoolSectionId: null, updatedAt: new Date() })
+    .where(and(eq(classrooms.schoolId, schoolId), eq(classrooms.teacherId, member.userId)));
+  // Sus asignaciones se quitan: la matriz las mostrará por cubrir.
+  await tx.delete(schoolTeachingAssignments)
+    .where(and(eq(schoolTeachingAssignments.schoolId, schoolId), eq(schoolTeachingAssignments.teacherUserId, member.userId)));
+  // Y sus talleres, con sus secciones e inscritos.
+  const workshopIds = (await tx.select({ id: schoolWorkshops.id }).from(schoolWorkshops)
+    .where(and(eq(schoolWorkshops.schoolId, schoolId), eq(schoolWorkshops.teacherUserId, member.userId)))).map((w) => w.id);
+  if (workshopIds.length > 0) {
+    await tx.delete(schoolWorkshopSections).where(inArray(schoolWorkshopSections.workshopId, workshopIds));
+    await tx.delete(schoolWorkshopStudents).where(inArray(schoolWorkshopStudents.workshopId, workshopIds));
+    await tx.delete(schoolWorkshops).where(inArray(schoolWorkshops.id, workshopIds));
+  }
+  await tx.delete(schoolMembers).where(eq(schoolMembers.id, member.id));
+  // Deja de ser tutor de sus secciones: quedan «Sin tutoría».
+  await tx.update(schoolSections).set({ tutorUserId: null, updatedAt: new Date() })
+    .where(and(eq(schoolSections.schoolId, schoolId), eq(schoolSections.tutorUserId, member.userId)));
+  return { unassignedClassrooms: affectedRows(unassign), teacherId: member.userId };
+};
+
 export class SchoolManagementError extends Error {
   constructor(message: string, public status: number) {
     super(message);
@@ -65,28 +93,7 @@ class SchoolManagementService {
     if (!member) throw new SchoolManagementError('Profesor no encontrado en esta escuela', 404);
     if (member.role === 'OWNER') throw new SchoolManagementError('No se puede retirar al responsable de la escuela', 400);
     if (member.role === 'ADMIN' && !options.actorIsOwner) throw new SchoolManagementError('Solo el responsable puede retirar a un administrador', 403);
-
-    return db.transaction(async (tx) => {
-      const unassign = await tx.update(classrooms)
-        .set({ schoolId: null, schoolSectionId: null, updatedAt: new Date() })
-        .where(and(eq(classrooms.schoolId, schoolId), eq(classrooms.teacherId, member.userId)));
-      // Sus asignaciones se quitan: la matriz las mostrará por cubrir.
-      await tx.delete(schoolTeachingAssignments)
-        .where(and(eq(schoolTeachingAssignments.schoolId, schoolId), eq(schoolTeachingAssignments.teacherUserId, member.userId)));
-      // Y sus talleres, con sus secciones e inscritos.
-      const workshopIds = (await tx.select({ id: schoolWorkshops.id }).from(schoolWorkshops)
-        .where(and(eq(schoolWorkshops.schoolId, schoolId), eq(schoolWorkshops.teacherUserId, member.userId)))).map((w) => w.id);
-      if (workshopIds.length > 0) {
-        await tx.delete(schoolWorkshopSections).where(inArray(schoolWorkshopSections.workshopId, workshopIds));
-        await tx.delete(schoolWorkshopStudents).where(inArray(schoolWorkshopStudents.workshopId, workshopIds));
-        await tx.delete(schoolWorkshops).where(inArray(schoolWorkshops.id, workshopIds));
-      }
-      await tx.delete(schoolMembers).where(eq(schoolMembers.id, memberId));
-      // Deja de ser tutor de sus secciones: quedan «Sin tutoría».
-      await tx.update(schoolSections).set({ tutorUserId: null, updatedAt: new Date() })
-        .where(and(eq(schoolSections.schoolId, schoolId), eq(schoolSections.tutorUserId, member.userId)));
-      return { unassignedClassrooms: affectedRows(unassign), teacherId: member.userId };
-    });
+    return db.transaction((tx) => removeMemberIn(tx, schoolId, member));
   }
 
   // Clases de la escuela con su profesor y última actividad (60 días).
