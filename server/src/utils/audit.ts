@@ -33,6 +33,7 @@ export type AuditAction =
   | 'school.teacher_removed'
   | 'school.member_role_changed'
   | 'school.teacher_account_created'
+  | 'school.teacher_password_reset'
   | 'school.invite_regenerated'
   | 'school.invite_disabled'
   | 'school.joined_by_invite'

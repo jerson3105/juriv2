@@ -4,14 +4,13 @@ import { AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { Copy, UserPlus } from 'lucide-react';
 import api from '../../lib/api';
+import { schoolApi } from '../../lib/schoolApi';
 import { HomeModal } from '../home/HomeModal';
 import { cancelButton, errorMessage, inputClass, labelClass, primaryButton } from '../home/homeHelpers';
-import { schoolDetailKey, schoolTeachersKey } from './schoolHelpers';
+import { schoolDetailKey, schoolTeachersKey, teacherDomainsKey } from './schoolHelpers';
 
 const card = 'rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800';
 type Created = { email: string; created: true; temporaryPassword: string } | { email: string; created: false };
-
-const domainsKey = (schoolId: string) => ['school-teacher-domains', schoolId] as const;
 
 /**
  * Crear la cuenta de un docente que aún no usa Juried, con su correo del colegio (dominio verificado). Si ya tenía
@@ -40,7 +39,7 @@ const CreateTeacherModal = ({ schoolId, onClose }: { schoolId: string; onClose: 
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [result, setResult] = useState<Created | null>(null);
-  const domains = useQuery({ queryKey: domainsKey(schoolId), queryFn: async (): Promise<string[]> => (await api.get(`/schools/${schoolId}/teacher-accounts/domains`)).data.data });
+  const domains = useQuery({ queryKey: teacherDomainsKey(schoolId), queryFn: () => schoolApi.teacherAccountDomains(schoolId) });
   const create = useMutation({
     mutationFn: async (): Promise<Created> => (await api.post(`/schools/${schoolId}/teacher-accounts`, { firstName, lastName, email })).data.data,
     onSuccess: (data) => {

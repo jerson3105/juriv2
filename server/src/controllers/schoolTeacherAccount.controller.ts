@@ -57,4 +57,22 @@ export const schoolTeacherAccountController = {
       return sendError(res, error, 'Error al crear la cuenta del docente');
     }
   },
+
+  // POST /schools/:schoolId/members/:memberId/password-reset — clave temporal nueva para un docente del colegio
+  async resetPassword(req: Request, res: Response) {
+    try {
+      const { schoolId } = req.params;
+      const role = await requireSchoolRole(req, res, schoolId, SCHOOL_MANAGER_ROLES);
+      if (!role) return;
+      const memberId = z.string().uuid().safeParse(req.params.memberId);
+      if (!memberId.success) return res.status(404).json({ success: false, message: 'Docente no encontrado en el colegio' });
+      const data = await schoolTeacherAccountService.resetPassword(schoolId, memberId.data, { userId: req.user!.id, role });
+      await auditRequest(req, { action: 'school.teacher_password_reset', schoolId, target: { type: 'user', id: data.userId } });
+      // La clave temporal viaja una sola vez: sin caché intermedia.
+      res.set('Cache-Control', 'no-store');
+      res.json({ success: true, data, message: `Clave nueva para ${data.name}` });
+    } catch (error) {
+      return sendError(res, error, 'Error al restablecer la clave');
+    }
+  },
 };

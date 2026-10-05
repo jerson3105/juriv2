@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Check, ChevronDown, Copy, Link2, RefreshCw, Shield, UserMinus, UserPlus, X } from 'lucide-react';
+import { Check, ChevronDown, Copy, KeyRound, Link2, RefreshCw, Shield, UserMinus, UserPlus, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { schoolApi, type MySchool, type SchoolClassroom, type SchoolMember, type SchoolTeacher } from '../../lib/schoolApi';
 import { HomeModal } from '../home/HomeModal';
 import { cancelButton, errorMessage, gradeLabel, inputClass, labelClass, primaryButton, relativeTime } from '../home/homeHelpers';
-import { inviteLink, mySchoolsKey, pendingRequestsKey, schoolDetailKey, schoolTeachersKey } from './schoolHelpers';
+import { inviteLink, mySchoolsKey, pendingRequestsKey, schoolDetailKey, schoolTeachersKey, teacherDomainsKey } from './schoolHelpers';
 import { CreateTeacherAccount } from './CreateTeacherAccount';
 
 const card = 'rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800';
@@ -184,7 +184,28 @@ export const TeachersTab = ({ school, manage, currentUserId, teachers, classroom
   const [open, setOpen] = useState<string | null>(null);
   const [removing, setRemoving] = useState<SchoolTeacher | null>(null);
   const [promoting, setPromoting] = useState<SchoolTeacher | null>(null);
+  const [resetting, setResetting] = useState<SchoolTeacher | null>(null);
+  const [newPassword, setNewPassword] = useState<{ name: string; email: string; temporaryPassword: string } | null>(null);
   const owner = school.memberRole === 'OWNER';
+  // Restablecer la clave: solo cuentas con el correo del colegio (las que la administración puede crear).
+  const domains = useQuery({ queryKey: teacherDomainsKey(school.id), queryFn: () => schoolApi.teacherAccountDomains(school.id), enabled: manage });
+  const inSchoolDomain = (email: string) => (domains.data ?? []).includes(email.split('@')[1]?.toLowerCase() ?? '');
+  const resetPassword = useMutation({
+    mutationFn: (t: SchoolTeacher) => schoolApi.resetTeacherPassword(school.id, t.id),
+    onSuccess: (data) => {
+      setResetting(null);
+      setNewPassword(data);
+    },
+    onError: (e) => toast.error(errorMessage(e, 'No se pudo restablecer la clave')),
+  });
+  const copyPassword = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success('Clave copiada');
+    } catch {
+      toast.error('No se pudo copiar');
+    }
+  };
 
   const changeRole = useMutation({
     mutationFn: (t: SchoolTeacher) => schoolApi.changeMemberRole(school.id, t.id, t.role === 'ADMIN' ? 'TEACHER' : 'ADMIN'),
@@ -231,6 +252,8 @@ export const TeachersTab = ({ school, manage, currentUserId, teachers, classroom
               const expanded = open === t.id;
               // A un administrador solo lo retira el responsable.
               const canRemove = manage && t.role !== 'OWNER' && t.userId !== currentUserId && (t.role !== 'ADMIN' || school.memberRole === 'OWNER');
+              // La clave se restablece con las mismas reglas (y solo con el correo del colegio).
+              const canReset = canRemove && inSchoolDomain(t.email);
               return (
                 <li key={t.id} className={card}>
                   <div className="flex items-center gap-3">
@@ -255,6 +278,11 @@ export const TeachersTab = ({ school, manage, currentUserId, teachers, classroom
                       <button type="button" onClick={() => setPromoting(t)} className={secondaryButton}>
                         <Shield size={16} aria-hidden="true" />
                         {t.role === 'ADMIN' ? 'Quitar administración' : 'Hacer administración'}
+                      </button>
+                    )}
+                    {canReset && (
+                      <button type="button" onClick={() => setResetting(t)} aria-label={`Restablecer la clave de ${t.firstName} ${t.lastName}`} title="Restablecer clave" className="flex h-10 w-10 items-center justify-center rounded-xl text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700">
+                        <KeyRound size={18} aria-hidden="true" />
                       </button>
                     )}
                     {canRemove && (
@@ -304,6 +332,27 @@ export const TeachersTab = ({ school, manage, currentUserId, teachers, classroom
                 <p className="text-sm text-gray-700 dark:text-gray-300">Nómbrala solo para dirección o secretaría. Puedes quitarla cuando quieras.</p>
               </>
             )}
+          </HomeModal>
+        )}
+        {resetting && (
+          <HomeModal
+            title="Restablecer clave"
+            subtitle={`${resetting.firstName} ${resetting.lastName} · ${resetting.email}`}
+            onClose={() => setResetting(null)}
+            footer={<><button type="button" onClick={() => setResetting(null)} className={cancelButton}>Cancelar</button><button type="button" onClick={() => resetPassword.mutate(resetting)} disabled={resetPassword.isPending} className={primaryButton}><KeyRound size={16} aria-hidden="true" />{resetPassword.isPending ? 'Generando...' : 'Restablecer'}</button></>}
+          >
+            <p className="text-sm text-gray-800 dark:text-gray-200">Se genera una clave temporal nueva y se cierran sus sesiones abiertas: la clave anterior deja de servir.</p>
+            <p className="text-sm text-gray-700 dark:text-gray-300">La nueva se muestra una sola vez: tenla a mano para dársela en persona.</p>
+          </HomeModal>
+        )}
+        {newPassword && (
+          <HomeModal title="Clave nueva" subtitle={`${newPassword.name} · ${newPassword.email}`} onClose={() => setNewPassword(null)} footer={<button type="button" className={primaryButton} onClick={() => setNewPassword(null)}>Listo</button>}>
+            <p className="text-sm text-gray-800 dark:text-gray-200">Su clave temporal:</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <code className="rounded-xl bg-gray-100 px-3 py-2 font-mono text-lg tracking-wider text-gray-900 dark:bg-gray-900/60 dark:text-white">{newPassword.temporaryPassword}</code>
+              <button type="button" className={`${primaryButton} min-h-[40px]`} onClick={() => void copyPassword(newPassword.temporaryPassword)}><Copy size={16} aria-hidden="true" />Copiar</button>
+            </div>
+            <p className="text-sm text-gray-700 dark:text-gray-300"><b>Se muestra una sola vez.</b> Dásela en persona: entra con su correo y esta clave y la cambia en Configuración.</p>
           </HomeModal>
         )}
         {removing && (

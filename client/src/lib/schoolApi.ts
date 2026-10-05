@@ -386,6 +386,13 @@ export interface AttendanceReport {
 
 export const schoolApi = {
   // Gestión del responsable
+  /** Dominios del correo del colegio (para crear cuentas de docentes y restablecer sus claves). */
+  teacherAccountDomains: async (schoolId: string): Promise<string[]> => (await api.get(`/schools/${schoolId}/teacher-accounts/domains`)).data.data,
+
+  /** Clave temporal nueva para un docente con el correo del colegio (se ve una sola vez; cierra sus sesiones). */
+  resetTeacherPassword: async (schoolId: string, memberId: string): Promise<{ email: string; name: string; temporaryPassword: string }> =>
+    (await api.post(`/schools/${schoolId}/members/${memberId}/password-reset`)).data.data,
+
   removeTeacher: async (schoolId: string, memberId: string): Promise<{ unassignedClassrooms: number }> => {
     const response = await api.delete(`/schools/${schoolId}/members/${memberId}`);
     return response.data.data;

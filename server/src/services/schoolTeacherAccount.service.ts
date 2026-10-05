@@ -4,7 +4,9 @@ import { and, eq } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import { schoolMembers, users, verifiedDomains } from '../db/schema.js';
-import { ConflictError, ValidationError, isDuplicateEntry } from '../utils/errors.js';
+import type { SchoolRole } from '../utils/access.js';
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError, isDuplicateEntry } from '../utils/errors.js';
+import { revokeAllUserTokens } from '../utils/jwt.js';
 import { cleanText } from '../utils/textClean.js';
 import { teacherVerificationService } from './teacherVerification.service.js';
 
@@ -87,5 +89,35 @@ export const schoolTeacherAccountService = {
       throw error;
     }
     return { userId, email, created: true as const, temporaryPassword: password };
+  },
+
+  /**
+   * La administración restablece la clave de un docente con el correo del colegio (una cuenta que ella podría crear):
+   * clave temporal nueva, que se ve una sola vez, y se cierran sus sesiones. La del responsable no se restablece aquí;
+   * la de la administración, solo el responsable; la propia, en Configuración.
+   */
+  async resetPassword(schoolId: string, memberId: string, actor: { userId: string; role: SchoolRole }) {
+    const [member] = await db.select({
+      userId: schoolMembers.userId, role: schoolMembers.role, status: schoolMembers.status,
+      email: users.email, provider: users.provider, userRole: users.role, isActive: users.isActive, firstName: users.firstName, lastName: users.lastName,
+    }).from(schoolMembers).innerJoin(users, eq(users.id, schoolMembers.userId))
+      .where(and(eq(schoolMembers.id, memberId), eq(schoolMembers.schoolId, schoolId)));
+    if (!member || member.status !== 'VERIFIED') throw new NotFoundError('Docente no encontrado en el colegio');
+    if (member.userId === actor.userId) throw new ValidationError('Tu propia clave la cambias en Configuración');
+    if (member.role === 'OWNER') throw new ForbiddenError('La clave del responsable no se restablece desde aquí');
+    if (member.role === 'ADMIN' && actor.role !== 'OWNER') throw new ForbiddenError('Solo el responsable restablece la clave de la administración');
+    if (member.userRole !== 'TEACHER' || !member.isActive) throw new ConflictError('Esa cuenta no está activa');
+    if (member.provider !== 'LOCAL') throw new ConflictError('Entra con Google: no tiene una clave que restablecer');
+    const domains = await this.domains(schoolId);
+    if (!domains.includes(member.email.split('@')[1]?.toLowerCase() ?? '')) {
+      throw new ForbiddenError(domains.length
+        ? `Solo se restablecen cuentas con el correo del colegio (${domains.map((d) => `@${d}`).join(' o ')})`
+        : 'Tu colegio aún no tiene un dominio verificado: sin él no se restablecen claves');
+    }
+    const password = temporaryPassword();
+    await db.update(users).set({ password: await bcrypt.hash(password, 12), updatedAt: new Date() }).where(eq(users.id, member.userId));
+    // Quien tuviera la sesión abierta (o la clave anterior) queda fuera.
+    await revokeAllUserTokens(member.userId);
+    return { userId: member.userId, email: member.email, name: `${member.firstName} ${member.lastName}`.trim(), temporaryPassword: password };
   },
 };

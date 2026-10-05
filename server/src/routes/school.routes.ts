@@ -56,6 +56,7 @@ router.patch('/:schoolId/members/:memberId/role', authorize('TEACHER'), schoolMa
 // Cuentas de docentes con el correo del colegio (administración)
 router.get('/:schoolId/teacher-accounts/domains', authorize('TEACHER'), schoolTeacherAccountController.domains);
 router.post('/:schoolId/teacher-accounts', authorize('TEACHER'), schoolTeacherAccountController.create);
+router.post('/:schoolId/members/:memberId/password-reset', authorize('TEACHER'), schoolTeacherAccountController.resetPassword);
 router.get('/:schoolId/classrooms/:classroomId/report', authorize('TEACHER', 'ADMIN'), schoolManagementController.classroomReport);
 router.post('/:schoolId/invite', authorize('TEACHER', 'ADMIN'), schoolManagementController.regenerateInvite);
 router.delete('/:schoolId/invite', authorize('TEACHER', 'ADMIN'), schoolManagementController.disableInvite);

@@ -6,6 +6,8 @@ export const schoolTeachersKey = (id: string) => ['school-teachers', id] as cons
 export const pendingRequestsKey = (id: string) => ['pending-requests', id] as const;
 export const schoolBehaviorsKey = (id: string) => ['school-behaviors', id] as const;
 export const schoolBadgesKey = (id: string) => ['school-badges', id] as const;
+/** Dominios del correo del colegio: con ellos la administración crea cuentas de docentes y restablece sus claves. */
+export const teacherDomainsKey = (id: string) => ['school-teacher-domains', id] as const;
 
 // Ver la escuela: miembro verificado o el responsable que la registró y espera verificación.
 export const canViewSchool = (s: MySchool) => s.memberStatus === 'VERIFIED' || (s.memberRole === 'OWNER' && s.memberStatus === 'PENDING_ADMIN');
