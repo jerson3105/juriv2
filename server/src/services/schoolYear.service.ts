@@ -1,7 +1,7 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
-import { schoolPeriods, schools, schoolSections, schoolYearLevels, schoolYears } from '../db/schema.js';
+import { schoolPeriods, schoolPlanAreas, schools, schoolSections, schoolYearLevels, schoolYears } from '../db/schema.js';
 import { ConflictError, NotFoundError, ValidationError } from '../utils/errors.js';
 
 /**
@@ -168,6 +168,9 @@ export const schoolYearService = {
       await tx.insert(schoolYearLevels).values(input.levels.map((l) => ({
         yearId, level: l.level, schoolId, gradeScale: l.gradeScale, createdAt: now,
       })));
+      // El plan de estudios de un nivel que se quita se va con él (no tenía secciones ni asignaciones).
+      const removed = SCHOOL_LEVELS.filter((level) => !kept.has(level));
+      if (removed.length > 0) await tx.delete(schoolPlanAreas).where(and(eq(schoolPlanAreas.yearId, yearId), inArray(schoolPlanAreas.level, removed)));
     });
     return this.get(schoolId, yearId);
   },

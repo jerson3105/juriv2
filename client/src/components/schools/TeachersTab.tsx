@@ -182,6 +182,18 @@ export const TeachersTab = ({ school, manage, currentUserId, teachers, classroom
   const queryClient = useQueryClient();
   const [open, setOpen] = useState<string | null>(null);
   const [removing, setRemoving] = useState<SchoolTeacher | null>(null);
+  const [promoting, setPromoting] = useState<SchoolTeacher | null>(null);
+  const owner = school.memberRole === 'OWNER';
+
+  const changeRole = useMutation({
+    mutationFn: (t: SchoolTeacher) => schoolApi.changeMemberRole(school.id, t.id, t.role === 'ADMIN' ? 'TEACHER' : 'ADMIN'),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: schoolTeachersKey(school.id) });
+      toast.success(data.message);
+      setPromoting(null);
+    },
+    onError: (e) => toast.error(errorMessage(e, 'No se pudo cambiar el rol')),
+  });
 
   const remove = useMutation({
     mutationFn: (t: SchoolTeacher) => schoolApi.removeTeacher(school.id, t.id),
@@ -237,6 +249,12 @@ export const TeachersTab = ({ school, manage, currentUserId, teachers, classroom
                         {mine.length} {mine.length === 1 ? 'clase' : 'clases'} · {students} estudiantes · {lastIso ? `activo ${relativeTime(lastIso)}` : 'sin actividad reciente'}
                       </p>
                     </div>
+                    {owner && t.role !== 'OWNER' && t.userId !== currentUserId && (
+                      <button type="button" onClick={() => setPromoting(t)} className={secondaryButton}>
+                        <Shield size={16} aria-hidden="true" />
+                        {t.role === 'ADMIN' ? 'Quitar administración' : 'Hacer administración'}
+                      </button>
+                    )}
                     {canRemove && (
                       <button type="button" onClick={() => setRemoving(t)} aria-label={`Retirar a ${t.firstName} ${t.lastName}`} title="Retirar de la escuela" className="flex h-10 w-10 items-center justify-center rounded-xl text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-900/30">
                         <UserMinus size={18} aria-hidden="true" />
@@ -269,6 +287,23 @@ export const TeachersTab = ({ school, manage, currentUserId, teachers, classroom
       </section>
 
       <AnimatePresence>
+        {promoting && (
+          <HomeModal
+            title={promoting.role === 'ADMIN' ? 'Quitar administración' : 'Hacer parte de la administración'}
+            subtitle={`${promoting.firstName} ${promoting.lastName}`}
+            onClose={() => setPromoting(null)}
+            footer={<><button type="button" onClick={() => setPromoting(null)} className={cancelButton}>Cancelar</button><button type="button" onClick={() => changeRole.mutate(promoting)} disabled={changeRole.isPending} className={primaryButton}><Shield size={16} aria-hidden="true" />{changeRole.isPending ? 'Guardando...' : promoting.role === 'ADMIN' ? 'Quitar' : 'Confirmar'}</button></>}
+          >
+            {promoting.role === 'ADMIN' ? (
+              <p className="text-sm text-gray-800 dark:text-gray-200">Seguirá como docente con sus clases, pero ya no verá el padrón, las secciones ni las asignaciones.</p>
+            ) : (
+              <>
+                <p className="text-sm text-gray-800 dark:text-gray-200">La administración ve y edita el padrón (con los datos de los estudiantes), las secciones, las asignaciones y las importaciones, y acepta o retira docentes.</p>
+                <p className="text-sm text-gray-700 dark:text-gray-300">Nómbrala solo para dirección o secretaría. Puedes quitarla cuando quieras.</p>
+              </>
+            )}
+          </HomeModal>
+        )}
         {removing && (
           <HomeModal
             title="Retirar de la escuela"

@@ -53,6 +53,21 @@ class AvatarService {
     }
   }
 
+  /** Lo mismo para varios perfiles nuevos a la vez (matrícula automática), en la transacción que los crea. */
+  async equipDefaultItemsMany(studentProfileIds: string[], gender: AvatarGender, executor: Pick<typeof db, 'select' | 'insert'> = db) {
+    if (studentProfileIds.length === 0) return;
+    const defaultItems = await executor.select({ id: avatarItems.id, slot: avatarItems.slot }).from(avatarItems)
+      .where(and(eq(avatarItems.gender, gender), eq(avatarItems.isDefault, true), eq(avatarItems.isActive, true)));
+    const bySlot = new Map<string, string>();
+    for (const item of defaultItems) if (!bySlot.has(item.slot)) bySlot.set(item.slot, item.id);
+    if (bySlot.size === 0) return;
+    const now = new Date();
+    const rows = studentProfileIds.flatMap((studentProfileId) => [...bySlot.entries()].map(([slot, avatarItemId]) => ({
+      id: uuidv4(), studentProfileId, avatarItemId, slot: slot as typeof studentEquippedItems.$inferInsert.slot, equippedAt: now,
+    })));
+    for (let i = 0; i < rows.length; i += 500) await executor.insert(studentEquippedItems).values(rows.slice(i, i + 500));
+  }
+
   // ==================== ITEMS GLOBALES (los crea el admin en /admin/avatar-items) ====================
 
   async getAvatarItemById(id: string) {

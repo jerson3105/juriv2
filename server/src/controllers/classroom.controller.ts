@@ -1445,7 +1445,7 @@ REGLAS:
   async getCurriculumAreas(req: Request, res: Response) {
     try {
       const countryCode = (req.query.country as string) || 'PE';
-      const level = req.query.level as string | undefined; // 'PRIMARIA' | 'SECUNDARIA'
+      const level = req.query.level as string | undefined; // 'INICIAL' | 'PRIMARIA' | 'SECUNDARIA'
       
       // Construir condiciones de filtro
       const conditions = [eq(curriculumAreas.countryCode, countryCode)];
@@ -1456,6 +1456,9 @@ REGLAS:
             eq(curriculumAreas.educationLevel, level)
           )!
         );
+      } else if (level === 'INICIAL') {
+        // Inicial tiene sus propias áreas (CNEB, ciclo II): no las comunes de primaria y secundaria.
+        conditions.push(eq(curriculumAreas.educationLevel, 'INICIAL'));
       }
 
       // Obtener áreas

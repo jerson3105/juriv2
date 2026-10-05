@@ -18,6 +18,7 @@ import {
 import { cleanText, comparableText } from '../utils/textClean.js';
 import { assertSafeXlsx } from '../utils/xlsxSafety.js';
 import { prepareDocument } from './schoolRoster.service.js';
+import { schoolAutoEnrollService } from './schoolAutoEnroll.service.js';
 import { LEVEL_GRADES, sectionDisplayName } from './schoolSection.service.js';
 import type { SchoolLevel } from './schoolYear.service.js';
 
@@ -584,9 +585,16 @@ const evaluateBatch = async (schoolId: string, yearId: string, batch: Batch) => 
 /** Se puede deshacer durante 24 horas si nadie tocó después a esos estudiantes. */
 const UNDO_MS = 24 * 60 * 60 * 1000;
 
+/** Estudiantes cuya sección puso la importación: los nuevos y los que recibieron sección o matrícula. */
+const sectionedStudents = (result: ImportResult | null) => [
+  ...(result?.createdStudentIds ?? []),
+  ...(result?.updates ?? []).filter((u) => u.enrollment).map((u) => u.studentId),
+];
+
 /**
  * Por qué ya no se puede deshacer una importación (o null si se puede): pasaron 24 horas, o alguno de sus estudiantes
- * tuvo después movimientos, cambios de datos, clases vinculadas o una cuenta.
+ * tuvo después movimientos, cambios de datos, una cuenta, clases vinculadas a mano o actividad en los perfiles que la
+ * matrícula automática les creó.
  */
 const undoBlocker = async (
   executor: Pick<typeof db, 'select' | 'selectDistinct'>,
@@ -599,6 +607,9 @@ const undoBlocker = async (
   const created = result?.createdStudentIds ?? [];
   const ids = [...created, ...(result?.updates ?? []).map((u) => u.studentId)];
   if (!ids.length) return null;
+  const auto = await schoolAutoEnrollService.inspect(executor, sectionedStudents(result), confirmedAt);
+  if (auto.used > 0) return `ya hay actividad en ${auto.used} ${auto.used === 1 ? 'perfil' : 'perfiles'} que la matrícula automática creó en sus clases`;
+  const autoProfiles = new Set(auto.all);
   const touched = new Set<string>();
   // Los movimientos de la importación llevan su misma hora exacta: cualquiera posterior es de otra acción.
   const later = await executor.selectDistinct({ id: schoolEnrollmentEvents.studentId }).from(schoolEnrollmentEvents)
@@ -610,9 +621,10 @@ const undoBlocker = async (
     .where(and(inArray(schoolStudents.id, ids), gt(schoolStudents.updatedAt, after)));
   edited.forEach((r) => touched.add(r.id));
   if (created.length) {
-    const linked = await executor.selectDistinct({ id: studentProfiles.schoolStudentId }).from(studentProfiles)
+    // Perfiles ligados a mano (armado): la matrícula automática se deshace sola si no se usaron.
+    const linked = await executor.select({ id: studentProfiles.id, studentId: studentProfiles.schoolStudentId }).from(studentProfiles)
       .where(inArray(studentProfiles.schoolStudentId, created));
-    linked.forEach((r) => { if (r.id) touched.add(r.id); });
+    linked.forEach((r) => { if (r.studentId && !autoProfiles.has(r.id)) touched.add(r.studentId); });
     const withAccount = await executor.select({ id: schoolStudents.id }).from(schoolStudents)
       .where(and(inArray(schoolStudents.id, created), isNotNull(schoolStudents.userId)));
     withAccount.forEach((r) => touched.add(r.id));
@@ -992,7 +1004,12 @@ export const schoolRosterImportService = {
       throw error;
     }
     const counts = summarize(rows);
-    return { created: createdStudentIds.length, updated: updates.length, errors: counts.error, skipped: counts.skipped };
+    // Matrícula automática: los nuevos y los que recibieron sección entran a las clases vinculadas de su sección.
+    const auto = await schoolAutoEnrollService.syncStudents(schoolId, yearId, sectionedStudents({ createdStudentIds, updates }));
+    return {
+      created: createdStudentIds.length, updated: updates.length, errors: counts.error, skipped: counts.skipped,
+      autoEnrolled: auto.created + auto.linked,
+    };
   },
 
   /**
@@ -1018,6 +1035,8 @@ export const schoolRosterImportService = {
       if (blockedReason) throw new ConflictError(`No se puede deshacer: ${blockedReason}`);
 
       const result = parseJson<ImportResult>(batch.result);
+      // Primero los perfiles que la matrícula automática creó o ligó por esta importación (ninguno se usó).
+      await schoolAutoEnrollService.revert(tx, await schoolAutoEnrollService.inspect(tx, sectionedStudents(result), new Date(batch.confirmedAt)));
       const created = result.createdStudentIds;
       for (const part of chunks(created, 500)) {
         await tx.delete(schoolEnrollmentEvents).where(and(inArray(schoolEnrollmentEvents.studentId, part), eq(schoolEnrollmentEvents.schoolId, schoolId)));

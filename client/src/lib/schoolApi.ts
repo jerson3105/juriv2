@@ -332,6 +332,12 @@ export const schoolApi = {
     return response.data.data;
   },
 
+  // Nombrar o quitar administración (solo el responsable)
+  changeMemberRole: async (schoolId: string, memberId: string, role: 'ADMIN' | 'TEACHER'): Promise<{ role: 'ADMIN' | 'TEACHER'; changed: boolean; message: string }> => {
+    const response = await api.patch(`/schools/${schoolId}/members/${memberId}/role`, { role });
+    return { ...response.data.data, message: response.data.message };
+  },
+
   getClassroomReport: async (schoolId: string, classroomId: string): Promise<SchoolClassroomReport> => {
     const response = await api.get(`/schools/${schoolId}/classrooms/${classroomId}/report`);
     return response.data.data;

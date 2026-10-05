@@ -1,7 +1,7 @@
-import { and, asc, eq, ne } from 'drizzle-orm';
+import { and, asc, count, eq, ne } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
-import { schoolMembers, schoolSections, schoolYearLevels, schoolYears, users } from '../db/schema.js';
+import { classrooms, schoolEnrollments, schoolMembers, schoolSections, schoolTeachingAssignments, schoolYearLevels, schoolYears, users } from '../db/schema.js';
 import { ConflictError, NotFoundError, ValidationError, isDuplicateEntry } from '../utils/errors.js';
 import { cleanText, comparableText } from '../utils/textClean.js';
 import type { SchoolLevel } from './schoolYear.service.js';
@@ -159,7 +159,16 @@ export const schoolSectionService = {
   async remove(schoolId: string, sectionId: string) {
     const section = await loadSection(schoolId, sectionId);
     await loadYear(schoolId, section.yearId, true);
-    await db.delete(schoolSections).where(eq(schoolSections.id, section.id));
+    // Con matrículas (también de retirados) no se borra: quedarían apuntando a una sección que no existe.
+    const [enrolled] = await db.select({ n: count() }).from(schoolEnrollments).where(eq(schoolEnrollments.sectionId, section.id));
+    const students = Number(enrolled?.n ?? 0);
+    if (students > 0) throw new ConflictError(`La sección tiene ${students} ${students === 1 ? 'estudiante matriculado' : 'estudiantes matriculados'}: no se puede quitar`);
+    await db.transaction(async (tx) => {
+      // Sus asignaciones se van con ella y sus clases quedan sin sección (siguen siendo de su docente).
+      await tx.delete(schoolTeachingAssignments).where(eq(schoolTeachingAssignments.sectionId, section.id));
+      await tx.update(classrooms).set({ schoolSectionId: null, updatedAt: new Date() }).where(eq(classrooms.schoolSectionId, section.id));
+      await tx.delete(schoolSections).where(eq(schoolSections.id, section.id));
+    });
     return section;
   },
 };

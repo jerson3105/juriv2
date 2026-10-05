@@ -3157,3 +3157,56 @@ export const schoolImportBatches = mysqlTable('school_import_batches', {
   schoolYearIdx: index('idx_school_import_batches_school_year').on(table.schoolId, table.yearId, table.createdAt),
   expiresIdx: index('idx_school_import_batches_expires').on(table.expiresAt),
 }));
+
+// Plan de estudios del año: áreas de cada nivel y en qué grados («1,2,3»). Sin filas para un nivel = el plan del CNEB.
+export const schoolPlanAreas = mysqlTable('school_plan_areas', {
+  yearId: varchar('year_id', { length: 36 }).notNull(),
+  level: schoolLevelEnum.notNull(),
+  areaId: varchar('area_id', { length: 36 }).notNull(),
+  schoolId: varchar('school_id', { length: 36 }).notNull(),
+  grades: varchar('grades', { length: 20 }).notNull(),
+  displayOrder: int('display_order').notNull().default(0),
+  createdAt: datetime('created_at').notNull(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.yearId, table.level, table.areaId] }),
+  schoolIdx: index('idx_school_plan_areas_school').on(table.schoolId),
+}));
+
+// Asignación: en una sección, un área la enseña un docente con su clase (opcional; una clase, una asignación).
+export const schoolTeachingAssignments = mysqlTable('school_teaching_assignments', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  schoolId: varchar('school_id', { length: 36 }).notNull(),
+  yearId: varchar('year_id', { length: 36 }).notNull(),
+  sectionId: varchar('section_id', { length: 36 }).notNull(),
+  areaId: varchar('area_id', { length: 36 }).notNull(),
+  teacherUserId: varchar('teacher_user_id', { length: 36 }).notNull(),
+  classroomId: varchar('classroom_id', { length: 36 }),
+  createdBy: varchar('created_by', { length: 36 }).notNull(),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  sectionAreaUnique: unique('uq_school_assignments_section_area').on(table.sectionId, table.areaId),
+  classroomUnique: unique('uq_school_assignments_classroom').on(table.classroomId),
+  schoolYearIdx: index('idx_school_assignments_school_year').on(table.schoolId, table.yearId),
+  teacherIdx: index('idx_school_assignments_teacher').on(table.teacherUserId),
+}));
+
+export type SchoolTeachingAssignment = typeof schoolTeachingAssignments.$inferSelect;
+
+// Matrícula automática: perfiles que creó (CREATED) o ligó al padrón (LINKED), para deshacer una importación o un
+// armado sin tocar perfiles que ya se usaron.
+export const autoProfileKindEnum = mysqlEnum('kind', ['CREATED', 'LINKED']);
+export const schoolAutoProfiles = mysqlTable('school_auto_profiles', {
+  profileId: varchar('profile_id', { length: 36 }).primaryKey(),
+  schoolId: varchar('school_id', { length: 36 }).notNull(),
+  studentId: varchar('student_id', { length: 36 }).notNull(),
+  classroomId: varchar('classroom_id', { length: 36 }).notNull(),
+  kind: autoProfileKindEnum.notNull(),
+  userId: varchar('user_id', { length: 36 }),
+  initialXp: int('initial_xp').notNull().default(0),
+  initialGp: int('initial_gp').notNull().default(0),
+  createdAt: datetime('created_at', { fsp: 3 }).notNull(),
+}, (table) => ({
+  studentIdx: index('idx_school_auto_profiles_student').on(table.studentId, table.createdAt),
+  schoolIdx: index('idx_school_auto_profiles_school').on(table.schoolId),
+}));

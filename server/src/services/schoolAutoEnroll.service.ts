@@ -1,0 +1,283 @@
+import { and, eq, gte, inArray, isNull } from 'drizzle-orm';
+import { v4 as uuidv4 } from 'uuid';
+import { db } from '../db/index.js';
+import {
+  attendanceRecords, classroomCharacterClasses, classrooms, gradeEvaluationScores, pointLogs, schoolAutoProfiles, schoolEnrollments,
+  schoolStudents, schoolTeachingAssignments, studentBadges, studentEquippedItems, studentGrades, studentProfiles, users,
+} from '../db/schema.js';
+import { generateRandomCode } from '../utils/helpers.js';
+import { logger } from '../utils/logger.js';
+import { matchWords } from '../utils/personNames.js';
+import { affectedRows } from '../utils/points.js';
+import { avatarService } from './avatar.service.js';
+
+/**
+ * Matrícula automática: cada estudiante matriculado en una sección tiene un perfil en cada clase vinculada a una
+ * asignación de esa sección. Si ya está en la clase (perfil ligado al padrón) no se toca; si el docente ya lo tenía con
+ * el mismo nombre sin ligar, se liga ese perfil; si no, se crea. El perfil nuevo se liga a la cuenta del estudiante si
+ * tiene exactamente una (la clase le aparece sola); si no, queda por reclamar con su tarjeta. Cada perfil creado o
+ * ligado se anota para poder deshacer una importación o un armado mientras nadie lo use.
+ */
+
+export interface SyncResult {
+  created: number;
+  linked: number;
+  withAccount: number;
+}
+const ZERO: SyncResult = { created: 0, linked: 0, withAccount: 0 };
+const add = (a: SyncResult, b: SyncResult): SyncResult => ({ created: a.created + b.created, linked: a.linked + b.linked, withAccount: a.withAccount + b.withAccount });
+
+type Executor = Pick<typeof db, 'select' | 'selectDistinct'>;
+
+/** Perfiles automáticos de unos estudiantes: los creados sin usar, los ligados y cuántos creados ya se usaron. */
+export interface AutoInspection {
+  unused: string[];
+  linked: Array<{ profileId: string; studentId: string }>;
+  used: number;
+  all: string[];
+}
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+const nameKey = (text: string) => matchWords(text).sort().join(' ');
+/** «Nombres Apellidos» (el orden que usan la puerta de la clase y las cuentas con PIN), hasta 100 caracteres. */
+const profileName = (s: { firstNames: string; lastNames: string }) => `${s.firstNames} ${s.lastNames}`.trim().slice(0, 100);
+
+const groupBy = <T>(items: T[], key: (item: T) => string) => {
+  const map = new Map<string, T[]>();
+  for (const item of items) {
+    const k = key(item);
+    map.set(k, [...(map.get(k) ?? []), item]);
+  }
+  return map;
+};
+
+/** Códigos de tarjeta (6 caracteres) que aún no usa ningún perfil. */
+const uniqueLinkCodes = async (executor: Executor, count: number) => {
+  const codes = new Set<string>();
+  for (let round = 0; round < 6 && codes.size < count; round++) {
+    const batch = new Set<string>();
+    while (batch.size < (count - codes.size) * 2) {
+      const code = generateRandomCode(6);
+      if (!codes.has(code)) batch.add(code);
+    }
+    const taken = new Set((await executor.select({ code: studentProfiles.linkCode }).from(studentProfiles)
+      .where(inArray(studentProfiles.linkCode, [...batch]))).map((r) => r.code));
+    for (const code of batch) {
+      if (codes.size >= count) break;
+      if (!taken.has(code)) codes.add(code);
+    }
+  }
+  if (codes.size < count) throw new Error('No se pudieron generar códigos de tarjeta');
+  return [...codes];
+};
+
+export const schoolAutoEnrollService = {
+  /** Pone a los estudiantes de una sección en una clase vinculada. Con la fila de la clase bloqueada: sin repetidos. */
+  async syncClassroom(input: { schoolId: string; yearId: string; sectionId: string; classroomId: string }): Promise<SyncResult> {
+    const { schoolId, yearId, sectionId, classroomId } = input;
+    const now = new Date();
+    return db.transaction(async (tx) => {
+      const [classroom] = await tx.select({
+        id: classrooms.id, isActive: classrooms.isActive, schoolId: classrooms.schoolId,
+        defaultXp: classrooms.defaultXp, defaultHp: classrooms.defaultHp, defaultGp: classrooms.defaultGp,
+      }).from(classrooms).where(eq(classrooms.id, classroomId)).for('update');
+      // Una clase archivada o que ya no es de la escuela no recibe a nadie.
+      if (!classroom || !classroom.isActive || classroom.schoolId !== schoolId) return ZERO;
+
+      const enrolled = await tx.select({ studentId: schoolStudents.id, firstNames: schoolStudents.firstNames, lastNames: schoolStudents.lastNames })
+        .from(schoolEnrollments)
+        .innerJoin(schoolStudents, eq(schoolStudents.id, schoolEnrollments.studentId))
+        .where(and(
+          eq(schoolEnrollments.yearId, yearId), eq(schoolEnrollments.sectionId, sectionId), eq(schoolEnrollments.status, 'ACTIVE'),
+          eq(schoolStudents.schoolId, schoolId), eq(schoolStudents.status, 'ACTIVE'),
+        ));
+      if (enrolled.length === 0) return ZERO;
+      const profiles = await tx.select({
+        id: studentProfiles.id, userId: studentProfiles.userId, schoolStudentId: studentProfiles.schoolStudentId,
+        displayName: studentProfiles.displayName, characterName: studentProfiles.characterName,
+        isActive: studentProfiles.isActive, isDemo: studentProfiles.isDemo,
+      }).from(studentProfiles).where(eq(studentProfiles.classroomId, classroomId));
+      const present = new Set(profiles.map((p) => p.schoolStudentId).filter((id): id is string => !!id));
+      let missing = enrolled.filter((s) => !present.has(s.studentId));
+      if (missing.length === 0) return ZERO;
+
+      const tracked: Array<typeof schoolAutoProfiles.$inferInsert> = [];
+      const link = async (profile: { id: string; userId: string | null }, studentId: string) => {
+        const result = await tx.update(studentProfiles).set({ schoolStudentId: studentId, updatedAt: now })
+          .where(and(eq(studentProfiles.id, profile.id), isNull(studentProfiles.schoolStudentId)));
+        if (affectedRows(result) !== 1) return false;
+        tracked.push({ profileId: profile.id, schoolId, studentId, classroomId, kind: 'LINKED', userId: profile.userId, createdAt: now });
+        present.add(studentId);
+        return true;
+      };
+
+      // 1) El docente ya lo tenía, sin ligar, con el mismo nombre (exacto y sin ambigüedad en ninguno de los lados).
+      let linked = 0;
+      const free = profiles.filter((p) => !p.schoolStudentId && p.isActive && !p.isDemo);
+      const freeByKey = groupBy(free, (p) => nameKey(p.displayName || p.characterName || ''));
+      for (const [key, students] of groupBy(missing, (s) => nameKey(`${s.lastNames} ${s.firstNames}`))) {
+        const candidates = freeByKey.get(key) ?? [];
+        if (!key || students.length !== 1 || candidates.length !== 1) continue;
+        if (await link(candidates[0], students[0].studentId)) linked++;
+      }
+      missing = missing.filter((s) => !present.has(s.studentId));
+
+      // 2) Su cuenta, si tiene exactamente una (de alumno, activa, en perfiles activos que no son demo).
+      const accounts = missing.length === 0 ? [] : await tx.select({
+        studentId: studentProfiles.schoolStudentId, userId: studentProfiles.userId,
+        characterName: studentProfiles.characterName, avatarGender: studentProfiles.avatarGender, updatedAt: studentProfiles.updatedAt,
+      }).from(studentProfiles)
+        .innerJoin(users, eq(users.id, studentProfiles.userId))
+        .where(and(
+          inArray(studentProfiles.schoolStudentId, missing.map((s) => s.studentId)),
+          eq(studentProfiles.isActive, true), eq(studentProfiles.isDemo, false), eq(users.role, 'STUDENT'), eq(users.isActive, true),
+        ));
+      const accountsOf = groupBy(accounts, (a) => a.studentId!);
+      const inClassByUser = new Map(profiles.filter((p) => p.userId).map((p) => [p.userId!, p]));
+
+      // 3) Crear los que faltan: con su cuenta (su nombre de héroe y su género de avatar) o por reclamar con tarjeta.
+      const toCreate: Array<{ studentId: string; name: string; userId: string | null; characterName: string; gender: 'MALE' | 'FEMALE' }> = [];
+      for (const student of missing) {
+        const own = accountsOf.get(student.studentId) ?? [];
+        const userIds = [...new Set(own.map((a) => a.userId!))];
+        const name = profileName(student);
+        if (userIds.length === 1) {
+          const existing = inClassByUser.get(userIds[0]);
+          if (existing) {
+            // Ya estaba en la clase con su cuenta, sin ligar: se liga ese perfil (la clave clase+cuenta no admite otro).
+            if (!existing.schoolStudentId && (await link(existing, student.studentId))) {
+              linked++;
+              continue;
+            }
+            toCreate.push({ studentId: student.studentId, name, userId: null, characterName: name, gender: 'MALE' });
+            continue;
+          }
+          const latest = [...own].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0];
+          toCreate.push({ studentId: student.studentId, name, userId: userIds[0], characterName: latest.characterName || name, gender: latest.avatarGender ?? 'MALE' });
+        } else {
+          toCreate.push({ studentId: student.studentId, name, userId: null, characterName: name, gender: 'MALE' });
+        }
+      }
+
+      if (toCreate.length > 0) {
+        const [guardian] = await tx.select({ id: classroomCharacterClasses.id }).from(classroomCharacterClasses)
+          .where(and(eq(classroomCharacterClasses.classroomId, classroomId), eq(classroomCharacterClasses.key, 'GUARDIAN')))
+          .limit(1);
+        const codes = await uniqueLinkCodes(tx, toCreate.filter((c) => !c.userId).length);
+        let next = 0;
+        const rows = toCreate.map((c) => ({
+          id: uuidv4(),
+          userId: c.userId,
+          classroomId,
+          displayName: c.name,
+          characterName: c.characterName,
+          linkCode: c.userId ? null : codes[next++],
+          characterClass: 'GUARDIAN' as const,
+          characterClassId: guardian?.id ?? null,
+          avatarGender: c.gender,
+          hp: classroom.defaultHp,
+          xp: classroom.defaultXp,
+          gp: classroom.defaultGp,
+          schoolStudentId: c.studentId,
+          createdAt: now,
+          updatedAt: now,
+        }));
+        for (let i = 0; i < rows.length; i += 200) await tx.insert(studentProfiles).values(rows.slice(i, i + 200));
+        for (const gender of ['MALE', 'FEMALE'] as const) {
+          await avatarService.equipDefaultItemsMany(rows.filter((r) => r.avatarGender === gender).map((r) => r.id), gender, tx);
+        }
+        tracked.push(...rows.map((r) => ({
+          profileId: r.id, schoolId, studentId: r.schoolStudentId, classroomId, kind: 'CREATED' as const, userId: r.userId,
+          initialXp: r.xp, initialGp: r.gp, createdAt: now,
+        })));
+      }
+      for (let i = 0; i < tracked.length; i += 200) await tx.insert(schoolAutoProfiles).values(tracked.slice(i, i + 200));
+      return { created: toCreate.length, linked, withAccount: toCreate.filter((c) => c.userId).length };
+    });
+  },
+
+  /** Todas las clases vinculadas de una sección. */
+  async syncSection(schoolId: string, yearId: string, sectionId: string): Promise<SyncResult> {
+    const links = await db.select({ classroomId: schoolTeachingAssignments.classroomId }).from(schoolTeachingAssignments)
+      .where(and(eq(schoolTeachingAssignments.schoolId, schoolId), eq(schoolTeachingAssignments.yearId, yearId), eq(schoolTeachingAssignments.sectionId, sectionId)));
+    let total = ZERO;
+    for (const { classroomId } of links) {
+      if (classroomId) total = add(total, await this.syncClassroom({ schoolId, yearId, sectionId, classroomId }));
+    }
+    return total;
+  },
+
+  /**
+   * Después de matricular o dar sección (alta, importación, armado): las clases de las secciones de estos estudiantes.
+   * Nunca hace fallar la acción que la llamó; lo que falle se completa con «Sincronizar».
+   */
+  async syncStudents(schoolId: string, yearId: string, studentIds: string[]): Promise<SyncResult> {
+    if (studentIds.length === 0) return ZERO;
+    try {
+      const sections = await db.selectDistinct({ sectionId: schoolEnrollments.sectionId }).from(schoolEnrollments)
+        .where(and(eq(schoolEnrollments.yearId, yearId), eq(schoolEnrollments.status, 'ACTIVE'), inArray(schoolEnrollments.studentId, studentIds)));
+      let total = ZERO;
+      for (const { sectionId } of sections) {
+        if (sectionId) total = add(total, await this.syncSection(schoolId, yearId, sectionId));
+      }
+      return total;
+    } catch (error) {
+      logger.error('Matrícula automática: no se pudo completar', { schoolId, yearId, error: error instanceof Error ? error.message : String(error) });
+      return ZERO;
+    }
+  },
+
+  /**
+   * Los perfiles que la matrícula automática creó o ligó para estos estudiantes desde `since`. Un perfil creado «se
+   * usó» si alguien lo reclamó, cambió su XP u oro, tiene clan o tiene puntos, asistencia, notas o insignias.
+   */
+  async inspect(executor: Executor, studentIds: string[], since: Date): Promise<AutoInspection> {
+    if (studentIds.length === 0) return { unused: [], linked: [], used: 0, all: [] };
+    const rows = await executor.select().from(schoolAutoProfiles)
+      .where(and(inArray(schoolAutoProfiles.studentId, studentIds), gte(schoolAutoProfiles.createdAt, since)));
+    const created = rows.filter((r) => r.kind === 'CREATED');
+    const ids = created.map((r) => r.profileId);
+    const current = ids.length === 0 ? [] : await executor.select({
+      id: studentProfiles.id, userId: studentProfiles.userId, xp: studentProfiles.xp, gp: studentProfiles.gp, teamId: studentProfiles.teamId,
+    }).from(studentProfiles).where(inArray(studentProfiles.id, ids));
+    const byId = new Map(current.map((p) => [p.id, p]));
+    const usedIds = new Set<string>();
+    for (const row of created) {
+      const p = byId.get(row.profileId);
+      if (p && (p.userId !== row.userId || p.xp !== row.initialXp || p.gp !== row.initialGp || p.teamId)) usedIds.add(row.profileId);
+    }
+    const alive = current.map((p) => p.id);
+    if (alive.length > 0) {
+      const activity = [
+        executor.selectDistinct({ id: pointLogs.studentId }).from(pointLogs).where(inArray(pointLogs.studentId, alive)),
+        executor.selectDistinct({ id: attendanceRecords.studentProfileId }).from(attendanceRecords).where(inArray(attendanceRecords.studentProfileId, alive)),
+        executor.selectDistinct({ id: studentGrades.studentProfileId }).from(studentGrades).where(inArray(studentGrades.studentProfileId, alive)),
+        executor.selectDistinct({ id: gradeEvaluationScores.studentProfileId }).from(gradeEvaluationScores).where(inArray(gradeEvaluationScores.studentProfileId, alive)),
+        executor.selectDistinct({ id: studentBadges.studentProfileId }).from(studentBadges).where(inArray(studentBadges.studentProfileId, alive)),
+      ];
+      for (const rowsOf of await Promise.all(activity)) rowsOf.forEach((r) => usedIds.add(r.id));
+    }
+    return {
+      unused: alive.filter((id) => !usedIds.has(id)),
+      linked: rows.filter((r) => r.kind === 'LINKED').map((r) => ({ profileId: r.profileId, studentId: r.studentId })),
+      used: usedIds.size,
+      all: rows.map((r) => r.profileId),
+    };
+  },
+
+  /** Deshace lo que mostró `inspect` (sin perfiles usados): borra los creados y desliga los ligados. */
+  async revert(tx: Tx, inspected: AutoInspection) {
+    for (let i = 0; i < inspected.unused.length; i += 500) {
+      const part = inspected.unused.slice(i, i + 500);
+      await tx.delete(studentEquippedItems).where(inArray(studentEquippedItems.studentProfileId, part));
+      await tx.delete(studentProfiles).where(inArray(studentProfiles.id, part));
+    }
+    for (const { profileId, studentId } of inspected.linked) {
+      await tx.update(studentProfiles).set({ schoolStudentId: null, updatedAt: new Date() })
+        .where(and(eq(studentProfiles.id, profileId), eq(studentProfiles.schoolStudentId, studentId)));
+    }
+    for (let i = 0; i < inspected.all.length; i += 500) {
+      await tx.delete(schoolAutoProfiles).where(inArray(schoolAutoProfiles.profileId, inspected.all.slice(i, i + 500)));
+    }
+  },
+};

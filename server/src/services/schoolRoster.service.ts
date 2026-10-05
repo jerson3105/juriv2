@@ -9,6 +9,7 @@ import { ConflictError, NotFoundError, ValidationError, isDuplicateEntry } from 
 import { decryptPii, encryptPii, piiReady } from '../utils/piiCrypto.js';
 import { documentIndex, normalizeDocument, parseDocument, type DocumentType } from '../utils/personalDocument.js';
 import { escapeLike } from '../utils/textClean.js';
+import { schoolAutoEnrollService } from './schoolAutoEnroll.service.js';
 import { sectionDisplayName } from './schoolSection.service.js';
 
 /**
@@ -315,6 +316,8 @@ export const schoolRosterService = {
       if (isDuplicateEntry(error)) throw new ConflictError('Ese documento ya está registrado en la escuela');
       throw error;
     }
+    // Matrícula automática: entra a las clases vinculadas de su sección.
+    if (input.sectionId) await schoolAutoEnrollService.syncStudents(schoolId, yearId, [id]);
     return this.get(schoolId, yearId, id);
   },
 
@@ -376,6 +379,7 @@ export const schoolRosterService = {
       if (isDuplicateEntry(error)) throw new ConflictError('Ese documento ya está registrado en la escuela');
       throw error;
     }
+    if (assignSection) await schoolAutoEnrollService.syncStudents(schoolId, yearId, [studentId]);
     return { detail: await this.get(schoolId, yearId, studentId), changed: [...changed, ...(assignSection ? ['section'] : [])] };
   },
 

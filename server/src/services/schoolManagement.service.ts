@@ -2,7 +2,7 @@ import { randomInt } from 'crypto';
 import { and, eq, gte, inArray, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
-import { classrooms, curriculumAreas, pointLogs, schoolMembers, schools, schoolSections, studentProfiles, users } from '../db/schema.js';
+import { classrooms, curriculumAreas, pointLogs, schoolMembers, schools, schoolSections, schoolTeachingAssignments, studentProfiles, users } from '../db/schema.js';
 import { affectedRows } from '../utils/points.js';
 import { historyService } from './history.service.js';
 import { attendanceService } from './attendance.service.js';
@@ -41,6 +41,20 @@ class SchoolManagementService {
     }
   }
 
+  // Nombrar o quitar administración (solo el responsable). Al responsable y a uno mismo no se les cambia el rol.
+  async changeMemberRole(schoolId: string, memberId: string, role: 'ADMIN' | 'TEACHER', actorUserId: string) {
+    const [member] = await db.select().from(schoolMembers)
+      .where(and(eq(schoolMembers.id, memberId), eq(schoolMembers.schoolId, schoolId)));
+    if (!member || member.status !== 'VERIFIED') throw new SchoolManagementError('Profesor no encontrado en esta escuela', 404);
+    if (member.role === 'OWNER') throw new SchoolManagementError('El responsable de la escuela no cambia de rol', 400);
+    if (member.userId === actorUserId) throw new SchoolManagementError('No puedes cambiar tu propio rol', 400);
+    if (member.role === role) return { userId: member.userId, previousRole: member.role, role, changed: false };
+    const result = await db.update(schoolMembers).set({ role, updatedAt: new Date() })
+      .where(and(eq(schoolMembers.id, memberId), eq(schoolMembers.role, member.role)));
+    if (affectedRows(result) !== 1) throw new SchoolManagementError('El rol cambió mientras tanto: recarga la página', 409);
+    return { userId: member.userId, previousRole: member.role, role, changed: true };
+  }
+
   // Retirar a un profesor: sus clases vuelven a ser personales (las conserva) y deja de ser miembro.
   async removeTeacher(schoolId: string, memberId: string, options: { actorIsOwner: boolean }) {
     const [member] = await db.select().from(schoolMembers)
@@ -51,8 +65,11 @@ class SchoolManagementService {
 
     return db.transaction(async (tx) => {
       const unassign = await tx.update(classrooms)
-        .set({ schoolId: null, updatedAt: new Date() })
+        .set({ schoolId: null, schoolSectionId: null, updatedAt: new Date() })
         .where(and(eq(classrooms.schoolId, schoolId), eq(classrooms.teacherId, member.userId)));
+      // Sus asignaciones se quitan: la matriz las mostrará por cubrir.
+      await tx.delete(schoolTeachingAssignments)
+        .where(and(eq(schoolTeachingAssignments.schoolId, schoolId), eq(schoolTeachingAssignments.teacherUserId, member.userId)));
       await tx.delete(schoolMembers).where(eq(schoolMembers.id, memberId));
       // Deja de ser tutor de sus secciones: quedan «Sin tutoría».
       await tx.update(schoolSections).set({ tutorUserId: null, updatedAt: new Date() })

@@ -84,6 +84,8 @@ interface CreateClassroomData {
   curriculumAreaId?: string | null;
   gradeScaleType?: 'PERU_LETTERS' | 'PERU_VIGESIMAL' | 'CENTESIMAL' | 'USA_LETTERS' | 'CUSTOM' | null;
   schoolId?: string | null;
+  /** Clase creada desde una asignación de la consola: nace enlazada a su sección. */
+  schoolSectionId?: string | null;
 }
 
 interface CreateCustomClassroomCompetencyData {
@@ -473,6 +475,7 @@ export class ClassroomService {
       curriculumAreaId: data.curriculumAreaId || null,
       gradeScaleType: data.gradeScaleType || null,
       schoolId: data.schoolId || null,
+      schoolSectionId: data.schoolSectionId || null,
       createdAt: now,
       updatedAt: now,
     });

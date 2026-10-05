@@ -4,12 +4,13 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import {
   classrooms, curriculumAreas, schoolEnrollmentEvents, schoolEnrollments, schoolRosterBuilds, schoolRosterDrafts, schoolSections, schoolStudents,
-  schoolYears, studentProfiles, users,
+  schoolTeachingAssignments, schoolYears, studentProfiles, users,
 } from '../db/schema.js';
 import { ConflictError, NotFoundError, ValidationError } from '../utils/errors.js';
 import { affectedRows } from '../utils/points.js';
 import { containsWords, matchWords, splitPersonName, type NameSplit } from '../utils/personNames.js';
 import { cleanText, comparableText } from '../utils/textClean.js';
+import { schoolAutoEnrollService } from './schoolAutoEnroll.service.js';
 import { sectionDisplayName } from './schoolSection.service.js';
 
 /**
@@ -281,8 +282,17 @@ const parseBuildData = (raw: unknown): BuildData => (typeof raw === 'string' ? J
  */
 const undoBlocker = async (executor: Pick<typeof db, 'select' | 'selectDistinct'>, build: typeof schoolRosterBuilds.$inferSelect): Promise<string | null> => {
   if (Date.now() > new Date(build.createdAt).getTime() + UNDO_MS) return 'ya pasaron 24 horas desde el armado';
-  const ids = parseBuildData(build.data).createdStudentIds;
+  const data = parseBuildData(build.data);
+  const classIds = data.sectionLinks.map((l) => l.classroomId);
+  if (classIds.length > 0) {
+    const [assigned] = await executor.select({ id: schoolTeachingAssignments.id }).from(schoolTeachingAssignments)
+      .where(inArray(schoolTeachingAssignments.classroomId, classIds)).limit(1);
+    if (assigned) return 'algunas de sus clases ya tienen asignación: quítalas en «Docentes» antes de deshacer';
+  }
+  const ids = data.createdStudentIds;
   if (!ids.length) return null;
+  const auto = await schoolAutoEnrollService.inspect(executor, ids, new Date(build.createdAt));
+  if (auto.used > 0) return `ya hay actividad en ${auto.used} ${auto.used === 1 ? 'perfil' : 'perfiles'} que la matrícula automática creó en otras clases`;
   const withEvents = await executor.selectDistinct({ id: schoolEnrollmentEvents.studentId }).from(schoolEnrollmentEvents)
     .where(and(inArray(schoolEnrollmentEvents.studentId, ids), ne(schoolEnrollmentEvents.type, 'BUILT_FROM_CLASSES')));
   const withData = await executor.select({ id: schoolStudents.id }).from(schoolStudents).where(and(
@@ -511,6 +521,11 @@ export const schoolRosterBuilderService = {
         await tx.update(classrooms).set({ schoolSectionId: next, updatedAt: now }).where(eq(classrooms.id, row.id));
         sectionLinks.push({ classroomId: row.id, previous: row.previous });
       }
+      if (sectionLinks.length > 0) {
+        // Una clase que cambia de sección deja la asignación que tenía (la matriz la mostrará sin clase).
+        await tx.update(schoolTeachingAssignments).set({ classroomId: null, updatedAt: now })
+          .where(inArray(schoolTeachingAssignments.classroomId, sectionLinks.map((l) => l.classroomId)));
+      }
       await tx.insert(schoolRosterBuilds).values({
         id: buildId, schoolId, yearId, actorUserId: actorId, createdCount: created, linkedCount: links.length,
         data: { createdStudentIds, links, sectionLinks, draft: { mapping: draft.mapping, decisions: draft.decisions } },
@@ -518,7 +533,9 @@ export const schoolRosterBuilderService = {
       });
       await tx.delete(schoolRosterDrafts).where(and(eq(schoolRosterDrafts.schoolId, schoolId), eq(schoolRosterDrafts.yearId, yearId)));
     });
-    return { buildId, created, linked: links.length, persons: persons.length };
+    // Matrícula automática: los estudiantes nuevos entran también a las demás clases vinculadas de su sección.
+    const auto = await schoolAutoEnrollService.syncStudents(schoolId, yearId, createdStudentIds);
+    return { buildId, created, linked: links.length, persons: persons.length, autoEnrolled: auto.created + auto.linked };
   },
 
   /** El último armado del año que sigue en pie y si todavía se puede deshacer. */
@@ -573,6 +590,8 @@ export const schoolRosterBuilderService = {
         unlinked += affectedRows(result);
       }
       const ids = data.createdStudentIds;
+      // Los perfiles que la matrícula automática creó o ligó en otras clases para estos estudiantes (sin usar).
+      await schoolAutoEnrollService.revert(tx, await schoolAutoEnrollService.inspect(tx, ids, new Date(build.createdAt)));
       if (ids.length) {
         await tx.delete(schoolEnrollmentEvents).where(and(inArray(schoolEnrollmentEvents.studentId, ids), eq(schoolEnrollmentEvents.schoolId, schoolId)));
         await tx.delete(schoolEnrollments).where(and(inArray(schoolEnrollments.studentId, ids), eq(schoolEnrollments.schoolId, schoolId)));

@@ -16,6 +16,7 @@ import {
   requireSchoolViewer,
   verifiedSchoolRole,
   isSchoolManagerRole,
+  requireSchoolRole,
 } from '../utils/access.js';
 
 const createSchoolSchema = z.object({
@@ -786,6 +787,7 @@ const sendManagementError = (res: Response, error: unknown, fallback: string) =>
 };
 
 const INVITE_CODE_RE = /^[A-Z0-9]{6,16}$/;
+const memberRoleSchema = z.object({ role: z.enum(['ADMIN', 'TEACHER']) }).strict();
 
 export const schoolManagementController = {
   // DELETE /schools/:schoolId/members/:memberId — retirar profesor (sus clases vuelven a ser personales)
@@ -805,6 +807,33 @@ export const schoolManagementController = {
       res.json({ success: true, data: result, message: 'Profesor retirado de la escuela' });
     } catch (error) {
       return sendManagementError(res, error, 'Error al retirar al profesor');
+    }
+  },
+
+  // PATCH /schools/:schoolId/members/:memberId/role — nombrar o quitar administración (solo el responsable)
+  async changeMemberRole(req: Request, res: Response) {
+    try {
+      const { schoolId, memberId } = req.params;
+      // Sin atajo para el ADMIN de la plataforma: nombrar administración da acceso a los datos del padrón.
+      if (!(await requireSchoolRole(req, res, schoolId, ['OWNER']))) return;
+      const parsed = memberRoleSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ success: false, message: 'Elige Administración o Docente' });
+      const result = await schoolManagementService.changeMemberRole(schoolId, memberId, parsed.data.role, req.user!.id);
+      if (result.changed) {
+        await auditRequest(req, {
+          action: 'school.member_role_changed',
+          schoolId,
+          target: { type: 'user', id: result.userId },
+          metadata: { from: result.previousRole, to: result.role },
+        });
+      }
+      res.json({
+        success: true,
+        data: { role: result.role, changed: result.changed },
+        message: result.role === 'ADMIN' ? 'Ahora es parte de la administración' : 'Ahora es docente',
+      });
+    } catch (error) {
+      return sendManagementError(res, error, 'Error al cambiar el rol');
     }
   },
 

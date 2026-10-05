@@ -51,7 +51,7 @@ export const GradebookSetup = ({ classroomId, enabled, onDone }: { classroomId: 
           <select id="setup-area" value={areaId} onChange={(e) => setAreaId(e.target.value)} disabled={isLoading} className={`${inputClass} mt-1`}>
             <option value="">Elige un área</option>
             {areas.map((a) => (
-              <option key={a.id} value={a.id}>{a.name} ({a.competencies.length} {a.competencies.length === 1 ? 'competencia' : 'competencias'})</option>
+              <option key={a.id} value={a.id}>{a.name}{a.educationLevel === 'INICIAL' ? ' · Inicial' : ''} ({a.competencies.length} {a.competencies.length === 1 ? 'competencia' : 'competencias'})</option>
             ))}
           </select>
           {area && (

@@ -5,6 +5,7 @@ import { schoolSectionController } from '../controllers/schoolSection.controller
 import { schoolRosterController } from '../controllers/schoolRoster.controller.js';
 import { schoolRosterBuilderController } from '../controllers/schoolRosterBuilder.controller.js';
 import { schoolRosterImportController } from '../controllers/schoolRosterImport.controller.js';
+import { schoolAssignmentController } from '../controllers/schoolAssignment.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { rosterImportLimiter } from '../middleware/security.js';
 
@@ -48,6 +49,7 @@ router.delete('/members/:memberId/cancel', authorize('TEACHER'), schoolControlle
 
 // Gestión del responsable
 router.delete('/:schoolId/members/:memberId', authorize('TEACHER', 'ADMIN'), schoolManagementController.removeTeacher);
+router.patch('/:schoolId/members/:memberId/role', authorize('TEACHER'), schoolManagementController.changeMemberRole);
 router.get('/:schoolId/classrooms/:classroomId/report', authorize('TEACHER', 'ADMIN'), schoolManagementController.classroomReport);
 router.post('/:schoolId/invite', authorize('TEACHER', 'ADMIN'), schoolManagementController.regenerateInvite);
 router.delete('/:schoolId/invite', authorize('TEACHER', 'ADMIN'), schoolManagementController.disableInvite);
@@ -94,6 +96,23 @@ router.post('/:schoolId/years/:yearId/roster-import/:batchId/confirm', authorize
 router.post('/:schoolId/years/:yearId/roster-import/:batchId/undo', authorize('TEACHER'), schoolRosterImportController.undo);
 router.get('/:schoolId/years/:yearId/roster-import/:batchId/errors', authorize('TEACHER'), schoolRosterImportController.errorRows);
 router.delete('/:schoolId/years/:yearId/roster-import/:batchId', authorize('TEACHER'), schoolRosterImportController.discard);
+
+// Plan de estudios y asignaciones (sección × área → docente y clase, con matrícula automática)
+router.get('/:schoolId/years/:yearId/plan', authorize('TEACHER'), schoolAssignmentController.getPlan);
+router.put('/:schoolId/years/:yearId/plan/:level', authorize('TEACHER'), schoolAssignmentController.savePlan);
+router.get('/:schoolId/years/:yearId/assignments', authorize('TEACHER'), schoolAssignmentController.matrix);
+router.post('/:schoolId/years/:yearId/assignments', authorize('TEACHER'), schoolAssignmentController.create);
+router.get('/:schoolId/years/:yearId/assignments/from-classes', authorize('TEACHER'), schoolAssignmentController.fromClassesPreview);
+router.post('/:schoolId/years/:yearId/assignments/from-classes', authorize('TEACHER'), schoolAssignmentController.fromClassesConfirm);
+router.patch('/:schoolId/assignments/:assignmentId', authorize('TEACHER'), schoolAssignmentController.update);
+router.delete('/:schoolId/assignments/:assignmentId', authorize('TEACHER'), schoolAssignmentController.remove);
+router.post('/:schoolId/assignments/:assignmentId/sync', authorize('TEACHER'), schoolAssignmentController.sync);
+router.put('/:schoolId/assignments/:assignmentId/classroom', authorize('TEACHER'), schoolAssignmentController.setClassroom);
+router.get('/:schoolId/teachers/:teacherId/classrooms', authorize('TEACHER'), schoolAssignmentController.teacherClassrooms);
+
+// Mi carga y mi tutoría (cualquier miembro verificado)
+router.get('/:schoolId/years/:yearId/my-load', authorize('TEACHER'), schoolAssignmentController.myLoad);
+router.get('/:schoolId/years/:yearId/sections/:sectionId/tutoring', authorize('TEACHER'), schoolAssignmentController.tutoringSection);
 
 // Asignar/desasignar clase
 router.post('/:schoolId/classrooms/:classroomId', authorize('TEACHER'), schoolController.assignClassroom.bind(schoolController));
