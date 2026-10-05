@@ -50,7 +50,7 @@ const managerScope = async (req: Request, res: Response) => {
   return yearId ? { schoolId, yearId } : null;
 };
 
-/** Cualquier miembro verificado (Mi carga, mi tutoría); dice si además es de la administración. */
+/** Cualquier miembro verificado (Mis asignaciones, mi tutoría); dice si además es de la administración. */
 const memberScope = async (req: Request, res: Response) => {
   const { schoolId } = req.params;
   const role = await requireSchoolRole(req, res, schoolId, SCHOOL_MEMBER_ROLES);
@@ -227,7 +227,7 @@ export const schoolAssignmentController = {
     }
   },
 
-  // GET /schools/:schoolId/years/:yearId/my-load — Mi carga y mi tutoría
+  // GET /schools/:schoolId/years/:yearId/my-load — Mis asignaciones y mi tutoría
   async myLoad(req: Request, res: Response) {
     try {
       const s = await memberScope(req, res);
@@ -236,7 +236,7 @@ export const schoolAssignmentController = {
       if (!yearId) return;
       res.json({ success: true, data: await schoolAssignmentService.myLoad(s.schoolId, yearId, req.user!.id) });
     } catch (error) {
-      return sendError(res, error, 'Error al obtener tu carga');
+      return sendError(res, error, 'Error al obtener tus asignaciones');
     }
   },
 

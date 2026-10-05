@@ -11,7 +11,7 @@ import { AssignmentsTab } from '../../components/schools/console/AssignmentsTab'
 
 /**
  * Páginas de la consola que reutilizan las pestañas de «Mi Escuela» (docentes, clases, informes, biblioteca). Las
- * siguientes entregas las amplían (asignaciones, Mi carga…).
+ * siguientes entregas las amplían (asignaciones, Mis asignaciones…).
  */
 
 const PageHeader = ({ title, subtitle }: { title: string; subtitle: string }) => (
@@ -42,7 +42,7 @@ export const SchoolTeachersPage = () => {
     manager && requests.length > 0 ? `${requests.length} ${requests.length === 1 ? 'solicitud para unirse' : 'solicitudes para unirse'}` : null,
   ].filter(Boolean).join(' · ') || 'El equipo de la escuela';
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="w-full">
       <PageHeader title="Docentes" subtitle={subtitle} />
       {manager && (
         <div className="pg-seg mb-4" role="group" aria-label="Docentes">
@@ -79,7 +79,7 @@ export const SchoolClassesPage = () => {
   const { school, manager } = useSchoolConsole();
   const { classrooms, loadingDetail } = useSchoolPanelData(school, manager);
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="w-full">
       <PageHeader title="Clases" subtitle={loadingDetail ? 'Las clases de los docentes de la escuela' : `${classrooms.length} ${classrooms.length === 1 ? 'clase' : 'clases'} en la escuela`} />
       <ClassesTab schoolId={school.id} manage={manager} classrooms={classrooms} isLoading={loadingDetail} />
     </div>
@@ -91,7 +91,7 @@ export const SchoolReportsPage = () => {
   const { classrooms } = useSchoolPanelData(school, manager);
   const reportsRef = useRef<HTMLDivElement>(null);
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="space-y-6">
       <PageHeader title="Informes" subtitle="Participación y asistencia de la escuela" />
       <SummaryTab schoolId={school.id} onOpenReports={() => reportsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
       <div ref={reportsRef}>
@@ -106,7 +106,7 @@ export const SchoolLibraryPage = () => {
   const { user } = useAuthStore();
   const { classrooms } = useSchoolPanelData(school, manager);
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="w-full">
       <PageHeader title="Biblioteca" subtitle="Comportamientos e insignias que la escuela comparte con sus clases" />
       <LibraryTab schoolId={school.id} manage={manager} myClassrooms={classrooms.filter((c) => c.teacherId === user?.id)} />
     </div>

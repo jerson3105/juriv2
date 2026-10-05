@@ -1,7 +1,7 @@
 import api from './api';
 import type { SchoolLevel } from './schoolYearApi';
 
-/** Consola escolar: plan de estudios, asignaciones (sección × área → docente y clase), Mi carga y mi tutoría. */
+/** Consola escolar: plan de estudios, asignaciones (sección × área → docente y clase), Mis asignaciones y mi tutoría. */
 
 export interface PlanArea {
   areaId: string;

@@ -432,7 +432,7 @@ export const schoolAssignmentService = {
     return { assigned: proposals.length, sync };
   },
 
-  /** Mi carga (cualquier miembro verificado): mis asignaciones del año, mis tutorías y mis clases para vincular. */
+  /** Mis asignaciones (cualquier miembro verificado): lo que enseño este año, mis tutorías y mis clases para vincular. */
   async myLoad(schoolId: string, yearId: string, userId: string) {
     await loadYear(schoolId, yearId, false);
     const mine = await db.select({

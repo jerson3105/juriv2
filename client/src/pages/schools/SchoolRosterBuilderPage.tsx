@@ -28,7 +28,7 @@ export const SchoolRosterBuilderPage = () => {
   const overview = useQuery({ queryKey: rosterBuilderKeys.overview(school.id, yearId), queryFn: () => rosterBuilderApi.overview(school.id, yearId), enabled: !!activeYear });
 
   if (yearsLoading || (activeYear && overview.isLoading)) {
-    return <div className="mx-auto h-64 max-w-6xl animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none dark:bg-gray-800" aria-busy="true" aria-label="Cargando las clases" />;
+    return <div className="h-64 animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none dark:bg-gray-800" aria-busy="true" aria-label="Cargando las clases" />;
   }
   if (!activeYear || overview.isError || !overview.data) {
     return (
@@ -98,7 +98,7 @@ const Builder = ({ data, schoolId, yearId }: { data: BuilderOverview; schoolId: 
   const pending = groups.filter((g) => g.kind !== 'SAFE' && !isDecided(g, decisions[g.key])).length;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5">
+    <div className="space-y-5">
       <header className="flex flex-wrap items-start gap-3">
         <Link to={`/escuela/${schoolId}/estudiantes`} className="pg-icon-btn pg-focus" aria-label="Volver a Estudiantes"><ArrowLeft size={20} aria-hidden="true" /></Link>
         <div className="min-w-0 flex-1">

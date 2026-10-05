@@ -138,7 +138,7 @@ export const SchoolHomePage = () => {
   const ready = steps.filter((s) => s.done).length;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5">
+    <div className="space-y-5">
       <header>
         <h1 className="text-xl font-black text-gray-900 dark:text-white sm:text-2xl">Inicio</h1>
         <p className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">

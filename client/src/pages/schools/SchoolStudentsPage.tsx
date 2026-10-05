@@ -81,7 +81,7 @@ export const SchoolStudentsPage = () => {
     return () => window.clearTimeout(timer);
   }, [search, setParams]);
 
-  if (yearsLoading) return <div className="mx-auto h-64 max-w-6xl animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none dark:bg-gray-800" aria-busy="true" aria-label="Cargando" />;
+  if (yearsLoading) return <div className="h-64 animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none dark:bg-gray-800" aria-busy="true" aria-label="Cargando" />;
   if (!activeYear) {
     return (
       <div className="mx-auto max-w-3xl rounded-2xl border-2 border-dashed border-gray-300 bg-white/70 px-6 py-12 text-center dark:border-gray-600 dark:bg-gray-800/60">
@@ -102,7 +102,7 @@ export const SchoolStudentsPage = () => {
   const emptyRoster = !!counts && counts.all === 0 && counts.withdrawn === 0;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-4">
+    <div className="space-y-4">
       <header className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
           <h1 className="text-xl font-black text-gray-900 dark:text-white sm:text-2xl">Estudiantes</h1>

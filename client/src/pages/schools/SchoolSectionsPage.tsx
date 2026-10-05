@@ -47,7 +47,7 @@ export const SchoolSectionsPage = () => {
   });
 
   if (yearsLoading || (activeYear && (year.isLoading || sections.isLoading))) {
-    return <div className="mx-auto h-64 max-w-6xl animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none dark:bg-gray-800" aria-busy="true" aria-label="Cargando las secciones" />;
+    return <div className="h-64 animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none dark:bg-gray-800" aria-busy="true" aria-label="Cargando las secciones" />;
   }
   if (!activeYear) {
     return (
@@ -74,7 +74,7 @@ export const SchoolSectionsPage = () => {
   const countIn = (l: SchoolLevel) => all.filter((s) => s.level === l).length;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5">
+    <div className="space-y-5">
       <header className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
           <h1 className="text-xl font-black text-gray-900 dark:text-white sm:text-2xl">Grados y secciones</h1>

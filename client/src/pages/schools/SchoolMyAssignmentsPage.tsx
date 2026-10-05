@@ -25,18 +25,18 @@ const statusOf = (a: MyLoadAssignment): { text: string; tone: keyof typeof PILL 
   return { text: 'Al día', tone: 'ok' };
 };
 
-/** Mi carga: mis asignaciones del año (sección × área) con su clase, y mi tutoría. Para todo el equipo. */
-export const SchoolMyLoadPage = () => {
+/** Mis asignaciones: lo que enseño este año (sección × área) con su clase, y mi tutoría. Para todo el equipo. */
+export const SchoolMyAssignmentsPage = () => {
   const { school, activeYear, yearsLoading } = useSchoolConsole();
   const yearId = activeYear?.id ?? '';
   const load = useQuery({ queryKey: assignmentKeys.myLoad(school.id, yearId), queryFn: () => assignmentApi.myLoad(school.id, yearId), enabled: !!activeYear });
 
-  if (yearsLoading || (activeYear && load.isLoading)) return <div className="mx-auto h-64 max-w-6xl animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none dark:bg-gray-800" aria-busy="true" aria-label="Cargando tu carga" />;
-  if (!activeYear) return <p className="mx-auto max-w-3xl rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-700 dark:border-gray-600 dark:text-gray-300">Tu carga aparece cuando la escuela prepare su año escolar.</p>;
+  if (yearsLoading || (activeYear && load.isLoading)) return <div className="h-64 animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none dark:bg-gray-800" aria-busy="true" aria-label="Cargando tus asignaciones" />;
+  if (!activeYear) return <p className="mx-auto max-w-3xl rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-700 dark:border-gray-600 dark:text-gray-300">Tus asignaciones aparecen cuando la escuela prepare su año escolar.</p>;
   if (load.isError || !load.data) {
     return (
       <div className="mx-auto max-w-3xl rounded-xl border border-red-200 bg-red-50 p-6 text-center dark:border-red-500/40 dark:bg-red-900/20" role="alert">
-        <p className="font-semibold text-red-900 dark:text-red-100">No se pudo cargar tu carga.</p>
+        <p className="font-semibold text-red-900 dark:text-red-100">No se pudieron cargar tus asignaciones.</p>
         <button type="button" onClick={() => void load.refetch()} className="pg-btn pg-focus mt-3">Reintentar</button>
       </div>
     );
@@ -51,9 +51,9 @@ export const SchoolMyLoadPage = () => {
   ].filter(Boolean).join(' · ') || `Año escolar ${activeYear.name}`;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5">
+    <div className="space-y-5">
       <header>
-        <h1 className="text-xl font-black text-gray-900 dark:text-white sm:text-2xl">Mi carga</h1>
+        <h1 className="text-xl font-black text-gray-900 dark:text-white sm:text-2xl">Mis asignaciones</h1>
         <p className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{subtitle}</p>
       </header>
 
@@ -236,9 +236,9 @@ export const SchoolTutoringPage = () => {
   const section = useQuery({ queryKey: assignmentKeys.tutoring(school.id, yearId, sectionId), queryFn: () => assignmentApi.tutoring(school.id, yearId, sectionId), enabled: !!activeYear && !!sectionId });
   const data = section.data;
   return (
-    <div className="mx-auto max-w-4xl space-y-5">
+    <div className="space-y-5">
       <header className="flex items-start gap-3">
-        <Link to={`/escuela/${school.id}/mi-carga`} className="pg-icon-btn pg-focus" aria-label="Volver a Mi carga"><ArrowLeft size={20} aria-hidden="true" /></Link>
+        <Link to={`/escuela/${school.id}/mis-asignaciones`} className="pg-icon-btn pg-focus" aria-label="Volver a Mis asignaciones"><ArrowLeft size={20} aria-hidden="true" /></Link>
         <div>
           <h1 className="text-xl font-black text-gray-900 dark:text-white sm:text-2xl">Mi tutoría{data ? ` · ${data.section.label}` : ''}</h1>
           <p className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{data ? `${data.students.length} ${data.students.length === 1 ? 'estudiante' : 'estudiantes'}${data.section.tutor ? ` · tutoría de ${data.section.tutor}` : ''}` : 'Tu sección'}</p>

@@ -75,7 +75,7 @@ export const SchoolYearPage = () => {
   });
 
   if (yearsLoading || (activeYear && year.isLoading) || (!activeYear && loadingDetail)) {
-    return <div className="mx-auto h-64 max-w-3xl animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none dark:bg-gray-800" aria-busy="true" aria-label="Cargando el año escolar" />;
+    return <div className="h-64 animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none dark:bg-gray-800" aria-busy="true" aria-label="Cargando el año escolar" />;
   }
   if (activeYear && year.isError) {
     return (
@@ -142,7 +142,7 @@ const YearForm = ({ year, manager, gradeLevels }: { year: SchoolYearDetail | nul
   };
 
   return (
-    <form onSubmit={submit} className="mx-auto max-w-3xl space-y-5" noValidate>
+    <form onSubmit={submit} className="space-y-5" noValidate>
       <header>
         <h1 className="text-xl font-black text-gray-900 dark:text-white sm:text-2xl">{year ? `Año escolar ${year.name}` : 'Preparar el año escolar'}</h1>
         <p className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">

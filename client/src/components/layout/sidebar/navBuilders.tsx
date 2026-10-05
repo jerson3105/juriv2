@@ -200,7 +200,7 @@ export const schoolConsoleNav = (input: SchoolConsoleNavInput): NavNode[] => {
     link(entry('clases', 'Clases', BookOpen)),
     ...(manager ? [link(entry('anio', 'Año escolar', CalendarCheck))] : []),
     // Mi trabajo: lo que enseño y mi tutoría (también la administración puede enseñar).
-    { kind: 'section', id: 'school-work', label: 'Mi trabajo', icon: icon(Briefcase), items: [entry('mi-carga', 'Mi carga', Briefcase, { active: pathname.startsWith(`${base}/mi-carga`) || pathname.startsWith(`${base}/mi-tutoria`) })] },
+    { kind: 'section', id: 'school-work', label: 'Mi trabajo', icon: icon(Briefcase), items: [entry('mis-asignaciones', 'Mis asignaciones', Briefcase, { active: pathname.startsWith(`${base}/mis-asignaciones`) || pathname.startsWith(`${base}/mi-tutoria`) })] },
     {
       kind: 'section',
       id: 'school-more',

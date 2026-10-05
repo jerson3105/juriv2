@@ -110,7 +110,7 @@ router.post('/:schoolId/assignments/:assignmentId/sync', authorize('TEACHER'), s
 router.put('/:schoolId/assignments/:assignmentId/classroom', authorize('TEACHER'), schoolAssignmentController.setClassroom);
 router.get('/:schoolId/teachers/:teacherId/classrooms', authorize('TEACHER'), schoolAssignmentController.teacherClassrooms);
 
-// Mi carga y mi tutoría (cualquier miembro verificado)
+// Mis asignaciones y mi tutoría (cualquier miembro verificado)
 router.get('/:schoolId/years/:yearId/my-load', authorize('TEACHER'), schoolAssignmentController.myLoad);
 router.get('/:schoolId/years/:yearId/sections/:sectionId/tutoring', authorize('TEACHER'), schoolAssignmentController.tutoringSection);
 

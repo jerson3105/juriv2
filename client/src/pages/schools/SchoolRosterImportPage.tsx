@@ -35,7 +35,7 @@ export const SchoolRosterImportPage = () => {
   const batchId = params.get('lote');
   const setBatch = (id: string | null) => setParams(id ? { lote: id } : {}, { replace: true });
 
-  if (yearsLoading) return <div className="mx-auto h-64 max-w-6xl animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none dark:bg-gray-800" aria-busy="true" aria-label="Cargando" />;
+  if (yearsLoading) return <div className="h-64 animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none dark:bg-gray-800" aria-busy="true" aria-label="Cargando" />;
   if (!activeYear) {
     return (
       <div className="mx-auto max-w-3xl rounded-xl border border-red-200 bg-red-50 p-6 text-center dark:border-red-500/40 dark:bg-red-900/20" role="alert">
@@ -120,7 +120,7 @@ const FileStep = ({ schoolId, yearId, yearName, onReady }: { schoolId: string; y
   const pending = current.data?.pending;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5">
+    <div className="space-y-5">
       <PageHeader schoolId={schoolId} subtitle={`Padrón ${yearName} · la plantilla de Juried o la nómina del SIAGIE`} />
       <Steps step={1} details={['Elige el archivo', '—', '—', 'y deshacer 24 h']} />
 
@@ -198,7 +198,7 @@ const Wizard = ({ schoolId, yearId, batchId, onRestart }: { schoolId: string; ye
     onError: (error) => toast.error(errorMessage(error, 'No se pudo descartar la importación')),
   });
 
-  if (batch.isLoading) return <div className="mx-auto h-64 max-w-6xl animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none dark:bg-gray-800" aria-busy="true" aria-label="Abriendo la importación" />;
+  if (batch.isLoading) return <div className="h-64 animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none dark:bg-gray-800" aria-busy="true" aria-label="Abriendo la importación" />;
   if (batch.isError || !batch.data) {
     return (
       <div className="mx-auto max-w-3xl rounded-xl border border-red-200 bg-red-50 p-6 text-center dark:border-red-500/40 dark:bg-red-900/20" role="alert">
@@ -213,7 +213,7 @@ const Wizard = ({ schoolId, yearId, batchId, onRestart }: { schoolId: string; ye
   const used = review.mapping.filter(Boolean).length;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5">
+    <div className="space-y-5">
       <PageHeader
         schoolId={schoolId}
         subtitle={`${review.fileName} · ${data.rowCount} ${data.rowCount === 1 ? 'fila' : 'filas'} · ${SOURCE_LABEL[data.source]}`}
