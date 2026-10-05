@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { AlertCircle, ArrowRight, CalendarPlus, Info, Lock, LockOpen, Shuffle, Trash2 } from 'lucide-react';
+import { AlertCircle, ArrowRight, CalendarPlus, Info, Lock, LockOpen, PlayCircle, Shuffle, Trash2 } from 'lucide-react';
 import { Input } from '../../components/ui/Input';
 import { HomeModal } from '../../components/home/HomeModal';
 import { useSchoolConsole } from '../../components/layout/schoolConsoleContext';
 import { useSchoolPanelData } from '../../components/schools/useSchoolPanelData';
+import { useYearFill } from '../../components/schools/console/useYearFill';
 import { cancelButton, primaryButton } from '../../components/home/homeHelpers';
 import { errorMessage } from '../../components/auth/authHelpers';
 import {
@@ -118,8 +119,12 @@ const LoadError = ({ onRetry }: { onRetry: () => void }) => (
  * siguiente como borrador mientras el actual sigue en curso (copiando su estructura).
  */
 export const SchoolYearPage = () => {
-  const { school, manager, years, selectedYear, yearsLoading, selectYear } = useSchoolConsole();
+  const { school, manager, years, selectedYear, activeYear, yearsLoading, selectYear } = useSchoolConsole();
+  const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
+  const [starting, setStarting] = useState<'confirm' | 'busy' | null>(null);
+  // Lo llena el año recién iniciado (el que se miraba, en preparación hasta ese momento).
+  const fill = useYearFill(school.id, selectedYear?.id ?? null);
   const { classrooms, loadingDetail } = useSchoolPanelData(school, manager);
   // El siguiente se prepara después del último (la lista llega del más nuevo al más antiguo), uno a la vez.
   const latest = years[0] ?? null;
@@ -165,6 +170,22 @@ export const SchoolYearPage = () => {
   // El aviso aparece desde el último bimestre (o con el año ya cerrado); antes, «Preparar» está en el selector de año.
   const lastStart = year.data?.periods[year.data.periods.length - 1]?.startsOn;
   const offerNext = canPrepare && selectedYear?.id === latest?.id && (latest?.status === 'CLOSED' || (!!lastStart && lastStart <= localToday()));
+  // Con el anterior cerrado, el año en preparación se inicia cuando empiezan las clases.
+  const offerStart = manager && selectedYear?.status === 'PLANNING' && !activeYear;
+  const start = async () => {
+    setStarting('busy');
+    try {
+      const message = await schoolYearApi.start(school.id, selectedYear!.id);
+      setStarting(null);
+      toast.success(message);
+      await queryClient.invalidateQueries({ queryKey: schoolYearKeys.list(school.id) });
+      void queryClient.invalidateQueries({ queryKey: schoolYearKeys.detail(school.id, selectedYear!.id) });
+      await fill.run();
+    } catch (error) {
+      setStarting('confirm');
+      toast.error(errorMessage(error, 'No se pudo iniciar el año'));
+    }
+  };
   // Con el año siguiente preparado, el año en curso se cierra desde su último bimestre (promoción); ya cerrado, su bandeja.
   const offerClose = manager && !!planning && ((selectedYear?.status === 'ACTIVE' && !!lastStart && lastStart <= localToday()) || selectedYear?.status === 'CLOSED');
   // La clave remonta el formulario al guardar (el año guardado pasa a ser el punto de partida).
@@ -184,6 +205,40 @@ export const SchoolYearPage = () => {
             Preparar {Number(latest!.name) + 1}
           </button>
         </div>
+      )}
+      {(offerStart || fill.progress) && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-500/40 dark:bg-emerald-900/20 sm:flex-row sm:items-center" role="status">
+          <PlayCircle size={22} className="hidden flex-shrink-0 text-emerald-700 dark:text-emerald-300 sm:block" aria-hidden="true" />
+          <p className="min-w-0 flex-1 text-sm text-gray-900 dark:text-gray-100">
+            {fill.progress
+              ? <><strong>Llenando las clases de {selectedYear?.name}…</strong> {fill.progress.entered} {fill.progress.entered === 1 ? 'estudiante ya entró' : 'estudiantes ya entraron'} ({fill.progress.classes} clases).</>
+              : <><strong>Cuando empiecen las clases, inicia {selectedYear?.name}.</strong> Cada estudiante entra a sus clases nuevas con su avatar, sus prendas y su familia; el XP, el nivel, el oro, las insignias y las cartas empiezan de cero.</>}
+          </p>
+          {!fill.progress && (
+            <button type="button" className={`${primaryButton} flex-shrink-0`} onClick={() => setStarting('confirm')}>
+              <PlayCircle size={16} aria-hidden="true" />Iniciar {selectedYear?.name}
+            </button>
+          )}
+        </div>
+      )}
+      {starting && (
+        <HomeModal
+          title={`¿Iniciar ${selectedYear?.name}?`}
+          onClose={() => setStarting(null)}
+          footer={<>
+            <button type="button" onClick={() => setStarting(null)} className={cancelButton}>Cancelar</button>
+            <button type="button" className={primaryButton} disabled={starting === 'busy'} onClick={() => void start()}>
+              <PlayCircle size={16} aria-hidden="true" />{starting === 'busy' ? 'Iniciando…' : `Iniciar ${selectedYear?.name}`}
+            </button>
+          </>}
+        >
+          <ul className="list-disc space-y-1 pl-5 text-sm text-gray-800 dark:text-gray-100">
+            <li>{selectedYear?.name} pasa a ser el año en curso: sus clases siguen sus bimestres.</li>
+            <li>Cada estudiante matriculado entra a las clases de su sección con su avatar, sus prendas y su familia.</li>
+            <li>Empiezan de cero el XP, el nivel, el oro, la Energía, las insignias, las cartas, los clanes y las rachas.</li>
+            <li>No se puede deshacer.</li>
+          </ul>
+        </HomeModal>
       )}
       {offerClose && (
         <div className="flex flex-col gap-3 rounded-2xl border border-primary-200 bg-primary-50 p-4 dark:border-primary-500/40 dark:bg-primary-900/20 sm:flex-row sm:items-center">

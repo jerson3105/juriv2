@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, BookOpen, CalendarCheck, CheckCircle2, Circle, Clock, GraduationCap, UserPlus, Users } from 'lucide-react';
 import { useSchoolConsole } from '../../components/layout/schoolConsoleContext';
 import { useSchoolPanelData } from '../../components/schools/useSchoolPanelData';
+import { useYearFill } from '../../components/schools/console/useYearFill';
 import { IDLE_DAYS, isIdle } from '../../components/schools/schoolHelpers';
 import { currentPeriod, formatDay, formatRange, LEVEL_LABEL, PERIOD_NAME, PERIOD_PLURAL, periodLabel } from '../../components/schools/console/schoolYearHelpers';
 import { schoolYearApi, schoolYearKeys } from '../../lib/schoolYearApi';
@@ -68,6 +69,7 @@ export const SchoolHomePage = () => {
   const place = [school.city, school.country].filter(Boolean).join(', ');
   // El año que se prepara: sus clases se llenan cuando empieza y su padrón llega con la promoción o la plantilla.
   const preparing = selectedYear?.status === 'PLANNING';
+  const fill = useYearFill(school.id, selectedYear?.status === 'ACTIVE' ? selectedYear.id : null);
   const yearLabel = selectedYear
     ? `Año escolar ${selectedYear.name}${preparing ? ' (en preparación)' : selectedYear.status === 'CLOSED' ? ' (archivado)' : ''}`
     : null;
@@ -93,12 +95,12 @@ export const SchoolHomePage = () => {
     !selectedYear && !year.isLoading && { icon: CalendarCheck, title: 'Prepara el año escolar', detail: 'Fechas, bimestres y niveles: lo primero de la consola', action: 'Preparar', to: `${base}/anio` },
     (rosterCounts?.incomplete ?? 0) > 0 && { icon: GraduationCap, title: `${rosterCounts!.incomplete} ${rosterCounts!.incomplete === 1 ? 'estudiante con datos por completar' : 'estudiantes con datos por completar'}`, detail: 'Les falta el DNI o la fecha de nacimiento', action: 'Completar datos', to: `${base}/estudiantes?filtro=incomplete` },
     (rosterCounts?.no_section ?? 0) > 0 && { icon: GraduationCap, title: `${rosterCounts!.no_section} ${rosterCounts!.no_section === 1 ? 'estudiante sin sección' : 'estudiantes sin sección'}`, detail: 'Asígnales su sección desde la ficha', action: 'Ver estudiantes', to: `${base}/estudiantes?filtro=no_section` },
-    (overall?.missing ?? 0) > 0 && { icon: GraduationCap, title: `${overall!.missing} ${overall!.missing === 1 ? 'estudiante aún no está en su clase' : 'estudiantes aún no están en sus clases'}`, detail: 'La matrícula automática quedó a medias: sincroniza la clase marcada', action: 'Ver asignaciones', to: `${base}/docentes?vista=asignaciones` },
+    (overall?.missing ?? 0) > 0 && { icon: GraduationCap, title: `${overall!.missing} ${overall!.missing === 1 ? 'estudiante aún no está en su clase' : 'estudiantes aún no están en sus clases'}`, detail: fill.progress ? `Llenando… ${fill.progress.entered} ya entraron` : 'Ponlos en las clases de su sección', action: 'Completar', to: '', run: fill.run },
     withoutTutor.length > 0 && { icon: Users, title: `${withoutTutor.length} ${withoutTutor.length === 1 ? 'sección sin tutoría' : 'secciones sin tutoría'}`, detail: 'Elige un tutor en cada tarjeta de sección', action: 'Asignar', to: `${base}/secciones` },
     requests.length > 0 && { icon: UserPlus, title: `${requests.length} ${requests.length === 1 ? 'solicitud para unirse' : 'solicitudes para unirse'}`, detail: 'Docentes que esperan tu respuesta', action: 'Revisar', to: `${base}/docentes` },
     teachersWithoutClasses.length > 0 && { icon: Users, title: `${teachersWithoutClasses.length} ${teachersWithoutClasses.length === 1 ? 'docente sin clases' : 'docentes sin clases'}`, detail: 'Aún no ponen sus clases en la escuela', action: 'Ver docentes', to: `${base}/docentes` },
     idleClasses.length > 0 && { icon: Clock, title: `${idleClasses.length} ${idleClasses.length === 1 ? 'clase' : 'clases'} sin puntos en ${IDLE_DAYS} días`, detail: 'Puede que ya no se usen', action: 'Ver clases', to: `${base}/clases` },
-  ].filter(Boolean) as { icon: typeof Users; title: string; detail: string; action: string; to: string }[] : [];
+  ].filter(Boolean) as { icon: typeof Users; title: string; detail: string; action: string; to: string; run?: () => Promise<void> }[] : [];
 
   const steps: Step[] = [
     {
@@ -214,7 +216,9 @@ export const SchoolHomePage = () => {
                       <span className="block text-sm font-semibold text-gray-900 dark:text-white">{a.title}</span>
                       <span className="block text-xs text-gray-600 dark:text-gray-300">{a.detail}</span>
                     </span>
-                    <Link to={a.to} className={smallBtn}>{a.action}</Link>
+                    {a.run
+                      ? <button type="button" className={smallBtn} disabled={!!fill.progress} onClick={() => void a.run!()}>{fill.progress ? 'Llenando…' : a.action}</button>
+                      : <Link to={a.to} className={smallBtn}>{a.action}</Link>}
                   </li>
                 ))}
               </ul>

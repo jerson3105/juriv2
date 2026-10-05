@@ -12,7 +12,7 @@ import { matchWords } from '../utils/personNames.js';
 import { affectedRows } from '../utils/points.js';
 import { avatarService } from './avatar.service.js';
 import { familyRoomService } from './familyRoom.service.js';
-import { applyCarry, newEffects, pendingCarries, type CarryEffects, type PendingCarry } from './schoolCarry.service.js';
+import { applyCarry, newEffects, pendingCarries, seasonArrivals, type CarryEffects, type PendingCarry } from './schoolCarry.service.js';
 
 /**
  * Matrícula automática: cada estudiante matriculado en una sección tiene un perfil en cada clase vinculada a una
@@ -108,14 +108,23 @@ const carryArrivals = async (tx: Tx, input: {
     ? await pendingCarries(tx, [...new Set(arrivals.map((a) => a.studentId))], assignment.areaId, yearId)
     : new Map<string, PendingCarry>();
   const plain: typeof arrivals = [];
+  const fresh: typeof arrivals = [];
   for (const arrival of arrivals) {
     const carry = pending.get(arrival.studentId);
     if (carry) {
       pending.delete(arrival.studentId);
       await applyCarry(tx, carry, { profileId: arrival.profileId, classroomId, reactivated: arrival.reactivated }, effects, now);
-    } else if (moveId) {
-      plain.push(arrival);
+    } else {
+      if (!arrival.reactivated) fresh.push(arrival);
+      if (moveId) plain.push(arrival);
     }
+  }
+  // Temporada nueva: quien entra por primera vez a la clase trae del año anterior su avatar, sus prendas y su familia
+  // (en un taller también: su área decide de qué clase).
+  if (fresh.length > 0) {
+    const [workshop] = assignment ? [] : await tx.select({ areaId: schoolWorkshops.areaId }).from(schoolWorkshops)
+      .where(eq(schoolWorkshops.classroomId, classroomId)).limit(1);
+    await seasonArrivals(tx, { schoolId, yearId, classroomId, areaId: assignment?.areaId ?? workshop?.areaId ?? null, arrivals: fresh }, effects, now);
   }
   if (!moveId || plain.length === 0) return;
   const state = await tx.select({ id: studentProfiles.id, xp: studentProfiles.xp, gp: studentProfiles.gp }).from(studentProfiles)

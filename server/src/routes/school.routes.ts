@@ -71,6 +71,9 @@ router.post('/:schoolId/years', authorize('TEACHER'), schoolYearController.creat
 router.get('/:schoolId/years/:yearId', authorize('TEACHER'), schoolYearController.get);
 router.put('/:schoolId/years/:yearId', authorize('TEACHER'), schoolYearController.update);
 router.delete('/:schoolId/years/:yearId', authorize('TEACHER'), schoolYearController.remove);
+// Temporada nueva: el año en preparación empieza y sus clases se llenan (administración)
+router.post('/:schoolId/years/:yearId/start', authorize('TEACHER'), schoolYearController.start);
+router.post('/:schoolId/years/:yearId/fill', authorize('TEACHER'), schoolYearController.fill);
 // Cerrar y reabrir un bimestre en todas las clases del colegio (Calificaciones)
 router.post('/:schoolId/years/:yearId/periods/:code/close', authorize('TEACHER'), schoolYearController.closePeriod);
 router.post('/:schoolId/years/:yearId/periods/:code/reopen', authorize('TEACHER'), schoolYearController.reopenPeriod);

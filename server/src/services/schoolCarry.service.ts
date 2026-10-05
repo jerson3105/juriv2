@@ -1,12 +1,14 @@
-import { and, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, lt } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import {
   attendanceRecords, classroomCharacterClasses, classrooms, gradeEvaluationScores, parentProfiles, parentStudentLinks, schoolAutoProfiles,
-  schoolMoveProfiles, schoolStudentMoves, studentAvatarPurchases, studentBadges, studentEquippedItems, studentProfiles, type MoveTargetSnapshot,
+  schoolMoveProfiles, schoolStudentMoves, schoolTeachingAssignments, schoolWorkshops, schoolYears, studentAvatarPurchases, studentBadges,
+  studentEquippedItems, studentProfiles, type MoveTargetSnapshot,
 } from '../db/schema.js';
 import { calculateLevel } from '../utils/helpers.js';
 import { avatarCatalogService } from './avatarCatalog.service.js';
+import { yearClassroomIds } from './schoolCalendar.service.js';
 import { deleteStudentProfileData } from './student.service.js';
 
 /**
@@ -84,6 +86,95 @@ const profileState = {
   homeSeenAt: studentProfiles.homeSeenAt, celebratedAt: studentProfiles.celebratedAt,
 };
 
+/** Avatar: lo que tiene puesto el origen reemplaza lo del destino y sus prendas compradas se suman (sin repetir). Ids añadidos. */
+const copyAvatar = async (tx: Tx, sourceId: string, targetId: string, now: Date) => {
+  const equipped = await tx.select({ avatarItemId: studentEquippedItems.avatarItemId, slot: studentEquippedItems.slot }).from(studentEquippedItems)
+    .where(eq(studentEquippedItems.studentProfileId, sourceId));
+  await tx.delete(studentEquippedItems).where(eq(studentEquippedItems.studentProfileId, targetId));
+  if (equipped.length > 0) {
+    await tx.insert(studentEquippedItems).values(equipped.map((e) => ({ id: uuidv4(), studentProfileId: targetId, avatarItemId: e.avatarItemId, slot: e.slot, equippedAt: now })));
+  }
+  const [bought, owned] = await Promise.all([
+    tx.select({
+      avatarItemId: studentAvatarPurchases.avatarItemId, classroomId: studentAvatarPurchases.classroomId,
+      pricePaid: studentAvatarPurchases.pricePaid, purchasedAt: studentAvatarPurchases.purchasedAt,
+    }).from(studentAvatarPurchases).where(eq(studentAvatarPurchases.studentProfileId, sourceId)),
+    tx.select({ avatarItemId: studentAvatarPurchases.avatarItemId }).from(studentAvatarPurchases).where(eq(studentAvatarPurchases.studentProfileId, targetId)),
+  ]);
+  const ownedItems = new Set(owned.map((o) => o.avatarItemId));
+  const rows = bought.filter((p) => !ownedItems.has(p.avatarItemId)).map((p) => ({ id: uuidv4(), studentProfileId: targetId, ...p }));
+  for (let i = 0; i < rows.length; i += 200) await tx.insert(studentAvatarPurchases).values(rows.slice(i, i + 200));
+  return rows.map((r) => r.id);
+};
+
+/** Familia: los vínculos activos de los perfiles de origen (cada familia una vez); entran en vivo a la sala. Ids añadidos. */
+const copyFamily = async (tx: Tx, sourceIds: string[], targetId: string, classroomId: string, effects: CarryEffects, now: Date) => {
+  if (sourceIds.length === 0) return [];
+  const [links, linked] = await Promise.all([
+    tx.select({ parentProfileId: parentStudentLinks.parentProfileId, linkCode: parentStudentLinks.linkCode, parentUserId: parentProfiles.userId })
+      .from(parentStudentLinks)
+      .innerJoin(parentProfiles, eq(parentProfiles.id, parentStudentLinks.parentProfileId))
+      .where(and(inArray(parentStudentLinks.studentProfileId, sourceIds), eq(parentStudentLinks.status, 'ACTIVE'))),
+    tx.select({ parentProfileId: parentStudentLinks.parentProfileId }).from(parentStudentLinks).where(eq(parentStudentLinks.studentProfileId, targetId)),
+  ]);
+  const seen = new Set(linked.map((l) => l.parentProfileId));
+  const fresh = links.filter((l) => !seen.has(l.parentProfileId) && seen.add(l.parentProfileId));
+  const rows = fresh.map((l) => ({
+    id: uuidv4(), parentProfileId: l.parentProfileId, studentProfileId: targetId, status: 'ACTIVE' as const,
+    linkCode: l.linkCode, linkedAt: now, createdAt: now, updatedAt: now,
+  }));
+  if (rows.length > 0) await tx.insert(parentStudentLinks).values(rows);
+  for (const l of fresh) effects.familyJoins.push({ parentUserId: l.parentUserId, classroomId });
+  return rows.map((r) => r.id);
+};
+
+/**
+ * Temporada nueva (de un año a otro, decisión del dueño): de los perfiles del año anterior (el último cerrado) viajan el
+ * avatar y sus prendas, los de su clase de la misma área (si el área es nueva, los de su clase más reciente), su nombre de
+ * héroe y la familia de todos ellos. XP, nivel, oro, Energía, insignias, cartas, clan y rachas empiezan de cero.
+ */
+export const seasonArrivals = async (tx: Tx, input: {
+  schoolId: string; yearId: string; classroomId: string; areaId: string | null; arrivals: Array<{ studentId: string; profileId: string }>;
+}, effects: CarryEffects, now: Date) => {
+  if (input.arrivals.length === 0) return 0;
+  const [year] = await tx.select({ name: schoolYears.name }).from(schoolYears).where(eq(schoolYears.id, input.yearId));
+  if (!year) return 0;
+  const [previous] = await tx.select({ id: schoolYears.id }).from(schoolYears)
+    .where(and(eq(schoolYears.schoolId, input.schoolId), eq(schoolYears.status, 'CLOSED'), lt(schoolYears.name, year.name)))
+    .orderBy(desc(schoolYears.name)).limit(1);
+  if (!previous) return 0;
+  const previousClasses = await yearClassroomIds(previous.id);
+  if (previousClasses.length === 0) return 0;
+  const candidates = await tx.select({
+    id: studentProfiles.id, studentId: studentProfiles.schoolStudentId, updatedAt: studentProfiles.updatedAt,
+    characterName: studentProfiles.characterName, avatarGender: studentProfiles.avatarGender,
+    byAssignment: schoolTeachingAssignments.areaId, byWorkshop: schoolWorkshops.areaId, ofClass: classrooms.curriculumAreaId,
+  }).from(studentProfiles)
+    .innerJoin(classrooms, eq(classrooms.id, studentProfiles.classroomId))
+    .leftJoin(schoolTeachingAssignments, eq(schoolTeachingAssignments.classroomId, classrooms.id))
+    .leftJoin(schoolWorkshops, eq(schoolWorkshops.classroomId, classrooms.id))
+    .where(and(
+      inArray(studentProfiles.schoolStudentId, [...new Set(input.arrivals.map((a) => a.studentId))]),
+      inArray(studentProfiles.classroomId, previousClasses), eq(studentProfiles.isDemo, false),
+    ));
+  let carried = 0;
+  for (const arrival of input.arrivals) {
+    const own = candidates.filter((c) => c.studentId === arrival.studentId)
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    if (own.length === 0) continue;
+    const source = (input.areaId ? own.find((c) => (c.byAssignment ?? c.byWorkshop ?? c.ofClass) === input.areaId) : undefined) ?? own[0];
+    await tx.update(studentProfiles).set({
+      avatarGender: source.avatarGender,
+      ...(source.characterName ? { characterName: source.characterName } : {}),
+      updatedAt: now,
+    }).where(eq(studentProfiles.id, arrival.profileId));
+    await copyAvatar(tx, source.id, arrival.profileId, now);
+    await copyFamily(tx, own.map((c) => c.id), arrival.profileId, input.classroomId, effects, now);
+    carried++;
+  }
+  return carried;
+};
+
 /**
  * Lleva el progreso de un perfil de origen a su destino (recién creado o que volvió a activarse) y cierra el pendiente.
  * Si el destino volvió, guarda cómo estaba para poder deshacer.
@@ -138,22 +229,7 @@ export const applyCarry = async (
   }).where(eq(studentProfiles.id, target.profileId));
 
   // Avatar: lo que tiene puesto y lo que compró (sin repetir prendas).
-  const equipped = await tx.select({ avatarItemId: studentEquippedItems.avatarItemId, slot: studentEquippedItems.slot }).from(studentEquippedItems)
-    .where(eq(studentEquippedItems.studentProfileId, source.id));
-  await tx.delete(studentEquippedItems).where(eq(studentEquippedItems.studentProfileId, target.profileId));
-  if (equipped.length > 0) {
-    await tx.insert(studentEquippedItems).values(equipped.map((e) => ({ id: uuidv4(), studentProfileId: target.profileId, avatarItemId: e.avatarItemId, slot: e.slot, equippedAt: now })));
-  }
-  const [bought, owned] = await Promise.all([
-    tx.select({
-      avatarItemId: studentAvatarPurchases.avatarItemId, classroomId: studentAvatarPurchases.classroomId,
-      pricePaid: studentAvatarPurchases.pricePaid, purchasedAt: studentAvatarPurchases.purchasedAt,
-    }).from(studentAvatarPurchases).where(eq(studentAvatarPurchases.studentProfileId, source.id)),
-    tx.select({ avatarItemId: studentAvatarPurchases.avatarItemId }).from(studentAvatarPurchases).where(eq(studentAvatarPurchases.studentProfileId, target.profileId)),
-  ]);
-  const ownedItems = new Set(owned.map((o) => o.avatarItemId));
-  const purchaseRows = bought.filter((p) => !ownedItems.has(p.avatarItemId)).map((p) => ({ id: uuidv4(), studentProfileId: target.profileId, ...p }));
-  for (let i = 0; i < purchaseRows.length; i += 200) await tx.insert(studentAvatarPurchases).values(purchaseRows.slice(i, i + 200));
+  const addedPurchaseIds = await copyAvatar(tx, source.id, target.profileId, now);
 
   // Insignias «traídas de…»: cada copia apunta a su original y no se repite la que ya tiene.
   const [badges, mine] = await Promise.all([
@@ -170,21 +246,7 @@ export const applyCarry = async (
   for (let i = 0; i < badgeRows.length; i += 200) await tx.insert(studentBadges).values(badgeRows.slice(i, i + 200));
 
   // La familia: los mismos vínculos activos.
-  const [links, linked] = await Promise.all([
-    tx.select({ parentProfileId: parentStudentLinks.parentProfileId, linkCode: parentStudentLinks.linkCode, parentUserId: parentProfiles.userId })
-      .from(parentStudentLinks)
-      .innerJoin(parentProfiles, eq(parentProfiles.id, parentStudentLinks.parentProfileId))
-      .where(and(eq(parentStudentLinks.studentProfileId, source.id), eq(parentStudentLinks.status, 'ACTIVE'))),
-    tx.select({ parentProfileId: parentStudentLinks.parentProfileId }).from(parentStudentLinks).where(eq(parentStudentLinks.studentProfileId, target.profileId)),
-  ]);
-  const alreadyLinked = new Set(linked.map((l) => l.parentProfileId));
-  const newLinks = links.filter((l) => !alreadyLinked.has(l.parentProfileId));
-  const linkRows = newLinks.map((l) => ({
-    id: uuidv4(), parentProfileId: l.parentProfileId, studentProfileId: target.profileId, status: 'ACTIVE' as const,
-    linkCode: l.linkCode, linkedAt: now, createdAt: now, updatedAt: now,
-  }));
-  if (linkRows.length > 0) await tx.insert(parentStudentLinks).values(linkRows);
-  for (const l of newLinks) effects.familyJoins.push({ parentUserId: l.parentUserId, classroomId: target.classroomId });
+  const addedLinkIds = await copyFamily(tx, [source.id], target.profileId, target.classroomId, effects, now);
 
   const snapshot: MoveTargetSnapshot | null = target.reactivated
     ? {
@@ -194,7 +256,7 @@ export const applyCarry = async (
       shopGoalItemId: current.shopGoalItemId, shopGoalKind: current.shopGoalKind,
       homeSeenAt: iso(current.homeSeenAt), celebratedAt: iso(current.celebratedAt),
       equipped: equippedBefore,
-      addedPurchaseIds: purchaseRows.map((r) => r.id), addedBadgeIds: badgeRows.map((r) => r.id), addedLinkIds: linkRows.map((r) => r.id),
+      addedPurchaseIds, addedBadgeIds: badgeRows.map((r) => r.id), addedLinkIds,
     }
     : null;
   await close({ targetXp: converted.xp, targetGp: converted.gp, snapshot });

@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import { z } from 'zod';
+import { schoolSeasonService } from '../services/schoolSeason.service.js';
 import { schoolYearService, SCHOOL_LEVELS } from '../services/schoolYear.service.js';
 import { requireSchoolRole, SCHOOL_MANAGER_ROLES, SCHOOL_MEMBER_ROLES } from '../utils/access.js';
 import { auditRequest } from '../utils/audit.js';
@@ -115,6 +116,34 @@ export const schoolYearController = {
       res.json({ success: true, data, message: 'Año escolar guardado' });
     } catch (error) {
       return sendError(res, error, 'Error al guardar el año escolar');
+    }
+  },
+
+  // POST /schools/:schoolId/years/:yearId/start — el año en preparación empieza (administración)
+  async start(req: Request, res: Response) {
+    try {
+      const { schoolId } = req.params;
+      if (!(await requireSchoolRole(req, res, schoolId, SCHOOL_MANAGER_ROLES))) return;
+      const yearId = yearIdSchema.safeParse(req.params.yearId);
+      if (!yearId.success) return res.status(404).json({ success: false, message: 'Año escolar no encontrado' });
+      const data = await schoolSeasonService.start(schoolId, yearId.data);
+      await auditRequest(req, { action: 'school.year_started', schoolId, target: { type: 'school_year', id: yearId.data }, metadata: { name: data.name } });
+      res.json({ success: true, data, message: `${data.name} empezó: sus clases se están llenando` });
+    } catch (error) {
+      return sendError(res, error, 'Error al iniciar el año escolar');
+    }
+  },
+
+  // POST /schools/:schoolId/years/:yearId/fill — llenar de a pocas sus clases (administración; se repite mientras queden)
+  async fill(req: Request, res: Response) {
+    try {
+      const { schoolId } = req.params;
+      if (!(await requireSchoolRole(req, res, schoolId, SCHOOL_MANAGER_ROLES))) return;
+      const yearId = yearIdSchema.safeParse(req.params.yearId);
+      if (!yearId.success) return res.status(404).json({ success: false, message: 'Año escolar no encontrado' });
+      res.json({ success: true, data: await schoolSeasonService.fill(schoolId, yearId.data) });
+    } catch (error) {
+      return sendError(res, error, 'Error al llenar las clases');
     }
   },
 

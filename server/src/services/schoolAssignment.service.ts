@@ -257,7 +257,7 @@ const enrolledBySection = async (yearId: string, sectionIds: string[]) => {
 };
 
 /** Por asignación con clase: cuántos de la sección aún no tienen perfil en ella. */
-const missingByAssignment = async (yearId: string, assignmentIds: string[]) => {
+export const missingByAssignment = async (yearId: string, assignmentIds: string[]) => {
   if (assignmentIds.length === 0) return new Map<string, number>();
   // Las clases de un año en preparación se llenan cuando empieza (y las de uno cerrado ya no): nadie «falta».
   const [year] = await db.select({ status: schoolYears.status }).from(schoolYears).where(eq(schoolYears.id, yearId));

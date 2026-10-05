@@ -82,6 +82,12 @@ export const schoolYearApi = {
     const response = await api.post(`/schools/${schoolId}/years`, data);
     return response.data.data;
   },
+  /** El año en preparación empieza (el anterior ya cerró). Devuelve el mensaje para el aviso. */
+  start: async (schoolId: string, yearId: string): Promise<string> =>
+    (await api.post(`/schools/${schoolId}/years/${yearId}/start`)).data.message,
+  /** Una tanda del llenado de sus clases (se repite mientras queden). */
+  fill: async (schoolId: string, yearId: string): Promise<{ classes: number; entered: number; remaining: number }> =>
+    (await api.post(`/schools/${schoolId}/years/${yearId}/fill`)).data.data,
   /** Descarta el año en preparación. */
   remove: async (schoolId: string, yearId: string): Promise<string> =>
     (await api.delete(`/schools/${schoolId}/years/${yearId}`)).data.message,
