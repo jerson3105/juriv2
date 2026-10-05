@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { Eye, EyeOff, Pencil } from 'lucide-react';
+import { ArrowRightLeft, Eye, EyeOff, Pencil, UserMinus, UserPlus } from 'lucide-react';
 import { SideDrawer } from '../SideDrawer';
 import { Input } from '../../ui/Input';
 import { cancelButton, primaryButton } from '../../home/homeHelpers';
@@ -15,8 +15,9 @@ import {
   schoolRosterApi, schoolRosterKeys, type DocumentType, type RevealReason, type StudentDetail, type StudentInput,
 } from '../../../lib/schoolRosterApi';
 import type { SchoolSection } from '../../../lib/schoolSectionApi';
+import { ReinstateModal, TransferModal, UndoTransfer, WithdrawModal } from './StudentMoves';
 
-export type DrawerState = { mode: 'view' | 'edit'; studentId: string } | { mode: 'create' };
+export type DrawerState = { mode: 'view' | 'edit' | 'transfer' | 'withdraw' | 'reinstate'; studentId: string } | { mode: 'create' };
 
 interface StudentDrawerProps {
   schoolId: string;
@@ -48,6 +49,15 @@ export const StudentDrawer = ({ schoolId, yearId, state, sections, piiReady, onC
     );
   }
   const data = detail.data;
+  // Trasladar, retirar o reincorporar: un modal sobre la lista en lugar del cajón; al terminar vuelve la ficha.
+  if (state.mode === 'transfer' || state.mode === 'withdraw' || state.mode === 'reinstate') {
+    if (!data) return null;
+    const back = () => onChange({ mode: 'view', studentId });
+    const props = { schoolId, yearId, detail: data, sections, onClose: back, onDone: back };
+    if (state.mode === 'transfer') return <TransferModal {...props} />;
+    if (state.mode === 'withdraw') return <WithdrawModal {...props} />;
+    return <ReinstateModal {...props} />;
+  }
   const title = data ? rosterName(data.student) : 'Ficha del estudiante';
   return (
     <SideDrawer title={title} subtitle={data ? subtitleOf(data) : undefined} onClose={close}>
@@ -55,7 +65,7 @@ export const StudentDrawer = ({ schoolId, yearId, state, sections, piiReady, onC
       {detail.isError && <p className="text-sm text-red-700 dark:text-red-300" role="alert">No se pudo cargar la ficha.</p>}
       {data && (state.mode === 'edit'
         ? <StudentForm schoolId={schoolId} yearId={yearId} sections={sections} piiReady={piiReady} detail={data} onCancel={() => onChange({ mode: 'view', studentId })} onSaved={() => onChange({ mode: 'view', studentId })} />
-        : <StudentView schoolId={schoolId} yearId={yearId} detail={data} sections={sections} onEdit={() => onChange({ mode: 'edit', studentId })} />)}
+        : <StudentView schoolId={schoolId} yearId={yearId} detail={data} sections={sections} onMode={(mode) => onChange({ mode, studentId })} />)}
     </SideDrawer>
   );
 };
@@ -68,11 +78,17 @@ const subtitleOf = (data: StudentDetail) => {
   ].filter(Boolean).join(' · ');
 };
 
-const StudentView = ({ schoolId, yearId, detail, sections, onEdit }: { schoolId: string; yearId: string; detail: StudentDetail; sections: SchoolSection[]; onEdit: () => void }) => {
+type ViewAction = 'edit' | 'transfer' | 'withdraw' | 'reinstate';
+
+const StudentView = ({ schoolId, yearId, detail, sections, onMode }: { schoolId: string; yearId: string; detail: StudentDetail; sections: SchoolSection[]; onMode: (mode: ViewAction) => void }) => {
   const { student } = detail;
   const [tab, setTab] = useState<'events' | 'classes' | 'years'>('events');
   const tabsId = useId();
   const age = ageOf(student.birthDate);
+  // Fecha y nota interna de cada traslado, retiro o reincorporación (la nota solo la ve la administración).
+  const moves = useQuery({ queryKey: schoolRosterKeys.moves(schoolId, yearId, student.id), queryFn: () => schoolRosterApi.moves(schoolId, yearId, student.id) });
+  const moveById = new Map((moves.data?.history ?? []).map((m) => [m.id, m]));
+  const active = student.status === 'ACTIVE';
   const tabs = [
     { id: 'events' as const, label: 'Movimientos', count: null },
     { id: 'classes' as const, label: 'Clases', count: detail.classes.length },
@@ -81,15 +97,21 @@ const StudentView = ({ schoolId, yearId, detail, sections, onEdit }: { schoolId:
 
   return (
     <>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <span className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-primary-600 text-base font-black text-white" aria-hidden="true">{initialsOf(student)}</span>
-        <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${student.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-100' : 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-100'}`}>
-          {student.status === 'ACTIVE' ? 'Matrícula activa' : 'Retirado'}
+        <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${active ? 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-100' : 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-100'}`}>
+          {active ? 'Matrícula activa' : 'Retirado'}
         </span>
-        <button type="button" className="pg-btn pg-focus ml-auto" onClick={onEdit}><Pencil size={16} aria-hidden="true" />Editar datos</button>
+        <button type="button" className="pg-btn pg-focus ml-auto" onClick={() => onMode('edit')}><Pencil size={16} aria-hidden="true" />Editar datos</button>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {active && detail.enrollment?.section && <button type="button" className="pg-btn pg-focus" onClick={() => onMode('transfer')}><ArrowRightLeft size={16} aria-hidden="true" />Trasladar</button>}
+        {active && detail.enrollment && <button type="button" className="pg-btn pg-btn-ghost pg-focus text-red-700 dark:text-red-300" onClick={() => onMode('withdraw')}><UserMinus size={16} aria-hidden="true" />Retirar</button>}
+        {!active && <button type="button" className="pg-btn pg-focus" onClick={() => onMode('reinstate')}><UserPlus size={16} aria-hidden="true" />Reincorporar</button>}
       </div>
 
-      {!detail.enrollment?.section && student.status === 'ACTIVE' && <AssignSection schoolId={schoolId} yearId={yearId} studentId={student.id} sections={sections} />}
+      {active && <UndoTransfer schoolId={schoolId} yearId={yearId} studentId={student.id} />}
+      {!detail.enrollment?.section && active && <AssignSection schoolId={schoolId} yearId={yearId} studentId={student.id} sections={sections} />}
 
       <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl border border-gray-200 p-4 text-sm dark:border-gray-700">
         <div className="col-span-2">
@@ -130,13 +152,20 @@ const StudentView = ({ schoolId, yearId, detail, sections, onEdit }: { schoolId:
               <ol className="space-y-3 border-l-2 border-gray-200 pl-4 dark:border-gray-700">
                 {detail.events.map((event) => {
                   const { title, detail: info } = describeEvent(event);
+                  const moveId = event.metadata?.moveId;
+                  const move = typeof moveId === 'string' && !event.metadata?.undo ? moveById.get(moveId) : undefined;
                   return (
                     <li key={event.id}>
                       <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
                         <b className="text-gray-900 dark:text-white">{title}</b>
                         <span className="text-xs text-gray-600 dark:text-gray-300">{formatWhen(event.createdAt)}</span>
                       </p>
-                      {(info || event.actor) && <p className="text-sm text-gray-700 dark:text-gray-300">{[info, event.actor ? `por ${event.actor}` : null].filter(Boolean).join(' · ')}</p>}
+                      {(info || event.actor || move) && (
+                        <p className="text-sm text-gray-700 dark:text-gray-300">
+                          {[info, move ? `desde el ${formatBirthDate(move.effectiveDate)}` : null, event.actor ? `por ${event.actor}` : null].filter(Boolean).join(' · ')}
+                        </p>
+                      )}
+                      {move?.note && <p className="text-sm italic text-gray-700 dark:text-gray-300">Nota interna: {move.note}</p>}
                     </li>
                   );
                 })}

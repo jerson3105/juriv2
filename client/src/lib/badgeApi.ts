@@ -62,7 +62,7 @@ export interface BadgeProgress {
 
 // ---------- «Mis insignias» del alumno (GET /badges/student/:id/view) ----------
 
-export type BadgeAwardOrigin = 'TEACHER' | 'AUTO' | 'STORY' | 'ALBUM';
+export type BadgeAwardOrigin = 'TEACHER' | 'AUTO' | 'STORY' | 'ALBUM' | 'TRANSFER';
 
 interface StudentBadgeBase {
   id: string;

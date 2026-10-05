@@ -1,4 +1,4 @@
-import type { DocumentType, RevealReason, StudentDetail } from '../../../lib/schoolRosterApi';
+import type { DocumentType, RevealReason, StudentDetail, TransferReason, WithdrawalReason } from '../../../lib/schoolRosterApi';
 import { localDay } from '../schoolHelpers';
 
 export const DOCUMENT_TYPES: { id: DocumentType; label: string }[] = [
@@ -59,15 +59,38 @@ export const describeEvent = (event: StudentDetail['events'][number]) => {
       return { title: 'Datos actualizados', detail: meta.importId ? [changed, 'desde Excel'].filter(Boolean).join(' · ') : changed };
     }
     case 'SECTION_CHANGED':
+      if (meta.undo) return { title: `Traslado deshecho: volvió a ${event.to ?? 'su sección'}`, detail: null };
+      if (meta.transfer) return { title: `Traslado de ${event.from ?? '—'} a ${event.to ?? '—'}`, detail: reasonLabel(meta.reason) };
       return { title: event.from ? `Cambio de ${event.from} a ${event.to ?? 'sin sección'}` : `Sección asignada: ${event.to ?? '—'}`, detail: meta.importId ? 'Desde una importación de Excel' : null };
     case 'WITHDRAWN':
-      return { title: 'Retiro', detail: null };
+      return { title: event.from ? `Retiro (estaba en ${event.from})` : 'Retiro', detail: reasonLabel(meta.reason) };
     case 'REINSTATED':
-      return { title: 'Reincorporación', detail: null };
+      return { title: event.to ? `Reincorporación en ${event.to}` : 'Reincorporación', detail: null };
     default:
       return { title: 'Movimiento', detail: null };
   }
 };
+
+export const TRANSFER_REASONS: { id: TransferReason; label: string }[] = [
+  { id: 'FAMILY', label: 'Pedido de la familia' },
+  { id: 'COEXISTENCE', label: 'Convivencia' },
+  { id: 'ACADEMIC', label: 'Rendimiento académico' },
+  { id: 'SCHEDULE', label: 'Cambio de turno u horario' },
+  { id: 'BALANCE', label: 'Equilibrar secciones' },
+  { id: 'OTHER', label: 'Otro motivo' },
+];
+
+export const WITHDRAWAL_REASONS: { id: WithdrawalReason; label: string }[] = [
+  { id: 'SCHOOL_CHANGE', label: 'Se va a otro colegio' },
+  { id: 'MOVING', label: 'Cambio de domicilio' },
+  { id: 'ECONOMIC', label: 'Motivos económicos' },
+  { id: 'HEALTH', label: 'Salud' },
+  { id: 'OTHER', label: 'Otro motivo' },
+];
+
+/** Motivo de un traslado o retiro, para el historial. */
+export const reasonLabel = (reason: unknown) =>
+  [...TRANSFER_REASONS, ...WITHDRAWAL_REASONS].find((r) => r.id === reason)?.label ?? null;
 
 const dateTime = new Intl.DateTimeFormat('es-PE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 export const formatWhen = (iso: string) => dateTime.format(new Date(iso)).replace('.', '');

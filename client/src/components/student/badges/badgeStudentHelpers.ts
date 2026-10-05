@@ -41,6 +41,8 @@ export const awardWhy = (award: Award, badge: Pick<EarnedBadge, 'condition' | 'd
       return `Por completar el álbum «${reason.replace(/^Álbum completado:\s*/, '') || 'de figuritas'}»`;
     case 'AUTO':
       return badge.condition ? `La ganaste ${badge.condition}` : 'La ganaste sola';
+    case 'TRANSFER':
+      return reason || 'Traída de tu sección anterior';
     default:
       return reason ? `«${reason}»` : 'Te la dio tu profe';
   }
