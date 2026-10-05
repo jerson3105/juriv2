@@ -2996,3 +2996,28 @@ export const schoolYearLevels = mysqlTable('school_year_levels', {
 
 export type SchoolYear = typeof schoolYears.$inferSelect;
 export type SchoolPeriod = typeof schoolPeriods.$inferSelect;
+
+// ==================== CONSOLA ESCOLAR: GRADOS Y SECCIONES ====================
+
+export const schoolShiftEnum = mysqlEnum('shift', ['MORNING', 'AFTERNOON']);
+
+// Sección = grado + nombre libre (letras, colores, países…) en un nivel y un año. El nombre no se repite en el mismo
+// grado (sin distinguir mayúsculas ni tildes, por la intercalación). El tutor es un miembro verificado de la escuela.
+export const schoolSections = mysqlTable('school_sections', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  schoolId: varchar('school_id', { length: 36 }).notNull(),
+  yearId: varchar('year_id', { length: 36 }).notNull(),
+  level: schoolLevelEnum.notNull(),
+  grade: tinyint('grade').notNull(),
+  name: varchar('name', { length: 40 }).notNull(),
+  shift: schoolShiftEnum.notNull().default('MORNING'),
+  tutorUserId: varchar('tutor_user_id', { length: 36 }),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  nameUnique: unique('uq_school_sections_name').on(table.yearId, table.level, table.grade, table.name),
+  schoolIdx: index('idx_school_sections_school').on(table.schoolId),
+  tutorIdx: index('idx_school_sections_tutor').on(table.tutorUserId),
+}));
+
+export type SchoolSection = typeof schoolSections.$inferSelect;

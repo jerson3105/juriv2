@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { schoolController, schoolManagementController } from '../controllers/school.controller.js';
 import { schoolYearController } from '../controllers/schoolYear.controller.js';
+import { schoolSectionController } from '../controllers/schoolSection.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 
 const router = Router();
@@ -55,6 +56,12 @@ router.get('/:schoolId/years', authorize('TEACHER'), schoolYearController.list);
 router.post('/:schoolId/years', authorize('TEACHER'), schoolYearController.create);
 router.get('/:schoolId/years/:yearId', authorize('TEACHER'), schoolYearController.get);
 router.put('/:schoolId/years/:yearId', authorize('TEACHER'), schoolYearController.update);
+
+// Grados y secciones
+router.get('/:schoolId/years/:yearId/sections', authorize('TEACHER'), schoolSectionController.list);
+router.post('/:schoolId/years/:yearId/sections', authorize('TEACHER'), schoolSectionController.createMany);
+router.patch('/:schoolId/sections/:sectionId', authorize('TEACHER'), schoolSectionController.update);
+router.delete('/:schoolId/sections/:sectionId', authorize('TEACHER'), schoolSectionController.remove);
 
 // Asignar/desasignar clase
 router.post('/:schoolId/classrooms/:classroomId', authorize('TEACHER'), schoolController.assignClassroom.bind(schoolController));

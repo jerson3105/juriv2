@@ -2,7 +2,7 @@ import { randomInt } from 'crypto';
 import { and, eq, gte, inArray, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
-import { classrooms, curriculumAreas, pointLogs, schoolMembers, schools, studentProfiles, users } from '../db/schema.js';
+import { classrooms, curriculumAreas, pointLogs, schoolMembers, schools, schoolSections, studentProfiles, users } from '../db/schema.js';
 import { affectedRows } from '../utils/points.js';
 import { historyService } from './history.service.js';
 import { attendanceService } from './attendance.service.js';
@@ -54,6 +54,9 @@ class SchoolManagementService {
         .set({ schoolId: null, updatedAt: new Date() })
         .where(and(eq(classrooms.schoolId, schoolId), eq(classrooms.teacherId, member.userId)));
       await tx.delete(schoolMembers).where(eq(schoolMembers.id, memberId));
+      // Deja de ser tutor de sus secciones: quedan «Sin tutoría».
+      await tx.update(schoolSections).set({ tutorUserId: null, updatedAt: new Date() })
+        .where(and(eq(schoolSections.schoolId, schoolId), eq(schoolSections.tutorUserId, member.userId)));
       return { unassignedClassrooms: affectedRows(unassign), teacherId: member.userId };
     });
   }

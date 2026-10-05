@@ -1,7 +1,7 @@
 import { and, asc, desc, eq } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
-import { schoolPeriods, schools, schoolYearLevels, schoolYears } from '../db/schema.js';
+import { schoolPeriods, schools, schoolSections, schoolYearLevels, schoolYears } from '../db/schema.js';
 import { ConflictError, NotFoundError, ValidationError } from '../utils/errors.js';
 
 /**
@@ -17,6 +17,7 @@ export type GradeScale = 'LITERAL' | 'VIGESIMAL';
 
 export const PERIOD_CODES: Record<PeriodType, string[]> = { BIMESTER: ['B1', 'B2', 'B3', 'B4'], TRIMESTER: ['T1', 'T2', 'T3'] };
 const PERIOD_LABEL: Record<PeriodType, string> = { BIMESTER: 'bimestre', TRIMESTER: 'trimestre' };
+const LEVEL_NAME: Record<SchoolLevel, string> = { INICIAL: 'Inicial', PRIMARIA: 'Primaria', SECUNDARIA: 'Secundaria' };
 
 export interface YearInput {
   startsOn: string;
@@ -155,7 +156,14 @@ export const schoolYearService = {
           await tx.insert(schoolPeriods).values({ id: uuidv4(), schoolId, yearId, code: p.code, startsOn: p.startsOn, endsOn: p.endsOn, createdAt: now, updatedAt: now });
         }
       }
-      // Niveles: se reemplazan (cuando existan secciones, no se podrá quitar un nivel que las tenga).
+      // Niveles: se reemplazan, pero no se quita uno que ya tiene secciones.
+      const kept = new Set(input.levels.map((l) => l.level));
+      const sections = await tx.select({ level: schoolSections.level }).from(schoolSections).where(eq(schoolSections.yearId, yearId));
+      const orphaned = SCHOOL_LEVELS.filter((level) => !kept.has(level) && sections.some((s) => s.level === level));
+      if (orphaned.length > 0) {
+        const names = orphaned.map((level) => LEVEL_NAME[level]).join(' y ');
+        throw new ConflictError(`No puedes quitar ${names}: tiene secciones. Quítalas primero en «Grados y secciones».`);
+      }
       await tx.delete(schoolYearLevels).where(eq(schoolYearLevels.yearId, yearId));
       await tx.insert(schoolYearLevels).values(input.levels.map((l) => ({
         yearId, level: l.level, schoolId, gradeScale: l.gradeScale, createdAt: now,
