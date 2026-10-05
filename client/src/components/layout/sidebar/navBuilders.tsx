@@ -12,6 +12,7 @@ import {
   GraduationCap,
   HeartHandshake,
   House,
+  Layers,
   LayoutDashboard,
   List,
   Map,
@@ -193,6 +194,7 @@ export const schoolConsoleNav = (input: SchoolConsoleNavInput): NavNode[] => {
     : {};
   return [
     link(entry('', 'Inicio', LayoutDashboard)),
+    ...(manager ? [link(entry('secciones', 'Grados y secciones', Layers))] : []),
     link(entry('docentes', 'Docentes', Users, requests)),
     link(entry('clases', 'Clases', GraduationCap)),
     ...(manager ? [link(entry('anio', 'Año escolar', CalendarCheck))] : []),

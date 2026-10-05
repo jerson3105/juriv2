@@ -6,6 +6,7 @@ import { useSchoolPanelData } from '../../components/schools/useSchoolPanelData'
 import { IDLE_DAYS, isIdle } from '../../components/schools/schoolHelpers';
 import { currentPeriod, formatDay, formatRange, LEVEL_LABEL, PERIOD_NAME, PERIOD_PLURAL, periodLabel } from '../../components/schools/console/schoolYearHelpers';
 import { schoolYearApi, schoolYearKeys } from '../../lib/schoolYearApi';
+import { schoolSectionApi, schoolSectionKeys } from '../../lib/schoolSectionApi';
 
 const card = 'pg-surface p-4';
 const smallBtn = 'pg-btn pg-focus flex-shrink-0';
@@ -27,6 +28,13 @@ export const SchoolHomePage = () => {
     queryFn: () => schoolYearApi.get(school.id, activeYear!.id),
     enabled: !!activeYear,
   });
+  const sectionsQuery = useQuery({
+    queryKey: schoolSectionKeys.list(school.id, activeYear?.id ?? ''),
+    queryFn: () => schoolSectionApi.list(school.id, activeYear!.id),
+    enabled: manager && !!activeYear,
+  });
+  const sections = sectionsQuery.data ?? [];
+  const withoutTutor = sections.filter((s) => !s.tutor);
   const base = `/escuela/${school.id}`;
   const detail = year.data;
   const period = detail ? currentPeriod(detail.periods) : null;
@@ -51,6 +59,7 @@ export const SchoolHomePage = () => {
 
   const attention = manager ? [
     !activeYear && !year.isLoading && { icon: CalendarCheck, title: 'Prepara el año escolar', detail: 'Fechas, bimestres o trimestres y niveles: lo primero de la consola', action: 'Preparar', to: `${base}/anio` },
+    withoutTutor.length > 0 && { icon: Users, title: `${withoutTutor.length} ${withoutTutor.length === 1 ? 'sección sin tutoría' : 'secciones sin tutoría'}`, detail: 'Elige un tutor en cada tarjeta de sección', action: 'Asignar', to: `${base}/secciones` },
     requests.length > 0 && { icon: UserPlus, title: `${requests.length} ${requests.length === 1 ? 'solicitud para unirse' : 'solicitudes para unirse'}`, detail: 'Docentes que esperan tu respuesta', action: 'Revisar', to: `${base}/docentes` },
     teachersWithoutClasses.length > 0 && { icon: Users, title: `${teachersWithoutClasses.length} ${teachersWithoutClasses.length === 1 ? 'docente sin clases' : 'docentes sin clases'}`, detail: 'Aún no ponen sus clases en la escuela', action: 'Ver docentes', to: `${base}/docentes` },
     idleClasses.length > 0 && { icon: Clock, title: `${idleClasses.length} ${idleClasses.length === 1 ? 'clase' : 'clases'} sin puntos en ${IDLE_DAYS} días`, detail: 'Puede que ya no se usen', action: 'Ver clases', to: `${base}/clases` },
@@ -63,9 +72,21 @@ export const SchoolHomePage = () => {
       done: !!detail,
       action: detail ? { label: 'Editar', to: `${base}/anio`, quiet: true } : { label: 'Preparar', to: `${base}/anio` },
     },
-    { title: 'Grados y secciones', detail: 'Secciones con nombre propio en cada grado', done: false },
+    {
+      title: 'Grados y secciones',
+      detail: sections.length > 0
+        ? `${sections.length} ${sections.length === 1 ? 'sección' : 'secciones'} en ${new Set(sections.map((s) => s.level)).size} ${new Set(sections.map((s) => s.level)).size === 1 ? 'nivel' : 'niveles'}`
+        : 'Secciones con nombre propio en cada grado',
+      done: sections.length > 0,
+      action: detail ? (sections.length > 0 ? { label: 'Editar', to: `${base}/secciones`, quiet: true } : { label: 'Crear', to: `${base}/secciones` }) : undefined,
+    },
     { title: 'Padrón de estudiantes', detail: 'Desde tus clases o con la plantilla', done: false },
-    { title: 'Tutorías', detail: 'Un tutor por sección', done: false },
+    {
+      title: 'Tutorías',
+      detail: sections.length > 0 ? `${sections.length - withoutTutor.length} de ${sections.length} secciones` : 'Un tutor por sección',
+      done: sections.length > 0 && withoutTutor.length === 0,
+      action: sections.length > 0 ? (withoutTutor.length === 0 ? { label: 'Editar', to: `${base}/secciones`, quiet: true } : { label: 'Asignar', to: `${base}/secciones` }) : undefined,
+    },
     { title: 'Asignaciones', detail: 'Qué docente enseña cada área en cada sección', done: false },
     { title: 'Matrícula automática', detail: 'Pone a cada estudiante en las clases de su sección', done: false },
     { title: 'Acceso con DNI y PIN', detail: 'Código del colegio o QR → DNI → PIN de 4 números', done: false },
