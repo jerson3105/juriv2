@@ -416,6 +416,8 @@ export const SettingsPage = () => {
                 <h2 className="text-lg font-bold text-gray-800 dark:text-white">Seguridad</h2>
                 
                 <div className="space-y-4">
+                  {/* Cuenta de correo o Google de un colegio que sumó un PIN: cambia los dos. */}
+                  {user?.hasPin && user.provider !== 'PIN' && <ChangePinSection />}
                   {user?.provider === 'PIN' ? <ChangePinSection /> : (
                   <div>
                     <h3 className="font-medium text-gray-800 dark:text-white mb-3 flex items-center gap-2">

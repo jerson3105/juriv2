@@ -1,5 +1,5 @@
 import { useId, useMemo, useState } from 'react';
-import { ChevronRight, KeyRound, Mail, Search, Sparkles } from 'lucide-react';
+import { ChevronRight, IdCard, KeyRound, Mail, Search, Sparkles } from 'lucide-react';
 import type { ClassRoster } from '../../lib/api';
 import { liftable } from './authHelpers';
 
@@ -9,6 +9,7 @@ const STATE_HINT: Record<RosterStudent['state'], { text: string; icon: typeof Ke
   pin: { text: 'Entra con tu PIN', icon: KeyRound },
   new: { text: 'Primera vez', icon: Sparkles },
   account: { text: 'Entra con tu correo', icon: Mail },
+  card: { text: 'Primera vez: con tu tarjeta', icon: IdCard },
 };
 
 const fold = (value: string) => value.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();

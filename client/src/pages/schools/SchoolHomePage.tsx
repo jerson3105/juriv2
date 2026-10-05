@@ -9,6 +9,7 @@ import { schoolYearApi, schoolYearKeys } from '../../lib/schoolYearApi';
 import { schoolSectionApi, schoolSectionKeys } from '../../lib/schoolSectionApi';
 import { schoolRosterApi, schoolRosterKeys } from '../../lib/schoolRosterApi';
 import { assignmentApi, assignmentKeys } from '../../lib/schoolAssignmentApi';
+import { schoolAccessApi, schoolAccessKeys } from '../../lib/schoolAccessApi';
 
 const card = 'pg-surface p-4';
 const smallBtn = 'pg-btn pg-focus flex-shrink-0';
@@ -51,6 +52,12 @@ export const SchoolHomePage = () => {
     enabled: manager && !!activeYear && sections.length > 0,
   });
   const overall = assignments.data?.overall;
+  // Acceso con DNI y PIN: si el colegio ya tiene su código y cuántos entran con su PIN.
+  const access = useQuery({
+    queryKey: schoolAccessKeys.overview(school.id, activeYear?.id ?? ''),
+    queryFn: () => schoolAccessApi.overview(school.id, activeYear!.id),
+    enabled: manager && !!activeYear,
+  });
   const withoutTutor = sections.filter((s) => !s.tutor);
   const base = `/escuela/${school.id}`;
   const detail = year.data;
@@ -133,7 +140,14 @@ export const SchoolHomePage = () => {
       done: !!overall && overall.assigned > 0 && overall.missing === 0 && overall.withoutClass === 0,
       action: overall && overall.assigned > 0 ? { label: 'Ver', to: `${base}/docentes?vista=asignaciones`, quiet: true } : undefined,
     },
-    { title: 'Acceso con DNI y PIN', detail: 'Código del colegio o QR → DNI → PIN de 4 números', done: false },
+    {
+      title: 'Acceso con DNI y PIN',
+      detail: !access.data?.school.studentCode ? 'Código del colegio o QR → DNI → PIN de 4 números'
+        : access.data.totals.students === 0 ? `Código del colegio: ${access.data.school.studentCode}`
+          : `${access.data.totals.pin} de ${access.data.totals.students} estudiantes ya entran con su PIN`,
+      done: !!access.data?.school.studentCode,
+      action: { label: access.data?.school.studentCode ? 'Ver' : 'Preparar tarjetas', to: `${base}/acceso`, quiet: !!access.data?.school.studentCode },
+    },
   ];
   const ready = steps.filter((s) => s.done).length;
 

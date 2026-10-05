@@ -16,6 +16,8 @@ import {
 } from '../../../lib/schoolRosterApi';
 import type { SchoolSection } from '../../../lib/schoolSectionApi';
 import { ReinstateModal, TransferModal, UndoTransfer, WithdrawModal } from './StudentMoves';
+import { AccessActions } from './StudentAccess';
+import { accessLabel } from '../../../lib/schoolAccessApi';
 
 export type DrawerState = { mode: 'view' | 'edit' | 'transfer' | 'withdraw' | 'reinstate'; studentId: string } | { mode: 'create' };
 
@@ -106,6 +108,7 @@ const StudentView = ({ schoolId, yearId, detail, sections, onMode }: { schoolId:
       </div>
       <div className="flex flex-wrap gap-2">
         {active && detail.enrollment?.section && <button type="button" className="pg-btn pg-focus" onClick={() => onMode('transfer')}><ArrowRightLeft size={16} aria-hidden="true" />Trasladar</button>}
+        {active && <AccessActions schoolId={schoolId} yearId={yearId} studentId={student.id} name={`${student.firstNames} ${student.lastNames}`} access={detail.access} />}
         {active && detail.enrollment && <button type="button" className="pg-btn pg-btn-ghost pg-focus text-red-700 dark:text-red-300" onClick={() => onMode('withdraw')}><UserMinus size={16} aria-hidden="true" />Retirar</button>}
         {!active && <button type="button" className="pg-btn pg-focus" onClick={() => onMode('reinstate')}><UserPlus size={16} aria-hidden="true" />Reincorporar</button>}
       </div>
@@ -134,7 +137,10 @@ const StudentView = ({ schoolId, yearId, detail, sections, onMode }: { schoolId:
         </div>
         <div className="col-span-2">
           <dt className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">Acceso</dt>
-          <dd className="mt-0.5 text-gray-900 dark:text-white">{student.hasAccount ? 'Tiene cuenta para entrar' : 'Aún sin cuenta propia'}</dd>
+          <dd className="mt-0.5 text-gray-900 dark:text-white">
+            {accessLabel(detail.access)}
+            {detail.access.lastLoginAt && <span className="text-gray-700 dark:text-gray-300"> · último ingreso {formatWhen(detail.access.lastLoginAt)}</span>}
+          </dd>
         </div>
       </dl>
 

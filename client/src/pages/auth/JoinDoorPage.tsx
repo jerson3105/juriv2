@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { KeyRound, Lock, Mail, School, User } from 'lucide-react';
+import { IdCard, KeyRound, Lock, Mail, School, User } from 'lucide-react';
 import { AuthShell } from '../../components/auth/AuthShell';
 import { GoogleButton, OrDivider } from '../../components/auth/GoogleButton';
 import { PasswordRules } from '../../components/auth/PasswordRules';
@@ -11,19 +11,22 @@ import {
   errorMessage, isPasswordValid, isWeakPin, normalizeJoinCode, setPendingJoinCode, pressable, WEAK_PIN_HINT } from '../../components/auth/authHelpers';
 import { primaryButton, cancelButton } from '../../components/home/homeHelpers';
 import { authApi } from '../../lib/api';
-import type { ClassRoster, PinAuthData } from '../../lib/api';
+import type { ClassRoster, PinAuthData, SchoolAuthData } from '../../lib/api';
 import { useAuthStore } from '../../store/authStore';
 import { useStudentStore } from '../../store/studentStore';
 
 type Verified = (
   | { type: 'classroom'; classroomName: string; teacherName: string | null; open: boolean }
   | { type: 'student'; studentName: string | null; classroomName: string | null; alreadyLinked: boolean; access?: 'new' | 'pin-reset' }
+  | { type: 'school'; schoolName: string }
+  | { type: 'school-card'; studentName: string | null; schoolName: string; newAccount: boolean; hasPin: boolean }
 ) & { teacherVerified?: boolean; message?: string };
 type RosterStudent = ClassRoster['students'][number];
 type Step =
   | 'code' | 'confirm' | 'notme' | 'access' | 'email'
   | 'roster' | 'pick-confirm' | 'pin-login' | 'pin-create' | 'done'
-  | 'not-listed' | 'need-card' | 'has-account';
+  | 'not-listed' | 'need-card' | 'has-account'
+  | 'school-login' | 'school-need-card';
 
 const linkClass = 'inline-flex min-h-[44px] items-center font-semibold text-primary-700 underline-offset-2 hover:underline dark:text-primary-300';
 
@@ -32,6 +35,8 @@ const linkClass = 'inline-flex min-h-[44px] items-center font-semibold text-prim
  * - Código de clase con lista: toca su nombre y entra con su PIN (o lo crea, si la clase está abierta).
  * - Código personal (tarjeta): confirma quién es y crea su PIN, o su acceso con correo o Google.
  * - Código de clase sin lista: crea su acceso con correo o Google y se une.
+ * - Código del colegio (o su QR): su DNI y su PIN. Tarjeta del colegio: confirma quién es y crea su PIN.
+ *   Un estudiante del colegio nunca crea su PIN tocando su nombre en una lista.
  */
 export const JoinDoorPage = () => {
   const navigate = useNavigate();
@@ -45,6 +50,11 @@ export const JoinDoorPage = () => {
   const enterClass = (data: PinAuthData) => {
     setAuth(data);
     setPendingClassCode(data.classroom.code);
+    navigate('/my-class');
+  };
+  // Por la puerta del colegio: entra a sus clases (la que usó la última vez, o la primera).
+  const enterSchool = (data: SchoolAuthData) => {
+    setAuth(data);
     navigate('/my-class');
   };
 
@@ -62,6 +72,11 @@ export const JoinDoorPage = () => {
   const [pinPhase, setPinPhase] = useState<'first' | 'repeat'>('first');
   const [pinError, setPinError] = useState<string | null>(null);
   const [created, setCreated] = useState<PinAuthData | null>(null);
+
+  // Puerta del colegio: su código (del enlace, el QR o la lista de una clase) y su DNI
+  const [school, setSchool] = useState<{ code: string; name: string } | null>(null);
+  const [dni, setDni] = useState('');
+  const [schoolDone, setSchoolDone] = useState<SchoolAuthData | null>(null);
 
   // Acceso con correo
   const [firstName, setFirstName] = useState('');
@@ -100,6 +115,21 @@ export const JoinDoorPage = () => {
         return;
       }
       const data = raw as Verified;
+      if (data.type === 'school') {
+        setVerified(data);
+        setSchool({ code: value, name: data.schoolName });
+        goTo('school-login');
+        return;
+      }
+      if (data.type === 'school-card') {
+        if (data.hasPin) {
+          setCodeError('Ya creaste tu PIN con esta tarjeta: entra con el código del colegio, tu DNI y tu PIN.');
+        } else {
+          setVerified(data);
+          goTo('confirm');
+        }
+        return;
+      }
       if (data.teacherVerified === false) {
         setCodeError(data.message ?? 'Tu profe aún está verificando su cuenta de docente. Avísale para que la verifique.');
       } else if (data.type === 'classroom') {
@@ -140,6 +170,8 @@ export const JoinDoorPage = () => {
 
   const isPersonal = verified?.type === 'student';
   const isPinReset = verified?.type === 'student' && verified.access === 'pin-reset';
+  const isSchoolCard = verified?.type === 'school-card';
+  const verifiedClassroom = verified && 'classroomName' in verified ? verified.classroomName : null;
   // El acceso se vincula a un perfil que ya está en la lista (tarjeta o nombre tocado): sin pedir nombres.
   const hasProfile = isPersonal || !!picked;
   const problems = {
@@ -180,7 +212,30 @@ export const JoinDoorPage = () => {
     setPicked(student);
     if (student.state === 'pin') goTo('pin-login');
     else if (student.state === 'account') goTo('has-account');
+    else if (student.state === 'card') goTo('school-need-card');
     else goTo(roster?.open ? 'pick-confirm' : 'need-card');
+  };
+
+  const openSchoolDoor = () => {
+    if (!roster?.schoolCode) return;
+    setSchool({ code: roster.schoolCode, name: roster.schoolName ?? roster.classroomName });
+    goTo('school-login');
+  };
+
+  // Error único del servidor («DNI o PIN incorrecto»): no se sabe cuál de los dos falló, se limpia el PIN.
+  const loginWithDocument = async (value = pin) => {
+    if (!school || !dni.trim() || value.length !== 4 || busy) return;
+    setBusy(true);
+    setPinError(null);
+    try {
+      const response = await authApi.schoolLogin({ schoolCode: school.code, document: dni.trim(), pin: value });
+      enterSchool(response.data.data!);
+    } catch (error) {
+      setPin('');
+      setPinError(errorMessage(error, 'No se pudo entrar. Inténtalo otra vez.'));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const loginWithPin = async (value = pin) => {
@@ -218,6 +273,12 @@ export const JoinDoorPage = () => {
     setBusy(true);
     setPinError(null);
     try {
+      if (verified?.type === 'school-card') {
+        const response = await authApi.schoolActivate({ code, pin, ...(verified.newAccount ? { avatarGender } : {}) });
+        setSchoolDone(response.data.data!);
+        setStep('done');
+        return;
+      }
       const response = await authApi.setupPin(isPersonal
         ? { linkCode: code, pin, ...(isPinReset ? {} : { avatarGender }) }
         : { classCode: code, studentId: picked!.id, pin, avatarGender });
@@ -283,7 +344,7 @@ export const JoinDoorPage = () => {
             {codeError ? (
               <p id={`${ids}-code-error`} role="alert" className="mt-2 text-sm font-medium text-red-700 dark:text-red-300">{codeError}</p>
             ) : (
-              <p id={`${ids}-code-help`} className="mt-2 text-sm text-gray-700 dark:text-gray-300">Puede ser el código de tu clase o tu código personal.</p>
+              <p id={`${ids}-code-help`} className="mt-2 text-sm text-gray-700 dark:text-gray-300">Puede ser el código de tu clase, el de tu colegio o el de tu tarjeta.</p>
             )}
           </div>
           <button type="submit" disabled={code.length < 6 || checking} className={`${primaryButton} ${pressable} w-full`}>
@@ -299,7 +360,59 @@ export const JoinDoorPage = () => {
     return (
       <AuthShell title="Toca tu nombre" subtitle={`Clase: ${roster.classroomName}`} back={{ onClick: backToCode, label: 'Otro código' }} wide>
         <RosterPicker students={roster.students} onPick={pickStudent} />
-        <button type="button" onClick={() => { setPicked(null); goTo('not-listed'); }} className={`${cancelButton} mt-4 w-full`}>No estoy en la lista</button>
+        {roster.schoolCode && (
+          <button type="button" onClick={openSchoolDoor} className={`${cancelButton} mt-4 w-full border border-gray-300 dark:border-gray-600`}>
+            <span className="inline-flex items-center gap-2"><IdCard size={18} aria-hidden="true" /> Entrar con mi DNI</span>
+          </button>
+        )}
+        <button type="button" onClick={() => { setPicked(null); goTo('not-listed'); }} className={`${cancelButton} mt-2 w-full`}>No estoy en la lista</button>
+      </AuthShell>
+    );
+  }
+
+  // ==================== Colegio: entrar con DNI y PIN ====================
+  if (step === 'school-login' && school) {
+    return (
+      <AuthShell title="Entra con tu DNI" subtitle={school.name} back={{ onClick: () => { setSchool(null); setDni(''); backToCode(); }, label: 'Otro código' }}>
+        <form onSubmit={(e) => { e.preventDefault(); void loginWithDocument(); }} className="space-y-5" noValidate>
+          <div>
+            <label htmlFor={`${ids}-dni`} className="mb-1 block text-sm font-semibold text-gray-800 dark:text-gray-100">Tu DNI</label>
+            <input
+              id={`${ids}-dni`}
+              value={dni}
+              onChange={(e) => { setDni(e.target.value.replace(/[^0-9A-Za-z.\s-]/g, '').slice(0, 20)); setPinError(null); }}
+              inputMode="numeric"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+              placeholder="8 números"
+              autoFocus
+              className="min-h-[56px] w-full rounded-xl border border-gray-300 bg-white px-4 text-center font-mono text-2xl font-bold tracking-[0.15em] text-gray-900 outline-none placeholder:font-sans placeholder:text-base placeholder:font-normal placeholder:tracking-normal placeholder:text-gray-500 focus:border-primary-500 focus:ring-2 focus:ring-primary-500 dark:border-gray-600 dark:bg-gray-900 dark:text-white dark:placeholder:text-gray-400"
+            />
+            <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">¿No tienes DNI? Escribe el número de tu carné o pasaporte.</p>
+          </div>
+          <PinInput label="Tu PIN" value={pin} onChange={(v) => { setPin(v); setPinError(null); }} onComplete={(v) => void loginWithDocument(v)} error={pinError} disabled={busy} />
+          <button type="submit" disabled={!dni.trim() || pin.length !== 4 || busy} className={`${primaryButton} ${pressable} w-full`}>
+            {busy ? 'Entrando…' : 'Entrar'}
+          </button>
+        </form>
+        <p className="mt-5 text-center text-sm text-gray-700 dark:text-gray-300">¿Es tu primera vez? Escribe el código de tu tarjeta del colegio.</p>
+        <button type="button" onClick={() => { setSchool(null); setDni(''); backToCode(); }} className={`${cancelButton} mt-2 w-full`}>Tengo mi tarjeta</button>
+        <p className="mt-3 text-center text-sm text-gray-700 dark:text-gray-300">¿Olvidaste tu PIN? Pídele a tu tutor que lo restablezca.</p>
+      </AuthShell>
+    );
+  }
+
+  if (step === 'school-need-card' && picked) {
+    return (
+      <AuthShell title="Pide tu tarjeta del colegio">
+        <p className="text-gray-800 dark:text-gray-100">
+          Es tu primera vez, <strong>{picked.name}</strong>. Con la tarjeta que te da tu tutor creas tu PIN, y con ese PIN entras a todas tus clases.
+        </p>
+        <div className="mt-6 grid gap-2 sm:grid-cols-2">
+          <button type="button" onClick={() => goTo('roster')} className={cancelButton}>No soy yo</button>
+          <button type="button" onClick={backToCode} className={`${primaryButton} ${pressable}`}>Escribir mi tarjeta</button>
+        </div>
       </AuthShell>
     );
   }
@@ -384,7 +497,9 @@ export const JoinDoorPage = () => {
             {busy ? 'Entrando…' : 'Entrar'}
           </button>
         </form>
-        <p className="mt-5 text-center text-sm text-gray-700 dark:text-gray-300">¿Olvidaste tu PIN? Pídele a tu profe que restablezca tu acceso.</p>
+        <p className="mt-5 text-center text-sm text-gray-700 dark:text-gray-300">
+          {roster?.schoolCode ? '¿Olvidaste tu PIN? Pídele a tu tutor que lo restablezca.' : '¿Olvidaste tu PIN? Pídele a tu profe que restablezca tu acceso.'}
+        </p>
         <button type="button" onClick={() => goTo('roster')} className={`${cancelButton} mt-2 w-full`}>No soy {picked.name}</button>
       </AuthShell>
     );
@@ -392,15 +507,17 @@ export const JoinDoorPage = () => {
 
   // ==================== Crear PIN ====================
   if (step === 'pin-create') {
-    const name = picked?.name ?? (verified?.type === 'student' ? verified.studentName : null);
+    const name = picked?.name ?? (verified?.type === 'student' || verified?.type === 'school-card' ? verified.studentName : null);
     const repeating = pinPhase === 'repeat';
+    // Avatar: al crear una cuenta nueva (con una tarjeta del colegio, solo si aún no tenía cuenta).
+    const askGender = isSchoolCard ? verified.newAccount : !isPinReset;
     return (
       <AuthShell
         title={isPinReset ? 'Crea tu PIN nuevo' : 'Crea tu PIN'}
         subtitle={name ? `${name} · 4 números que solo tú sepas` : '4 números que solo tú sepas'}
       >
         <form onSubmit={(e) => { e.preventDefault(); if (repeating) void createPin(); else if (pin.length === 4) firstPinDone(pin); }} className="space-y-5" noValidate>
-          {!isPinReset && !repeating && genderPicker}
+          {askGender && !repeating && genderPicker}
           {repeating ? (
             <PinInput key="repeat" label="Escríbelo otra vez" value={pinConfirm} onChange={(v) => { setPinConfirm(v); setPinError(null); }} onComplete={(v) => void createPin(v)} error={pinError} autoFocus disabled={busy} />
           ) : (
@@ -408,7 +525,7 @@ export const JoinDoorPage = () => {
           )}
           <p className="text-center text-sm text-gray-700 dark:text-gray-300">No le digas tu PIN a nadie, ni a tus amigos.</p>
           <div className="grid gap-2 sm:grid-cols-2">
-            <button type="button" onClick={() => (repeating ? resetPin() : goTo(isPinReset ? 'confirm' : 'access'))} className={cancelButton}>
+            <button type="button" onClick={() => (repeating ? resetPin() : goTo(isPinReset || isSchoolCard ? 'confirm' : 'access'))} className={cancelButton}>
               {repeating ? 'Cambiar PIN' : 'Volver'}
             </button>
             <button type="submit" disabled={(repeating ? pinConfirm : pin).length !== 4 || busy} className={`${primaryButton} ${pressable}`}>
@@ -421,6 +538,32 @@ export const JoinDoorPage = () => {
   }
 
   // ==================== Listo: cómo entrar la próxima vez ====================
+  if (step === 'done' && schoolDone) {
+    const steps = [
+      schoolDone.school.code
+        ? <>Escribe el código del colegio: <strong className="font-mono text-lg tracking-widest text-gray-900 dark:text-white">{schoolDone.school.code}</strong> (o escanea su QR)</>
+        : <>Escribe el código de tu clase y toca tu nombre</>,
+      ...(schoolDone.school.code ? [<>Escribe tu DNI</>] : []),
+      <span className="flex items-center gap-1.5"><KeyRound size={16} aria-hidden="true" /> Escribe tu PIN</span>,
+    ];
+    return (
+      <AuthShell title={`¡Listo, ${schoolDone.user.firstName}!`} subtitle="Con este PIN entras a todas tus clases. La próxima vez:">
+        <ol className="space-y-3">
+          {steps.map((text, i) => (
+            <li key={i} className="flex items-center gap-3 rounded-xl bg-gray-50 p-3 dark:bg-gray-900/40">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-600 text-sm font-bold text-white" aria-hidden="true">{i + 1}</span>
+              <span className="text-gray-800 dark:text-gray-100">{text}</span>
+            </li>
+          ))}
+        </ol>
+        <p className="mt-4 text-sm text-gray-700 dark:text-gray-300">También puedes tocar tu nombre en la lista de tu clase. Tu tarjeta ya no sirve: guárdala o rómpela. Si olvidas tu PIN, tu tutor te ayuda.</p>
+        <button type="button" onClick={() => enterSchool(schoolDone)} className={`${primaryButton} ${pressable} mt-6 w-full`}>
+          Entrar a mis clases
+        </button>
+      </AuthShell>
+    );
+  }
+
   if (step === 'done' && created) {
     return (
       <AuthShell title={`¡Listo, ${created.user.firstName}!`} subtitle="Así entras la próxima vez:">
@@ -459,7 +602,23 @@ export const JoinDoorPage = () => {
   }
 
   // ==================== Paso 2: confirmar ====================
-  if (step === 'confirm' && verified) {
+  if (step === 'confirm' && verified?.type === 'school-card') {
+    return (
+      <AuthShell title="¿Eres tú?">
+        <div className="rounded-xl bg-gray-50 p-4 text-center dark:bg-gray-900/40">
+          <p className="text-2xl font-bold text-gray-900 dark:text-white">{verified.studentName ?? 'Estudiante'}</p>
+          <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">{verified.schoolName}</p>
+        </div>
+        <p className="mt-4 text-sm text-gray-700 dark:text-gray-300">Vas a crear tu PIN: con él entras a todas tus clases del colegio.</p>
+        <div className="mt-6 grid gap-2 sm:grid-cols-2">
+          <button type="button" onClick={() => setStep('notme')} className={cancelButton}>No soy yo</button>
+          <button type="button" onClick={() => goTo('pin-create')} className={`${primaryButton} ${pressable}`}>Sí, soy yo</button>
+        </div>
+      </AuthShell>
+    );
+  }
+
+  if (step === 'confirm' && verified && verified.type !== 'school' && verified.type !== 'school-card') {
     return verified.type === 'student' ? (
       <AuthShell title="¿Eres tú?">
         <div className="rounded-xl bg-gray-50 p-4 text-center dark:bg-gray-900/40">
@@ -495,7 +654,7 @@ export const JoinDoorPage = () => {
     return (
       <AuthShell
         title="¿Cómo quieres entrar la próxima vez?"
-        subtitle={verified?.classroomName ? `Clase: ${verified.classroomName}` : undefined}
+        subtitle={verifiedClassroom ? `Clase: ${verifiedClassroom}` : undefined}
         back={backFromAccess}
       >
         <button type="button" onClick={() => goTo('pin-create')} className={`${primaryButton} ${pressable} min-h-[56px] w-full text-base`}>
@@ -514,7 +673,7 @@ export const JoinDoorPage = () => {
   return (
     <AuthShell
       title="¿Cómo quieres entrar la próxima vez?"
-      subtitle={verified?.classroomName ? `Clase: ${verified.classroomName}` : undefined}
+      subtitle={verifiedClassroom ? `Clase: ${verifiedClassroom}` : undefined}
       back={backFromAccess}
     >
       {/* Con Google vuelve a /join-class con este código: si la clase tiene lista, toca su nombre allí. */}

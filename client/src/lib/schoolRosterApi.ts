@@ -1,4 +1,5 @@
 import api from './api';
+import type { StudentAccessInfo } from './schoolAccessApi';
 import type { SchoolLevel } from './schoolYearApi';
 
 /** Consola escolar: padrón de estudiantes del año, ficha y documento (siempre enmascarado salvo «Mostrar»). */
@@ -66,6 +67,8 @@ export interface StudentDetail {
   }>;
   classes: Array<{ profileId: string; classroomId: string; classroomName: string; isActive: boolean; xp: number; level: number; teacher: string | null }>;
   years: Array<{ yearId: string; name: string; status: 'ACTIVE' | 'WITHDRAWN'; hasSection: boolean }>;
+  /** Cómo entra (DNI y PIN, correo o Google, o aún sin acceso) y si tiene una tarjeta por usar. */
+  access: StudentAccessInfo;
 }
 
 /** Traslado, retiro o reincorporación. La nota es interna: solo la ve la administración. */

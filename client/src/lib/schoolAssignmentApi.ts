@@ -1,4 +1,5 @@
 import api from './api';
+import type { StudentAccessInfo } from './schoolAccessApi';
 import type { SchoolLevel } from './schoolYearApi';
 
 /** Consola escolar: plan de estudios, asignaciones (sección × área → docente y clase), Mis asignaciones y mi tutoría. */
@@ -151,7 +152,7 @@ export interface MyLoad {
 
 export interface TutoringSection {
   section: { id: string; label: string; tutor: string | null };
-  students: Array<{ id: string; firstNames: string; lastNames: string; hasDocument: boolean; birthDate: string | null; classes: number }>;
+  students: Array<{ id: string; firstNames: string; lastNames: string; hasDocument: boolean; birthDate: string | null; classes: number; access: StudentAccessInfo }>;
 }
 
 export const assignmentKeys = {

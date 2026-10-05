@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { ArrowLeft, ExternalLink, RefreshCw } from 'lucide-react';
+import { ArrowLeft, ExternalLink, FileDown, RefreshCw } from 'lucide-react';
 import { useSchoolConsole } from '../../components/layout/schoolConsoleContext';
 import { errorMessage } from '../../components/auth/authHelpers';
 import { primaryButton } from '../../components/home/homeHelpers';
 import { ageOf, formatWhen, rosterName } from '../../components/schools/console/rosterHelpers';
 import { assignmentApi, assignmentKeys, type ClassroomChoice, type MyLoad, type MyLoadAssignment, type Workshop } from '../../lib/schoolAssignmentApi';
+import { accessLabel, schoolAccessApi } from '../../lib/schoolAccessApi';
+import { AccessActions } from '../../components/schools/console/StudentAccess';
 
 const pill = 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold whitespace-nowrap';
 const PILL = {
@@ -338,16 +340,37 @@ export const SchoolTutoringPage = () => {
   const { school, activeYear } = useSchoolConsole();
   const { sectionId = '' } = useParams();
   const yearId = activeYear?.id ?? '';
+  const queryClient = useQueryClient();
+  const [printing, setPrinting] = useState(false);
   const section = useQuery({ queryKey: assignmentKeys.tutoring(school.id, yearId, sectionId), queryFn: () => assignmentApi.tutoring(school.id, yearId, sectionId), enabled: !!activeYear && !!sectionId });
   const data = section.data;
+  const withoutPin = data?.students.filter((s) => s.access.state !== 'pin').length ?? 0;
+  // Tarjetas de la sección: solo para quienes aún no tienen PIN.
+  const printCards = async () => {
+    if (!data) return;
+    setPrinting(true);
+    try {
+      await schoolAccessApi.downloadSectionCards(school.id, yearId, sectionId, data.section.label);
+      void queryClient.invalidateQueries({ queryKey: assignmentKeys.tutoring(school.id, yearId, sectionId) });
+    } catch (error) {
+      toast.error(errorMessage(error, 'No se pudieron generar las tarjetas'));
+    } finally {
+      setPrinting(false);
+    }
+  };
   return (
     <div className="space-y-5">
-      <header className="flex items-start gap-3">
+      <header className="flex flex-wrap items-start gap-3">
         <Link to={`/escuela/${school.id}/mis-asignaciones`} className="pg-icon-btn pg-focus" aria-label="Volver a Mis asignaciones"><ArrowLeft size={20} aria-hidden="true" /></Link>
-        <div>
+        <div className="min-w-0 flex-1">
           <h1 className="text-xl font-black text-gray-900 dark:text-white sm:text-2xl">Mi tutoría{data ? ` · ${data.section.label}` : ''}</h1>
           <p className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{data ? `${data.students.length} ${data.students.length === 1 ? 'estudiante' : 'estudiantes'}${data.section.tutor ? ` · tutoría de ${data.section.tutor}` : ''}` : 'Tu sección'}</p>
         </div>
+        {data && data.students.length > 0 && (
+          <button type="button" className="pg-btn pg-focus" disabled={printing || withoutPin === 0} onClick={() => void printCards()} title={withoutPin === 0 ? 'Todos ya tienen su PIN' : undefined}>
+            <FileDown size={16} aria-hidden="true" />{printing ? 'Generando…' : `Tarjetas de acceso${withoutPin ? ` (${withoutPin})` : ''}`}
+          </button>
+        )}
       </header>
       {section.isLoading && <div className="h-48 animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none dark:bg-gray-800" aria-busy="true" aria-label="Cargando la sección" />}
       {section.isError && (
@@ -367,6 +390,7 @@ export const SchoolTutoringPage = () => {
                 <th scope="col" className="px-3 py-2 font-semibold">DNI</th>
                 <th scope="col" className="px-3 py-2 text-right font-semibold">Edad</th>
                 <th scope="col" className="px-3 py-2 text-right font-semibold">Clases</th>
+                <th scope="col" className="px-3 py-2 font-semibold">Acceso</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -378,6 +402,12 @@ export const SchoolTutoringPage = () => {
                     <td className="px-3 py-2.5">{s.hasDocument ? <span className="text-gray-800 dark:text-gray-100">Registrado</span> : <span className={PILL.warn}>Falta DNI</span>}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{age !== null ? <span className="text-gray-800 dark:text-gray-100">{age}</span> : <span className={PILL.warn}>Falta fecha</span>}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums text-gray-800 dark:text-gray-100">{s.classes}</td>
+                    <td className="px-3 py-2.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-gray-800 dark:text-gray-100">{accessLabel(s.access)}</span>
+                        <AccessActions schoolId={school.id} yearId={yearId} studentId={s.id} name={`${s.firstNames} ${s.lastNames}`} access={s.access} />
+                      </div>
+                    </td>
                   </tr>
                 );
               })}

@@ -105,7 +105,9 @@ export const authApi = {
     api.post<ApiResponse<
       (| { type: 'classroom'; classroomName: string; teacherName: string | null; open: boolean }
       | { type: 'student'; studentName: string | null; classroomName: string | null; alreadyLinked: boolean; access?: 'new' | 'pin-reset' }
-      | { type: 'family'; studentName: string | null; classroomName: string; teacherName: string | null; open: boolean })
+      | { type: 'family'; studentName: string | null; classroomName: string; teacherName: string | null; open: boolean }
+      | { type: 'school'; schoolName: string }
+      | { type: 'school-card'; studentName: string | null; schoolName: string; newAccount: boolean; hasPin: boolean })
       & { teacherVerified?: boolean; message?: string }
     >>('/auth/join-code/verify', { code }),
 
@@ -136,6 +138,14 @@ export const authApi = {
   /** Entrar con el código de la clase, su nombre y su PIN. */
   loginWithPin: (data: { classCode: string; studentId: string; pin: string }) =>
     api.post<ApiResponse<PinAuthData>>('/auth/pin/login', data),
+
+  /** Puerta del colegio: código del colegio + DNI + PIN (si algo no cuadra, siempre «DNI o PIN incorrecto»). */
+  schoolLogin: (data: { schoolCode: string; document: string; pin: string }) =>
+    api.post<ApiResponse<SchoolAuthData>>('/auth/school/login', data),
+
+  /** Con la tarjeta del colegio: crea su PIN (una vez) y entra. */
+  schoolActivate: (data: { code: string; pin: string; avatarGender?: 'MALE' | 'FEMALE' }) =>
+    api.post<ApiResponse<SchoolAuthData>>('/auth/school/activate', data),
 
   /** Cambiar el PIN: cierra las otras sesiones y devuelve un token nuevo para esta. */
   changePin: (data: { currentPin: string; newPin: string }) =>
@@ -186,6 +196,8 @@ export interface User {
   avatarUrl: string | null;
   /** PIN = alumno sin correo (su correo guardado es interno: no se muestra). */
   provider?: 'LOCAL' | 'GOOGLE' | 'PIN';
+  /** Entra (también) con PIN: una cuenta de correo o Google de un colegio que sumó uno. Viene de /auth/me. */
+  hasPin?: boolean;
   createdAt: string;
 }
 
@@ -206,12 +218,21 @@ export interface PinAuthData extends AuthData {
   classroom: { name: string; code: string };
 }
 
-export type RosterState = 'new' | 'pin' | 'account';
+/** Entró por la puerta del colegio (DNI y PIN) o activó su tarjeta del colegio. */
+export interface SchoolAuthData extends AuthData {
+  school: { name: string; code: string | null };
+}
+
+/** 'card': estudiante de un colegio que aún no tiene PIN (su primera vez es con su tarjeta, no tocando su nombre). */
+export type RosterState = 'new' | 'pin' | 'account' | 'card';
 export interface ClassRoster {
   classroomName: string;
   open: boolean;
   teacherVerified: boolean;
   message?: string;
+  /** Código del colegio de la clase: la lista ofrece «Entrar con mi DNI». */
+  schoolCode?: string;
+  schoolName?: string;
   students: Array<{ id: string; name: string; state: RosterState }>;
 }
 
