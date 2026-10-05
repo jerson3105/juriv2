@@ -1,5 +1,5 @@
 import { db } from '../db/index.js';
-import { schools, schoolMembers, schoolVerifications, classrooms, users, schoolBehaviors, behaviors, schoolBadges, badges, curriculumAreas, pointLogs, attendanceRecords, studentProfiles, studentGrades, schoolTeachingAssignments } from '../db/schema.js';
+import { schools, schoolMembers, schoolVerifications, classrooms, users, schoolBehaviors, behaviors, schoolBadges, badges, curriculumAreas, pointLogs, attendanceRecords, studentProfiles, studentGrades, schoolTeachingAssignments, schoolWorkshops } from '../db/schema.js';
 import { eq, and, like, count, sql, desc, ne, inArray, gte, lte } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { teacherVerificationService } from './teacherVerification.service.js';
@@ -290,6 +290,9 @@ export class SchoolService {
     await db.update(schoolTeachingAssignments)
       .set({ classroomId: null, updatedAt: now })
       .where(eq(schoolTeachingAssignments.classroomId, classroomId));
+    await db.update(schoolWorkshops)
+      .set({ classroomId: null, updatedAt: now })
+      .where(eq(schoolWorkshops.classroomId, classroomId));
   }
 
   // Obtener profesores de la escuela con sus clases

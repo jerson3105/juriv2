@@ -7,7 +7,7 @@ import { useSchoolConsole } from '../../components/layout/schoolConsoleContext';
 import { errorMessage } from '../../components/auth/authHelpers';
 import { primaryButton } from '../../components/home/homeHelpers';
 import { ageOf, formatWhen, rosterName } from '../../components/schools/console/rosterHelpers';
-import { assignmentApi, assignmentKeys, type ClassroomChoice, type MyLoad, type MyLoadAssignment } from '../../lib/schoolAssignmentApi';
+import { assignmentApi, assignmentKeys, type ClassroomChoice, type MyLoad, type MyLoadAssignment, type Workshop } from '../../lib/schoolAssignmentApi';
 
 const pill = 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold whitespace-nowrap';
 const PILL = {
@@ -47,6 +47,7 @@ export const SchoolMyAssignmentsPage = () => {
   for (const a of data.assignments) byArea.set(a.area.id, [...(byArea.get(a.area.id) ?? []), a]);
   const subtitle = [
     data.assignments.length ? `${data.assignments.length} ${data.assignments.length === 1 ? 'asignación' : 'asignaciones'} en ${sections} ${sections === 1 ? 'sección' : 'secciones'}` : null,
+    data.workshops.length ? `${data.workshops.length} ${data.workshops.length === 1 ? 'taller' : 'talleres'}` : null,
     data.tutoring.length ? `Tutoría de ${data.tutoring.map((t) => t.section.label).join(', ')}` : null,
   ].filter(Boolean).join(' · ') || `Año escolar ${activeYear.name}`;
 
@@ -57,7 +58,7 @@ export const SchoolMyAssignmentsPage = () => {
         <p className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{subtitle}</p>
       </header>
 
-      {data.assignments.length === 0 && data.tutoring.length === 0 ? (
+      {data.assignments.length === 0 && data.tutoring.length === 0 && data.workshops.length === 0 ? (
         <div className="rounded-2xl border-2 border-dashed border-gray-300 bg-white/70 px-6 py-12 text-center dark:border-gray-600 dark:bg-gray-800/60">
           <div className="mx-auto flex w-fit gap-3" aria-hidden="true"><span className="text-4xl">📚</span><span className="text-5xl">🧑‍🏫</span><span className="text-4xl">🗂️</span></div>
           <h2 className="mt-4 text-lg font-bold text-gray-900 dark:text-white">Aún no tienes asignaciones</h2>
@@ -67,7 +68,8 @@ export const SchoolMyAssignmentsPage = () => {
         <div className="grid gap-5 lg:grid-cols-12">
           <div className="space-y-4 lg:col-span-8">
             {[...byArea.values()].map((rows) => <AreaCard key={rows[0].area.id} schoolId={school.id} yearId={yearId} rows={rows} myClasses={data.myClasses} />)}
-            {data.assignments.length === 0 && <p className="rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-700 dark:border-gray-600 dark:text-gray-300">Aún no tienes áreas asignadas.</p>}
+            {data.workshops.length > 0 && <WorkshopsCard schoolId={school.id} yearId={yearId} workshops={data.workshops} myClasses={data.myClasses} />}
+            {data.assignments.length === 0 && data.workshops.length === 0 && <p className="rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-700 dark:border-gray-600 dark:text-gray-300">Aún no tienes áreas asignadas.</p>}
           </div>
           <div className="space-y-4 lg:col-span-4">
             {data.tutoring.map((t) => <TutoringCard key={t.section.id} schoolId={school.id} tutoring={t} />)}
@@ -170,6 +172,109 @@ const LoadRow = ({ schoolId, yearId, row, myClasses }: { schoolId: string; yearI
           {step === 'create' && (
             <span className="flex flex-wrap items-center gap-1.5" role="alertdialog" aria-label="Crear clase">
               <span className="text-sm text-gray-800 dark:text-gray-100">¿Crear «{row.area.name} {row.section.label}»?</span>
+              <button type="button" className={primaryButton} disabled={setClassroom.isPending} onClick={() => setClassroom.mutate({ mode: 'create' })}>{setClassroom.isPending ? 'Creando…' : 'Crear'}</button>
+              <button type="button" className="pg-btn pg-btn-ghost pg-focus" onClick={() => setStep('idle')}>Cancelar</button>
+            </span>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+};
+
+/** Mis talleres: quiénes lo llevan, su clase y su estado, con las mismas acciones que un área. */
+const WorkshopsCard = ({ schoolId, yearId, workshops, myClasses }: { schoolId: string; yearId: string; workshops: Workshop[]; myClasses: MyLoad['myClasses'] }) => (
+  <section className="pg-surface overflow-hidden" aria-labelledby="my-workshops">
+    <header className="flex items-center gap-2 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+      <h2 id="my-workshops" className="text-base font-bold text-gray-900 dark:text-white">Talleres</h2>
+      <span className="text-sm text-gray-600 dark:text-gray-300">{workshops.length}</span>
+    </header>
+    <table className="w-full text-left text-sm">
+      <thead className="hidden text-xs uppercase tracking-wide text-gray-600 dark:text-gray-300 md:table-header-group">
+        <tr>
+          <th scope="col" className="px-4 py-2 font-semibold">Taller</th>
+          <th scope="col" className="px-3 py-2 font-semibold">Clase vinculada</th>
+          <th scope="col" className="px-3 py-2 font-semibold">Estado</th>
+          <th scope="col" className="px-3 py-2"><span className="sr-only">Acción</span></th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+        {workshops.map((w) => <WorkshopRow key={w.id} schoolId={schoolId} yearId={yearId} workshop={w} myClasses={myClasses} />)}
+      </tbody>
+    </table>
+  </section>
+);
+
+const WorkshopRow = ({ schoolId, yearId, workshop, myClasses }: { schoolId: string; yearId: string; workshop: Workshop; myClasses: MyLoad['myClasses'] }) => {
+  const queryClient = useQueryClient();
+  const [step, setStep] = useState<'idle' | 'link' | 'create'>('idle');
+  const [classroomId, setClassroomId] = useState('');
+  const usable = myClasses.filter((c) => !c.linked && !c.sectionId && (!c.areaId || c.areaId === workshop.area.id));
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: assignmentKeys.all(schoolId, yearId) });
+    void queryClient.invalidateQueries({ queryKey: ['classrooms'] });
+  };
+  const setClassroom = useMutation({
+    mutationFn: (choice: ClassroomChoice) => assignmentApi.setWorkshopClassroom(schoolId, workshop.id, choice),
+    onSuccess: (result) => {
+      refresh();
+      toast.success(result.message);
+      setStep('idle');
+    },
+    onError: (error) => toast.error(errorMessage(error, 'No se pudo guardar la clase')),
+  });
+  const sync = useMutation({
+    mutationFn: () => assignmentApi.syncWorkshop(schoolId, workshop.id),
+    onSuccess: (result) => {
+      refresh();
+      toast.success(result.message);
+    },
+    onError: (error) => toast.error(errorMessage(error, 'No se pudo sincronizar')),
+  });
+  const who = workshop.mode === 'SECTION' ? workshop.sections.map((s) => s.label).join(', ') || 'Sin secciones' : `${workshop.participants} ${workshop.participants === 1 ? 'inscrito' : 'inscritos'}`;
+  const status = !workshop.classroom ? { text: 'Sin clase', tone: 'warn' as const }
+    : workshop.classroom.archived ? { text: 'Clase archivada', tone: 'warn' as const }
+      : workshop.classroom.missing > 0 ? { text: workshop.classroom.missing === 1 ? 'Falta 1' : `Faltan ${workshop.classroom.missing}`, tone: 'warn' as const }
+        : { text: 'Al día', tone: 'ok' as const };
+  return (
+    <tr className="block md:table-row">
+      <td className="block px-4 pt-3 md:table-cell md:py-2.5">
+        <span className="font-bold text-gray-900 dark:text-white">{workshop.name}</span>
+        <span className="block text-xs text-gray-600 dark:text-gray-300">{workshop.area.name} · {who} · {workshop.weight} % del área</span>
+      </td>
+      <td className="inline-block px-4 py-1 md:table-cell md:px-3 md:py-2.5">
+        {workshop.classroom ? <span className="text-gray-900 dark:text-white">{workshop.classroom.name}</span> : <span className="text-gray-600 dark:text-gray-300">Ninguna todavía</span>}
+      </td>
+      <td className="inline-block px-2 py-1 md:table-cell md:px-3 md:py-2.5"><span className={PILL[status.tone]}>{status.text}</span></td>
+      <td className="block px-4 pb-3 md:table-cell md:px-3 md:py-2.5">
+        <div className="flex flex-wrap items-center gap-1.5 md:justify-end">
+          {workshop.classroom && !workshop.classroom.archived && (
+            <Link to={`/classroom/${workshop.classroom.id}`} className="pg-btn pg-focus"><ExternalLink size={14} aria-hidden="true" />Abrir clase</Link>
+          )}
+          {workshop.classroom && workshop.classroom.missing > 0 && (
+            <button type="button" className="pg-btn pg-focus" onClick={() => sync.mutate()} disabled={sync.isPending}>
+              <RefreshCw size={14} aria-hidden="true" />{sync.isPending ? 'Sincronizando…' : 'Sincronizar'}
+            </button>
+          )}
+          {!workshop.classroom && step === 'idle' && (
+            <>
+              <button type="button" className="pg-btn pg-btn-ghost pg-focus" onClick={() => setStep('link')} disabled={usable.length === 0} title={usable.length === 0 ? 'No tienes clases libres sin sección de esta área' : undefined}>Vincular</button>
+              <button type="button" className="pg-btn pg-focus text-primary-800 dark:text-primary-200" onClick={() => setStep('create')}>Crear clase</button>
+            </>
+          )}
+          {step === 'link' && (
+            <>
+              <select aria-label={`Clase para ${workshop.name}`} className="pg-focus min-h-[40px] rounded-lg border border-gray-300 bg-white px-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100" value={classroomId} onChange={(e) => setClassroomId(e.target.value)}>
+                <option value="">Elige tu clase…</option>
+                {usable.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <button type="button" className={primaryButton} disabled={!classroomId || setClassroom.isPending} onClick={() => setClassroom.mutate({ mode: 'link', classroomId })}>Vincular</button>
+              <button type="button" className="pg-btn pg-btn-ghost pg-focus" onClick={() => setStep('idle')}>Cancelar</button>
+            </>
+          )}
+          {step === 'create' && (
+            <span className="flex flex-wrap items-center gap-1.5" role="alertdialog" aria-label="Crear clase">
+              <span className="text-sm text-gray-800 dark:text-gray-100">¿Crear «{workshop.name}»?</span>
               <button type="button" className={primaryButton} disabled={setClassroom.isPending} onClick={() => setClassroom.mutate({ mode: 'create' })}>{setClassroom.isPending ? 'Creando…' : 'Crear'}</button>
               <button type="button" className="pg-btn pg-btn-ghost pg-focus" onClick={() => setStep('idle')}>Cancelar</button>
             </span>

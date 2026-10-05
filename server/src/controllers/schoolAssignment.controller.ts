@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { schoolAssignmentService, type ClassroomChoice } from '../services/schoolAssignment.service.js';
 import { schoolPlanService } from '../services/schoolPlan.service.js';
+import { schoolWorkshopService } from '../services/schoolWorkshop.service.js';
 import { SCHOOL_LEVELS } from '../services/schoolYear.service.js';
 import { isSchoolManagerRole, requireSchoolRole, SCHOOL_MANAGER_ROLES, SCHOOL_MEMBER_ROLES } from '../utils/access.js';
 import { auditRequest } from '../utils/audit.js';
@@ -25,6 +26,30 @@ const createSchema = z.object({ sectionId: idSchema, areaId: areaIdSchema, teach
 const updateSchema = z.object({ teacherUserId: idSchema.optional(), classroom: classroomChoiceSchema.optional() }).strict()
   .refine((value) => Object.keys(value).length > 0, 'No hay nada que cambiar');
 const setClassroomSchema = z.object({ classroom: classroomChoiceSchema }).strict();
+const workshopFields = {
+  name: z.string().max(120),
+  level: levelSchema,
+  areaId: areaIdSchema,
+  teacherUserId: idSchema,
+  mode: z.enum(['SECTION', 'CHOSEN'], { errorMap: () => ({ message: 'Elige quiénes lo llevan' }) }),
+  sectionIds: z.array(idSchema).max(60),
+  studentIds: z.array(idSchema).max(600),
+  weight: z.number().int(),
+};
+const workshopCreateSchema = z.object({
+  ...workshopFields, sectionIds: workshopFields.sectionIds.default([]), studentIds: workshopFields.studentIds.default([]), classroom: classroomChoiceSchema,
+}).strict();
+const workshopUpdateSchema = z.object({
+  name: workshopFields.name.optional(), level: workshopFields.level.optional(), areaId: workshopFields.areaId.optional(),
+  teacherUserId: workshopFields.teacherUserId.optional(), mode: workshopFields.mode.optional(), sectionIds: workshopFields.sectionIds.optional(),
+  studentIds: workshopFields.studentIds.optional(), weight: workshopFields.weight.optional(), classroom: classroomChoiceSchema.optional(),
+}).strict().refine((value) => Object.keys(value).length > 0, 'No hay nada que cambiar');
+
+const workshopIdOf = (req: Request, res: Response) => {
+  const id = idSchema.safeParse(req.params.workshopId);
+  if (!id.success) res.status(404).json({ success: false, message: 'Taller no encontrado' });
+  return id.success ? id.data : null;
+};
 
 const sendError = (res: Response, error: unknown, fallback: string) => {
   if (error instanceof z.ZodError) {
@@ -234,7 +259,11 @@ export const schoolAssignmentController = {
       if (!s) return;
       const yearId = yearOf(req, res);
       if (!yearId) return;
-      res.json({ success: true, data: await schoolAssignmentService.myLoad(s.schoolId, yearId, req.user!.id) });
+      const [load, workshops] = await Promise.all([
+        schoolAssignmentService.myLoad(s.schoolId, yearId, req.user!.id),
+        schoolWorkshopService.mine(s.schoolId, yearId, req.user!.id),
+      ]);
+      res.json({ success: true, data: { ...load, workshops } });
     } catch (error) {
       return sendError(res, error, 'Error al obtener tus asignaciones');
     }
@@ -273,6 +302,122 @@ export const schoolAssignmentController = {
       res.json({ success: true, data: await schoolAssignmentService.tutoringSection(s.schoolId, yearId, sectionId, { id: req.user!.id, manager: s.manager }) });
     } catch (error) {
       return sendError(res, error, 'Error al obtener la sección');
+    }
+  },
+  // GET /schools/:schoolId/years/:yearId/workshops?level= — talleres del año
+  async listWorkshops(req: Request, res: Response) {
+    try {
+      const s = await managerScope(req, res);
+      if (!s) return;
+      const level = req.query.level ? levelSchema.parse(req.query.level) : undefined;
+      res.json({ success: true, data: await schoolWorkshopService.list(s.schoolId, s.yearId, level) });
+    } catch (error) {
+      return sendError(res, error, 'Error al obtener los talleres');
+    }
+  },
+
+  // GET /schools/:schoolId/workshops/:workshopId — un taller con sus inscritos
+  async getWorkshop(req: Request, res: Response) {
+    try {
+      const { schoolId } = req.params;
+      if (!(await requireSchoolRole(req, res, schoolId, SCHOOL_MANAGER_ROLES))) return;
+      const workshopId = workshopIdOf(req, res);
+      if (!workshopId) return;
+      res.set('Cache-Control', 'no-store');
+      res.json({ success: true, data: await schoolWorkshopService.get(schoolId, workshopId) });
+    } catch (error) {
+      return sendError(res, error, 'Error al obtener el taller');
+    }
+  },
+
+  // POST /schools/:schoolId/years/:yearId/workshops — crear un taller (y su clase)
+  async createWorkshop(req: Request, res: Response) {
+    try {
+      const s = await managerScope(req, res);
+      if (!s) return;
+      const input = workshopCreateSchema.parse(req.body);
+      const data = await schoolWorkshopService.create(s.schoolId, s.yearId, input, req.user!.id);
+      await auditRequest(req, {
+        action: 'school.workshop_created',
+        schoolId: s.schoolId,
+        target: { type: 'school_workshop', id: data.id },
+        metadata: { mode: input.mode, weight: input.weight, classroom: input.classroom.mode, enrolled: data.sync.created + data.sync.linked },
+      });
+      res.status(201).json({ success: true, data, message: `Taller guardado${syncSummary(data.sync)}` });
+    } catch (error) {
+      return sendError(res, error, 'Error al guardar el taller');
+    }
+  },
+
+  // PATCH /schools/:schoolId/workshops/:workshopId — cambiar el taller
+  async updateWorkshop(req: Request, res: Response) {
+    try {
+      const { schoolId } = req.params;
+      if (!(await requireSchoolRole(req, res, schoolId, SCHOOL_MANAGER_ROLES))) return;
+      const workshopId = workshopIdOf(req, res);
+      if (!workshopId) return;
+      const patch = workshopUpdateSchema.parse(req.body);
+      const data = await schoolWorkshopService.update(schoolId, workshopId, patch, req.user!.id);
+      await auditRequest(req, {
+        action: 'school.workshop_updated',
+        schoolId,
+        target: { type: 'school_workshop', id: workshopId },
+        metadata: { teacherChanged: data.teacherChanged, classroom: choiceLabel(patch.classroom), enrolled: data.sync.created + data.sync.linked },
+      });
+      res.json({ success: true, data, message: `Taller guardado${syncSummary(data.sync)}` });
+    } catch (error) {
+      return sendError(res, error, 'Error al guardar el taller');
+    }
+  },
+
+  // DELETE /schools/:schoolId/workshops/:workshopId — quitar (la clase sigue con su docente)
+  async removeWorkshop(req: Request, res: Response) {
+    try {
+      const { schoolId } = req.params;
+      if (!(await requireSchoolRole(req, res, schoolId, SCHOOL_MANAGER_ROLES))) return;
+      const workshopId = workshopIdOf(req, res);
+      if (!workshopId) return;
+      await schoolWorkshopService.remove(schoolId, workshopId);
+      await auditRequest(req, { action: 'school.workshop_removed', schoolId, target: { type: 'school_workshop', id: workshopId } });
+      res.json({ success: true, message: 'Taller quitado: la clase sigue con su docente' });
+    } catch (error) {
+      return sendError(res, error, 'Error al quitar el taller');
+    }
+  },
+
+  // POST /schools/:schoolId/workshops/:workshopId/sync — completar la matrícula automática del taller
+  async syncWorkshop(req: Request, res: Response) {
+    try {
+      const s = await memberScope(req, res);
+      if (!s) return;
+      const workshopId = workshopIdOf(req, res);
+      if (!workshopId) return;
+      const data = await schoolWorkshopService.sync(s.schoolId, workshopId, { id: req.user!.id, manager: s.manager });
+      const n = data.created + data.linked;
+      res.json({ success: true, data, message: n > 0 ? `${n} ${n === 1 ? 'estudiante entró' : 'estudiantes entraron'} a la clase` : 'La clase ya estaba al día' });
+    } catch (error) {
+      return sendError(res, error, 'Error al sincronizar el taller');
+    }
+  },
+
+  // PUT /schools/:schoolId/workshops/:workshopId/classroom — su docente (o la administración) le pone clase
+  async setWorkshopClassroom(req: Request, res: Response) {
+    try {
+      const s = await memberScope(req, res);
+      if (!s) return;
+      const workshopId = workshopIdOf(req, res);
+      if (!workshopId) return;
+      const { classroom } = setClassroomSchema.parse(req.body);
+      const data = await schoolWorkshopService.setClassroom(s.schoolId, workshopId, classroom, { id: req.user!.id, manager: s.manager });
+      await auditRequest(req, {
+        action: 'school.workshop_updated',
+        schoolId: s.schoolId,
+        target: { type: 'school_workshop', id: workshopId },
+        metadata: { teacherChanged: false, classroom: classroom.mode, enrolled: data.sync.created + data.sync.linked, byTeacher: !s.manager },
+      });
+      res.json({ success: true, data, message: `${classroom.mode === 'create' ? 'Clase creada' : classroom.mode === 'link' ? 'Clase vinculada' : 'Clase desvinculada'}${syncSummary(data.sync)}` });
+    } catch (error) {
+      return sendError(res, error, 'Error al guardar la clase del taller');
     }
   },
 };

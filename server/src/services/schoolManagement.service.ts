@@ -2,7 +2,10 @@ import { randomInt } from 'crypto';
 import { and, eq, gte, inArray, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
-import { classrooms, curriculumAreas, pointLogs, schoolMembers, schools, schoolSections, schoolTeachingAssignments, studentProfiles, users } from '../db/schema.js';
+import {
+  classrooms, curriculumAreas, pointLogs, schoolMembers, schools, schoolSections, schoolTeachingAssignments, schoolWorkshops, schoolWorkshopSections,
+  schoolWorkshopStudents, studentProfiles, users,
+} from '../db/schema.js';
 import { affectedRows } from '../utils/points.js';
 import { historyService } from './history.service.js';
 import { attendanceService } from './attendance.service.js';
@@ -70,6 +73,14 @@ class SchoolManagementService {
       // Sus asignaciones se quitan: la matriz las mostrará por cubrir.
       await tx.delete(schoolTeachingAssignments)
         .where(and(eq(schoolTeachingAssignments.schoolId, schoolId), eq(schoolTeachingAssignments.teacherUserId, member.userId)));
+      // Y sus talleres, con sus secciones e inscritos.
+      const workshopIds = (await tx.select({ id: schoolWorkshops.id }).from(schoolWorkshops)
+        .where(and(eq(schoolWorkshops.schoolId, schoolId), eq(schoolWorkshops.teacherUserId, member.userId)))).map((w) => w.id);
+      if (workshopIds.length > 0) {
+        await tx.delete(schoolWorkshopSections).where(inArray(schoolWorkshopSections.workshopId, workshopIds));
+        await tx.delete(schoolWorkshopStudents).where(inArray(schoolWorkshopStudents.workshopId, workshopIds));
+        await tx.delete(schoolWorkshops).where(inArray(schoolWorkshops.id, workshopIds));
+      }
       await tx.delete(schoolMembers).where(eq(schoolMembers.id, memberId));
       // Deja de ser tutor de sus secciones: quedan «Sin tutoría».
       await tx.update(schoolSections).set({ tutorUserId: null, updatedAt: new Date() })

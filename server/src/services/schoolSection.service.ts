@@ -1,7 +1,7 @@
 import { and, asc, count, eq, ne } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
-import { classrooms, schoolEnrollments, schoolMembers, schoolSections, schoolTeachingAssignments, schoolYearLevels, schoolYears, users } from '../db/schema.js';
+import { classrooms, schoolEnrollments, schoolMembers, schoolSections, schoolTeachingAssignments, schoolWorkshopSections, schoolYearLevels, schoolYears, users } from '../db/schema.js';
 import { ConflictError, NotFoundError, ValidationError, isDuplicateEntry } from '../utils/errors.js';
 import { cleanText, comparableText } from '../utils/textClean.js';
 import type { SchoolLevel } from './schoolYear.service.js';
@@ -166,6 +166,7 @@ export const schoolSectionService = {
     await db.transaction(async (tx) => {
       // Sus asignaciones se van con ella y sus clases quedan sin sección (siguen siendo de su docente).
       await tx.delete(schoolTeachingAssignments).where(eq(schoolTeachingAssignments.sectionId, section.id));
+      await tx.delete(schoolWorkshopSections).where(eq(schoolWorkshopSections.sectionId, section.id));
       await tx.update(classrooms).set({ schoolSectionId: null, updatedAt: new Date() }).where(eq(classrooms.schoolSectionId, section.id));
       await tx.delete(schoolSections).where(eq(schoolSections.id, section.id));
     });

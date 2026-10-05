@@ -1,9 +1,10 @@
-import { and, eq, gte, inArray, isNull } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, or } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import {
   attendanceRecords, classroomCharacterClasses, classrooms, gradeEvaluationScores, pointLogs, schoolAutoProfiles, schoolEnrollments,
-  schoolStudents, schoolTeachingAssignments, studentBadges, studentEquippedItems, studentGrades, studentProfiles, users,
+  schoolStudents, schoolTeachingAssignments, schoolWorkshops, schoolWorkshopSections, schoolWorkshopStudents, studentBadges, studentEquippedItems,
+  studentGrades, studentProfiles, users,
 } from '../db/schema.js';
 import { generateRandomCode } from '../utils/helpers.js';
 import { logger } from '../utils/logger.js';
@@ -72,9 +73,15 @@ const uniqueLinkCodes = async (executor: Executor, count: number) => {
 };
 
 export const schoolAutoEnrollService = {
-  /** Pone a los estudiantes de una sección en una clase vinculada. Con la fila de la clase bloqueada: sin repetidos. */
-  async syncClassroom(input: { schoolId: string; yearId: string; sectionId: string; classroomId: string }): Promise<SyncResult> {
-    const { schoolId, yearId, sectionId, classroomId } = input;
+  /**
+   * Pone en una clase vinculada a sus estudiantes: los de una o varias secciones, o una lista (taller con inscripción).
+   * Con la fila de la clase bloqueada: sin repetidos.
+   */
+  async syncClassroom(input: { schoolId: string; yearId: string; classroomId: string; sectionIds?: string[]; studentIds?: string[] }): Promise<SyncResult> {
+    const { schoolId, yearId, classroomId } = input;
+    const sectionIds = input.sectionIds ?? [];
+    const studentIds = input.studentIds ?? [];
+    if (sectionIds.length === 0 && studentIds.length === 0) return ZERO;
     const now = new Date();
     return db.transaction(async (tx) => {
       const [classroom] = await tx.select({
@@ -88,7 +95,11 @@ export const schoolAutoEnrollService = {
         .from(schoolEnrollments)
         .innerJoin(schoolStudents, eq(schoolStudents.id, schoolEnrollments.studentId))
         .where(and(
-          eq(schoolEnrollments.yearId, yearId), eq(schoolEnrollments.sectionId, sectionId), eq(schoolEnrollments.status, 'ACTIVE'),
+          eq(schoolEnrollments.yearId, yearId), eq(schoolEnrollments.status, 'ACTIVE'),
+          or(
+            sectionIds.length ? inArray(schoolEnrollments.sectionId, sectionIds) : undefined,
+            studentIds.length ? inArray(schoolEnrollments.studentId, studentIds) : undefined,
+          ),
           eq(schoolStudents.schoolId, schoolId), eq(schoolStudents.status, 'ACTIVE'),
         ));
       if (enrolled.length === 0) return ZERO;
@@ -196,14 +207,31 @@ export const schoolAutoEnrollService = {
     });
   },
 
-  /** Todas las clases vinculadas de una sección. */
+  /** La clase de un taller: sus secciones o sus inscritos. */
+  async syncWorkshop(schoolId: string, yearId: string, workshopId: string): Promise<SyncResult> {
+    const [workshop] = await db.select({ classroomId: schoolWorkshops.classroomId, mode: schoolWorkshops.mode }).from(schoolWorkshops)
+      .where(and(eq(schoolWorkshops.id, workshopId), eq(schoolWorkshops.schoolId, schoolId)));
+    if (!workshop?.classroomId) return ZERO;
+    if (workshop.mode === 'SECTION') {
+      const sections = await db.select({ id: schoolWorkshopSections.sectionId }).from(schoolWorkshopSections).where(eq(schoolWorkshopSections.workshopId, workshopId));
+      return this.syncClassroom({ schoolId, yearId, classroomId: workshop.classroomId, sectionIds: sections.map((s) => s.id) });
+    }
+    const students = await db.select({ id: schoolWorkshopStudents.studentId }).from(schoolWorkshopStudents).where(eq(schoolWorkshopStudents.workshopId, workshopId));
+    return this.syncClassroom({ schoolId, yearId, classroomId: workshop.classroomId, studentIds: students.map((s) => s.id) });
+  },
+
+  /** Todas las clases vinculadas de una sección: las de sus áreas y las de sus talleres de toda la sección. */
   async syncSection(schoolId: string, yearId: string, sectionId: string): Promise<SyncResult> {
     const links = await db.select({ classroomId: schoolTeachingAssignments.classroomId }).from(schoolTeachingAssignments)
       .where(and(eq(schoolTeachingAssignments.schoolId, schoolId), eq(schoolTeachingAssignments.yearId, yearId), eq(schoolTeachingAssignments.sectionId, sectionId)));
     let total = ZERO;
     for (const { classroomId } of links) {
-      if (classroomId) total = add(total, await this.syncClassroom({ schoolId, yearId, sectionId, classroomId }));
+      if (classroomId) total = add(total, await this.syncClassroom({ schoolId, yearId, sectionIds: [sectionId], classroomId }));
     }
+    const workshops = await db.select({ id: schoolWorkshops.id }).from(schoolWorkshops)
+      .innerJoin(schoolWorkshopSections, eq(schoolWorkshopSections.workshopId, schoolWorkshops.id))
+      .where(and(eq(schoolWorkshops.schoolId, schoolId), eq(schoolWorkshops.yearId, yearId), eq(schoolWorkshops.mode, 'SECTION'), eq(schoolWorkshopSections.sectionId, sectionId)));
+    for (const { id } of workshops) total = add(total, await this.syncWorkshop(schoolId, yearId, id));
     return total;
   },
 
@@ -220,6 +248,11 @@ export const schoolAutoEnrollService = {
       for (const { sectionId } of sections) {
         if (sectionId) total = add(total, await this.syncSection(schoolId, yearId, sectionId));
       }
+      // Talleres con inscripción donde están.
+      const chosen = await db.selectDistinct({ id: schoolWorkshopStudents.workshopId }).from(schoolWorkshopStudents)
+        .innerJoin(schoolWorkshops, eq(schoolWorkshops.id, schoolWorkshopStudents.workshopId))
+        .where(and(inArray(schoolWorkshopStudents.studentId, studentIds), eq(schoolWorkshops.yearId, yearId), eq(schoolWorkshops.mode, 'CHOSEN')));
+      for (const { id } of chosen) total = add(total, await this.syncWorkshop(schoolId, yearId, id));
       return total;
     } catch (error) {
       logger.error('Matrícula automática: no se pudo completar', { schoolId, yearId, error: error instanceof Error ? error.message : String(error) });

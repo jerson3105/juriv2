@@ -1,6 +1,6 @@
 import { and, asc, eq } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { curriculumAreas, schoolPlanAreas, schoolSections, schoolTeachingAssignments, schoolYearLevels, schoolYears } from '../db/schema.js';
+import { curriculumAreas, schoolPlanAreas, schoolSections, schoolTeachingAssignments, schoolWorkshops, schoolYearLevels, schoolYears } from '../db/schema.js';
 import { ConflictError, NotFoundError, ValidationError } from '../utils/errors.js';
 import { LEVEL_GRADES, sectionDisplayName } from './schoolSection.service.js';
 import type { SchoolLevel } from './schoolYear.service.js';
@@ -128,6 +128,11 @@ export const schoolPlanService = {
       const where = [...new Set(orphan.filter((o) => o.areaId === orphan[0].areaId).map((o) => sectionDisplayName(level, o.grade, o.name)))].slice(0, 3).join(', ');
       throw new ConflictError(`${area} tiene docente asignado en ${where}: quita esas asignaciones antes de sacarla del plan`);
     }
+    // Talleres del nivel cuya área sale del plan.
+    const workshops = await db.select({ areaId: schoolWorkshops.areaId, name: schoolWorkshops.name }).from(schoolWorkshops)
+      .where(and(eq(schoolWorkshops.yearId, yearId), eq(schoolWorkshops.level, level)));
+    const lost = workshops.find((w) => !planned.has(w.areaId));
+    if (lost) throw new ConflictError(`El taller «${lost.name}» es de ${available.get(lost.areaId)?.name ?? 'esa área'}: quítalo o cámbialo de área antes de sacarla del plan`);
 
     const now = new Date();
     await db.transaction(async (tx) => {

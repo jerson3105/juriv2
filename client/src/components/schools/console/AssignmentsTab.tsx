@@ -8,6 +8,7 @@ import type { SchoolLevel } from '../../../lib/schoolYearApi';
 import { LEVEL_LABEL } from './schoolYearHelpers';
 import { AssignmentDrawer } from './AssignmentDrawer';
 import { FromClassesDrawer, PlanDrawer } from './PlanDrawers';
+import { WorkshopsSection } from './Workshops';
 
 type Filter = 'all' | 'gaps' | 'noclass';
 const badge = 'inline-flex h-8 min-w-[44px] items-center justify-center gap-1 rounded-lg px-2 text-xs font-bold tracking-wide';
@@ -95,7 +96,7 @@ export const AssignmentsTab = ({ schoolId, yearId }: { schoolId: string; yearId:
             <span className="min-w-0">
               <b className="block truncate text-sm text-gray-900 dark:text-white">{t.name}</b>
               <small className="block truncate text-xs text-gray-600 dark:text-gray-300">
-                {t.assignments} {t.assignments === 1 ? 'asignación' : 'asig.'}{t.tutorOf.length ? ` · Tutoría ${t.tutorOf.join(', ')}` : ''}
+                {t.assignments} {t.assignments === 1 ? 'asignación' : 'asig.'}{t.workshops ? ` · ${t.workshops} ${t.workshops === 1 ? 'taller' : 'talleres'}` : ''}{t.tutorOf.length ? ` · Tutoría ${t.tutorOf.join(', ')}` : ''}
               </small>
             </span>
           </li>
@@ -198,6 +199,8 @@ export const AssignmentsTab = ({ schoolId, yearId }: { schoolId: string; yearId:
           {data.counts.missing} {data.counts.missing === 1 ? 'estudiante aún no está' : 'estudiantes aún no están'} en las clases vinculadas: abre la celda marcada y elige «Sincronizar».
         </p>
       )}
+
+      <WorkshopsSection schoolId={schoolId} yearId={yearId} level={level} plan={data.plan} sections={data.sections} teachers={data.teachers} />
 
       <AnimatePresence>
         {openCell?.section && openCell.area && (

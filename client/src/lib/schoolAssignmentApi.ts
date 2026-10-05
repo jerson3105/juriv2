@@ -50,6 +50,7 @@ export interface MatrixTeacher {
   initials: string;
   role: 'OWNER' | 'ADMIN' | 'TEACHER';
   assignments: number;
+  workshops: number;
   tutorOf: string[];
 }
 
@@ -102,8 +103,42 @@ export interface MyLoadAssignment {
   leftToday: number;
 }
 
+export type WorkshopMode = 'SECTION' | 'CHOSEN';
+
+export interface Workshop {
+  id: string;
+  name: string;
+  level: SchoolLevel;
+  area: { id: string; name: string; shortName: string | null };
+  teacherUserId: string;
+  teacherName: string;
+  mode: WorkshopMode;
+  /** % de la nota del área (el resto, la clase del área). */
+  weight: number;
+  sections: Array<{ id: string; label: string }>;
+  participants: number;
+  classroom: { id: string; name: string; archived: boolean; missing: number } | null;
+}
+
+export interface WorkshopDetail extends Workshop {
+  students: Array<{ id: string; firstNames: string; lastNames: string; section: string | null }>;
+}
+
+export interface WorkshopInput {
+  name: string;
+  level: SchoolLevel;
+  areaId: string;
+  teacherUserId: string;
+  mode: WorkshopMode;
+  sectionIds: string[];
+  studentIds: string[];
+  weight: number;
+  classroom: ClassroomChoice;
+}
+
 export interface MyLoad {
   assignments: MyLoadAssignment[];
+  workshops: Workshop[];
   tutoring: Array<{
     section: { id: string; label: string };
     students: number;
@@ -127,6 +162,8 @@ export const assignmentKeys = {
   teacherClasses: (schoolId: string, teacherId: string) => ['school-assignments', schoolId, 'teacher-classes', teacherId] as const,
   myLoad: (schoolId: string, yearId: string) => ['school-assignments', schoolId, yearId, 'my-load'] as const,
   tutoring: (schoolId: string, yearId: string, sectionId: string) => ['school-assignments', schoolId, yearId, 'tutoring', sectionId] as const,
+  workshops: (schoolId: string, yearId: string, level: SchoolLevel | null) => ['school-assignments', schoolId, yearId, 'workshops', level] as const,
+  workshop: (schoolId: string, yearId: string, workshopId: string) => ['school-assignments', schoolId, yearId, 'workshop', workshopId] as const,
 };
 
 const year = (schoolId: string, yearId: string) => `/schools/${schoolId}/years/${yearId}`;
@@ -164,4 +201,24 @@ export const assignmentApi = {
   },
   tutoring: async (schoolId: string, yearId: string, sectionId: string): Promise<TutoringSection> =>
     (await api.get(`${year(schoolId, yearId)}/sections/${sectionId}/tutoring`)).data.data,
+  workshops: async (schoolId: string, yearId: string, level?: SchoolLevel | null): Promise<Workshop[]> =>
+    (await api.get(`${year(schoolId, yearId)}/workshops`, { params: level ? { level } : {} })).data.data,
+  workshop: async (schoolId: string, workshopId: string): Promise<WorkshopDetail> => (await api.get(`/schools/${schoolId}/workshops/${workshopId}`)).data.data,
+  createWorkshop: async (schoolId: string, yearId: string, input: WorkshopInput): Promise<{ id: string; sync: SyncResult; message: string }> => {
+    const response = await api.post(`${year(schoolId, yearId)}/workshops`, input);
+    return { ...response.data.data, message: response.data.message };
+  },
+  updateWorkshop: async (schoolId: string, workshopId: string, patch: Partial<WorkshopInput>): Promise<{ sync: SyncResult; message: string }> => {
+    const response = await api.patch(`/schools/${schoolId}/workshops/${workshopId}`, patch);
+    return { ...response.data.data, message: response.data.message };
+  },
+  removeWorkshop: async (schoolId: string, workshopId: string): Promise<string> => (await api.delete(`/schools/${schoolId}/workshops/${workshopId}`)).data.message,
+  syncWorkshop: async (schoolId: string, workshopId: string): Promise<{ sync: SyncResult; message: string }> => {
+    const response = await api.post(`/schools/${schoolId}/workshops/${workshopId}/sync`);
+    return { sync: response.data.data, message: response.data.message };
+  },
+  setWorkshopClassroom: async (schoolId: string, workshopId: string, classroom: ClassroomChoice): Promise<{ sync: SyncResult; message: string }> => {
+    const response = await api.put(`/schools/${schoolId}/workshops/${workshopId}/classroom`, { classroom });
+    return { ...response.data.data, message: response.data.message };
+  },
 };

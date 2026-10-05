@@ -3210,3 +3210,44 @@ export const schoolAutoProfiles = mysqlTable('school_auto_profiles', {
   studentIdx: index('idx_school_auto_profiles_student').on(table.studentId, table.createdAt),
   schoolIdx: index('idx_school_auto_profiles_school').on(table.schoolId),
 }));
+
+// Talleres: parte de un área del plan (su nota cuenta dentro del área con un peso). Toda una o varias secciones
+// (SECTION, entran solas) o solo los inscritos (CHOSEN). Una clase va con un solo taller o asignación.
+export const workshopModeEnum = mysqlEnum('mode', ['SECTION', 'CHOSEN']);
+export const schoolWorkshops = mysqlTable('school_workshops', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  schoolId: varchar('school_id', { length: 36 }).notNull(),
+  yearId: varchar('year_id', { length: 36 }).notNull(),
+  level: schoolLevelEnum.notNull(),
+  areaId: varchar('area_id', { length: 36 }).notNull(),
+  name: varchar('name', { length: 80 }).notNull(),
+  teacherUserId: varchar('teacher_user_id', { length: 36 }).notNull(),
+  classroomId: varchar('classroom_id', { length: 36 }),
+  mode: workshopModeEnum.notNull(),
+  weight: tinyint('weight').notNull().default(30),
+  createdBy: varchar('created_by', { length: 36 }).notNull(),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  classroomUnique: unique('uq_school_workshops_classroom').on(table.classroomId),
+  schoolYearIdx: index('idx_school_workshops_school_year').on(table.schoolId, table.yearId),
+  teacherIdx: index('idx_school_workshops_teacher').on(table.teacherUserId),
+}));
+
+export const schoolWorkshopSections = mysqlTable('school_workshop_sections', {
+  workshopId: varchar('workshop_id', { length: 36 }).notNull(),
+  sectionId: varchar('section_id', { length: 36 }).notNull(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.workshopId, table.sectionId] }),
+  sectionIdx: index('idx_school_workshop_sections_section').on(table.sectionId),
+}));
+
+export const schoolWorkshopStudents = mysqlTable('school_workshop_students', {
+  workshopId: varchar('workshop_id', { length: 36 }).notNull(),
+  studentId: varchar('student_id', { length: 36 }).notNull(),
+  createdBy: varchar('created_by', { length: 36 }).notNull(),
+  createdAt: datetime('created_at').notNull(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.workshopId, table.studentId] }),
+  studentIdx: index('idx_school_workshop_students_student').on(table.studentId),
+}));

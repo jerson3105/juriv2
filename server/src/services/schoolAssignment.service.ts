@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import {
   classrooms, curriculumAreas, schoolEnrollmentEvents, schoolEnrollments, schoolMembers, schoolSections, schoolStudents,
-  schoolTeachingAssignments, schoolYearLevels, schoolYears, studentProfiles, users,
+  schoolTeachingAssignments, schoolWorkshops, schoolYearLevels, schoolYears, studentProfiles, users,
 } from '../db/schema.js';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError, isDuplicateEntry } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';
@@ -23,7 +23,7 @@ import type { SchoolLevel } from './schoolYear.service.js';
 export type ClassroomChoice = { mode: 'create' } | { mode: 'link'; classroomId: string } | { mode: 'none' };
 
 const LEVEL_ORDER: SchoolLevel[] = ['INICIAL', 'PRIMARIA', 'SECUNDARIA'];
-const SCALE_OF: Record<string, 'PERU_LETTERS' | 'PERU_VIGESIMAL'> = { LITERAL: 'PERU_LETTERS', VIGESIMAL: 'PERU_VIGESIMAL' };
+export const SCALE_OF: Record<string, 'PERU_LETTERS' | 'PERU_VIGESIMAL'> = { LITERAL: 'PERU_LETTERS', VIGESIMAL: 'PERU_VIGESIMAL' };
 const tutors = alias(users, 'tutor');
 
 const fullName = (u: { firstName: string | null; lastName: string | null }) => `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim();
@@ -60,7 +60,7 @@ const loadAssignment = async (schoolId: string, assignmentId: string) => {
 };
 
 /** El docente es miembro verificado de la escuela (cualquier rol: la administración también enseña) y está activo. */
-const assertTeacher = async (schoolId: string, userId: string) => {
+export const assertTeacher = async (schoolId: string, userId: string) => {
   const [member] = await db.select({ status: schoolMembers.status, active: users.isActive, role: users.role, firstName: users.firstName, lastName: users.lastName })
     .from(schoolMembers).innerJoin(users, eq(users.id, schoolMembers.userId))
     .where(and(eq(schoolMembers.schoolId, schoolId), eq(schoolMembers.userId, userId)));
@@ -68,6 +68,16 @@ const assertTeacher = async (schoolId: string, userId: string) => {
     throw new ValidationError('Ese docente no es parte del equipo de la escuela');
   }
   return member;
+};
+
+/** ¿La clase ya es de una asignación o de un taller? (salvo el que se está editando) */
+export const classroomTaken = async (classroomId: string, except: { assignmentId?: string; workshopId?: string } = {}) => {
+  const [assignment] = await db.select({ id: schoolTeachingAssignments.id }).from(schoolTeachingAssignments)
+    .where(and(eq(schoolTeachingAssignments.classroomId, classroomId), except.assignmentId ? ne(schoolTeachingAssignments.id, except.assignmentId) : undefined));
+  if (assignment) return true;
+  const [workshop] = await db.select({ id: schoolWorkshops.id }).from(schoolWorkshops)
+    .where(and(eq(schoolWorkshops.classroomId, classroomId), except.workshopId ? ne(schoolWorkshops.id, except.workshopId) : undefined));
+  return !!workshop;
 };
 
 /** El área está en el plan del año para el grado de la sección. */
@@ -92,9 +102,7 @@ const resolveClassroom = async (schoolId: string, section: Section, area: PlanAr
     }).from(classrooms).where(eq(classrooms.id, choice.classroomId));
     if (!classroom || classroom.teacherId !== teacherUserId || classroom.schoolId !== schoolId) throw new ValidationError('Esa clase no es de este docente en la escuela');
     if (!classroom.isActive) throw new ConflictError('Esa clase está archivada');
-    const [other] = await db.select({ id: schoolTeachingAssignments.id }).from(schoolTeachingAssignments)
-      .where(and(eq(schoolTeachingAssignments.classroomId, classroom.id), exceptAssignmentId ? ne(schoolTeachingAssignments.id, exceptAssignmentId) : undefined));
-    if (other) throw new ConflictError('Esa clase ya está vinculada a otra asignación');
+    if (await classroomTaken(classroom.id, { assignmentId: exceptAssignmentId })) throw new ConflictError('Esa clase ya está vinculada a otra asignación o a un taller');
     if (classroom.schoolSectionId && classroom.schoolSectionId !== section.id) throw new ConflictError('Esa clase es de otra sección');
     if (classroom.curriculumAreaId && classroom.curriculumAreaId !== area.areaId) throw new ConflictError(`Esa clase es de otra área, no de ${area.name}`);
     await db.update(classrooms).set({
@@ -125,7 +133,7 @@ const resolveClassroom = async (schoolId: string, section: Section, area: PlanAr
 
 const syncFor = async (schoolId: string, yearId: string, sectionId: string, classroomId: string | null): Promise<SyncResult> => {
   if (!classroomId) return { created: 0, linked: 0, withAccount: 0 };
-  return schoolAutoEnrollService.syncClassroom({ schoolId, yearId, sectionId, classroomId });
+  return schoolAutoEnrollService.syncClassroom({ schoolId, yearId, sectionIds: [sectionId], classroomId });
 };
 
 /** Estudiantes activos de cada sección del año. */
@@ -189,6 +197,9 @@ export const schoolAssignmentService = {
     const chosen = level && levels.includes(level) ? level : levels[0] ?? null;
     const all = await assignmentRows(schoolId, yearId);
     const team = await teamOf(schoolId);
+    const workshopCounts = new Map((await db.select({ teacherUserId: schoolWorkshops.teacherUserId, n: count() }).from(schoolWorkshops)
+      .where(and(eq(schoolWorkshops.schoolId, schoolId), eq(schoolWorkshops.yearId, yearId)))
+      .groupBy(schoolWorkshops.teacherUserId)).map((r) => [r.teacherUserId, Number(r.n)]));
     const sectionLabel = new Map(sections.map((s) => [s.id, sectionDisplayName(s.level, s.grade, s.name)]));
     const teachers = team.map((m) => ({
       userId: m.userId,
@@ -196,6 +207,7 @@ export const schoolAssignmentService = {
       initials: initialsOf(m),
       role: m.role,
       assignments: all.filter((a) => a.teacherUserId === m.userId).length,
+      workshops: workshopCounts.get(m.userId) ?? 0,
       tutorOf: sections.filter((s) => s.tutorUserId === m.userId).map((s) => sectionLabel.get(s.id)!),
     }));
     // Totales de todos los niveles (Inicio los usa para su lista de pasos).
@@ -263,13 +275,15 @@ export const schoolAssignmentService = {
     const rows = await db.select({
       id: classrooms.id, name: classrooms.name, schoolSectionId: classrooms.schoolSectionId, curriculumAreaId: classrooms.curriculumAreaId,
       linked: schoolTeachingAssignments.id,
+      workshop: schoolWorkshops.id,
     }).from(classrooms)
       .leftJoin(schoolTeachingAssignments, eq(schoolTeachingAssignments.classroomId, classrooms.id))
+      .leftJoin(schoolWorkshops, eq(schoolWorkshops.classroomId, classrooms.id))
       .where(and(eq(classrooms.schoolId, schoolId), eq(classrooms.teacherId, teacherUserId), eq(classrooms.isActive, true)))
       .orderBy(asc(classrooms.name));
     const students = await studentsByClassroom(rows.map((r) => r.id));
     return rows.map((r) => ({
-      id: r.id, name: r.name, sectionId: r.schoolSectionId, areaId: r.curriculumAreaId, linked: !!r.linked, students: students.get(r.id) ?? 0,
+      id: r.id, name: r.name, sectionId: r.schoolSectionId, areaId: r.curriculumAreaId, linked: !!r.linked || !!r.workshop, students: students.get(r.id) ?? 0,
     }));
   },
 

@@ -110,6 +110,15 @@ router.post('/:schoolId/assignments/:assignmentId/sync', authorize('TEACHER'), s
 router.put('/:schoolId/assignments/:assignmentId/classroom', authorize('TEACHER'), schoolAssignmentController.setClassroom);
 router.get('/:schoolId/teachers/:teacherId/classrooms', authorize('TEACHER'), schoolAssignmentController.teacherClassrooms);
 
+// Talleres (parte de un área del plan: su nota cuenta dentro del área)
+router.get('/:schoolId/years/:yearId/workshops', authorize('TEACHER'), schoolAssignmentController.listWorkshops);
+router.post('/:schoolId/years/:yearId/workshops', authorize('TEACHER'), schoolAssignmentController.createWorkshop);
+router.get('/:schoolId/workshops/:workshopId', authorize('TEACHER'), schoolAssignmentController.getWorkshop);
+router.patch('/:schoolId/workshops/:workshopId', authorize('TEACHER'), schoolAssignmentController.updateWorkshop);
+router.delete('/:schoolId/workshops/:workshopId', authorize('TEACHER'), schoolAssignmentController.removeWorkshop);
+router.post('/:schoolId/workshops/:workshopId/sync', authorize('TEACHER'), schoolAssignmentController.syncWorkshop);
+router.put('/:schoolId/workshops/:workshopId/classroom', authorize('TEACHER'), schoolAssignmentController.setWorkshopClassroom);
+
 // Mis asignaciones y mi tutoría (cualquier miembro verificado)
 router.get('/:schoolId/years/:yearId/my-load', authorize('TEACHER'), schoolAssignmentController.myLoad);
 router.get('/:schoolId/years/:yearId/sections/:sectionId/tutoring', authorize('TEACHER'), schoolAssignmentController.tutoringSection);
