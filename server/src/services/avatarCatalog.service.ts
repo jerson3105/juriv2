@@ -597,8 +597,9 @@ class AvatarCatalogService {
   /** Clases del docente para «Aplicar a mis otras clases»; todas deben ser suyas. */
   async assertTeacherClassrooms(teacherId: string, classroomIds: string[]) {
     const ids = [...new Set(classroomIds)];
-    const rows = await db.select({ id: classrooms.id }).from(classrooms).where(and(inArray(classrooms.id, ids), eq(classrooms.teacherId, teacherId)));
+    const rows = await db.select({ id: classrooms.id, isActive: classrooms.isActive }).from(classrooms).where(and(inArray(classrooms.id, ids), eq(classrooms.teacherId, teacherId)));
     if (rows.length !== ids.length) throw new ForbiddenError('No tienes acceso a una de esas clases');
+    if (rows.some((r) => !r.isActive)) throw new ConflictError('Una de esas clases está archivada: restáurala para cambiarla');
     return ids;
   }
 

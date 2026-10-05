@@ -5,6 +5,7 @@ import {
   activitySessions, behaviors, classrooms, notifications, pointLogs, stories, storyChapters, studentBadges, studentProfiles, users,
 } from '../db/schema.js';
 import { ConflictError, NotFoundError, ValidationError } from '../utils/errors.js';
+import { ARCHIVED_CLASSROOM_MESSAGE } from '../utils/access.js';
 import { affectedRows, applyPointDeltasBulk, type PointResult } from '../utils/points.js';
 import { prepareForTx } from '../utils/notificationEmitter.js';
 import { badgeService } from './badge.service.js';
@@ -97,13 +98,14 @@ const serialize = (row: SessionRow, withState = false) => ({
  * condicional sobre rewarded_at) y se puede deshacer.
  */
 class ActivityService {
-  /** Partida de una clase del profesor (404 si no es suya). */
-  async ownedSession(sessionId: string, teacherId: string) {
-    const [row] = await db.select({ session: activitySessions, teacherId: classrooms.teacherId })
+  /** Partida de una clase del profesor (404 si no es suya). Para cambiarla (`write`), la clase no puede estar archivada. */
+  async ownedSession(sessionId: string, teacherId: string, write = false) {
+    const [row] = await db.select({ session: activitySessions, teacherId: classrooms.teacherId, classActive: classrooms.isActive })
       .from(activitySessions)
       .innerJoin(classrooms, eq(classrooms.id, activitySessions.classroomId))
       .where(eq(activitySessions.id, sessionId));
     if (!row || row.teacherId !== teacherId) throw new NotFoundError('Partida no encontrada');
+    if (write && !row.classActive) throw new ConflictError(ARCHIVED_CLASSROOM_MESSAGE);
     return row.session;
   }
 
@@ -177,12 +179,12 @@ class ActivityService {
   }
 
   async get(sessionId: string, teacherId: string) {
-    return serialize(await this.ownedSession(sessionId, teacherId), true);
+    return serialize(await this.ownedSession(sessionId, teacherId, false), true);
   }
 
   /** Autoguardado del estado (solo partidas en curso). */
   async saveState(sessionId: string, teacherId: string, state: unknown) {
-    const session = await this.ownedSession(sessionId, teacherId);
+    const session = await this.ownedSession(sessionId, teacherId, true);
     if (session.status !== 'ACTIVE') throw new ConflictError('Esta partida ya terminó');
     await db.update(activitySessions)
       .set({ state, updatedAt: new Date() })
@@ -192,7 +194,7 @@ class ActivityService {
 
   /** Termina la partida con su resumen. Repetirlo (doble clic) devuelve la partida tal cual. */
   async finish(sessionId: string, teacherId: string, result: unknown, state: unknown) {
-    const session = await this.ownedSession(sessionId, teacherId);
+    const session = await this.ownedSession(sessionId, teacherId, true);
     if (session.status === 'ABANDONED') throw new ConflictError('Esta partida se descartó');
     if (session.status === 'ACTIVE') {
       const now = new Date();
@@ -204,7 +206,7 @@ class ActivityService {
   }
 
   async abandon(sessionId: string, teacherId: string) {
-    const session = await this.ownedSession(sessionId, teacherId);
+    const session = await this.ownedSession(sessionId, teacherId, true);
     if (session.status !== 'ACTIVE') return { id: sessionId };
     await db.update(activitySessions)
       .set({ status: 'ABANDONED', updatedAt: new Date() })
@@ -213,7 +215,7 @@ class ActivityService {
   }
 
   async setSelfAssessment(sessionId: string, teacherId: string, value: SelfAssessment | null) {
-    await this.ownedSession(sessionId, teacherId);
+    await this.ownedSession(sessionId, teacherId, true);
     await db.update(activitySessions)
       .set({ selfAssessment: value, updatedAt: new Date() })
       .where(eq(activitySessions.id, sessionId));
@@ -239,7 +241,7 @@ class ActivityService {
 
   /** La clase le pone nombre a una constelación completada. */
   async renameConstellation(sessionId: string, teacherId: string, name: string | null) {
-    const session = await this.ownedSession(sessionId, teacherId);
+    const session = await this.ownedSession(sessionId, teacherId, true);
     if (session.activityType !== 'DESCANSO' || session.status !== 'FINISHED') throw new ConflictError('Solo se nombran constelaciones completadas');
     const result = parseJson<Record<string, unknown>>(session.result) ?? {};
     await db.update(activitySessions)
@@ -280,7 +282,7 @@ class ActivityService {
     teacherId: string,
     input: { studentIds: string[]; behaviorId?: string | null; xp?: number; gp?: number },
   ) {
-    const session = await this.ownedSession(sessionId, teacherId);
+    const session = await this.ownedSession(sessionId, teacherId, true);
     if (session.status === 'ABANDONED') throw new ConflictError('Esta partida se descartó');
     const classroomId = session.classroomId;
 
@@ -373,7 +375,7 @@ class ActivityService {
 
   /** Deshace la recompensa de la partida (revierte sus registros de puntos). */
   async undoReward(sessionId: string, teacherId: string) {
-    const session = await this.ownedSession(sessionId, teacherId);
+    const session = await this.ownedSession(sessionId, teacherId, true);
     const reward = parseJson<StoredReward>(session.reward);
     if (!session.rewardedAt || !reward) throw new ConflictError('Esta partida no tiene recompensa que deshacer');
     const release = await db.update(activitySessions)

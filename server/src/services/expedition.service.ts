@@ -301,7 +301,8 @@ class ExpeditionService {
     const [row] = await db
       .select({ id: studentProfiles.id })
       .from(studentProfiles)
-      .where(and(eq(studentProfiles.userId, userId), eq(studentProfiles.classroomId, classroomId), eq(studentProfiles.isActive, true)));
+      .innerJoin(classrooms, eq(classrooms.id, studentProfiles.classroomId))
+      .where(and(eq(studentProfiles.userId, userId), eq(studentProfiles.classroomId, classroomId), eq(studentProfiles.isActive, true), eq(classrooms.isActive, true)));
     return row?.id ?? null;
   }
 

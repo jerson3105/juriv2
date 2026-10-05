@@ -56,11 +56,13 @@ const loadOwnProfile = async (profileId: string, userId: string) => {
       teacherId: classrooms.teacherId,
       gradeLevel: classrooms.gradeLevel,
       shopEnabled: classrooms.shopEnabled,
+      classActive: classrooms.isActive,
     })
     .from(studentProfiles)
     .innerJoin(classrooms, eq(classrooms.id, studentProfiles.classroomId))
     .where(eq(studentProfiles.id, profileId));
-  if (!row || row.userId !== userId) throw new NotFoundError('Perfil no encontrado');
+  // Una clase archivada ya no es suya para jugar (desaparece de su vista).
+  if (!row || row.userId !== userId || !row.classActive) throw new NotFoundError('Perfil no encontrado');
   return row;
 };
 type OwnProfile = Awaited<ReturnType<typeof loadOwnProfile>>;

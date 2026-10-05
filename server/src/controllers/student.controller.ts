@@ -334,6 +334,7 @@ export class StudentController {
           errors: error.errors,
         });
       }
+      if (error instanceof AppError) return res.status(error.statusCode).json({ success: false, message: error.message });
       res.status(500).json({
         success: false,
         message: 'Error al actualizar perfil',

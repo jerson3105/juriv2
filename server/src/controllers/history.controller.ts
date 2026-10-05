@@ -3,6 +3,8 @@ import { historyService } from '../services/history.service.js';
 import { historyFeedService } from '../services/historyFeed.service.js';
 import { gradeService } from '../services/grade.service.js';
 import { z } from 'zod';
+import { requireWritableClassroom } from '../utils/access.js';
+import { AppError } from '../utils/errors.js';
 
 const classroomParamsSchema = z.object({
   classroomId: z.string().uuid(),
@@ -52,6 +54,7 @@ const handleValidationError = (res: Response, error: z.ZodError) => {
 };
 
 const handleControllerError = (res: Response, error: unknown, fallbackMessage: string) => {
+  if (error instanceof AppError) return res.status(error.statusCode).json({ success: false, message: error.message });
   console.error(fallbackMessage, error);
 
   const message = error instanceof Error ? error.message : fallbackMessage;
@@ -237,6 +240,7 @@ class HistoryController {
 
       const { classroomId } = params.data;
       if (!(await ensureHistoryClassroomAccess(req, res, classroomId))) return;
+      if (!(await requireWritableClassroom(res, classroomId))) return;
 
       const result = await historyService.revertPointBatch(classroomId, body.data.entryIds, req.user!.id);
       res.json({ success: true, data: { reverted: result.reverted, skipped: result.skipped }, message: result.message });

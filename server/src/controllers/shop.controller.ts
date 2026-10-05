@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { shopService } from '../services/shop.service.js';
 import { studentShopService } from '../services/studentShop.service.js';
-import { requireResourceTeacher, classroomIdOfItemUsage } from '../utils/access.js';
+import { requireResourceTeacher, requireWritableClassroom, classroomIdOfItemUsage } from '../utils/access.js';
 import { createGenAI } from '../utils/aiClient.js';
 import { AppError } from '../utils/errors.js';
 import { getShopEconomy } from '../utils/shopEconomy.js';
@@ -164,6 +164,7 @@ export class ShopController {
         return res.status(403).json({ message: 'No tienes permiso para esta clase' });
       }
 
+      if (!(await requireWritableClassroom(res, data.classroomId))) return;
       const item = await shopService.createItem(data);
       res.status(201).json(item);
     } catch (error) {
@@ -192,6 +193,7 @@ export class ShopController {
         return res.status(403).json({ message: 'No tienes permiso para esta clase' });
       }
 
+      if (!(await requireWritableClassroom(res, existingItem.classroomId))) return;
       const item = await shopService.updateItem(id, data);
       res.json(item);
     } catch (error) {
@@ -218,6 +220,7 @@ export class ShopController {
         return res.status(403).json({ message: 'No tienes permiso para esta clase' });
       }
 
+      if (!(await requireWritableClassroom(res, existingItem.classroomId))) return;
       await shopService.deleteItem(id);
       res.json({ message: 'Artículo eliminado' });
     } catch (error) {
@@ -375,6 +378,7 @@ export class ShopController {
       if (!(await shopService.verifyTeacherOwnsClassroom(req.user!.id, item.classroomId))) {
         return res.status(403).json({ success: false, message: 'No tienes permiso para esta clase' });
       }
+      if (!(await requireWritableClassroom(res, item.classroomId))) return;
       const ids = [...new Set(data.studentIds)];
       for (const studentId of ids) {
         if (!(await shopService.verifyStudentInClassroom(studentId, item.classroomId))) {
@@ -431,6 +435,7 @@ export class ShopController {
         return res.status(403).json({ message: 'No tienes permiso para esta clase' });
       }
 
+      if (!(await requireWritableClassroom(res, item.classroomId))) return;
       // Verificar que el estudiante está en la clase
       const studentInClass = await shopService.verifyStudentInClassroom(data.studentId, item.classroomId);
       if (!studentInClass) {
@@ -468,6 +473,7 @@ export class ShopController {
       if (!(await shopService.verifyTeacherOwnsClassroom(req.user!.id, item.classroomId))) {
         return res.status(403).json({ message: 'No tienes permiso para esta clase' });
       }
+      if (!(await requireWritableClassroom(res, item.classroomId))) return;
       const ids = [...new Set(data.studentIds)];
       for (const studentId of ids) {
         if (!(await shopService.verifyStudentInClassroom(studentId, item.classroomId))) {

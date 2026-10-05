@@ -62,8 +62,8 @@ class CorreoService {
     return activityService.create(classroomId, teacherId, 'CORREO', prompt.slice(0, 120), state);
   }
 
-  private async correoSession(sessionId: string, teacherId: string) {
-    const session = await activityService.ownedSession(sessionId, teacherId);
+  private async correoSession(sessionId: string, teacherId: string, write = false) {
+    const session = await activityService.ownedSession(sessionId, teacherId, write);
     if (session.activityType !== 'CORREO') throw new NotFoundError('Partida no encontrada');
     return session;
   }
@@ -82,7 +82,7 @@ class CorreoService {
   async moderate(letterId: string, teacherId: string, status: 'APPROVED' | 'REJECTED' | 'PENDING') {
     const [letter] = await db.select().from(activityLetters).where(eq(activityLetters.id, letterId));
     if (!letter) throw new NotFoundError('Carta no encontrada');
-    await this.correoSession(letter.sessionId, teacherId);
+    await this.correoSession(letter.sessionId, teacherId, true);
     const [recipient] = await db.select({ userId: studentProfiles.userId }).from(studentProfiles).where(eq(studentProfiles.id, letter.recipientId));
     const now = new Date();
     let notifTx = prepareForTx([]);
@@ -110,11 +110,12 @@ class CorreoService {
   private async ownProfile(profileId: string, userId: string) {
     const [profile] = await db.select({
       id: studentProfiles.id, userId: studentProfiles.userId, classroomId: studentProfiles.classroomId, showCharacterName: classrooms.showCharacterName,
+      classActive: classrooms.isActive,
     })
       .from(studentProfiles)
       .innerJoin(classrooms, eq(classrooms.id, studentProfiles.classroomId))
       .where(eq(studentProfiles.id, profileId));
-    if (!profile || profile.userId !== userId) throw new NotFoundError('Perfil no encontrado');
+    if (!profile || profile.userId !== userId || !profile.classActive) throw new NotFoundError('Perfil no encontrado');
     return profile;
   }
 

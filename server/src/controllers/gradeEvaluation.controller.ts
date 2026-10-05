@@ -197,7 +197,8 @@ class GradeEvaluationController {
     try {
       const { classroomId } = classroomParams.parse(req.params);
       const body = copyConfigBody.parse(req.body);
-      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
+      // La clase de origen solo se lee: puede estar archivada (se reutiliza su configuración).
+      if (!(await requireClassroomTeacher(req, res, classroomId, { allowArchived: true }))) return;
       res.json({ success: true, data: await gradeConfigCopyService.copy(classroomId, req.user!.id, body) });
     } catch (error) {
       sendError(res, error, 'Error al copiar la configuración');

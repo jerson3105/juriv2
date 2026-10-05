@@ -6,7 +6,7 @@ import { generateDrafts } from '../services/questionAi.service.js';
 import { classroomService } from '../services/classroom.service.js';
 import { generateIntoBank } from '../services/observatorioAi.service.js';
 import { AppError } from '../utils/errors.js';
-import { requireClassroomTeacher } from '../utils/access.js';
+import { requireClassroomTeacher, requireWritableClassroom } from '../utils/access.js';
 
 const questionTypeSchema = z.enum(['TRUE_FALSE', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'MATCHING']);
 const questionDifficultySchema = z.enum(['EASY', 'MEDIUM', 'HARD']);
@@ -159,7 +159,8 @@ const ensureTeacherClassroomAccess = requireClassroomTeacher;
 const ensureTeacherBankAccess = async (
   req: Request,
   res: Response,
-  bankId: string
+  bankId: string,
+  options: { allowArchived?: boolean } = {},
 ): Promise<boolean> => {
   const teacherId = req.user?.id;
   if (!teacherId) {
@@ -179,6 +180,8 @@ const ensureTeacherBankAccess = async (
     return false;
   }
 
+  // Una clase archivada se consulta pero no cambia (sus bancos sí se duplican a otra clase).
+  if (req.method !== 'GET' && !options.allowArchived && !(await requireWritableClassroom(res, classroomId))) return false;
   return true;
 };
 
@@ -205,6 +208,8 @@ const ensureTeacherQuestionAccess = async (
     return false;
   }
 
+  // Una clase archivada se consulta pero no cambia.
+  if (req.method !== 'GET' && !(await requireWritableClassroom(res, classroomId))) return false;
   return true;
 };
 
@@ -532,7 +537,7 @@ class QuestionBankController {
   async duplicateBank(req: Request, res: Response) {
     try {
       const { bankId } = req.params;
-      if (!(await ensureTeacherBankAccess(req, res, bankId))) return;
+      if (!(await ensureTeacherBankAccess(req, res, bankId, { allowArchived: true }))) return;
       const validation = duplicateSchema.safeParse(req.body);
       if (!validation.success) return handleValidationError(res, validation.error);
       const data = await questionBankService.duplicateBank(bankId, validation.data.targetClassroomId, req.user!.id);

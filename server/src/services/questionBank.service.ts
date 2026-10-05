@@ -2,7 +2,7 @@ import { db } from '../db/index.js';
 import { classrooms, questionBanks, questions, type BankQuestionType, type QuestionDifficulty } from '../db/schema.js';
 import { eq, and, desc, inArray, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
-import { teacherOwnsClassroom } from '../utils/access.js';
+import { teacherOwnsClassroom, assertClassroomWritable } from '../utils/access.js';
 
 // Interfaces
 interface CreateBankData {
@@ -908,6 +908,7 @@ class QuestionBankService {
   async duplicateBank(bankId: string, targetClassroomId: string, teacherId: string) {
     const [source] = await db.select().from(questionBanks).where(and(eq(questionBanks.id, bankId), eq(questionBanks.isActive, true)));
     if (!source) throw new Error('Banco no encontrado');
+    await assertClassroomWritable(targetClassroomId);
     if (!(await teacherOwnsClassroom(teacherId, source.classroomId)) || !(await teacherOwnsClassroom(teacherId, targetClassroomId))) {
       throw new Error('Sin acceso a esa clase');
     }

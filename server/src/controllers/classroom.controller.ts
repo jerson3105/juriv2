@@ -6,7 +6,7 @@ import { curriculumAreas, curriculumCompetencies, studentProfiles } from '../db/
 import { eq, and, or, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { createGenAI } from '../utils/aiClient.js';
-import { canAttachClassroomsToSchool, requireClassroomTeacher } from '../utils/access.js';
+import { ARCHIVED_CLASSROOM_MESSAGE, canAttachClassroomsToSchool, requireClassroomTeacher } from '../utils/access.js';
 import { AppError } from '../utils/errors.js';
 import { auditRequest } from '../utils/audit.js';
 import { config_app } from '../config/env.js';
@@ -301,7 +301,6 @@ const updateClassroomSchema = z.object({
   description: z.string().max(1000).optional().nullable(),
   bannerUrl: z.string().url().optional().nullable(),
   gradeLevel: z.string().max(20).optional().nullable(),
-  isActive: z.boolean().optional(),
   acceptingStudents: z.boolean().optional(),
   
   // Puntos
@@ -847,6 +846,9 @@ REGLAS:
           message: 'No tienes permiso para esta clase',
         });
       }
+      if (!classroom.isActive) {
+        return res.status(409).json({ success: false, message: ARCHIVED_CLASSROOM_MESSAGE, code: 'CLASSROOM_ARCHIVED' });
+      }
 
       if (!classroom.useCompetencies || !classroom.curriculumAreaId) {
         return res.status(400).json({
@@ -942,6 +944,9 @@ REGLAS:
           message: 'No tienes permiso para esta clase',
         });
       }
+      if (!classroom.isActive) {
+        return res.status(409).json({ success: false, message: ARCHIVED_CLASSROOM_MESSAGE, code: 'CLASSROOM_ARCHIVED' });
+      }
 
       const result = await classroomService.addCompetencies(id, data.competencyIds);
 
@@ -994,6 +999,9 @@ REGLAS:
           message: 'No tienes permiso para esta clase',
         });
       }
+      if (!classroom.isActive) {
+        return res.status(409).json({ success: false, message: ARCHIVED_CLASSROOM_MESSAGE, code: 'CLASSROOM_ARCHIVED' });
+      }
 
       await classroomService.removeCompetency(id, competencyId, req.user!.id);
 
@@ -1035,6 +1043,9 @@ REGLAS:
           success: false,
           message: 'No tienes permiso para esta clase',
         });
+      }
+      if (!classroom.isActive) {
+        return res.status(409).json({ success: false, message: ARCHIVED_CLASSROOM_MESSAGE, code: 'CLASSROOM_ARCHIVED' });
       }
 
       const competency = await classroomService.createCustomCompetency(id, req.user!.id, data);
@@ -1087,6 +1098,9 @@ REGLAS:
           message: 'No tienes permiso para esta clase',
         });
       }
+      if (!classroom.isActive) {
+        return res.status(409).json({ success: false, message: ARCHIVED_CLASSROOM_MESSAGE, code: 'CLASSROOM_ARCHIVED' });
+      }
 
       const competency = await classroomService.updateCustomCompetency(id, competencyId, req.user!.id, data);
 
@@ -1137,6 +1151,9 @@ REGLAS:
           message: 'No tienes permiso para esta clase',
         });
       }
+      if (!classroom.isActive) {
+        return res.status(409).json({ success: false, message: ARCHIVED_CLASSROOM_MESSAGE, code: 'CLASSROOM_ARCHIVED' });
+      }
 
       await classroomService.deleteCustomCompetency(id, competencyId, req.user!.id);
 
@@ -1178,6 +1195,9 @@ REGLAS:
           success: false,
           message: 'No tienes permiso para esta clase',
         });
+      }
+      if (!classroom.isActive) {
+        return res.status(409).json({ success: false, message: ARCHIVED_CLASSROOM_MESSAGE, code: 'CLASSROOM_ARCHIVED' });
       }
 
       const indicator = await classroomService.createCompetencyIndicator(id, competencyId, req.user!.id, data);
@@ -1230,6 +1250,9 @@ REGLAS:
           message: 'No tienes permiso para esta clase',
         });
       }
+      if (!classroom.isActive) {
+        return res.status(409).json({ success: false, message: ARCHIVED_CLASSROOM_MESSAGE, code: 'CLASSROOM_ARCHIVED' });
+      }
 
       const indicator = await classroomService.updateCompetencyIndicator(id, competencyId, indicatorId, req.user!.id, data);
 
@@ -1279,6 +1302,9 @@ REGLAS:
           success: false,
           message: 'No tienes permiso para esta clase',
         });
+      }
+      if (!classroom.isActive) {
+        return res.status(409).json({ success: false, message: ARCHIVED_CLASSROOM_MESSAGE, code: 'CLASSROOM_ARCHIVED' });
       }
 
       await classroomService.deleteCompetencyIndicator(id, competencyId, indicatorId, req.user!.id);
@@ -1407,6 +1433,7 @@ REGLAS:
           message: 'No tienes permiso para esta acción',
         });
       }
+      if (error instanceof AppError) return res.status(error.statusCode).json({ success: false, message: error.message });
       console.error('Error resetting points:', error);
       res.status(500).json({
         success: false,
@@ -1436,6 +1463,7 @@ REGLAS:
           message: 'No tienes permiso para esta acción',
         });
       }
+      if (error instanceof AppError) return res.status(error.statusCode).json({ success: false, message: error.message });
       console.error('Error resetting classroom:', error);
       res.status(500).json({
         success: false,

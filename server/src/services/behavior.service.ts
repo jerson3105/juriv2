@@ -7,6 +7,8 @@ import { clanService } from './clan.service.js';
 import { storyService } from './story.service.js';
 import { prepareForTx } from '../utils/notificationEmitter.js';
 import { applyPointDeltasBulk, type LevelUpSource, type PointResult } from '../utils/points.js';
+import { ARCHIVED_CLASSROOM_MESSAGE } from '../utils/access.js';
+import { ConflictError } from '../utils/errors.js';
 
 type PointType = 'XP' | 'HP' | 'GP';
 
@@ -321,6 +323,7 @@ export class BehaviorService {
     if (!classroom || classroom.teacherId !== data.teacherId) {
       throw new Error('No tienes permiso para aplicar este comportamiento');
     }
+    if (!classroom.isActive) throw new ConflictError(ARCHIVED_CLASSROOM_MESSAGE);
 
     // Obtener los perfiles de estudiantes
     const students = await db.query.studentProfiles.findMany({
@@ -668,10 +671,12 @@ export class BehaviorService {
     }
 
     // 3. Obtener clases destino y verificar propiedad
+    // Los destinos: clases del docente que no están archivadas (el origen sí puede estarlo).
     const targetClassrooms = await db.query.classrooms.findMany({
       where: and(
         inArray(classrooms.id, targetClassroomIds),
         eq(classrooms.teacherId, teacherId),
+        eq(classrooms.isActive, true),
       ),
     });
 

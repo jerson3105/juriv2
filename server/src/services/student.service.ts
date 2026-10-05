@@ -21,6 +21,7 @@ import { generateRandomCode, maskPersonName } from '../utils/helpers.js';
 import { teacherVerificationService } from './teacherVerification.service.js';
 import { applyPointDeltas } from '../utils/points.js';
 import { ConflictError, ForbiddenError, NotFoundError } from '../utils/errors.js';
+import { ARCHIVED_CLASSROOM_MESSAGE, classroomIsArchived } from '../utils/access.js';
 import { deleteLegacyExpeditionRowsOfStudent } from '../utils/legacyExpeditions.js';
 import { classroomContexts } from './classroomContext.service.js';
 
@@ -454,6 +455,7 @@ export class StudentService {
     if (!classroom || classroom.teacherId !== data.teacherId) {
       throw new Error('No tienes permiso para modificar este estudiante');
     }
+    if (!classroom.isActive) throw new ConflictError(ARCHIVED_CLASSROOM_MESSAGE);
 
     if (profile.userId && data.displayName !== undefined) {
       throw new Error('No puedes editar el nombre base de un estudiante ya vinculado');
@@ -497,6 +499,7 @@ export class StudentService {
     if (!classroom || classroom.teacherId !== data.teacherId) {
       throw new Error('No tienes permiso para modificar este estudiante');
     }
+    if (!classroom.isActive) throw new ConflictError(ARCHIVED_CLASSROOM_MESSAGE);
 
     if (data.competencyIndicatorId) {
       const [indicator] = await db.select({
@@ -687,8 +690,8 @@ export class StudentService {
       ),
     });
 
-    if (!profile) {
-      throw new Error('Perfil no encontrado');
+    if (!profile || !profile.isActive || (await classroomIsArchived(classroomId))) {
+      throw new NotFoundError('Perfil no encontrado');
     }
 
     await db.update(studentProfiles)
@@ -711,6 +714,7 @@ export class StudentService {
     if (!classroom) {
       throw new Error('Clase no encontrada o no tienes permisos');
     }
+    if (!classroom.isActive) throw new ConflictError(ARCHIVED_CLASSROOM_MESSAGE);
 
     // Verificar si ya existe un estudiante demo en esta clase
     const existingDemo = await db.query.studentProfiles.findFirst({
@@ -766,6 +770,7 @@ export class StudentService {
     if (!classroom) {
       throw new Error('Clase no encontrada o no tienes permisos');
     }
+    if (!classroom.isActive) throw new ConflictError(ARCHIVED_CLASSROOM_MESSAGE);
 
     // Buscar y eliminar el estudiante demo
     const demoStudent = await db.query.studentProfiles.findFirst({
@@ -824,6 +829,7 @@ export class StudentService {
     if (!classroom || classroom.teacherId !== data.teacherId) {
       throw new Error('No tienes permiso para crear estudiantes en esta clase');
     }
+    if (!classroom.isActive) throw new ConflictError(ARCHIVED_CLASSROOM_MESSAGE);
 
     // Generar código único
     let linkCode = this.generateLinkCode();
@@ -1093,6 +1099,7 @@ export class StudentService {
     if (!classroom || classroom.teacherId !== teacherId) {
       throw new Error('No tienes permiso para modificar este estudiante');
     }
+    if (!classroom.isActive) throw new ConflictError(ARCHIVED_CLASSROOM_MESSAGE);
 
     if (profile.userId) {
       throw new Error('Este estudiante ya tiene cuenta vinculada');
@@ -1135,6 +1142,7 @@ export class StudentService {
     if (!classroom || classroom.teacherId !== teacherId) {
       throw new Error('No tienes permiso para retirar este estudiante');
     }
+    if (!classroom.isActive) throw new ConflictError(ARCHIVED_CLASSROOM_MESSAGE);
 
     // No permitir eliminar estudiantes demo desde aquí
     if (profile.isDemo) {

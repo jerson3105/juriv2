@@ -16,15 +16,16 @@ const RISK_LABEL: Record<string, (s: StudentAtRisk) => string> = {
   LOW_ATTENDANCE: (s) => `Asistencia ${s.attendanceRate}%`,
 };
 
-const useSchoolReports = (schoolId: string, start: string, end: string, enabled = true) => {
-  const k = (name: string) => ['school-report', name, schoolId, start, end];
+// Con un año escolar, solo sus clases (las de un año cerrado también, archivadas); sin año, todas las del colegio.
+const useSchoolReports = (schoolId: string, start: string, end: string, enabled = true, yearId: string | null = null) => {
+  const k = (name: string) => ['school-report', name, schoolId, start, end, yearId];
   return {
-    summary: useQuery({ queryKey: k('summary'), queryFn: () => schoolApi.getReportSummary(schoolId, start, end), enabled }),
-    trends: useQuery({ queryKey: k('trends'), queryFn: () => schoolApi.getBehaviorTrends(schoolId, start, end), enabled }),
-    ranking: useQuery({ queryKey: k('ranking'), queryFn: () => schoolApi.getClassRanking(schoolId, start, end), enabled }),
-    top: useQuery({ queryKey: k('top'), queryFn: () => schoolApi.getTopBehaviors(schoolId, start, end), enabled }),
-    risk: useQuery({ queryKey: k('risk'), queryFn: () => schoolApi.getStudentsAtRisk(schoolId, start, end), enabled }),
-    attendance: useQuery({ queryKey: k('attendance'), queryFn: () => schoolApi.getAttendanceReport(schoolId, start, end), enabled }),
+    summary: useQuery({ queryKey: k('summary'), queryFn: () => schoolApi.getReportSummary(schoolId, start, end, yearId), enabled }),
+    trends: useQuery({ queryKey: k('trends'), queryFn: () => schoolApi.getBehaviorTrends(schoolId, start, end, undefined, yearId), enabled }),
+    ranking: useQuery({ queryKey: k('ranking'), queryFn: () => schoolApi.getClassRanking(schoolId, start, end, yearId), enabled }),
+    top: useQuery({ queryKey: k('top'), queryFn: () => schoolApi.getTopBehaviors(schoolId, start, end, yearId), enabled }),
+    risk: useQuery({ queryKey: k('risk'), queryFn: () => schoolApi.getStudentsAtRisk(schoolId, start, end, yearId), enabled }),
+    attendance: useQuery({ queryKey: k('attendance'), queryFn: () => schoolApi.getAttendanceReport(schoolId, start, end, yearId), enabled }),
   };
 };
 
@@ -87,13 +88,13 @@ const RiskList = ({ items, limit }: { items: StudentAtRisk[]; limit?: number }) 
 );
 
 // ── Resumen: últimos 30 días ────────────────────────────────────────────────
-export const SummaryTab = ({ schoolId, onOpenReports }: { schoolId: string; onOpenReports: () => void }) => {
+export const SummaryTab = ({ schoolId, yearId = null, onOpenReports }: { schoolId: string; yearId?: string | null; onOpenReports: () => void }) => {
   const [range] = useState(() => {
     const from = new Date();
     from.setDate(from.getDate() - 30);
     return { start: localDay(from), end: localDay() };
   });
-  const r = useSchoolReports(schoolId, range.start, range.end);
+  const r = useSchoolReports(schoolId, range.start, range.end, true, yearId);
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-700 dark:text-gray-300">Últimos 30 días</p>
@@ -118,12 +119,12 @@ export const SummaryTab = ({ schoolId, onOpenReports }: { schoolId: string; onOp
 };
 
 // ── Informes con periodo y CSV ──────────────────────────────────────────────
-export const ReportsTab = ({ schoolId, schoolName, classrooms }: { schoolId: string; schoolName: string; classrooms: SchoolClassroom[] }) => {
+export const ReportsTab = ({ schoolId, schoolName, classrooms, yearId = null }: { schoolId: string; schoolName: string; classrooms: SchoolClassroom[]; yearId?: string | null }) => {
   const [preset, setPreset] = useState<PeriodPreset>('month');
   const [custom, setCustom] = useState(() => presetRange('month'));
   const range = preset === 'custom' ? custom : presetRange(preset);
   const validCustom = custom.start <= custom.end;
-  const r = useSchoolReports(schoolId, range.start, range.end, preset !== 'custom' || validCustom);
+  const r = useSchoolReports(schoolId, range.start, range.end, preset !== 'custom' || validCustom, yearId);
   const gradeById = useMemo(() => new Map(classrooms.map((c) => [c.id, gradeLabel(c.gradeLevel)])), [classrooms]);
   const file = (what: string) => `${slug(schoolName)}-${what}-${range.start}_${range.end}.csv`;
 

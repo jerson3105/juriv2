@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { classroomOverviewService } from '../services/classroomOverview.service.js';
 import { requireClassroomTeacher } from '../utils/access.js';
+import { AppError } from '../utils/errors.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -45,10 +46,11 @@ class ClassroomOverviewController {
   private async setArchived(req: Request, res: Response, archived: boolean) {
     try {
       const classroomId = req.params.id;
-      if (!(await requireClassroomTeacher(req, res, classroomId))) return;
+      if (!(await requireClassroomTeacher(req, res, classroomId, { allowArchived: true }))) return;
       await classroomOverviewService.setArchived(classroomId, archived);
       res.json({ success: true, message: archived ? 'Clase archivada' : 'Clase restaurada' });
     } catch (error) {
+      if (error instanceof AppError) return res.status(error.statusCode).json({ success: false, message: error.message });
       console.error('Error archiving classroom:', error);
       res.status(500).json({ success: false, message: 'Error al archivar la clase' });
     }

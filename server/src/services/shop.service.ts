@@ -17,7 +17,7 @@ import {
   type PurchaseType,
   type ItemUsageStatus,
 } from '../db/schema.js';
-import { teacherOwnsClassroom } from '../utils/access.js';
+import { ARCHIVED_CLASSROOM_MESSAGE, classroomIsArchived, studentInClassroom, teacherOwnsClassroom, userOwnsStudentProfile } from '../utils/access.js';
 import { spendGp, affectedRows, applyPointDeltas } from '../utils/points.js';
 import { isInitialLevel } from '../utils/energy.js';
 import { getShopEconomy, rarityForPrice } from '../utils/shopEconomy.js';
@@ -622,6 +622,7 @@ export class ShopService {
     if (!classroom || classroom.teacherId !== teacherId) {
       return { success: false, message: 'No tienes permiso para aprobar esta compra' };
     }
+    if (!classroom.isActive) return { success: false, message: ARCHIVED_CLASSROOM_MESSAGE };
 
     // Paga quien compró o quien regaló (antes se cobraba siempre a quien recibe).
     const isGift = purchase.purchaseType === 'GIFT';
@@ -767,6 +768,7 @@ export class ShopService {
     if (!classroom || classroom.teacherId !== teacherId) {
       return { success: false, message: 'No tienes permiso para rechazar esta compra' };
     }
+    if (!classroom.isActive) return { success: false, message: ARCHIVED_CLASSROOM_MESSAGE };
 
     // Rechazar compra solo si sigue pendiente (no pisar una aprobación simultánea ya cobrada)
     const rejectResult = await db
@@ -902,29 +904,11 @@ export class ShopService {
   }
 
   async verifyStudentBelongsToUser(studentId: string, userId: string): Promise<boolean> {
-    const [student] = await db
-      .select({ id: studentProfiles.id })
-      .from(studentProfiles)
-      .where(and(
-        eq(studentProfiles.id, studentId),
-        eq(studentProfiles.userId, userId),
-        eq(studentProfiles.isActive, true)
-      ));
-
-    return !!student;
+    return userOwnsStudentProfile(userId, studentId);
   }
 
   async verifyStudentUserInClassroom(userId: string, classroomId: string): Promise<boolean> {
-    const [student] = await db
-      .select({ id: studentProfiles.id })
-      .from(studentProfiles)
-      .where(and(
-        eq(studentProfiles.userId, userId),
-        eq(studentProfiles.classroomId, classroomId),
-        eq(studentProfiles.isActive, true)
-      ));
-
-    return !!student;
+    return studentInClassroom(userId, classroomId);
   }
 
   // ==================== USO DE ITEMS ====================
@@ -1221,6 +1205,7 @@ export class ShopService {
         if (!purchase || purchase.purchaseType !== 'TEACHER') throw new PurchaseRejected('Entrega no encontrada');
         const [student] = await tx.select({ classroomId: studentProfiles.classroomId }).from(studentProfiles).where(eq(studentProfiles.id, purchase.studentId));
         if (!student || !(await teacherOwnsClassroom(teacherId, student.classroomId))) throw new PurchaseRejected('Entrega no encontrada');
+        if (await classroomIsArchived(student.classroomId)) throw new PurchaseRejected(ARCHIVED_CLASSROOM_MESSAGE);
         if ((purchase.usedQuantity || 0) > 0) throw new PurchaseRejected('El estudiante ya usó este artículo');
 
         await tx.delete(purchases).where(eq(purchases.id, purchaseId));
@@ -1351,6 +1336,7 @@ export class ShopService {
         if (!purchase || purchase.purchaseType !== 'REDEEM') throw new PurchaseRejected('Canje no encontrado');
         const [student] = await tx.select({ classroomId: studentProfiles.classroomId }).from(studentProfiles).where(eq(studentProfiles.id, purchase.studentId));
         if (!student || !(await teacherOwnsClassroom(teacherId, student.classroomId))) throw new PurchaseRejected('Canje no encontrado');
+        if (await classroomIsArchived(student.classroomId)) throw new PurchaseRejected(ARCHIVED_CLASSROOM_MESSAGE);
         // Solo el uso creado al canjear (mismo instante) se deshace; si el alumno pidió usarlo después, ya no.
         const laterUses = await tx.select({ id: itemUsages.id }).from(itemUsages)
           .where(and(eq(itemUsages.purchaseId, purchaseId), ne(itemUsages.usedAt, purchase.purchasedAt)));

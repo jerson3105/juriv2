@@ -6,6 +6,7 @@ import {
   requireClassroomMember,
   studentsBelongToClassroom,
   classroomIdOfCharacterClass,
+  classroomIsArchived,
 } from '../utils/access.js';
 
 // La clase de personaje debe pertenecer a la clase de la ruta (null = desasignar).
@@ -194,7 +195,7 @@ class CharacterClassController {
       const profile = await db.query.studentProfiles.findFirst({
         where: and(eq(studentProfiles.userId, userId), eq(studentProfiles.classroomId, classroomId)),
       });
-      if (!profile) {
+      if (!profile || !profile.isActive || (await classroomIsArchived(classroomId))) {
         return res.status(403).json({ success: false, message: 'No perteneces a esta clase' });
       }
 

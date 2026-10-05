@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { gradeService } from '../services/grade.service.js';
 import { gradeExportService } from '../services/gradeExport.service.js';
-import { requireClassroomTeacher } from '../utils/access.js';
+import { requireClassroomTeacher, requireWritableClassroom } from '../utils/access.js';
 import { AppError } from '../utils/errors.js';
 
 type AuthRole = 'ADMIN' | 'TEACHER' | 'STUDENT' | 'PARENT';
@@ -159,6 +159,8 @@ const ensureTeacherStudentProfileAccess = async (
     return null;
   }
 
+  // Una clase archivada se consulta pero no cambia.
+  if (req.method !== 'GET' && !(await requireWritableClassroom(res, classroomId))) return null;
   return classroomId;
 };
 
@@ -194,6 +196,8 @@ const ensureTeacherGradeAccess = async (
     return false;
   }
 
+  // Una clase archivada se consulta pero no cambia.
+  if (req.method !== 'GET' && !(await requireWritableClassroom(res, classroomId))) return false;
   return true;
 };
 

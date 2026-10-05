@@ -3,7 +3,7 @@ import { schools, schoolMembers, schoolVerifications, classrooms, users, schoolB
 import { eq, and, like, count, sql, desc, ne, inArray, gte, lte } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { teacherVerificationService } from './teacherVerification.service.js';
-import { classroomYearIds } from './schoolCalendar.service.js';
+import { classroomYearIds, unlinkedClassroomIds, yearClassroomIds } from './schoolCalendar.service.js';
 import { ConflictError, ForbiddenError, NotFoundError } from '../utils/errors.js';
 import { conditionBehaviorIds, normalizeBadgeAssignment, parseBadgeCondition, safeBadgeImage } from '../utils/badgeConditions.js';
 
@@ -612,7 +612,9 @@ export class SchoolService {
       .from(classrooms)
       .where(and(
         inArray(classrooms.id, classroomIds),
-        eq(classrooms.teacherId, userId)
+        eq(classrooms.teacherId, userId),
+        // Una clase archivada no recibe nada nuevo.
+        eq(classrooms.isActive, true),
       ));
 
     if (teacherClassrooms.length === 0) {
@@ -775,7 +777,9 @@ export class SchoolService {
       .from(classrooms)
       .where(and(
         inArray(classrooms.id, classroomIds),
-        eq(classrooms.teacherId, userId)
+        eq(classrooms.teacherId, userId),
+        // Una clase archivada no recibe nada nuevo.
+        eq(classrooms.isActive, true),
       ));
 
     if (teacherClassrooms.length === 0) {
@@ -830,7 +834,23 @@ export class SchoolService {
   // ==================== REPORTES DE ESCUELA ====================
 
   // Helper: obtener IDs de clases de la escuela
-  private async getSchoolClassroomIds(schoolId: string): Promise<string[]> {
+  /**
+   * Las clases de los informes. Con un año: las vinculadas a él y, si es el año en curso, las del colegio aún sin vincular
+   * que no están archivadas (un año de otro colegio no trae nada). Sin año: todas las del colegio.
+   */
+  private async getSchoolClassroomIds(schoolId: string, yearId?: string | null): Promise<string[]> {
+    if (yearId) {
+      const [year] = await db.select({ status: schoolYears.status }).from(schoolYears)
+        .where(and(eq(schoolYears.id, yearId), eq(schoolYears.schoolId, schoolId)));
+      if (!year) return [];
+      const unlinked = year.status === 'ACTIVE' ? await unlinkedClassroomIds(schoolId) : [];
+      const ids = [...new Set([...(await yearClassroomIds(yearId)), ...unlinked])];
+      if (ids.length === 0) return [];
+      const rows = await db.select({ id: classrooms.id, isActive: classrooms.isActive }).from(classrooms)
+        .where(and(inArray(classrooms.id, ids), eq(classrooms.schoolId, schoolId)));
+      const loose = new Set(unlinked);
+      return rows.filter((r) => !loose.has(r.id) || r.isActive).map((r) => r.id);
+    }
     const cls = await db.select({ id: classrooms.id })
       .from(classrooms)
       .where(eq(classrooms.schoolId, schoolId));
@@ -840,15 +860,16 @@ export class SchoolService {
   // Helper: obtener IDs de estudiantes de la escuela
   private async getSchoolStudentIds(classroomIds: string[]): Promise<string[]> {
     if (classroomIds.length === 0) return [];
+    // Sin los perfiles demo de los docentes.
     const students = await db.select({ id: studentProfiles.id })
       .from(studentProfiles)
-      .where(inArray(studentProfiles.classroomId, classroomIds));
+      .where(and(inArray(studentProfiles.classroomId, classroomIds), eq(studentProfiles.isDemo, false)));
     return students.map(s => s.id);
   }
 
   // 1. Resumen general
-  async getReportSummary(schoolId: string, startDate: Date, endDate: Date) {
-    const classroomIds = await this.getSchoolClassroomIds(schoolId);
+  async getReportSummary(schoolId: string, startDate: Date, endDate: Date, yearId?: string | null) {
+    const classroomIds = await this.getSchoolClassroomIds(schoolId, yearId);
     if (classroomIds.length === 0) {
       return { totalStudents: 0, totalClasses: 0, avgXp: 0, avgHp: 0, avgGp: 0, totalPositivePoints: 0, totalNegativePoints: 0, attendanceRate: 0 };
     }
@@ -860,7 +881,7 @@ export class SchoolService {
       avgHp: sql<number>`COALESCE(AVG(${studentProfiles.hp}), 0)`,
       avgGp: sql<number>`COALESCE(AVG(${studentProfiles.gp}), 0)`,
     }).from(studentProfiles)
-      .where(and(inArray(studentProfiles.classroomId, classroomIds), eq(studentProfiles.isActive, true)));
+      .where(and(inArray(studentProfiles.classroomId, classroomIds), eq(studentProfiles.isActive, true), eq(studentProfiles.isDemo, false)));
 
     const studentIds = await this.getSchoolStudentIds(classroomIds);
 
@@ -921,8 +942,8 @@ export class SchoolService {
   }
 
   // 2. Tendencias de comportamiento por día
-  async getBehaviorTrends(schoolId: string, startDate: Date, endDate: Date, classroomId?: string) {
-    const classroomIds = classroomId ? [classroomId] : await this.getSchoolClassroomIds(schoolId);
+  async getBehaviorTrends(schoolId: string, startDate: Date, endDate: Date, classroomId?: string, yearId?: string | null) {
+    const classroomIds = classroomId ? [classroomId] : await this.getSchoolClassroomIds(schoolId, yearId);
     if (classroomIds.length === 0) return [];
 
     const studentIds = await this.getSchoolStudentIds(classroomIds);
@@ -978,8 +999,9 @@ export class SchoolService {
   }
 
   // 3. Ranking de clases
-  async getClassRanking(schoolId: string, startDate: Date, endDate: Date) {
-
+  async getClassRanking(schoolId: string, startDate: Date, endDate: Date, yearId?: string | null) {
+    const ids = await this.getSchoolClassroomIds(schoolId, yearId);
+    if (ids.length === 0) return [];
     const schoolClassrooms = await db.select({
       id: classrooms.id,
       name: classrooms.name,
@@ -988,7 +1010,7 @@ export class SchoolService {
       curriculumAreaName: curriculumAreas.name,
     }).from(classrooms)
       .leftJoin(curriculumAreas, eq(classrooms.curriculumAreaId, curriculumAreas.id))
-      .where(eq(classrooms.schoolId, schoolId));
+      .where(inArray(classrooms.id, ids));
 
     if (schoolClassrooms.length === 0) return [];
 
@@ -1002,7 +1024,7 @@ export class SchoolService {
         hp: studentProfiles.hp,
         gp: studentProfiles.gp,
       }).from(studentProfiles)
-        .where(and(eq(studentProfiles.classroomId, cls.id), eq(studentProfiles.isActive, true)));
+        .where(and(eq(studentProfiles.classroomId, cls.id), eq(studentProfiles.isActive, true), eq(studentProfiles.isDemo, false)));
 
       const studentIds = students.map(s => s.id);
       const studentCount = students.length;
@@ -1071,8 +1093,8 @@ export class SchoolService {
   }
 
   // 4. Comportamientos más usados
-  async getTopBehaviors(schoolId: string, startDate: Date, endDate: Date) {
-    const classroomIds = await this.getSchoolClassroomIds(schoolId);
+  async getTopBehaviors(schoolId: string, startDate: Date, endDate: Date, yearId?: string | null) {
+    const classroomIds = await this.getSchoolClassroomIds(schoolId, yearId);
     if (classroomIds.length === 0) return { positive: [], negative: [] };
 
     const studentIds = await this.getSchoolStudentIds(classroomIds);
@@ -1121,14 +1143,15 @@ export class SchoolService {
   }
 
   // 5. Estudiantes que necesitan atención
-  async getStudentsAtRisk(schoolId: string, startDate: Date, endDate: Date) {
-
+  async getStudentsAtRisk(schoolId: string, startDate: Date, endDate: Date, yearId?: string | null) {
+    const ids = await this.getSchoolClassroomIds(schoolId, yearId);
+    if (ids.length === 0) return [];
     const schoolClassrooms = await db.select({
       id: classrooms.id,
       name: classrooms.name,
       maxHp: classrooms.maxHp,
     }).from(classrooms)
-      .where(eq(classrooms.schoolId, schoolId));
+      .where(inArray(classrooms.id, ids));
 
     if (schoolClassrooms.length === 0) return [];
 
@@ -1148,7 +1171,7 @@ export class SchoolService {
       lastName: users.lastName,
     }).from(studentProfiles)
       .leftJoin(users, eq(studentProfiles.userId, users.id))
-      .where(and(inArray(studentProfiles.classroomId, classroomIds), eq(studentProfiles.isActive, true)));
+      .where(and(inArray(studentProfiles.classroomId, classroomIds), eq(studentProfiles.isActive, true), eq(studentProfiles.isDemo, false)));
 
     const atRisk = [];
 
@@ -1219,13 +1242,14 @@ export class SchoolService {
   }
 
   // 6. Reporte de asistencia por clase
-  async getAttendanceReport(schoolId: string, startDate: Date, endDate: Date) {
-
+  async getAttendanceReport(schoolId: string, startDate: Date, endDate: Date, yearId?: string | null) {
+    const ids = await this.getSchoolClassroomIds(schoolId, yearId);
+    if (ids.length === 0) return { byClass: [], weekly: [] };
     const schoolClassrooms = await db.select({
       id: classrooms.id,
       name: classrooms.name,
     }).from(classrooms)
-      .where(eq(classrooms.schoolId, schoolId));
+      .where(inArray(classrooms.id, ids));
 
     if (schoolClassrooms.length === 0) return { byClass: [], weekly: [] };
 

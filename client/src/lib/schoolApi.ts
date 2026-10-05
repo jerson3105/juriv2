@@ -583,33 +583,33 @@ export const schoolApi = {
 
   // ==================== REPORTES ====================
 
-  getReportSummary: async (schoolId: string, startDate: string, endDate: string): Promise<ReportSummary> => {
-    const response = await api.get(`/schools/${schoolId}/reports/summary`, { params: { startDate, endDate } });
+  getReportSummary: async (schoolId: string, startDate: string, endDate: string, yearId?: string | null): Promise<ReportSummary> => {
+    const response = await api.get(`/schools/${schoolId}/reports/summary`, { params: { startDate, endDate, ...(yearId ? { yearId } : {}) } });
     return response.data.data;
   },
 
-  getBehaviorTrends: async (schoolId: string, startDate: string, endDate: string, classroomId?: string): Promise<BehaviorTrendPoint[]> => {
-    const response = await api.get(`/schools/${schoolId}/reports/behavior-trends`, { params: { startDate, endDate, classroomId } });
+  getBehaviorTrends: async (schoolId: string, startDate: string, endDate: string, classroomId?: string, yearId?: string | null): Promise<BehaviorTrendPoint[]> => {
+    const response = await api.get(`/schools/${schoolId}/reports/behavior-trends`, { params: { startDate, endDate, classroomId, ...(yearId ? { yearId } : {}) } });
     return response.data.data;
   },
 
-  getClassRanking: async (schoolId: string, startDate: string, endDate: string): Promise<ClassRankingItem[]> => {
-    const response = await api.get(`/schools/${schoolId}/reports/class-ranking`, { params: { startDate, endDate } });
+  getClassRanking: async (schoolId: string, startDate: string, endDate: string, yearId?: string | null): Promise<ClassRankingItem[]> => {
+    const response = await api.get(`/schools/${schoolId}/reports/class-ranking`, { params: { startDate, endDate, ...(yearId ? { yearId } : {}) } });
     return response.data.data;
   },
 
-  getTopBehaviors: async (schoolId: string, startDate: string, endDate: string): Promise<TopBehaviorsData> => {
-    const response = await api.get(`/schools/${schoolId}/reports/top-behaviors`, { params: { startDate, endDate } });
+  getTopBehaviors: async (schoolId: string, startDate: string, endDate: string, yearId?: string | null): Promise<TopBehaviorsData> => {
+    const response = await api.get(`/schools/${schoolId}/reports/top-behaviors`, { params: { startDate, endDate, ...(yearId ? { yearId } : {}) } });
     return response.data.data;
   },
 
-  getStudentsAtRisk: async (schoolId: string, startDate: string, endDate: string): Promise<StudentAtRisk[]> => {
-    const response = await api.get(`/schools/${schoolId}/reports/students-at-risk`, { params: { startDate, endDate } });
+  getStudentsAtRisk: async (schoolId: string, startDate: string, endDate: string, yearId?: string | null): Promise<StudentAtRisk[]> => {
+    const response = await api.get(`/schools/${schoolId}/reports/students-at-risk`, { params: { startDate, endDate, ...(yearId ? { yearId } : {}) } });
     return response.data.data;
   },
 
-  getAttendanceReport: async (schoolId: string, startDate: string, endDate: string): Promise<AttendanceReport> => {
-    const response = await api.get(`/schools/${schoolId}/reports/attendance`, { params: { startDate, endDate } });
+  getAttendanceReport: async (schoolId: string, startDate: string, endDate: string, yearId?: string | null): Promise<AttendanceReport> => {
+    const response = await api.get(`/schools/${schoolId}/reports/attendance`, { params: { startDate, endDate, ...(yearId ? { yearId } : {}) } });
     return response.data.data;
   },
 };

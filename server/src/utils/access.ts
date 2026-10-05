@@ -17,6 +17,7 @@ import {
   itemUsages,
   questionBanks,
 } from '../db/schema.js';
+import { ConflictError } from './errors.js';
 
 /**
  * Módulo central de control de acceso (ownership) para Juried V2.
@@ -49,7 +50,10 @@ export const teacherOwnsClassroom = async (
   return !!row;
 };
 
-/** ¿El perfil de estudiante `studentProfileId` es del usuario `userId` y sigue activo? (retirado o trasladado: ya no opera con él) */
+/**
+ * ¿El perfil de estudiante `studentProfileId` es del usuario `userId` y sigue activo, en una clase que no está archivada?
+ * (retirado, trasladado o de una clase archivada: ya no opera con él)
+ */
 export const userOwnsStudentProfile = async (
   userId: string,
   studentProfileId: string
@@ -57,11 +61,15 @@ export const userOwnsStudentProfile = async (
   const [row] = await db
     .select({ id: studentProfiles.id })
     .from(studentProfiles)
-    .where(and(eq(studentProfiles.id, studentProfileId), eq(studentProfiles.userId, userId), eq(studentProfiles.isActive, true)));
+    .innerJoin(classrooms, eq(classrooms.id, studentProfiles.classroomId))
+    .where(and(
+      eq(studentProfiles.id, studentProfileId), eq(studentProfiles.userId, userId), eq(studentProfiles.isActive, true),
+      eq(classrooms.isActive, true),
+    ));
   return !!row;
 };
 
-/** ¿El usuario (ESTUDIANTE) tiene un perfil activo en esa clase? */
+/** ¿El usuario (ESTUDIANTE) tiene un perfil activo en esa clase, y la clase no está archivada? */
 export const studentInClassroom = async (
   userId: string,
   classroomId: string
@@ -69,8 +77,34 @@ export const studentInClassroom = async (
   const [row] = await db
     .select({ id: studentProfiles.id })
     .from(studentProfiles)
-    .where(and(eq(studentProfiles.userId, userId), eq(studentProfiles.classroomId, classroomId), eq(studentProfiles.isActive, true)));
+    .innerJoin(classrooms, eq(classrooms.id, studentProfiles.classroomId))
+    .where(and(
+      eq(studentProfiles.userId, userId), eq(studentProfiles.classroomId, classroomId), eq(studentProfiles.isActive, true),
+      eq(classrooms.isActive, true),
+    ));
   return !!row;
+};
+
+/** Una clase archivada se consulta pero no cambia: para hacer cambios, su docente la restaura. */
+export const ARCHIVED_CLASSROOM_MESSAGE = 'Esta clase está archivada: restáurala para hacer cambios';
+
+/** ¿La clase existe y está archivada? */
+export const classroomIsArchived = async (classroomId: string): Promise<boolean> => {
+  const [row] = await db.select({ isActive: classrooms.isActive }).from(classrooms).where(eq(classrooms.id, classroomId));
+  return !!row && !row.isActive;
+};
+
+/** Para servicios: una clase archivada no recibe cambios (409). */
+export const assertClassroomWritable = async (classroomId: string): Promise<void> => {
+  if (await classroomIsArchived(classroomId)) throw new ConflictError(ARCHIVED_CLASSROOM_MESSAGE);
+};
+
+/** De unas clases (destinos de una copia), las que no están archivadas. */
+export const writableClassroomIds = async (classroomIds: string[]): Promise<string[]> => {
+  const ids = [...new Set(classroomIds)];
+  if (ids.length === 0) return [];
+  const rows = await db.select({ id: classrooms.id }).from(classrooms).where(and(inArray(classrooms.id, ids), eq(classrooms.isActive, true)));
+  return rows.map((r) => r.id);
 };
 
 /** Rol en la escuela: OWNER (responsable), ADMIN (administración que él nombra) o TEACHER. */
@@ -116,11 +150,14 @@ export const parentHasClassroomAccess = async (
     .from(parentStudentLinks)
     .innerJoin(parentProfiles, eq(parentStudentLinks.parentProfileId, parentProfiles.id))
     .innerJoin(studentProfiles, eq(parentStudentLinks.studentProfileId, studentProfiles.id))
+    .innerJoin(classrooms, eq(classrooms.id, studentProfiles.classroomId))
     .where(and(
       eq(parentProfiles.userId, parentUserId),
       eq(studentProfiles.classroomId, classroomId),
       eq(parentStudentLinks.status, 'ACTIVE'),
       eq(studentProfiles.isActive, true),
+      // Una clase archivada queda cerrada para la familia (su sala y sus datos).
+      eq(classrooms.isActive, true),
     ))
     .limit(1);
   return rows.length > 0;
@@ -267,27 +304,41 @@ export const userCanAccessClassroom = async (
 
 // `error` duplica `message` por compatibilidad: parte del cliente aún lee `data.error`
 // (helpers antiguos respondían `{ error }`).
-const deny = (res: Response, status: number, message: string): false => {
-  res.status(status).json({ success: false, message, error: message });
+const deny = (res: Response, status: number, message: string, code?: string): false => {
+  res.status(status).json({ success: false, message, error: message, ...(code ? { code } : {}) });
   return false;
+};
+
+/** Escribe (todo lo que no es GET ni HEAD). */
+const writes = (req: Request) => req.method !== 'GET' && req.method !== 'HEAD';
+
+/** Para controladores que ya comprobaron la propiedad por su cuenta: una clase archivada no recibe cambios (409). */
+export const requireWritableClassroom = async (res: Response, classroomId: string): Promise<boolean> => {
+  if (await classroomIsArchived(classroomId)) return deny(res, 409, ARCHIVED_CLASSROOM_MESSAGE, 'CLASSROOM_ARCHIVED');
+  return true;
 };
 
 /**
  * El usuario es ADMIN, o es el TEACHER dueño de la clase.
  * Sustituye a las copias de `ensureTeacherClassroomAccess`.
+ * Una clase archivada es de solo lectura: lo que escribe (todo menos GET) responde 409, salvo lo que la archiva o la
+ * restaura (`allowArchived`).
  */
 export const requireClassroomTeacher = async (
   req: Request,
   res: Response,
-  classroomId: string
+  classroomId: string,
+  options: { allowArchived?: boolean } = {},
 ): Promise<boolean> => {
   const user = req.user;
   if (!user) return deny(res, 401, 'No autenticado');
-  if (user.role === 'ADMIN') return true;
-  if (user.role !== 'TEACHER') return deny(res, 403, 'No tienes permisos para esta acción');
+  if (user.role !== 'ADMIN' && user.role !== 'TEACHER') return deny(res, 403, 'No tienes permisos para esta acción');
   if (!classroomId) return deny(res, 400, 'Falta el identificador de la clase');
-  if (!(await teacherOwnsClassroom(user.id, classroomId))) {
+  if (user.role === 'TEACHER' && !(await teacherOwnsClassroom(user.id, classroomId))) {
     return deny(res, 403, 'No tienes acceso a esta clase');
+  }
+  if (writes(req) && !options.allowArchived && (await classroomIsArchived(classroomId))) {
+    return deny(res, 409, ARCHIVED_CLASSROOM_MESSAGE, 'CLASSROOM_ARCHIVED');
   }
   return true;
 };
@@ -406,6 +457,7 @@ export const requireClassroomTeacherOrParent = async (
     if (!(await teacherOwnsClassroom(user.id, classroomId))) {
       return deny(res, 403, 'No tienes acceso a esta clase');
     }
+    if (writes(req) && (await classroomIsArchived(classroomId))) return deny(res, 409, ARCHIVED_CLASSROOM_MESSAGE, 'CLASSROOM_ARCHIVED');
     return true;
   }
   if (user.role === 'PARENT') {

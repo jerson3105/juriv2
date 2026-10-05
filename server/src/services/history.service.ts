@@ -14,7 +14,7 @@ import {
 } from '../db/schema.js';
 import { eq, desc, and, gte, inArray, like, lte, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
-import { teacherOwnsClassroom } from '../utils/access.js';
+import { assertClassroomWritable, teacherOwnsClassroom } from '../utils/access.js';
 import { affectedRows, revertLevelUpsAbove } from '../utils/points.js';
 import { syncRestingState } from '../utils/energy.js';
 
@@ -564,6 +564,7 @@ class HistoryService {
 
     const hasAccess = await this.verifyTeacherOwnsClassroom(teacherId, student.classroomId);
     if (!hasAccess) throw new Error('Sin acceso a este salón');
+    await assertClassroomWritable(student.classroomId);
 
     const [classroom] = await db.select({ xpPerLevel: classrooms.xpPerLevel, maxHp: classrooms.maxHp }).from(classrooms).where(eq(classrooms.id, student.classroomId));
     const xpPerLevel = classroom?.xpPerLevel || 100;
@@ -699,6 +700,7 @@ class HistoryService {
 
     const hasAccess = await this.verifyTeacherOwnsClassroom(teacherId, student.classroomId);
     if (!hasAccess) throw new Error('Sin acceso a este salón');
+    await assertClassroomWritable(student.classroomId);
 
     const [badge] = await db.select().from(badges).where(eq(badges.id, sb.badgeId));
     const badgeName = badge?.name || 'Insignia';
@@ -810,6 +812,7 @@ class HistoryService {
 
     const hasAccess = await this.verifyTeacherOwnsClassroom(teacherId, record.classroomId);
     if (!hasAccess) throw new Error('Sin acceso a este salón');
+    await assertClassroomWritable(record.classroomId);
 
     const now = new Date();
     const xpToRevert = record.xpAwarded || 0;

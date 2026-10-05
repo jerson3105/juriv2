@@ -113,10 +113,12 @@ class ScrollService {
   async getStudentProfileInClassroomByUser(userId: string, classroomId: string): Promise<string | null> {
     const [student] = await db.select({ id: studentProfiles.id })
       .from(studentProfiles)
+      .innerJoin(classrooms, eq(classrooms.id, studentProfiles.classroomId))
       .where(and(
         eq(studentProfiles.userId, userId),
         eq(studentProfiles.classroomId, classroomId),
-        eq(studentProfiles.isActive, true)
+        eq(studentProfiles.isActive, true),
+        eq(classrooms.isActive, true),
       ));
 
     return student?.id ?? null;

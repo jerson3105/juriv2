@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { parentService } from '../services/parent.service.js';
 import { passwordSchema } from '../utils/passwordPolicy.js';
 import { AppError } from '../utils/errors.js';
+import { classroomIdOfStudentProfile, requireWritableClassroom } from '../utils/access.js';
 
 // ==================== VALIDATION SCHEMAS ====================
 
@@ -118,6 +119,11 @@ const ensureTeacherOwnsStudent = async (req: Request, res: Response, studentProf
     return false;
   }
 
+  // Una clase archivada se consulta pero no cambia.
+  if (req.method !== 'GET') {
+    const classroomId = await classroomIdOfStudentProfile(studentProfileId);
+    if (classroomId && !(await requireWritableClassroom(res, classroomId))) return false;
+  }
   return true;
 };
 
@@ -133,6 +139,7 @@ const ensureTeacherOwnsClassroom = async (req: Request, res: Response, classroom
     res.status(403).json({ success: false, message: 'No tienes permiso sobre esta clase' });
     return false;
   }
+  if (req.method !== 'GET' && !(await requireWritableClassroom(res, classroomId))) return false;
 
   return true;
 };

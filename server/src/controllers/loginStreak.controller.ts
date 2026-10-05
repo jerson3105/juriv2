@@ -3,6 +3,7 @@ import { loginStreakService } from '../services/loginStreak.service.js';
 import { db } from '../db/index.js';
 import { studentProfiles } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
+import { classroomIsArchived } from '../utils/access.js';
 
 export const loginStreakController = {
   // Registrar login y obtener recompensas
@@ -24,7 +25,7 @@ export const loginStreakController = {
           eq(studentProfiles.classroomId, classroomId)
         ));
 
-      if (!profile) {
+      if (!profile || !profile.isActive || (await classroomIsArchived(classroomId))) {
         return res.status(404).json({ success: false, message: 'Perfil no encontrado' });
       }
 

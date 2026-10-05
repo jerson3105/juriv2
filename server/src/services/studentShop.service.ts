@@ -29,11 +29,12 @@ class StudentShopService {
         dailyLimit: classrooms.dailyPurchaseLimit,
         gradeLevel: classrooms.gradeLevel,
         showCharacterName: classrooms.showCharacterName,
+        classActive: classrooms.isActive,
       })
       .from(studentProfiles)
       .innerJoin(classrooms, eq(classrooms.id, studentProfiles.classroomId))
       .where(eq(studentProfiles.id, profileId));
-    if (!row || row.userId !== userId) throw new NotFoundError('Perfil no encontrado');
+    if (!row || row.userId !== userId || !row.classActive) throw new NotFoundError('Perfil no encontrado');
     return row;
   }
 

@@ -2,6 +2,7 @@ import { and, asc, eq, gt, isNull, lt, lte, or, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { badges, levelUpLogs, studentBadges, studentProfiles } from '../db/schema.js';
 import { NotFoundError } from '../utils/errors.js';
+import { classroomIsArchived } from '../utils/access.js';
 
 /**
  * Celebraciones del alumno: lo que pasó desde su última visita (subidas de nivel e insignias),
@@ -11,10 +12,10 @@ import { NotFoundError } from '../utils/errors.js';
 class CelebrationService {
   private async ownProfile(profileId: string, userId: string) {
     const [profile] = await db
-      .select({ id: studentProfiles.id, userId: studentProfiles.userId, level: studentProfiles.level, celebratedAt: studentProfiles.celebratedAt })
+      .select({ id: studentProfiles.id, userId: studentProfiles.userId, level: studentProfiles.level, celebratedAt: studentProfiles.celebratedAt, classroomId: studentProfiles.classroomId })
       .from(studentProfiles)
       .where(eq(studentProfiles.id, profileId));
-    if (!profile || profile.userId !== userId) throw new NotFoundError('Perfil no encontrado');
+    if (!profile || profile.userId !== userId || (await classroomIsArchived(profile.classroomId))) throw new NotFoundError('Perfil no encontrado');
     return profile;
   }
 

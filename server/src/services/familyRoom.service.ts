@@ -327,18 +327,30 @@ class FamilyRoomService {
 
   // ── Sockets de las familias ──
 
-  /** Clases donde la familia tiene un hijo vinculado: entra sola a esas salas al conectarse. */
+  /** Clases (no archivadas) donde la familia tiene un hijo vinculado: entra sola a esas salas al conectarse. */
   async classroomIdsForParent(userId: string): Promise<string[]> {
     const rows = await db.select({ classroomId: studentProfiles.classroomId })
       .from(parentStudentLinks)
       .innerJoin(parentProfiles, eq(parentStudentLinks.parentProfileId, parentProfiles.id))
       .innerJoin(studentProfiles, eq(parentStudentLinks.studentProfileId, studentProfiles.id))
+      .innerJoin(classrooms, eq(classrooms.id, studentProfiles.classroomId))
       .where(and(
         eq(parentProfiles.userId, userId),
         eq(parentStudentLinks.status, 'ACTIVE'),
         eq(studentProfiles.isActive, true),
+        eq(classrooms.isActive, true),
       ));
     return [...new Set(rows.map((r) => r.classroomId))];
+  }
+
+  /** Al archivar la clase, todos salen de su sala en el acto (la familia ya no la ve). */
+  closeRoom(classroomId: string) {
+    getIO()?.in(familyRoomOf(classroomId)).socketsLeave(familyRoomOf(classroomId));
+  }
+
+  /** Al restaurarla, sus familias vuelven a entrar en vivo. */
+  async openRoom(classroomId: string) {
+    for (const userId of await this.linkedParentUserIds(classroomId)) this.joinParentToRoom(userId, classroomId);
   }
 
   /** Al aprobar el vínculo, la familia entra a la sala en vivo sin tener que reconectar. */

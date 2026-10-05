@@ -61,6 +61,7 @@ import { eq, and, desc, inArray, sql, count, asc, or, gt } from 'drizzle-orm';
 import { calculateLevel, generateClassCode } from '../utils/helpers.js';
 import { revertLevelUpsAbove } from '../utils/points.js';
 import { ConflictError, ValidationError } from '../utils/errors.js';
+import { ARCHIVED_CLASSROOM_MESSAGE, assertClassroomWritable } from '../utils/access.js';
 import { isYoungLevel } from '../utils/energy.js';
 import { normalizeBadgeAssignment, parseBadgeCondition, safeBadgeImage, type BadgeConditionShape } from '../utils/badgeConditions.js';
 import { deleteLegacyExpeditionRowsOfClassroom } from '../utils/legacyExpeditions.js';
@@ -604,6 +605,7 @@ export class ClassroomService {
     if (!classroom || classroom.teacherId !== teacherId) {
       throw new Error('No autorizado');
     }
+    if (!classroom.isActive) throw new ConflictError(ARCHIVED_CLASSROOM_MESSAGE);
 
     // Reglas que dependen de dos campos: se validan con el valor final (el enviado o el guardado).
     const maxHp = data.maxHp ?? classroom.maxHp;
@@ -1465,6 +1467,8 @@ export class ClassroomService {
     if (resolvedTargetIds.length === 0) {
       throw new Error('No hay clases destino válidas para transferir destrezas');
     }
+    // Las destrezas viajan desde una clase archivada, pero no hacia una.
+    for (const targetId of resolvedTargetIds) await assertClassroomWritable(targetId);
 
     const involvedClassroomIds = [...new Set([classroomId, sourceClassroomId, ...resolvedTargetIds])];
     const classroomRows = await db
@@ -2011,6 +2015,7 @@ export class ClassroomService {
     if (!classroom || classroom.teacherId !== teacherId) {
       throw new Error('No autorizado');
     }
+    if (!classroom.isActive) throw new ConflictError(ARCHIVED_CLASSROOM_MESSAGE);
 
     // Todo o nada: si una categoría falla, no queda la clase medio reseteada.
     const cleaned: string[] = [];

@@ -20,6 +20,7 @@ import { logger } from '../utils/logger.js';
 import { isYoungLevel } from '../utils/energy.js';
 import { albumPricing, welcomeCards } from '../utils/collectibleRules.js';
 import { avatarCatalogService, type AvatarPriceLevel } from './avatarCatalog.service.js';
+import { assertClassroomWritable } from '../utils/access.js';
 
 // Álbumes y figuritas del docente. Lo del alumno (su álbum, los sobres y el completado) está en
 // collectibleStudent.service.ts, y las reglas de precio y sorteo en utils/collectibleRules.ts.
@@ -312,7 +313,8 @@ class CollectibleService {
     const targetClassrooms = await db
       .select({ id: classrooms.id, name: classrooms.name, gradeLevel: classrooms.gradeLevel })
       .from(classrooms)
-      .where(and(eq(classrooms.teacherId, teacherId), inArray(classrooms.id, uniqueTargetIds)));
+      // Los destinos no pueden estar archivados (el álbum de origen sí: se reutiliza).
+      .where(and(eq(classrooms.teacherId, teacherId), inArray(classrooms.id, uniqueTargetIds), eq(classrooms.isActive, true)));
     // El nivel de precio pasa solo entre clases de la misma edad; inicial a 2.º, siempre «Más barato».
     const [sourceGrade] = await db.select({ gradeLevel: classrooms.gradeLevel }).from(classrooms).where(eq(classrooms.id, sourceAlbum.classroomId));
     const sourceYoung = isYoungLevel(sourceGrade?.gradeLevel);
@@ -437,6 +439,7 @@ class CollectibleService {
     if (sourceAlbum.classroomId !== targetAlbum.classroomId) {
       throw new Error('Solo puedes mover figuritas entre álbumes de la misma clase');
     }
+    await assertClassroomWritable(sourceAlbum.classroomId);
 
     return db.transaction(async (tx) => {
       const [sourceHasUsage, targetHasUsage] = await Promise.all([

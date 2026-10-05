@@ -74,6 +74,10 @@ class GradeConfigCopyService {
         result.message = 'No tienes acceso a esta clase';
         continue;
       }
+      if (!target.isActive) {
+        result.message = 'Está archivada: restáurala para cambiarla';
+        continue;
+      }
       if (!target.useCompetencies || !target.curriculumAreaId) {
         result.message = 'Primero elige su área curricular en Calificaciones';
         continue;

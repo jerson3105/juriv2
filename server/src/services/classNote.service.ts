@@ -2,6 +2,7 @@ import { eq, and, desc, asc, isNotNull, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import { classNotes, classrooms } from '../db/schema.js';
+import { assertClassroomWritable } from '../utils/access.js';
 
 const VALID_CATEGORIES = ['task', 'review', 'material', 'other'] as const;
 type NoteCategory = typeof VALID_CATEGORIES[number];
@@ -18,6 +19,7 @@ class ClassNoteService {
 
     if (!classroom) throw new Error('Aula no encontrada');
     if (classroom.teacherId !== teacherId) throw new Error('No tienes permiso en esta aula');
+    await assertClassroomWritable(classroomId);
 
     const validCategory: NoteCategory = VALID_CATEGORIES.includes(category as NoteCategory)
       ? (category as NoteCategory)
@@ -66,6 +68,7 @@ class ClassNoteService {
       .where(eq(classrooms.id, note.classroomId));
 
     if (!classroom || classroom.teacherId !== teacherId) throw new Error('No tienes permiso');
+    await assertClassroomWritable(note.classroomId);
 
     const newCompleted = !note.isCompleted;
 
@@ -91,6 +94,7 @@ class ClassNoteService {
       .where(eq(classrooms.id, note.classroomId));
 
     if (!classroom || classroom.teacherId !== teacherId) throw new Error('No tienes permiso');
+    await assertClassroomWritable(note.classroomId);
 
     await db.delete(classNotes).where(eq(classNotes.id, noteId));
     return { success: true };

@@ -163,6 +163,12 @@ const parseReportRange = (sd: unknown, ed: unknown) => {
   return { startDate, endDate };
 };
 
+/** El año escolar de los informes (opcional): un id válido o nada. */
+const reportYear = (req: Request): string | null => {
+  const value = req.query.yearId;
+  return typeof value === 'string' && /^[0-9a-f-]{36}$/i.test(value) ? value : null;
+};
+
 class SchoolController {
   // Buscar escuelas existentes en Juried
   async search(req: Request, res: Response) {
@@ -690,7 +696,7 @@ class SchoolController {
       const range = parseReportRange(sd, ed);
       if (!range) return res.status(400).json({ success: false, message: 'Periodo inválido' });
       const { startDate, endDate } = range;
-      const data = await schoolService.getReportSummary(schoolId, startDate, endDate);
+      const data = await schoolService.getReportSummary(schoolId, startDate, endDate, reportYear(req));
       res.json({ success: true, data });
     } catch (error) {
       console.error('Error getting report summary:', error);
@@ -712,7 +718,7 @@ class SchoolController {
       if (classroomId !== undefined && (typeof classroomId !== 'string' || (await schoolIdOfClassroom(classroomId)) !== schoolId)) {
         return res.status(404).json({ success: false, message: 'Clase no encontrada en esta escuela' });
       }
-      const data = await schoolService.getBehaviorTrends(schoolId, startDate, endDate, classroomId);
+      const data = await schoolService.getBehaviorTrends(schoolId, startDate, endDate, classroomId, reportYear(req));
       res.json({ success: true, data });
     } catch (error) {
       console.error('Error getting behavior trends:', error);
@@ -730,7 +736,7 @@ class SchoolController {
       const range = parseReportRange(sd, ed);
       if (!range) return res.status(400).json({ success: false, message: 'Periodo inválido' });
       const { startDate, endDate } = range;
-      const data = await schoolService.getClassRanking(schoolId, startDate, endDate);
+      const data = await schoolService.getClassRanking(schoolId, startDate, endDate, reportYear(req));
       res.json({ success: true, data });
     } catch (error) {
       console.error('Error getting class ranking:', error);
@@ -748,7 +754,7 @@ class SchoolController {
       const range = parseReportRange(sd, ed);
       if (!range) return res.status(400).json({ success: false, message: 'Periodo inválido' });
       const { startDate, endDate } = range;
-      const data = await schoolService.getTopBehaviors(schoolId, startDate, endDate);
+      const data = await schoolService.getTopBehaviors(schoolId, startDate, endDate, reportYear(req));
       res.json({ success: true, data });
     } catch (error) {
       console.error('Error getting top behaviors:', error);
@@ -766,7 +772,7 @@ class SchoolController {
       const range = parseReportRange(sd, ed);
       if (!range) return res.status(400).json({ success: false, message: 'Periodo inválido' });
       const { startDate, endDate } = range;
-      const data = await schoolService.getStudentsAtRisk(schoolId, startDate, endDate);
+      const data = await schoolService.getStudentsAtRisk(schoolId, startDate, endDate, reportYear(req));
       res.json({ success: true, data });
     } catch (error) {
       console.error('Error getting students at risk:', error);
@@ -784,7 +790,7 @@ class SchoolController {
       const range = parseReportRange(sd, ed);
       if (!range) return res.status(400).json({ success: false, message: 'Periodo inválido' });
       const { startDate, endDate } = range;
-      const data = await schoolService.getAttendanceReport(schoolId, startDate, endDate);
+      const data = await schoolService.getAttendanceReport(schoolId, startDate, endDate, reportYear(req));
       res.json({ success: true, data });
     } catch (error) {
       console.error('Error getting attendance report:', error);

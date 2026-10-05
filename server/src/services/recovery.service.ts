@@ -6,6 +6,7 @@ import { ConflictError, NotFoundError } from '../utils/errors.js';
 import { DEFAULT_RECOVERY_MISSIONS, isInitialLevel, parseTemplates, restoreEnergy } from '../utils/energy.js';
 import { affectedRows } from '../utils/points.js';
 import { prepareForTx } from '../utils/notificationEmitter.js';
+import { ARCHIVED_CLASSROOM_MESSAGE } from '../utils/access.js';
 
 type MissionRow = typeof recoveryMissions.$inferSelect;
 
@@ -89,8 +90,9 @@ class RecoveryService {
   async complete(missionId: string, teacherId: string) {
     const [mission] = await db.select().from(recoveryMissions).where(eq(recoveryMissions.id, missionId));
     if (!mission) throw new NotFoundError('Misión no encontrada');
-    const [owner] = await db.select({ teacherId: classrooms.teacherId }).from(classrooms).where(eq(classrooms.id, mission.classroomId));
+    const [owner] = await db.select({ teacherId: classrooms.teacherId, isActive: classrooms.isActive }).from(classrooms).where(eq(classrooms.id, mission.classroomId));
     if (!owner || owner.teacherId !== teacherId) throw new NotFoundError('Misión no encontrada');
+    if (!owner.isActive) throw new ConflictError(ARCHIVED_CLASSROOM_MESSAGE);
     const [student] = await db.select({ userId: studentProfiles.userId }).from(studentProfiles).where(eq(studentProfiles.id, mission.studentProfileId));
 
     let notifTx = prepareForTx([]);

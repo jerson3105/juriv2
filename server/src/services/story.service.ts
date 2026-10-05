@@ -1152,14 +1152,15 @@ class StoryService {
   // ---- STUDENT EXPERIENCE ----
 
   private async getActiveStudentProfileInClassroom(classroomId: string, userId: string) {
-    return db.query.studentProfiles.findFirst({
-      where: and(
+    const [row] = await db.select({ id: studentProfiles.id }).from(studentProfiles)
+      .innerJoin(classrooms, eq(classrooms.id, studentProfiles.classroomId))
+      .where(and(
         eq(studentProfiles.classroomId, classroomId),
         eq(studentProfiles.userId, userId),
-        eq(studentProfiles.isActive, true)
-      ),
-      columns: { id: true },
-    });
+        eq(studentProfiles.isActive, true),
+        eq(classrooms.isActive, true),
+      ));
+    return row;
   }
 
   async getStudentStoryDataForUser(classroomId: string, userId: string) {

@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db, users, studentProfiles, classrooms, schools, schoolStudents } from '../db/index.js';
 import { generateTokenPair, revokeAllUserTokens, type SessionTokens } from '../utils/jwt.js';
 import { AppError, ConflictError, ForbiddenError, NotFoundError, RateLimitError, UnauthorizedError, ValidationError, isDuplicateEntry } from '../utils/errors.js';
+import { ARCHIVED_CLASSROOM_MESSAGE } from '../utils/access.js';
 import { formatDuration, generateRandomCode } from '../utils/helpers.js';
 import { documentIndex, normalizeDocument } from '../utils/personalDocument.js';
 import { piiReady } from '../utils/piiCrypto.js';
@@ -623,8 +624,9 @@ class StudentPinService {
       columns: { id: true, classroomId: true, userId: true, schoolStudentId: true },
     });
     if (!profile) throw new NotFoundError('Estudiante no encontrado');
-    const classroom = await db.query.classrooms.findFirst({ where: eq(classrooms.id, profile.classroomId), columns: { teacherId: true, schoolId: true } });
+    const classroom = await db.query.classrooms.findFirst({ where: eq(classrooms.id, profile.classroomId), columns: { teacherId: true, schoolId: true, isActive: true } });
     if (!classroom || classroom.teacherId !== teacherId) throw new ForbiddenError('No tienes permiso para modificar este estudiante');
+    if (!classroom.isActive) throw new ConflictError(ARCHIVED_CLASSROOM_MESSAGE);
     // Del colegio: su PIN es de todas sus clases; lo restablecen la administración o su tutor (no cada docente).
     const [schoolAccount] = profile.userId
       ? await db.select({ id: schoolStudents.id }).from(schoolStudents).where(eq(schoolStudents.userId, profile.userId)).limit(1)

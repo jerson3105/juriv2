@@ -66,8 +66,9 @@ class TeacherVerificationService {
 
   /** Cuentas de alumnos y de familias solo entran a clases de docentes verificados. */
   async assertClassroomAcceptsAccounts(classroomId: string): Promise<void> {
-    const [row] = await db.select({ teacherId: classrooms.teacherId }).from(classrooms).where(eq(classrooms.id, classroomId)).limit(1);
+    const [row] = await db.select({ teacherId: classrooms.teacherId, isActive: classrooms.isActive }).from(classrooms).where(eq(classrooms.id, classroomId)).limit(1);
     if (!row) throw new NotFoundError('Clase no encontrada');
+    if (!row.isActive) throw new ConflictError('Esta clase está archivada');
     if (!(await this.isVerified(row.teacherId))) throw new ForbiddenError(UNVERIFIED_CLASS_MESSAGE);
   }
 

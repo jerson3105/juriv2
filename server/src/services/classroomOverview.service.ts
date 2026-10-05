@@ -1,6 +1,10 @@
-import { and, eq, gte, inArray, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { attendanceRecords, classrooms, itemUsages, pointLogs, purchases, shopItems, studentProfiles } from '../db/schema.js';
+import { schoolYears } from '../db/schema.js';
+import { ConflictError } from '../utils/errors.js';
+import { familyRoomService } from './familyRoom.service.js';
+import { classroomYearIds } from './schoolCalendar.service.js';
 
 export interface ClassroomOverview {
   id: string;
@@ -86,10 +90,32 @@ class ClassroomOverviewService {
     }));
   }
 
+  /**
+   * Archivar: queda de solo lectura para su docente y cerrada para estudiantes y familias; sus compras pendientes ya no se
+   * atenderán (nunca cobraron). Restaurar: vuelve a abrirse, salvo la de un año escolar cerrado (es la historia del colegio).
+   */
   async setArchived(classroomId: string, archived: boolean) {
-    await db.update(classrooms)
-      .set({ isActive: !archived, updatedAt: new Date() })
-      .where(eq(classrooms.id, classroomId));
+    if (!archived) {
+      const yearId = (await classroomYearIds([classroomId])).get(classroomId);
+      if (yearId) {
+        const [year] = await db.select({ name: schoolYears.name, status: schoolYears.status }).from(schoolYears).where(eq(schoolYears.id, yearId));
+        if (year?.status === 'CLOSED') throw new ConflictError(`Esta clase es del año ${year.name}, que ya cerró: queda archivada para consultar`);
+      }
+    }
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      await tx.update(classrooms).set({ isActive: !archived, updatedAt: now }).where(eq(classrooms.id, classroomId));
+      if (archived) {
+        const profiles = (await tx.select({ id: studentProfiles.id }).from(studentProfiles).where(eq(studentProfiles.classroomId, classroomId))).map((p) => p.id);
+        for (let i = 0; i < profiles.length; i += 500) {
+          const part = profiles.slice(i, i + 500);
+          await tx.update(purchases).set({ status: 'REJECTED' })
+            .where(and(eq(purchases.status, 'PENDING'), or(inArray(purchases.studentId, part), inArray(purchases.buyerId, part))));
+        }
+      }
+    });
+    if (archived) familyRoomService.closeRoom(classroomId);
+    else await familyRoomService.openRoom(classroomId);
   }
 }
 

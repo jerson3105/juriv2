@@ -40,6 +40,7 @@ import { TeacherClassCard } from './sidebar/TeacherClassCard';
 import { teacherClassNav } from './sidebar/navBuilders';
 import { useOpenGroups, useSidebarCollapsed } from './sidebar/useSidebarState';
 import { contextLabel } from './classContext';
+import { ArchivedClassBanner } from '../classroom/ArchivedClassBanner';
 
 const NIGHT = '#0b1026';
 const NEWS_KEY = 'juried-sb-news';
@@ -360,6 +361,7 @@ export const ClassroomLayout = () => {
         
         {/* Main content */}
         <main className="flex-1 overflow-auto p-4 md:p-6">
+          {classroom && classroom.isActive === false && <ArchivedClassBanner classroom={classroom} onRestored={() => void refetch()} />}
           <Outlet context={{ classroom, refetch, storyTheme: null, isThemeDark: false, storyAccent, openTools: () => setShowTools(true) }} />
         </main>
       </div>

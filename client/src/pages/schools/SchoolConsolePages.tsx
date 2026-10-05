@@ -94,15 +94,15 @@ export const SchoolClassesPage = () => {
 };
 
 export const SchoolReportsPage = () => {
-  const { school, manager } = useSchoolConsole();
+  const { school, manager, selectedYear } = useSchoolConsole();
   const { classrooms } = useSchoolPanelData(school, manager);
   const reportsRef = useRef<HTMLDivElement>(null);
   return (
     <div className="space-y-6">
-      <PageHeader title="Informes" subtitle="Participación y asistencia de la escuela" />
-      <SummaryTab schoolId={school.id} onOpenReports={() => reportsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
+      <PageHeader title="Informes" subtitle={selectedYear ? `Participación y asistencia de las clases de ${selectedYear.name}` : 'Participación y asistencia de la escuela'} />
+      <SummaryTab schoolId={school.id} yearId={selectedYear?.id ?? null} onOpenReports={() => reportsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
       <div ref={reportsRef}>
-        <ReportsTab schoolId={school.id} schoolName={school.name} classrooms={classrooms} />
+        <ReportsTab schoolId={school.id} schoolName={school.name} classrooms={classrooms} yearId={selectedYear?.id ?? null} />
       </div>
     </div>
   );

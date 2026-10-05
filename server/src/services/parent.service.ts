@@ -25,7 +25,7 @@ import { v4 as uuidv4 } from 'uuid';
 import bcrypt from 'bcryptjs';
 import { gradeService } from './grade.service.js';
 import { generateRandomCode } from '../utils/helpers.js';
-import { teacherOwnsClassroom } from '../utils/access.js';
+import { ARCHIVED_CLASSROOM_MESSAGE, teacherOwnsClassroom } from '../utils/access.js';
 import { teacherVerificationService } from './teacherVerification.service.js';
 import { ConflictError, NotFoundError } from '../utils/errors.js';
 import { familyRoomService } from './familyRoom.service.js';
@@ -94,6 +94,22 @@ interface ActivityLogItem {
 
 class ParentService {
   // ==================== IDOR VERIFICATION ====================
+
+  /** El vínculo ACTIVE de la familia con un perfil activo en una clase que no está archivada (si no, no ve nada). */
+  private async activeLink(parentProfileId: string, studentProfileId: string) {
+    const [row] = await db.select({ link: parentStudentLinks })
+      .from(parentStudentLinks)
+      .innerJoin(studentProfiles, eq(studentProfiles.id, parentStudentLinks.studentProfileId))
+      .innerJoin(classrooms, eq(classrooms.id, studentProfiles.classroomId))
+      .where(and(
+        eq(parentStudentLinks.parentProfileId, parentProfileId),
+        eq(parentStudentLinks.studentProfileId, studentProfileId),
+        eq(parentStudentLinks.status, 'ACTIVE'),
+        eq(studentProfiles.isActive, true),
+        eq(classrooms.isActive, true),
+      ));
+    return row?.link ?? null;
+  }
 
   async verifyTeacherOwnsStudent(teacherId: string, studentProfileId: string): Promise<boolean> {
     const [row] = await db.select({ id: studentProfiles.id })
@@ -268,7 +284,7 @@ class ParentService {
       .from(parentStudentLinks)
       .innerJoin(studentProfiles, eq(parentStudentLinks.studentProfileId, studentProfiles.id))
       .innerJoin(classrooms, eq(studentProfiles.classroomId, classrooms.id))
-      .where(and(eq(parentStudentLinks.parentProfileId, parentProfileId), eq(parentStudentLinks.status, 'PENDING')))
+      .where(and(eq(parentStudentLinks.parentProfileId, parentProfileId), eq(parentStudentLinks.status, 'PENDING'), eq(classrooms.isActive, true)))
       .orderBy(desc(parentStudentLinks.createdAt));
   }
 
@@ -291,7 +307,7 @@ class ParentService {
       .innerJoin(users, eq(parentProfiles.userId, users.id))
       .innerJoin(studentProfiles, eq(parentStudentLinks.studentProfileId, studentProfiles.id))
       .innerJoin(classrooms, eq(studentProfiles.classroomId, classrooms.id))
-      .where(and(eq(classrooms.teacherId, teacherId), eq(parentStudentLinks.status, 'PENDING')))
+      .where(and(eq(classrooms.teacherId, teacherId), eq(parentStudentLinks.status, 'PENDING'), eq(classrooms.isActive, true)))
       .orderBy(desc(parentStudentLinks.createdAt));
   }
 
@@ -303,6 +319,7 @@ class ParentService {
       teacherId: classrooms.teacherId,
       classroomId: classrooms.id,
       classroomName: classrooms.name,
+      classroomActive: classrooms.isActive,
       parentUserId: parentProfiles.userId,
       studentName: studentProfiles.displayName,
       characterName: studentProfiles.characterName,
@@ -315,6 +332,7 @@ class ParentService {
     // Sin distinguir "no existe" de "no es tuya": no se revela nada de otras clases.
     if (!row || row.teacherId !== teacherId) throw new NotFoundError('Solicitud no encontrada');
     if (row.status !== 'PENDING') throw new ConflictError('Esta solicitud ya fue atendida');
+    if (approved && !row.classroomActive) throw new ConflictError(ARCHIVED_CLASSROOM_MESSAGE);
     const now = new Date();
     await db.update(parentStudentLinks)
       .set(approved ? { status: 'ACTIVE', linkedAt: now, updatedAt: now } : { status: 'REVOKED', updatedAt: now })
@@ -360,7 +378,9 @@ class ParentService {
     .where(and(
       eq(parentStudentLinks.parentProfileId, parentProfileId),
       eq(parentStudentLinks.status, 'ACTIVE'),
-      eq(studentProfiles.isActive, true)
+      eq(studentProfiles.isActive, true),
+      // Las clases archivadas desaparecen de la vista de la familia.
+      eq(classrooms.isActive, true),
     ));
 
     if (links.length === 0) return [];
@@ -439,13 +459,7 @@ class ParentService {
   // Obtener detalle de un hijo (batched — no N+1)
   async getChildDetail(parentProfileId: string, studentProfileId: string): Promise<ChildDetail | null> {
     // Verificar que el padre tiene acceso a este estudiante
-    const [link] = await db.select()
-      .from(parentStudentLinks)
-      .where(and(
-        eq(parentStudentLinks.parentProfileId, parentProfileId),
-        eq(parentStudentLinks.studentProfileId, studentProfileId),
-        eq(parentStudentLinks.status, 'ACTIVE')
-      ));
+    const link = await this.activeLink(parentProfileId, studentProfileId);
     
     if (!link) {
       return null;
@@ -564,13 +578,7 @@ class ParentService {
   // Obtener calificaciones por bimestre
   async getChildGrades(parentProfileId: string, studentProfileId: string, period?: string) {
     // Verificar acceso
-    const [link] = await db.select()
-      .from(parentStudentLinks)
-      .where(and(
-        eq(parentStudentLinks.parentProfileId, parentProfileId),
-        eq(parentStudentLinks.studentProfileId, studentProfileId),
-        eq(parentStudentLinks.status, 'ACTIVE')
-      ));
+    const link = await this.activeLink(parentProfileId, studentProfileId);
     
     if (!link) {
       throw new Error('No tienes acceso a este estudiante');
@@ -667,13 +675,7 @@ class ParentService {
     endDate?: Date
   ): Promise<ActivityLogItem[]> {
     // Verificar acceso
-    const [link] = await db.select()
-      .from(parentStudentLinks)
-      .where(and(
-        eq(parentStudentLinks.parentProfileId, parentProfileId),
-        eq(parentStudentLinks.studentProfileId, studentProfileId),
-        eq(parentStudentLinks.status, 'ACTIVE')
-      ));
+    const link = await this.activeLink(parentProfileId, studentProfileId);
     
     if (!link) {
       throw new Error('No tienes acceso a este estudiante');
@@ -811,13 +813,7 @@ class ParentService {
 
   async getChildReport(parentProfileId: string, studentProfileId: string) {
     // Verificar acceso
-    const [link] = await db.select()
-      .from(parentStudentLinks)
-      .where(and(
-        eq(parentStudentLinks.parentProfileId, parentProfileId),
-        eq(parentStudentLinks.studentProfileId, studentProfileId),
-        eq(parentStudentLinks.status, 'ACTIVE')
-      ));
+    const link = await this.activeLink(parentProfileId, studentProfileId);
     if (!link) throw new Error('Sin acceso a este estudiante');
 
     // Obtener perfil del estudiante
@@ -1347,13 +1343,7 @@ class ParentService {
   // Obtener informe IA (con cache de 24h)
   async getAIReport(parentProfileId: string, studentProfileId: string, forceRegenerate = false): Promise<AIStudentReport> {
     // Verificar acceso
-    const [link] = await db.select()
-      .from(parentStudentLinks)
-      .where(and(
-        eq(parentStudentLinks.parentProfileId, parentProfileId),
-        eq(parentStudentLinks.studentProfileId, studentProfileId),
-        eq(parentStudentLinks.status, 'ACTIVE')
-      ));
+    const link = await this.activeLink(parentProfileId, studentProfileId);
     
     if (!link) {
       throw new Error('No tienes acceso a este estudiante');
