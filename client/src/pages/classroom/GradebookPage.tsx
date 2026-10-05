@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useOutletContext, useSearchParams } from 'react-router-dom';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { BookOpenCheck, CalendarRange, ChevronDown, Download, FileSpreadsheet, FileText, Loader2, Lock } from 'lucide-react';
+import { BookOpenCheck, CalendarClock, CalendarRange, ChevronDown, Download, FileSpreadsheet, FileText, Loader2, Lock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { Classroom } from '../../lib/classroomApi';
 import { gradeApi } from '../../lib/gradeApi';
@@ -76,6 +76,12 @@ const day = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString('es'
 /** «Del 8 mar al 21 may»: las fechas del bimestre en el año escolar del colegio. */
 const schoolDates = (bimester?: { startsOn?: string | null; endsOn?: string | null }) =>
   bimester?.startsOn && bimester.endsOn ? `Del ${day(bimester.startsOn)} al ${day(bimester.endsOn)}` : null;
+/** El bimestre en curso aún no empieza (p. ej., el año escolar del colegio arranca en marzo): su fecha de inicio. */
+const notStartedOn = (bimester?: { isCurrent: boolean; startsOn?: string | null; start?: string | null }) => {
+  if (!bimester?.isCurrent) return null;
+  if (bimester.startsOn) return bimester.startsOn > new Date().toLocaleDateString('en-CA') ? day(bimester.startsOn) : null;
+  return bimester.start && new Date(bimester.start) > new Date() ? new Date(bimester.start).toLocaleDateString('es', { day: 'numeric', month: 'short' }).replace('.', '') : null;
+};
 
 export const GradebookPage = () => {
   const { classroom, refetch } = useOutletContext<{ classroom: Classroom; refetch: () => void }>();
@@ -158,6 +164,13 @@ export const GradebookPage = () => {
           </button>
         )}
       </div>
+
+      {notStartedOn(selectedBimester) && (
+        <p className="flex items-center gap-2 rounded-2xl bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-900/20 dark:text-amber-100">
+          <CalendarClock size={16} className="flex-shrink-0" aria-hidden="true" />
+          El {selectedBimester!.label.toLowerCase()} empieza el {notStartedOn(selectedBimester)}: lo que registres antes (puntos, asistencia y actividades) no cuenta para la nota.
+        </p>
+      )}
 
       {book?.isClosed && (
         <p className="flex items-center gap-2 rounded-2xl bg-gray-100 p-3 text-sm text-gray-900 dark:bg-gray-800 dark:text-gray-100">
