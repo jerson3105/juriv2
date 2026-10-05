@@ -1,16 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Info, Plus, Search } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { ChevronLeft, ChevronRight, Info, Plus, Search, Upload } from 'lucide-react';
 import { useSchoolConsole } from '../../components/layout/schoolConsoleContext';
 import { primaryButton } from '../../components/home/homeHelpers';
+import { errorMessage } from '../../components/auth/authHelpers';
 import { LEVEL_LABEL } from '../../components/schools/console/schoolYearHelpers';
 import { byName, gradeLabel, LEVEL_GRADES, sectionName } from '../../components/schools/console/sectionHelpers';
 import { ageOf, initialsOf, maskedDocument, rosterName } from '../../components/schools/console/rosterHelpers';
 import { StudentDrawer, type DrawerState } from '../../components/schools/console/StudentDrawer';
 import { UndoBuildBanner } from '../../components/schools/console/UndoBuildBanner';
+import { UndoImportBanner } from '../../components/schools/console/UndoImportBanner';
 import { schoolRosterApi, schoolRosterKeys, type RosterFilter, type RosterQuery } from '../../lib/schoolRosterApi';
+import { rosterImportApi } from '../../lib/schoolRosterImportApi';
 import { schoolSectionApi, schoolSectionKeys } from '../../lib/schoolSectionApi';
 import type { SchoolLevel } from '../../lib/schoolYearApi';
 
@@ -37,6 +41,10 @@ export const SchoolStudentsPage = () => {
   };
   const [search, setSearch] = useState(query.q ?? '');
   const [drawer, setDrawer] = useState<DrawerState | null>(null);
+  const template = useMutation({
+    mutationFn: () => rosterImportApi.downloadTemplate(school.id, yearId, activeYear?.name ?? ''),
+    onError: (error) => toast.error(errorMessage(error, 'No se pudo descargar la plantilla')),
+  });
 
   const sections = useQuery({ queryKey: schoolSectionKeys.list(school.id, yearId), queryFn: () => schoolSectionApi.list(school.id, yearId), enabled: !!activeYear });
   const roster = useQuery({
@@ -104,6 +112,10 @@ export const SchoolStudentsPage = () => {
         </div>
         <div className="flex flex-wrap gap-2">
           <Link to={`/escuela/${school.id}/estudiantes/armar`} className="pg-btn pg-focus">Armar desde clases</Link>
+          <Link to={`/escuela/${school.id}/estudiantes/importar`} className="pg-btn pg-focus">
+            <Upload size={16} aria-hidden="true" />
+            Importar
+          </Link>
           <button type="button" className={primaryButton} onClick={() => setDrawer({ mode: 'create' })}>
             <Plus size={16} aria-hidden="true" />
             Agregar estudiante
@@ -112,6 +124,7 @@ export const SchoolStudentsPage = () => {
       </header>
 
       <UndoBuildBanner schoolId={school.id} yearId={yearId} />
+      <UndoImportBanner schoolId={school.id} yearId={yearId} />
 
       {data && !data.piiReady && (
         <p className="flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-900/30 dark:text-amber-50" role="status">
@@ -124,14 +137,21 @@ export const SchoolStudentsPage = () => {
         <div className="rounded-2xl border-2 border-dashed border-gray-300 bg-white/70 px-6 py-12 text-center dark:border-gray-600 dark:bg-gray-800/60">
           <div className="mx-auto flex w-fit gap-3" aria-hidden="true"><span className="text-4xl">🎒</span><span className="text-5xl">📋</span><span className="text-4xl">🏫</span></div>
           <h2 className="mt-4 text-lg font-bold text-gray-900 dark:text-white">Arma el padrón de {activeYear.name}</h2>
-          <p className="mx-auto mt-1 max-w-md text-sm text-gray-700 dark:text-gray-300">Ármalo desde las clases que ya existen, sin escribir los nombres otra vez. Los estudiantes no ven ningún cambio.</p>
+          <p className="mx-auto mt-1 max-w-md text-sm text-gray-700 dark:text-gray-300">Únelo desde las clases que ya existen, o importa la nómina del SIAGIE o nuestra plantilla. Los estudiantes no ven ningún cambio.</p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             <Link to={`/escuela/${school.id}/estudiantes/armar`} className={primaryButton}>Armar desde clases</Link>
+            <Link to={`/escuela/${school.id}/estudiantes/importar`} className="pg-btn pg-focus">
+              <Upload size={16} aria-hidden="true" />
+              Importar lista
+            </Link>
             <button type="button" className="pg-btn pg-focus" onClick={() => setDrawer({ mode: 'create' })}>
               <Plus size={16} aria-hidden="true" />
               Agregar a mano
             </button>
           </div>
+          <button type="button" className="pg-focus mt-4 rounded text-sm font-semibold text-primary-700 underline-offset-2 hover:underline disabled:opacity-60 dark:text-primary-300" onClick={() => template.mutate()} disabled={template.isPending}>
+            {template.isPending ? 'Preparando la plantilla…' : 'Descargar plantilla (.xlsx)'}
+          </button>
         </div>
       ) : (
         <>

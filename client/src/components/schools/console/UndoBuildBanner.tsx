@@ -6,21 +6,7 @@ import { RotateCcw } from 'lucide-react';
 import { errorMessage } from '../../auth/authHelpers';
 import { rosterBuilderApi, rosterBuilderKeys } from '../../../lib/schoolRosterBuilderApi';
 import { schoolRosterKeys } from '../../../lib/schoolRosterApi';
-import { localDay } from '../schoolHelpers';
-
-const time = new Intl.DateTimeFormat('es-PE', { hour: '2-digit', minute: '2-digit' });
-const day = new Intl.DateTimeFormat('es-PE', { day: 'numeric', month: 'short' });
-
-/** «hoy a las 16:05», «mañana a las 16:05» o «12 oct a las 16:05». */
-const whenLabel = (iso: string) => {
-  const date = new Date(iso);
-  const today = localDay();
-  const tomorrow = localDay(new Date(Date.now() + 86_400_000));
-  const at = time.format(date);
-  if (localDay(date) === today) return `hoy a las ${at}`;
-  if (localDay(date) === tomorrow) return `mañana a las ${at}`;
-  return `${day.format(date).replace('.', '')} a las ${at}`;
-};
+import { whenLabel } from './rosterHelpers';
 
 /**
  * Aviso tras «Armar desde clases»: cuánto se armó y, mientras se pueda (24 h, sin estudiantes tocados), «Deshacer el
