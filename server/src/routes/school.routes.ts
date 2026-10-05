@@ -6,6 +6,7 @@ import { schoolRosterController } from '../controllers/schoolRoster.controller.j
 import { schoolRosterBuilderController } from '../controllers/schoolRosterBuilder.controller.js';
 import { schoolRosterImportController } from '../controllers/schoolRosterImport.controller.js';
 import { schoolAssignmentController } from '../controllers/schoolAssignment.controller.js';
+import { schoolTeacherAccountController } from '../controllers/schoolTeacherAccount.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { rosterImportLimiter } from '../middleware/security.js';
 
@@ -50,6 +51,9 @@ router.delete('/members/:memberId/cancel', authorize('TEACHER'), schoolControlle
 // Gestión del responsable
 router.delete('/:schoolId/members/:memberId', authorize('TEACHER', 'ADMIN'), schoolManagementController.removeTeacher);
 router.patch('/:schoolId/members/:memberId/role', authorize('TEACHER'), schoolManagementController.changeMemberRole);
+// Cuentas de docentes con el correo del colegio (administración)
+router.get('/:schoolId/teacher-accounts/domains', authorize('TEACHER'), schoolTeacherAccountController.domains);
+router.post('/:schoolId/teacher-accounts', authorize('TEACHER'), schoolTeacherAccountController.create);
 router.get('/:schoolId/classrooms/:classroomId/report', authorize('TEACHER', 'ADMIN'), schoolManagementController.classroomReport);
 router.post('/:schoolId/invite', authorize('TEACHER', 'ADMIN'), schoolManagementController.regenerateInvite);
 router.delete('/:schoolId/invite', authorize('TEACHER', 'ADMIN'), schoolManagementController.disableInvite);

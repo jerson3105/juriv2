@@ -28,6 +28,7 @@ export type AuditAction =
   | 'school.join_request_reviewed'
   | 'school.teacher_removed'
   | 'school.member_role_changed'
+  | 'school.teacher_account_created'
   | 'school.invite_regenerated'
   | 'school.invite_disabled'
   | 'school.joined_by_invite'

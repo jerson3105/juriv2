@@ -7,6 +7,7 @@ import { schoolApi, type MySchool, type SchoolClassroom, type SchoolMember, type
 import { HomeModal } from '../home/HomeModal';
 import { cancelButton, errorMessage, gradeLabel, inputClass, labelClass, primaryButton, relativeTime } from '../home/homeHelpers';
 import { inviteLink, mySchoolsKey, pendingRequestsKey, schoolDetailKey, schoolTeachersKey } from './schoolHelpers';
+import { CreateTeacherAccount } from './CreateTeacherAccount';
 
 const card = 'rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800';
 const secondaryButton = 'inline-flex min-h-[40px] items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-800 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700';
@@ -215,6 +216,7 @@ export const TeachersTab = ({ school, manage, currentUserId, teachers, classroom
     <div className="space-y-4">
       {manage && <PendingRequests schoolId={school.id} requests={requests} />}
       {manage && <InviteCard school={school} inviteCode={inviteCode} inviteExpiresAt={inviteExpiresAt} />}
+      {manage && <CreateTeacherAccount schoolId={school.id} />}
 
       <section aria-labelledby="teachers-title" className="space-y-3">
         <h3 id="teachers-title" className="text-sm font-bold uppercase tracking-wide text-gray-700 dark:text-gray-300">Profesores ({teachers.length})</h3>
