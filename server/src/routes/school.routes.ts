@@ -7,6 +7,7 @@ import { schoolRosterBuilderController } from '../controllers/schoolRosterBuilde
 import { schoolRosterImportController } from '../controllers/schoolRosterImport.controller.js';
 import { schoolAssignmentController } from '../controllers/schoolAssignment.controller.js';
 import { schoolTeacherAccountController } from '../controllers/schoolTeacherAccount.controller.js';
+import { schoolAccessController } from '../controllers/schoolAccess.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { rosterImportLimiter } from '../middleware/security.js';
 
@@ -85,6 +86,13 @@ router.post('/:schoolId/years/:yearId/students/:studentId/transfer', authorize('
 router.post('/:schoolId/years/:yearId/students/:studentId/transfer/undo', authorize('TEACHER'), schoolRosterController.undoTransfer);
 router.post('/:schoolId/years/:yearId/students/:studentId/withdraw', authorize('TEACHER'), schoolRosterController.withdraw);
 router.post('/:schoolId/years/:yearId/students/:studentId/reinstate', authorize('TEACHER'), schoolRosterController.reinstate);
+// Acceso de los estudiantes con DNI y PIN: código del colegio, póster, tarjetas y restablecer (administración o tutor)
+router.get('/:schoolId/years/:yearId/access', authorize('TEACHER'), schoolAccessController.overview);
+router.post('/:schoolId/access/code', authorize('TEACHER'), schoolAccessController.setCode);
+router.get('/:schoolId/access/poster', authorize('TEACHER'), schoolAccessController.poster);
+router.post('/:schoolId/years/:yearId/sections/:sectionId/access-cards', authorize('TEACHER'), schoolAccessController.sectionCards);
+router.post('/:schoolId/years/:yearId/students/:studentId/access-card', authorize('TEACHER'), schoolAccessController.studentCard);
+router.post('/:schoolId/years/:yearId/students/:studentId/access/reset', authorize('TEACHER'), schoolAccessController.resetPin);
 router.post('/:schoolId/students/:studentId/document/reveal', authorize('TEACHER'), schoolRosterController.revealDocument);
 
 // Armar el padrón desde las clases

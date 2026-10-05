@@ -9,6 +9,7 @@ import { ConflictError, NotFoundError, ValidationError, isDuplicateEntry } from 
 import { decryptPii, encryptPii, piiReady } from '../utils/piiCrypto.js';
 import { documentIndex, normalizeDocument, parseDocument, type DocumentType } from '../utils/personalDocument.js';
 import { escapeLike } from '../utils/textClean.js';
+import { accessOf, accessStates } from './schoolAccessState.js';
 import { schoolAutoEnrollService } from './schoolAutoEnroll.service.js';
 import { sectionDisplayName } from './schoolSection.service.js';
 
@@ -251,6 +252,7 @@ export const schoolRosterService = {
       .where(and(eq(studentProfiles.schoolStudentId, studentId), eq(classrooms.schoolId, schoolId)))
       .orderBy(asc(classrooms.name));
 
+    const access = (await accessStates([studentId])).get(studentId);
     const years = await db.select({ yearId: schoolYears.id, name: schoolYears.name, status: schoolEnrollments.status, sectionId: schoolEnrollments.sectionId })
       .from(schoolEnrollments).innerJoin(schoolYears, eq(schoolYears.id, schoolEnrollments.yearId))
       .where(eq(schoolEnrollments.studentId, studentId))
@@ -286,6 +288,7 @@ export const schoolRosterService = {
         teacher: c.teacherFirstName ? `${c.teacherFirstName} ${c.teacherLastName ?? ''}`.trim() : null,
       })),
       years: years.map((y) => ({ yearId: y.yearId, name: y.name, status: y.status, hasSection: !!y.sectionId })),
+      access: accessOf(access),
     };
   },
 

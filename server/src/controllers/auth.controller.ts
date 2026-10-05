@@ -1051,6 +1051,36 @@ export const loginWithPin = async (req: Request, res: Response): Promise<void> =
   }
 };
 
+/** POST /api/auth/school/login — Código del colegio + documento + PIN (el mismo error si algo no cuadra). */
+export const loginWithDocument = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const data = z.object({
+      schoolCode: classCodeSchema,
+      document: z.string().trim().min(1, 'Escribe tu DNI').max(20),
+      pin: pinSchema,
+    }).parse(req.body);
+    const result = await studentPinService.loginWithDocument(data, req.get('user-agent'), req.ip ?? null);
+    sendAuth(res, 200, 'Inicio de sesión exitoso', result);
+  } catch (error) {
+    handleAuthError(res, error, 'No se pudo iniciar sesión');
+  }
+};
+
+/** POST /api/auth/school/activate — Con la tarjeta del colegio crea su PIN (una vez) y entra. */
+export const activateSchoolAccess = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const data = z.object({
+      code: z.string().trim().min(6).max(8),
+      pin: pinSchema,
+      avatarGender: z.enum(['MALE', 'FEMALE']).optional(),
+    }).parse(req.body);
+    const result = await studentPinService.activateWithCard(data, req.get('user-agent'));
+    sendAuth(res, 201, 'Tu PIN está listo', result);
+  } catch (error) {
+    handleAuthError(res, error, 'No se pudo crear tu PIN');
+  }
+};
+
 /** PUT /api/auth/pin — El alumno cambia su PIN; cierra sus otras sesiones y sigue en esta. */
 export const changePin = async (req: Request, res: Response): Promise<void> => {
   try {

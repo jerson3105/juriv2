@@ -43,6 +43,9 @@ router.post('/student-code/register', studentCodeLimiter, authController.registe
 router.post('/class-roster', studentCodeLimiter, authController.getClassRoster);
 router.post('/pin/setup', studentCodeLimiter, authController.setupPin);
 router.post('/pin/login', pinLoginLimiter, authController.loginWithPin);
+// Estudiantes de un colegio: código del colegio + DNI + PIN, y la tarjeta de un solo uso para crear el PIN.
+router.post('/school/login', pinLoginLimiter, authController.loginWithDocument);
+router.post('/school/activate', studentCodeLimiter, authController.activateSchoolAccess);
 router.post('/refresh', authTokenLimiter, authController.refresh);
 router.post('/logout', authTokenLimiter, authController.logout);
 

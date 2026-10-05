@@ -157,7 +157,7 @@ export const schoolAutoEnrollService = {
     // Una clase archivada o que ya no es de la escuela no recibe a nadie.
     if (!classroom || !classroom.isActive || classroom.schoolId !== schoolId) return ZERO;
 
-    const enrolled = await tx.select({ studentId: schoolStudents.id, firstNames: schoolStudents.firstNames, lastNames: schoolStudents.lastNames })
+    const enrolled = await tx.select({ studentId: schoolStudents.id, firstNames: schoolStudents.firstNames, lastNames: schoolStudents.lastNames, userId: schoolStudents.userId })
       .from(schoolEnrollments)
       .innerJoin(schoolStudents, eq(schoolStudents.id, schoolEnrollments.studentId))
       .where(and(
@@ -222,12 +222,17 @@ export const schoolAutoEnrollService = {
       ));
     const accountsOf = groupBy(accounts, (a) => a.studentId!);
     const inClassByUser = new Map(profiles.filter((p) => p.userId).map((p) => [p.userId!, p]));
+    // Su cuenta del colegio (la del DNI y el PIN) manda sobre la regla de «una sola cuenta en sus clases».
+    const schoolAccountIds = [...new Set(missing.map((s) => s.userId).filter((id): id is string => !!id))];
+    const usableSchoolAccounts = schoolAccountIds.length === 0 ? new Set<string>() : new Set((await tx.select({ id: users.id }).from(users)
+      .where(and(inArray(users.id, schoolAccountIds), eq(users.role, 'STUDENT'), eq(users.isActive, true)))).map((u) => u.id));
 
     // 3) Crear los que faltan: con su cuenta (su nombre de héroe y su género de avatar) o por reclamar con tarjeta.
     const toCreate: Array<{ studentId: string; name: string; userId: string | null; characterName: string; gender: 'MALE' | 'FEMALE' }> = [];
     for (const student of missing) {
-      const own = accountsOf.get(student.studentId) ?? [];
-      const userIds = [...new Set(own.map((a) => a.userId!))];
+      const schoolAccount = student.userId && usableSchoolAccounts.has(student.userId) ? student.userId : null;
+      const own = (accountsOf.get(student.studentId) ?? []).filter((a) => !schoolAccount || a.userId === schoolAccount);
+      const userIds = schoolAccount ? [schoolAccount] : [...new Set(own.map((a) => a.userId!))];
       const name = profileName(student);
       if (userIds.length === 1) {
         const existing = inClassByUser.get(userIds[0]);
@@ -241,7 +246,7 @@ export const schoolAutoEnrollService = {
           continue;
         }
         const latest = [...own].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0];
-        toCreate.push({ studentId: student.studentId, name, userId: userIds[0], characterName: latest.characterName || name, gender: latest.avatarGender ?? 'MALE' });
+        toCreate.push({ studentId: student.studentId, name, userId: userIds[0], characterName: latest?.characterName || name, gender: latest?.avatarGender ?? 'MALE' });
       } else {
         toCreate.push({ studentId: student.studentId, name, userId: null, characterName: name, gender: 'MALE' });
       }

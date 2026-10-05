@@ -61,7 +61,10 @@ export type AuditAction =
   | 'student.transferred'
   | 'student.transfer_undone'
   | 'student.withdrawn'
-  | 'student.reinstated';
+  | 'student.reinstated'
+  | 'student.access_activated'
+  | 'school.student_code_set'
+  | 'school.access_cards_issued';
 
 export type AuditMetadata = Record<string, string | number | boolean | null>;
 

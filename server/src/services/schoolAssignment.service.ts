@@ -9,6 +9,7 @@ import {
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError, isDuplicateEntry } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';
 import { classroomService } from './classroom.service.js';
+import { accessOf, accessStates } from './schoolAccessState.js';
 import { schoolAutoEnrollService, type SyncResult } from './schoolAutoEnroll.service.js';
 import { effectivePlan, type PlanArea } from './schoolPlan.service.js';
 import { sectionDisplayName } from './schoolSection.service.js';
@@ -560,6 +561,7 @@ export const schoolAssignmentService = {
       .where(and(inArray(studentProfiles.schoolStudentId, students.map((s) => s.id)), eq(studentProfiles.isActive, true), eq(classrooms.schoolId, schoolId), eq(classrooms.isActive, true)))
       .groupBy(studentProfiles.schoolStudentId);
     const classesOf = new Map(classes.map((c) => [c.studentId!, Number(c.n)]));
+    const access = await accessStates(students.map((s) => s.id));
     const [tutor] = section.tutorUserId
       ? await db.select({ firstName: tutors.firstName, lastName: tutors.lastName }).from(tutors).where(eq(tutors.id, section.tutorUserId))
       : [];
@@ -568,6 +570,7 @@ export const schoolAssignmentService = {
       students: students.map((s) => ({
         id: s.id, firstNames: s.firstNames, lastNames: s.lastNames, hasDocument: !!Number(s.hasDocument), birthDate: s.birthDate,
         classes: classesOf.get(s.id) ?? 0,
+        access: accessOf(access.get(s.id)),
       })),
     };
   },

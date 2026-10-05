@@ -2365,6 +2365,8 @@ export const schools = mysqlTable('schools', {
   longitude: decimal('longitude', { precision: 11, scale: 8 }),
   logoUrl: varchar('logo_url', { length: 500 }),
   inviteCode: varchar('invite_code', { length: 16 }).unique('uniq_schools_invite_code'),
+  /** Código de la puerta de los estudiantes (código o QR → DNI → PIN). null = acceso con DNI sin activar. */
+  studentCode: varchar('student_code', { length: 7 }).unique('uniq_schools_student_code'),
   /** La invitación caduca: antes servía para siempre y daba estado verificado. */
   inviteExpiresAt: datetime('invite_expires_at'),
   isVerified: boolean('is_verified').notNull().default(false),
@@ -3051,8 +3053,12 @@ export const schoolStudents = mysqlTable('school_students', {
   birthDate: date('birth_date', { mode: 'string' }),
   institutionalEmail: varchar('institutional_email', { length: 255 }),
   siagieCode: varchar('siagie_code', { length: 20 }),
+  // Su cuenta del colegio: un PIN para todas sus clases (o la de correo/Google a la que sumó un PIN).
   userId: varchar('user_id', { length: 36 }),
   status: schoolStudentStatusEnum.notNull().default('ACTIVE'),
+  // Tarjeta de un solo uso: activa su acceso o vuelve a crear su PIN tras restablecerlo. Se borra al usarla.
+  accessCode: varchar('access_code', { length: 7 }).unique('uniq_school_students_access_code'),
+  accessCodeAt: datetime('access_code_at'),
   createdBy: varchar('created_by', { length: 36 }).notNull(),
   createdAt: datetime('created_at').notNull(),
   updatedAt: datetime('updated_at').notNull(),

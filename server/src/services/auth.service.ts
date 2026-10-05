@@ -2,7 +2,7 @@ import bcrypt from 'bcryptjs';
 import { randomBytes } from 'node:crypto';
 import { and, eq, or, sql } from 'drizzle-orm';
 import { db, users, parentProfiles, studentProfiles, classrooms } from '../db/index.js';
-import { schoolMembers, schools } from '../db/schema.js';
+import { schoolMembers, schools, schoolStudents } from '../db/schema.js';
 import { cache, CACHE_KEYS } from '../utils/cache.js';
 import {
   generateTokenPair, revokeAllUserTokens, revokeRefreshToken, revokeSession, rotateRefreshToken, sessionIdForRefreshToken,
@@ -189,7 +189,41 @@ export const register = async (input: RegisterInput): Promise<AuthResponse> => {
 export type JoinCodeVerification =
   | { type: 'classroom'; classroomName: string; teacherName: string | null; open: boolean; teacherVerified: boolean; message?: string }
   | ({ type: 'student' } & StudentCodeVerificationResult)
-  | { type: 'family'; studentName: string | null; classroomName: string; teacherName: string | null; open: boolean };
+  | { type: 'family'; studentName: string | null; classroomName: string; teacherName: string | null; open: boolean }
+  // Código del colegio (puerta con DNI) y tarjeta de un solo uso de un estudiante del colegio (7 caracteres).
+  | { type: 'school'; schoolName: string }
+  | { type: 'school-card'; studentName: string | null; schoolName: string; newAccount: boolean; hasPin: boolean };
+
+/** Código del colegio o tarjeta de un estudiante del colegio (7 caracteres: no se cruzan con los de clase o familia). */
+const verifySchoolCode = async (code: string): Promise<JoinCodeVerification | null> => {
+  const [school] = await db.select({ name: schools.name, isActive: schools.isActive }).from(schools).where(eq(schools.studentCode, code));
+  if (school?.isActive) return { type: 'school', schoolName: school.name };
+  const [card] = await db.select({
+    id: schoolStudents.id, firstNames: schoolStudents.firstNames, lastNames: schoolStudents.lastNames, userId: schoolStudents.userId,
+    status: schoolStudents.status, schoolName: schools.name, schoolActive: schools.isActive,
+  }).from(schoolStudents)
+    .innerJoin(schools, eq(schools.id, schoolStudents.schoolId))
+    .where(eq(schoolStudents.accessCode, code));
+  if (!card || !card.schoolActive || card.status !== 'ACTIVE') return null;
+  // Su cuenta: la del colegio o la única que ya usa en sus clases. Sin cuenta, elige su avatar al crear el PIN.
+  let accountId = card.userId;
+  if (!accountId) {
+    const owners = await db.selectDistinct({ id: users.id }).from(studentProfiles)
+      .innerJoin(users, eq(users.id, studentProfiles.userId))
+      .where(and(eq(studentProfiles.schoolStudentId, card.id), eq(users.role, 'STUDENT'), eq(users.isActive, true)));
+    accountId = owners.length === 1 ? owners[0].id : null;
+  }
+  const [owner] = accountId ? await db.select({ pinHash: users.pinHash }).from(users).where(eq(users.id, accountId)) : [];
+  // «Luz A.»: su primer nombre y la inicial de su primer apellido (el paterno, el que la identifica).
+  const firstWord = (text: string) => text.trim().split(/\s+/)[0] ?? '';
+  return {
+    type: 'school-card',
+    studentName: maskPersonName(`${firstWord(card.firstNames)} ${firstWord(card.lastNames)}`),
+    schoolName: card.schoolName,
+    newAccount: !accountId,
+    hasPin: !!owner?.pinHash,
+  };
+};
 
 /**
  * Puerta /unirse (sin sesión): el alumno escribe el código de su clase o su código personal y ve
@@ -218,6 +252,10 @@ export const verifyJoinCode = async (code: string): Promise<JoinCodeVerification
   }
   const student = await verifyStudentRegistrationCode(normalizedCode);
   if (student) return { type: 'student', ...student };
+  if (normalizedCode.length === 7) {
+    const school = await verifySchoolCode(normalizedCode);
+    if (school) return school;
+  }
 
   // Código familiar (el de la ficha del alumno): la puerta lo manda a /familia/<código>, donde la familia
   // pide unirse y el docente la aprueba. Antes /unirse respondía «No encontramos ese código».
@@ -315,15 +353,18 @@ const findStudentTarget = async (
   if (!classroom.acceptingStudents) {
     throw new ForbiddenError('Esta clase no está recibiendo estudiantes ahora. Pídele tu tarjeta a tu profe.');
   }
-  return q.query.studentProfiles.findFirst({
+  const profile = await q.query.studentProfiles.findFirst({
     where: and(
       eq(studentProfiles.id, target.studentId),
       eq(studentProfiles.classroomId, classroom.id),
       eq(studentProfiles.isActive, true),
       eq(studentProfiles.isDemo, false),
     ),
-    columns,
+    columns: { ...columns, schoolStudentId: true },
   });
+  // Del colegio: nadie crea la cuenta de otro tocando su nombre; su primera vez es con su tarjeta.
+  if (profile?.schoolStudentId) throw new ForbiddenError('Tu primera vez es con tu tarjeta del colegio: pídesela a tu tutor.');
+  return profile;
 };
 
 export const registerStudentWithCode = async (input: {
@@ -768,14 +809,17 @@ export const getProfile = async (userId: string) => {
       notifyBadges: true,
       notifyLevelUp: true,
       createdAt: true,
+      pinHash: true,
     },
   });
-  
+
   if (!user) {
     throw new Error('Usuario no encontrado');
   }
-  
-  return user;
+
+  // Si entra con PIN (también una cuenta de correo o Google que sumó uno): Configuración le deja cambiarlo.
+  const { pinHash, ...rest } = user;
+  return { ...rest, hasPin: !!pinHash };
 };
 
 /**

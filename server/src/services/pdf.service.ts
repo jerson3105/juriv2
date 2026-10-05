@@ -375,6 +375,115 @@ export class PDFService {
     });
   }
 
+  /**
+   * Tarjetas de acceso de un colegio (6 por hoja): su tarjeta de un solo uso con su QR, el código del colegio y los pasos.
+   * Solo van quienes aún no tienen PIN: con la tarjeta lo crean; después entran con el código del colegio, DNI y PIN.
+   */
+  async generateSchoolAccessCards(
+    school: { name: string; studentCode: string },
+    cards: Array<{ name: string; section: string; code: string }>,
+    appUrl: string,
+  ): Promise<Buffer> {
+    const qrs = await Promise.all(cards.map((card) => qrFor(joinUrl(appUrl, card.code))));
+    return new Promise((resolve, reject) => {
+      const doc = new PDFDocument({ size: 'LETTER', margin: 40 });
+      const chunks: Buffer[] = [];
+      doc.on('data', (chunk) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const blue = '#2563eb';
+      const width = (doc.page.width - 80 - 20) / 2;
+      const height = 220;
+      cards.forEach((card, index) => {
+        if (index > 0 && index % 6 === 0) doc.addPage();
+        const slot = index % 6;
+        const x = 40 + (slot % 2) * (width + 20);
+        const y = 40 + Math.floor(slot / 2) * (height + 15);
+
+        doc.roundedRect(x, y, width, height, 10).fillAndStroke('#f8fafc', '#e2e8f0');
+        doc.roundedRect(x, y, width, 46, 10).fill(blue);
+        doc.rect(x, y + 36, width, 10).fill(blue);
+        doc.fontSize(13).fillColor('#ffffff').font('Helvetica-Bold').text('JURIED', x + 14, y + 9, { width: width - 28 });
+        doc.fontSize(9).fillColor('#dbeafe').font('Helvetica')
+          .text(school.name, x + 14, y + 26, { width: width - 28, height: 12, ellipsis: true });
+
+        doc.fontSize(13).fillColor('#1e293b').font('Helvetica-Bold')
+          .text(card.name, x + 12, y + 54, { width: width - 24, align: 'center', height: 17, ellipsis: true });
+        doc.fontSize(8).fillColor('#475569').font('Helvetica')
+          .text(card.section, x + 12, y + 71, { width: width - 24, align: 'center' });
+        doc.moveTo(x + 12, y + 84).lineTo(x + width - 12, y + 84).strokeColor('#e2e8f0').stroke();
+
+        const qrSize = 74;
+        const textWidth = width - qrSize - 34;
+        doc.fontSize(8).fillColor('#475569').font('Helvetica').text('Primera vez, tu tarjeta:', x + 12, y + 92, { width: textWidth });
+        doc.fontSize(20).fillColor(blue).font('Helvetica-Bold').text(card.code, x + 12, y + 103, { width: textWidth, characterSpacing: 3 });
+        doc.fontSize(8).fillColor('#475569').font('Helvetica').text('Código del colegio:', x + 12, y + 130, { width: textWidth });
+        doc.fontSize(12).fillColor('#1e293b').font('Helvetica-Bold').text(school.studentCode, x + 12, y + 141, { width: textWidth, characterSpacing: 2 });
+        doc.image(qrs[index], x + width - qrSize - 12, y + 90, { width: qrSize, height: qrSize });
+
+        [
+          `1. Entra a ${shortHost(appUrl)}/unirse o escanea el QR`,
+          '2. Primera vez: escribe tu tarjeta y crea un PIN de 4 números',
+          '3. Después: código del colegio, tu DNI y tu PIN',
+        ].forEach((step, i) => {
+          doc.fontSize(7).fillColor('#334155').font('Helvetica').text(step, x + 12, y + 168 + i * 10, { width: width - 24 });
+        });
+        doc.fontSize(7).fillColor('#64748b')
+          .text('Tarjeta de un solo uso · No compartas tu PIN', x + 12, y + height - 14, { width: width - 24, align: 'center' });
+      });
+      doc.end();
+    });
+  }
+
+  /** Póster del colegio: QR grande a /unirse/<código del colegio>, el código y los pasos (DNI y PIN). */
+  async generateSchoolPoster(school: { name: string; studentCode: string }, appUrl: string): Promise<Buffer> {
+    const qr = await qrFor(joinUrl(appUrl, school.studentCode), 900);
+    return new Promise((resolve, reject) => {
+      const doc = new PDFDocument({ size: 'LETTER', margin: 0 });
+      const chunks: Buffer[] = [];
+      doc.on('data', (chunk) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const W = doc.page.width;
+      const H = doc.page.height;
+      const indigo = '#1e1b4b';
+      const accent = '#4f46e5';
+      doc.rect(0, 0, W, 150).fill(indigo);
+      doc.fontSize(12).fillColor('#c7d2fe').font('Helvetica-Bold').text('JURIED', 0, 34, { width: W, align: 'center', characterSpacing: 4 });
+      doc.fontSize(34).fillColor('#ffffff').font('Helvetica-Bold').text('Entra a Juried', 0, 56, { width: W, align: 'center' });
+      doc.fontSize(16).fillColor('#e0e7ff').font('Helvetica').text(school.name, 50, 104, { width: W - 100, align: 'center', height: 22, ellipsis: true });
+
+      const qrSize = 300;
+      const qrX = (W - qrSize) / 2;
+      const qrY = 182;
+      doc.roundedRect(qrX - 14, qrY - 14, qrSize + 28, qrSize + 28, 16).lineWidth(3).strokeColor(accent).stroke();
+      doc.image(qr, qrX, qrY, { width: qrSize, height: qrSize });
+
+      doc.fontSize(12).fillColor('#475569').font('Helvetica').text('Código del colegio', 0, qrY + qrSize + 34, { width: W, align: 'center' });
+      doc.fontSize(40).fillColor('#0f172a').font('Helvetica-Bold').text(school.studentCode, 0, qrY + qrSize + 52, { width: W, align: 'center', characterSpacing: 8 });
+      doc.fontSize(14).fillColor(accent).font('Helvetica-Bold').text(`${shortHost(appUrl)}/unirse`, 0, qrY + qrSize + 102, { width: W, align: 'center' });
+
+      const steps = [
+        'Escanea el QR con la cámara (o entra a la página y escribe el código).',
+        'Escribe tu DNI.',
+        'Escribe tu PIN. ¿Es tu primera vez? Usa la tarjeta que te dio tu tutor.',
+      ];
+      const boxY = qrY + qrSize + 136;
+      doc.roundedRect(70, boxY, W - 140, 104, 12).fill('#eef2ff');
+      steps.forEach((step, i) => {
+        const y = boxY + 16 + i * 28;
+        doc.circle(98, y + 7, 10).fill(accent);
+        doc.fontSize(11).fillColor('#ffffff').font('Helvetica-Bold').text(String(i + 1), 88, y + 1, { width: 20, align: 'center' });
+        doc.fontSize(12).fillColor('#1e293b').font('Helvetica').text(step, 118, y, { width: W - 210 });
+      });
+      doc.fontSize(10).fillColor('#64748b').font('Helvetica')
+        .text('El QR solo abre la puerta del colegio: cada estudiante entra con su DNI y su propio PIN.', 40, H - 46, { width: W - 80, align: 'center', lineBreak: false });
+      doc.end();
+    });
+  }
+
   // Generar PDF de reporte de asistencia general (formato planilla escolar)
   async generateAttendanceReport(
     classroomName: string,
