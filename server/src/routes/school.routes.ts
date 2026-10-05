@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { schoolController, schoolManagementController } from '../controllers/school.controller.js';
+import { schoolYearController } from '../controllers/schoolYear.controller.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 
 const router = Router();
@@ -45,6 +46,15 @@ router.delete('/:schoolId/members/:memberId', authorize('TEACHER', 'ADMIN'), sch
 router.get('/:schoolId/classrooms/:classroomId/report', authorize('TEACHER', 'ADMIN'), schoolManagementController.classroomReport);
 router.post('/:schoolId/invite', authorize('TEACHER', 'ADMIN'), schoolManagementController.regenerateInvite);
 router.delete('/:schoolId/invite', authorize('TEACHER', 'ADMIN'), schoolManagementController.disableInvite);
+
+// ==================== CONSOLA ESCOLAR ====================
+// Cada controlador exige el rol en la escuela (requireSchoolRole): sin atajo para el ADMIN de la plataforma.
+
+// Año escolar, periodos y niveles
+router.get('/:schoolId/years', authorize('TEACHER'), schoolYearController.list);
+router.post('/:schoolId/years', authorize('TEACHER'), schoolYearController.create);
+router.get('/:schoolId/years/:yearId', authorize('TEACHER'), schoolYearController.get);
+router.put('/:schoolId/years/:yearId', authorize('TEACHER'), schoolYearController.update);
 
 // Asignar/desasignar clase
 router.post('/:schoolId/classrooms/:classroomId', authorize('TEACHER'), schoolController.assignClassroom.bind(schoolController));

@@ -6,8 +6,8 @@ import { AppError } from '../utils/errors.js';
 import { auditRequest } from '../utils/audit.js';
 import { z } from 'zod';
 import {
-  requireSchoolOwner,
-  requireSchoolOwnerByMember,
+  requireSchoolManager,
+  requireSchoolManagerByMember,
   requireClassroomTeacher,
   schoolIdOfMember,
   schoolIdOfClassroom,
@@ -15,6 +15,7 @@ import {
   requireSchoolClassroomMember,
   requireSchoolViewer,
   verifiedSchoolRole,
+  isSchoolManagerRole,
 } from '../utils/access.js';
 
 const createSchoolSchema = z.object({
@@ -217,10 +218,10 @@ class SchoolController {
 
       const detail = await schoolService.getSchoolDetail(schoolId);
       if (!detail) return res.status(404).json({ success: false, message: 'Escuela no encontrada' });
-      const isOwner = req.user!.role === 'ADMIN' || (await verifiedSchoolRole(req.user!.id, schoolId)) === 'OWNER';
+      const isOwner = req.user!.role === 'ADMIN' || isSchoolManagerRole(await verifiedSchoolRole(req.user!.id, schoolId));
       const classroomsWithActivity = await schoolManagementService.getSchoolClassrooms(schoolId);
-      // Solo el responsable ve el código de invitación y los miembros no verificados. El código de ingreso de cada
-      // clase lo ven solo su docente y el responsable: con él cualquiera podría reclamar un nombre de la lista.
+      // Solo la administración ve el código de invitación y los miembros no verificados. El código de ingreso de cada
+      // clase lo ven solo su docente y la administración: con él cualquiera podría reclamar un nombre de la lista.
       res.json({
         success: true,
         data: {
@@ -246,8 +247,8 @@ class SchoolController {
       if (!(await requireSchoolViewer(req, res, schoolId))) return;
 
       const teachers = await schoolService.getSchoolTeachers(schoolId);
-      // El código de ingreso de una clase lo ven solo su docente y el responsable de la escuela.
-      const isOwner = req.user!.role === 'ADMIN' || (await verifiedSchoolRole(req.user!.id, schoolId)) === 'OWNER';
+      // El código de ingreso de una clase lo ven solo su docente y la administración de la escuela.
+      const isOwner = req.user!.role === 'ADMIN' || isSchoolManagerRole(await verifiedSchoolRole(req.user!.id, schoolId));
       res.json({
         success: true,
         data: teachers.map((t) => ({
@@ -267,7 +268,7 @@ class SchoolController {
       const { schoolId } = req.params;
       const userId = (req as any).user.id;
 
-      if (!(await requireSchoolOwner(req, res, schoolId))) return;
+      if (!(await requireSchoolManager(req, res, schoolId))) return;
 
       const requests = await schoolService.getPendingRequests(schoolId);
       res.json({ success: true, data: requests });
@@ -283,7 +284,7 @@ class SchoolController {
       const { memberId } = req.params;
       const data = reviewJoinSchema.parse(req.body);
 
-      if (!(await requireSchoolOwnerByMember(req, res, memberId))) return;
+      if (!(await requireSchoolManagerByMember(req, res, memberId))) return;
 
       await schoolManagementService.reviewPendingRequest(memberId, data.approved, data.reason);
       await auditRequest(req, {
@@ -348,7 +349,7 @@ class SchoolController {
         if (!schoolId) {
           return res.status(404).json({ success: false, message: 'La clase no está asignada a ninguna escuela' });
         }
-        if (!(await requireSchoolOwner(req, res, schoolId))) return;
+        if (!(await requireSchoolManager(req, res, schoolId))) return;
       }
       await schoolService.unassignClassroom(classroomId);
       res.json({ success: true, message: 'Clase desasignada de la escuela' });
@@ -468,7 +469,7 @@ class SchoolController {
       const { schoolId } = req.params;
       const userId = (req as any).user.id;
 
-      if (!(await requireSchoolOwner(req, res, schoolId))) return;
+      if (!(await requireSchoolManager(req, res, schoolId))) return;
 
       const data = createSchoolBehaviorSchema.parse(req.body);
       const behavior = await schoolService.createSchoolBehavior(schoolId, userId, data);
@@ -493,7 +494,7 @@ class SchoolController {
         return res.status(404).json({ success: false, message: 'Comportamiento no encontrado' });
       }
 
-      if (!(await requireSchoolOwner(req, res, behavior.schoolId))) return;
+      if (!(await requireSchoolManager(req, res, behavior.schoolId))) return;
 
       const data = updateSchoolBehaviorSchema.parse(req.body);
       const updated = await schoolService.updateSchoolBehavior(behaviorId, data);
@@ -518,7 +519,7 @@ class SchoolController {
         return res.status(404).json({ success: false, message: 'Comportamiento no encontrado' });
       }
 
-      if (!(await requireSchoolOwner(req, res, behavior.schoolId))) return;
+      if (!(await requireSchoolManager(req, res, behavior.schoolId))) return;
 
       await schoolService.deleteSchoolBehavior(behaviorId);
       res.json({ success: true, message: 'Comportamiento eliminado' });
@@ -575,7 +576,7 @@ class SchoolController {
       const { schoolId } = req.params;
       const userId = (req as any).user.id;
 
-      if (!(await requireSchoolOwner(req, res, schoolId))) return;
+      if (!(await requireSchoolManager(req, res, schoolId))) return;
 
       const data = createSchoolBadgeSchema.parse(req.body);
       const badge = await schoolService.createSchoolBadge(schoolId, userId, data);
@@ -600,7 +601,7 @@ class SchoolController {
         return res.status(404).json({ success: false, message: 'Insignia no encontrada' });
       }
 
-      if (!(await requireSchoolOwner(req, res, badge.schoolId))) return;
+      if (!(await requireSchoolManager(req, res, badge.schoolId))) return;
 
       const data = updateSchoolBadgeSchema.parse(req.body);
       const updated = await schoolService.updateSchoolBadge(badgeId, data);
@@ -625,7 +626,7 @@ class SchoolController {
         return res.status(404).json({ success: false, message: 'Insignia no encontrada' });
       }
 
-      if (!(await requireSchoolOwner(req, res, badge.schoolId))) return;
+      if (!(await requireSchoolManager(req, res, badge.schoolId))) return;
 
       await schoolService.deleteSchoolBadge(badgeId);
       res.json({ success: true, message: 'Insignia eliminada' });
@@ -664,7 +665,7 @@ class SchoolController {
       const { schoolId } = req.params;
       const { startDate: sd, endDate: ed } = req.query;
 
-      if (!(await requireSchoolOwner(req, res, schoolId))) return;
+      if (!(await requireSchoolManager(req, res, schoolId))) return;
 
       const range = parseReportRange(sd, ed);
       if (!range) return res.status(400).json({ success: false, message: 'Periodo inválido' });
@@ -682,7 +683,7 @@ class SchoolController {
       const { schoolId } = req.params;
       const { startDate: sd, endDate: ed, classroomId } = req.query;
 
-      if (!(await requireSchoolOwner(req, res, schoolId))) return;
+      if (!(await requireSchoolManager(req, res, schoolId))) return;
 
       const range = parseReportRange(sd, ed);
       if (!range) return res.status(400).json({ success: false, message: 'Periodo inválido' });
@@ -704,7 +705,7 @@ class SchoolController {
       const { schoolId } = req.params;
       const { startDate: sd, endDate: ed } = req.query;
 
-      if (!(await requireSchoolOwner(req, res, schoolId))) return;
+      if (!(await requireSchoolManager(req, res, schoolId))) return;
 
       const range = parseReportRange(sd, ed);
       if (!range) return res.status(400).json({ success: false, message: 'Periodo inválido' });
@@ -722,7 +723,7 @@ class SchoolController {
       const { schoolId } = req.params;
       const { startDate: sd, endDate: ed } = req.query;
 
-      if (!(await requireSchoolOwner(req, res, schoolId))) return;
+      if (!(await requireSchoolManager(req, res, schoolId))) return;
 
       const range = parseReportRange(sd, ed);
       if (!range) return res.status(400).json({ success: false, message: 'Periodo inválido' });
@@ -740,7 +741,7 @@ class SchoolController {
       const { schoolId } = req.params;
       const { startDate: sd, endDate: ed } = req.query;
 
-      if (!(await requireSchoolOwner(req, res, schoolId))) return;
+      if (!(await requireSchoolManager(req, res, schoolId))) return;
 
       const range = parseReportRange(sd, ed);
       if (!range) return res.status(400).json({ success: false, message: 'Periodo inválido' });
@@ -758,7 +759,7 @@ class SchoolController {
       const { schoolId } = req.params;
       const { startDate: sd, endDate: ed } = req.query;
 
-      if (!(await requireSchoolOwner(req, res, schoolId))) return;
+      if (!(await requireSchoolManager(req, res, schoolId))) return;
 
       const range = parseReportRange(sd, ed);
       if (!range) return res.status(400).json({ success: false, message: 'Periodo inválido' });
@@ -791,8 +792,10 @@ export const schoolManagementController = {
   async removeTeacher(req: Request, res: Response) {
     try {
       const { schoolId, memberId } = req.params;
-      if (!(await requireSchoolOwner(req, res, schoolId))) return;
-      const { teacherId, ...result } = await schoolManagementService.removeTeacher(schoolId, memberId);
+      if (!(await requireSchoolManager(req, res, schoolId))) return;
+      // A un administrador solo lo retira el responsable (o el equipo de Juried).
+      const actorIsOwner = req.user!.role === 'ADMIN' || (await verifiedSchoolRole(req.user!.id, schoolId)) === 'OWNER';
+      const { teacherId, ...result } = await schoolManagementService.removeTeacher(schoolId, memberId, { actorIsOwner });
       await auditRequest(req, {
         action: 'school.teacher_removed',
         schoolId,
@@ -809,7 +812,7 @@ export const schoolManagementController = {
   async classroomReport(req: Request, res: Response) {
     try {
       const { schoolId, classroomId } = req.params;
-      if (!(await requireSchoolOwner(req, res, schoolId))) return;
+      if (!(await requireSchoolManager(req, res, schoolId))) return;
       const data = await schoolManagementService.getClassroomReport(schoolId, classroomId);
       res.json({ success: true, data });
     } catch (error) {
@@ -821,7 +824,7 @@ export const schoolManagementController = {
   async regenerateInvite(req: Request, res: Response) {
     try {
       const { schoolId } = req.params;
-      if (!(await requireSchoolOwner(req, res, schoolId))) return;
+      if (!(await requireSchoolManager(req, res, schoolId))) return;
       const inviteCode = await schoolManagementService.regenerateInviteCode(schoolId);
       await auditRequest(req, { action: 'school.invite_regenerated', schoolId });
       res.json({ success: true, data: { inviteCode } });
@@ -834,7 +837,7 @@ export const schoolManagementController = {
   async disableInvite(req: Request, res: Response) {
     try {
       const { schoolId } = req.params;
-      if (!(await requireSchoolOwner(req, res, schoolId))) return;
+      if (!(await requireSchoolManager(req, res, schoolId))) return;
       await schoolManagementService.disableInviteCode(schoolId);
       await auditRequest(req, { action: 'school.invite_disabled', schoolId });
       res.json({ success: true, message: 'Invitación desactivada' });

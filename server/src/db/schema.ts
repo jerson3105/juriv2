@@ -48,7 +48,8 @@ export const parentRelationshipEnum = mysqlEnum('relationship', ['FATHER', 'MOTH
 export const parentLinkStatusEnum = mysqlEnum('status', ['PENDING', 'ACTIVE', 'REVOKED']);
 
 // Enums para Sistema de Escuelas
-export const schoolMemberRoleEnum = mysqlEnum('school_member_role', ['OWNER', 'TEACHER']);
+// ADMIN: administración nombrada por el responsable (dirección, secretaría); gestiona la escuela como él.
+export const schoolMemberRoleEnum = mysqlEnum('school_member_role', ['OWNER', 'TEACHER', 'ADMIN']);
 export const schoolMemberStatusEnum = mysqlEnum('school_member_status', ['PENDING_ADMIN', 'PENDING_OWNER', 'VERIFIED', 'REJECTED']);
 export const schoolVerificationStatusEnum = mysqlEnum('school_verification_status', ['PENDING', 'APPROVED', 'REJECTED']);
 
@@ -2938,3 +2939,60 @@ export const userTotp = mysqlTable('user_totp', {
 });
 
 export type UserTotp = typeof userTotp.$inferSelect;
+
+// ==================== CONSOLA ESCOLAR: AÑO, PERIODOS Y NIVELES ====================
+
+export const schoolYearStatusEnum = mysqlEnum('school_year_status', ['PLANNING', 'ACTIVE', 'CLOSED']);
+export const schoolPeriodTypeEnum = mysqlEnum('period_type', ['BIMESTER', 'TRIMESTER']);
+export const schoolPeriodStatusEnum = mysqlEnum('period_status', ['OPEN', 'REVIEW', 'LOCKED', 'PUBLISHED']);
+export const schoolLevelEnum = mysqlEnum('school_level', ['INICIAL', 'PRIMARIA', 'SECUNDARIA']);
+export const schoolGradeScaleEnum = mysqlEnum('grade_scale', ['LITERAL', 'VIGESIMAL']);
+
+// Año escolar. Un solo ACTIVE por escuela (lo asegura el servicio con la fila de la escuela bloqueada). Las fechas
+// viajan como texto AAAA-MM-DD, sin zona horaria.
+export const schoolYears = mysqlTable('school_years', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  schoolId: varchar('school_id', { length: 36 }).notNull(),
+  name: varchar('name', { length: 20 }).notNull(),
+  status: schoolYearStatusEnum.notNull().default('PLANNING'),
+  periodType: schoolPeriodTypeEnum.notNull().default('BIMESTER'),
+  startsOn: date('starts_on', { mode: 'string' }).notNull(),
+  endsOn: date('ends_on', { mode: 'string' }).notNull(),
+  createdBy: varchar('created_by', { length: 36 }).notNull(),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  schoolNameUnique: unique('uq_school_years_school_name').on(table.schoolId, table.name),
+  schoolStatusIdx: index('idx_school_years_school_status').on(table.schoolId, table.status),
+}));
+
+// Periodos del año (B1..B4 o T1..T3). El estado es para la libreta (Entrega 3): por ahora todos OPEN.
+export const schoolPeriods = mysqlTable('school_periods', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  schoolId: varchar('school_id', { length: 36 }).notNull(),
+  yearId: varchar('year_id', { length: 36 }).notNull(),
+  code: varchar('code', { length: 4 }).notNull(),
+  startsOn: date('starts_on', { mode: 'string' }).notNull(),
+  endsOn: date('ends_on', { mode: 'string' }).notNull(),
+  status: schoolPeriodStatusEnum.notNull().default('OPEN'),
+  createdAt: datetime('created_at').notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+}, (table) => ({
+  yearCodeUnique: unique('uq_school_periods_year_code').on(table.yearId, table.code),
+  schoolIdx: index('idx_school_periods_school').on(table.schoolId),
+}));
+
+// Niveles que ofrece la escuela ese año y su escala (AD–C literal o 0–20 vigesimal).
+export const schoolYearLevels = mysqlTable('school_year_levels', {
+  yearId: varchar('year_id', { length: 36 }).notNull(),
+  level: schoolLevelEnum.notNull(),
+  schoolId: varchar('school_id', { length: 36 }).notNull(),
+  gradeScale: schoolGradeScaleEnum.notNull().default('LITERAL'),
+  createdAt: datetime('created_at').notNull(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.yearId, table.level] }),
+  schoolIdx: index('idx_school_year_levels_school').on(table.schoolId),
+}));
+
+export type SchoolYear = typeof schoolYears.$inferSelect;
+export type SchoolPeriod = typeof schoolPeriods.$inferSelect;

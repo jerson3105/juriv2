@@ -73,11 +73,18 @@ export const studentInClassroom = async (
   return !!row;
 };
 
+/** Rol en la escuela: OWNER (responsable), ADMIN (administración que él nombra) o TEACHER. */
+export type SchoolRole = 'OWNER' | 'ADMIN' | 'TEACHER';
+/** Gestionan la escuela: el responsable y la administración que nombra. */
+export const SCHOOL_MANAGER_ROLES: SchoolRole[] = ['OWNER', 'ADMIN'];
+export const SCHOOL_MEMBER_ROLES: SchoolRole[] = ['OWNER', 'ADMIN', 'TEACHER'];
+export const isSchoolManagerRole = (role: SchoolRole | null | undefined): boolean => role === 'OWNER' || role === 'ADMIN';
+
 /** Rol del usuario en la escuela, solo si su membresía está VERIFIED. `null` si no. */
 export const verifiedSchoolRole = async (
   userId: string,
   schoolId: string
-): Promise<'OWNER' | 'TEACHER' | null> => {
+): Promise<SchoolRole | null> => {
   const [row] = await db
     .select({ role: schoolMembers.role, status: schoolMembers.status })
     .from(schoolMembers)
@@ -305,9 +312,9 @@ export const requireStudentProfileOwner = async (
 };
 
 /**
- * El usuario es ADMIN, o es OWNER (verificado) de la escuela.
+ * El usuario es ADMIN de la plataforma, o gestiona la escuela: responsable o administración, verificados.
  */
-export const requireSchoolOwner = async (
+export const requireSchoolManager = async (
   req: Request,
   res: Response,
   schoolId: string
@@ -317,13 +324,37 @@ export const requireSchoolOwner = async (
   if (user.role === 'ADMIN') return true;
   if (!schoolId) return deny(res, 400, 'Falta el identificador de la escuela');
   const role = await verifiedSchoolRole(user.id, schoolId);
-  if (role !== 'OWNER') return deny(res, 403, 'Solo el responsable de la escuela puede realizar esta acción');
+  if (!isSchoolManagerRole(role)) return deny(res, 403, 'Solo la administración de la escuela puede realizar esta acción');
   return true;
 };
 
 /**
+ * Consola escolar: miembro VERIFIED de la escuela con uno de esos roles. Devuelve su rol, o null tras responder 401/403.
+ * Sin atajo para el ADMIN de la plataforma: la consola guarda datos personales de menores (un acceso de soporte irá
+ * aparte y auditado).
+ */
+export const requireSchoolRole = async (
+  req: Request,
+  res: Response,
+  schoolId: string,
+  roles: SchoolRole[]
+): Promise<SchoolRole | null> => {
+  const user = req.user;
+  if (!user) {
+    deny(res, 401, 'No autenticado');
+    return null;
+  }
+  const role = schoolId ? await verifiedSchoolRole(user.id, schoolId) : null;
+  if (!role || !roles.includes(role)) {
+    deny(res, 403, 'No tienes acceso a esta parte de la escuela');
+    return null;
+  }
+  return role;
+};
+
+/**
  * Ver la escuela (profesores, clases, biblioteca): ADMIN, miembro VERIFIED, o el dueño que la registró
- * y espera verificación (PENDING_ADMIN). Gestionar (reportes, solicitudes, biblioteca, retirar) usa requireSchoolOwner.
+ * y espera verificación (PENDING_ADMIN). Gestionar (reportes, solicitudes, biblioteca, retirar) usa requireSchoolManager.
  */
 export const requireSchoolViewer = async (
   req: Request,
@@ -499,13 +530,13 @@ export const requireStudentsMember = async (
   return true;
 };
 
-/** Como `requireSchoolOwner` pero resolviendo la escuela a partir de una membresía. */
-export const requireSchoolOwnerByMember = async (
+/** Como `requireSchoolManager` pero resolviendo la escuela a partir de una membresía. */
+export const requireSchoolManagerByMember = async (
   req: Request,
   res: Response,
   memberId: string
 ): Promise<boolean> => {
   const schoolId = await schoolIdOfMember(memberId);
   if (!schoolId) return deny(res, 404, 'Solicitud no encontrada');
-  return requireSchoolOwner(req, res, schoolId);
+  return requireSchoolManager(req, res, schoolId);
 };

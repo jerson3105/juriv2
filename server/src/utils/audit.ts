@@ -30,6 +30,8 @@ export type AuditAction =
   | 'school.invite_regenerated'
   | 'school.invite_disabled'
   | 'school.joined_by_invite'
+  | 'school.year_created'
+  | 'school.year_updated'
   | 'classroom.deleted'
   | 'student.removed'
   | 'student.access_reset'

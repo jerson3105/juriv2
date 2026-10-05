@@ -42,11 +42,12 @@ class SchoolManagementService {
   }
 
   // Retirar a un profesor: sus clases vuelven a ser personales (las conserva) y deja de ser miembro.
-  async removeTeacher(schoolId: string, memberId: string) {
+  async removeTeacher(schoolId: string, memberId: string, options: { actorIsOwner: boolean }) {
     const [member] = await db.select().from(schoolMembers)
       .where(and(eq(schoolMembers.id, memberId), eq(schoolMembers.schoolId, schoolId)));
     if (!member) throw new SchoolManagementError('Profesor no encontrado en esta escuela', 404);
     if (member.role === 'OWNER') throw new SchoolManagementError('No se puede retirar al responsable de la escuela', 400);
+    if (member.role === 'ADMIN' && !options.actorIsOwner) throw new SchoolManagementError('Solo el responsable puede retirar a un administrador', 403);
 
     return db.transaction(async (tx) => {
       const unassign = await tx.update(classrooms)
