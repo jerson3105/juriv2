@@ -99,7 +99,7 @@ export const SchoolHomePage = () => {
         ? `${rosterCounts.all} ${rosterCounts.all === 1 ? 'estudiante' : 'estudiantes'}${rosterCounts.incomplete ? ` · ${rosterCounts.incomplete} por completar` : ''}`
         : 'Desde tus clases o con la plantilla',
       done: !!rosterCounts && rosterCounts.all > 0 && rosterCounts.incomplete === 0 && rosterCounts.no_section === 0,
-      action: detail ? (rosterCounts && rosterCounts.all > 0 ? { label: rosterCounts.incomplete || rosterCounts.no_section ? 'Continuar' : 'Ver', to: `${base}/estudiantes`, quiet: !(rosterCounts.incomplete || rosterCounts.no_section) } : { label: 'Empezar', to: `${base}/estudiantes` }) : undefined,
+      action: detail ? (rosterCounts && rosterCounts.all > 0 ? { label: rosterCounts.incomplete || rosterCounts.no_section ? 'Continuar' : 'Ver', to: `${base}/estudiantes`, quiet: !(rosterCounts.incomplete || rosterCounts.no_section) } : { label: 'Empezar', to: `${base}/estudiantes/armar` }) : undefined,
     },
     {
       title: 'Tutorías',

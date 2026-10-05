@@ -101,10 +101,13 @@ export const SchoolStudentsPage = () => {
             {counts ? `${counts.all} en el padrón ${activeYear.name}${counts.incomplete ? ` · ${counts.incomplete} con datos por completar` : ''}` : `Padrón ${activeYear.name}`}
           </p>
         </div>
-        <button type="button" className={primaryButton} onClick={() => setDrawer({ mode: 'create' })}>
-          <Plus size={16} aria-hidden="true" />
-          Agregar estudiante
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <Link to={`/escuela/${school.id}/estudiantes/armar`} className="pg-btn pg-focus">Armar desde clases</Link>
+          <button type="button" className={primaryButton} onClick={() => setDrawer({ mode: 'create' })}>
+            <Plus size={16} aria-hidden="true" />
+            Agregar estudiante
+          </button>
+        </div>
       </header>
 
       {data && !data.piiReady && (
@@ -118,11 +121,14 @@ export const SchoolStudentsPage = () => {
         <div className="rounded-2xl border-2 border-dashed border-gray-300 bg-white/70 px-6 py-12 text-center dark:border-gray-600 dark:bg-gray-800/60">
           <div className="mx-auto flex w-fit gap-3" aria-hidden="true"><span className="text-4xl">🎒</span><span className="text-5xl">📋</span><span className="text-4xl">🏫</span></div>
           <h2 className="mt-4 text-lg font-bold text-gray-900 dark:text-white">Arma el padrón de {activeYear.name}</h2>
-          <p className="mx-auto mt-1 max-w-md text-sm text-gray-700 dark:text-gray-300">Agrega a cada estudiante con sus datos. Pronto podrás armarlo desde tus clases, sin escribir los nombres otra vez.</p>
-          <button type="button" className={`${primaryButton} mt-5`} onClick={() => setDrawer({ mode: 'create' })}>
-            <Plus size={16} aria-hidden="true" />
-            Agregar estudiante
-          </button>
+          <p className="mx-auto mt-1 max-w-md text-sm text-gray-700 dark:text-gray-300">Ármalo desde las clases que ya existen, sin escribir los nombres otra vez. Los estudiantes no ven ningún cambio.</p>
+          <div className="mt-5 flex flex-wrap justify-center gap-2">
+            <Link to={`/escuela/${school.id}/estudiantes/armar`} className={primaryButton}>Armar desde clases</Link>
+            <button type="button" className="pg-btn pg-focus" onClick={() => setDrawer({ mode: 'create' })}>
+              <Plus size={16} aria-hidden="true" />
+              Agregar a mano
+            </button>
+          </div>
         </div>
       ) : (
         <>
