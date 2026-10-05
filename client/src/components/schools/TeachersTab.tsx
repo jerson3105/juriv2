@@ -215,7 +215,8 @@ export const TeachersTab = ({ school, manage, currentUserId, teachers, classroom
               const students = mine.reduce((s, c) => s + c.studentCount, 0);
               const lastIso = mine.map((c) => c.lastActivityAt).filter(Boolean).sort().pop() ?? null;
               const expanded = open === t.id;
-              const canRemove = manage && t.role !== 'OWNER' && t.userId !== currentUserId;
+              // A un administrador solo lo retira el responsable.
+              const canRemove = manage && t.role !== 'OWNER' && t.userId !== currentUserId && (t.role !== 'ADMIN' || school.memberRole === 'OWNER');
               return (
                 <li key={t.id} className={card}>
                   <div className="flex items-center gap-3">
@@ -225,10 +226,10 @@ export const TeachersTab = ({ school, manage, currentUserId, teachers, classroom
                     <div className="min-w-0 flex-1">
                       <p className="flex flex-wrap items-center gap-2 font-semibold text-gray-900 dark:text-white">
                         {t.firstName} {t.lastName}
-                        {t.role === 'OWNER' && (
+                        {(t.role === 'OWNER' || t.role === 'ADMIN') && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-primary-100 px-2 py-0.5 text-xs font-bold text-primary-800 dark:bg-primary-900/50 dark:text-primary-100">
                             <Shield size={12} aria-hidden="true" />
-                            Responsable
+                            {t.role === 'OWNER' ? 'Responsable' : 'Administración'}
                           </span>
                         )}
                       </p>

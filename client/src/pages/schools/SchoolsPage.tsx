@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { schoolApi, type MySchool } from '../../lib/schoolApi';
-import { SchoolPanel } from '../../components/schools/SchoolPanel';
 import { CreateSchoolStep, InviteLanding, SchoolList, SearchStep, VerificationStep } from '../../components/schools/JoinFlows';
 import { canViewSchool, mySchoolsKey } from '../../components/schools/schoolHelpers';
 
@@ -14,11 +13,14 @@ type View =
   | { type: 'verify'; school: { id: string; name: string } }
   | { type: 'panel'; schoolId: string };
 
-// Mi escuela: si solo tienes una escuela disponible entras directo a su panel;
+// Mi escuela: si solo tienes una escuela disponible entras directo a su consola (/escuela/:id);
 // si no, ves tus escuelas, puedes unirte con un enlace/código o buscarla.
 export const SchoolsPage = () => {
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const invite = params.get('invite');
+  // La consola manda aquí al responsable de una escuela por verificar: ?verificar=<id> abre ese paso.
+  const verifyId = params.get('verificar');
   const [view, setView] = useState<View>({ type: 'auto' });
   const { data: schools = [], isLoading, isError, refetch } = useQuery({ queryKey: mySchoolsKey, queryFn: schoolApi.getMySchools });
 
@@ -32,7 +34,7 @@ export const SchoolsPage = () => {
       <InviteLanding
         code={invite.toUpperCase()}
         onCancel={() => { clearInvite(); setView({ type: 'list' }); }}
-        onDone={(schoolId) => { clearInvite(); setView({ type: 'panel', schoolId }); }}
+        onDone={(schoolId) => { clearInvite(); navigate(`/escuela/${schoolId}`); }}
       />
     );
   }
@@ -58,15 +60,18 @@ export const SchoolsPage = () => {
   const toList = () => setView({ type: 'list' });
   const verify = (s: MySchool | { id: string; name: string }) => setView({ type: 'verify', school: { id: s.id, name: s.name } });
 
-  // Una sola escuela disponible y nada más pendiente: directo al panel.
+  const toVerify = verifyId && view.type === 'auto' ? schools.find((s) => s.id === verifyId) : undefined;
+  if (toVerify) {
+    return <VerificationStep school={{ id: toVerify.id, name: toVerify.name }} onBack={() => navigate(`/escuela/${toVerify.id}`)} onSent={toList} />;
+  }
+
+  // Una sola escuela disponible y nada más pendiente: directo a su consola.
   const single = viewable.length === 1 && schools.length === 1 ? viewable[0] : null;
   const panelSchool = view.type === 'panel'
     ? schools.find((s) => s.id === view.schoolId)
     : view.type === 'auto' ? single : undefined;
 
-  if (panelSchool && canViewSchool(panelSchool)) {
-    return <SchoolPanel school={panelSchool} onBack={toList} onVerify={() => verify(panelSchool)} />;
-  }
+  if (panelSchool && canViewSchool(panelSchool)) return <Navigate to={`/escuela/${panelSchool.id}`} replace />;
 
   switch (view.type) {
     case 'search':

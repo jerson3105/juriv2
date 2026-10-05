@@ -9,8 +9,8 @@ export const schoolBadgesKey = (id: string) => ['school-badges', id] as const;
 
 // Ver la escuela: miembro verificado o el responsable que la registró y espera verificación.
 export const canViewSchool = (s: MySchool) => s.memberStatus === 'VERIFIED' || (s.memberRole === 'OWNER' && s.memberStatus === 'PENDING_ADMIN');
-// Gestionarla (reportes, solicitudes, biblioteca, invitar, retirar): responsable verificado.
-export const canManageSchool = (s: MySchool) => s.memberRole === 'OWNER' && s.memberStatus === 'VERIFIED';
+// Gestionarla (consola, reportes, solicitudes, biblioteca, invitar, retirar): responsable o administración, verificados.
+export const canManageSchool = (s: MySchool) => (s.memberRole === 'OWNER' || s.memberRole === 'ADMIN') && s.memberStatus === 'VERIFIED';
 
 // Fecha local YYYY-MM-DD (no UTC: por la noche toISOString daría el día siguiente).
 export const localDay = (d = new Date()) =>

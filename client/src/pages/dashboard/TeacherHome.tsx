@@ -61,10 +61,11 @@ const SchoolStatus = ({ schools, isLoading }: { schools: MySchool[]; isLoading: 
         const pending = s.memberStatus !== 'VERIFIED';
         return (
           <li key={s.id}>
-            <Link to="/schools" className={`${chip} ${pending ? 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/50 dark:bg-amber-900/30 dark:text-amber-100' : 'border-gray-300 bg-white text-gray-800 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100'}`}>
+            <Link to={`/escuela/${s.id}`} className={`${chip} ${pending ? 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/50 dark:bg-amber-900/30 dark:text-amber-100' : 'border-gray-300 bg-white text-gray-800 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100'}`}>
               <School size={14} aria-hidden="true" />
               {s.name}
               {s.memberRole === 'OWNER' && !pending && ' · Responsable'}
+              {s.memberRole === 'ADMIN' && !pending && ' · Administración'}
               {pending && ' · pendiente de aprobación'}
             </Link>
           </li>

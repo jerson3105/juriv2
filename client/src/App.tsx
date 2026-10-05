@@ -79,6 +79,13 @@ const AdminTeacherVerifications = lazyPage(() => import('./pages/admin/AdminTeac
 
 // Schools
 const SchoolsPage = lazyPage(() => import('./pages/schools/SchoolsPage').then((m) => ({ default: m.SchoolsPage })));
+const SchoolConsoleEntry = lazyPage(() => import('./pages/schools/SchoolConsoleEntry').then((m) => ({ default: m.SchoolConsoleEntry })));
+const SchoolHomePage = lazyPage(() => import('./pages/schools/SchoolHomePage').then((m) => ({ default: m.SchoolHomePage })));
+const SchoolYearPage = lazyPage(() => import('./pages/schools/SchoolYearPage').then((m) => ({ default: m.SchoolYearPage })));
+const SchoolTeachersPage = lazyPage(() => import('./pages/schools/SchoolConsolePages').then((m) => ({ default: m.SchoolTeachersPage })));
+const SchoolClassesPage = lazyPage(() => import('./pages/schools/SchoolConsolePages').then((m) => ({ default: m.SchoolClassesPage })));
+const SchoolReportsPage = lazyPage(() => import('./pages/schools/SchoolConsolePages').then((m) => ({ default: m.SchoolReportsPage })));
+const SchoolLibraryPage = lazyPage(() => import('./pages/schools/SchoolConsolePages').then((m) => ({ default: m.SchoolLibraryPage })));
 
 // Parent pages
 const ParentDashboard = lazyPage(() => import('./pages/parent/ParentDashboard'));
@@ -90,6 +97,7 @@ const ParentRoomPage = lazyPage(() => import('./pages/parent/ParentRoomPage'));
 // Layout
 import { MainLayout } from './components/layout/MainLayout';
 import { ClassroomLayout } from './components/layout/ClassroomLayout';
+import { SchoolLayout } from './components/layout/SchoolLayout';
 import { ParentLayout } from './components/layout/ParentLayout';
 
 // Store
@@ -250,6 +258,17 @@ function App() {
             <Route path="classrooms" element={<Navigate to="/dashboard" replace />} />
             <Route path="settings" element={<SettingsPage />} />
             
+            {/* Consola escolar: un contexto propio con su menú, como la clase */}
+            <Route path="escuela" element={<SchoolConsoleEntry />} />
+            <Route path="escuela/:schoolId" element={<SchoolLayout />}>
+              <Route index element={<SchoolHomePage />} />
+              <Route path="anio" element={<SchoolYearPage />} />
+              <Route path="docentes" element={<SchoolTeachersPage />} />
+              <Route path="clases" element={<SchoolClassesPage />} />
+              <Route path="informes" element={<SchoolReportsPage />} />
+              <Route path="biblioteca" element={<SchoolLibraryPage />} />
+            </Route>
+
             {/* Rutas de clase específica con su propio layout */}
             <Route path="classroom/:id" element={<ClassroomLayout />}>
               <Route index element={<Navigate to="students" replace />} />

@@ -134,7 +134,7 @@ export const MainLayout = () => {
   const pathname = location.pathname;
   // Dentro de una clase, ClassroomLayout (hija de esta ruta) cubre todo con su propio menú: este no se
   // monta (si no, quedaban dos menús para el lector y el teclado, y su estado se desfasaba).
-  const coveredByClassroom = isTeacher && pathname.startsWith('/classroom/');
+  const coveredByClassroom = isTeacher && (pathname.startsWith('/classroom/') || pathname.startsWith('/escuela/'));
   const xpPerLevel = (currentProfile?.classroom as { xpPerLevel?: number } | undefined)?.xpPerLevel || 100;
   const levelPercent = currentProfile ? levelProgress(currentProfile.xp, currentProfile.level, xpPerLevel).percent : 0;
 

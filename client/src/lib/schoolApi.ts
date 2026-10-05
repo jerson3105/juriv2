@@ -42,7 +42,8 @@ export interface MySchool {
   logoUrl: string | null;
   isVerified: boolean;
   memberId: string;
-  memberRole: 'OWNER' | 'TEACHER';
+  /** ADMIN: administración nombrada por el responsable; gestiona la escuela como él. */
+  memberRole: 'OWNER' | 'ADMIN' | 'TEACHER';
   memberStatus: 'PENDING_ADMIN' | 'PENDING_OWNER' | 'VERIFIED' | 'REJECTED';
   rejectionReason: string | null;
   memberCount: number;
@@ -53,7 +54,7 @@ export interface MySchool {
 export interface SchoolMember {
   id: string;
   userId: string;
-  role: 'OWNER' | 'TEACHER';
+  role: 'OWNER' | 'ADMIN' | 'TEACHER';
   status: 'PENDING_ADMIN' | 'PENDING_OWNER' | 'VERIFIED' | 'REJECTED';
   joinedAt: string | null;
   createdAt: string;
@@ -110,7 +111,7 @@ export interface PendingVerification {
   schoolCountry: string;
   schoolVerified: boolean;
   /** Quién la pide dentro de la escuela (solo el responsable que la registró puede pedirla). */
-  requesterRole: 'OWNER' | 'TEACHER' | null;
+  requesterRole: 'OWNER' | 'ADMIN' | 'TEACHER' | null;
   requesterStatus: 'PENDING_ADMIN' | 'PENDING_OWNER' | 'VERIFIED' | 'REJECTED' | null;
   requesterIsCreator: number;
   requesterClasses: number;
@@ -149,7 +150,7 @@ export interface SchoolTeacherClassroom {
 export interface SchoolTeacher {
   id: string;
   userId: string;
-  role: 'OWNER' | 'TEACHER';
+  role: 'OWNER' | 'ADMIN' | 'TEACHER';
   status: string;
   joinedAt: string | null;
   createdAt: string;

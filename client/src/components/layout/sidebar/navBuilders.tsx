@@ -160,9 +160,51 @@ export const teacherClassNav = (input: TeacherClassNavInput) => {
 
 export const teacherHomeNav = (pathname: string): NavNode[] => [
   { kind: 'link', item: { id: 'home', label: 'Inicio', to: '/dashboard', icon: icon(LayoutDashboard), active: pathname === '/dashboard' } },
-  { kind: 'link', item: { id: 'school', label: 'Mi Escuela', to: '/schools', icon: icon(School), active: pathname === '/schools' || pathname.startsWith('/schools/') } },
+  { kind: 'link', item: { id: 'school', label: 'Mi Escuela', to: '/escuela', icon: icon(School), active: pathname === '/schools' || pathname.startsWith('/schools/') || pathname.startsWith('/escuela') } },
   { kind: 'link', item: { id: 'settings', label: 'Configuración', to: '/settings', icon: icon(Settings), active: pathname === '/settings' || pathname.startsWith('/settings/') } },
 ];
+
+// ── Consola escolar ─────────────────────────────────────────────────────────────────────────────
+
+interface SchoolConsoleNavInput {
+  schoolId: string;
+  pathname: string;
+  /** Responsable o administración, verificados. */
+  manager: boolean;
+  /** Miembro verificado. Si no, la escuela espera verificación: solo Inicio y Clases. */
+  verified: boolean;
+  pendingRequests: number;
+}
+
+/** Menú del colegio: como el aula, la consola es un contexto. Cada bloque de la Entrega 1 suma sus páginas. */
+export const schoolConsoleNav = (input: SchoolConsoleNavInput): NavNode[] => {
+  const { schoolId, pathname, manager, verified, pendingRequests } = input;
+  const base = `/escuela/${schoolId}`;
+  const entry = (path: string, label: string, Icon: typeof House, extra: Partial<NavItem> = {}): NavItem => {
+    const to = path ? `${base}/${path}` : base;
+    const active = path ? pathname === to || pathname.startsWith(`${to}/`) : pathname === base;
+    return { id: to, label, to, icon: icon(Icon), active, ...extra };
+  };
+  const link = (item: NavItem): NavNode => ({ kind: 'link', item });
+
+  if (!verified) return [link(entry('', 'Inicio', LayoutDashboard)), link(entry('clases', 'Clases', GraduationCap))];
+  const requests = manager && pendingRequests > 0
+    ? { badge: { kind: 'count' as const, value: pendingRequests, label: `${pendingRequests} ${pendingRequests === 1 ? 'solicitud para unirse' : 'solicitudes para unirse'}` } }
+    : {};
+  return [
+    link(entry('', 'Inicio', LayoutDashboard)),
+    link(entry('docentes', 'Docentes', Users, requests)),
+    link(entry('clases', 'Clases', GraduationCap)),
+    ...(manager ? [link(entry('anio', 'Año escolar', CalendarCheck))] : []),
+    {
+      kind: 'section',
+      id: 'school-more',
+      label: 'Más',
+      icon: icon(BookOpen),
+      items: [...(manager ? [entry('informes', 'Informes', BarChart3)] : []), entry('biblioteca', 'Biblioteca', Award)],
+    },
+  ];
+};
 
 // ── Alumno ──────────────────────────────────────────────────────────────────────────────────────
 
