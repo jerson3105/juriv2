@@ -1,4 +1,5 @@
 import api from './api';
+import type { ClassContext } from '../components/layout/classContext';
 
 export interface Classroom {
   id: string;
@@ -9,6 +10,8 @@ export interface Classroom {
   gradeLevel: string | null;
   /** false = archivada. */
   isActive: boolean;
+  /** Colegio, año y periodo (solo en el detalle de la clase y en «mis clases» del estudiante). */
+  context?: ClassContext | null;
   /** Permite unirse con el código de clase. */
   acceptingStudents: boolean;
   bannerUrl: string | null;

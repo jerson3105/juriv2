@@ -29,6 +29,7 @@ import type { BandSky } from './sidebar/SidebarBand';
 import { StudentDrawerFooter, TeacherHomeFooter } from './sidebar/SidebarFooters';
 import { studentClassNav, studentEmptyNav, studentRouteAvailable, teacherHomeNav } from './sidebar/navBuilders';
 import { useSidebarCollapsed } from './sidebar/useSidebarState';
+import { contextLabel, type ClassContext } from './classContext';
 
 const NIGHT = '#0b1026';
 
@@ -53,6 +54,8 @@ export const MainLayout = () => {
 
   // La clase abierta del alumno (por id: sobrevive a la recarga).
   const { myClasses, profile: currentProfile, source, stale, isFetching, selectProfile } = useCurrentStudentProfile();
+  // Colegio, año y bimestre de la clase abierta (para la cabecera del estudiante).
+  const studentContext = contextLabel((currentProfile?.classroom as { context?: ClassContext | null } | undefined)?.context);
 
   // Entró con PIN por una clase: esa queda elegida (manda sobre la que recordaba).
   useEffect(() => {
@@ -231,16 +234,18 @@ export const MainLayout = () => {
                 <Menu size={20} aria-hidden="true" />
               </button>
 
-              {/* Nivel, energía y oro de la clase (el nivel con el sistema de niveles de la clase).
-                  En el Inicio no se repiten: los muestra el bloque del personaje. */}
-              {!isTeacher && currentProfile && !isStudentOverviewZone && !matchesPath('/my-class') && (() => {
+              {/* Nivel, energía y oro de la clase (el nivel con el sistema de niveles de la clase); debajo, el colegio,
+                  el año y el bimestre. En el Inicio no se repiten los chips: los muestra el bloque del personaje. */}
+              {!isTeacher && currentProfile && (
+              <div className="flex min-w-0 flex-1 flex-col justify-center">
+              {!isStudentOverviewZone && !matchesPath('/my-class') && (() => {
                 const classroom = currentProfile.classroom as { xpPerLevel?: number; maxHp?: number; gradeLevel?: string | null };
                 const level = levelProgress(currentProfile.xp, currentProfile.level, classroom.xpPerLevel || 100);
                 const maxHp = classroom.maxHp || 100;
                 return (
                   // En el celular: chips compactos y alineados a la izquierda; si no caben, se desplazan
                   // (centrados se salían por los dos lados y tapaban el menú y la campana).
-                  <div className="flex min-w-0 flex-1 items-center justify-start gap-1 overflow-x-auto sm:gap-2 md:ml-2 md:gap-3">
+                  <div className="flex min-w-0 items-center justify-start gap-1 overflow-x-auto sm:gap-2 md:ml-2 md:gap-3">
                     {/* Nivel + XP del nivel */}
                     <div className="flex flex-shrink-0 items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-100 sm:gap-1.5 sm:px-2.5">
                       <Zap size={13} className="text-blue-600 dark:text-blue-300" aria-hidden="true" />
@@ -276,8 +281,11 @@ export const MainLayout = () => {
                   </div>
                 );
               })()}
+              {studentContext && <p className="truncate text-xs text-gray-600 dark:text-gray-400 md:ml-2">{studentContext}</p>}
+              </div>
+              )}
 
-              {(isTeacher || isStudentOverviewZone || (!isTeacher && !currentProfile) || (!isTeacher && matchesPath('/my-class'))) && <div className="flex-1" />}
+              {(isTeacher || !currentProfile) && <div className="flex-1" />}
             </div>
 
             <div className="ml-auto flex items-center gap-2 md:gap-3">

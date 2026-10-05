@@ -11,6 +11,7 @@ import { AppError } from '../utils/errors.js';
 import { auditRequest } from '../utils/audit.js';
 import { config_app } from '../config/env.js';
 import { classJoinQrSvg, classJoinUrl, pdfService } from '../services/pdf.service.js';
+import { classroomContexts } from '../services/classroomContext.service.js';
 
 const AI_CLASSROOM_SUBJECTS = [
   'matematicas',
@@ -732,10 +733,12 @@ REGLAS:
       }
 
       const students = await classroomService.getStudents(id);
+      // Colegio, año y periodo para la cabecera de la clase.
+      const context = (await classroomContexts([classroom])).get(classroom.id) ?? null;
 
       res.json({
         success: true,
-        data: { ...classroom, students },
+        data: { ...classroom, students, context },
       });
     } catch (error) {
       console.error('Error getting classroom:', error);

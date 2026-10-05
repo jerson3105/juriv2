@@ -22,6 +22,7 @@ import { teacherVerificationService } from './teacherVerification.service.js';
 import { applyPointDeltas } from '../utils/points.js';
 import { ConflictError, ForbiddenError, NotFoundError } from '../utils/errors.js';
 import { deleteLegacyExpeditionRowsOfStudent } from '../utils/legacyExpeditions.js';
+import { classroomContexts } from './classroomContext.service.js';
 
 export const ROSTER_REQUIRED_MESSAGE = 'Esta clase tiene lista: busca tu nombre en ella.';
 
@@ -380,8 +381,9 @@ export class StudentService {
     // Insignias: el menú muestra «Mis insignias» si la clase tiene alguna que se pueda ganar o el alumno tiene alguna.
     const badgeSummaries = await studentBadgesService.getSummaries(profiles.map((profile) => ({ id: profile.id, classroomId: profile.classroomId })));
 
-    // Crear mapa de clases
-    const classroomMap = new Map(classroomsData.map(c => [c.id, { ...c, hasActiveStory: withStory.has(c.id) }]));
+    // Crear mapa de clases (con su colegio, año y periodo para la cabecera)
+    const contexts = await classroomContexts(classroomsData);
+    const classroomMap = new Map(classroomsData.map(c => [c.id, { ...c, hasActiveStory: withStory.has(c.id), context: contexts.get(c.id) ?? null }]));
 
     // Combinar perfiles con clases y limpiar huérfanos
     const results = [];

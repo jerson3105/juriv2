@@ -39,6 +39,7 @@ import { NewsLine } from './sidebar/SidebarFooters';
 import { TeacherClassCard } from './sidebar/TeacherClassCard';
 import { teacherClassNav } from './sidebar/navBuilders';
 import { useOpenGroups, useSidebarCollapsed } from './sidebar/useSidebarState';
+import { contextLabel } from './classContext';
 
 const NIGHT = '#0b1026';
 const NEWS_KEY = 'juried-sb-news';
@@ -322,7 +323,12 @@ export const ClassroomLayout = () => {
             )}
             <div className="min-w-0">
               <h1 className="truncate text-sm font-bold text-gray-800 dark:text-white">{classroom.name}</h1>
-              <p className="hidden sm:block text-xs text-gray-600 dark:text-gray-400">{classroom.students?.length || 0} estudiantes</p>
+              {/* Colegio, año y bimestre de la clase; si no hay, cuántos estudiantes tiene. */}
+              {contextLabel(classroom.context) ? (
+                <p className="truncate text-xs text-gray-600 dark:text-gray-400">{contextLabel(classroom.context)}</p>
+              ) : (
+                <p className="hidden sm:block text-xs text-gray-600 dark:text-gray-400">{classroom.students?.length || 0} estudiantes</p>
+              )}
             </div>
           </div>
 
