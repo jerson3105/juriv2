@@ -1,7 +1,8 @@
 import { useEffect, useId, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { CheckCircle2, Clock, MapPin, School, X } from 'lucide-react';
+import { CheckCircle2, Clock, MapPin, Plus, School, X } from 'lucide-react';
+import { CreateSchoolDialog } from '../../components/admin/CreateSchoolDialog';
 import { schoolApi, type PendingVerification } from '../../lib/schoolApi';
 import { adminOverviewKey } from '../../lib/adminApi';
 import { AdminPageHeader } from '../../components/admin/AdminPageHeader';
@@ -23,6 +24,7 @@ const fmt = (iso: string) => new Date(iso).toLocaleDateString('es', { day: 'nume
 export default function AdminSchoolVerifications() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>('requests');
+  const [creating, setCreating] = useState(false);
   const [approving, setApproving] = useState<PendingVerification | null>(null);
   const [rejecting, setRejecting] = useState<PendingVerification | null>(null);
   const requests = useQuery({ queryKey: ['admin-school-verifications'], queryFn: schoolApi.getAdminPendingVerifications });
@@ -46,7 +48,12 @@ export default function AdminSchoolVerifications() {
 
   return (
     <div data-pg="" className="text-[var(--pg-fg)]">
-      <AdminPageHeader title="Escuelas" subtitle="La verificación la pide quien registró la escuela; al aprobarla queda como su responsable." />
+      <AdminPageHeader
+        title="Escuelas"
+        subtitle="Créalas aquí ya verificadas, o aprueba la verificación que pide quien registró la suya."
+        actions={<button type="button" className={primaryButton} onClick={() => setCreating(true)}><Plus className="h-4 w-4" aria-hidden="true" />Crear colegio</button>}
+      />
+      {creating && <CreateSchoolDialog onClose={() => { setCreating(false); setTab('schools'); }} />}
       <main className="mx-auto max-w-7xl space-y-4 px-4 py-6 sm:px-6">
         <div className="pg-seg" role="tablist" aria-label="Escuelas">
           <button type="button" role="tab" aria-selected={tab === 'requests'} aria-pressed={tab === 'requests'} className="pg-seg-item" onClick={() => setTab('requests')}>
@@ -92,7 +99,14 @@ export default function AdminSchoolVerifications() {
                     {school.isVerified ? 'Verificada' : 'Sin verificar'}
                   </span>
                 </div>
-                <p className="pg-fg2 mt-0.5 text-xs">{[school.city, school.country].filter(Boolean).join(', ')} · registrada el {fmt(school.createdAt)}</p>
+                <p className="pg-fg2 mt-0.5 text-xs">
+                  {[school.modularCode ? `Código modular ${school.modularCode}` : null, [school.city, school.province, school.country].filter(Boolean).join(', '), `registrada el ${fmt(school.createdAt)}`].filter(Boolean).join(' · ')}
+                </p>
+                <p className="pg-fg2 mt-0.5 text-xs">
+                  {school.domains.length > 0
+                    ? `Correo institucional: ${school.domains.map((d) => `@${d.domain}`).join(', ')}`
+                    : 'Sin dominio de correo: agrégalo en «Docentes por verificar» → Dominios para que cree las cuentas de sus docentes'}
+                </p>
                 {school.members.length === 0 ? (
                   <p className="pg-fg2 mt-3 text-sm">Sin miembros activos.</p>
                 ) : (

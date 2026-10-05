@@ -26,6 +26,10 @@ router.get('/verified-domains', adminController.listVerifiedDomains);
 router.get('/verified-domains/preview', adminController.previewVerifiedDomain);
 router.post('/verified-domains', adminController.addVerifiedDomain);
 router.delete('/verified-domains/:domainId', adminController.removeVerifiedDomain);
+router.patch('/verified-domains/:domainId', adminController.setVerifiedDomainSchool);
+
+// Colegios creados por el equipo de Juried (ya verificados, con su responsable y su dominio)
+router.post('/schools', adminController.createSchool);
 
 // ==================== PRENDAS DEL AVATAR ====================
 // Cada prenda nace como borrador con la imagen ya preparada en «Completa» (PNG 395×959) y llega a las

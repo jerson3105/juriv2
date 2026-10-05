@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { Globe, Search, ShieldCheck, Trash2, X } from 'lucide-react';
 import { verificationApi, type DomainPreview, type DomainScope, type TeacherToVerify, type VerifiedDomain } from '../../lib/verificationApi';
 import { adminApi, adminOverviewKey, type AdminOverview } from '../../lib/adminApi';
+import { schoolApi } from '../../lib/schoolApi';
 import { AdminPageHeader } from '../../components/admin/AdminPageHeader';
 import { primaryButton } from '../../components/admin/adminStyles';
 import { ConfirmModal } from '../../components/ui/ConfirmModal';
@@ -206,20 +207,38 @@ const DomainsPanel = ({ domains, loading, error, onRetry, onRemove, onAdded }: {
   // Por defecto, compartido con alumnos: lo seguro cuando no se sabe.
   const [scope, setScope] = useState<DomainScope>('SHARED');
   const [preview, setPreview] = useState<DomainPreview | null>(null);
+  // El colegio del dominio: con él su administración crea las cuentas de sus docentes.
+  const [schoolId, setSchoolId] = useState('');
+  const schools = useQuery({
+    queryKey: ['admin-school-options'],
+    queryFn: async () => ((await schoolApi.getAllSchools()) as Array<{ id: string; name: string }>).map((s) => ({ id: s.id, name: s.name })),
+  });
+  const linkSchool = useMutation({
+    mutationFn: ({ id, school }: { id: string; school: string | null }) => verificationApi.setDomainSchool(id, school),
+    onSuccess: (_, { school }) => {
+      void queryClient.invalidateQueries({ queryKey: ['admin-verified-domains'] });
+      void queryClient.invalidateQueries({ queryKey: ['admin-schools'] });
+      toast.success(school ? 'Dominio ligado al colegio' : 'Dominio sin colegio');
+    },
+    onError: (err) => toast.error(errorMessage(err, 'No se pudo ligar el dominio')),
+  });
+  const schoolOptions = schools.data ?? [];
   const check = useMutation({
     mutationFn: () => verificationApi.previewDomain(domain.trim()),
     onSuccess: (data) => (data.alreadyListed ? toast.error('Ese dominio ya está en la lista') : setPreview(data)),
     onError: (err) => toast.error(errorMessage(err, 'No se pudo revisar el dominio')),
   });
   const add = useMutation({
-    mutationFn: () => verificationApi.addDomain(domain.trim(), scope, note.trim() || undefined),
+    mutationFn: () => verificationApi.addDomain(domain.trim(), scope, note.trim() || undefined, schoolId || null),
     onSuccess: (data) => {
       void queryClient.invalidateQueries({ queryKey: ['admin-verified-domains'] });
+      void queryClient.invalidateQueries({ queryKey: ['admin-schools'] });
       onAdded();
       setPreview(null);
       setDomain('');
       setNote('');
       setScope('SHARED');
+      setSchoolId('');
       toast.success(data.verified > 0 ? `Dominio agregado: ${data.verified} ${data.verified === 1 ? 'docente quedó verificado' : 'docentes quedaron verificados'}.` : 'Dominio agregado');
     },
     onError: (err) => toast.error(errorMessage(err, 'No se pudo agregar el dominio')),
@@ -230,15 +249,22 @@ const DomainsPanel = ({ domains, loading, error, onRetry, onRemove, onAdded }: {
       <form className="pg-surface space-y-3 p-4" onSubmit={(e) => { e.preventDefault(); if (domain.trim()) check.mutate(); }}>
         <h2 className="text-sm font-bold">Agregar el dominio de un colegio</h2>
         <p className="pg-fg2 text-sm">Si el dominio es <strong>solo de docentes</strong>, quien entra <strong>con Google</strong> con ese correo queda verificado solo (con correo y contraseña no basta: nadie comprobó que el correo sea suyo). Si el colegio da el mismo dominio a sus alumnos, elige «Docentes y alumnos»: así ningún alumno queda verificado como docente.</p>
-        <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+        <div className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
           <label className="text-sm font-medium" htmlFor={`${ids}-domain`}>Dominio
             <input id={`${ids}-domain`} value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="colegio.edu.pe" className={`${field} mt-1`} autoComplete="off" />
           </label>
+          <label className="text-sm font-medium" htmlFor={`${ids}-school`}>Colegio
+            <select id={`${ids}-school`} value={schoolId} onChange={(e) => setSchoolId(e.target.value)} className={`${field} mt-1`}>
+              <option value="">Sin colegio</option>
+              {schoolOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </label>
           <label className="text-sm font-medium" htmlFor={`${ids}-note`}>Nota <span className="pg-fg2 font-normal">(opcional)</span>
-            <input id={`${ids}-note`} value={note} onChange={(e) => setNote(e.target.value)} maxLength={255} placeholder="Nombre del colegio" className={`${field} mt-1`} />
+            <input id={`${ids}-note`} value={note} onChange={(e) => setNote(e.target.value)} maxLength={255} className={`${field} mt-1`} />
           </label>
           <button type="submit" className={primaryButton} disabled={!domain.trim() || check.isPending}>{check.isPending ? 'Revisando…' : 'Revisar'}</button>
         </div>
+        <p className="pg-fg2 text-xs">Con el colegio elegido, su administración crea las cuentas de sus docentes con correos de este dominio.</p>
         <fieldset className="space-y-1">
           <legend className="text-sm font-medium">¿Quiénes tienen correo de este dominio?</legend>
           <label className="flex min-h-11 cursor-pointer items-start gap-2 text-sm">
@@ -267,12 +293,23 @@ const DomainsPanel = ({ domains, loading, error, onRetry, onRemove, onAdded }: {
       ) : (
         <ul className="pg-surface divide-y divide-[var(--pg-line)]">
           {domains.map((item) => (
-            <li key={item.id} className="flex items-center gap-3 p-3">
+            <li key={item.id} className="flex flex-wrap items-center gap-3 p-3">
               <Globe className="pg-fg2 h-4 w-4 shrink-0" aria-hidden="true" />
               <div className="min-w-0 flex-1">
                 <p className="font-semibold">@{item.domain}</p>
-                <p className="pg-fg2 text-xs">{item.scope === 'TEACHERS_ONLY' ? 'Solo docentes: verifica al entrar con Google' : 'Docentes y alumnos: no verifica solo'} · {[item.schoolName, item.note].filter(Boolean).join(' · ') || 'Sin nota'} · desde el {fmt(item.createdAt)}</p>
+                <p className="pg-fg2 text-xs">{item.scope === 'TEACHERS_ONLY' ? 'Solo docentes: verifica al entrar con Google' : 'Docentes y alumnos: no verifica solo'} · {item.note || 'Sin nota'} · desde el {fmt(item.createdAt)}</p>
               </div>
+              <label className="sr-only" htmlFor={`${ids}-school-${item.id}`}>Colegio de @{item.domain}</label>
+              <select
+                id={`${ids}-school-${item.id}`}
+                value={item.schoolId ?? ''}
+                onChange={(e) => linkSchool.mutate({ id: item.id, school: e.target.value || null })}
+                disabled={linkSchool.isPending}
+                className={`${field} w-auto max-w-[16rem] text-sm`}
+              >
+                <option value="">Sin colegio</option>
+                {schoolOptions.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
               <button type="button" className="pg-icon-btn" onClick={() => onRemove(item)} aria-label={`Quitar @${item.domain}`}><Trash2 className="h-4 w-4" aria-hidden="true" /></button>
             </li>
           ))}

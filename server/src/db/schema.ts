@@ -2356,6 +2356,8 @@ export type ImageStyle = 'CARTOON' | 'REALISTIC' | 'PIXEL_ART' | 'ANIME' | 'WATE
 export const schools = mysqlTable('schools', {
   id: varchar('id', { length: 36 }).primaryKey(),
   name: varchar('name', { length: 255 }).notNull(),
+  /** Código modular del Minedu (7 números): identifica al colegio ante el SIAGIE. */
+  modularCode: varchar('modular_code', { length: 10 }),
   address: text('address'),
   city: varchar('city', { length: 100 }),
   province: varchar('province', { length: 100 }),

@@ -89,7 +89,9 @@ export const verificationApi = {
   /** Antes de agregar: cuántos docentes de Google se verificarían y cuántos con contraseña quedarían esperando. */
   previewDomain: async (domain: string): Promise<DomainPreview> =>
     (await api.get('/admin/verified-domains/preview', { params: { domain } })).data.data,
-  addDomain: async (domain: string, scope: DomainScope, note?: string): Promise<{ verified: number; localWaiting: number }> =>
-    (await api.post('/admin/verified-domains', { domain, scope, ...(note ? { note } : {}) })).data.data,
+  /** Con el colegio, su administración crea las cuentas de sus docentes con ese dominio. */
+  addDomain: async (domain: string, scope: DomainScope, note?: string, schoolId?: string | null): Promise<{ verified: number; localWaiting: number }> =>
+    (await api.post('/admin/verified-domains', { domain, scope, ...(note ? { note } : {}), ...(schoolId ? { schoolId } : {}) })).data.data,
+  setDomainSchool: async (id: string, schoolId: string | null) => api.patch(`/admin/verified-domains/${id}`, { schoolId }),
   removeDomain: async (id: string) => api.delete(`/admin/verified-domains/${id}`),
 };

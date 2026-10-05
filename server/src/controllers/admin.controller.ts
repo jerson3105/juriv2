@@ -9,6 +9,7 @@ import { teacherVerificationService } from '../services/teacherVerification.serv
 import { adminUsersService } from '../services/adminUsers.service.js';
 import { adminOverviewService } from '../services/adminOverview.service.js';
 import { adminClassroomsService } from '../services/adminClassrooms.service.js';
+import { adminSchoolsService } from '../services/adminSchools.service.js';
 import { AppError } from '../utils/errors.js';
 import { auditRequest } from '../utils/audit.js';
 import { passwordSchema } from '../utils/passwordPolicy.js';
@@ -196,6 +197,64 @@ export const adminController = {
     } catch (error) {
       console.error('Error removing domain:', error);
       res.status(500).json({ success: false, message: 'Error al quitar el dominio' });
+    }
+  },
+
+  // PATCH /admin/verified-domains/:domainId — ligar el dominio a un colegio (o dejarlo sin colegio)
+  async setVerifiedDomainSchool(req: Request, res: Response) {
+    try {
+      const { schoolId } = z.object({ schoolId: z.string().uuid().nullable() }).strict().parse(req.body);
+      const result = await teacherVerificationService.setDomainSchool(req.params.domainId, schoolId);
+      await auditRequest(req, {
+        action: 'admin.domain_school_set',
+        schoolId,
+        target: { type: 'verified_domain', id: req.params.domainId },
+        metadata: { domain: result.domain },
+      });
+      res.json({ success: true, data: result, message: schoolId ? 'Dominio ligado al colegio' : 'Dominio sin colegio' });
+    } catch (error) {
+      if (error instanceof AppError) return res.status(error.statusCode).json({ success: false, message: error.message });
+      if (error instanceof z.ZodError) return res.status(400).json({ success: false, message: 'Datos inválidos' });
+      console.error('Error setting domain school:', error);
+      res.status(500).json({ success: false, message: 'Error al ligar el dominio' });
+    }
+  },
+
+  // ==================== COLEGIOS ====================
+  // POST /admin/schools — crear un colegio verificado con su responsable y su dominio (opcional)
+  async createSchool(req: Request, res: Response) {
+    try {
+      const body = z.object({
+        name: z.string().max(255),
+        modularCode: z.string().trim().max(10).nullable().optional(),
+        region: z.string().max(100).nullable().optional(),
+        city: z.string().max(100).nullable().optional(),
+        address: z.string().max(300).nullable().optional(),
+        owner: z.object({
+          email: z.string().trim().toLowerCase().email('Escribe el correo del responsable').max(255),
+          firstNames: z.string().max(200).optional(),
+          lastNames: z.string().max(200).optional(),
+        }).strict(),
+        domain: z.object({ domain: z.string().trim().min(3).max(255), scope: z.enum(['TEACHERS_ONLY', 'SHARED']) }).strict().nullable().optional(),
+      }).strict().parse(req.body);
+      const result = await adminSchoolsService.create(req.user!.id, body);
+      await auditRequest(req, {
+        action: 'admin.school_created',
+        schoolId: result.schoolId,
+        target: { type: 'school', id: result.schoolId },
+        metadata: { ownerCreated: result.owner.created, domain: !!result.domain },
+      });
+      // La clave temporal del responsable viaja una sola vez: sin caché intermedia.
+      res.set('Cache-Control', 'no-store');
+      res.status(201).json({ success: true, data: result, message: 'Colegio creado' });
+    } catch (error) {
+      if (error instanceof AppError) return res.status(error.statusCode).json({ success: false, message: error.message });
+      if (error instanceof z.ZodError) {
+        const issue = error.issues[0];
+        return res.status(400).json({ success: false, message: issue?.path[0] === 'owner' && issue.path[1] === 'email' ? issue.message : 'Revisa los datos del colegio' });
+      }
+      console.error('Error creating school:', error);
+      res.status(500).json({ success: false, message: 'Error al crear el colegio' });
     }
   },
 

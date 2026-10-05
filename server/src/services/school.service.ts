@@ -1,5 +1,5 @@
 import { db } from '../db/index.js';
-import { schools, schoolMembers, schoolVerifications, classrooms, users, schoolBehaviors, behaviors, schoolBadges, badges, curriculumAreas, pointLogs, attendanceRecords, studentProfiles, studentGrades, schoolTeachingAssignments, schoolWorkshops } from '../db/schema.js';
+import { schools, schoolMembers, schoolVerifications, classrooms, users, schoolBehaviors, behaviors, schoolBadges, badges, curriculumAreas, pointLogs, attendanceRecords, studentProfiles, studentGrades, schoolTeachingAssignments, schoolWorkshops, verifiedDomains } from '../db/schema.js';
 import { eq, and, like, count, sql, desc, ne, inArray, gte, lte } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { teacherVerificationService } from './teacherVerification.service.js';
@@ -474,6 +474,7 @@ export class SchoolService {
       .select({
         id: schools.id,
         name: schools.name,
+        modularCode: schools.modularCode,
         address: schools.address,
         city: schools.city,
         province: schools.province,
@@ -509,8 +510,11 @@ export class SchoolService {
 
       results.push({ ...school, members });
     }
+    // Los dominios del correo institucional de cada colegio (con ellos su administración crea las cuentas de sus docentes).
+    const domains = results.length === 0 ? [] : await db.select({ schoolId: verifiedDomains.schoolId, domain: verifiedDomains.domain, scope: verifiedDomains.scope })
+      .from(verifiedDomains).where(inArray(verifiedDomains.schoolId, results.map((r) => r.id)));
 
-    return results;
+    return results.map((school) => ({ ...school, domains: domains.filter((d) => d.schoolId === school.id).map((d) => ({ domain: d.domain, scope: d.scope })) }));
   }
 
   // Obtener todas las escuelas (admin)

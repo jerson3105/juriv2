@@ -170,6 +170,26 @@ class TeacherVerificationService {
       .orderBy(verifiedDomains.domain);
   }
 
+  /** Un dominio nuevo: válido, no personal y aún fuera de la lista (para revisarlo antes de crear algo con él). */
+  async checkNewDomain(input: string) {
+    const domain = this.validDomain(input);
+    const [taken] = await db.select({ id: verifiedDomains.id }).from(verifiedDomains).where(eq(verifiedDomains.domain, domain)).limit(1);
+    if (taken) throw new ConflictError('Ese dominio ya está en la lista');
+    return domain;
+  }
+
+  /** Liga un dominio a un colegio (o lo deja sin colegio): con él la administración crea las cuentas de sus docentes. */
+  async setDomainSchool(id: string, schoolId: string | null) {
+    if (schoolId) {
+      const [school] = await db.select({ id: schools.id }).from(schools).where(eq(schools.id, schoolId));
+      if (!school) throw new NotFoundError('Escuela no encontrada');
+    }
+    const [row] = await db.select({ domain: verifiedDomains.domain }).from(verifiedDomains).where(eq(verifiedDomains.id, id));
+    if (!row) throw new NotFoundError('Dominio no encontrado');
+    await db.update(verifiedDomains).set({ schoolId }).where(eq(verifiedDomains.id, id));
+    return { domain: row.domain };
+  }
+
   private validDomain(input: string): string {
     const domain = normalizeDomain(input);
     if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain)) throw new ValidationError('Escribe un dominio válido, por ejemplo colegio.edu.pe');

@@ -24,6 +24,8 @@ export type AuditAction =
   | 'admin.teacher_rejected'
   | 'admin.domain_added'
   | 'admin.domain_removed'
+  | 'admin.domain_school_set'
+  | 'admin.school_created'
   | 'admin.school_verification_reviewed'
   | 'school.join_request_reviewed'
   | 'school.teacher_removed'

@@ -124,6 +124,8 @@ export interface PendingVerification {
 export interface AdminSchoolWithMembers {
   id: string;
   name: string;
+  /** Código modular del Minedu (7 números). */
+  modularCode: string | null;
   address: string | null;
   city: string | null;
   province: string | null;
@@ -132,6 +134,28 @@ export interface AdminSchoolWithMembers {
   isActive: boolean;
   createdAt: string;
   members: SchoolMember[];
+  /** Dominios del correo institucional ligados al colegio. */
+  domains: Array<{ domain: string; scope: 'TEACHERS_ONLY' | 'SHARED' }>;
+}
+
+/** El equipo de Juried crea un colegio ya verificado, con su responsable y (opcional) su dominio. */
+export interface AdminSchoolInput {
+  name: string;
+  modularCode?: string | null;
+  region?: string | null;
+  city?: string | null;
+  address?: string | null;
+  owner: { email: string; firstNames?: string; lastNames?: string };
+  domain?: { domain: string; scope: 'TEACHERS_ONLY' | 'SHARED' } | null;
+}
+
+export interface AdminSchoolCreated {
+  schoolId: string;
+  name: string;
+  owner: { userId: string; email: string; created: boolean; temporaryPassword?: string };
+  domain: { domain: string; verified: number } | null;
+  /** El colegio se creó, pero el dominio no se pudo agregar. */
+  domainError?: string;
 }
 
 export interface SchoolTeacherClassroom {
@@ -493,6 +517,12 @@ export const schoolApi = {
   },
 
   // ==================== ADMIN ====================
+
+  /** El equipo de Juried crea un colegio verificado (la clave temporal del responsable llega una sola vez). */
+  adminCreateSchool: async (input: AdminSchoolInput): Promise<AdminSchoolCreated> => {
+    const response = await api.post('/admin/schools', input);
+    return response.data.data;
+  },
 
   // Verificaciones pendientes
   getAdminPendingVerifications: async (): Promise<PendingVerification[]> => {

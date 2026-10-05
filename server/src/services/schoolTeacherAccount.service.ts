@@ -30,7 +30,7 @@ export const temporaryPassword = () => {
   return groups.join('-');
 };
 
-const personName = (raw: string, label: string) => {
+export const personName = (raw: string, label: string) => {
   const value = cleanText(raw);
   if (value.length < 1 || value.length > 100 || !/\p{L}/u.test(value)) throw new ValidationError(`${label}: de 1 a 100 caracteres, con letras`);
   return value;
