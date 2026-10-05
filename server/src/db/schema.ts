@@ -3361,6 +3361,20 @@ export const schoolYearClassrooms = mysqlTable('school_year_classrooms', {
   yearIdx: index('idx_school_year_classrooms_year').on(table.yearId),
 }));
 
+// Cabecera de la libreta («Informe de progreso»): DRE, UGEL, director(a) y el código modular de cada nivel (sin uno propio,
+// el del colegio). La edita la administración del colegio (migrations/school_console_e3_1.sql). El logo va en schools.logoUrl.
+export const schoolReportSettings = mysqlTable('school_report_settings', {
+  schoolId: varchar('school_id', { length: 36 }).primaryKey(),
+  dre: varchar('dre', { length: 120 }),
+  ugel: varchar('ugel', { length: 120 }),
+  directorName: varchar('director_name', { length: 150 }),
+  inicialCode: varchar('inicial_code', { length: 10 }),
+  primariaCode: varchar('primaria_code', { length: 10 }),
+  secundariaCode: varchar('secundaria_code', { length: 10 }),
+  updatedBy: varchar('updated_by', { length: 36 }).notNull(),
+  updatedAt: datetime('updated_at').notNull(),
+});
+
 export const schoolAreaCoordinators = mysqlTable('school_area_coordinators', {
   id: varchar('id', { length: 36 }).primaryKey(),
   schoolId: varchar('school_id', { length: 36 }).notNull(),

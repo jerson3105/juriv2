@@ -29,6 +29,7 @@ import { affectedRows } from '../utils/points.js';
 import { performanceBucket, scaleOptions, scaleValueToScore, scoreToLabel } from '../utils/gradeScale.js';
 import { ConflictError } from '../utils/errors.js';
 import { classroomCalendar } from './schoolCalendar.service.js';
+import { assertScaleAllowed } from './schoolClassScale.service.js';
 
 type ClosedBimesterEntry = {
   period: string;
@@ -2357,6 +2358,8 @@ class GradeService {
     evaluationWeight?: number;
     competencyWeights?: Array<{ competencyId: string; weight: number }>;
   }) {
+    // En una clase del colegio, la escala es la de su nivel (así la libreta no mezcla letras y números).
+    if (settings.gradeScaleType) await assertScaleAllowed(classroomId, settings.gradeScaleType);
     for (const item of settings.competencyWeights ?? []) {
       await db.update(classroomCompetencies)
         .set({ weight: Math.max(50, Math.min(300, Math.round(item.weight))) })

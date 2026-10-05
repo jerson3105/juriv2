@@ -16,6 +16,8 @@ interface CompetenciesTabProps {
     curriculumAreaId?: string | null;
     gradeScaleType?: GradeScaleType | null;
     gradeScaleConfig?: { ranges?: Array<{ label: string; minPercent: number }> } | null;
+    /** En una clase del colegio, la escala la fija su nivel. */
+    context?: { gradeScale?: 'PERU_LETTERS' | 'PERU_VIGESIMAL' | null } | null;
   };
 }
 
@@ -43,6 +45,7 @@ export const CompetenciesTab = ({ book, classroom }: CompetenciesTabProps) => {
   const { data: areas = [] } = useQuery({ queryKey: ['curriculum-areas'], queryFn: () => classroomApi.getCurriculumAreas('PE') });
 
   const [scaleType, setScaleType] = useState<GradeScaleType>(classroom.gradeScaleType ?? 'PERU_LETTERS');
+  const fixedScale = classroom.context?.gradeScale ?? null;
   const [ranges, setRanges] = useState(classroom.gradeScaleConfig?.ranges?.map((r) => ({ label: r.label, minPercent: r.minPercent })) ?? DEFAULT_CUSTOM);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -83,6 +86,11 @@ export const CompetenciesTab = ({ book, classroom }: CompetenciesTabProps) => {
       {/* Escala */}
       <section aria-labelledby="scale-title" className={card}>
         <h2 id="scale-title" className="text-base font-bold text-gray-900 dark:text-white">Escala de notas</h2>
+        {fixedScale ? (
+          <p className="mt-2 rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-100">
+            {area ? `Área: ${area.name}. ` : ''}<strong>{SCALE_LABEL[fixedScale]}</strong>: la define tu colegio para este nivel en «Año escolar», así las libretas no mezclan letras y números.
+          </p>
+        ) : (<>
         <p className="text-sm text-gray-700 dark:text-gray-300">
           {area ? `Área: ${area.name}. ` : ''}Cambiarla afecta al bimestre en curso; los bimestres cerrados conservan sus notas.
         </p>
@@ -126,6 +134,7 @@ export const CompetenciesTab = ({ book, classroom }: CompetenciesTabProps) => {
           }), 'Escala guardada')}>
           {busy === 'scale' && <Loader2 size={16} className="animate-spin" aria-hidden="true" />} Guardar escala
         </button>
+        </>)}
       </section>
 
       {/* Peso de las evaluaciones */}

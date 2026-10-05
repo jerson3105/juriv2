@@ -10,11 +10,17 @@ import { card, errorMessage, SCALE_LABEL } from './gradebookHelpers';
 const SETUP_SCALES: Exclude<GradeScaleType, 'CUSTOM'>[] = ['PERU_LETTERS', 'PERU_VIGESIMAL', 'CENTESIMAL', 'USA_LETTERS'];
 
 // Primer uso: elegir área curricular y escala. Activa las competencias y trae las del área.
-export const GradebookSetup = ({ classroomId, enabled, onDone }: { classroomId: string; enabled: boolean; onDone: () => void }) => {
+export const GradebookSetup = ({ classroomId, enabled, onDone, fixedScale = null }: {
+  classroomId: string;
+  enabled: boolean;
+  onDone: () => void;
+  /** Clase del colegio: la escala la fija su nivel en «Año escolar». */
+  fixedScale?: 'PERU_LETTERS' | 'PERU_VIGESIMAL' | null;
+}) => {
   const queryClient = useQueryClient();
   const { data: areas = [], isLoading } = useQuery({ queryKey: ['curriculum-areas'], queryFn: () => classroomApi.getCurriculumAreas('PE') });
   const [areaId, setAreaId] = useState('');
-  const [scale, setScale] = useState<Exclude<GradeScaleType, 'CUSTOM'>>('PERU_LETTERS');
+  const [scale, setScale] = useState<Exclude<GradeScaleType, 'CUSTOM'>>(fixedScale ?? 'PERU_LETTERS');
   const [saving, setSaving] = useState(false);
   const area = areas.find((a) => a.id === areaId);
 
@@ -60,6 +66,11 @@ export const GradebookSetup = ({ classroomId, enabled, onDone }: { classroomId: 
             </ul>
           )}
         </div>
+        {fixedScale ? (
+          <p className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-100">
+            Escala de notas: <strong>{SCALE_LABEL[fixedScale]}</strong>, la que tu colegio definió para este nivel.
+          </p>
+        ) : (
         <fieldset>
           <legend className={labelClass}>Escala de notas</legend>
           <div className="mt-1 grid gap-2 sm:grid-cols-2">
@@ -72,6 +83,7 @@ export const GradebookSetup = ({ classroomId, enabled, onDone }: { classroomId: 
           </div>
           <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">Podrás cambiarla o crear una personalizada en la pestaña Competencias.</p>
         </fieldset>
+        )}
         <button type="button" onClick={save} disabled={!areaId || saving} className={primaryButton}>
           {saving && <Loader2 size={16} className="animate-spin" aria-hidden="true" />} Empezar
         </button>

@@ -2,6 +2,7 @@ import { and, eq, inArray, or } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { schoolPeriods, schoolYears, schools } from '../db/schema.js';
 import { classroomYearIds, setClassroomsCurrentPeriod, type SchoolYearStatus } from './schoolCalendar.service.js';
+import { levelScales, type LevelScale } from './schoolClassScale.service.js';
 
 /**
  * Colegio, año y periodo de una clase, para la cabecera del docente y del estudiante («San Francisco College · 2026 ·
@@ -15,6 +16,8 @@ export interface ClassroomContext {
   /** En preparación (sus clases aún no tienen estudiantes), en curso o cerrado. Null fuera de un colegio. */
   yearStatus: SchoolYearStatus | null;
   period: { type: 'BIMESTER' | 'TRIMESTER'; number: number } | null;
+  /** La escala que fija su nivel en el colegio (el docente no la cambia). Null fuera de un colegio o sin nivel. */
+  gradeScale: LevelScale | null;
 }
 
 // El día de hoy en el Perú (el servidor puede estar en otra zona horaria).
@@ -31,6 +34,7 @@ export const classroomContexts = async (rows: Array<{ id: string; schoolId: stri
   const result = new Map<string, ClassroomContext>();
   const schoolIds = [...new Set(rows.map((r) => r.schoolId).filter((id): id is string => !!id))];
   const linked = await classroomYearIds(rows.filter((r) => r.schoolId).map((r) => r.id));
+  const scales = await levelScales([...linked.keys()]);
   const linkedYearIds = [...new Set(linked.values())];
   const [schoolRows, years] = schoolIds.length
     ? await Promise.all([
@@ -64,9 +68,10 @@ export const classroomContexts = async (rows: Array<{ id: string; schoolId: stri
         year: year.name,
         yearStatus: year.status,
         period: number ? { type: year.periodType, number } : null,
+        gradeScale: linkedYear ? scales.get(row.id) ?? null : null,
       });
     } else {
-      result.set(row.id, { school: school ? { id: school.id, name: school.name } : null, yearStatus: null, ...fromClassBimester(row.currentBimester) });
+      result.set(row.id, { school: school ? { id: school.id, name: school.name } : null, yearStatus: null, gradeScale: null, ...fromClassBimester(row.currentBimester) });
     }
   }
   for (const [value, ids] of stale) await setClassroomsCurrentPeriod(ids, value);

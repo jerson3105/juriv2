@@ -66,6 +66,8 @@ app.use('/api/uploads/maps', cors(corsOptions), ...serveUploads(path.join(upload
 app.use('/api/uploads/collectibles', cors(corsOptions), ...serveUploads(path.join(uploadsBaseDir, 'collectibles')));
 app.use('/api/uploads/shop-items', cors(corsOptions), ...serveUploads(path.join(uploadsBaseDir, 'shop-items')));
 app.use('/api/uploads/jiro-deliveries', cors(corsOptions), ...serveUploads(path.join(uploadsBaseDir, 'jiro-deliveries')));
+// Logo de cada colegio (cabecera de la libreta).
+app.use('/api/uploads/school-logos', cors(corsOptions), ...serveUploads(path.join(uploadsBaseDir, 'school-logos'), { immutable: true }));
 // Avatar: prendas que sube el admin (nombre único → caché larga) y capas en WebP del tamaño que se muestran.
 app.use('/api/uploads/avatar-items', cors(corsOptions), ...serveUploads(AVATAR_UPLOAD_DIR, { immutable: true }));
 app.get('/api/avatar-img/:variant', cors(corsOptions), serveAvatarImage);

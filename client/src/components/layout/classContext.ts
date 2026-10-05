@@ -7,6 +7,8 @@ export interface ClassContext {
   year: string | null;
   yearStatus?: 'PLANNING' | 'ACTIVE' | 'CLOSED' | null;
   period: { type: 'BIMESTER' | 'TRIMESTER'; number: number } | null;
+  /** La escala que fija su nivel en el colegio (literal o vigesimal): el docente no la cambia. */
+  gradeScale?: 'PERU_LETTERS' | 'PERU_VIGESIMAL' | null;
 }
 
 /** «San Francisco College · 2026 · Bimestre 3» o «… · 2027 · En preparación» (null si no hay nada que mostrar). */

@@ -70,6 +70,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { avatarService } from './avatar.service.js';
 import { avatarCatalogService } from './avatarCatalog.service.js';
 import { characterClassService } from './characterClass.service.js';
+import { assertScaleAllowed } from './schoolClassScale.service.js';
 type CompetencyDeleteBlockReason = 'CONFIG_ASSOCIATED' | 'HISTORICAL_RECORDS' | 'CONFIG_AND_HISTORICAL_RECORDS';
 type CompetencyUsageSummary = {
   hasConfigAssociations: boolean;
@@ -607,6 +608,9 @@ export class ClassroomService {
       throw new Error('No autorizado');
     }
     if (!classroom.isActive) throw new ConflictError(ARCHIVED_CLASSROOM_MESSAGE);
+    if (data.gradeScaleType !== undefined && data.gradeScaleType !== classroom.gradeScaleType) {
+      await assertScaleAllowed(classroomId, data.gradeScaleType ?? null);
+    }
 
     // Reglas que dependen de dos campos: se validan con el valor final (el enviado o el guardado).
     const maxHp = data.maxHp ?? classroom.maxHp;

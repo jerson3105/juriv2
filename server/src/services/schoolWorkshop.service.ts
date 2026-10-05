@@ -13,6 +13,7 @@ import { schoolAutoEnrollService, type SyncResult } from './schoolAutoEnroll.ser
 import { effectivePlan, type PlanArea } from './schoolPlan.service.js';
 import { sectionDisplayName } from './schoolSection.service.js';
 import type { SchoolLevel } from './schoolYear.service.js';
+import { applyLevelScale } from './schoolClassScale.service.js';
 
 /**
  * Talleres: clases que son parte de un área del plan (Panadería → EPT, Karate → Educación Física). Su nota cuenta
@@ -257,6 +258,8 @@ export const schoolWorkshopService = {
       throw error;
     }
     const sync = classroomId ? await schoolAutoEnrollService.syncWorkshop(schoolId, yearId, id) : ZERO;
+    // Una clase vinculada toma la escala de su nivel.
+    if (classroomId) await applyLevelScale([classroomId]);
     return { id, classroomId, sync };
   },
 
@@ -308,6 +311,7 @@ export const schoolWorkshopService = {
       throw error;
     }
     const sync = classroomId ? await schoolAutoEnrollService.syncWorkshop(schoolId, workshop.yearId, workshop.id) : ZERO;
+    if (classroomId) await applyLevelScale([classroomId]);
     return { id: workshop.id, teacherChanged: next.teacherUserId !== workshop.teacherUserId, classroomId, sync };
   },
 

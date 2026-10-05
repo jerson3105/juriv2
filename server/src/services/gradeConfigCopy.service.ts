@@ -3,6 +3,7 @@ import { db } from '../db/index.js';
 import { classroomCompetencies, classrooms, curriculumCompetencies } from '../db/schema.js';
 import { ForbiddenError, ValidationError } from '../utils/errors.js';
 import { classroomService } from './classroom.service.js';
+import { levelScales } from './schoolClassScale.service.js';
 
 export interface CopyConfigOptions {
   targetClassroomIds: string[];
@@ -112,8 +113,11 @@ class GradeConfigCopyService {
         // 4. Escala, peso de evaluaciones y fechas.
         const patch: Partial<typeof classrooms.$inferInsert> = {};
         if (options.scale) {
-          patch.gradeScaleType = source.gradeScaleType;
-          patch.gradeScaleConfig = source.gradeScaleConfig;
+          // Una clase del colegio conserva la escala de su nivel; el peso de las evaluaciones sí se copia.
+          if (!(await levelScales([targetId])).has(targetId)) {
+            patch.gradeScaleType = source.gradeScaleType;
+            patch.gradeScaleConfig = source.gradeScaleConfig;
+          }
           patch.gradeEvaluationWeight = source.gradeEvaluationWeight;
         }
         if (options.dates) {

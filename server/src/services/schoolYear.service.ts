@@ -11,6 +11,7 @@ import { logger } from '../utils/logger.js';
 import { affectedRows } from '../utils/points.js';
 import { gradeService } from './grade.service.js';
 import { classroomsFollowing, invalidateSchoolCalendar, limaToday, syncCurrentPeriod, yearCalendars, yearClassroomIds } from './schoolCalendar.service.js';
+import { applyLevelScale } from './schoolClassScale.service.js';
 
 /**
  * Año escolar de la consola: fechas, periodos (por ahora bimestres) y niveles que ofrece la escuela con su escala.
@@ -411,6 +412,8 @@ export const schoolYearService = {
       }
     });
     await syncYear(schoolId, yearId);
+    // La escala de cada nivel manda en sus clases (si cambió, la toman; los bimestres cerrados conservan sus notas).
+    await applyLevelScale(await yearClassroomIds(yearId));
     return this.get(schoolId, yearId);
   },
 

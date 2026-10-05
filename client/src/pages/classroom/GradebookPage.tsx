@@ -110,7 +110,7 @@ export const GradebookPage = () => {
     placeholderData: keepPreviousData,
   });
 
-  if (!ready) return <GradebookSetup classroomId={classroom.id} enabled={!!classroom.useCompetencies} onDone={refetch} />;
+  if (!ready) return <GradebookSetup classroomId={classroom.id} enabled={!!classroom.useCompetencies} onDone={refetch} fixedScale={classroom.context?.gradeScale ?? null} />;
 
   const setTab = (id: TabId) => setParams((p) => { p.set('tab', id); return p; }, { replace: true });
   const detailStudent = detail && book?.students.find((s) => s.studentProfileId === detail.studentProfileId);

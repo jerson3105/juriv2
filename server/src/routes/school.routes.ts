@@ -12,6 +12,7 @@ import { schoolCoordinatorController } from '../controllers/schoolCoordinator.co
 import { authenticate, authorize } from '../middleware/auth.js';
 import { rosterImportLimiter } from '../middleware/security.js';
 import { schoolPromotionController } from '../controllers/schoolPromotion.controller.js';
+import { schoolReportController, uploadSchoolLogo } from '../controllers/schoolReport.controller.js';
 
 const router = Router();
 
@@ -110,6 +111,14 @@ router.post('/:schoolId/years/:yearId/sections/:sectionId/access-cards', authori
 router.post('/:schoolId/years/:yearId/students/:studentId/access-card', authorize('TEACHER'), schoolAccessController.studentCard);
 router.post('/:schoolId/years/:yearId/students/:studentId/access/reset', authorize('TEACHER'), schoolAccessController.resetPin);
 router.post('/:schoolId/students/:studentId/document/reveal', authorize('TEACHER'), schoolRosterController.revealDocument);
+
+// Libretas: datos de su cabecera, logo del colegio, la libreta de una sección y su PDF (administración)
+router.get('/:schoolId/report-settings', authorize('TEACHER'), schoolReportController.getSettings);
+router.put('/:schoolId/report-settings', authorize('TEACHER'), schoolReportController.saveSettings);
+router.post('/:schoolId/logo', authorize('TEACHER'), ...uploadSchoolLogo, schoolReportController.uploadLogo);
+router.delete('/:schoolId/logo', authorize('TEACHER'), schoolReportController.removeLogo);
+router.get('/:schoolId/years/:yearId/report-cards/sections/:sectionId', authorize('TEACHER'), schoolReportController.section);
+router.get('/:schoolId/years/:yearId/report-cards/sections/:sectionId/pdf', authorize('TEACHER'), schoolReportController.pdf);
 
 // Armar el padrón desde las clases
 router.get('/:schoolId/years/:yearId/roster-builder', authorize('TEACHER'), schoolRosterBuilderController.overview);

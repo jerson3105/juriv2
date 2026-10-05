@@ -18,6 +18,7 @@ import { syncCurrentPeriod, yearCalendars } from './schoolCalendar.service.js';
 import { effectivePlan, type PlanArea } from './schoolPlan.service.js';
 import { sectionDisplayName } from './schoolSection.service.js';
 import type { SchoolLevel } from './schoolYear.service.js';
+import { applyLevelScale } from './schoolClassScale.service.js';
 
 /**
  * Asignaciones: en cada sección, qué docente enseña cada área del plan y con qué clase. Vincular una clase pone en
@@ -517,6 +518,8 @@ export const schoolAssignmentService = {
       throw error;
     }
     const sync = await syncFor(schoolId, yearId, section.id, classroomId);
+    // Una clase vinculada toma la escala de su nivel.
+    if (classroomId) await applyLevelScale([classroomId]);
     return { id, classroomId, sync };
   },
 
@@ -540,6 +543,7 @@ export const schoolAssignmentService = {
     const sync = classroomId && classroomId !== assignment.classroomId
       ? await syncFor(schoolId, assignment.yearId, section.id, classroomId)
       : { created: 0, linked: 0, withAccount: 0 };
+    if (classroomId && classroomId !== assignment.classroomId) await applyLevelScale([classroomId]);
     return { id: assignment.id, teacherChanged: teacherUserId !== assignment.teacherUserId, classroomId, sync };
   },
 
@@ -648,6 +652,7 @@ export const schoolAssignmentService = {
       const r = await syncFor(schoolId, yearId, p.sectionId, p.classroomId);
       sync = { created: sync.created + r.created, linked: sync.linked + r.linked, withAccount: sync.withAccount + r.withAccount };
     }
+    await applyLevelScale(proposals.map((p) => p.classroomId));
     return { assigned: proposals.length, sync };
   },
 

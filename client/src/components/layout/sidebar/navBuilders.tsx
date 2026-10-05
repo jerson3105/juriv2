@@ -202,7 +202,7 @@ export const schoolConsoleNav = (input: SchoolConsoleNavInput): NavNode[] => {
     ...(manager ? [link(entry('estudiantes', 'Estudiantes', GraduationCap)), link(entry('secciones', 'Grados y secciones', Layers))] : []),
     link(entry('docentes', 'Docentes', Users, requests)),
     link(entry('clases', 'Clases', BookOpen)),
-    ...(manager ? [link(entry('anio', 'Año escolar', CalendarCheck))] : []),
+    ...(manager ? [link(entry('anio', 'Año escolar', CalendarCheck)), link(entry('libretas', 'Libretas', ClipboardList))] : []),
     // Mi trabajo: lo que enseño, mi tutoría y, si coordino un área, su panel (también la administración puede enseñar).
     {
       kind: 'section',
