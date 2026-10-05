@@ -78,6 +78,9 @@ router.post('/:schoolId/years/:yearId/fill', authorize('TEACHER'), schoolYearCon
 // Cerrar y reabrir un bimestre en todas las clases del colegio (Calificaciones)
 router.post('/:schoolId/years/:yearId/periods/:code/close', authorize('TEACHER'), schoolYearController.closePeriod);
 router.post('/:schoolId/years/:yearId/periods/:code/reopen', authorize('TEACHER'), schoolYearController.reopenPeriod);
+// Libretas: aviso de cierre («En revisión») y publicación (administración)
+router.post('/:schoolId/years/:yearId/periods/:code/review', authorize('TEACHER'), schoolYearController.startReview);
+router.post('/:schoolId/years/:yearId/periods/:code/publish', authorize('TEACHER'), schoolReportController.publish);
 // Promoción y cierre del año (administración)
 router.get('/:schoolId/years/:yearId/promotion', authorize('TEACHER'), schoolPromotionController.overview);
 router.get('/:schoolId/years/:yearId/promotion/sections/:sectionId/students', authorize('TEACHER'), schoolPromotionController.sectionStudents);
@@ -120,6 +123,7 @@ router.delete('/:schoolId/logo', authorize('TEACHER'), schoolReportController.re
 router.get('/:schoolId/years/:yearId/report-cards/sections/:sectionId', authorize('TEACHER'), schoolReportController.section);
 router.get('/:schoolId/years/:yearId/report-cards/sections/:sectionId/pdf', authorize('TEACHER'), schoolReportController.pdf);
 router.get('/:schoolId/years/:yearId/report-cards/progress', authorize('TEACHER'), schoolReportController.progress);
+router.get('/:schoolId/years/:yearId/report-cards/periods', authorize('TEACHER'), schoolReportController.periods);
 router.post('/:schoolId/years/:yearId/report-cards/remind', authorize('TEACHER'), schoolReportController.remind);
 router.put('/:schoolId/years/:yearId/students/:studentId/exemptions', authorize('TEACHER'), schoolReportController.setExemptions);
 

@@ -8,8 +8,11 @@ import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 import { db } from '../db/index.js';
 import { schoolSections, schools } from '../db/schema.js';
+import { libretaImages, logoPath, SCHOOL_LOGO_DIR } from '../services/libretaAssets.js';
 import { libretaPdfService } from '../services/libretaPdf.service.js';
+import { schoolReportPublishService } from '../services/schoolReportPublish.service.js';
 import { schoolReportService } from '../services/schoolReport.service.js';
+import { yearCalendars } from '../services/schoolCalendar.service.js';
 import { requireSchoolRole, SCHOOL_MANAGER_ROLES, SCHOOL_MEMBER_ROLES } from '../utils/access.js';
 import { auditRequest } from '../utils/audit.js';
 import { AppError } from '../utils/errors.js';
@@ -28,6 +31,7 @@ const modularCode = z.string().trim().nullable()
   .refine((v) => !v || /^\d{7}$/.test(v), 'El código modular tiene 7 números')
   .transform((v) => (v ? v : null));
 const exemptionsSchema = z.object({ areaIds: z.array(z.string().regex(/^[a-z0-9-]{3,36}$/)).max(4) }).strict();
+const codeSchema = z.enum(['B1', 'B2', 'B3', 'B4']);
 const remindSchema = z.object({ sectionId: z.string().uuid(), areaId: z.string().regex(/^[a-z0-9-]{3,36}$/), period: z.enum(['B1', 'B2', 'B3', 'B4']).optional() }).strict();
 const settingsSchema = z.object({
   dre: optionalText(120),
@@ -36,11 +40,7 @@ const settingsSchema = z.object({
   codes: z.object({ INICIAL: modularCode, PRIMARIA: modularCode, SECUNDARIA: modularCode }).strict(),
 }).strict();
 
-const uploadsDir = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
-export const SCHOOL_LOGO_DIR = path.join(uploadsDir, 'school-logos');
 const LOGO_URL_PREFIX = '/api/uploads/school-logos/';
-// El escudo del MINEDU para la cabecera: si el colegio pasa la imagen, va aquí (si no, el texto «Ministerio de Educación»).
-const MINEDU_IMAGE = path.join(process.cwd(), 'assets', 'libreta', 'minedu.png');
 
 // El nombre del archivo, sin tildes ni signos (algunos navegadores los rompen en Content-Disposition).
 const fileName = (text: string) => text.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'libreta';
@@ -52,17 +52,6 @@ const sendError = (res: Response, error: unknown, fallback: string) => {
   return res.status(500).json({ success: false, message: fallback });
 };
 
-/** El archivo del logo en el disco (solo los que guardó esta función: nunca una ruta que venga de afuera). */
-const logoPath = (logoUrl: string | null) =>
-  (logoUrl?.startsWith(LOGO_URL_PREFIX) ? path.join(SCHOOL_LOGO_DIR, path.basename(logoUrl)) : null);
-
-const readIfExists = async (file: string | null) => {
-  if (!file) return null;
-  try { return await fs.promises.readFile(file); } catch { return null; }
-};
-
-let mineduImage: Promise<Buffer | null> | null = null;
-const minedu = () => (mineduImage ??= readIfExists(MINEDU_IMAGE));
 
 /** El logo: una imagen en memoria (se revisa su contenido y se recodifica a PNG antes de tocar el disco). */
 const logoUpload = multer({
@@ -199,8 +188,7 @@ export const schoolReportController = {
       if (studentId && report.students.length === 0) return res.status(404).json({ success: false, message: 'Ese estudiante no está en esta sección' });
       // La de toda la sección es para imprimir: sin quienes se retiraron (la suya sale por separado).
       if (!studentId) report.students = report.students.filter((s) => s.student.status === 'ACTIVE');
-      const [logo, mineduImage] = await Promise.all([readIfExists(logoPath(report.school.logoUrl)), minedu()]);
-      const pdf = await libretaPdfService.render(report, { logo, minedu: mineduImage });
+      const pdf = await libretaPdfService.render(report, await libretaImages(report.school.logoUrl));
       // Sin datos personales en la auditoría: qué libreta y cuántas.
       await auditRequest(req, {
         action: 'school.report_generated',
@@ -216,6 +204,52 @@ export const schoolReportController = {
       res.send(pdf);
     } catch (error) {
       return sendError(res, error, 'Error al generar la libreta');
+    }
+  },
+
+  // GET /schools/:schoolId/years/:yearId/report-cards/periods — estado de cada bimestre y su última publicación
+  async periods(req: Request, res: Response) {
+    try {
+      const { schoolId } = req.params;
+      if (!(await requireSchoolRole(req, res, schoolId, SCHOOL_MANAGER_ROLES))) return;
+      const yearId = idSchema.parse(req.params.yearId);
+      const calendar = (await yearCalendars([yearId])).get(yearId);
+      if (!calendar || calendar.schoolId !== schoolId) return res.status(404).json({ success: false, message: 'Año escolar no encontrado' });
+      const latest = await schoolReportPublishService.latestOfYear(yearId);
+      res.json({
+        success: true,
+        data: {
+          yearStatus: calendar.yearStatus,
+          periods: calendar.periods.map((p) => {
+            const publication = latest.get(p.code);
+            return {
+              code: p.code, number: p.number, status: p.status, startsOn: p.startsOn, endsOn: p.endsOn, lockedAt: p.lockedAt,
+              started: p.start.getTime() <= Date.now(),
+              publication: publication ? { version: publication.version, publishedAt: publication.publishedAt, students: publication.students } : null,
+            };
+          }),
+        },
+      });
+    } catch (error) {
+      return sendError(res, error, 'Error al leer los bimestres');
+    }
+  },
+
+  // POST /schools/:schoolId/years/:yearId/periods/:code/publish — publicar las libretas de un bimestre cerrado (todo el colegio)
+  async publish(req: Request, res: Response) {
+    try {
+      const { schoolId } = req.params;
+      if (!(await requireSchoolRole(req, res, schoolId, SCHOOL_MANAGER_ROLES))) return;
+      const yearId = idSchema.parse(req.params.yearId);
+      const code = codeSchema.parse(req.params.code);
+      const data = await schoolReportPublishService.publish(schoolId, yearId, code, req.user!.id);
+      await auditRequest(req, {
+        action: 'school.report_published', schoolId, target: { type: 'school_year', id: yearId },
+        metadata: { code, version: data.version, students: data.students, notified: data.notified },
+      });
+      res.json({ success: true, data, message: `Libretas publicadas: ${data.students} ${data.students === 1 ? 'estudiante' : 'estudiantes'}` });
+    } catch (error) {
+      return sendError(res, error, 'Error al publicar las libretas');
     }
   },
 

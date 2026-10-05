@@ -456,13 +456,18 @@ const YearForm = ({ year, prepareFrom = null, manager, gradeLevels, onCreated, o
           {draft.periods.map((period, index) => {
             const rowIssues = issues.filter((issue) => issue.index === index);
             const locked = closedCodes.has(period.code);
+            const savedStatus = year?.periods.find((p) => p.code === period.code)?.status;
             const name = `${PERIOD_NAME[draft.periodType]} ${index + 1}`;
             return (
               <li key={period.code} className="py-3">
                 <div className="grid items-end gap-3 sm:grid-cols-[9rem_1fr_1fr_5.5rem]">
                   <p className="pb-2.5 text-sm font-semibold text-gray-900 dark:text-white">
                     {name}
-                    {locked && <span className="ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-xs font-bold text-slate-800 dark:bg-slate-700 dark:text-slate-100">Cerrado</span>}
+                    {locked && savedStatus && (
+                      <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-bold ${savedStatus === 'REVIEW' ? 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100' : savedStatus === 'PUBLISHED' ? 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-100' : 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-100'}`}>
+                        {savedStatus === 'REVIEW' ? 'En revisión' : savedStatus === 'PUBLISHED' ? 'Publicado' : 'Cerrado'}
+                      </span>
+                    )}
                   </p>
                   <Input label="Desde" aria-label={`${name}: desde`} type="date" value={period.startsOn} onChange={(e) => setPeriod(index, 'startsOn', e.target.value)} disabled={readOnly || locked} />
                   <Input label="Hasta" aria-label={`${name}: hasta`} type="date" value={period.endsOn} onChange={(e) => setPeriod(index, 'endsOn', e.target.value)} disabled={readOnly || locked} />
@@ -474,6 +479,14 @@ const YearForm = ({ year, prepareFrom = null, manager, gradeLevels, onCreated, o
                   const saved = year!.periods.find((p) => p.code === period.code);
                   if (!saved || (saved.status !== 'LOCKED' && !saved.started)) return null;
                   const pending = dirty || periodAction.isPending;
+                  if (saved.status === 'PUBLISHED') {
+                    return (
+                      <p className="mt-2 text-sm text-gray-700 dark:text-gray-300">
+                        Libretas publicadas: para corregir algo, reábrelo desde{' '}
+                        <Link to={`/escuela/${school.id}/libretas`} className="pg-focus rounded font-semibold text-primary-700 underline-offset-2 hover:underline dark:text-primary-300">Libretas</Link>.
+                      </p>
+                    );
+                  }
                   return saved.status === 'LOCKED' ? (
                     <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                       <span>Cerrado{saved.lockedAt ? ` el ${shortDay(saved.lockedAt)}` : ''}: las notas de las clases no cambian.</span>

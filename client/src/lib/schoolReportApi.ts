@@ -94,10 +94,35 @@ export interface ReportProgress {
   sections: Array<{ id: string; label: string; level: SchoolLevel; students: number; cells: ProgressCell[] }>;
 }
 
+/** Un bimestre en el flujo de las libretas, con su última publicación. */
+export interface PeriodFlowInfo {
+  code: PeriodCode;
+  number: number;
+  status: PeriodStatus;
+  startsOn: string;
+  endsOn: string;
+  lockedAt: string | null;
+  started: boolean;
+  publication: { version: number; publishedAt: string; students: number } | null;
+}
+
+/** Una libreta publicada para quien la recibe (estudiante o familia): la última versión de su bimestre. */
+export interface PublishedReportCard {
+  id: string;
+  year: string;
+  period: number;
+  version: number;
+  publishedAt: string;
+  school: string;
+}
+
 export const schoolReportKeys = {
   settings: (schoolId: string) => ['school-report-settings', schoolId] as const,
   section: (schoolId: string, yearId: string, sectionId: string, period: PeriodCode | null) => ['school-report-section', schoolId, yearId, sectionId, period] as const,
   progress: (schoolId: string, yearId: string, period: PeriodCode | null) => ['school-report-progress', schoolId, yearId, period] as const,
+  periods: (schoolId: string, yearId: string) => ['school-report-periods', schoolId, yearId] as const,
+  mine: ['my-report-cards'] as const,
+  child: (studentProfileId: string) => ['child-report-cards', studentProfileId] as const,
 };
 
 const API_ORIGIN = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace(/\/api\/?$/, '');
@@ -115,6 +140,23 @@ const blobError = async (error: unknown) => {
     if (message) return new Error(message);
   }
   return error;
+};
+
+/** Descarga un PDF de la API con el nombre que se le da. */
+const downloadPdf = async (url: string, name: string, params?: Record<string, string>) => {
+  try {
+    const response = await api.get(url, { params, responseType: 'blob' });
+    const href = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+    const link = document.createElement('a');
+    link.href = href;
+    link.download = `libreta-${slug(name)}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(href);
+  } catch (error) {
+    throw await blobError(error);
+  }
 };
 
 const fetchPdf = async (schoolId: string, yearId: string, sectionId: string, period: PeriodCode, studentId?: string) => {
@@ -148,6 +190,19 @@ export const schoolReportApi = {
   /** Aviso en la campana del docente de esa sección y área con lo que le falta. */
   remind: async (schoolId: string, yearId: string, input: { sectionId: string; areaId: string; period: PeriodCode }): Promise<string> =>
     (await api.post(`${year(schoolId, yearId)}/report-cards/remind`, input)).data.message,
+  /** El estado de cada bimestre del año y su última publicación. */
+  periods: async (schoolId: string, yearId: string): Promise<{ yearStatus: 'PLANNING' | 'ACTIVE' | 'CLOSED'; periods: PeriodFlowInfo[] }> =>
+    (await api.get(`${year(schoolId, yearId)}/report-cards/periods`)).data.data,
+  /** Publica las libretas de un bimestre cerrado (todo el colegio): avisa a estudiantes y familias. */
+  publish: async (schoolId: string, yearId: string, code: PeriodCode): Promise<string> =>
+    (await api.post(`${year(schoolId, yearId)}/periods/${code}/publish`)).data.message,
+  /** El estudiante: sus libretas publicadas. */
+  mine: async (): Promise<PublishedReportCard[]> => (await api.get('/students/me/report-cards')).data.data,
+  downloadMine: (card: PublishedReportCard) => downloadPdf(`/students/me/report-cards/${card.id}/pdf`, `${card.year} bimestre ${card.period}`),
+  /** La familia: las libretas publicadas de su hijo o hija (por su perfil en la clase). */
+  child: async (studentProfileId: string): Promise<PublishedReportCard[]> => (await api.get(`/parent/child/${studentProfileId}/report-cards`)).data.data,
+  downloadChild: (studentProfileId: string, card: PublishedReportCard, name: string) =>
+    downloadPdf(`/parent/child/${studentProfileId}/report-cards/${card.id}/pdf`, `${name} ${card.year} bimestre ${card.period}`),
   setExemptions: async (schoolId: string, yearId: string, studentId: string, areaIds: string[]): Promise<string[]> =>
     (await api.put(`${year(schoolId, yearId)}/students/${studentId}/exemptions`, { areaIds })).data.data.areaIds,
 

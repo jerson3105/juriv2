@@ -192,6 +192,8 @@ export interface BimesterInfo {
   label: string;
   isCurrent: boolean;
   isClosed: boolean;
+  /** El colegio revisa las libretas de este bimestre (aviso de cierre; sigue abierto). */
+  inReview?: boolean;
   isFuture?: boolean;
   closedAt?: string;
   /** Rango efectivo (ISO); end null = abierto sin fecha fija. */

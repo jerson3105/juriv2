@@ -98,6 +98,10 @@ export const schoolYearApi = {
   /** Cierra o reabre un bimestre en todas las clases del colegio. Devuelve el mensaje para el aviso. */
   closePeriod: async (schoolId: string, yearId: string, code: string): Promise<string> =>
     (await api.post(`/schools/${schoolId}/years/${yearId}/periods/${code}/close`)).data.message,
-  reopenPeriod: async (schoolId: string, yearId: string, code: string): Promise<string> =>
-    (await api.post(`/schools/${schoolId}/years/${yearId}/periods/${code}/reopen`)).data.message,
+  /** Reabre un bimestre (cerrado, en revisión o publicado; este pide el motivo de la corrección). */
+  reopenPeriod: async (schoolId: string, yearId: string, code: string, reason?: string): Promise<string> =>
+    (await api.post(`/schools/${schoolId}/years/${yearId}/periods/${code}/reopen`, reason ? { reason } : undefined)).data.message,
+  /** «En revisión»: aviso de cierre a los docentes del año (el bimestre sigue abierto). */
+  startReview: async (schoolId: string, yearId: string, code: string): Promise<string> =>
+    (await api.post(`/schools/${schoolId}/years/${yearId}/periods/${code}/review`)).data.message,
 };

@@ -2421,6 +2421,8 @@ class GradeService {
             label: `Bimestre ${p.number}`,
             isCurrent: p.period === calendar.current,
             isClosed: p.locked || !!closedByClass,
+            // Aviso de cierre del colegio: sigue abierto, pero ya revisan las libretas.
+            inReview: p.status === 'REVIEW',
             isFuture: i > currentIndex,
             closedAt: p.lockedAt?.toISOString() ?? closedByClass?.closedAt,
             start: p.start.toISOString(),

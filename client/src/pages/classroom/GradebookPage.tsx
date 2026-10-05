@@ -172,6 +172,13 @@ export const GradebookPage = () => {
         </p>
       )}
 
+      {selectedBimester?.inReview && !book?.isClosed && (
+        <p className="flex items-center gap-2 rounded-2xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-500/40 dark:bg-amber-900/20 dark:text-amber-100" role="status">
+          <CalendarClock size={16} className="flex-shrink-0" aria-hidden="true" />
+          Tu colegio está revisando las libretas del {selectedBimester.label.toLowerCase()}: completa tus notas y las conclusiones que pide la norma antes del cierre.
+        </p>
+      )}
+
       {book?.isClosed && (
         <p className="flex items-center gap-2 rounded-2xl bg-gray-100 p-3 text-sm text-gray-900 dark:bg-gray-800 dark:text-gray-100">
           <Lock size={16} aria-hidden="true" />

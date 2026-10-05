@@ -27,6 +27,9 @@ import type { ChildDetail, ActivityLogItem } from '../../lib/parentApi';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { useState } from 'react';
+import toast from 'react-hot-toast';
+import { errorMessage } from '../../components/auth/authHelpers';
+import { schoolReportApi, schoolReportKeys, type PublishedReportCard } from '../../lib/schoolReportApi';
 
 type TabType = 'resumen' | 'calificaciones' | 'actividad';
 
@@ -106,6 +109,8 @@ export default function ChildDetailPage() {
           </div>
         </div>
       </div>
+
+      <ChildReportCards studentId={studentId!} name={studentName} />
 
       {/* Tabs */}
       <div className="flex gap-1 mb-6 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
@@ -507,3 +512,40 @@ function ActivityItem({ activity, showTime = false }: { activity: ActivityLogIte
   );
 }
 
+/** Las libretas que publicó su colegio (el informe oficial, con todas sus áreas). Sin ninguna, no se muestra. */
+function ChildReportCards({ studentId, name }: { studentId: string; name: string }) {
+  const query = useQuery({ queryKey: schoolReportKeys.child(studentId), queryFn: () => schoolReportApi.child(studentId), staleTime: 5 * 60 * 1000 });
+  const [busy, setBusy] = useState<string | null>(null);
+  const cards = query.data ?? [];
+  if (cards.length === 0) return null;
+  const download = async (card: PublishedReportCard) => {
+    setBusy(card.id);
+    try {
+      await schoolReportApi.downloadChild(studentId, card, name);
+    } catch (error) {
+      toast.error(errorMessage(error, 'No se pudo descargar la libreta'));
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <section aria-labelledby="child-report-cards" className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-500/30 dark:bg-emerald-900/20">
+      <h2 id="child-report-cards" className="font-semibold text-gray-900 dark:text-white">Libretas</h2>
+      <p className="text-sm text-gray-700 dark:text-gray-300">El informe de progreso que publicó su colegio, con todas sus áreas.</p>
+      <ul className="mt-3 divide-y divide-emerald-200 dark:divide-emerald-500/30">
+        {cards.map((card) => (
+          <li key={card.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+            <span className="text-sm font-semibold text-gray-900 dark:text-white">
+              Bimestre {card.period} · {card.year}{card.version > 1 ? ' · corregida' : ''}
+            </span>
+            <button type="button" disabled={busy !== null} onClick={() => void download(card)}
+              className="min-h-[44px] rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+              aria-label={`Descargar la libreta del bimestre ${card.period} de ${card.year}`}>
+              {busy === card.id ? 'Descargando…' : 'Descargar'}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}

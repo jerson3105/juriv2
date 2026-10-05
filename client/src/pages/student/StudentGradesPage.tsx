@@ -8,7 +8,10 @@ import { gradeApi } from '../../lib/gradeApi';
 import type { StoryAccent } from '../../lib/storyTheme';
 import { ErrorCard, StudentPageHeader } from '../../components/student/StudentPageHeader';
 import { HomeEmptyState } from '../../components/student/home/HomeEmptyState';
-import { cardText, cardTitle, homeCard } from '../../components/student/home/studentHomeHelpers';
+import { cardText, cardTitle, homeCard, rowButton } from '../../components/student/home/studentHomeHelpers';
+import { errorMessage } from '../../components/auth/authHelpers';
+import { schoolReportApi, schoolReportKeys, type PublishedReportCard } from '../../lib/schoolReportApi';
+import toast from 'react-hot-toast';
 import { CompetencyCard } from '../../components/student/grades/CompetencyCard';
 import { GradeDetailModal } from '../../components/student/grades/GradeDetailModal';
 import { AdvanceCard, BimesterTabs, PeriodNotice, ScaleLegendCard } from '../../components/student/grades/GradesSideCards';
@@ -27,6 +30,42 @@ const Skeleton = () => (
  * "Mis calificaciones": cómo va el alumno en cada competencia de esta clase, si esas notas ya son
  * finales y qué puede hacer para avanzar. Sin promedios, porcentajes ni puntos de juego.
  */
+/** Las libretas que publicó su colegio (la oficial, con todas sus áreas). Sin ninguna, no se muestra. */
+const MyReportCards = () => {
+  const query = useQuery({ queryKey: schoolReportKeys.mine, queryFn: schoolReportApi.mine, staleTime: 5 * 60 * 1000 });
+  const [busy, setBusy] = useState<string | null>(null);
+  const cards = query.data ?? [];
+  if (cards.length === 0) return null;
+  const download = async (card: PublishedReportCard) => {
+    setBusy(card.id);
+    try {
+      await schoolReportApi.downloadMine(card);
+    } catch (error) {
+      toast.error(errorMessage(error, 'No se pudo descargar tu libreta'));
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <section aria-labelledby="my-report-cards" className={homeCard}>
+      <h2 id="my-report-cards" className={cardTitle}>Tu libreta</h2>
+      <p className={cardText}>El informe de progreso que publicó tu colegio, con todas tus áreas.</p>
+      <ul className="mt-3 divide-y divide-gray-200 dark:divide-gray-700">
+        {cards.map((card) => (
+          <li key={card.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+            <span className="text-sm font-semibold text-gray-900 dark:text-white">
+              Bimestre {card.period} · {card.year}{card.version > 1 ? ' · corregida' : ''}
+            </span>
+            <button type="button" className={rowButton} disabled={busy !== null} onClick={() => void download(card)} aria-label={`Descargar tu libreta del bimestre ${card.period} de ${card.year}`}>
+              {busy === card.id ? 'Descargando…' : 'Descargar'}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+};
+
 const GradesContent = ({ profile, storyAccent }: { profile: MyClass; storyAccent: StoryAccent | null }) => {
   const { id, classroomId } = profile;
   const [period, setPeriod] = useState('CURRENT');
@@ -96,6 +135,8 @@ const GradesContent = ({ profile, storyAccent }: { profile: MyClass; storyAccent
               </div>
             </div>
           )}
+
+          <MyReportCards />
 
           <p className={cardText}>
             Para tu familia: estas son las notas que lleva tu profe en Juried. El informe oficial lo entrega tu colegio.

@@ -111,6 +111,11 @@ class ParentService {
     return row?.link ?? null;
   }
 
+  /** La familia tiene un vínculo activo con el perfil (en una clase que no está archivada). */
+  async hasActiveLink(parentProfileId: string, studentProfileId: string): Promise<boolean> {
+    return !!(await this.activeLink(parentProfileId, studentProfileId));
+  }
+
   async verifyTeacherOwnsStudent(teacherId: string, studentProfileId: string): Promise<boolean> {
     const [row] = await db.select({ id: studentProfiles.id })
       .from(studentProfiles)

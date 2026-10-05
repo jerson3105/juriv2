@@ -39,6 +39,7 @@ const createYearSchema = yearBodySchema.extend({
 }).strict();
 
 const yearIdSchema = z.string().uuid();
+const reopenSchema = z.object({ reason: z.string().trim().min(5, 'Escribe el motivo (al menos 5 letras)').max(255, 'El motivo es muy largo').optional() }).strict();
 const periodCodeSchema = z.enum(['B1', 'B2', 'B3', 'B4']);
 
 const sendError = (res: Response, error: unknown, fallback: string) => {
@@ -178,6 +179,22 @@ export const schoolYearController = {
     }
   },
 
+  // POST /schools/:schoolId/years/:yearId/periods/:code/review — «En revisión»: aviso de cierre a los docentes (administración)
+  async startReview(req: Request, res: Response) {
+    try {
+      const { schoolId } = req.params;
+      if (!(await requireSchoolRole(req, res, schoolId, SCHOOL_MANAGER_ROLES))) return;
+      const yearId = yearIdSchema.safeParse(req.params.yearId);
+      const code = periodCodeSchema.safeParse(req.params.code);
+      if (!yearId.success || !code.success) return res.status(404).json({ success: false, message: 'Bimestre no encontrado' });
+      const data = await schoolYearService.startReview(schoolId, yearId.data, code.data);
+      await auditRequest(req, { action: 'school.period_review_started', schoolId, target: { type: 'school_year', id: yearId.data }, metadata: { code: data.code, teachers: data.teachers } });
+      res.json({ success: true, data, message: `${data.label} en revisión: avisamos a ${data.teachers} ${data.teachers === 1 ? 'docente' : 'docentes'}` });
+    } catch (error) {
+      return sendError(res, error, 'Error al pasar el bimestre a revisión');
+    }
+  },
+
   // POST /schools/:schoolId/years/:yearId/periods/:code/reopen — reabrir un bimestre en todas las clases (administración)
   async reopenPeriod(req: Request, res: Response) {
     try {
@@ -186,8 +203,10 @@ export const schoolYearController = {
       const yearId = yearIdSchema.safeParse(req.params.yearId);
       const code = periodCodeSchema.safeParse(req.params.code);
       if (!yearId.success || !code.success) return res.status(404).json({ success: false, message: 'Bimestre no encontrado' });
-      const data = await schoolYearService.reopenPeriod(schoolId, yearId.data, code.data);
-      await auditRequest(req, { action: 'school.period_reopened', schoolId, target: { type: 'school_year', id: yearId.data }, metadata: { code: data.code, classes: data.classes } });
+      const body = reopenSchema.parse(req.body ?? {});
+      const data = await schoolYearService.reopenPeriod(schoolId, yearId.data, code.data, body.reason ?? null);
+      // El motivo queda en la publicación que se corrige (texto libre: no va a la auditoría).
+      await auditRequest(req, { action: 'school.period_reopened', schoolId, target: { type: 'school_year', id: yearId.data }, metadata: { code: data.code, classes: data.classes, correction: !!body.reason } });
       res.json({ success: true, data, message: `${data.label} reabierto: las notas vuelven a cambiar` });
     } catch (error) {
       return sendError(res, error, 'Error al reabrir el bimestre');

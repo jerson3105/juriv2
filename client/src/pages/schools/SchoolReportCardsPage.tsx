@@ -13,7 +13,7 @@ import { schoolSectionApi, schoolSectionKeys, type SchoolSection } from '../../l
 import {
   schoolLogoUrl, schoolReportApi, schoolReportKeys, type PeriodCode, type ReportSettings, type StudentReport,
 } from '../../lib/schoolReportApi';
-import type { SchoolLevel } from '../../lib/schoolYearApi';
+import { schoolYearApi, schoolYearKeys, type SchoolLevel } from '../../lib/schoolYearApi';
 
 const card = 'pg-surface p-4 sm:p-5';
 const select = 'pg-focus min-h-[44px] w-full rounded-lg border border-gray-300 bg-white px-2 text-sm text-gray-900 disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 sm:w-auto';
@@ -170,6 +170,133 @@ const SettingsCard = ({ settings, onEdit }: { settings: ReportSettings; onEdit: 
 };
 
 type View = 'avance' | 'libretas';
+
+type FlowAction = 'review' | 'unreview' | 'close' | 'reopen' | 'publish' | 'correct';
+
+const FLOW_COPY: Record<FlowAction, { title: (n: number) => string; button: string; text: string }> = {
+  review: {
+    title: (n) => `¿Pasar el bimestre ${n} a revisión?`,
+    button: 'Pasar a revisión',
+    text: 'Cada docente de este año recibe un aviso para completar sus notas y las conclusiones que pide la norma. El bimestre sigue abierto: pueden seguir editando. Sigue el avance en esta página y, cuando esté listo, ciérralo.',
+  },
+  unreview: {
+    title: (n) => `¿Quitar la revisión del bimestre ${n}?`,
+    button: 'Quitar la revisión',
+    text: 'Vuelve a estar abierto como cualquier bimestre en curso.',
+  },
+  close: {
+    title: (n) => `¿Cerrar el bimestre ${n}?`,
+    button: 'Cerrar bimestre',
+    text: 'Las notas del bimestre quedan congeladas en todas las clases del colegio. Después publicas las libretas; si hace falta corregir algo antes, puedes reabrirlo.',
+  },
+  reopen: {
+    title: (n) => `¿Reabrir el bimestre ${n}?`,
+    button: 'Reabrir',
+    text: 'Las notas vuelven a cambiar en todas las clases del colegio hasta que lo cierres de nuevo.',
+  },
+  publish: {
+    title: (n) => `¿Publicar las libretas del bimestre ${n}?`,
+    button: 'Publicar libretas',
+    text: 'Se guarda la libreta de cada estudiante tal como está ahora (no cambiará aunque después se edite algo) y les llega un aviso a los estudiantes y a sus familias, que la descargan en Juried. Revisa antes las libretas.',
+  },
+  correct: {
+    title: (n) => `¿Reabrir el bimestre ${n} para corregir?`,
+    button: 'Reabrir para corregir',
+    text: 'Las notas vuelven a cambiar. Las familias siguen viendo la libreta publicada hasta que publiques la corrección, que sale como una versión nueva con su aviso.',
+  },
+};
+
+/** El paso del bimestre elegido: revisión (aviso a los docentes), cierre, publicación y corrección. */
+const PeriodFlow = ({ schoolId, yearId, period }: { schoolId: string; yearId: string; period: PeriodCode | null }) => {
+  const queryClient = useQueryClient();
+  const [action, setAction] = useState<FlowAction | null>(null);
+  const [reason, setReason] = useState('');
+  const [running, setRunning] = useState(false);
+  const query = useQuery({ queryKey: schoolReportKeys.periods(schoolId, yearId), queryFn: () => schoolReportApi.periods(schoolId, yearId) });
+  const periods = query.data?.periods ?? [];
+  const started = periods.filter((p) => p.started);
+  const current = periods.find((p) => p.code === period) ?? started[started.length - 1] ?? periods[0];
+  if (!query.data || !current) return null;
+  const active = query.data.yearStatus === 'ACTIVE';
+
+  const run = async () => {
+    if (!action) return;
+    setRunning(true);
+    try {
+      const message = action === 'review' ? await schoolYearApi.startReview(schoolId, yearId, current.code)
+        : action === 'close' ? await schoolYearApi.closePeriod(schoolId, yearId, current.code)
+          : action === 'publish' ? await schoolReportApi.publish(schoolId, yearId, current.code)
+            : await schoolYearApi.reopenPeriod(schoolId, yearId, current.code, action === 'correct' ? reason.trim() : undefined);
+      toast.success(message);
+      setAction(null);
+      setReason('');
+      for (const key of ['school-report-periods', 'school-report-progress', 'school-report-section']) {
+        void queryClient.invalidateQueries({ queryKey: [key, schoolId] });
+      }
+      void queryClient.invalidateQueries({ queryKey: schoolYearKeys.list(schoolId) });
+      void queryClient.invalidateQueries({ queryKey: schoolYearKeys.detail(schoolId, yearId) });
+    } catch (error) {
+      toast.error(errorMessage(error, 'No se pudo completar'));
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const publication = current.publication;
+  const state = !current.started && current.status === 'OPEN'
+    ? { tone: 'muted', text: `El bimestre ${current.number} aún no empieza.` }
+    : current.status === 'OPEN' ? { tone: 'muted', text: `Bimestre ${current.number} en curso. Cuando se acerque su cierre, pásalo a revisión para avisar a los docentes.` }
+      : current.status === 'REVIEW' ? { tone: 'warn', text: `Bimestre ${current.number} en revisión: los docentes recibieron el aviso. Sigue el avance y ciérralo cuando esté listo.` }
+        : current.status === 'LOCKED' ? { tone: 'muted', text: `Bimestre ${current.number} cerrado: sus notas ya no cambian. Revisa las libretas y publícalas.` }
+          : { tone: 'ok', text: `Libretas del bimestre ${current.number} publicadas${publication ? ` el ${new Date(publication.publishedAt).toLocaleDateString('es-PE', { day: 'numeric', month: 'long' })} (${publication.students} ${publication.students === 1 ? 'estudiante' : 'estudiantes'}${publication.version > 1 ? `, versión ${publication.version}` : ''})` : ''}.` };
+  const buttons: FlowAction[] = !active || !current.started ? []
+    : current.status === 'OPEN' ? ['review', 'close']
+      : current.status === 'REVIEW' ? ['close', 'unreview']
+        : current.status === 'LOCKED' ? ['publish', 'reopen']
+          : ['correct'];
+  const tone = state.tone === 'warn'
+    ? 'border-amber-300 bg-amber-50 text-amber-950 dark:border-amber-500/40 dark:bg-amber-900/20 dark:text-amber-100'
+    : state.tone === 'ok'
+      ? 'border-emerald-300 bg-emerald-50 text-emerald-950 dark:border-emerald-500/40 dark:bg-emerald-900/20 dark:text-emerald-100'
+      : 'border-gray-200 bg-white text-gray-900 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100';
+
+  return (
+    <section className={`flex flex-col gap-3 rounded-2xl border p-4 sm:flex-row sm:items-center ${tone}`} aria-label="Paso del bimestre" role="status">
+      <p className="min-w-0 flex-1 text-sm">{state.text}</p>
+      {buttons.length > 0 && (
+        <div className="flex flex-shrink-0 flex-wrap gap-2">
+          {buttons.map((b, i) => (
+            <button key={b} type="button" className={i === 0 ? primaryButton : 'pg-btn pg-focus'} onClick={() => setAction(b)}>
+              {FLOW_COPY[b].button}
+            </button>
+          ))}
+        </div>
+      )}
+      {action && (
+        <HomeModal
+          title={FLOW_COPY[action].title(current.number)}
+          onClose={() => { setAction(null); setReason(''); }}
+          footer={<>
+            <button type="button" onClick={() => { setAction(null); setReason(''); }} className={cancelButton}>Cancelar</button>
+            <button type="button" className={primaryButton} disabled={running || (action === 'correct' && reason.trim().length < 5)} onClick={() => void run()}>
+              {running && <Loader2 size={16} className="animate-spin" aria-hidden="true" />}{FLOW_COPY[action].button}
+            </button>
+          </>}
+        >
+          <p className="text-sm text-gray-800 dark:text-gray-100">{FLOW_COPY[action].text}</p>
+          {action === 'correct' && (
+            <div className="mt-3">
+              <label htmlFor="correction-reason" className="mb-1 block text-sm font-semibold text-gray-900 dark:text-white">¿Qué hay que corregir?</label>
+              <textarea id="correction-reason" rows={3} maxLength={255} value={reason} onChange={(e) => setReason(e.target.value)} className={inputClass}
+                placeholder="Por ejemplo: faltaba una nota de Matemática en 3.° A" />
+            </div>
+          )}
+        </HomeModal>
+      )}
+    </section>
+  );
+};
+
 
 /** Avance de un bimestre: por sección y área, notas puestas de las esperadas y conclusiones pendientes; «Recordar» al docente. */
 const ProgressView = ({ schoolId, yearId, period, onPeriod, onOpenSection }: {
@@ -494,6 +621,8 @@ const ReportCardsBody = ({ schoolId, yearId, yearName }: { schoolId: string; yea
           </button>
         ))}
       </div>
+
+      <PeriodFlow schoolId={schoolId} yearId={yearId} period={period} />
 
       <div id={`panel-${view}`} role="tabpanel" aria-labelledby={`tab-${view}`}>
         {sections.isLoading ? (

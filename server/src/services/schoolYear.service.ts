@@ -2,12 +2,14 @@ import { and, asc, count, desc, eq, inArray, isNotNull, ne, sql } from 'drizzle-
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import {
-  classrooms, schoolAreaCoordinators, schoolEnrollments, schoolImportBatches, schoolMembers, schoolPeriods, schoolPlanAreas, schoolRosterBuilds,
-  schoolRosterDrafts, schools, schoolSections, schoolStudentMoves, schoolTeachingAssignments, schoolWorkshops, schoolWorkshopSections,
-  schoolWorkshopStudents, schoolYearLevels, schoolYears, users,
+  classrooms, schoolAreaCoordinators, schoolEnrollments, schoolImportBatches, schoolMembers, schoolPeriods, schoolPlanAreas,
+  schoolReportPublications, schoolRosterBuilds, schoolRosterDrafts, schools, schoolSections, schoolStudentMoves,
+  schoolTeachingAssignments, schoolWorkshops, schoolWorkshopSections, schoolWorkshopStudents, schoolYearLevels, schoolYears,
+  users,
 } from '../db/schema.js';
 import { ConflictError, NotFoundError, ValidationError } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';
+import { createNotifications } from '../utils/notificationEmitter.js';
 import { affectedRows } from '../utils/points.js';
 import { gradeService } from './grade.service.js';
 import { classroomsFollowing, invalidateSchoolCalendar, limaToday, syncCurrentPeriod, yearCalendars, yearClassroomIds } from './schoolCalendar.service.js';
@@ -479,15 +481,55 @@ export const schoolYearService = {
     return { code: period.code, label, classes: classes.length };
   },
 
-  /** Reabre un bimestre en todas las clases del año (también en las que lo habían cerrado por su cuenta): las notas vuelven a cambiar. */
-  async reopenPeriod(schoolId: string, yearId: string, code: string) {
+  /**
+   * «En revisión»: el aviso de cierre del bimestre. Sigue abierto (los docentes aún editan) y cada docente del año recibe un
+   * aviso en su campana para completar notas y conclusiones; la administración sigue el avance en «Libretas» y luego cierra.
+   */
+  async startReview(schoolId: string, yearId: string, code: string) {
+    const { period, label } = await loadPeriod(schoolId, yearId, code);
+    if (period.status !== 'OPEN') throw new ConflictError(period.status === 'REVIEW' ? `El ${label} ya está en revisión` : `El ${label} ya está cerrado`);
+    if (period.startsOn > limaToday()) throw new ConflictError(`El ${label} aún no empieza`);
+    const now = new Date();
+    const result = await db.update(schoolPeriods).set({ status: 'REVIEW', updatedAt: now })
+      .where(and(eq(schoolPeriods.id, period.id), eq(schoolPeriods.status, 'OPEN')));
+    if (affectedRows(result) === 0) throw new ConflictError(`El ${label} ya está en revisión`);
+    invalidateSchoolCalendar(schoolId);
+    // Los docentes de las asignaciones y talleres del año (con clase).
+    const teachers = [...new Set([
+      ...(await db.select({ id: schoolTeachingAssignments.teacherUserId }).from(schoolTeachingAssignments)
+        .where(and(eq(schoolTeachingAssignments.yearId, yearId), isNotNull(schoolTeachingAssignments.classroomId)))).map((t) => t.id),
+      ...(await db.select({ id: schoolWorkshops.teacherUserId }).from(schoolWorkshops)
+        .where(and(eq(schoolWorkshops.yearId, yearId), isNotNull(schoolWorkshops.classroomId)))).map((t) => t.id),
+    ])];
+    const number = Number(code.slice(1));
+    await createNotifications(teachers.map((userId) => ({
+      userId, type: 'ANNOUNCEMENT' as const, title: `Libretas del bimestre ${number}: en revisión`,
+      message: `Tu colegio está revisando las libretas del ${label.toLowerCase()}: completa tus notas y las conclusiones que pide la norma antes del cierre.`,
+      data: { kind: 'REPORT_REVIEW', yearId, period: code },
+    })));
+    return { code: period.code, label, teachers: teachers.length };
+  },
+
+  /**
+   * Reabre un bimestre en todas las clases del año (también en las que lo habían cerrado por su cuenta): las notas vuelven a
+   * cambiar. Uno en revisión vuelve a abierto; uno con las libretas publicadas pide un motivo (queda en esa versión) y, al
+   * publicarlo de nuevo, sale la versión siguiente.
+   */
+  async reopenPeriod(schoolId: string, yearId: string, code: string, reason?: string | null) {
     const { period, label, gradebookPeriod } = await loadPeriod(schoolId, yearId, code);
-    if (period.status !== 'LOCKED') throw new ConflictError(`El ${label} no está cerrado`);
+    if (period.status === 'OPEN') throw new ConflictError(`El ${label} no está cerrado`);
+    if (period.status === 'PUBLISHED' && !reason?.trim()) throw new ValidationError('Para corregir unas libretas publicadas, escribe el motivo');
     const now = new Date();
     const result = await db.update(schoolPeriods)
       .set({ status: 'OPEN', lockedAt: null, lockedBy: null, updatedAt: now })
-      .where(and(eq(schoolPeriods.id, period.id), eq(schoolPeriods.status, 'LOCKED')));
-    if (affectedRows(result) === 0) throw new ConflictError(`El ${label} no está cerrado`);
+      .where(and(eq(schoolPeriods.id, period.id), eq(schoolPeriods.status, period.status)));
+    if (affectedRows(result) === 0) throw new ConflictError(`El ${label} cambió mientras tanto: recarga la página`);
+    if (period.status === 'PUBLISHED') {
+      const [latest] = await db.select({ id: schoolReportPublications.id }).from(schoolReportPublications)
+        .where(and(eq(schoolReportPublications.yearId, yearId), eq(schoolReportPublications.periodCode, code)))
+        .orderBy(desc(schoolReportPublications.version)).limit(1);
+      if (latest) await db.update(schoolReportPublications).set({ correctionReason: reason!.trim().slice(0, 255) }).where(eq(schoolReportPublications.id, latest.id));
+    }
     invalidateSchoolCalendar(schoolId);
     const closedByClass = await db.select({ id: classrooms.id, closedBimesters: classrooms.closedBimesters }).from(classrooms)
       .where(and(eq(classrooms.schoolId, schoolId), isNotNull(classrooms.closedBimesters),

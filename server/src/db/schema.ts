@@ -3389,6 +3389,34 @@ export const schoolExemptions = mysqlTable('school_exemptions', {
   schoolIdx: index('idx_school_exemptions_school').on(table.schoolId),
 }));
 
+// Publicación de las libretas de un bimestre (todo el colegio) y la copia congelada de cada una (migrations/school_console_e3_3.sql).
+export const schoolReportPublications = mysqlTable('school_report_publications', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  schoolId: varchar('school_id', { length: 36 }).notNull(),
+  yearId: varchar('year_id', { length: 36 }).notNull(),
+  periodCode: varchar('period_code', { length: 4 }).notNull(),
+  version: int('version').notNull(),
+  students: int('students').notNull(),
+  // Por qué se reabrió (la versión que se corrige).
+  correctionReason: varchar('correction_reason', { length: 255 }),
+  publishedBy: varchar('published_by', { length: 36 }).notNull(),
+  publishedAt: datetime('published_at').notNull(),
+}, (table) => ({
+  versionUnique: unique('uq_school_report_publications_version').on(table.yearId, table.periodCode, table.version),
+  schoolIdx: index('idx_school_report_publications_school').on(table.schoolId),
+}));
+
+export const schoolReportSnapshots = mysqlTable('school_report_snapshots', {
+  publicationId: varchar('publication_id', { length: 36 }).notNull(),
+  studentId: varchar('student_id', { length: 36 }).notNull(),
+  sectionId: varchar('section_id', { length: 36 }).notNull(),
+  data: json('data').notNull(),
+  createdAt: datetime('created_at').notNull(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.publicationId, table.studentId] }),
+  studentIdx: index('idx_school_report_snapshots_student').on(table.studentId),
+}));
+
 export const schoolAreaCoordinators = mysqlTable('school_area_coordinators', {
   id: varchar('id', { length: 36 }).primaryKey(),
   schoolId: varchar('school_id', { length: 36 }).notNull(),
