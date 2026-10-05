@@ -364,6 +364,7 @@ class SchoolController {
       await schoolService.unassignClassroom(classroomId);
       res.json({ success: true, message: 'Clase desasignada de la escuela' });
     } catch (error) {
+      if (error instanceof AppError) return res.status(error.statusCode).json({ success: false, message: error.message });
       console.error('Error unassigning classroom:', error);
       res.status(500).json({ success: false, message: 'Error al desasignar clase' });
     }

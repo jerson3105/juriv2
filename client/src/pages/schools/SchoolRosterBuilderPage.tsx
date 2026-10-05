@@ -23,18 +23,26 @@ const SAFE_PAGE = 50;
 
 /** «Armar desde clases»: mapear cada clase a su sección, revisar las uniones y confirmar. */
 export const SchoolRosterBuilderPage = () => {
-  const { school, activeYear, yearsLoading } = useSchoolConsole();
-  const yearId = activeYear?.id ?? '';
-  const overview = useQuery({ queryKey: rosterBuilderKeys.overview(school.id, yearId), queryFn: () => rosterBuilderApi.overview(school.id, yearId), enabled: !!activeYear });
+  const { school, selectedYear, yearsLoading } = useSchoolConsole();
+  const yearId = selectedYear?.id ?? '';
+  const preparing = selectedYear?.status === 'PLANNING';
+  const overview = useQuery({ queryKey: rosterBuilderKeys.overview(school.id, yearId), queryFn: () => rosterBuilderApi.overview(school.id, yearId), enabled: !!selectedYear && !preparing });
 
-  if (yearsLoading || (activeYear && overview.isLoading)) {
+  if (preparing) {
+    return (
+      <p className="mx-auto max-w-3xl rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-700 dark:border-gray-600 dark:text-gray-300">
+        El padrón de {selectedYear!.name} llega con la promoción al cerrar el año en curso; los que llegan por primera vez, con la nómina del SIAGIE o nuestra plantilla. «Armar desde clases» es para el año en curso.
+      </p>
+    );
+  }
+  if (yearsLoading || (selectedYear && overview.isLoading)) {
     return <div className="h-64 animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none dark:bg-gray-800" aria-busy="true" aria-label="Cargando las clases" />;
   }
-  if (!activeYear || overview.isError || !overview.data) {
+  if (!selectedYear || overview.isError || !overview.data) {
     return (
       <div className="mx-auto max-w-3xl rounded-xl border border-red-200 bg-red-50 p-6 text-center dark:border-red-500/40 dark:bg-red-900/20" role="alert">
-        <p className="font-semibold text-red-900 dark:text-red-100">{activeYear ? 'No se pudieron cargar las clases.' : 'Primero prepara el año escolar.'}</p>
-        {activeYear && <button type="button" onClick={() => void overview.refetch()} className="pg-btn pg-focus mt-3">Reintentar</button>}
+        <p className="font-semibold text-red-900 dark:text-red-100">{selectedYear ? 'No se pudieron cargar las clases.' : 'Primero prepara el año escolar.'}</p>
+        {selectedYear && <button type="button" onClick={() => void overview.refetch()} className="pg-btn pg-focus mt-3">Reintentar</button>}
       </div>
     );
   }

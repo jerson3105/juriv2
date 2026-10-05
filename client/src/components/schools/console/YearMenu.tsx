@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronDown } from 'lucide-react';
+import { Check, ChevronDown, Plus } from 'lucide-react';
 import type { SchoolYearStatus, SchoolYearSummary } from '../../../lib/schoolYearApi';
 import { formatRange } from './schoolYearHelpers';
 
@@ -17,15 +17,17 @@ export const YearStatusChip = ({ status }: { status: SchoolYearStatus }) => (
 interface YearMenuProps {
   schoolId: string;
   years: SchoolYearSummary[];
-  activeYear: SchoolYearSummary | null;
+  selected: SchoolYearSummary | null;
+  onSelect: (yearId: string) => void;
   manager: boolean;
 }
 
 /**
- * Selector de año en la barra de la consola: el activo, el borrador (desde la Entrega 2) y los archivados. Por ahora
- * informa; cambiar de año llega con el cierre del año.
+ * Selector de año en la barra de la consola: el activo, el que se prepara (borrador) y los archivados (solo para
+ * consultar). Lo que se elige es el año que miran las páginas de la consola. La administración prepara desde aquí el
+ * año siguiente.
  */
-export const YearMenu = ({ schoolId, years, activeYear, manager }: YearMenuProps) => {
+export const YearMenu = ({ schoolId, years, selected, onSelect, manager }: YearMenuProps) => {
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -53,6 +55,28 @@ export const YearMenu = ({ schoolId, years, activeYear, manager }: YearMenuProps
 
   const current = years.filter((year) => year.status !== 'CLOSED');
   const archived = years.filter((year) => year.status === 'CLOSED');
+  // El siguiente al último (la lista llega del más nuevo al más antiguo); uno a la vez.
+  const next = years.length > 0 && !years.some((year) => year.status === 'PLANNING') ? String(Number(years[0].name) + 1) : null;
+  const choose = (yearId: string) => {
+    onSelect(yearId);
+    setOpen(false);
+    buttonRef.current?.focus();
+  };
+  const item = (year: SchoolYearSummary) => (
+    <li key={year.id}>
+      <button
+        type="button"
+        aria-pressed={selected?.id === year.id}
+        onClick={() => choose(year.id)}
+        className="flex min-h-[44px] w-full items-center gap-2 rounded-lg px-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+      >
+        <span className="w-4 flex-shrink-0" aria-hidden="true">{selected?.id === year.id && <Check size={16} />}</span>
+        <b>{year.name}</b>
+        <YearStatusChip status={year.status} />
+        <span className="ml-auto text-xs text-gray-600 dark:text-gray-300">{formatRange(year.startsOn, year.endsOn)}</span>
+      </button>
+    </li>
+  );
 
   return (
     <div className="relative">
@@ -64,10 +88,10 @@ export const YearMenu = ({ schoolId, years, activeYear, manager }: YearMenuProps
         onClick={() => setOpen((value) => !value)}
         className="inline-flex min-h-[44px] items-center gap-2 rounded-lg px-2.5 text-sm text-gray-800 hover:bg-gray-100 dark:text-gray-100 dark:hover:bg-gray-700"
       >
-        {activeYear ? (
+        {selected ? (
           <>
-            <span>Año escolar <b>{activeYear.name}</b></span>
-            <YearStatusChip status="ACTIVE" />
+            <span>Año escolar <b>{selected.name}</b></span>
+            <YearStatusChip status={selected.status} />
           </>
         ) : (
           <span>Año escolar <b>sin preparar</b></span>
@@ -82,16 +106,8 @@ export const YearMenu = ({ schoolId, years, activeYear, manager }: YearMenuProps
         >
           <p className="px-2 pb-1 pt-1 text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">Año escolar</p>
           {current.length > 0 ? (
-            <ul>
-              {current.map((year) => (
-                <li key={year.id} className="flex min-h-[44px] items-center gap-2 rounded-lg px-2 text-sm">
-                  <b>{year.name}</b>
-                  <YearStatusChip status={year.status} />
-                  <span className="ml-auto text-xs text-gray-600 dark:text-gray-300">{formatRange(year.startsOn, year.endsOn)}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
+            <ul>{current.map(item)}</ul>
+          ) : years.length === 0 ? (
             <p className="px-2 py-2 text-sm text-gray-700 dark:text-gray-300">
               Aún no hay año escolar.{' '}
               {manager && (
@@ -100,18 +116,23 @@ export const YearMenu = ({ schoolId, years, activeYear, manager }: YearMenuProps
                 </Link>
               )}
             </p>
+          ) : (
+            <p className="px-2 py-2 text-sm text-gray-700 dark:text-gray-300">Ningún año en curso.</p>
+          )}
+          {manager && next && (
+            <Link
+              to={`/escuela/${schoolId}/anio?preparar=1`}
+              onClick={() => setOpen(false)}
+              className="mt-1 flex min-h-[44px] items-center gap-2 rounded-lg px-2 text-sm font-semibold text-primary-700 hover:bg-gray-100 dark:text-primary-300 dark:hover:bg-gray-700"
+            >
+              <Plus size={16} aria-hidden="true" />
+              Preparar {next}
+            </Link>
           )}
           <div className="my-1 border-t border-gray-200 dark:border-gray-700" />
           <p className="px-2 pb-1 pt-1 text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">Archivados</p>
           {archived.length > 0 ? (
-            <ul>
-              {archived.map((year) => (
-                <li key={year.id} className="flex min-h-[44px] items-center gap-2 rounded-lg px-2 text-sm">
-                  <b>{year.name}</b>
-                  <YearStatusChip status="CLOSED" />
-                </li>
-              ))}
-            </ul>
+            <ul>{archived.map(item)}</ul>
           ) : (
             <p className="px-2 pb-2 text-sm text-gray-700 dark:text-gray-300">Aún no hay años archivados. Al cerrar el año quedará aquí, solo para consultar.</p>
           )}

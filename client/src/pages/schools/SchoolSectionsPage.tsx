@@ -21,12 +21,12 @@ const select = 'pg-focus mt-1 block min-h-[40px] w-full rounded-lg border border
 
 /** Grados y secciones del año: nivel → grado → tarjetas. Crear varias de una vez, nombre en el lugar, turno y tutoría. */
 export const SchoolSectionsPage = () => {
-  const { school, manager, activeYear, yearsLoading } = useSchoolConsole();
+  const { school, manager, selectedYear, yearsLoading } = useSchoolConsole();
   const queryClient = useQueryClient();
   const { teachers } = useSchoolPanelData(school, manager);
-  const yearId = activeYear?.id ?? '';
-  const year = useQuery({ queryKey: schoolYearKeys.detail(school.id, yearId), queryFn: () => schoolYearApi.get(school.id, yearId), enabled: !!activeYear });
-  const sections = useQuery({ queryKey: schoolSectionKeys.list(school.id, yearId), queryFn: () => schoolSectionApi.list(school.id, yearId), enabled: !!activeYear });
+  const yearId = selectedYear?.id ?? '';
+  const year = useQuery({ queryKey: schoolYearKeys.detail(school.id, yearId), queryFn: () => schoolYearApi.get(school.id, yearId), enabled: !!selectedYear });
+  const sections = useQuery({ queryKey: schoolSectionKeys.list(school.id, yearId), queryFn: () => schoolSectionApi.list(school.id, yearId), enabled: !!selectedYear });
   const levels = (year.data?.levels ?? []).map((l) => l.level);
   const [picked, setPicked] = useState<SchoolLevel | null>(null);
   const [creating, setCreating] = useState(false);
@@ -47,10 +47,10 @@ export const SchoolSectionsPage = () => {
     onError: (error) => toast.error(errorMessage(error, 'No se pudieron crear las secciones')),
   });
 
-  if (yearsLoading || (activeYear && (year.isLoading || sections.isLoading))) {
+  if (yearsLoading || (selectedYear && (year.isLoading || sections.isLoading))) {
     return <div className="h-64 animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none dark:bg-gray-800" aria-busy="true" aria-label="Cargando las secciones" />;
   }
-  if (!activeYear) {
+  if (!selectedYear) {
     return (
       <div className="mx-auto max-w-3xl rounded-2xl border-2 border-dashed border-gray-300 bg-white/70 px-6 py-12 text-center dark:border-gray-600 dark:bg-gray-800/60">
         <div className="mx-auto flex w-fit gap-3" aria-hidden="true">
@@ -80,7 +80,7 @@ export const SchoolSectionsPage = () => {
         <div className="min-w-0 flex-1">
           <h1 className="text-xl font-black text-gray-900 dark:text-white sm:text-2xl">Grados y secciones</h1>
           <p className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">
-            {activeYear.name} · {all.length} {all.length === 1 ? 'sección' : 'secciones'} · {all.filter((s) => !s.tutor).length} sin tutoría
+            {selectedYear.name} · {all.length} {all.length === 1 ? 'sección' : 'secciones'} · {all.filter((s) => !s.tutor).length} sin tutoría
           </p>
         </div>
         {manager && level && (
@@ -294,13 +294,13 @@ const GradeGroup = ({ level, grade, sections, tutors, manager, adding, onAdd }: 
 };
 
 const SectionCard = ({ section, tutors, manager }: { section: SchoolSection; tutors: SchoolTeacher[]; manager: boolean }) => {
-  const { school, activeYear } = useSchoolConsole();
+  const { school, selectedYear } = useSchoolConsole();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(section.name);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const fieldId = useId();
-  const listKey = schoolSectionKeys.list(school.id, activeYear?.id ?? '');
+  const listKey = schoolSectionKeys.list(school.id, selectedYear?.id ?? '');
   const display = sectionName(section);
 
   const save = useMutation({

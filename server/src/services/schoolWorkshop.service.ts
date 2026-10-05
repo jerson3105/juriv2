@@ -8,7 +8,7 @@ import {
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError, isDuplicateEntry } from '../utils/errors.js';
 import { cleanText } from '../utils/textClean.js';
 import { classroomService } from './classroom.service.js';
-import { assertTeacher, classroomTaken, SCALE_OF, type ClassroomChoice } from './schoolAssignment.service.js';
+import { assertTeacher, buildSchoolClass, classroomTaken, previousYearId, sourceForWorkshop, type ClassroomChoice } from './schoolAssignment.service.js';
 import { schoolAutoEnrollService, type SyncResult } from './schoolAutoEnroll.service.js';
 import { effectivePlan, type PlanArea } from './schoolPlan.service.js';
 import { sectionDisplayName } from './schoolSection.service.js';
@@ -121,17 +121,20 @@ const resolveClassroom = async (
   }
   const [scale] = await db.select({ gradeScale: schoolYearLevels.gradeScale }).from(schoolYearLevels)
     .where(and(eq(schoolYearLevels.yearId, yearId), eq(schoolYearLevels.level, level)));
-  const created = await classroomService.create({
-    name,
-    teacherId: teacherUserId,
-    gradeLevel: gradeLevel ?? undefined,
-    useCompetencies: true,
-    curriculumAreaId: area.areaId,
-    gradeScaleType: scale ? SCALE_OF[scale.gradeScale] ?? null : null,
+  // En un año en preparación, la clase copia la del taller del año anterior (mismo docente y área).
+  const [year] = await db.select({ name: schoolYears.name, status: schoolYears.status }).from(schoolYears).where(eq(schoolYears.id, yearId));
+  const prev = year?.status === 'PLANNING' ? await previousYearId(schoolId, year.name) : null;
+  const built = await buildSchoolClass({
     schoolId,
+    teacherUserId,
+    name,
+    areaId: area.areaId,
+    gradeLevel,
+    gradeScale: scale?.gradeScale ?? null,
+    schoolSectionId: null,
+    sourceId: prev ? await sourceForWorkshop(prev, teacherUserId, area.areaId, name) : null,
   });
-  if (!created) throw new Error('No se pudo crear la clase');
-  return created.id;
+  return built.id;
 };
 
 const checkWeight = (weight: number) => {

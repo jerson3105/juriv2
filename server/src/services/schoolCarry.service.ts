@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import {
   attendanceRecords, classroomCharacterClasses, classrooms, gradeEvaluationScores, parentProfiles, parentStudentLinks, schoolAutoProfiles,
-  schoolMoveProfiles, studentAvatarPurchases, studentBadges, studentEquippedItems, studentProfiles, type MoveTargetSnapshot,
+  schoolMoveProfiles, schoolStudentMoves, studentAvatarPurchases, studentBadges, studentEquippedItems, studentProfiles, type MoveTargetSnapshot,
 } from '../db/schema.js';
 import { calculateLevel } from '../utils/helpers.js';
 import { avatarCatalogService } from './avatarCatalog.service.js';
@@ -51,16 +51,17 @@ export interface PendingCarry {
   sourceLabel: string | null;
 }
 
-/** El origen pendiente más reciente de cada estudiante en un área (su progreso más nuevo en esa área). */
-export const pendingCarries = async (tx: Tx, studentIds: string[], areaId: string) => {
+/** El origen pendiente más reciente de cada estudiante en un área y un año (su progreso más nuevo en esa área). */
+export const pendingCarries = async (tx: Tx, studentIds: string[], areaId: string, yearId: string) => {
   const byStudent = new Map<string, PendingCarry>();
   if (studentIds.length === 0) return byStudent;
   const rows = await tx.select({
     id: schoolMoveProfiles.id, moveId: schoolMoveProfiles.moveId, studentId: schoolMoveProfiles.studentId,
     sourceProfileId: schoolMoveProfiles.sourceProfileId, sourceLabel: schoolMoveProfiles.sourceLabel,
   }).from(schoolMoveProfiles)
+    .innerJoin(schoolStudentMoves, eq(schoolStudentMoves.id, schoolMoveProfiles.moveId))
     .where(and(
-      inArray(schoolMoveProfiles.studentId, studentIds), eq(schoolMoveProfiles.areaId, areaId),
+      inArray(schoolMoveProfiles.studentId, studentIds), eq(schoolMoveProfiles.areaId, areaId), eq(schoolStudentMoves.yearId, yearId),
       isNotNull(schoolMoveProfiles.sourceProfileId), isNull(schoolMoveProfiles.appliedAt),
     ))
     .orderBy(desc(schoolMoveProfiles.createdAt))

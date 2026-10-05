@@ -72,6 +72,10 @@ const loadYear = async (schoolId: string, yearId: string, forWrite: boolean) => 
     .where(and(eq(schoolYears.id, yearId), eq(schoolYears.schoolId, schoolId)));
   if (!year) throw new NotFoundError('Año escolar no encontrado');
   if (forWrite && year.status === 'CLOSED') throw new ConflictError('Este año escolar ya cerró: solo se puede consultar');
+  // Armar desde las clases es para el año en curso: el padrón del siguiente llega con la promoción o con la plantilla.
+  if (forWrite && year.status === 'PLANNING') {
+    throw new ConflictError('En un año en preparación el padrón llega con la promoción o con la plantilla, no desde las clases');
+  }
   return year;
 };
 

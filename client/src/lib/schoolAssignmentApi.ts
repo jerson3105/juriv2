@@ -27,6 +27,8 @@ export interface MatrixCounts {
   withoutClass: number;
   /** Estudiantes de la sección que aún no tienen perfil en la clase vinculada. */
   missing: number;
+  /** Solo en el total de todos los niveles: talleres sin clase. */
+  workshopsWithoutClass?: number;
 }
 
 export interface MatrixSection {
@@ -170,7 +172,18 @@ export const assignmentKeys = {
 
 const year = (schoolId: string, yearId: string) => `/schools/${schoolId}/years/${yearId}`;
 
+/** Una tanda de clases del año en preparación (el cliente repite mientras queden). */
+export interface YearClassesBatch {
+  created: number;
+  cloned: number;
+  remaining: number;
+  /** Asignaciones o talleres de alguien que ya no está en el equipo: quedan sin clase. */
+  skipped: number;
+}
+
 export const assignmentApi = {
+  createYearClasses: async (schoolId: string, yearId: string): Promise<YearClassesBatch> =>
+    (await api.post(`${year(schoolId, yearId)}/classes`)).data.data,
   getPlan: async (schoolId: string, yearId: string): Promise<{ levels: PlanLevel[] }> => (await api.get(`${year(schoolId, yearId)}/plan`)).data.data,
   savePlan: async (schoolId: string, yearId: string, level: SchoolLevel, areas: Array<{ areaId: string; grades: number[] }>): Promise<{ levels: PlanLevel[] }> =>
     (await api.put(`${year(schoolId, yearId)}/plan/${level}`, { areas })).data.data,

@@ -25,6 +25,16 @@ const yearBodySchema = z.object({
 
 const createYearSchema = yearBodySchema.extend({
   name: z.string().regex(/^\d{4}$/, 'El año escolar se nombra con su año, por ejemplo 2026'),
+  // El año siguiente puede nacer con la estructura de uno anterior.
+  copyFrom: z.object({
+    yearId: z.string().uuid(),
+    sections: z.boolean(),
+    tutors: z.boolean(),
+    plan: z.boolean(),
+    assignments: z.boolean(),
+    workshops: z.boolean(),
+    coordinators: z.boolean(),
+  }).strict().optional(),
 }).strict();
 
 const yearIdSchema = z.string().uuid();
@@ -65,19 +75,24 @@ export const schoolYearController = {
     }
   },
 
-  // POST /schools/:schoolId/years — el primer año de la escuela (administración)
+  // POST /schools/:schoolId/years — el primer año (nace activo) o el siguiente (en preparación) (administración)
   async create(req: Request, res: Response) {
     try {
       const { schoolId } = req.params;
       if (!(await requireSchoolRole(req, res, schoolId, SCHOOL_MANAGER_ROLES))) return;
-      const data = await schoolYearService.create(schoolId, req.user!.id, createYearSchema.parse(req.body));
+      const body = createYearSchema.parse(req.body);
+      const data = await schoolYearService.create(schoolId, req.user!.id, body);
       await auditRequest(req, {
         action: 'school.year_created',
         schoolId,
         target: { type: 'school_year', id: data.id },
-        metadata: { name: data.name, periodType: data.periodType, levels: data.levels.map((l) => l.level).join(',') },
+        metadata: {
+          name: data.name, status: data.status, periodType: data.periodType, levels: data.levels.map((l) => l.level).join(','),
+          ...(body.copyFrom && data.copied ? { copiedFrom: body.copyFrom.yearId, ...data.copied } : {}),
+        },
       });
-      res.status(201).json({ success: true, data, message: `Año escolar ${data.name} creado` });
+      const message = data.status === 'PLANNING' ? `Año escolar ${data.name} en preparación` : `Año escolar ${data.name} creado`;
+      res.status(201).json({ success: true, data, message });
     } catch (error) {
       return sendError(res, error, 'Error al crear el año escolar');
     }
@@ -100,6 +115,21 @@ export const schoolYearController = {
       res.json({ success: true, data, message: 'Año escolar guardado' });
     } catch (error) {
       return sendError(res, error, 'Error al guardar el año escolar');
+    }
+  },
+
+  // DELETE /schools/:schoolId/years/:yearId — descartar el año en preparación (administración)
+  async remove(req: Request, res: Response) {
+    try {
+      const { schoolId } = req.params;
+      if (!(await requireSchoolRole(req, res, schoolId, SCHOOL_MANAGER_ROLES))) return;
+      const yearId = yearIdSchema.safeParse(req.params.yearId);
+      if (!yearId.success) return res.status(404).json({ success: false, message: 'Año escolar no encontrado' });
+      const data = await schoolYearService.remove(schoolId, yearId.data);
+      await auditRequest(req, { action: 'school.year_discarded', schoolId, target: { type: 'school_year', id: data.id }, metadata: { name: data.name } });
+      res.json({ success: true, data, message: `Se descartó la preparación de ${data.name}` });
+    } catch (error) {
+      return sendError(res, error, 'Error al descartar el año escolar');
     }
   },
 

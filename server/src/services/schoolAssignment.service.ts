@@ -1,16 +1,20 @@
-import { and, asc, count, eq, gte, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, lt, ne, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/mysql-core';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import {
   classrooms, curriculumAreas, schoolEnrollmentEvents, schoolEnrollments, schoolMembers, schoolSections, schoolStudents,
-  schoolTeachingAssignments, schoolWorkshops, schoolYearLevels, schoolYears, studentProfiles, users,
+  schoolTeachingAssignments, schoolWorkshops, schoolWorkshopSections, schoolYearLevels, schoolYears, studentProfiles, users,
 } from '../db/schema.js';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError, isDuplicateEntry } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';
+import { affectedRows } from '../utils/points.js';
+import { comparableText } from '../utils/textClean.js';
+import { characterClassService } from './characterClass.service.js';
 import { classroomService } from './classroom.service.js';
 import { accessOf, accessStates } from './schoolAccessState.js';
 import { schoolAutoEnrollService, type SyncResult } from './schoolAutoEnroll.service.js';
+import { syncCurrentPeriod, yearCalendars } from './schoolCalendar.service.js';
 import { effectivePlan, type PlanArea } from './schoolPlan.service.js';
 import { sectionDisplayName } from './schoolSection.service.js';
 import type { SchoolLevel } from './schoolYear.service.js';
@@ -89,6 +93,124 @@ const planAreaFor = async (yearId: string, section: Section, areaId: string): Pr
   return area;
 };
 
+/** El año anterior a uno (el último en curso o cerrado de nombre menor): de ahí se copian las clases del año nuevo. */
+export const previousYearId = async (schoolId: string, yearName: string) => {
+  const [row] = await db.select({ id: schoolYears.id }).from(schoolYears)
+    .where(and(eq(schoolYears.schoolId, schoolId), inArray(schoolYears.status, ['ACTIVE', 'CLOSED']), lt(schoolYears.name, yearName)))
+    .orderBy(desc(schoolYears.name)).limit(1);
+  return row?.id ?? null;
+};
+
+const sameName = (a: string, b: string) => comparableText(a) === comparableText(b);
+const newestFirst = (a: { updatedAt: Date | string }, b: { updatedAt: Date | string }) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+
+/**
+ * La clase del mismo docente y área en el año anterior. Mejor la de la sección de donde vienen sus estudiantes (mismo
+ * nombre, un grado menos); luego la misma sección, la de mismo nombre, la del mismo grado o cualquiera del nivel; a
+ * igualdad, la más nueva.
+ */
+const sourceForAssignment = async (prevYearId: string, teacherUserId: string, areaId: string, section: { level: string; grade: number; name: string }) => {
+  const rows = await db.select({
+    id: classrooms.id, level: schoolSections.level, grade: schoolSections.grade, name: schoolSections.name, updatedAt: classrooms.updatedAt,
+  }).from(schoolTeachingAssignments)
+    .innerJoin(schoolSections, eq(schoolSections.id, schoolTeachingAssignments.sectionId))
+    .innerJoin(classrooms, eq(classrooms.id, schoolTeachingAssignments.classroomId))
+    .where(and(
+      eq(schoolTeachingAssignments.yearId, prevYearId), eq(schoolTeachingAssignments.teacherUserId, teacherUserId),
+      eq(schoolTeachingAssignments.areaId, areaId), eq(classrooms.teacherId, teacherUserId),
+    ));
+  const score = (r: (typeof rows)[number]) => {
+    if (r.level !== section.level) return 0;
+    const named = sameName(r.name, section.name);
+    if (named && r.grade === section.grade - 1) return 5;
+    if (named && r.grade === section.grade) return 4;
+    if (named) return 3;
+    return r.grade === section.grade ? 2 : 1;
+  };
+  return rows.sort((a, b) => score(b) - score(a) || newestFirst(a, b))[0]?.id ?? null;
+};
+
+/** La clase del taller del mismo docente y área en el año anterior: mejor la del taller del mismo nombre. */
+export const sourceForWorkshop = async (prevYearId: string, teacherUserId: string, areaId: string, name: string) => {
+  const rows = await db.select({ id: classrooms.id, name: schoolWorkshops.name, updatedAt: classrooms.updatedAt }).from(schoolWorkshops)
+    .innerJoin(classrooms, eq(classrooms.id, schoolWorkshops.classroomId))
+    .where(and(
+      eq(schoolWorkshops.yearId, prevYearId), eq(schoolWorkshops.teacherUserId, teacherUserId),
+      eq(schoolWorkshops.areaId, areaId), eq(classrooms.teacherId, teacherUserId),
+    ));
+  return rows.sort((a, b) => Number(sameName(b.name, name)) - Number(sameName(a.name, name)) || newestFirst(a, b))[0]?.id ?? null;
+};
+
+/**
+ * Una clase nueva del colegio a nombre del docente. Con una clase de origen, copia su configuración (comportamientos,
+ * insignias, tienda, tienda de avatar, competencias y bancos de preguntas) y toma la sección, el grado, el área y la
+ * escala del año nuevo; sin ella, nace como al crearla desde la matriz.
+ */
+export const buildSchoolClass = async (input: {
+  schoolId: string; teacherUserId: string; name: string; areaId: string; gradeLevel: string | null;
+  gradeScale: string | null; schoolSectionId: string | null; sourceId: string | null;
+}) => {
+  const gradeScaleType = input.gradeScale ? SCALE_OF[input.gradeScale] ?? null : null;
+  if (input.sourceId) {
+    const { classroom } = await classroomService.cloneClassroom(input.sourceId, input.teacherUserId, {
+      name: input.name, copyBehaviors: true, copyBadges: true, copyShopItems: true, copyQuestionBanks: true, schoolId: input.schoolId,
+    });
+    if (!classroom) throw new Error('No se pudo crear la clase');
+    const sameArea = classroom.curriculumAreaId === input.areaId && classroom.useCompetencies;
+    await db.update(classrooms).set({
+      schoolSectionId: input.schoolSectionId,
+      gradeLevel: input.gradeLevel,
+      curriculumAreaId: input.areaId,
+      useCompetencies: true,
+      gradeScaleType,
+      // Otra escala (literal o vigesimal): su configuración no aplica.
+      ...(classroom.gradeScaleType !== gradeScaleType ? { gradeScaleConfig: null } : {}),
+      updatedAt: new Date(),
+    }).where(eq(classrooms.id, classroom.id));
+    if (!sameArea) await classroomService.syncClassroomCompetencies(classroom.id, input.areaId);
+    await characterClassService.seedDefaults(classroom.id);
+    return { id: classroom.id, cloned: true };
+  }
+  const created = await classroomService.create({
+    name: input.name,
+    teacherId: input.teacherUserId,
+    gradeLevel: input.gradeLevel ?? undefined,
+    useCompetencies: true,
+    curriculumAreaId: input.areaId,
+    gradeScaleType,
+    schoolId: input.schoolId,
+    schoolSectionId: input.schoolSectionId ?? undefined,
+  });
+  if (!created) throw new Error('No se pudo crear la clase');
+  return { id: created.id, cloned: false };
+};
+
+/** Escala de un nivel en un año. */
+const scaleOf = async (yearId: string, level: string) => {
+  const [row] = await db.select({ gradeScale: schoolYearLevels.gradeScale }).from(schoolYearLevels)
+    .where(and(eq(schoolYearLevels.yearId, yearId), eq(schoolYearLevels.level, level as SchoolLevel)));
+  return row?.gradeScale ?? null;
+};
+
+/** La clase nueva de una asignación: en un año en preparación, copiada de la del año anterior. */
+const newAssignmentClass = async (schoolId: string, section: Section, area: PlanArea, teacherUserId: string) => {
+  const [year] = await db.select({ name: schoolYears.name, status: schoolYears.status }).from(schoolYears).where(eq(schoolYears.id, section.yearId));
+  const prev = year?.status === 'PLANNING' ? await previousYearId(schoolId, year.name) : null;
+  return buildSchoolClass({
+    schoolId,
+    teacherUserId,
+    name: `${area.name} ${sectionDisplayName(section.level, section.grade, section.name)}`,
+    areaId: area.areaId,
+    gradeLevel: `${section.level}_${section.grade}`,
+    gradeScale: await scaleOf(section.yearId, section.level),
+    schoolSectionId: section.id,
+    sourceId: prev ? await sourceForAssignment(prev, teacherUserId, area.areaId, section) : null,
+  });
+};
+
+// Un solo armado de clases a la vez por año (el servidor corre en un proceso).
+const buildingClassesFor = new Set<string>();
+
 /**
  * La clase de una asignación: ninguna, una que el docente ya tiene en la escuela (libre y de esa sección y área, o sin
  * ellas), o una nueva a su nombre. Devuelve su id (o null).
@@ -116,20 +238,7 @@ const resolveClassroom = async (schoolId: string, section: Section, area: PlanAr
     if (!classroom.curriculumAreaId && classroom.useCompetencies) await classroomService.syncClassroomCompetencies(classroom.id, area.areaId);
     return classroom.id;
   }
-  const [scale] = await db.select({ gradeScale: schoolYearLevels.gradeScale }).from(schoolYearLevels)
-    .where(and(eq(schoolYearLevels.yearId, section.yearId), eq(schoolYearLevels.level, section.level)));
-  const created = await classroomService.create({
-    name: `${area.name} ${sectionDisplayName(section.level, section.grade, section.name)}`,
-    teacherId: teacherUserId,
-    gradeLevel: `${section.level}_${section.grade}`,
-    useCompetencies: true,
-    curriculumAreaId: area.areaId,
-    gradeScaleType: scale ? SCALE_OF[scale.gradeScale] ?? null : null,
-    schoolId,
-    schoolSectionId: section.id,
-  });
-  if (!created) throw new Error('No se pudo crear la clase');
-  return created.id;
+  return (await newAssignmentClass(schoolId, section, area, teacherUserId)).id;
 };
 
 const syncFor = async (schoolId: string, yearId: string, sectionId: string, classroomId: string | null): Promise<SyncResult> => {
@@ -150,6 +259,9 @@ const enrolledBySection = async (yearId: string, sectionIds: string[]) => {
 /** Por asignación con clase: cuántos de la sección aún no tienen perfil en ella. */
 const missingByAssignment = async (yearId: string, assignmentIds: string[]) => {
   if (assignmentIds.length === 0) return new Map<string, number>();
+  // Las clases de un año en preparación se llenan cuando empieza (y las de uno cerrado ya no): nadie «falta».
+  const [year] = await db.select({ status: schoolYears.status }).from(schoolYears).where(eq(schoolYears.id, yearId));
+  if (year?.status !== 'ACTIVE') return new Map<string, number>();
   const rows = await db.select({ id: schoolTeachingAssignments.id, n: count() }).from(schoolTeachingAssignments)
     .innerJoin(schoolEnrollments, and(eq(schoolEnrollments.sectionId, schoolTeachingAssignments.sectionId), eq(schoolEnrollments.yearId, yearId), eq(schoolEnrollments.status, 'ACTIVE')))
     .innerJoin(schoolStudents, and(eq(schoolStudents.id, schoolEnrollments.studentId), eq(schoolStudents.status, 'ACTIVE')))
@@ -220,11 +332,14 @@ export const schoolAssignmentService = {
       const s = sectionById.get(a.sectionId);
       return !!s && (plans.get(s.level) ?? []).some((p) => p.areaId === a.areaId && p.grades.includes(s.grade));
     });
+    const [workshopsNoClass] = await db.select({ n: count() }).from(schoolWorkshops)
+      .where(and(eq(schoolWorkshops.schoolId, schoolId), eq(schoolWorkshops.yearId, yearId), isNull(schoolWorkshops.classroomId)));
     const overall = {
       required: sections.reduce((sum, s) => sum + (plans.get(s.level) ?? []).filter((p) => p.grades.includes(s.grade)).length, 0),
       assigned: allCells.length,
       withoutClass: allCells.filter((a) => !a.classroomId).length,
       missing: allCells.reduce((sum, a) => sum + (missing.get(a.id) ?? 0), 0),
+      workshopsWithoutClass: Number(workshopsNoClass?.n ?? 0),
     };
     if (!chosen) {
       return { levels, level: null, plan: [], sections: [], assignments: [], teachers, counts: { required: 0, assigned: 0, withoutClass: 0, missing: 0 }, overall };
@@ -269,6 +384,95 @@ export const schoolAssignmentService = {
       },
       overall,
     };
+  },
+
+  /**
+   * Las clases del año en preparación: cada asignación y cada taller sin clase recibe la suya, a nombre de su docente y
+   * copiada de su clase del año anterior en la misma área (o nueva). Sin estudiantes hasta que el año empieza. De a pocas
+   * por llamada para no cortar la conexión: el cliente repite mientras queden.
+   */
+  async createYearClasses(schoolId: string, yearId: string, limit = 6) {
+    const year = await loadYear(schoolId, yearId, true);
+    if (year.status !== 'PLANNING') throw new ConflictError('Las clases se crean de una vez solo para el año en preparación');
+    if (buildingClassesFor.has(yearId)) throw new ConflictError('Ya se están creando las clases de este año');
+    buildingClassesFor.add(yearId);
+    try {
+      const team = new Set((await teamOf(schoolId)).map((m) => m.userId));
+      const plans = new Map<string, PlanArea[]>();
+      const planOf = async (level: SchoolLevel) => {
+        if (!plans.has(level)) plans.set(level, (await effectivePlan(yearId, level)).areas);
+        return plans.get(level)!;
+      };
+      const assignments = await db.select({
+        id: schoolTeachingAssignments.id, areaId: schoolTeachingAssignments.areaId, teacherUserId: schoolTeachingAssignments.teacherUserId,
+        sectionId: schoolSections.id, yearId: schoolSections.yearId, level: schoolSections.level, grade: schoolSections.grade, name: schoolSections.name,
+        tutorUserId: schoolSections.tutorUserId,
+      }).from(schoolTeachingAssignments)
+        .innerJoin(schoolSections, eq(schoolSections.id, schoolTeachingAssignments.sectionId))
+        .where(and(eq(schoolTeachingAssignments.schoolId, schoolId), eq(schoolTeachingAssignments.yearId, yearId), isNull(schoolTeachingAssignments.classroomId)))
+        .orderBy(asc(schoolSections.level), asc(schoolSections.grade), asc(schoolSections.name));
+      const workshops = await db.select().from(schoolWorkshops)
+        .where(and(eq(schoolWorkshops.schoolId, schoolId), eq(schoolWorkshops.yearId, yearId), isNull(schoolWorkshops.classroomId)))
+        .orderBy(asc(schoolWorkshops.name));
+      type Job = { kind: 'assignment'; row: (typeof assignments)[number]; area: PlanArea } | { kind: 'workshop'; row: (typeof workshops)[number]; area: PlanArea };
+      const jobs: Job[] = [];
+      let skipped = 0;
+      for (const row of assignments) {
+        const area = (await planOf(row.level)).find((p) => p.areaId === row.areaId && p.grades.includes(row.grade));
+        if (!area) continue;
+        if (!team.has(row.teacherUserId)) skipped++;
+        else jobs.push({ kind: 'assignment', row, area });
+      }
+      for (const row of workshops) {
+        const area = (await planOf(row.level)).find((p) => p.areaId === row.areaId);
+        if (!area) continue;
+        if (!team.has(row.teacherUserId)) skipped++;
+        else jobs.push({ kind: 'workshop', row, area });
+      }
+
+      const prev = await previousYearId(schoolId, year.name);
+      let created = 0;
+      let cloned = 0;
+      for (const job of jobs.slice(0, limit)) {
+        if (job.kind === 'assignment') {
+          const { row, area } = job;
+          const built = await newAssignmentClass(schoolId, { id: row.sectionId, yearId, level: row.level, grade: row.grade, name: row.name, tutorUserId: row.tutorUserId }, area, row.teacherUserId);
+          const linked = await db.update(schoolTeachingAssignments).set({ classroomId: built.id, updatedAt: new Date() })
+            .where(and(eq(schoolTeachingAssignments.id, row.id), isNull(schoolTeachingAssignments.classroomId)));
+          if (affectedRows(linked) === 0) logger.warn('Clase del año nuevo sin asignación: alguien la vinculó antes', { schoolId, yearId, assignmentId: row.id, classroomId: built.id });
+          created++;
+          if (built.cloned) cloned++;
+        } else {
+          const { row, area } = job;
+          const grades = row.mode === 'SECTION'
+            ? new Set((await db.select({ grade: schoolSections.grade }).from(schoolWorkshopSections)
+              .innerJoin(schoolSections, eq(schoolSections.id, schoolWorkshopSections.sectionId))
+              .where(eq(schoolWorkshopSections.workshopId, row.id))).map((s) => s.grade))
+            : new Set<number>();
+          const built = await buildSchoolClass({
+            schoolId,
+            teacherUserId: row.teacherUserId,
+            name: row.name,
+            areaId: area.areaId,
+            gradeLevel: grades.size === 1 ? `${row.level}_${[...grades][0]}` : null,
+            gradeScale: await scaleOf(yearId, row.level),
+            schoolSectionId: null,
+            sourceId: prev ? await sourceForWorkshop(prev, row.teacherUserId, area.areaId, row.name) : null,
+          });
+          const linked = await db.update(schoolWorkshops).set({ classroomId: built.id, updatedAt: new Date() })
+            .where(and(eq(schoolWorkshops.id, row.id), isNull(schoolWorkshops.classroomId)));
+          if (affectedRows(linked) === 0) logger.warn('Clase del año nuevo sin taller: alguien la vinculó antes', { schoolId, yearId, workshopId: row.id, classroomId: built.id });
+          created++;
+          if (built.cloned) cloned++;
+        }
+      }
+      // Las clases nuevas siguen el calendario del año que se prepara.
+      const calendar = (await yearCalendars([yearId])).get(yearId);
+      if (calendar && created > 0) await syncCurrentPeriod(calendar);
+      return { created, cloned, remaining: Math.max(0, jobs.length - created), skipped };
+    } finally {
+      buildingClassesFor.delete(yearId);
+    }
   },
 
   /** Las clases de un docente en la escuela, para «Usar una clase que ya tiene». */

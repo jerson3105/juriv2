@@ -32,6 +32,8 @@ export const ClassCard = ({ classroom, overview, schoolName, index, onDuplicate,
   const students = classroom.studentCount ?? 0;
   const pending = pendingOf(overview);
   const grade = gradeLabel(classroom.gradeLevel);
+  // Una clase del año que el colegio prepara: aún sin estudiantes (puede llamarse igual que la de este año).
+  const preparing = classroom.context?.yearStatus === 'PLANNING' ? `${classroom.context.year} · en preparación` : null;
   const last = relativeTime(overview?.lastActivityAt ?? null);
 
   const copy = async () => {
@@ -65,7 +67,7 @@ export const ClassCard = ({ classroom, overview, schoolName, index, onDuplicate,
               </Link>
             </h3>
             <p className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">
-              {[grade, `${students} ${students === 1 ? 'estudiante' : 'estudiantes'}`].filter(Boolean).join(' · ')}
+              {[grade, preparing ?? `${students} ${students === 1 ? 'estudiante' : 'estudiantes'}`].filter(Boolean).join(' · ')}
             </p>
             {schoolName !== undefined && (
               <p className="mt-0.5 truncate text-xs font-semibold text-gray-700 dark:text-gray-300">{schoolName ? `🏫 ${schoolName}` : 'Sin escuela'}</p>

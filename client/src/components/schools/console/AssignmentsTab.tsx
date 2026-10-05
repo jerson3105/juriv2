@@ -4,20 +4,22 @@ import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
 import { BookOpen, Wand2 } from 'lucide-react';
 import { assignmentApi, assignmentKeys, type MatrixAssignment, type MatrixSection, type PlanArea } from '../../../lib/schoolAssignmentApi';
-import type { SchoolLevel } from '../../../lib/schoolYearApi';
+import type { SchoolLevel, SchoolYearStatus } from '../../../lib/schoolYearApi';
 import { LEVEL_LABEL } from './schoolYearHelpers';
 import { AssignmentDrawer } from './AssignmentDrawer';
 import { FromClassesDrawer, PlanDrawer } from './PlanDrawers';
 import { WorkshopsSection } from './Workshops';
+import { YearClassesBanner } from './YearClassesBanner';
 
 type Filter = 'all' | 'gaps' | 'noclass';
 const badge = 'inline-flex h-8 min-w-[44px] items-center justify-center gap-1 rounded-lg px-2 text-xs font-bold tracking-wide';
 
 /**
  * Asignaciones: matriz por nivel (secciones × áreas del plan) con la tutoría, quién enseña cada área, si tiene clase
- * y los totales. Cada celda abre el panel para asignar; las flechas recorren la matriz.
+ * y los totales. Cada celda abre el panel para asignar; las flechas recorren la matriz. En el año en preparación,
+ * además, crea de una vez las clases que faltan.
  */
-export const AssignmentsTab = ({ schoolId, yearId }: { schoolId: string; yearId: string }) => {
+export const AssignmentsTab = ({ schoolId, yearId, yearName, yearStatus }: { schoolId: string; yearId: string; yearName?: string; yearStatus?: SchoolYearStatus }) => {
   const [params, setParams] = useSearchParams();
   const levelParam = (['INICIAL', 'PRIMARIA', 'SECUNDARIA'].includes(params.get('nivel') ?? '') ? params.get('nivel') : null) as SchoolLevel | null;
   const matrix = useQuery({
@@ -87,8 +89,12 @@ export const AssignmentsTab = ({ schoolId, yearId }: { schoolId: string; yearId:
 
   const openCell = open ? { section: data.sections.find((s) => s.id === open.sectionId), area: data.plan.find((a) => a.areaId === open.areaId) } : null;
 
+  const toCreate = data.overall.withoutClass + (data.overall.workshopsWithoutClass ?? 0);
   return (
     <div className="space-y-4">
+      {yearStatus === 'PLANNING' && (toCreate > 0 || data.overall.assigned > 0) && (
+        <YearClassesBanner schoolId={schoolId} yearId={yearId} yearName={yearName ?? ''} withoutClass={toCreate} />
+      )}
       <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4" aria-label="Equipo y carga">
         {data.teachers.map((t) => (
           <li key={t.userId} className="flex min-w-0 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-800">

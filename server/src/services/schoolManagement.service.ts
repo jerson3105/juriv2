@@ -1,13 +1,15 @@
 import { randomInt } from 'crypto';
-import { and, eq, gte, inArray, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, notInArray, sql } from 'drizzle-orm';
+import type { AnyMySqlColumn } from 'drizzle-orm/mysql-core';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import {
-  classrooms, curriculumAreas, pointLogs, schoolMembers, schools, schoolSections, schoolTeachingAssignments, schoolWorkshops, schoolWorkshopSections,
-  schoolWorkshopStudents, studentProfiles, users,
+  classrooms, curriculumAreas, pointLogs, schoolAreaCoordinators, schoolMembers, schools, schoolSections, schoolTeachingAssignments, schoolWorkshops,
+  schoolWorkshopSections, schoolWorkshopStudents, schoolYears, studentProfiles, users,
 } from '../db/schema.js';
 import { affectedRows } from '../utils/points.js';
 import { historyService } from './history.service.js';
+import { yearClassroomIds } from './schoolCalendar.service.js';
 import { attendanceService } from './attendance.service.js';
 import { teacherVerificationService } from './teacherVerification.service.js';
 
@@ -21,20 +23,35 @@ const newInviteCode = () => Array.from({ length: INVITE_LENGTH }, () => INVITE_A
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
+/** Los años cerrados del colegio y sus clases: su historia no cambia aunque alguien deje el equipo. */
+const closedHistory = async (tx: Tx, schoolId: string) => {
+  const yearIds = (await tx.select({ id: schoolYears.id }).from(schoolYears)
+    .where(and(eq(schoolYears.schoolId, schoolId), eq(schoolYears.status, 'CLOSED')))).map((y) => y.id);
+  const classroomIds = new Set<string>();
+  for (const yearId of yearIds) for (const id of await yearClassroomIds(yearId)) classroomIds.add(id);
+  return { yearIds, classroomIds: [...classroomIds] };
+};
+
 /**
  * Retira a un miembro del colegio dentro de una transacción ajena: sus clases vuelven a ser personales (las conserva),
- * pierde sus asignaciones, talleres y tutorías y deja de ser miembro. La usan «Retirar» y el cambio de responsable.
+ * pierde sus asignaciones, talleres, tutorías y coordinaciones y deja de ser miembro. La usan «Retirar» y el cambio de responsable. Lo
+ * de los años cerrados queda como está: es la historia del colegio (sus clases archivadas siguen siendo suyas).
  */
 export const removeMemberIn = async (tx: Tx, schoolId: string, member: { id: string; userId: string }) => {
+  const closed = await closedHistory(tx, schoolId);
+  const openYear = (column: AnyMySqlColumn) => (closed.yearIds.length > 0 ? notInArray(column, closed.yearIds) : undefined);
   const unassign = await tx.update(classrooms)
     .set({ schoolId: null, schoolSectionId: null, updatedAt: new Date() })
-    .where(and(eq(classrooms.schoolId, schoolId), eq(classrooms.teacherId, member.userId)));
+    .where(and(
+      eq(classrooms.schoolId, schoolId), eq(classrooms.teacherId, member.userId),
+      closed.classroomIds.length > 0 ? notInArray(classrooms.id, closed.classroomIds) : undefined,
+    ));
   // Sus asignaciones se quitan: la matriz las mostrará por cubrir.
   await tx.delete(schoolTeachingAssignments)
-    .where(and(eq(schoolTeachingAssignments.schoolId, schoolId), eq(schoolTeachingAssignments.teacherUserId, member.userId)));
+    .where(and(eq(schoolTeachingAssignments.schoolId, schoolId), eq(schoolTeachingAssignments.teacherUserId, member.userId), openYear(schoolTeachingAssignments.yearId)));
   // Y sus talleres, con sus secciones e inscritos.
   const workshopIds = (await tx.select({ id: schoolWorkshops.id }).from(schoolWorkshops)
-    .where(and(eq(schoolWorkshops.schoolId, schoolId), eq(schoolWorkshops.teacherUserId, member.userId)))).map((w) => w.id);
+    .where(and(eq(schoolWorkshops.schoolId, schoolId), eq(schoolWorkshops.teacherUserId, member.userId), openYear(schoolWorkshops.yearId)))).map((w) => w.id);
   if (workshopIds.length > 0) {
     await tx.delete(schoolWorkshopSections).where(inArray(schoolWorkshopSections.workshopId, workshopIds));
     await tx.delete(schoolWorkshopStudents).where(inArray(schoolWorkshopStudents.workshopId, workshopIds));
@@ -43,7 +60,10 @@ export const removeMemberIn = async (tx: Tx, schoolId: string, member: { id: str
   await tx.delete(schoolMembers).where(eq(schoolMembers.id, member.id));
   // Deja de ser tutor de sus secciones: quedan «Sin tutoría».
   await tx.update(schoolSections).set({ tutorUserId: null, updatedAt: new Date() })
-    .where(and(eq(schoolSections.schoolId, schoolId), eq(schoolSections.tutorUserId, member.userId)));
+    .where(and(eq(schoolSections.schoolId, schoolId), eq(schoolSections.tutorUserId, member.userId), openYear(schoolSections.yearId)));
+  // Y deja de coordinar sus áreas.
+  await tx.delete(schoolAreaCoordinators)
+    .where(and(eq(schoolAreaCoordinators.schoolId, schoolId), eq(schoolAreaCoordinators.userId, member.userId), openYear(schoolAreaCoordinators.yearId)));
   return { unassignedClassrooms: affectedRows(unassign), teacherId: member.userId };
 };
 

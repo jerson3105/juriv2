@@ -127,6 +127,7 @@ export const schoolRosterService = {
     filter: RosterFilter; level?: string; grade?: number; sectionId?: string; q?: string; sex?: SexFilter; page: number;
   }) {
     await loadYear(schoolId, yearId, false);
+    // El padrón del año: quienes tienen matrícula en él (con o sin sección). Los de otro año aparecen en el suyo.
     const joinEnrollment = and(eq(schoolEnrollments.studentId, schoolStudents.id), eq(schoolEnrollments.yearId, yearId));
     const active = eq(schoolStudents.status, 'ACTIVE');
     const byFilter: Record<RosterFilter, SQL | undefined> = {
@@ -173,11 +174,11 @@ export const schoolRosterService = {
       sectionGrade: schoolSections.grade,
       sectionName: schoolSections.name,
     }).from(schoolStudents)
-      .leftJoin(schoolEnrollments, joinEnrollment)
+      .innerJoin(schoolEnrollments, joinEnrollment)
       .leftJoin(schoolSections, eq(schoolSections.id, schoolEnrollments.sectionId));
 
     const [{ total }] = await db.select({ total: count() }).from(schoolStudents)
-      .leftJoin(schoolEnrollments, joinEnrollment)
+      .innerJoin(schoolEnrollments, joinEnrollment)
       .leftJoin(schoolSections, eq(schoolSections.id, schoolEnrollments.sectionId))
       .where(where);
     const rows = await from().where(where)
@@ -195,7 +196,7 @@ export const schoolRosterService = {
 
     // Los números de los chips: de toda la escuela en el año (sin los filtros de nivel o búsqueda).
     const countFor = async (condition: SQL | undefined) => {
-      const [row] = await db.select({ n: count() }).from(schoolStudents).leftJoin(schoolEnrollments, joinEnrollment)
+      const [row] = await db.select({ n: count() }).from(schoolStudents).innerJoin(schoolEnrollments, joinEnrollment)
         .where(and(eq(schoolStudents.schoolId, schoolId), condition));
       return Number(row.n);
     };
@@ -206,7 +207,7 @@ export const schoolRosterService = {
       withdrawn: await countFor(byFilter.withdrawn),
     };
     const bySex = await db.select({ sex: schoolStudents.sex, n: count() }).from(schoolStudents)
-      .leftJoin(schoolEnrollments, joinEnrollment)
+      .innerJoin(schoolEnrollments, joinEnrollment)
       .leftJoin(schoolSections, eq(schoolSections.id, schoolEnrollments.sectionId))
       .where(scope)
       .groupBy(schoolStudents.sex);

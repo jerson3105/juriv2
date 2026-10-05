@@ -17,6 +17,16 @@ import { useSidebarCollapsed } from './sidebar/useSidebarState';
 
 const FRAME = 'fixed inset-0 z-[100] flex bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800';
 
+// El año que se mira, por colegio y por pestaña (al volver a la consola, sigue el mismo).
+const yearKey = (schoolId: string) => `juried-school-year:${schoolId}`;
+const readYear = (schoolId: string) => {
+  try {
+    return sessionStorage.getItem(yearKey(schoolId));
+  } catch {
+    return null;
+  }
+};
+
 const todayLabel = () => {
   const text = new Intl.DateTimeFormat('es-PE', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
   return text.charAt(0).toUpperCase() + text.slice(1);
@@ -33,6 +43,7 @@ export const SchoolLayout = () => {
   const { user, logout } = useAuthStore();
   const [collapsed, setCollapsed] = useSidebarCollapsed('teacher');
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [chosenYear, setChosenYear] = useState<{ schoolId: string; yearId: string | null }>(() => ({ schoolId, yearId: readYear(schoolId) }));
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -70,8 +81,22 @@ export const SchoolLayout = () => {
 
   const yearList = years.data ?? [];
   const activeYear = yearList.find((year) => year.status === 'ACTIVE') ?? null;
+  // Por defecto el activo; si no hay, el que se prepara; si tampoco, el último archivado.
+  const chosenId = chosenYear.schoolId === schoolId ? chosenYear.yearId : readYear(schoolId);
+  const selectedYear = yearList.find((year) => year.id === chosenId)
+    ?? activeYear ?? yearList.find((year) => year.status === 'PLANNING') ?? yearList[0] ?? null;
+  const selectYear = (yearId: string) => {
+    setChosenYear({ schoolId, yearId });
+    try {
+      sessionStorage.setItem(yearKey(schoolId), yearId);
+    } catch {
+      // Sin almacenamiento: el año elegido dura mientras la consola esté abierta.
+    }
+  };
   const roleLabel = !verified ? 'Por verificar' : manager ? 'Administración' : 'Docente';
-  const context: SchoolConsoleContext = { school, manager, verified, years: yearList, activeYear, yearsLoading: years.isLoading, coordinations: coordinations.data ?? [] };
+  const context: SchoolConsoleContext = {
+    school, manager, verified, years: yearList, activeYear, selectedYear, selectYear, yearsLoading: years.isLoading, coordinations: coordinations.data ?? [],
+  };
 
   return (
     <div className={FRAME}>
@@ -104,7 +129,7 @@ export const SchoolLayout = () => {
           >
             <Menu size={20} aria-hidden="true" />
           </button>
-          {verified && <YearMenu schoolId={schoolId} years={yearList} activeYear={activeYear} manager={manager} />}
+          {verified && <YearMenu schoolId={schoolId} years={yearList} selected={selectedYear} onSelect={selectYear} manager={manager} />}
           <span className="flex-1" />
           <span className="hidden text-sm text-gray-600 dark:text-gray-300 sm:block">{todayLabel()}</span>
         </header>

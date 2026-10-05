@@ -399,7 +399,9 @@ export const schoolStudentMoveService = {
   },
 
   async withdraw(schoolId: string, yearId: string, studentId: string, actorId: string, input: { effectiveDate: string; reason: WithdrawalReason; note?: string | null }) {
-    await loadYear(schoolId, yearId, true);
+    const year = await loadYear(schoolId, yearId, true);
+    // El retiro saca al estudiante del colegio (también del año en curso): no se hace desde el año que se prepara.
+    if (year.status !== 'ACTIVE') throw new ConflictError('El retiro se hace en el año en curso');
     if (!WITHDRAWAL_REASONS.includes(input.reason)) throw new ValidationError('Elige el motivo del retiro');
     if (!isRealDate(input.effectiveDate)) throw new ValidationError('Revisa la fecha');
     const now = new Date();

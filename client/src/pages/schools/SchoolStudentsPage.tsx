@@ -37,8 +37,8 @@ const SEX_OPTIONS: Array<{ param: string; value: StudentSex | 'NONE'; label: str
 
 /** Padrón del año: chips de estado, filtros, búsqueda por nombre o DNI completo, y la ficha en un cajón. */
 export const SchoolStudentsPage = () => {
-  const { school, activeYear, yearsLoading } = useSchoolConsole();
-  const yearId = activeYear?.id ?? '';
+  const { school, selectedYear, yearsLoading } = useSchoolConsole();
+  const yearId = selectedYear?.id ?? '';
   const [params, setParams] = useSearchParams();
   const query: RosterQuery = {
     filter: (FILTERS.some((f) => f.id === params.get('filtro')) ? params.get('filtro') : 'all') as RosterFilter,
@@ -52,15 +52,15 @@ export const SchoolStudentsPage = () => {
   const [search, setSearch] = useState(query.q ?? '');
   const [drawer, setDrawer] = useState<DrawerState | null>(null);
   const template = useMutation({
-    mutationFn: () => rosterImportApi.downloadTemplate(school.id, yearId, activeYear?.name ?? ''),
+    mutationFn: () => rosterImportApi.downloadTemplate(school.id, yearId, selectedYear?.name ?? ''),
     onError: (error) => toast.error(errorMessage(error, 'No se pudo descargar la plantilla')),
   });
 
-  const sections = useQuery({ queryKey: schoolSectionKeys.list(school.id, yearId), queryFn: () => schoolSectionApi.list(school.id, yearId), enabled: !!activeYear });
+  const sections = useQuery({ queryKey: schoolSectionKeys.list(school.id, yearId), queryFn: () => schoolSectionApi.list(school.id, yearId), enabled: !!selectedYear });
   const roster = useQuery({
     queryKey: schoolRosterKeys.list(school.id, yearId, query),
     queryFn: () => schoolRosterApi.list(school.id, yearId, query),
-    enabled: !!activeYear,
+    enabled: !!selectedYear,
     placeholderData: (previous) => previous,
   });
   const allSections = useMemo(() => [...(sections.data ?? [])].sort((a, b) => a.level.localeCompare(b.level) || a.grade - b.grade || byName(a, b)), [sections.data]);
@@ -92,7 +92,9 @@ export const SchoolStudentsPage = () => {
   }, [search, setParams]);
 
   if (yearsLoading) return <div className="h-64 animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none dark:bg-gray-800" aria-busy="true" aria-label="Cargando" />;
-  if (!activeYear) {
+  // El año que se prepara: su padrón llega con la promoción o la plantilla (no desde las clases).
+  const preparing = selectedYear?.status === 'PLANNING';
+  if (!selectedYear) {
     return (
       <div className="mx-auto max-w-3xl rounded-2xl border-2 border-dashed border-gray-300 bg-white/70 px-6 py-12 text-center dark:border-gray-600 dark:bg-gray-800/60">
         <div className="mx-auto flex w-fit gap-3" aria-hidden="true"><span className="text-4xl">📅</span><span className="text-5xl">🎒</span><span className="text-4xl">✏️</span></div>
@@ -119,11 +121,11 @@ export const SchoolStudentsPage = () => {
         <div className="min-w-0 flex-1">
           <h1 className="text-xl font-black text-gray-900 dark:text-white sm:text-2xl">Estudiantes</h1>
           <p className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">
-            {counts ? `${counts.all} en el padrón ${activeYear.name}${counts.incomplete ? ` · ${counts.incomplete} con datos por completar` : ''}` : `Padrón ${activeYear.name}`}
+            {counts ? `${counts.all} en el padrón ${selectedYear.name}${counts.incomplete ? ` · ${counts.incomplete} con datos por completar` : ''}` : `Padrón ${selectedYear.name}`}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link to={`/escuela/${school.id}/estudiantes/armar`} className="pg-btn pg-focus">Armar desde clases</Link>
+          {!preparing && <Link to={`/escuela/${school.id}/estudiantes/armar`} className="pg-btn pg-focus">Armar desde clases</Link>}
           <Link to={`/escuela/${school.id}/estudiantes/importar`} className="pg-btn pg-focus">
             <Upload size={16} aria-hidden="true" />
             Importar
@@ -148,10 +150,14 @@ export const SchoolStudentsPage = () => {
       {emptyRoster ? (
         <div className="rounded-2xl border-2 border-dashed border-gray-300 bg-white/70 px-6 py-12 text-center dark:border-gray-600 dark:bg-gray-800/60">
           <div className="mx-auto flex w-fit gap-3" aria-hidden="true"><span className="text-4xl">🎒</span><span className="text-5xl">📋</span><span className="text-4xl">🏫</span></div>
-          <h2 className="mt-4 text-lg font-bold text-gray-900 dark:text-white">Arma el padrón de {activeYear.name}</h2>
-          <p className="mx-auto mt-1 max-w-md text-sm text-gray-700 dark:text-gray-300">Únelo desde las clases que ya existen, o importa la nómina del SIAGIE o nuestra plantilla. Los estudiantes no ven ningún cambio.</p>
+          <h2 className="mt-4 text-lg font-bold text-gray-900 dark:text-white">Arma el padrón de {selectedYear.name}</h2>
+          <p className="mx-auto mt-1 max-w-md text-sm text-gray-700 dark:text-gray-300">
+            {preparing
+              ? `Lo arma la promoción al cerrar el año en curso; los que llegan por primera vez, con la nómina del SIAGIE o nuestra plantilla. Los estudiantes entran a sus clases cuando ${selectedYear.name} empiece.`
+              : 'Únelo desde las clases que ya existen, o importa la nómina del SIAGIE o nuestra plantilla. Los estudiantes no ven ningún cambio.'}
+          </p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
-            <Link to={`/escuela/${school.id}/estudiantes/armar`} className={primaryButton}>Armar desde clases</Link>
+            {!preparing && <Link to={`/escuela/${school.id}/estudiantes/armar`} className={primaryButton}>Armar desde clases</Link>}
             <Link to={`/escuela/${school.id}/estudiantes/importar`} className="pg-btn pg-focus">
               <Upload size={16} aria-hidden="true" />
               Importar lista
@@ -232,7 +238,7 @@ export const SchoolStudentsPage = () => {
           ) : (
             <div className="pg-surface overflow-hidden">
               <table className="w-full text-left text-sm">
-                <caption className="sr-only">Padrón {activeYear.name}, página {query.page} de {pages}</caption>
+                <caption className="sr-only">Padrón {selectedYear.name}, página {query.page} de {pages}</caption>
                 <thead className="hidden border-b border-gray-200 text-xs uppercase tracking-wide text-gray-600 dark:border-gray-700 dark:text-gray-300 md:table-header-group">
                   <tr>
                     <th scope="col" className="px-4 py-2 font-semibold">Estudiante</th>

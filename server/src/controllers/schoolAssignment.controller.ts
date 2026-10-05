@@ -252,6 +252,26 @@ export const schoolAssignmentController = {
     }
   },
 
+  // POST /schools/:schoolId/years/:yearId/classes — las clases del año en preparación (de a pocas: se repite mientras queden)
+  async createYearClasses(req: Request, res: Response) {
+    try {
+      const s = await managerScope(req, res);
+      if (!s) return;
+      const data = await schoolAssignmentService.createYearClasses(s.schoolId, s.yearId);
+      if (data.created > 0) {
+        await auditRequest(req, {
+          action: 'school.year_classes_created',
+          schoolId: s.schoolId,
+          target: { type: 'school_year', id: s.yearId },
+          metadata: { created: data.created, cloned: data.cloned, remaining: data.remaining },
+        });
+      }
+      res.json({ success: true, data });
+    } catch (error) {
+      return sendError(res, error, 'Error al crear las clases del año');
+    }
+  },
+
   // GET /schools/:schoolId/years/:yearId/my-load — Mis asignaciones y mi tutoría
   async myLoad(req: Request, res: Response) {
     try {

@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { AlertCircle, Info, Lock, LockOpen, Shuffle } from 'lucide-react';
+import { AlertCircle, CalendarPlus, Info, Lock, LockOpen, Shuffle, Trash2 } from 'lucide-react';
 import { Input } from '../../components/ui/Input';
 import { HomeModal } from '../../components/home/HomeModal';
 import { useSchoolConsole } from '../../components/layout/schoolConsoleContext';
@@ -13,9 +14,11 @@ import {
 } from '../../components/schools/console/schoolYearHelpers';
 import {
   schoolYearApi, schoolYearKeys, type GradeScale, type PeriodType, type SchoolLevel, type SchoolYearDetail, type SchoolYearInput,
+  type YearCopyOptions, type YearCopySummary,
 } from '../../lib/schoolYearApi';
 
 type LevelDraft = Record<SchoolLevel, { on: boolean; scale: GradeScale }>;
+type CopyChoice = Omit<YearCopyOptions, 'yearId'>;
 
 // «12 oct»: de una fecha AAAA-MM-DD o un instante ISO.
 const shortDay = (value: string) => new Date(value.length === 10 ? `${value}T12:00:00` : value).toLocaleDateString('es', { day: 'numeric', month: 'short' }).replace('.', '');
@@ -34,6 +37,15 @@ const SCALES: { id: GradeScale; label: string }[] = [
   { id: 'LITERAL', label: 'Literal (AD, A, B, C)' },
   { id: 'VIGESIMAL', label: 'Vigesimal (0 a 20)' },
 ];
+const ALL_COPIED: CopyChoice = { sections: true, tutors: true, plan: true, assignments: true, workshops: true, coordinators: true };
+const COPY_ITEMS: Array<{ key: keyof CopyChoice; label: string; hint: string }> = [
+  { key: 'sections', label: 'Grados y secciones', hint: 'Los mismos nombres y turnos' },
+  { key: 'tutors', label: 'Tutorías', hint: 'Cada sección con su tutor, si sigue en el equipo' },
+  { key: 'plan', label: 'Plan de estudios', hint: 'Las áreas de cada grado' },
+  { key: 'assignments', label: 'Asignaciones', hint: 'Qué docente enseña cada área; las clases se crean después' },
+  { key: 'workshops', label: 'Talleres', hint: 'Sin inscritos: se eligen cada año' },
+  { key: 'coordinators', label: 'Coordinaciones de área', hint: 'Si la persona sigue en el equipo' },
+];
 
 const toInput = (draft: Draft): SchoolYearInput => ({
   startsOn: draft.startsOn,
@@ -43,16 +55,18 @@ const toInput = (draft: Draft): SchoolYearInput => ({
   levels: LEVELS.filter((level) => draft.levels[level].on).map((level) => ({ level, gradeScale: draft.levels[level].scale })),
 });
 
+const levelsOf = (year: SchoolYearDetail) => Object.fromEntries(LEVELS.map((level) => {
+  const found = year.levels.find((l) => l.level === level);
+  return [level, { on: !!found, scale: found?.gradeScale ?? 'LITERAL' }];
+})) as LevelDraft;
+
 const fromYear = (year: SchoolYearDetail): Draft => ({
   name: year.name,
   startsOn: year.startsOn,
   endsOn: year.endsOn,
   periodType: year.periodType,
   periods: year.periods.map((p) => ({ code: p.code, startsOn: p.startsOn, endsOn: p.endsOn })),
-  levels: Object.fromEntries(LEVELS.map((level) => {
-    const found = year.levels.find((l) => l.level === level);
-    return [level, { on: !!found, scale: found?.gradeScale ?? 'LITERAL' }];
-  })) as LevelDraft,
+  levels: levelsOf(year),
 });
 
 /** Año nuevo: fechas típicas, bimestres repartidos y los niveles que ya aparecen en las clases (o los tres). */
@@ -69,54 +83,143 @@ const newDraft = (gradeLevels: Array<string | null>): Draft => {
   };
 };
 
+/** El año siguiente a otro: sus fechas típicas, bimestres repartidos y los mismos niveles con su escala. */
+const nextDraft = (source: SchoolYearDetail): Draft => {
+  const name = String(Number(source.name) + 1);
+  const dates = defaultYearDates(Number(name));
+  return { name, ...dates, periodType: 'BIMESTER', periods: splitPeriods(dates.startsOn, dates.endsOn, 'BIMESTER'), levels: levelsOf(source) };
+};
+
+/** «12 secciones, 30 asignaciones y 4 coordinaciones» (lo que se copió). */
+const copiedSummary = (copied: YearCopySummary) => {
+  const parts = [
+    copied.sections && `${copied.sections} ${copied.sections === 1 ? 'sección' : 'secciones'}`,
+    copied.tutors && `${copied.tutors} ${copied.tutors === 1 ? 'tutoría' : 'tutorías'}`,
+    copied.planLevels && `el plan de ${copied.planLevels} ${copied.planLevels === 1 ? 'nivel' : 'niveles'}`,
+    copied.assignments && `${copied.assignments} ${copied.assignments === 1 ? 'asignación' : 'asignaciones'}`,
+    copied.workshops && `${copied.workshops} ${copied.workshops === 1 ? 'taller' : 'talleres'}`,
+    copied.coordinators && `${copied.coordinators} ${copied.coordinators === 1 ? 'coordinación' : 'coordinaciones'}`,
+  ].filter(Boolean) as string[];
+  if (parts.length === 0) return null;
+  return parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} y ${parts[parts.length - 1]}`;
+};
+
+const Loading = () => <div className="h-64 animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none dark:bg-gray-800" aria-busy="true" aria-label="Cargando el año escolar" />;
+const LoadError = ({ onRetry }: { onRetry: () => void }) => (
+  <div className="mx-auto max-w-3xl rounded-xl border border-red-200 bg-red-50 p-6 text-center dark:border-red-500/40 dark:bg-red-900/20" role="alert">
+    <p className="font-semibold text-red-900 dark:text-red-100">No se pudo cargar el año escolar.</p>
+    <button type="button" onClick={onRetry} className="pg-btn pg-focus mt-3">Reintentar</button>
+  </div>
+);
+
 /**
  * Año escolar: fechas, bimestres (con reparto automático) y niveles con su escala. Por ahora sin trimestres: Calificaciones
- * va por bimestres. La administración cierra y reabre cada bimestre en todas las clases del colegio.
+ * va por bimestres. La administración cierra y reabre cada bimestre en todas las clases del año, y prepara el año
+ * siguiente como borrador mientras el actual sigue en curso (copiando su estructura).
  */
 export const SchoolYearPage = () => {
-  const { school, manager, activeYear, yearsLoading } = useSchoolConsole();
+  const { school, manager, years, selectedYear, yearsLoading, selectYear } = useSchoolConsole();
+  const [params, setParams] = useSearchParams();
   const { classrooms, loadingDetail } = useSchoolPanelData(school, manager);
+  // El siguiente se prepara después del último (la lista llega del más nuevo al más antiguo), uno a la vez.
+  const latest = years[0] ?? null;
+  const planning = years.find((y) => y.status === 'PLANNING') ?? null;
+  const canPrepare = manager && !!latest && !planning;
+  const preparing = canPrepare && params.get('preparar') === '1';
   const year = useQuery({
-    queryKey: schoolYearKeys.detail(school.id, activeYear?.id ?? ''),
-    queryFn: () => schoolYearApi.get(school.id, activeYear!.id),
-    enabled: !!activeYear,
+    queryKey: schoolYearKeys.detail(school.id, selectedYear?.id ?? ''),
+    queryFn: () => schoolYearApi.get(school.id, selectedYear!.id),
+    enabled: !!selectedYear && !preparing,
   });
+  const source = useQuery({
+    queryKey: schoolYearKeys.detail(school.id, latest?.id ?? ''),
+    queryFn: () => schoolYearApi.get(school.id, latest!.id),
+    enabled: preparing,
+  });
+  const stopPreparing = () => {
+    const next = new URLSearchParams(params);
+    next.delete('preparar');
+    setParams(next, { replace: true });
+  };
 
-  if (yearsLoading || (activeYear && year.isLoading) || (!activeYear && loadingDetail)) {
-    return <div className="h-64 animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none dark:bg-gray-800" aria-busy="true" aria-label="Cargando el año escolar" />;
-  }
-  if (activeYear && year.isError) {
+  if (preparing) {
+    if (source.isLoading) return <Loading />;
+    if (source.isError || !source.data) return <LoadError onRetry={() => void source.refetch()} />;
     return (
-      <div className="mx-auto max-w-3xl rounded-xl border border-red-200 bg-red-50 p-6 text-center dark:border-red-500/40 dark:bg-red-900/20" role="alert">
-        <p className="font-semibold text-red-900 dark:text-red-100">No se pudo cargar el año escolar.</p>
-        <button type="button" onClick={() => void year.refetch()} className="pg-btn pg-focus mt-3">Reintentar</button>
-      </div>
+      <YearForm
+        key={`next:${source.data.id}`}
+        year={null}
+        prepareFrom={source.data}
+        manager={manager}
+        gradeLevels={[]}
+        onCreated={(id) => {
+          selectYear(id);
+          stopPreparing();
+        }}
+        onCancel={stopPreparing}
+      />
     );
   }
+  if (yearsLoading || (selectedYear && year.isLoading) || (!selectedYear && loadingDetail)) return <Loading />;
+  if (selectedYear && year.isError) return <LoadError onRetry={() => void year.refetch()} />;
+  // El aviso aparece desde el último bimestre (o con el año ya cerrado); antes, «Preparar» está en el selector de año.
+  const lastStart = year.data?.periods[year.data.periods.length - 1]?.startsOn;
+  const offerNext = canPrepare && selectedYear?.id === latest?.id && (latest?.status === 'CLOSED' || (!!lastStart && lastStart <= localToday()));
   // La clave remonta el formulario al guardar (el año guardado pasa a ser el punto de partida).
   return (
-    <YearForm
-      key={year.data ? `${year.data.id}:${JSON.stringify(year.data)}` : 'new'}
-      year={year.data ?? null}
-      manager={manager}
-      gradeLevels={classrooms.map((c) => c.gradeLevel)}
-    />
+    <div className="space-y-5">
+      {offerNext && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-primary-200 bg-primary-50 p-4 dark:border-primary-500/40 dark:bg-primary-900/20 sm:flex-row sm:items-center">
+          <CalendarPlus size={22} className="hidden flex-shrink-0 text-primary-700 dark:text-primary-300 sm:block" aria-hidden="true" />
+          <p className="min-w-0 flex-1 text-sm text-gray-900 dark:text-gray-100">
+            <strong>Prepara {Number(latest!.name) + 1} sin apuro.</strong> Copia secciones, plan, asignaciones, talleres y coordinaciones de {latest!.name}, y crea sus clases para que los docentes las preparen. Los estudiantes entran cuando {Number(latest!.name) + 1} empiece.
+          </p>
+          <button
+            type="button"
+            className={`${primaryButton} flex-shrink-0`}
+            onClick={() => setParams((current) => { const next = new URLSearchParams(current); next.set('preparar', '1'); return next; })}
+          >
+            Preparar {Number(latest!.name) + 1}
+          </button>
+        </div>
+      )}
+      <YearForm
+        key={year.data ? `${year.data.id}:${JSON.stringify(year.data)}` : 'new'}
+        year={year.data ?? null}
+        manager={manager}
+        gradeLevels={classrooms.map((c) => c.gradeLevel)}
+        onCreated={selectYear}
+      />
+    </div>
   );
 };
 
-const YearForm = ({ year, manager, gradeLevels }: { year: SchoolYearDetail | null; manager: boolean; gradeLevels: Array<string | null> }) => {
-  const { school } = useSchoolConsole();
+interface YearFormProps {
+  year: SchoolYearDetail | null;
+  /** Preparar el año siguiente a este (borrador que copia su estructura). */
+  prepareFrom?: SchoolYearDetail | null;
+  manager: boolean;
+  gradeLevels: Array<string | null>;
+  onCreated: (yearId: string) => void;
+  onCancel?: () => void;
+}
+
+const YearForm = ({ year, prepareFrom = null, manager, gradeLevels, onCreated, onCancel }: YearFormProps) => {
+  const { school, years, selectYear } = useSchoolConsole();
   const queryClient = useQueryClient();
   // Punto de partida fijo: la clave del formulario lo remonta cuando cambia el año guardado.
-  const [initial] = useState(() => (year ? fromYear(year) : newDraft(gradeLevels)));
+  const [initial] = useState(() => (year ? fromYear(year) : prepareFrom ? nextDraft(prepareFrom) : newDraft(gradeLevels)));
   const [draft, setDraft] = useState<Draft>(initial);
+  const [copy, setCopy] = useState<CopyChoice>(ALL_COPIED);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [discarding, setDiscarding] = useState(false);
 
   const input = toInput(draft);
   const { errors, issues } = reviewYear(input);
   const blocking = errors.length > 0 || issues.some((issue) => issue.kind === 'error');
   const dirty = JSON.stringify(draft) !== JSON.stringify(initial);
-  const readOnly = !manager;
+  const closedYear = year?.status === 'CLOSED';
+  const readOnly = !manager || closedYear;
   const closedCodes = new Set(year?.periods.filter((p) => p.status !== 'OPEN').map((p) => p.code));
   const canLock = !!year && manager && year.status === 'ACTIVE';
   const [confirm, setConfirm] = useState<{ code: string; label: string; action: 'close' | 'reopen'; endsOn: string } | null>(null);
@@ -136,14 +239,48 @@ const YearForm = ({ year, manager, gradeLevels }: { year: SchoolYearDetail | nul
   });
 
   const save = useMutation({
-    mutationFn: () => (year ? schoolYearApi.update(school.id, year.id, input) : schoolYearApi.create(school.id, { name: draft.name, ...input })),
-    onSuccess: (saved) => {
+    mutationFn: async () => {
+      if (year) return { saved: await schoolYearApi.update(school.id, year.id, input), copied: null };
+      const created = await schoolYearApi.create(school.id, {
+        name: draft.name, ...input, ...(prepareFrom ? { copyFrom: { yearId: prepareFrom.id, ...copy } } : {}),
+      });
+      return { saved: created as SchoolYearDetail, copied: created.copied };
+    },
+    onSuccess: ({ saved, copied }) => {
       setServerError(null);
       queryClient.setQueryData(schoolYearKeys.detail(school.id, saved.id), saved);
       void queryClient.invalidateQueries({ queryKey: schoolYearKeys.list(school.id) });
-      toast.success(year ? 'Año escolar guardado' : `Año escolar ${saved.name} creado`);
+      if (year) {
+        toast.success('Año escolar guardado');
+        return;
+      }
+      const summary = copied ? copiedSummary(copied) : null;
+      const missing = copied?.notInTeam ? ` ${copied.notInTeam} no se copiaron: esa persona ya no está en el equipo.` : '';
+      toast.success(
+        saved.status === 'PLANNING'
+          ? `${saved.name} en preparación.${summary ? ` Se copió: ${summary}.` : ''}${missing}`
+          : `Año escolar ${saved.name} creado`,
+        { duration: summary || missing ? 7000 : 4000 },
+      );
+      onCreated(saved.id);
     },
     onError: (error) => setServerError(errorMessage(error, 'No se pudo guardar el año escolar')),
+  });
+
+  const discard = useMutation({
+    mutationFn: () => schoolYearApi.remove(school.id, year!.id),
+    onSuccess: (message) => {
+      setDiscarding(false);
+      queryClient.removeQueries({ queryKey: schoolYearKeys.detail(school.id, year!.id) });
+      void queryClient.invalidateQueries({ queryKey: schoolYearKeys.list(school.id) });
+      const back = years.find((y) => y.status === 'ACTIVE') ?? years.find((y) => y.id !== year!.id);
+      if (back) selectYear(back.id);
+      toast.success(message);
+    },
+    onError: (error) => {
+      setDiscarding(false);
+      toast.error(errorMessage(error, 'No se pudo descartar'));
+    },
   });
 
   const update = (patch: Partial<Draft>) => {
@@ -154,6 +291,16 @@ const YearForm = ({ year, manager, gradeLevels }: { year: SchoolYearDetail | nul
     update({ periods: draft.periods.map((p, i) => (i === index ? { ...p, [field]: value } : p)) });
   const setLevel = (level: SchoolLevel, patch: Partial<LevelDraft[SchoolLevel]>) =>
     update({ levels: { ...draft.levels, [level]: { ...draft.levels[level], ...patch } } });
+  // Lo que se copia depende de otras partes: sin secciones no hay tutorías, asignaciones ni talleres; sin plan, tampoco
+  // asignaciones ni talleres.
+  const toggleCopy = (key: keyof CopyChoice, on: boolean) => setCopy((current) => {
+    const next = { ...current, [key]: on };
+    if (!on && key === 'sections') Object.assign(next, { tutors: false, assignments: false, workshops: false });
+    if (!on && key === 'plan') Object.assign(next, { assignments: false, workshops: false });
+    if (on && key === 'tutors') next.sections = true;
+    if (on && (key === 'assignments' || key === 'workshops')) Object.assign(next, { sections: true, plan: true });
+    return next;
+  });
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -161,16 +308,38 @@ const YearForm = ({ year, manager, gradeLevels }: { year: SchoolYearDetail | nul
     save.mutate();
   };
 
+  const title = prepareFrom ? `Preparar ${draft.name || 'el año siguiente'}` : year ? `Año escolar ${year.name}` : 'Preparar el año escolar';
+  const subtitle = prepareFrom
+    ? `Como borrador, mientras ${prepareFrom.name} sigue en curso. Sus clases no reciben estudiantes hasta que empiece.`
+    : year ? 'Fechas, periodos y niveles. Los cambios se ven en toda la escuela.' : 'Empieza por aquí: fechas, periodos y niveles de la escuela.';
+
   return (
     <form onSubmit={submit} className="space-y-5" noValidate>
       <header>
-        <h1 className="text-xl font-black text-gray-900 dark:text-white sm:text-2xl">{year ? `Año escolar ${year.name}` : 'Preparar el año escolar'}</h1>
-        <p className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">
-          {year ? 'Fechas, periodos y niveles. Los cambios se ven en toda la escuela.' : 'Empieza por aquí: fechas, periodos y niveles de la escuela.'}
-        </p>
+        <h1 className="text-xl font-black text-gray-900 dark:text-white sm:text-2xl">{title}</h1>
+        <p className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{subtitle}</p>
       </header>
 
-      {readOnly && (
+      {year?.status === 'PLANNING' && (
+        <div className="flex flex-col gap-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-900/30 dark:text-amber-100 sm:flex-row sm:items-center" role="status">
+          <Info size={16} className="hidden flex-shrink-0 sm:block" aria-hidden="true" />
+          <p className="min-w-0 flex-1">
+            <strong>{year.name} está en preparación.</strong> Arma sus secciones, asignaciones y clases con calma: los estudiantes entran a sus clases cuando el año empiece.
+          </p>
+          {manager && (
+            <button type="button" className="pg-btn pg-focus flex-shrink-0" onClick={() => setDiscarding(true)}>
+              <Trash2 size={16} aria-hidden="true" />Descartar
+            </button>
+          )}
+        </div>
+      )}
+      {closedYear && (
+        <p className="flex items-start gap-2 rounded-xl bg-gray-100 p-3 text-sm text-gray-800 dark:bg-gray-800 dark:text-gray-100" role="status">
+          <Lock size={16} className="mt-0.5 flex-shrink-0" aria-hidden="true" />
+          {year!.name} ya cerró: solo se puede consultar.
+        </p>
+      )}
+      {!manager && (
         <p className="flex items-start gap-2 rounded-xl bg-gray-100 p-3 text-sm text-gray-800 dark:bg-gray-800 dark:text-gray-100" role="status">
           <Info size={16} className="mt-0.5 flex-shrink-0" aria-hidden="true" />
           Solo la administración de la escuela puede cambiar el año escolar.
@@ -306,6 +475,34 @@ const YearForm = ({ year, manager, gradeLevels }: { year: SchoolYearDetail | nul
         </ul>
       </fieldset>
 
+      {prepareFrom && (
+        <fieldset className={card}>
+          <legend className="sr-only">Qué copiar de {prepareFrom.name}</legend>
+          <h2 className="text-base font-bold text-gray-900 dark:text-white">Copiar de {prepareFrom.name}</h2>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+            Solo de los niveles marcados arriba. Todo se puede cambiar después; las asignaciones y talleres llegan sin clase y luego se crean de una vez.
+          </p>
+          <ul className="mt-3 grid gap-1 sm:grid-cols-2">
+            {COPY_ITEMS.map((option) => (
+              <li key={option.key}>
+                <label className="flex min-h-[44px] cursor-pointer items-start gap-3 rounded-lg py-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-5 w-5 flex-shrink-0 rounded border-gray-400 text-primary-600 focus:ring-primary-500"
+                    checked={copy[option.key]}
+                    onChange={(e) => toggleCopy(option.key, e.target.checked)}
+                  />
+                  <span>
+                    <span className="block font-semibold text-gray-900 dark:text-white">{option.label}</span>
+                    <span className="block text-xs text-gray-600 dark:text-gray-300">{option.hint}</span>
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        </fieldset>
+      )}
+
       {(errors.length > 0 || serverError) && (
         <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900 dark:border-red-500/40 dark:bg-red-900/20 dark:text-red-100" role="alert">
           {[...errors, ...(serverError ? [serverError] : [])].map((text) => (
@@ -339,15 +536,35 @@ const YearForm = ({ year, manager, gradeLevels }: { year: SchoolYearDetail | nul
         </HomeModal>
       )}
 
+      {discarding && year && (
+        <HomeModal
+          title={`¿Descartar la preparación de ${year.name}?`}
+          onClose={() => setDiscarding(false)}
+          footer={<>
+            <button type="button" onClick={() => setDiscarding(false)} className={cancelButton}>Cancelar</button>
+            <button type="button" className={primaryButton} disabled={discard.isPending} onClick={() => discard.mutate()}>
+              <Trash2 size={16} aria-hidden="true" />{discard.isPending ? 'Descartando…' : 'Descartar'}
+            </button>
+          </>}
+        >
+          <p className="text-sm text-gray-800 dark:text-gray-100">
+            Se borran sus fechas, secciones, plan, asignaciones, talleres y coordinaciones. No se puede si ya tiene clases creadas o estudiantes matriculados.
+          </p>
+        </HomeModal>
+      )}
+
       {!readOnly && (
         <div className="flex flex-wrap items-center justify-end gap-2">
+          {onCancel && (
+            <button type="button" className={cancelButton} onClick={onCancel}>Cancelar</button>
+          )}
           {year && dirty && (
             <button type="button" className={cancelButton} onClick={() => { setDraft(initial); setServerError(null); }}>
               Descartar cambios
             </button>
           )}
           <button type="submit" className={primaryButton} disabled={blocking || (!!year && !dirty) || save.isPending || (!year && draft.name.length !== 4)}>
-            {save.isPending ? 'Guardando…' : year ? 'Guardar cambios' : 'Crear año escolar'}
+            {save.isPending ? 'Guardando…' : year ? 'Guardar cambios' : prepareFrom ? `Preparar ${draft.name}` : 'Crear año escolar'}
           </button>
         </div>
       )}

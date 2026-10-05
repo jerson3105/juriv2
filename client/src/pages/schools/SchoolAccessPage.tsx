@@ -15,14 +15,14 @@ const card = 'pg-surface p-4';
  * sección y sus tarjetas de un solo uso. Restablecer un PIN se hace desde la ficha del estudiante o desde «Mi tutoría».
  */
 export const SchoolAccessPage = () => {
-  const { school, manager, activeYear } = useSchoolConsole();
+  const { school, manager, selectedYear } = useSchoolConsole();
   const queryClient = useQueryClient();
   const [confirmChange, setConfirmChange] = useState(false);
   const [busySection, setBusySection] = useState<string | null>(null);
   const overview = useQuery({
-    queryKey: schoolAccessKeys.overview(school.id, activeYear?.id ?? ''),
-    queryFn: () => schoolAccessApi.overview(school.id, activeYear!.id),
-    enabled: manager && !!activeYear,
+    queryKey: schoolAccessKeys.overview(school.id, selectedYear?.id ?? ''),
+    queryFn: () => schoolAccessApi.overview(school.id, selectedYear!.id),
+    enabled: manager && !!selectedYear,
   });
   const setCode = useMutation({
     mutationFn: () => schoolAccessApi.setCode(school.id),
@@ -37,7 +37,7 @@ export const SchoolAccessPage = () => {
   if (!manager) {
     return <p className="text-sm text-gray-700 dark:text-gray-300">El acceso de los estudiantes lo prepara la administración. Las tarjetas de tu sección están en «Mi tutoría».</p>;
   }
-  if (!activeYear) {
+  if (!selectedYear) {
     return <p className="text-sm text-gray-700 dark:text-gray-300">Primero crea el año escolar.</p>;
   }
   const data = overview.data;
@@ -54,8 +54,8 @@ export const SchoolAccessPage = () => {
   const cards = async (section: AccessOverview['sections'][number]) => {
     setBusySection(section.id);
     try {
-      await schoolAccessApi.downloadSectionCards(school.id, activeYear.id, section.id, section.label);
-      void queryClient.invalidateQueries({ queryKey: schoolAccessKeys.overview(school.id, activeYear.id) });
+      await schoolAccessApi.downloadSectionCards(school.id, selectedYear.id, section.id, section.label);
+      void queryClient.invalidateQueries({ queryKey: schoolAccessKeys.overview(school.id, selectedYear.id) });
     } catch (error) {
       toast.error(errorMessage(error, 'No se pudieron generar las tarjetas'));
     } finally {

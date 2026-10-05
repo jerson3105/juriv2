@@ -30,13 +30,13 @@ const plain = (text: string) => text.toLowerCase().normalize('NFD').replace(/[^a
 
 /** Importar el padrón desde Excel: archivo, columnas, revisar filas y confirmar (se puede deshacer 24 h). */
 export const SchoolRosterImportPage = () => {
-  const { school, activeYear, yearsLoading } = useSchoolConsole();
+  const { school, selectedYear, yearsLoading } = useSchoolConsole();
   const [params, setParams] = useSearchParams();
   const batchId = params.get('lote');
   const setBatch = (id: string | null) => setParams(id ? { lote: id } : {}, { replace: true });
 
   if (yearsLoading) return <div className="h-64 animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none dark:bg-gray-800" aria-busy="true" aria-label="Cargando" />;
-  if (!activeYear) {
+  if (!selectedYear) {
     return (
       <div className="mx-auto max-w-3xl rounded-xl border border-red-200 bg-red-50 p-6 text-center dark:border-red-500/40 dark:bg-red-900/20" role="alert">
         <p className="font-semibold text-red-900 dark:text-red-100">Primero prepara el año escolar.</p>
@@ -45,8 +45,8 @@ export const SchoolRosterImportPage = () => {
     );
   }
   return batchId
-    ? <Wizard key={batchId} schoolId={school.id} yearId={activeYear.id} batchId={batchId} onRestart={() => setBatch(null)} />
-    : <FileStep schoolId={school.id} yearId={activeYear.id} yearName={activeYear.name} onReady={setBatch} />;
+    ? <Wizard key={batchId} schoolId={school.id} yearId={selectedYear.id} batchId={batchId} onRestart={() => setBatch(null)} />
+    : <FileStep schoolId={school.id} yearId={selectedYear.id} yearName={selectedYear.name} onReady={setBatch} />;
 };
 
 const PageHeader = ({ schoolId, subtitle, action }: { schoolId: string; subtitle: string; action?: ReactNode }) => (

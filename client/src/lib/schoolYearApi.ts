@@ -41,6 +41,28 @@ export interface SchoolYearInput {
   levels: Array<{ level: SchoolLevel; gradeScale: GradeScale }>;
 }
 
+/** Qué se copia del año de origen al preparar el siguiente. */
+export interface YearCopyOptions {
+  yearId: string;
+  sections: boolean;
+  tutors: boolean;
+  plan: boolean;
+  assignments: boolean;
+  workshops: boolean;
+  coordinators: boolean;
+}
+
+export interface YearCopySummary {
+  sections: number;
+  tutors: number;
+  planLevels: number;
+  assignments: number;
+  workshops: number;
+  coordinators: number;
+  /** Lo que no se copió porque esa persona ya no está en el equipo. */
+  notInTeam: number;
+}
+
 export const schoolYearKeys = {
   list: (schoolId: string) => ['school-years', schoolId] as const,
   detail: (schoolId: string, yearId: string) => ['school-year', schoolId, yearId] as const,
@@ -55,10 +77,14 @@ export const schoolYearApi = {
     const response = await api.get(`/schools/${schoolId}/years/${yearId}`);
     return response.data.data;
   },
-  create: async (schoolId: string, data: SchoolYearInput & { name: string }): Promise<SchoolYearDetail> => {
+  /** El primer año nace activo; el siguiente, en preparación (y puede copiar la estructura de otro). */
+  create: async (schoolId: string, data: SchoolYearInput & { name: string; copyFrom?: YearCopyOptions }): Promise<SchoolYearDetail & { copied: YearCopySummary | null }> => {
     const response = await api.post(`/schools/${schoolId}/years`, data);
     return response.data.data;
   },
+  /** Descarta el año en preparación. */
+  remove: async (schoolId: string, yearId: string): Promise<string> =>
+    (await api.delete(`/schools/${schoolId}/years/${yearId}`)).data.message,
   update: async (schoolId: string, yearId: string, data: SchoolYearInput): Promise<SchoolYearDetail> => {
     const response = await api.put(`/schools/${schoolId}/years/${yearId}`, data);
     return response.data.data;

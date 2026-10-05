@@ -1,4 +1,5 @@
 import { db } from '../db/index.js';
+import { classroomContexts } from './classroomContext.service.js';
 import { PIN_BLOCK_LEVEL } from '../utils/pinPolicy.js';
 import { 
   classrooms, 
@@ -519,6 +520,8 @@ export class ClassroomService {
 
     // Crear mapa de conteos
     const countMap = new Map(studentCounts.map(sc => [sc.classroomId, Number(sc.count)]));
+    // El año de cada clase de un colegio (en preparación, en curso o cerrado): distingue las de un año y otro.
+    const contexts = await classroomContexts(results.filter((c) => c.schoolId).map((c) => ({ id: c.id, schoolId: c.schoolId, currentBimester: c.currentBimester })));
 
     return results.map((c) => {
       // Parsear JSON si viene como string (bug de MySQL/Drizzle)
@@ -531,7 +534,7 @@ export class ClassroomService {
         }
       }
       
-      return { ...c, loginStreakConfig, studentCount: countMap.get(c.id) || 0 };
+      return { ...c, loginStreakConfig, studentCount: countMap.get(c.id) || 0, context: contexts.get(c.id) ?? null };
     });
   }
 

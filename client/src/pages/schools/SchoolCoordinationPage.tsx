@@ -30,13 +30,13 @@ const quietWeek = (c: CoordinationClass) => !!c.classroom && !c.classroom.archiv
  * del bimestre de cada clase). Sin entrar a las clases ni ver a cada estudiante.
  */
 export const SchoolCoordinationPage = () => {
-  const { school, activeYear, yearsLoading } = useSchoolConsole();
+  const { school, selectedYear, yearsLoading } = useSchoolConsole();
   const [params, setParams] = useSearchParams();
-  const yearId = activeYear?.id ?? '';
-  const panel = useQuery({ queryKey: coordinatorKeys.panel(school.id, yearId), queryFn: () => coordinatorApi.panel(school.id, yearId), enabled: !!activeYear });
+  const yearId = selectedYear?.id ?? '';
+  const panel = useQuery({ queryKey: coordinatorKeys.panel(school.id, yearId), queryFn: () => coordinatorApi.panel(school.id, yearId), enabled: !!selectedYear });
 
-  if (yearsLoading || (activeYear && panel.isLoading)) return <div className="h-64 animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none dark:bg-gray-800" aria-busy="true" aria-label="Cargando tu coordinación" />;
-  if (!activeYear) return <p className="mx-auto max-w-3xl rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-700 dark:border-gray-600 dark:text-gray-300">Tu coordinación aparece cuando la escuela prepare su año escolar.</p>;
+  if (yearsLoading || (selectedYear && panel.isLoading)) return <div className="h-64 animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none dark:bg-gray-800" aria-busy="true" aria-label="Cargando tu coordinación" />;
+  if (!selectedYear) return <p className="mx-auto max-w-3xl rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-700 dark:border-gray-600 dark:text-gray-300">Tu coordinación aparece cuando la escuela prepare su año escolar.</p>;
   if (panel.isError || !panel.data) {
     return (
       <div className="mx-auto max-w-3xl rounded-xl border border-red-200 bg-red-50 p-6 text-center dark:border-red-500/40 dark:bg-red-900/20" role="alert">

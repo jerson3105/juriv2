@@ -69,6 +69,7 @@ router.get('/:schoolId/years', authorize('TEACHER'), schoolYearController.list);
 router.post('/:schoolId/years', authorize('TEACHER'), schoolYearController.create);
 router.get('/:schoolId/years/:yearId', authorize('TEACHER'), schoolYearController.get);
 router.put('/:schoolId/years/:yearId', authorize('TEACHER'), schoolYearController.update);
+router.delete('/:schoolId/years/:yearId', authorize('TEACHER'), schoolYearController.remove);
 // Cerrar y reabrir un bimestre en todas las clases del colegio (Calificaciones)
 router.post('/:schoolId/years/:yearId/periods/:code/close', authorize('TEACHER'), schoolYearController.closePeriod);
 router.post('/:schoolId/years/:yearId/periods/:code/reopen', authorize('TEACHER'), schoolYearController.reopenPeriod);
@@ -128,6 +129,8 @@ router.get('/:schoolId/years/:yearId/assignments', authorize('TEACHER'), schoolA
 router.post('/:schoolId/years/:yearId/assignments', authorize('TEACHER'), schoolAssignmentController.create);
 router.get('/:schoolId/years/:yearId/assignments/from-classes', authorize('TEACHER'), schoolAssignmentController.fromClassesPreview);
 router.post('/:schoolId/years/:yearId/assignments/from-classes', authorize('TEACHER'), schoolAssignmentController.fromClassesConfirm);
+// Año en preparación: cada asignación y taller sin clase recibe la suya (copiada de la del año anterior)
+router.post('/:schoolId/years/:yearId/classes', authorize('TEACHER'), schoolAssignmentController.createYearClasses);
 router.patch('/:schoolId/assignments/:assignmentId', authorize('TEACHER'), schoolAssignmentController.update);
 router.delete('/:schoolId/assignments/:assignmentId', authorize('TEACHER'), schoolAssignmentController.remove);
 router.post('/:schoolId/assignments/:assignmentId/sync', authorize('TEACHER'), schoolAssignmentController.sync);

@@ -24,39 +24,39 @@ interface Step {
 /** Inicio de la consola: para la administración, qué atender y cómo preparar el año; para el docente, el año en curso. */
 export const SchoolHomePage = () => {
   const navigate = useNavigate();
-  const { school, manager, verified, activeYear } = useSchoolConsole();
+  const { school, manager, verified, selectedYear } = useSchoolConsole();
   const { classrooms, teachers, requests, loadingDetail, loadingTeachers } = useSchoolPanelData(school, manager);
   const year = useQuery({
-    queryKey: schoolYearKeys.detail(school.id, activeYear?.id ?? ''),
-    queryFn: () => schoolYearApi.get(school.id, activeYear!.id),
-    enabled: !!activeYear,
+    queryKey: schoolYearKeys.detail(school.id, selectedYear?.id ?? ''),
+    queryFn: () => schoolYearApi.get(school.id, selectedYear!.id),
+    enabled: !!selectedYear,
   });
   const sectionsQuery = useQuery({
-    queryKey: schoolSectionKeys.list(school.id, activeYear?.id ?? ''),
-    queryFn: () => schoolSectionApi.list(school.id, activeYear!.id),
-    enabled: manager && !!activeYear,
+    queryKey: schoolSectionKeys.list(school.id, selectedYear?.id ?? ''),
+    queryFn: () => schoolSectionApi.list(school.id, selectedYear!.id),
+    enabled: manager && !!selectedYear,
   });
   const sections = sectionsQuery.data ?? [];
   // Solo los conteos del padrón (primera página, sin filtros).
   const rosterQuery = { filter: 'all' as const, page: 1 };
   const roster = useQuery({
-    queryKey: schoolRosterKeys.list(school.id, activeYear?.id ?? '', rosterQuery),
-    queryFn: () => schoolRosterApi.list(school.id, activeYear!.id, rosterQuery),
-    enabled: manager && !!activeYear,
+    queryKey: schoolRosterKeys.list(school.id, selectedYear?.id ?? '', rosterQuery),
+    queryFn: () => schoolRosterApi.list(school.id, selectedYear!.id, rosterQuery),
+    enabled: manager && !!selectedYear,
   });
   const rosterCounts = roster.data?.counts;
   // Asignaciones y matrícula automática: los totales de todos los niveles.
   const assignments = useQuery({
-    queryKey: assignmentKeys.matrix(school.id, activeYear?.id ?? '', null),
-    queryFn: () => assignmentApi.matrix(school.id, activeYear!.id),
-    enabled: manager && !!activeYear && sections.length > 0,
+    queryKey: assignmentKeys.matrix(school.id, selectedYear?.id ?? '', null),
+    queryFn: () => assignmentApi.matrix(school.id, selectedYear!.id),
+    enabled: manager && !!selectedYear && sections.length > 0,
   });
   const overall = assignments.data?.overall;
   // Acceso con DNI y PIN: si el colegio ya tiene su código y cuántos entran con su PIN.
   const access = useQuery({
-    queryKey: schoolAccessKeys.overview(school.id, activeYear?.id ?? ''),
-    queryFn: () => schoolAccessApi.overview(school.id, activeYear!.id),
-    enabled: manager && !!activeYear,
+    queryKey: schoolAccessKeys.overview(school.id, selectedYear?.id ?? ''),
+    queryFn: () => schoolAccessApi.overview(school.id, selectedYear!.id),
+    enabled: manager && !!selectedYear,
   });
   const withoutTutor = sections.filter((s) => !s.tutor);
   const base = `/escuela/${school.id}`;
@@ -66,6 +66,12 @@ export const SchoolHomePage = () => {
   const idleClasses = classrooms.filter((c) => isIdle(c.lastActivityAt, c.studentCount));
   const teachersWithoutClasses = teachers.filter((t) => !classrooms.some((c) => c.teacherId === t.userId));
   const place = [school.city, school.country].filter(Boolean).join(', ');
+  // El año que se prepara: sus clases se llenan cuando empieza y su padrón llega con la promoción o la plantilla.
+  const preparing = selectedYear?.status === 'PLANNING';
+  const yearLabel = selectedYear
+    ? `Año escolar ${selectedYear.name}${preparing ? ' (en preparación)' : selectedYear.status === 'CLOSED' ? ' (archivado)' : ''}`
+    : null;
+  const classesMissing = (overall?.withoutClass ?? 0) + (overall?.workshopsWithoutClass ?? 0);
 
   const kpis = [
     { label: 'Docentes', value: loadingTeachers ? '—' : teachers.length, hint: manager && requests.length > 0 ? `${requests.length} ${requests.length === 1 ? 'solicitud' : 'solicitudes'}` : 'en la escuela', icon: Users },
@@ -84,7 +90,7 @@ export const SchoolHomePage = () => {
   ];
 
   const attention = manager ? [
-    !activeYear && !year.isLoading && { icon: CalendarCheck, title: 'Prepara el año escolar', detail: 'Fechas, bimestres y niveles: lo primero de la consola', action: 'Preparar', to: `${base}/anio` },
+    !selectedYear && !year.isLoading && { icon: CalendarCheck, title: 'Prepara el año escolar', detail: 'Fechas, bimestres y niveles: lo primero de la consola', action: 'Preparar', to: `${base}/anio` },
     (rosterCounts?.incomplete ?? 0) > 0 && { icon: GraduationCap, title: `${rosterCounts!.incomplete} ${rosterCounts!.incomplete === 1 ? 'estudiante con datos por completar' : 'estudiantes con datos por completar'}`, detail: 'Les falta el DNI o la fecha de nacimiento', action: 'Completar datos', to: `${base}/estudiantes?filtro=incomplete` },
     (rosterCounts?.no_section ?? 0) > 0 && { icon: GraduationCap, title: `${rosterCounts!.no_section} ${rosterCounts!.no_section === 1 ? 'estudiante sin sección' : 'estudiantes sin sección'}`, detail: 'Asígnales su sección desde la ficha', action: 'Ver estudiantes', to: `${base}/estudiantes?filtro=no_section` },
     (overall?.missing ?? 0) > 0 && { icon: GraduationCap, title: `${overall!.missing} ${overall!.missing === 1 ? 'estudiante aún no está en su clase' : 'estudiantes aún no están en sus clases'}`, detail: 'La matrícula automática quedó a medias: sincroniza la clase marcada', action: 'Ver asignaciones', to: `${base}/docentes?vista=asignaciones` },
@@ -115,7 +121,8 @@ export const SchoolHomePage = () => {
         ? `${rosterCounts.all} ${rosterCounts.all === 1 ? 'estudiante' : 'estudiantes'}${rosterCounts.incomplete ? ` · ${rosterCounts.incomplete} por completar` : ''}`
         : 'Desde tus clases o con la plantilla',
       done: !!rosterCounts && rosterCounts.all > 0 && rosterCounts.incomplete === 0 && rosterCounts.no_section === 0,
-      action: detail ? (rosterCounts && rosterCounts.all > 0 ? { label: rosterCounts.incomplete || rosterCounts.no_section ? 'Continuar' : 'Ver', to: `${base}/estudiantes`, quiet: !(rosterCounts.incomplete || rosterCounts.no_section) } : { label: 'Empezar', to: `${base}/estudiantes/armar` }) : undefined,
+      action: detail ? (rosterCounts && rosterCounts.all > 0 ? { label: rosterCounts.incomplete || rosterCounts.no_section ? 'Continuar' : 'Ver', to: `${base}/estudiantes`, quiet: !(rosterCounts.incomplete || rosterCounts.no_section) }
+        : preparing ? { label: 'Importar', to: `${base}/estudiantes/importar` } : { label: 'Empezar', to: `${base}/estudiantes/armar` }) : undefined,
     },
     {
       title: 'Tutorías',
@@ -131,7 +138,14 @@ export const SchoolHomePage = () => {
         ? { label: overall && overall.assigned > 0 ? 'Continuar' : 'Empezar', to: `${base}/docentes?vista=asignaciones`, quiet: !!overall && overall.assigned === overall.required }
         : undefined,
     },
-    {
+    preparing ? {
+      title: 'Clases del año',
+      detail: !overall || overall.assigned === 0 ? 'Cada asignación recibe su clase, copiada de la del año anterior'
+        : classesMissing > 0 ? `${classesMissing} ${classesMissing === 1 ? 'asignación o taller' : 'asignaciones y talleres'} sin clase`
+          : `Listas: sus estudiantes entran cuando ${selectedYear!.name} empiece`,
+      done: !!overall && overall.assigned > 0 && classesMissing === 0,
+      action: overall && overall.assigned > 0 ? { label: classesMissing > 0 ? 'Crear' : 'Ver', to: `${base}/docentes?vista=asignaciones`, quiet: classesMissing === 0 } : undefined,
+    } : {
       title: 'Matrícula automática',
       detail: !overall || overall.assigned === 0 ? 'Pone a cada estudiante en las clases de su sección'
         : overall.missing > 0 ? `Faltan ${overall.missing} ${overall.missing === 1 ? 'estudiante' : 'estudiantes'} en sus clases`
@@ -156,7 +170,7 @@ export const SchoolHomePage = () => {
       <header>
         <h1 className="text-xl font-black text-gray-900 dark:text-white sm:text-2xl">Inicio</h1>
         <p className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">
-          {[school.name, place, activeYear ? `Año escolar ${activeYear.name}` : null].filter(Boolean).join(' · ')}
+          {[school.name, place, yearLabel].filter(Boolean).join(' · ')}
         </p>
       </header>
 
@@ -209,7 +223,7 @@ export const SchoolHomePage = () => {
 
           <section className={`${card} lg:col-span-5`} aria-labelledby="ck-title">
             <div className="mb-2 flex items-center gap-2">
-              <h2 id="ck-title" className="text-base font-bold text-gray-900 dark:text-white">Preparar el año {activeYear?.name ?? new Date().getFullYear()}</h2>
+              <h2 id="ck-title" className="text-base font-bold text-gray-900 dark:text-white">Preparar el año {selectedYear?.name ?? new Date().getFullYear()}</h2>
               <span className="ml-auto text-xs text-gray-600 dark:text-gray-300">{ready} de {steps.length} listos</span>
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700" role="progressbar" aria-label="Pasos listos" aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={ready}>

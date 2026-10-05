@@ -3,8 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import {
   attendanceRecords, classroomCharacterClasses, classrooms, gradeEvaluationScores, pointLogs, schoolAutoProfiles, schoolEnrollments, schoolMoveProfiles,
-  schoolStudents, schoolTeachingAssignments, schoolWorkshops, schoolWorkshopSections, schoolWorkshopStudents, studentBadges, studentEquippedItems,
-  studentGrades, studentProfiles, users,
+  schoolStudents, schoolTeachingAssignments, schoolWorkshops, schoolWorkshopSections, schoolWorkshopStudents, schoolYears, studentBadges,
+  studentEquippedItems, studentGrades, studentProfiles, users,
 } from '../db/schema.js';
 import { generateRandomCode } from '../utils/helpers.js';
 import { logger } from '../utils/logger.js';
@@ -20,7 +20,8 @@ import { applyCarry, newEffects, pendingCarries, type CarryEffects, type Pending
  * el mismo nombre sin ligar, se liga ese perfil; si no, se crea. El perfil nuevo se liga a la cuenta del estudiante si
  * tiene exactamente una (la clase le aparece sola); si no, queda por reclamar con su tarjeta. Cada perfil creado o
  * ligado se anota para poder deshacer una importación o un armado mientras nadie lo use. Quien vuelve a una clase donde
- * quedó inactivo (retirado o trasladado) recupera su perfil.
+ * quedó inactivo (retirado o trasladado) recupera su perfil. Solo en el año activo: las clases de un año en preparación
+ * se llenan cuando empieza.
  */
 
 export interface SyncResult {
@@ -91,19 +92,20 @@ export const runCarryEffects = (effects: CarryEffects) => {
 /** El progreso que trae cada recién llegado de su área y, dentro de un movimiento, su anotación para deshacerlo. */
 const carryArrivals = async (tx: Tx, input: {
   schoolId: string;
+  yearId: string;
   classroomId: string;
   arrivals: Array<{ studentId: string; profileId: string; reactivated: boolean }>;
   moveId?: string;
   effects: CarryEffects;
   now: Date;
 }) => {
-  const { schoolId, classroomId, arrivals, moveId, effects, now } = input;
+  const { schoolId, yearId, classroomId, arrivals, moveId, effects, now } = input;
   if (arrivals.length === 0) return;
   // La clase de un área trae el progreso de esa área; la de un taller empieza de cero (es otra actividad).
   const [assignment] = await tx.select({ areaId: schoolTeachingAssignments.areaId }).from(schoolTeachingAssignments)
     .where(eq(schoolTeachingAssignments.classroomId, classroomId)).limit(1);
   const pending = assignment
-    ? await pendingCarries(tx, [...new Set(arrivals.map((a) => a.studentId))], assignment.areaId)
+    ? await pendingCarries(tx, [...new Set(arrivals.map((a) => a.studentId))], assignment.areaId, yearId)
     : new Map<string, PendingCarry>();
   const plain: typeof arrivals = [];
   for (const arrival of arrivals) {
@@ -149,6 +151,10 @@ export const schoolAutoEnrollService = {
     const sectionIds = input.sectionIds ?? [];
     const studentIds = input.studentIds ?? [];
     if (sectionIds.length === 0 && studentIds.length === 0) return ZERO;
+    // Un año en preparación (o cerrado) no llena sus clases: sus estudiantes entran cuando el año empieza.
+    const [year] = await tx.select({ status: schoolYears.status }).from(schoolYears)
+      .where(and(eq(schoolYears.id, yearId), eq(schoolYears.schoolId, schoolId)));
+    if (year?.status !== 'ACTIVE') return ZERO;
     const now = new Date();
     const [classroom] = await tx.select({
       id: classrooms.id, isActive: classrooms.isActive, schoolId: classrooms.schoolId,
@@ -297,7 +303,7 @@ export const schoolAutoEnrollService = {
       ...created.map((r) => ({ studentId: r.schoolStudentId, profileId: r.id, reactivated: false })),
       ...returning.map((p) => ({ studentId: p.schoolStudentId!, profileId: p.id, reactivated: true })),
     ];
-    await carryArrivals(tx, { schoolId, classroomId, arrivals, moveId: context.moveId, effects: context.effects, now });
+    await carryArrivals(tx, { schoolId, yearId, classroomId, arrivals, moveId: context.moveId, effects: context.effects, now });
     return { created: toCreate.length, linked, withAccount: toCreate.filter((c) => c.userId).length };
   },
 

@@ -23,7 +23,7 @@ const PageHeader = ({ title, subtitle }: { title: string; subtitle: string }) =>
 );
 
 export const SchoolTeachersPage = () => {
-  const { school, manager, activeYear } = useSchoolConsole();
+  const { school, manager, selectedYear } = useSchoolConsole();
   const { user } = useAuthStore();
   const [params, setParams] = useSearchParams();
   const { detail, classrooms, teachers, requests, loadingTeachers } = useSchoolPanelData(school, manager);
@@ -62,9 +62,9 @@ export const SchoolTeachersPage = () => {
         </div>
       )}
       {view === 'assignments' ? (
-        activeYear ? <AssignmentsTab schoolId={school.id} yearId={activeYear.id} /> : needsYear
+        selectedYear ? <AssignmentsTab schoolId={school.id} yearId={selectedYear.id} yearName={selectedYear.name} yearStatus={selectedYear.status} /> : needsYear
       ) : view === 'coordination' ? (
-        activeYear ? <CoordinatorsTab schoolId={school.id} yearId={activeYear.id} /> : needsYear
+        selectedYear ? <CoordinatorsTab schoolId={school.id} yearId={selectedYear.id} /> : needsYear
       ) : (
       <TeachersTab
         school={school}

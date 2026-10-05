@@ -1,8 +1,9 @@
 import { db } from '../db/index.js';
-import { schools, schoolMembers, schoolVerifications, classrooms, users, schoolBehaviors, behaviors, schoolBadges, badges, curriculumAreas, pointLogs, attendanceRecords, studentProfiles, studentGrades, schoolTeachingAssignments, schoolWorkshops, verifiedDomains } from '../db/schema.js';
+import { schools, schoolMembers, schoolVerifications, classrooms, users, schoolBehaviors, behaviors, schoolBadges, badges, curriculumAreas, pointLogs, attendanceRecords, studentProfiles, studentGrades, schoolTeachingAssignments, schoolWorkshops, schoolYears, verifiedDomains } from '../db/schema.js';
 import { eq, and, like, count, sql, desc, ne, inArray, gte, lte } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { teacherVerificationService } from './teacherVerification.service.js';
+import { classroomYearIds } from './schoolCalendar.service.js';
 import { ConflictError, ForbiddenError, NotFoundError } from '../utils/errors.js';
 import { conditionBehaviorIds, normalizeBadgeAssignment, parseBadgeCondition, safeBadgeImage } from '../utils/badgeConditions.js';
 
@@ -227,6 +228,11 @@ export class SchoolService {
 
   // Desasignar clase de escuela
   async unassignClassroom(classroomId: string) {
+    const yearId = (await classroomYearIds([classroomId])).get(classroomId);
+    if (yearId) {
+      const [year] = await db.select({ name: schoolYears.name, status: schoolYears.status }).from(schoolYears).where(eq(schoolYears.id, yearId));
+      if (year?.status === 'CLOSED') throw new ConflictError(`Esta clase es del año ${year.name}, que ya cerró: queda en la historia del colegio`);
+    }
     const now = new Date();
     await db.update(classrooms)
       .set({ schoolId: null, schoolSectionId: null, updatedAt: now })

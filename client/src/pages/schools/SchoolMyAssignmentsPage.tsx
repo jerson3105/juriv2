@@ -30,12 +30,12 @@ const statusOf = (a: MyLoadAssignment): { text: string; tone: keyof typeof PILL 
 
 /** Mis asignaciones: lo que enseño este año (sección × área) con su clase, y mi tutoría. Para todo el equipo. */
 export const SchoolMyAssignmentsPage = () => {
-  const { school, activeYear, yearsLoading } = useSchoolConsole();
-  const yearId = activeYear?.id ?? '';
-  const load = useQuery({ queryKey: assignmentKeys.myLoad(school.id, yearId), queryFn: () => assignmentApi.myLoad(school.id, yearId), enabled: !!activeYear });
+  const { school, selectedYear, yearsLoading } = useSchoolConsole();
+  const yearId = selectedYear?.id ?? '';
+  const load = useQuery({ queryKey: assignmentKeys.myLoad(school.id, yearId), queryFn: () => assignmentApi.myLoad(school.id, yearId), enabled: !!selectedYear });
 
-  if (yearsLoading || (activeYear && load.isLoading)) return <div className="h-64 animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none dark:bg-gray-800" aria-busy="true" aria-label="Cargando tus asignaciones" />;
-  if (!activeYear) return <p className="mx-auto max-w-3xl rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-700 dark:border-gray-600 dark:text-gray-300">Tus asignaciones aparecen cuando la escuela prepare su año escolar.</p>;
+  if (yearsLoading || (selectedYear && load.isLoading)) return <div className="h-64 animate-pulse rounded-xl bg-gray-200 motion-reduce:animate-none dark:bg-gray-800" aria-busy="true" aria-label="Cargando tus asignaciones" />;
+  if (!selectedYear) return <p className="mx-auto max-w-3xl rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-700 dark:border-gray-600 dark:text-gray-300">Tus asignaciones aparecen cuando la escuela prepare su año escolar.</p>;
   if (load.isError || !load.data) {
     return (
       <div className="mx-auto max-w-3xl rounded-xl border border-red-200 bg-red-50 p-6 text-center dark:border-red-500/40 dark:bg-red-900/20" role="alert">
@@ -52,7 +52,7 @@ export const SchoolMyAssignmentsPage = () => {
     data.assignments.length ? `${data.assignments.length} ${data.assignments.length === 1 ? 'asignación' : 'asignaciones'} en ${sections} ${sections === 1 ? 'sección' : 'secciones'}` : null,
     data.workshops.length ? `${data.workshops.length} ${data.workshops.length === 1 ? 'taller' : 'talleres'}` : null,
     data.tutoring.length ? `Tutoría de ${data.tutoring.map((t) => t.section.label).join(', ')}` : null,
-  ].filter(Boolean).join(' · ') || `Año escolar ${activeYear.name}`;
+  ].filter(Boolean).join(' · ') || `Año escolar ${selectedYear.name}`;
 
   return (
     <div className="space-y-5">
@@ -338,12 +338,12 @@ const TutoringCard = ({ schoolId, tutoring }: { schoolId: string; tutoring: MyLo
 
 /** La sección de mi tutoría: estudiantes, si falta DNI o fecha y en cuántas clases están. Sin datos sensibles. */
 export const SchoolTutoringPage = () => {
-  const { school, activeYear } = useSchoolConsole();
+  const { school, selectedYear } = useSchoolConsole();
   const { sectionId = '' } = useParams();
-  const yearId = activeYear?.id ?? '';
+  const yearId = selectedYear?.id ?? '';
   const queryClient = useQueryClient();
   const [printing, setPrinting] = useState(false);
-  const section = useQuery({ queryKey: assignmentKeys.tutoring(school.id, yearId, sectionId), queryFn: () => assignmentApi.tutoring(school.id, yearId, sectionId), enabled: !!activeYear && !!sectionId });
+  const section = useQuery({ queryKey: assignmentKeys.tutoring(school.id, yearId, sectionId), queryFn: () => assignmentApi.tutoring(school.id, yearId, sectionId), enabled: !!selectedYear && !!sectionId });
   const data = section.data;
   const withoutPin = data?.students.filter((s) => s.access.state !== 'pin').length ?? 0;
   // Tarjetas de la sección: solo para quienes aún no tienen PIN.
