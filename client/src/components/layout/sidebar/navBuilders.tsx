@@ -194,9 +194,9 @@ export const schoolConsoleNav = (input: SchoolConsoleNavInput): NavNode[] => {
     : {};
   return [
     link(entry('', 'Inicio', LayoutDashboard)),
-    ...(manager ? [link(entry('secciones', 'Grados y secciones', Layers))] : []),
+    ...(manager ? [link(entry('estudiantes', 'Estudiantes', GraduationCap)), link(entry('secciones', 'Grados y secciones', Layers))] : []),
     link(entry('docentes', 'Docentes', Users, requests)),
-    link(entry('clases', 'Clases', GraduationCap)),
+    link(entry('clases', 'Clases', BookOpen)),
     ...(manager ? [link(entry('anio', 'Año escolar', CalendarCheck))] : []),
     {
       kind: 'section',

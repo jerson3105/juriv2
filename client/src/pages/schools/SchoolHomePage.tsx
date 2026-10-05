@@ -7,6 +7,7 @@ import { IDLE_DAYS, isIdle } from '../../components/schools/schoolHelpers';
 import { currentPeriod, formatDay, formatRange, LEVEL_LABEL, PERIOD_NAME, PERIOD_PLURAL, periodLabel } from '../../components/schools/console/schoolYearHelpers';
 import { schoolYearApi, schoolYearKeys } from '../../lib/schoolYearApi';
 import { schoolSectionApi, schoolSectionKeys } from '../../lib/schoolSectionApi';
+import { schoolRosterApi, schoolRosterKeys } from '../../lib/schoolRosterApi';
 
 const card = 'pg-surface p-4';
 const smallBtn = 'pg-btn pg-focus flex-shrink-0';
@@ -34,6 +35,14 @@ export const SchoolHomePage = () => {
     enabled: manager && !!activeYear,
   });
   const sections = sectionsQuery.data ?? [];
+  // Solo los conteos del padrón (primera página, sin filtros).
+  const rosterQuery = { filter: 'all' as const, page: 1 };
+  const roster = useQuery({
+    queryKey: schoolRosterKeys.list(school.id, activeYear?.id ?? '', rosterQuery),
+    queryFn: () => schoolRosterApi.list(school.id, activeYear!.id, rosterQuery),
+    enabled: manager && !!activeYear,
+  });
+  const rosterCounts = roster.data?.counts;
   const withoutTutor = sections.filter((s) => !s.tutor);
   const base = `/escuela/${school.id}`;
   const detail = year.data;
@@ -46,7 +55,9 @@ export const SchoolHomePage = () => {
   const kpis = [
     { label: 'Docentes', value: loadingTeachers ? '—' : teachers.length, hint: manager && requests.length > 0 ? `${requests.length} ${requests.length === 1 ? 'solicitud' : 'solicitudes'}` : 'en la escuela', icon: Users },
     { label: 'Clases', value: loadingDetail ? '—' : classrooms.length, hint: 'de sus docentes', icon: BookOpen },
-    { label: 'Estudiantes', value: loadingDetail ? '—' : students, hint: 'en las clases', icon: GraduationCap },
+    rosterCounts && rosterCounts.all > 0
+      ? { label: 'Estudiantes', value: rosterCounts.all, hint: 'en el padrón', icon: GraduationCap }
+      : { label: 'Estudiantes', value: loadingDetail ? '—' : students, hint: 'en las clases', icon: GraduationCap },
     {
       label: 'Periodo',
       value: period ? periodLabel(detail!.periodType, period.index) : '—',
@@ -59,6 +70,8 @@ export const SchoolHomePage = () => {
 
   const attention = manager ? [
     !activeYear && !year.isLoading && { icon: CalendarCheck, title: 'Prepara el año escolar', detail: 'Fechas, bimestres o trimestres y niveles: lo primero de la consola', action: 'Preparar', to: `${base}/anio` },
+    (rosterCounts?.incomplete ?? 0) > 0 && { icon: GraduationCap, title: `${rosterCounts!.incomplete} ${rosterCounts!.incomplete === 1 ? 'estudiante con datos por completar' : 'estudiantes con datos por completar'}`, detail: 'Les falta el DNI o la fecha de nacimiento', action: 'Completar datos', to: `${base}/estudiantes?filtro=incomplete` },
+    (rosterCounts?.no_section ?? 0) > 0 && { icon: GraduationCap, title: `${rosterCounts!.no_section} ${rosterCounts!.no_section === 1 ? 'estudiante sin sección' : 'estudiantes sin sección'}`, detail: 'Asígnales su sección desde la ficha', action: 'Ver estudiantes', to: `${base}/estudiantes?filtro=no_section` },
     withoutTutor.length > 0 && { icon: Users, title: `${withoutTutor.length} ${withoutTutor.length === 1 ? 'sección sin tutoría' : 'secciones sin tutoría'}`, detail: 'Elige un tutor en cada tarjeta de sección', action: 'Asignar', to: `${base}/secciones` },
     requests.length > 0 && { icon: UserPlus, title: `${requests.length} ${requests.length === 1 ? 'solicitud para unirse' : 'solicitudes para unirse'}`, detail: 'Docentes que esperan tu respuesta', action: 'Revisar', to: `${base}/docentes` },
     teachersWithoutClasses.length > 0 && { icon: Users, title: `${teachersWithoutClasses.length} ${teachersWithoutClasses.length === 1 ? 'docente sin clases' : 'docentes sin clases'}`, detail: 'Aún no ponen sus clases en la escuela', action: 'Ver docentes', to: `${base}/docentes` },
@@ -80,7 +93,14 @@ export const SchoolHomePage = () => {
       done: sections.length > 0,
       action: detail ? (sections.length > 0 ? { label: 'Editar', to: `${base}/secciones`, quiet: true } : { label: 'Crear', to: `${base}/secciones` }) : undefined,
     },
-    { title: 'Padrón de estudiantes', detail: 'Desde tus clases o con la plantilla', done: false },
+    {
+      title: 'Padrón de estudiantes',
+      detail: rosterCounts && rosterCounts.all > 0
+        ? `${rosterCounts.all} ${rosterCounts.all === 1 ? 'estudiante' : 'estudiantes'}${rosterCounts.incomplete ? ` · ${rosterCounts.incomplete} por completar` : ''}`
+        : 'Desde tus clases o con la plantilla',
+      done: !!rosterCounts && rosterCounts.all > 0 && rosterCounts.incomplete === 0 && rosterCounts.no_section === 0,
+      action: detail ? (rosterCounts && rosterCounts.all > 0 ? { label: rosterCounts.incomplete || rosterCounts.no_section ? 'Continuar' : 'Ver', to: `${base}/estudiantes`, quiet: !(rosterCounts.incomplete || rosterCounts.no_section) } : { label: 'Empezar', to: `${base}/estudiantes` }) : undefined,
+    },
     {
       title: 'Tutorías',
       detail: sections.length > 0 ? `${sections.length - withoutTutor.length} de ${sections.length} secciones` : 'Un tutor por sección',
