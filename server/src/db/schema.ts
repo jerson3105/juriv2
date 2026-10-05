@@ -3375,6 +3375,20 @@ export const schoolReportSettings = mysqlTable('school_report_settings', {
   updatedAt: datetime('updated_at').notNull(),
 });
 
+// Exoneración de un estudiante en un área del año (Educación Religiosa o Educación Física): la libreta pone «EXO» en sus
+// competencias (migrations/school_console_e3_2.sql).
+export const schoolExemptions = mysqlTable('school_exemptions', {
+  yearId: varchar('year_id', { length: 36 }).notNull(),
+  studentId: varchar('student_id', { length: 36 }).notNull(),
+  areaId: varchar('area_id', { length: 36 }).notNull(),
+  schoolId: varchar('school_id', { length: 36 }).notNull(),
+  createdBy: varchar('created_by', { length: 36 }).notNull(),
+  createdAt: datetime('created_at').notNull(),
+}, (table) => ({
+  pk: primaryKey({ columns: [table.yearId, table.studentId, table.areaId] }),
+  schoolIdx: index('idx_school_exemptions_school').on(table.schoolId),
+}));
+
 export const schoolAreaCoordinators = mysqlTable('school_area_coordinators', {
   id: varchar('id', { length: 36 }).primaryKey(),
   schoolId: varchar('school_id', { length: 36 }).notNull(),

@@ -36,6 +36,8 @@ export interface CalendarPeriod {
   /** Lo cerró la administración: sus notas quedan congeladas en todas las clases. */
   locked: boolean;
   lockedAt: Date | null;
+  /** OPEN, REVIEW (aviso de cierre: sigue abierto), LOCKED o PUBLISHED (libretas publicadas: sigue cerrado). */
+  status: 'OPEN' | 'REVIEW' | 'LOCKED' | 'PUBLISHED';
 }
 
 export interface SchoolCalendar {
@@ -69,6 +71,7 @@ const build = (rows: CalendarRow[]): SchoolCalendar | null => {
     end: limaMidnight(i + 1 < sorted.length ? sorted[i + 1].startsOn : nextDay(p.endsOn)),
     locked: p.status === 'LOCKED' || p.status === 'PUBLISHED',
     lockedAt: p.lockedAt ?? null,
+    status: p.status as CalendarPeriod['status'],
   }));
   const current = [...periods].reverse().find((p) => p.startsOn <= today) ?? periods[0];
   return { schoolId, schoolName, yearId, yearName, yearStatus, periods, current: current.period };

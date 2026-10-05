@@ -11,6 +11,7 @@ import { assignmentApi, assignmentKeys, type ClassroomChoice, type MyLoad, type 
 import { countBySex, sexSummary } from '../../lib/studentSex';
 import { accessLabel, schoolAccessApi } from '../../lib/schoolAccessApi';
 import { AccessActions } from '../../components/schools/console/StudentAccess';
+import { TutorReportCards } from '../../components/schools/console/ReportCards';
 
 const pill = 'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-bold whitespace-nowrap';
 const PILL = {
@@ -416,6 +417,7 @@ export const SchoolTutoringPage = () => {
           </table>
         </div>
       ))}
+      {data && data.students.length > 0 && <TutorReportCards schoolId={school.id} yearId={yearId} sectionId={sectionId} />}
     </div>
   );
 };

@@ -1,12 +1,14 @@
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import {
-  attendanceRecords, classrooms, curriculumCompetencies, schoolEnrollments, schoolReportSettings, schoolSections, schoolStudentMoves,
-  schoolStudents, schoolTeachingAssignments, schoolWorkshops, schoolYearLevels, schoolYears, schools, studentGrades, studentProfiles, users,
+  attendanceRecords, classrooms, curriculumCompetencies, notifications, schoolEnrollments, schoolExemptions, schoolReportSettings, schoolSections,
+  schoolStudentMoves, schoolStudents, schoolTeachingAssignments, schoolWorkshops, schoolYearLevels, schoolYears, schools, studentGrades,
+  studentProfiles, users,
   type GradeScaleType,
 } from '../db/schema.js';
 import { ConflictError, NotFoundError, ValidationError } from '../utils/errors.js';
 import { parseScaleConfig, performanceBucket, scoreToLabel } from '../utils/gradeScale.js';
+import { createNotification } from '../utils/notificationEmitter.js';
 import { decryptPii, piiReady } from '../utils/piiCrypto.js';
 import { classroomYearIds, limaToday, yearCalendars } from './schoolCalendar.service.js';
 import { effectivePlan } from './schoolPlan.service.js';
@@ -18,7 +20,8 @@ import { sectionDisplayName } from './schoolSection.service.js';
  * área (con un traslado, el de la clase de cada sección; con talleres del área, ponderado por su peso). Decisiones del dueño:
  * sin calificativo de área; la última columna es el nivel final de cada competencia (el último del año, RVM 094-2020); la
  * conclusión de cada periodo se arma con las que exige la norma (inicial A/B/C, primaria B/C, secundaria C); la asistencia
- * se cuenta por día juntando sus clases; sin competencias transversales. Solo lectura.
+ * se cuenta por día juntando sus clases; sin competencias transversales. Un área exonerada (Religión, Educación Física)
+ * dice «EXO». Para la administración, el avance de cada bimestre por sección y área.
  */
 
 export type SchoolLevel = 'INICIAL' | 'PRIMARIA' | 'SECUNDARIA';
@@ -33,10 +36,18 @@ export interface ReportPeriod {
   started: boolean;
   /** Entra en esta libreta: hasta el bimestre elegido y ya empezó. */
   included: boolean;
+  status: 'OPEN' | 'REVIEW' | 'LOCKED' | 'PUBLISHED';
 }
 
-export interface ReportCompetency { id: string; name: string; grades: Array<string | null>; final: string | null }
-export interface ReportArea { id: string; name: string; workshops: string[]; competencies: ReportCompetency[] }
+export interface ReportCompetency {
+  id: string;
+  name: string;
+  grades: Array<string | null>;
+  final: string | null;
+  /** Por periodo: su nivel pide conclusión y aún no tiene. */
+  pending: boolean[];
+}
+export interface ReportArea { id: string; name: string; workshops: string[]; exempt: boolean; competencies: ReportCompetency[] }
 export interface ReportConclusion { area: string; competency: string; text: string }
 export interface ReportAttendance { absentJustified: number; absentUnjustified: number; lateJustified: number; lateUnjustified: number }
 
@@ -72,10 +83,18 @@ export interface SectionReport {
   showFinal: boolean;
   /** El servidor puede leer los documentos (llaves PII). */
   documentsReadable: boolean;
+  /** Las áreas del plan del grado; las que admiten exoneración. */
+  plan: Array<{ id: string; name: string }>;
+  exemptable: Array<{ id: string; name: string }>;
   students: StudentReport[];
 }
 
+/** Las áreas de las que se exonera (Ley de Libertad Religiosa; Educación Física por salud). */
+export const EXEMPTABLE_AREAS = ['area-pe-er', 'area-pe-ef'];
+export const EXEMPT_LABEL = 'EXO';
+
 const LEVEL_NAME: Record<SchoolLevel, string> = { INICIAL: 'Inicial', PRIMARIA: 'Primaria', SECUNDARIA: 'Secundaria' };
+const LEVEL_ORDER: SchoolLevel[] = ['INICIAL', 'PRIMARIA', 'SECUNDARIA'];
 // Conclusiones que exige la norma por nivel (RVM 094-2020, modificada por la RVM 048-2024).
 const REQUIRED: Record<SchoolLevel, ReadonlySet<string>> = {
   INICIAL: new Set(['A', 'B', 'C']),
@@ -171,6 +190,30 @@ const parseClosed = (raw: unknown) => {
   return new Set(Array.isArray(value) ? value.map((entry) => entry?.period).filter((p): p is string => typeof p === 'string') : []);
 };
 
+/** Un área de la sección en el bimestre elegido: notas esperadas, puestas y conclusiones que faltan (solo estudiantes activos). */
+const cellCounts = (report: SectionReport, areaId: string) => {
+  const index = report.periods.findIndex((p) => p.code === report.upTo);
+  let expected = 0;
+  let graded = 0;
+  let pending = 0;
+  let exempt = 0;
+  for (const student of report.students) {
+    if (student.student.status !== 'ACTIVE') continue;
+    const area = student.areas.find((a) => a.id === areaId);
+    if (!area) continue;
+    if (area.exempt) {
+      exempt++;
+      continue;
+    }
+    for (const competency of area.competencies) {
+      expected++;
+      if (competency.grades[index] !== null) graded++;
+      if (competency.pending[index]) pending++;
+    }
+  }
+  return { expected, graded, pending, exempt };
+};
+
 /** El día (AAAA-MM-DD) siguiente. */
 const nextDay = (day: string) => {
   const date = new Date(`${day}T00:00:00Z`);
@@ -213,7 +256,7 @@ export const schoolReportService = {
    * La libreta de una sección hasta un bimestre (o la de algunos de sus estudiantes). Entran quienes están en la sección este
    * año, también los retirados (su libreta llega hasta su retiro).
    */
-  async section(schoolId: string, yearId: string, sectionId: string, upTo: string | null, options: { studentIds?: string[]; readDocuments?: boolean } = {}): Promise<SectionReport> {
+  async section(schoolId: string, yearId: string, sectionId: string, upTo: string | null, options: { studentIds?: string[]; readDocuments?: boolean; attendance?: boolean } = {}): Promise<SectionReport> {
     const [year] = await db.select({ id: schoolYears.id, name: schoolYears.name, status: schoolYears.status, periodType: schoolYears.periodType })
       .from(schoolYears).where(and(eq(schoolYears.id, yearId), eq(schoolYears.schoolId, schoolId)));
     if (!year) throw new NotFoundError('Año escolar no encontrado');
@@ -230,7 +273,7 @@ export const schoolReportService = {
     if (!target) throw new ValidationError('Ese bimestre no es de este año');
     const periods: ReportPeriod[] = calendar.periods.map((p) => ({
       code: p.code, number: p.number, startsOn: p.startsOn, locked: p.locked, started: p.startsOn <= today,
-      included: p.number <= target.number && p.startsOn <= today,
+      included: p.number <= target.number && p.startsOn <= today, status: p.status,
     }));
     const included = calendar.periods.filter((p) => p.number <= target.number && p.startsOn <= today);
     const lockedPeriods = new Set(calendar.periods.filter((p) => p.locked).map((p) => p.period));
@@ -266,6 +309,12 @@ export const schoolReportService = {
       : [];
     const withdrawnOn = new Map<string, string>();
     for (const w of withdrawals) if (!withdrawnOn.has(w.studentId)) withdrawnOn.set(w.studentId, w.effectiveDate);
+    const exemptions = studentIds.length
+      ? await db.select({ studentId: schoolExemptions.studentId, areaId: schoolExemptions.areaId }).from(schoolExemptions)
+        .where(and(eq(schoolExemptions.yearId, yearId), inArray(schoolExemptions.studentId, studentIds)))
+      : [];
+    const exemptOf = new Map<string, Set<string>>();
+    for (const e of exemptions) exemptOf.set(e.studentId, new Set([...(exemptOf.get(e.studentId) ?? []), e.areaId]));
 
     // Plan del grado y competencias oficiales de sus áreas.
     const plan = (await effectivePlan(yearId, level)).areas.filter((a) => a.grades.includes(section.grade));
@@ -319,7 +368,7 @@ export const schoolReportService = {
     }));
     // Asistencia: por día, juntando sus clases del año (sin lo revertido), en los periodos que entran.
     const dayOf = sql<string>`DATE_FORMAT(${attendanceRecords.date}, '%Y-%m-%d')`;
-    const attendance = profileIds.length && included.length > 0
+    const attendance = profileIds.length && included.length > 0 && options.attendance !== false
       ? await db.select({ studentProfileId: attendanceRecords.studentProfileId, day: dayOf, status: attendanceRecords.status })
         .from(attendanceRecords)
         .where(and(
@@ -353,9 +402,22 @@ export const schoolReportService = {
       let missingConclusions = 0;
       const conclusions: ReportConclusion[][] = calendar.periods.map(() => []);
 
+      const exempt = exemptOf.get(student.id) ?? new Set<string>();
       const areas: ReportArea[] = plan.map((area) => {
+        // Exonerada: «EXO» en cada periodo que entra (y en el final); no falta nada.
+        if (exempt.has(area.areaId)) {
+          const marks = calendar.periods.map((period, index) =>
+            (periods[index].included && !(withdrawnDay && period.startsOn > withdrawnDay) ? EXEMPT_LABEL : null));
+          return {
+            id: area.areaId, name: area.name, workshops: [], exempt: true,
+            competencies: competencies.filter((c) => c.areaId === area.areaId).map((c) => ({
+              id: c.id, name: c.name, grades: marks, final: EXEMPT_LABEL, pending: marks.map(() => false),
+            })),
+          };
+        }
         const workshops = [...new Set(ownRows.filter((r) => workshopOf.get(r.classroomId)?.areaId === area.areaId).map((r) => workshopOf.get(r.classroomId)!.name))];
         const areaCompetencies = competencies.filter((c) => c.areaId === area.areaId).map((competency) => {
+          const pending = calendar.periods.map(() => false);
           const labels = calendar.periods.map((period, index) => {
             // Fuera de esta libreta, o un periodo que empezó después de su retiro.
             if (!periods[index].included || (withdrawnDay && period.startsOn > withdrawnDay)) return null;
@@ -383,15 +445,18 @@ export const schoolReportService = {
             }
             if (REQUIRED[level].has(bucketOf(scale, label))) {
               const texts = [...new Set([main, ...fromWorkshops].map((g) => g?.row.conclusion?.trim()).filter((t): t is string => !!t))];
-              if (texts.length === 0) missingConclusions++;
+              if (texts.length === 0) {
+                missingConclusions++;
+                pending[index] = true;
+              }
               for (const text of texts) conclusions[index].push({ area: area.name, competency: competency.name, text });
             }
             return label;
           });
           const last = [...labels].reverse().find((l) => l !== null) ?? null;
-          return { id: competency.id, name: competency.name, grades: labels, final: last };
+          return { id: competency.id, name: competency.name, grades: labels, final: last, pending };
         });
-        return { id: area.areaId, name: area.name, workshops, competencies: areaCompetencies };
+        return { id: area.areaId, name: area.name, workshops, exempt: false, competencies: areaCompetencies };
       });
 
       const days = attendanceByStudent.get(student.id) ?? new Map<string, string[]>();
@@ -449,8 +514,108 @@ export const schoolReportService = {
       preview: !target.locked,
       showFinal: target.code === last.code,
       documentsReadable: piiReady(),
+      plan: plan.map((a) => ({ id: a.areaId, name: a.name })),
+      exemptable: plan.filter((a) => EXEMPTABLE_AREAS.includes(a.areaId)).map((a) => ({ id: a.areaId, name: a.name })),
       students,
     };
+  },
+
+  /** Las exoneraciones de un estudiante en el año (las reemplaza). Solo Educación Religiosa y Educación Física. */
+  async setExemptions(schoolId: string, yearId: string, studentId: string, areaIds: string[], actorId: string) {
+    const [year] = await db.select({ status: schoolYears.status }).from(schoolYears)
+      .where(and(eq(schoolYears.id, yearId), eq(schoolYears.schoolId, schoolId)));
+    if (!year) throw new NotFoundError('Año escolar no encontrado');
+    if (year.status === 'CLOSED') throw new ConflictError('Este año escolar ya cerró: solo se puede consultar');
+    const [enrollment] = await db.select({ id: schoolEnrollments.id }).from(schoolEnrollments)
+      .where(and(eq(schoolEnrollments.schoolId, schoolId), eq(schoolEnrollments.yearId, yearId), eq(schoolEnrollments.studentId, studentId)));
+    if (!enrollment) throw new NotFoundError('Estudiante no encontrado en este año');
+    const wanted = [...new Set(areaIds)];
+    if (wanted.some((id) => !EXEMPTABLE_AREAS.includes(id))) throw new ValidationError('Solo se exonera de Educación Religiosa o de Educación Física');
+    const now = new Date();
+    await db.transaction(async (tx) => {
+      await tx.delete(schoolExemptions).where(and(eq(schoolExemptions.yearId, yearId), eq(schoolExemptions.studentId, studentId)));
+      if (wanted.length) {
+        await tx.insert(schoolExemptions).values(wanted.map((areaId) => ({ yearId, studentId, areaId, schoolId, createdBy: actorId, createdAt: now })));
+      }
+    });
+    return wanted;
+  },
+
+  /**
+   * Avance de las libretas de un bimestre: por sección y área, las notas puestas de las esperadas (cada estudiante activo por
+   * cada competencia; sin los exonerados) y las conclusiones que faltan, con el docente de su asignación.
+   */
+  async progress(schoolId: string, yearId: string, upTo: string | null) {
+    const sections = (await db.select({ id: schoolSections.id, level: schoolSections.level, grade: schoolSections.grade, name: schoolSections.name })
+      .from(schoolSections).where(and(eq(schoolSections.schoolId, schoolId), eq(schoolSections.yearId, yearId))))
+      .sort((a, b) => LEVEL_ORDER.indexOf(a.level as SchoolLevel) - LEVEL_ORDER.indexOf(b.level as SchoolLevel) || a.grade - b.grade || a.name.localeCompare(b.name, 'es'));
+    const assignments = await db.select({
+      sectionId: schoolTeachingAssignments.sectionId, areaId: schoolTeachingAssignments.areaId, classroomId: schoolTeachingAssignments.classroomId,
+      teacherUserId: schoolTeachingAssignments.teacherUserId, firstName: users.firstName, lastName: users.lastName,
+    }).from(schoolTeachingAssignments)
+      .leftJoin(users, eq(users.id, schoolTeachingAssignments.teacherUserId))
+      .where(and(eq(schoolTeachingAssignments.schoolId, schoolId), eq(schoolTeachingAssignments.yearId, yearId)));
+    let periods: ReportPeriod[] = [];
+    let target = upTo ?? '';
+    const areas = new Map<string, string>();
+    const rows = [];
+    for (const section of sections) {
+      const report = await this.section(schoolId, yearId, section.id, upTo, { attendance: false });
+      periods = report.periods;
+      target = report.upTo;
+      for (const area of report.plan) if (!areas.has(area.id)) areas.set(area.id, area.name);
+      const active = report.students.filter((s) => s.student.status === 'ACTIVE');
+      rows.push({
+        id: section.id,
+        label: report.section.label,
+        level: report.section.level,
+        students: active.length,
+        cells: report.plan.map((area) => {
+          const counts = cellCounts(report, area.id);
+          const assignment = assignments.find((a) => a.sectionId === section.id && a.areaId === area.id);
+          return {
+            areaId: area.id,
+            ...counts,
+            teacher: assignment ? { id: assignment.teacherUserId, name: fullName(assignment) || 'Docente' } : null,
+            hasClass: !!assignment?.classroomId,
+          };
+        }),
+      });
+    }
+    return { periods, upTo: target, areas: [...areas].map(([id, name]) => ({ id, name })), sections: rows };
+  },
+
+  /** «Recordar»: un aviso en la campana del docente de la asignación con lo que le falta para la libreta (uno por hora). */
+  async remind(schoolId: string, yearId: string, sectionId: string, areaId: string, upTo: string | null) {
+    const [assignment] = await db.select({ teacherUserId: schoolTeachingAssignments.teacherUserId, classroomId: schoolTeachingAssignments.classroomId })
+      .from(schoolTeachingAssignments)
+      .where(and(
+        eq(schoolTeachingAssignments.schoolId, schoolId), eq(schoolTeachingAssignments.yearId, yearId),
+        eq(schoolTeachingAssignments.sectionId, sectionId), eq(schoolTeachingAssignments.areaId, areaId),
+      ));
+    if (!assignment) throw new ConflictError('Esa área no tiene docente en esta sección');
+    const report = await this.section(schoolId, yearId, sectionId, upTo, { attendance: false });
+    const area = report.plan.find((a) => a.id === areaId);
+    if (!area) throw new NotFoundError('Esa área no es del plan de esta sección');
+    const { expected, graded, pending } = cellCounts(report, areaId);
+    const missing = expected - graded;
+    if (missing <= 0 && pending <= 0) throw new ConflictError('Esa área ya tiene todas sus notas y conclusiones');
+    const period = report.periods.find((p) => p.code === report.upTo)!;
+    const parts = [
+      missing > 0 ? `${missing} ${missing === 1 ? 'nota' : 'notas'}` : null,
+      pending > 0 ? `${pending} ${pending === 1 ? 'conclusión' : 'conclusiones'}` : null,
+    ].filter(Boolean).join(' y ');
+    const title = `Libretas del bimestre ${period.number}`;
+    const message = `En ${report.section.label} · ${area.name} faltan ${parts} para la libreta.`;
+    const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const [recent] = await db.select({ id: notifications.id }).from(notifications)
+      .where(and(eq(notifications.userId, assignment.teacherUserId), eq(notifications.title, title), eq(notifications.message, message), gte(notifications.createdAt, hourAgo)));
+    if (recent) throw new ConflictError('Ya se lo recordaste hace menos de una hora');
+    await createNotification({
+      userId: assignment.teacherUserId, classroomId: assignment.classroomId, type: 'ANNOUNCEMENT', title, message,
+      data: { kind: 'REPORT_REMINDER', sectionId, areaId, period: period.code },
+    });
+    return { missing: Math.max(0, missing), pending };
   },
 
   /** La sección de un estudiante en el año (su libreta individual). */

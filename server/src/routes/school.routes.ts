@@ -119,6 +119,9 @@ router.post('/:schoolId/logo', authorize('TEACHER'), ...uploadSchoolLogo, school
 router.delete('/:schoolId/logo', authorize('TEACHER'), schoolReportController.removeLogo);
 router.get('/:schoolId/years/:yearId/report-cards/sections/:sectionId', authorize('TEACHER'), schoolReportController.section);
 router.get('/:schoolId/years/:yearId/report-cards/sections/:sectionId/pdf', authorize('TEACHER'), schoolReportController.pdf);
+router.get('/:schoolId/years/:yearId/report-cards/progress', authorize('TEACHER'), schoolReportController.progress);
+router.post('/:schoolId/years/:yearId/report-cards/remind', authorize('TEACHER'), schoolReportController.remind);
+router.put('/:schoolId/years/:yearId/students/:studentId/exemptions', authorize('TEACHER'), schoolReportController.setExemptions);
 
 // Armar el padrón desde las clases
 router.get('/:schoolId/years/:yearId/roster-builder', authorize('TEACHER'), schoolRosterBuilderController.overview);

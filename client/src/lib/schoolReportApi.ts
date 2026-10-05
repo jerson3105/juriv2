@@ -33,10 +33,14 @@ export interface ReportPeriod {
   locked: boolean;
   started: boolean;
   included: boolean;
+  /** Abierto, En revisión (aviso de cierre), Cerrado o Publicado. */
+  status: PeriodStatus;
 }
 
-export interface ReportCompetency { id: string; name: string; grades: Array<string | null>; final: string | null }
-export interface ReportArea { id: string; name: string; workshops: string[]; competencies: ReportCompetency[] }
+export type PeriodStatus = 'OPEN' | 'REVIEW' | 'LOCKED' | 'PUBLISHED';
+
+export interface ReportCompetency { id: string; name: string; grades: Array<string | null>; final: string | null; pending: boolean[] }
+export interface ReportArea { id: string; name: string; workshops: string[]; exempt: boolean; competencies: ReportCompetency[] }
 
 export interface StudentReport {
   student: {
@@ -67,12 +71,33 @@ export interface SectionReport {
   showFinal: boolean;
   /** El servidor puede leer los documentos: sin las llaves, el DNI no sale en la libreta. */
   documentsReadable: boolean;
+  plan: Array<{ id: string; name: string }>;
+  /** Las áreas del plan de las que se puede exonerar (Religión, Educación Física). */
+  exemptable: Array<{ id: string; name: string }>;
   students: StudentReport[];
+}
+
+export interface ProgressCell {
+  areaId: string;
+  expected: number;
+  graded: number;
+  pending: number;
+  exempt: number;
+  teacher: { id: string; name: string } | null;
+  hasClass: boolean;
+}
+
+export interface ReportProgress {
+  periods: ReportPeriod[];
+  upTo: PeriodCode;
+  areas: Array<{ id: string; name: string }>;
+  sections: Array<{ id: string; label: string; level: SchoolLevel; students: number; cells: ProgressCell[] }>;
 }
 
 export const schoolReportKeys = {
   settings: (schoolId: string) => ['school-report-settings', schoolId] as const,
   section: (schoolId: string, yearId: string, sectionId: string, period: PeriodCode | null) => ['school-report-section', schoolId, yearId, sectionId, period] as const,
+  progress: (schoolId: string, yearId: string, period: PeriodCode | null) => ['school-report-progress', schoolId, yearId, period] as const,
 };
 
 const API_ORIGIN = (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace(/\/api\/?$/, '');
@@ -118,6 +143,13 @@ export const schoolReportApi = {
     (await api.delete(`/schools/${schoolId}/logo`)).data.data,
   section: async (schoolId: string, yearId: string, sectionId: string, period: PeriodCode | null): Promise<SectionReport> =>
     (await api.get(`${year(schoolId, yearId)}/report-cards/sections/${sectionId}`, { params: period ? { period } : {} })).data.data,
+  progress: async (schoolId: string, yearId: string, period: PeriodCode | null): Promise<ReportProgress> =>
+    (await api.get(`${year(schoolId, yearId)}/report-cards/progress`, { params: period ? { period } : {} })).data.data,
+  /** Aviso en la campana del docente de esa sección y área con lo que le falta. */
+  remind: async (schoolId: string, yearId: string, input: { sectionId: string; areaId: string; period: PeriodCode }): Promise<string> =>
+    (await api.post(`${year(schoolId, yearId)}/report-cards/remind`, input)).data.message,
+  setExemptions: async (schoolId: string, yearId: string, studentId: string, areaIds: string[]): Promise<string[]> =>
+    (await api.put(`${year(schoolId, yearId)}/students/${studentId}/exemptions`, { areaIds })).data.data.areaIds,
 
   /** Descarga el PDF de la sección (o de un estudiante). */
   download: async (schoolId: string, yearId: string, sectionId: string, period: PeriodCode, name: string, studentId?: string) => {

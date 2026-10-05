@@ -67,6 +67,8 @@ export type AuditAction =
   | 'school.report_settings_updated'
   | 'school.logo_updated'
   | 'school.report_generated'
+  | 'school.exemption_updated'
+  | 'school.report_reminder_sent'
   | 'classroom.deleted'
   | 'student.removed'
   | 'student.access_reset'

@@ -1,23 +1,24 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import multer from 'multer';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
 import { z } from 'zod';
 import { db } from '../db/index.js';
-import { schools } from '../db/schema.js';
+import { schoolSections, schools } from '../db/schema.js';
 import { libretaPdfService } from '../services/libretaPdf.service.js';
 import { schoolReportService } from '../services/schoolReport.service.js';
-import { requireSchoolRole, SCHOOL_MANAGER_ROLES } from '../utils/access.js';
+import { requireSchoolRole, SCHOOL_MANAGER_ROLES, SCHOOL_MEMBER_ROLES } from '../utils/access.js';
 import { auditRequest } from '../utils/audit.js';
 import { AppError } from '../utils/errors.js';
 import { createUploadFilter, IMAGE_MIMES, verifyUploadedFile } from '../utils/fileValidation.js';
 
 /**
  * Libretas del colegio (administración): los datos de su cabecera (DRE, UGEL, director(a), códigos modulares y logo), la
- * libreta de una sección para revisarla y su PDF (toda la sección o un estudiante).
+ * libreta de una sección para revisarla y su PDF (toda la sección o un estudiante), las exoneraciones y el avance de cada
+ * bimestre con «Recordar». El tutor de una sección también ve sus libretas (sin el DNI).
  */
 
 const idSchema = z.string().uuid();
@@ -26,6 +27,8 @@ const optionalText = (max: number) => z.string().trim().max(max, 'Es muy largo')
 const modularCode = z.string().trim().nullable()
   .refine((v) => !v || /^\d{7}$/.test(v), 'El código modular tiene 7 números')
   .transform((v) => (v ? v : null));
+const exemptionsSchema = z.object({ areaIds: z.array(z.string().regex(/^[a-z0-9-]{3,36}$/)).max(4) }).strict();
+const remindSchema = z.object({ sectionId: z.string().uuid(), areaId: z.string().regex(/^[a-z0-9-]{3,36}$/), period: z.enum(['B1', 'B2', 'B3', 'B4']).optional() }).strict();
 const settingsSchema = z.object({
   dre: optionalText(120),
   ugel: optionalText(120),
@@ -78,6 +81,18 @@ export const uploadSchoolLogo: RequestHandler[] = [
   },
   verifyUploadedFile,
 ];
+
+/** La administración, o el tutor de esa sección (solo para consultar). Responde 403 a los demás. */
+const sectionReader = async (req: Request, res: Response, schoolId: string, sectionId: string) => {
+  const role = await requireSchoolRole(req, res, schoolId, SCHOOL_MEMBER_ROLES);
+  if (!role) return null;
+  if (SCHOOL_MANAGER_ROLES.includes(role)) return { manager: true };
+  const [section] = await db.select({ tutorUserId: schoolSections.tutorUserId }).from(schoolSections)
+    .where(and(eq(schoolSections.id, sectionId), eq(schoolSections.schoolId, schoolId)));
+  if (section?.tutorUserId && section.tutorUserId === req.user!.id) return { manager: false };
+  res.status(403).json({ success: false, message: 'Solo la administración o el tutor de la sección ven sus libretas' });
+  return null;
+};
 
 export const schoolReportController = {
   // GET /schools/:schoolId/report-settings — datos de la cabecera de la libreta
@@ -156,9 +171,9 @@ export const schoolReportController = {
   async section(req: Request, res: Response) {
     try {
       const { schoolId } = req.params;
-      if (!(await requireSchoolRole(req, res, schoolId, SCHOOL_MANAGER_ROLES))) return;
       const yearId = idSchema.parse(req.params.yearId);
       const sectionId = idSchema.parse(req.params.sectionId);
+      if (!(await sectionReader(req, res, schoolId, sectionId))) return;
       const period = periodSchema.parse(req.query.period);
       res.json({ success: true, data: await schoolReportService.section(schoolId, yearId, sectionId, period ?? null) });
     } catch (error) {
@@ -170,13 +185,15 @@ export const schoolReportController = {
   async pdf(req: Request, res: Response) {
     try {
       const { schoolId } = req.params;
-      if (!(await requireSchoolRole(req, res, schoolId, SCHOOL_MANAGER_ROLES))) return;
       const yearId = idSchema.parse(req.params.yearId);
       const sectionId = idSchema.parse(req.params.sectionId);
+      const reader = await sectionReader(req, res, schoolId, sectionId);
+      if (!reader) return;
       const period = periodSchema.parse(req.query.period);
       const studentId = req.query.studentId === undefined ? null : idSchema.parse(req.query.studentId);
       const report = await schoolReportService.section(schoolId, yearId, sectionId, period ?? null, {
-        readDocuments: true,
+        // El tutor no ve los documentos: su libreta sale sin el DNI.
+        readDocuments: reader.manager,
         ...(studentId ? { studentIds: [studentId] } : {}),
       });
       if (studentId && report.students.length === 0) return res.status(404).json({ success: false, message: 'Ese estudiante no está en esta sección' });
@@ -189,7 +206,7 @@ export const schoolReportController = {
         action: 'school.report_generated',
         schoolId,
         target: { type: 'school_section', id: sectionId },
-        metadata: { yearId, period: report.upTo, students: report.students.length, single: !!studentId, preview: report.preview },
+        metadata: { yearId, period: report.upTo, students: report.students.length, single: !!studentId, preview: report.preview, tutor: !reader.manager },
       });
       const who = studentId ? `${report.students[0].student.lastNames} ${report.students[0].student.firstNames}` : report.section.label;
       res.setHeader('Content-Type', 'application/pdf');
@@ -199,6 +216,53 @@ export const schoolReportController = {
       res.send(pdf);
     } catch (error) {
       return sendError(res, error, 'Error al generar la libreta');
+    }
+  },
+
+  // PUT /schools/:schoolId/years/:yearId/students/:studentId/exemptions — exoneraciones del año (Religión, Educación Física)
+  async setExemptions(req: Request, res: Response) {
+    try {
+      const { schoolId } = req.params;
+      if (!(await requireSchoolRole(req, res, schoolId, SCHOOL_MANAGER_ROLES))) return;
+      const yearId = idSchema.parse(req.params.yearId);
+      const studentId = idSchema.parse(req.params.studentId);
+      const { areaIds } = exemptionsSchema.parse(req.body);
+      const data = await schoolReportService.setExemptions(schoolId, yearId, studentId, areaIds, req.user!.id);
+      await auditRequest(req, { action: 'school.exemption_updated', schoolId, target: { type: 'school_student', id: studentId }, metadata: { yearId, areaIds: data.join(',') } });
+      res.json({ success: true, data: { areaIds: data } });
+    } catch (error) {
+      return sendError(res, error, 'Error al guardar las exoneraciones');
+    }
+  },
+
+  // GET /schools/:schoolId/years/:yearId/report-cards/progress?period=B1 — avance por sección y área
+  async progress(req: Request, res: Response) {
+    try {
+      const { schoolId } = req.params;
+      if (!(await requireSchoolRole(req, res, schoolId, SCHOOL_MANAGER_ROLES))) return;
+      const yearId = idSchema.parse(req.params.yearId);
+      const period = periodSchema.parse(req.query.period);
+      res.json({ success: true, data: await schoolReportService.progress(schoolId, yearId, period ?? null) });
+    } catch (error) {
+      return sendError(res, error, 'Error al calcular el avance');
+    }
+  },
+
+  // POST /schools/:schoolId/years/:yearId/report-cards/remind — aviso al docente de una sección y área
+  async remind(req: Request, res: Response) {
+    try {
+      const { schoolId } = req.params;
+      if (!(await requireSchoolRole(req, res, schoolId, SCHOOL_MANAGER_ROLES))) return;
+      const yearId = idSchema.parse(req.params.yearId);
+      const input = remindSchema.parse(req.body);
+      const data = await schoolReportService.remind(schoolId, yearId, input.sectionId, input.areaId, input.period ?? null);
+      await auditRequest(req, {
+        action: 'school.report_reminder_sent', schoolId, target: { type: 'school_section', id: input.sectionId },
+        metadata: { yearId, areaId: input.areaId, period: input.period ?? null, ...data },
+      });
+      res.json({ success: true, data, message: 'Le llegó un aviso a su campana' });
+    } catch (error) {
+      return sendError(res, error, 'Error al enviar el recordatorio');
     }
   },
 };
