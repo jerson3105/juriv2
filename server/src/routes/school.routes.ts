@@ -78,6 +78,8 @@ router.put('/:schoolId/years/:yearId/roster-builder/mapping', authorize('TEACHER
 router.get('/:schoolId/years/:yearId/roster-builder/proposal', authorize('TEACHER'), schoolRosterBuilderController.proposal);
 router.put('/:schoolId/years/:yearId/roster-builder/decisions', authorize('TEACHER'), schoolRosterBuilderController.saveDecisions);
 router.post('/:schoolId/years/:yearId/roster-builder/confirm', authorize('TEACHER'), schoolRosterBuilderController.confirm);
+router.get('/:schoolId/years/:yearId/roster-builder/last', authorize('TEACHER'), schoolRosterBuilderController.lastBuild);
+router.post('/:schoolId/years/:yearId/roster-builder/builds/:buildId/undo', authorize('TEACHER'), schoolRosterBuilderController.undo);
 
 // Asignar/desasignar clase
 router.post('/:schoolId/classrooms/:classroomId', authorize('TEACHER'), schoolController.assignClassroom.bind(schoolController));

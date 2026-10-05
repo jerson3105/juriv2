@@ -36,6 +36,7 @@ export type AuditAction =
   | 'school.section_updated'
   | 'school.section_deleted'
   | 'school.roster_built'
+  | 'school.roster_build_undone'
   | 'classroom.deleted'
   | 'student.removed'
   | 'student.access_reset'

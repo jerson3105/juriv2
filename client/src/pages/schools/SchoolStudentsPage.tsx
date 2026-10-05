@@ -9,6 +9,7 @@ import { LEVEL_LABEL } from '../../components/schools/console/schoolYearHelpers'
 import { byName, gradeLabel, LEVEL_GRADES, sectionName } from '../../components/schools/console/sectionHelpers';
 import { ageOf, initialsOf, maskedDocument, rosterName } from '../../components/schools/console/rosterHelpers';
 import { StudentDrawer, type DrawerState } from '../../components/schools/console/StudentDrawer';
+import { UndoBuildBanner } from '../../components/schools/console/UndoBuildBanner';
 import { schoolRosterApi, schoolRosterKeys, type RosterFilter, type RosterQuery } from '../../lib/schoolRosterApi';
 import { schoolSectionApi, schoolSectionKeys } from '../../lib/schoolSectionApi';
 import type { SchoolLevel } from '../../lib/schoolYearApi';
@@ -109,6 +110,8 @@ export const SchoolStudentsPage = () => {
           </button>
         </div>
       </header>
+
+      <UndoBuildBanner schoolId={school.id} yearId={yearId} />
 
       {data && !data.piiReady && (
         <p className="flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-900/30 dark:text-amber-50" role="status">

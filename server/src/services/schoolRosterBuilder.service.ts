@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, ne, or } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../db/index.js';
 import {
-  classrooms, curriculumAreas, schoolEnrollmentEvents, schoolEnrollments, schoolRosterDrafts, schoolSections, schoolStudents,
+  classrooms, curriculumAreas, schoolEnrollmentEvents, schoolEnrollments, schoolRosterBuilds, schoolRosterDrafts, schoolSections, schoolStudents,
   schoolYears, studentProfiles, users,
 } from '../db/schema.js';
 import { ConflictError, NotFoundError, ValidationError } from '../utils/errors.js';
@@ -264,6 +264,39 @@ const toNames = (split: NameSplit | { lastNames: string; firstNames: string }) =
   return first ? { firstNames: first, lastNames: last } : { firstNames: last, lastNames: '' };
 };
 
+/** Un armado se puede deshacer durante 24 horas. */
+const UNDO_MS = 24 * 60 * 60 * 1000;
+
+type BuildData = {
+  createdStudentIds: string[];
+  links: Array<{ profileId: string; studentId: string }>;
+  sectionLinks: Array<{ classroomId: string; previous: string | null }>;
+  draft: Draft;
+};
+const parseBuildData = (raw: unknown): BuildData => (typeof raw === 'string' ? JSON.parse(raw) : raw) as BuildData;
+
+/**
+ * Por qué ya no se puede deshacer un armado (o null si se puede): pasaron 24 horas, o alguno de sus estudiantes ya
+ * tiene datos cargados (documento, fecha, correo, código) o movimientos además del alta.
+ */
+const undoBlocker = async (executor: Pick<typeof db, 'select' | 'selectDistinct'>, build: typeof schoolRosterBuilds.$inferSelect): Promise<string | null> => {
+  if (Date.now() > new Date(build.createdAt).getTime() + UNDO_MS) return 'ya pasaron 24 horas desde el armado';
+  const ids = parseBuildData(build.data).createdStudentIds;
+  if (!ids.length) return null;
+  const withEvents = await executor.selectDistinct({ id: schoolEnrollmentEvents.studentId }).from(schoolEnrollmentEvents)
+    .where(and(inArray(schoolEnrollmentEvents.studentId, ids), ne(schoolEnrollmentEvents.type, 'BUILT_FROM_CLASSES')));
+  const withData = await executor.select({ id: schoolStudents.id }).from(schoolStudents).where(and(
+    inArray(schoolStudents.id, ids),
+    or(
+      isNotNull(schoolStudents.documentIndex), isNotNull(schoolStudents.birthDate), isNotNull(schoolStudents.institutionalEmail),
+      isNotNull(schoolStudents.siagieCode), ne(schoolStudents.status, 'ACTIVE'),
+    ),
+  ));
+  const touched = new Set([...withEvents.map((r) => r.id), ...withData.map((r) => r.id)]).size;
+  if (touched === 0) return null;
+  return `ya cargaste datos o hiciste cambios en ${touched} ${touched === 1 ? 'estudiante' : 'estudiantes'} de ese armado`;
+};
+
 export const schoolRosterBuilderService = {
   /** Paso 1: clases de la escuela con su sugerencia de sección, las secciones del año y el borrador guardado. */
   async overview(schoolId: string, yearId: string) {
@@ -436,13 +469,20 @@ export const schoolRosterBuilderService = {
 
     const now = new Date();
     let created = 0;
-    let linked = 0;
+    const createdStudentIds: string[] = [];
+    const links: Array<{ profileId: string; studentId: string }> = [];
+    const buildId = uuidv4();
     await db.transaction(async (tx) => {
       // Una sola confirmación a la vez: el borrador queda bloqueado y, si otra sesión ya confirmó, ya no existe.
       const [lock] = await tx.select({ schoolId: schoolRosterDrafts.schoolId }).from(schoolRosterDrafts)
         .where(and(eq(schoolRosterDrafts.schoolId, schoolId), eq(schoolRosterDrafts.yearId, yearId))).for('update');
       if (!lock) throw new ConflictError('El padrón ya se armó desde otra sesión: recarga la página');
       for (const person of persons) {
+        // Solo perfiles aún sin estudiante (bloqueados): si otra persona los vinculó entretanto, no se pisan.
+        const free = (await tx.select({ id: studentProfiles.id }).from(studentProfiles)
+          .where(and(inArray(studentProfiles.id, person.profileIds), isNull(studentProfiles.schoolStudentId))).for('update'))
+          .map((p) => p.id);
+        if (!free.length) continue; // nada que vincular: no se crea un estudiante vacío
         let studentId = person.anchorStudentId;
         if (!studentId) {
           studentId = uuidv4();
@@ -450,22 +490,103 @@ export const schoolRosterBuilderService = {
           await tx.insert(schoolEnrollments).values({ id: uuidv4(), schoolId, yearId, studentId, sectionId: person.sectionId, createdAt: now, updatedAt: now });
           await tx.insert(schoolEnrollmentEvents).values({
             id: uuidv4(), schoolId, studentId, yearId, type: 'BUILT_FROM_CLASSES', toSectionId: person.sectionId,
-            metadata: { profiles: person.profileIds.length }, actorUserId: actorId, createdAt: now,
+            metadata: { profiles: free.length }, actorUserId: actorId, createdAt: now,
           });
+          createdStudentIds.push(studentId);
           created++;
         }
-        // Solo perfiles aún sin estudiante: si otra persona los vinculó entretanto, no se pisan.
-        const result = await tx.update(studentProfiles).set({ schoolStudentId: studentId, updatedAt: now })
-          .where(and(inArray(studentProfiles.id, person.profileIds), isNull(studentProfiles.schoolStudentId)));
-        linked += affectedRows(result);
+        await tx.update(studentProfiles).set({ schoolStudentId: studentId, updatedAt: now }).where(inArray(studentProfiles.id, free));
+        for (const profileId of free) links.push({ profileId, studentId });
       }
-      // Cada clase queda enlazada a su sección (o sin sección si no es de una).
-      for (const [classroomId, entry] of Object.entries(draft.mapping)) {
-        await tx.update(classrooms).set({ schoolSectionId: entry.sectionId, updatedAt: now })
-          .where(and(eq(classrooms.id, classroomId), eq(classrooms.schoolId, schoolId)));
+      // Cada clase queda enlazada a su sección (o sin sección si no es de una); se guarda la anterior para deshacer.
+      const classIds = Object.keys(draft.mapping);
+      const before = classIds.length
+        ? await tx.select({ id: classrooms.id, previous: classrooms.schoolSectionId }).from(classrooms)
+          .where(and(inArray(classrooms.id, classIds), eq(classrooms.schoolId, schoolId)))
+        : [];
+      const sectionLinks: Array<{ classroomId: string; previous: string | null }> = [];
+      for (const row of before) {
+        const next = draft.mapping[row.id]?.sectionId ?? null;
+        if (row.previous === next) continue;
+        await tx.update(classrooms).set({ schoolSectionId: next, updatedAt: now }).where(eq(classrooms.id, row.id));
+        sectionLinks.push({ classroomId: row.id, previous: row.previous });
       }
+      await tx.insert(schoolRosterBuilds).values({
+        id: buildId, schoolId, yearId, actorUserId: actorId, createdCount: created, linkedCount: links.length,
+        data: { createdStudentIds, links, sectionLinks, draft: { mapping: draft.mapping, decisions: draft.decisions } },
+        createdAt: now,
+      });
       await tx.delete(schoolRosterDrafts).where(and(eq(schoolRosterDrafts.schoolId, schoolId), eq(schoolRosterDrafts.yearId, yearId)));
     });
-    return { created, linked, persons: persons.length };
+    return { buildId, created, linked: links.length, persons: persons.length };
+  },
+
+  /** El último armado del año que sigue en pie y si todavía se puede deshacer. */
+  async lastBuild(schoolId: string, yearId: string) {
+    await loadYear(schoolId, yearId, false);
+    const [build] = await db.select().from(schoolRosterBuilds)
+      .where(and(eq(schoolRosterBuilds.schoolId, schoolId), eq(schoolRosterBuilds.yearId, yearId), isNull(schoolRosterBuilds.undoneAt)))
+      .orderBy(desc(schoolRosterBuilds.createdAt))
+      .limit(1);
+    if (!build) return null;
+    const blockedReason = await undoBlocker(db, build);
+    return {
+      id: build.id,
+      createdAt: build.createdAt,
+      created: build.createdCount,
+      linked: build.linkedCount,
+      undoableUntil: new Date(new Date(build.createdAt).getTime() + UNDO_MS),
+      canUndo: !blockedReason,
+      blockedReason,
+    };
+  },
+
+  /**
+   * Deshace el último armado (dentro de 24 h y sin estudiantes tocados): desvincula sus perfiles, borra los estudiantes
+   * que creó, devuelve cada clase a su sección anterior y restaura el borrador para corregir y confirmar otra vez.
+   */
+  async undo(schoolId: string, yearId: string, buildId: string) {
+    await loadYear(schoolId, yearId, true);
+    const now = new Date();
+    return db.transaction(async (tx) => {
+      const [build] = await tx.select().from(schoolRosterBuilds)
+        .where(and(eq(schoolRosterBuilds.id, buildId), eq(schoolRosterBuilds.schoolId, schoolId), eq(schoolRosterBuilds.yearId, yearId)))
+        .for('update');
+      if (!build || build.undoneAt) throw new NotFoundError('Ese armado ya no se puede deshacer');
+      const [newer] = await tx.select({ id: schoolRosterBuilds.id }).from(schoolRosterBuilds)
+        .where(and(
+          eq(schoolRosterBuilds.schoolId, schoolId), eq(schoolRosterBuilds.yearId, yearId), isNull(schoolRosterBuilds.undoneAt),
+          ne(schoolRosterBuilds.id, build.id), gt(schoolRosterBuilds.createdAt, build.createdAt),
+        )).limit(1);
+      if (newer) throw new ConflictError('Solo se puede deshacer el último armado');
+      const blockedReason = await undoBlocker(tx, build);
+      if (blockedReason) throw new ConflictError(`No se puede deshacer: ${blockedReason}`);
+
+      const data = parseBuildData(build.data);
+      // Perfiles: solo los que siguen vinculados como los dejó el armado.
+      const byStudent = new Map<string, string[]>();
+      for (const link of data.links) byStudent.set(link.studentId, [...(byStudent.get(link.studentId) ?? []), link.profileId]);
+      let unlinked = 0;
+      for (const [studentId, profileIds] of byStudent) {
+        const result = await tx.update(studentProfiles).set({ schoolStudentId: null, updatedAt: now })
+          .where(and(inArray(studentProfiles.id, profileIds), eq(studentProfiles.schoolStudentId, studentId)));
+        unlinked += affectedRows(result);
+      }
+      const ids = data.createdStudentIds;
+      if (ids.length) {
+        await tx.delete(schoolEnrollmentEvents).where(and(inArray(schoolEnrollmentEvents.studentId, ids), eq(schoolEnrollmentEvents.schoolId, schoolId)));
+        await tx.delete(schoolEnrollments).where(and(inArray(schoolEnrollments.studentId, ids), eq(schoolEnrollments.schoolId, schoolId)));
+        await tx.delete(schoolStudents).where(and(inArray(schoolStudents.id, ids), eq(schoolStudents.schoolId, schoolId)));
+      }
+      for (const link of data.sectionLinks) {
+        await tx.update(classrooms).set({ schoolSectionId: link.previous, updatedAt: now })
+          .where(and(eq(classrooms.id, link.classroomId), eq(classrooms.schoolId, schoolId)));
+      }
+      await tx.update(schoolRosterBuilds).set({ undoneAt: now }).where(eq(schoolRosterBuilds.id, build.id));
+      const draft = { data: data.draft as unknown as Record<string, unknown>, updatedBy: build.actorUserId, updatedAt: now };
+      await tx.insert(schoolRosterDrafts).values({ schoolId, yearId, ...draft }).onDuplicateKeyUpdate({ set: draft });
+      return { removed: ids.length, unlinked };
+    });
   },
 };
+

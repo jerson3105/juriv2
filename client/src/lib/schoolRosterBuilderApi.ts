@@ -63,8 +63,19 @@ export interface BuilderProposal {
   decisions: Record<string, BuilderDecision>;
 }
 
+export interface LastBuild {
+  id: string;
+  createdAt: string;
+  created: number;
+  linked: number;
+  undoableUntil: string;
+  canUndo: boolean;
+  blockedReason: string | null;
+}
+
 export const rosterBuilderKeys = {
   overview: (schoolId: string, yearId: string) => ['roster-builder', schoolId, yearId, 'overview'] as const,
+  last: (schoolId: string, yearId: string) => ['roster-builder', schoolId, yearId, 'last'] as const,
   proposal: (schoolId: string, yearId: string) => ['roster-builder', schoolId, yearId, 'proposal'] as const,
 };
 
@@ -78,6 +89,11 @@ export const rosterBuilderApi = {
   proposal: async (schoolId: string, yearId: string): Promise<BuilderProposal> => (await api.get(`${base(schoolId, yearId)}/proposal`)).data.data,
   saveDecisions: async (schoolId: string, yearId: string, decisions: Record<string, BuilderDecision>): Promise<void> => {
     await api.put(`${base(schoolId, yearId)}/decisions`, { decisions });
+  },
+  lastBuild: async (schoolId: string, yearId: string): Promise<LastBuild | null> => (await api.get(`${base(schoolId, yearId)}/last`)).data.data,
+  undo: async (schoolId: string, yearId: string, buildId: string): Promise<{ removed: number; unlinked: number; message: string }> => {
+    const response = await api.post(`${base(schoolId, yearId)}/builds/${buildId}/undo`);
+    return { ...response.data.data, message: response.data.message };
   },
   confirm: async (schoolId: string, yearId: string): Promise<{ created: number; linked: number; message: string }> => {
     const response = await api.post(`${base(schoolId, yearId)}/confirm`);

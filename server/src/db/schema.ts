@@ -3105,3 +3105,23 @@ export const schoolRosterDrafts = mysqlTable('school_roster_drafts', {
 
 export type SchoolStudent = typeof schoolStudents.$inferSelect;
 export type SchoolEnrollment = typeof schoolEnrollments.$inferSelect;
+
+// Registro de cada «Armar desde clases» para poder deshacerlo (24 h, el último, sin estudiantes tocados).
+export const schoolRosterBuilds = mysqlTable('school_roster_builds', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  schoolId: varchar('school_id', { length: 36 }).notNull(),
+  yearId: varchar('year_id', { length: 36 }).notNull(),
+  actorUserId: varchar('actor_user_id', { length: 36 }).notNull(),
+  createdCount: int('created_count').notNull(),
+  linkedCount: int('linked_count').notNull(),
+  data: json('data').$type<{
+    createdStudentIds: string[];
+    links: Array<{ profileId: string; studentId: string }>;
+    sectionLinks: Array<{ classroomId: string; previous: string | null }>;
+    draft: { mapping: Record<string, { sectionId: string | null }>; decisions: Record<string, unknown> };
+  }>().notNull(),
+  createdAt: datetime('created_at', { fsp: 3 }).notNull(),
+  undoneAt: datetime('undone_at', { fsp: 3 }),
+}, (table) => ({
+  schoolYearIdx: index('idx_school_roster_builds_school_year').on(table.schoolId, table.yearId, table.createdAt),
+}));

@@ -105,6 +105,37 @@ export const schoolRosterBuilderController = {
     }
   },
 
+  // GET /schools/:schoolId/years/:yearId/roster-builder/last — el último armado y si se puede deshacer
+  async lastBuild(req: Request, res: Response) {
+    try {
+      const s = await scope(req, res);
+      if (!s) return;
+      res.json({ success: true, data: await schoolRosterBuilderService.lastBuild(s.schoolId, s.yearId) });
+    } catch (error) {
+      return sendError(res, error, 'Error al consultar el último armado');
+    }
+  },
+
+  // POST /schools/:schoolId/years/:yearId/roster-builder/builds/:buildId/undo — deshacer el último armado
+  async undo(req: Request, res: Response) {
+    try {
+      const s = await scope(req, res);
+      if (!s) return;
+      const buildId = idSchema.safeParse(req.params.buildId);
+      if (!buildId.success) return res.status(404).json({ success: false, message: 'Ese armado ya no se puede deshacer' });
+      const result = await schoolRosterBuilderService.undo(s.schoolId, s.yearId, buildId.data);
+      await auditRequest(req, {
+        action: 'school.roster_build_undone',
+        schoolId: s.schoolId,
+        target: { type: 'school_roster_build', id: buildId.data },
+        metadata: { removed: result.removed, unlinked: result.unlinked },
+      });
+      res.json({ success: true, data: result, message: 'Armado deshecho: el padrón volvió a como estaba y tu borrador sigue guardado' });
+    } catch (error) {
+      return sendError(res, error, 'Error al deshacer el armado');
+    }
+  },
+
   // POST /schools/:schoolId/years/:yearId/roster-builder/confirm — crea el padrón
   async confirm(req: Request, res: Response) {
     try {
@@ -115,7 +146,7 @@ export const schoolRosterBuilderController = {
         action: 'school.roster_built',
         schoolId: s.schoolId,
         target: { type: 'school_year', id: s.yearId },
-        metadata: { created: result.created, linked: result.linked },
+        metadata: { created: result.created, linked: result.linked, buildId: result.buildId },
       });
       res.json({
         success: true,
