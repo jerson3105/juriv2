@@ -242,7 +242,8 @@ export const AboutPage = () => {
               <Link to="/login" className={`inline-flex min-h-11 items-center rounded-md font-semibold text-white underline underline-offset-4 ${nightFocus}`}>Entrar</Link>
             </p>
             <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-indigo-200">
-              ¿Diriges un colegio? Empieza con una cuenta de docente y crea tu escuela en «Mi Escuela».
+              ¿Diriges un colegio? El equipo de Juried activa la consola escolar para cada colegio:{' '}
+              <a href="mailto:hola@plataformajuried.com?subject=Consola%20escolar%20para%20mi%20colegio" className={`inline-flex min-h-11 items-center rounded-md font-semibold text-white underline underline-offset-4 ${nightFocus}`}>escríbenos</a>.
             </p>
           </div>
         </section>

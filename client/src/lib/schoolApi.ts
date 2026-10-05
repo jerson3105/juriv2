@@ -281,16 +281,6 @@ export interface CreateSchoolBadgeData {
   level?: LibraryLevel;
 }
 
-export interface CreateSchoolData {
-  name: string;
-  address?: string;
-  city?: string;
-  province?: string;
-  country?: string;
-  googlePlaceId?: string;
-  latitude?: string;
-  longitude?: string;
-}
 
 export interface CreateVerificationData {
   schoolId: string;
@@ -437,12 +427,6 @@ export const schoolApi = {
   // Mis escuelas
   getMySchools: async (): Promise<MySchool[]> => {
     const response = await api.get('/schools/my-schools');
-    return response.data.data;
-  },
-
-  // Crear escuela
-  create: async (data: CreateSchoolData): Promise<School> => {
-    const response = await api.post('/schools', data);
     return response.data.data;
   },
 

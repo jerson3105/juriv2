@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Building2, CheckCircle2, Clock, KeyRound, MapPin, Plus, School, Search, Send, Shield, XCircle } from 'lucide-react';
+import { ArrowLeft, Building2, CheckCircle2, Clock, KeyRound, MapPin, School, Search, Send, Shield, XCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { schoolApi, type MySchool } from '../../lib/schoolApi';
 import { HomeModal } from '../home/HomeModal';
@@ -99,7 +99,7 @@ export const InviteLanding = ({ code, onDone, onCancel }: { code: string; onDone
 };
 
 // ── Buscar escuela y pedir unirse (con confirmación) ────────────────────────
-export const SearchStep = ({ mySchools, onBack, onCreate }: { mySchools: MySchool[]; onBack: () => void; onCreate: () => void }) => {
+export const SearchStep = ({ mySchools, onBack }: { mySchools: MySchool[]; onBack: () => void }) => {
   const queryClient = useQueryClient();
   const [query, setQuery] = useState('');
   const [confirm, setConfirm] = useState<{ id: string; name: string } | null>(null);
@@ -131,7 +131,7 @@ export const SearchStep = ({ mySchools, onBack, onCreate }: { mySchools: MySchoo
       {term.length >= 2 && (
         <div className={`${card} p-0`} aria-live="polite">
           {isFetching ? <p className="p-5 text-sm text-gray-700 dark:text-gray-300">Buscando...</p> : results.length === 0 ? (
-            <p className="p-5 text-sm text-gray-700 dark:text-gray-300">No encontramos "{term}". Si tu escuela aún no está en Juried, puedes registrarla.</p>
+            <p className="p-5 text-sm text-gray-700 dark:text-gray-300">No encontramos "{term}". Si tu colegio ya usa Juried, pídele a su dirección el enlace o el código de invitación.</p>
           ) : (
             <ul className="divide-y divide-gray-100 dark:divide-gray-700">
               {results.map((s) => {
@@ -157,14 +157,6 @@ export const SearchStep = ({ mySchools, onBack, onCreate }: { mySchools: MySchoo
           )}
         </div>
       )}
-      <button type="button" onClick={onCreate} className="flex w-full items-center gap-3 rounded-2xl border-2 border-dashed border-gray-300 p-4 text-left hover:border-primary-400 hover:bg-primary-50/50 dark:border-gray-600 dark:hover:bg-primary-900/20">
-        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-50 text-primary-700 dark:bg-primary-900/40 dark:text-primary-200" aria-hidden="true"><Plus size={20} /></span>
-        <span>
-          <span className="block font-semibold text-gray-900 dark:text-white">¿No está tu escuela? Regístrala</span>
-          <span className="block text-sm text-gray-700 dark:text-gray-300">Serás su responsable cuando Juried la verifique.</span>
-        </span>
-      </button>
-
       <AnimatePresence>
         {confirm && (
           <HomeModal
@@ -177,42 +169,6 @@ export const SearchStep = ({ mySchools, onBack, onCreate }: { mySchools: MySchoo
           </HomeModal>
         )}
       </AnimatePresence>
-    </div>
-  );
-};
-
-// ── Registrar escuela ───────────────────────────────────────────────────────
-const COUNTRIES = ['Perú', 'México', 'Colombia', 'Argentina', 'Chile', 'Ecuador', 'Bolivia', 'España'];
-
-export const CreateSchoolStep = ({ onBack, onCreated }: { onBack: () => void; onCreated: (school: { id: string; name: string }) => void }) => {
-  const queryClient = useQueryClient();
-  const [form, setForm] = useState({ name: '', address: '', city: '', province: '', country: 'Perú' });
-  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm((f) => ({ ...f, [k]: e.target.value }));
-  const create = useMutation({
-    mutationFn: () => schoolApi.create({ name: form.name.trim(), address: form.address.trim() || undefined, city: form.city.trim() || undefined, province: form.province.trim() || undefined, country: form.country }),
-    onSuccess: (school) => {
-      queryClient.invalidateQueries({ queryKey: mySchoolsKey });
-      toast.success('Escuela registrada. Ahora envía tu verificación.');
-      onCreated({ id: school.id, name: school.name });
-    },
-    onError: (e) => toast.error(errorMessage(e, 'No se pudo registrar la escuela')),
-  });
-  return (
-    <div className="mx-auto max-w-2xl space-y-4">
-      <StepHeader title="Registrar mi escuela" subtitle="Quedará pendiente hasta que Juried la verifique" onBack={onBack} icon={<Building2 size={22} />} />
-      <form onSubmit={(e) => { e.preventDefault(); if (form.name.trim().length >= 2) create.mutate(); }} className={`${card} space-y-4`}>
-        <label className={labelClass}>Nombre de la escuela<input type="text" value={form.name} onChange={set('name')} maxLength={255} required data-autofocus autoFocus className={`${inputClass} mt-1.5`} /></label>
-        <label className={labelClass}>Dirección <span className="font-normal text-gray-700 dark:text-gray-300">(opcional)</span><input type="text" value={form.address} onChange={set('address')} maxLength={500} className={`${inputClass} mt-1.5`} /></label>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <label className={labelClass}>Ciudad<input type="text" value={form.city} onChange={set('city')} maxLength={100} className={`${inputClass} mt-1.5`} /></label>
-          <label className={labelClass}>Provincia / Estado<input type="text" value={form.province} onChange={set('province')} maxLength={100} className={`${inputClass} mt-1.5`} /></label>
-          <label className={labelClass}>País<select value={form.country} onChange={set('country')} className={`${inputClass} mt-1.5`}>{COUNTRIES.map((c) => <option key={c}>{c}</option>)}</select></label>
-        </div>
-        <div className="flex justify-end gap-2">
-          <button type="button" onClick={onBack} className={cancelButton}>Cancelar</button>
-          <button type="submit" disabled={form.name.trim().length < 2 || create.isPending} className={primaryButton}>{create.isPending ? 'Registrando...' : 'Registrar escuela'}</button>
-        </div>
-      </form>
     </div>
   );
 };

@@ -6,17 +6,6 @@ import { teacherVerificationService } from './teacherVerification.service.js';
 import { ConflictError, ForbiddenError, NotFoundError } from '../utils/errors.js';
 import { conditionBehaviorIds, normalizeBadgeAssignment, parseBadgeCondition, safeBadgeImage } from '../utils/badgeConditions.js';
 
-interface CreateSchoolData {
-  name: string;
-  address?: string;
-  city?: string;
-  province?: string;
-  country?: string;
-  googlePlaceId?: string;
-  latitude?: string;
-  longitude?: string;
-}
-
 interface CreateVerificationData {
   schoolId: string;
   position: string;
@@ -64,51 +53,7 @@ export class SchoolService {
     return school || null;
   }
 
-  // Obtener escuela por googlePlaceId
-  async getByGooglePlaceId(placeId: string) {
-    const [school] = await db
-      .select()
-      .from(schools)
-      .where(eq(schools.googlePlaceId, placeId));
-    return school || null;
-  }
-
-  // Crear escuela nueva
-  async create(userId: string, data: CreateSchoolData) {
-    const id = uuidv4();
-    const now = new Date();
-
-    await db.insert(schools).values({
-      id,
-      name: data.name,
-      address: data.address || null,
-      city: data.city || null,
-      province: data.province || null,
-      country: data.country || 'Perú',
-      googlePlaceId: data.googlePlaceId || null,
-      latitude: data.latitude || null,
-      longitude: data.longitude || null,
-      isVerified: false,
-      isActive: true,
-      createdBy: userId,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    // Crear membership como OWNER con estado PENDING_ADMIN
-    const memberId = uuidv4();
-    await db.insert(schoolMembers).values({
-      id: memberId,
-      schoolId: id,
-      userId,
-      role: 'OWNER',
-      status: 'PENDING_ADMIN',
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    return this.getById(id);
-  }
+  // Las escuelas las crea el equipo de Juried desde su panel (adminSchools.service): un docente ya no las registra.
 
   // Solicitar unirse a una escuela existente
   async requestJoin(userId: string, schoolId: string) {

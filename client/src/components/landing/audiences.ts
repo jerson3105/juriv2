@@ -7,6 +7,7 @@ export interface Audience {
   label: string;
   title: string;
   points: string[];
+  /** Una ruta de la app, o un enlace externo (mailto:, https:) que se abre fuera. */
   cta: { label: string; to: string };
   /** Aclaración bajo el botón. */
   note?: string;
@@ -44,12 +45,12 @@ export const AUDIENCES: Audience[] = [
     label: 'Directivos',
     title: 'Tu colegio, aula por aula',
     points: [
-      'Crea tu escuela en «Mi Escuela» e invita a tus docentes con un enlace o un código.',
+      'El equipo de Juried activa la consola escolar para tu colegio; luego invitas a tus docentes con un enlace o un código.',
       'Mira la asistencia por clase, el clima de la escuela y quiénes necesitan acompañamiento a tiempo.',
       'Comparte con tu equipo una biblioteca de comportamientos e insignias.',
     ],
-    cta: { label: 'Registrar mi escuela', to: '/registro/docente' },
-    note: 'Se hace con una cuenta de docente: después creas la escuela en «Mi Escuela» y Juried la verifica.',
+    cta: { label: 'Escríbenos', to: 'mailto:hola@plataformajuried.com?subject=Consola%20escolar%20para%20mi%20colegio' },
+    note: 'Te contamos cómo activarla para tu colegio.',
     art: { src: '/assets/jiro/acceso/google.webp', width: 423, height: 600 },
   },
 ];

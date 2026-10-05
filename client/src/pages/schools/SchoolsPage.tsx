@@ -2,14 +2,13 @@ import { useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { schoolApi, type MySchool } from '../../lib/schoolApi';
-import { CreateSchoolStep, InviteLanding, SchoolList, SearchStep, VerificationStep } from '../../components/schools/JoinFlows';
+import { InviteLanding, SchoolList, SearchStep, VerificationStep } from '../../components/schools/JoinFlows';
 import { canViewSchool, mySchoolsKey } from '../../components/schools/schoolHelpers';
 
 type View =
   | { type: 'auto' }
   | { type: 'list' }
   | { type: 'search' }
-  | { type: 'create' }
   | { type: 'verify'; school: { id: string; name: string } }
   | { type: 'panel'; schoolId: string };
 
@@ -75,9 +74,7 @@ export const SchoolsPage = () => {
 
   switch (view.type) {
     case 'search':
-      return <SearchStep mySchools={schools} onBack={toList} onCreate={() => setView({ type: 'create' })} />;
-    case 'create':
-      return <CreateSchoolStep onBack={() => setView({ type: 'search' })} onCreated={(s) => verify(s)} />;
+      return <SearchStep mySchools={schools} onBack={toList} />;
     case 'verify':
       return <VerificationStep school={view.school} onBack={toList} onSent={toList} />;
     default:

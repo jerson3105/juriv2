@@ -90,10 +90,17 @@ export const AudienceTabs = ({ value, onChange }: AudienceTabsProps) => {
                   ))}
                 </ul>
                 <div className="mt-8">
-                  <Link to={audience.cta.to} className={btnPrimary}>
-                    {audience.cta.label}
-                    <ChevronRight size={18} aria-hidden="true" />
-                  </Link>
+                  {/^(mailto:|https?:)/.test(audience.cta.to) ? (
+                    <a href={audience.cta.to} className={btnPrimary}>
+                      {audience.cta.label}
+                      <ChevronRight size={18} aria-hidden="true" />
+                    </a>
+                  ) : (
+                    <Link to={audience.cta.to} className={btnPrimary}>
+                      {audience.cta.label}
+                      <ChevronRight size={18} aria-hidden="true" />
+                    </Link>
+                  )}
                   {audience.note && <p className="mt-3 max-w-md text-sm leading-relaxed text-slate-500">{audience.note}</p>}
                 </div>
               </div>

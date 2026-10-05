@@ -20,17 +20,6 @@ import {
   requireSchoolRole,
 } from '../utils/access.js';
 
-const createSchoolSchema = z.object({
-  name: z.string().min(2).max(255),
-  address: z.string().max(500).optional(),
-  city: z.string().max(100).optional(),
-  province: z.string().max(100).optional(),
-  country: z.string().max(100).optional(),
-  googlePlaceId: z.string().max(255).optional(),
-  latitude: z.string().optional(),
-  longitude: z.string().optional(),
-});
-
 const createVerificationSchema = z.object({
   schoolId: z.string().uuid(),
   position: z.string().min(2).max(100),
@@ -190,33 +179,9 @@ class SchoolController {
     }
   }
 
-  // Crear escuela nueva
-  async create(req: Request, res: Response) {
-    try {
-      const data = createSchoolSchema.parse(req.body);
-      const userId = (req as any).user.id;
-
-      // Si viene de Google Maps, verificar que no exista ya
-      if (data.googlePlaceId) {
-        const existing = await schoolService.getByGooglePlaceId(data.googlePlaceId);
-        if (existing) {
-          return res.status(400).json({
-            success: false,
-            message: 'Esta escuela ya está registrada en Juried',
-            data: { existingSchoolId: existing.id },
-          });
-        }
-      }
-
-      const school = await schoolService.create(userId, data);
-      res.status(201).json({ success: true, data: school });
-    } catch (error: any) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ success: false, message: 'Datos inválidos', errors: error.errors });
-      }
-      console.error('Error creating school:', error);
-      res.status(500).json({ success: false, message: 'Error al crear escuela' });
-    }
+  // Las escuelas son un servicio de pago: las crea el equipo de Juried desde su panel. Un docente ya no las registra.
+  async create(_req: Request, res: Response) {
+    res.status(403).json({ success: false, message: 'Las escuelas las activa el equipo de Juried para cada colegio' });
   }
 
   // Solicitar unirse a una escuela

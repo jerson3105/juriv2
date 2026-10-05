@@ -51,7 +51,7 @@ const SchoolStatus = ({ schools, isLoading }: { schools: MySchool[]; isLoading: 
           <School size={14} aria-hidden="true" />
           Sin escuela
         </span>
-        <Link to="/schools" className="text-xs font-semibold text-primary-700 underline-offset-2 hover:underline dark:text-primary-300">Unirme o registrar mi escuela</Link>
+        <Link to="/schools" className="text-xs font-semibold text-primary-700 underline-offset-2 hover:underline dark:text-primary-300">Unirme a mi escuela</Link>
       </p>
     );
   }
