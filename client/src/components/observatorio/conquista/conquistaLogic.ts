@@ -44,8 +44,9 @@ export interface Round {
   phase: 'ask' | 'reveal';
   /** Opción oculta por el Telescopio. */
   hiddenOption?: number;
-  /** Segunda oportunidad ya usada. */
+  /** Ronda de Segunda oportunidad: otra pregunta de la misma región solo para quienes fallaron. */
   retried?: boolean;
+  retryTeams?: string[];
 }
 
 export interface ConquistaState {
@@ -69,7 +70,7 @@ export const CARDS: Record<CardId, { icon: string; title: string; text: string }
   lluvia: { icon: '🌠', title: 'Lluvia de estrellas', text: 'Esta ronda, cada acierto vale doble.' },
   alianza: { icon: '🤝', title: 'Alianza estelar', text: 'Los dos equipos con menos estrellas responden juntos: si uno acierta, ganan los dos.' },
   viento: { icon: '🌬️', title: 'Viento solar', text: 'La Niebla retrocede: todas las regiones ganan una estrella para la clase.' },
-  segunda: { icon: '🔁', title: 'Segunda oportunidad', text: 'Quien falle puede conversar y responder otra vez.' },
+  segunda: { icon: '🔁', title: 'Segunda oportunidad', text: 'Los equipos que fallen conversan y responden otra pregunta de la misma región.' },
   telescopio: { icon: '🔭', title: 'Telescopio de Jiro', text: 'Jiro descarta una opción incorrecta.' },
 };
 
@@ -83,6 +84,8 @@ export const QUICK_TEAMS = [
 ];
 
 const REGION_NAMES = ['Orión', 'Casiopea', 'Lira', 'Cisne', 'Leo', 'Escorpio'];
+/** Constelación real de cada región (mismo orden que los nombres; datos en descanso/constellations.ts). */
+export const REGION_CONSTELLATIONS = ['orion', 'casiopea', 'lira', 'cisne', 'leo', 'escorpio'] as const;
 const DIFFICULTY_LABEL: Record<QuestionDifficulty, string> = { EASY: 'Fácil', MEDIUM: 'Media', HARD: 'Difícil' };
 
 /** Preguntas que se pueden responder levantando una tarjeta A–D (o V/F). */
@@ -143,30 +146,53 @@ export const regionLeaders = (region: Region) => {
   return entries.filter(([, n]) => n === max).map(([id]) => id);
 };
 
-/** Siguiente pregunta de la región (sin repetir hasta agotarlas). */
-export const nextQuestion = (region: Region) => {
-  const fresh = region.questionIds.filter((id) => !region.used.includes(id));
-  return fresh[0] ?? region.questionIds[0] ?? null;
+/** Preguntas de la región que aún no salieron. */
+export const freshQuestions = (region: Region) => region.questionIds.filter((id) => !region.used.includes(id));
+
+/** Siguiente pregunta de la región (sin repetir hasta agotarlas); `prefer` elige entre las nuevas si puede. */
+export const nextQuestion = (region: Region, prefer?: (questionId: string) => boolean) => {
+  const fresh = freshQuestions(region);
+  return (prefer && fresh.find(prefer)) ?? fresh[0] ?? region.questionIds[0] ?? null;
 };
 
-export const startRound = (state: ConquistaState, regionId: string): ConquistaState => {
+const markUsed = (region: Region, questionId: string): Region => ({
+  ...region,
+  used: region.used.length >= region.questionIds.length ? [questionId] : [...region.used, questionId],
+});
+
+export const startRound = (state: ConquistaState, regionId: string, prefer?: (questionId: string) => boolean): ConquistaState => {
   const region = state.regions.find((r) => r.id === regionId);
-  const questionId = region ? nextQuestion(region) : null;
+  const questionId = region ? nextQuestion(region, prefer) : null;
   if (!region || !questionId) return state;
   return {
     ...state,
     round: { regionId, questionId, phase: 'ask' },
-    regions: state.regions.map((r) => (r.id === regionId
-      ? { ...r, used: r.used.length >= r.questionIds.length ? [questionId] : [...r.used, questionId] }
-      : r)),
+    regions: state.regions.map((r) => (r.id === regionId ? markUsed(r, questionId) : r)),
+  };
+};
+
+/**
+ * Segunda oportunidad: tras puntuar a los que acertaron, los equipos que fallaron responden otra
+ * pregunta nueva de la misma región (la anterior ya se vio). Sin preguntas nuevas, no hay revancha.
+ */
+export const startSecondChance = (scored: ConquistaState, regionId: string, teamIds: string[]): ConquistaState | null => {
+  const region = scored.regions.find((r) => r.id === regionId);
+  const questionId = region ? freshQuestions(region)[0] : undefined;
+  if (!region || !questionId || teamIds.length === 0) return null;
+  return {
+    ...scored,
+    card: { id: 'segunda' },
+    round: { regionId, questionId, phase: 'ask', retried: true, retryTeams: teamIds },
+    regions: scored.regions.map((r) => (r.id === regionId ? markUsed(r, questionId) : r)),
   };
 };
 
 /** Suma las estrellas de la ronda, despeja la región si llega a la meta y prepara la próxima carta. */
 export const scoreRound = (state: ConquistaState, correctTeamIds: string[]): { state: ConquistaState; cleared: Region | null; gained: number } => {
   if (!state.round) return { state, cleared: null, gained: 0 };
-  const { regionId } = state.round;
-  const scoring = new Set(correctTeamIds);
+  const { regionId, retried, retryTeams, hiddenOption } = state.round;
+  // En la Segunda oportunidad solo puntúan los equipos que tenían la revancha.
+  const scoring = new Set(retried && retryTeams ? correctTeamIds.filter((id) => retryTeams.includes(id)) : correctTeamIds);
   const pair = state.card?.id === 'alianza' ? state.card.pair : undefined;
   if (pair && (scoring.has(pair[0]) || scoring.has(pair[1]))) {
     scoring.add(pair[0]);
@@ -190,16 +216,28 @@ export const scoreRound = (state: ConquistaState, correctTeamIds: string[]): { s
     }
     return next;
   });
+  // El Telescopio que no pudo usarse (la pregunta era V/F) se guarda para la próxima ronda.
+  const keepTelescope = state.card?.id === 'telescopio' && hiddenOption === undefined;
+  // La revancha es parte de la misma ronda: no cuenta otra.
+  const step = retried ? 0 : 1;
   return {
-    state: { ...state, regions, bonus, round: null, card: null, roundNumber: state.roundNumber + 1, sinceCard: state.sinceCard + 1 },
+    state: {
+      ...state, regions, bonus, round: null, card: keepTelescope ? state.card : null,
+      roundNumber: state.roundNumber + step, sinceCard: state.sinceCard + step,
+    },
     cleared,
     gained: scoring.size * value,
   };
 };
 
-/** Carta de Jiro (solo positivas). Viento solar se aplica al momento. */
-export const drawCard = (state: ConquistaState): ConquistaState => {
-  const pool = (Object.keys(CARDS) as CardId[]).filter((id) => id !== 'alianza' || state.teams.length >= 3);
+/**
+ * Carta de Jiro (solo positivas). Viento solar se aplica al momento. `telescope`: hay alguna región
+ * abierta con una pregunta nueva de 3 o más opciones (si no, el Telescopio no tendría qué descartar).
+ */
+export const drawCard = (state: ConquistaState, { telescope = true }: { telescope?: boolean } = {}): ConquistaState => {
+  const pool = (Object.keys(CARDS) as CardId[])
+    .filter((id) => id !== 'alianza' || state.teams.length >= 3)
+    .filter((id) => id !== 'telescopio' || telescope);
   const fresh = pool.filter((id) => !state.usedCards.slice(-2).includes(id));
   const id = shuffle(fresh.length ? fresh : pool)[0];
   const next: ConquistaState = { ...state, sinceCard: 0, usedCards: [...state.usedCards, id] };

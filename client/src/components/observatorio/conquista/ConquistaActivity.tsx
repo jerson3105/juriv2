@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueries } from '@tanstack/react-query';
+import { useReducedMotion } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { Check, Moon, RefreshCw, Shuffle } from 'lucide-react';
 import type { ActivitySession } from '../../../lib/activityApi';
@@ -19,13 +20,41 @@ import { answerOf, questionSizeClass } from '../questionHelpers';
 import { StageEndButton } from '../StageEndButton';
 import { useActivitySession } from '../useActivitySession';
 import { useTodayPresence } from '../usePresence';
-import { SkyMap, TeamScoreboard } from './ConquistaBoard';
+import { RegionMiniSky, SkyMap, TeamScoreboard } from './ConquistaBoard';
+import { CardPanel, ConquestMoment, ConquistaFinale } from './ConquistaMoments';
+import { starRain } from './conquistaFx';
 import {
-  CARD_EVERY, CARDS, QUICK_TEAMS, buildRegions, drawCard, isPlayable, podium, regionTotal, scoreRound, startRound,
-  type ConquistaState, type Region, type Team,
+  CARD_EVERY, CARDS, QUICK_TEAMS, buildRegions, drawCard, freshQuestions, isPlayable, podium, regionTotal, scoreRound,
+  startRound, startSecondChance, type CardId, type ConquistaState, type Region, type Team,
 } from './conquistaLogic';
+import { regionConstellation, regionIndex } from './conquistaSky';
 
-type Step = 'map' | 'card' | 'ask' | 'reveal' | 'result';
+type Step = 'map' | 'card' | 'ask' | 'reveal' | 'result' | 'finale';
+
+interface LastResult {
+  gained: number;
+  /** Equipos que suman (con la Alianza, también su pareja). */
+  teams: string[];
+  cleared: Region | null;
+  /** Estado antes de puntuar: el mapa y el marcador animan lo nuevo. */
+  before: ConquistaState;
+  regionId: string;
+  /** Equipos con Segunda oportunidad (otra pregunta de la misma región). */
+  retryTeams: string[] | null;
+  /** Tocaba Segunda oportunidad pero la región no tiene preguntas nuevas. */
+  retryMissing: boolean;
+}
+
+/** Lo que dice Jiro al aparecer cada carta. */
+const cardLine = (id: CardId, pair: string) => {
+  switch (id) {
+    case 'lluvia': return '¡Lluvia de estrellas! Esta ronda, cada acierto vale doble.';
+    case 'alianza': return `¡Alianza estelar! ${pair} responden juntos.`;
+    case 'viento': return '¡Viento solar! La Niebla retrocede en todo el cielo.';
+    case 'segunda': return '¡Segunda oportunidad! Quien falle tendrá revancha.';
+    default: return 'Con mi telescopio descartaré una opción incorrecta.';
+  }
+};
 
 interface ConquistaResult extends Record<string, unknown> {
   regions: number;
@@ -96,7 +125,20 @@ export const ConquistaActivity = ({ classroom, resume, initialBankId, expedition
   const [state, setState] = useState<ConquistaState | null>(saved);
   const [step, setStep] = useState<Step>(saved?.round ? saved.round.phase : 'map');
   const [marked, setMarked] = useState<string[]>([]);
-  const [lastResult, setLastResult] = useState<{ gained: number; teams: string[]; cleared: Region | null } | null>(null);
+  const [lastResult, setLastResult] = useState<LastResult | null>(null);
+  // Estado antes de sacar la carta (el Viento solar se anima sobre el mapa).
+  const [cardBefore, setCardBefore] = useState<ConquistaState | null>(null);
+  // Regiones recién conquistadas que esperan su momento (en orden) y la espera del primero.
+  const [conquests, setConquests] = useState<{ ids: string[]; delay: number } | null>(null);
+  // «Jiro elige»: región iluminada mientras el foco salta.
+  const [spotlight, setSpotlight] = useState<string | null>(null);
+  const reduce = useReducedMotion();
+  const timers = useRef<number[]>([]);
+  useEffect(() => {
+    const list = timers.current;
+    return () => list.forEach((id) => window.clearTimeout(id));
+  }, []);
+  const later = (fn: () => void, ms: number) => { timers.current.push(window.setTimeout(fn, ms)); };
 
   // ── Configuración ──
   const presentIds = useMemo(() => students.filter((s) => presence.presentIds.has(s.id)).map((s) => s.id), [students, presence.presentIds]);
@@ -164,30 +206,57 @@ export const ConquistaActivity = ({ classroom, resume, initialBankId, expedition
   const region = round ? state?.regions.find((r) => r.id === round.regionId) ?? null : null;
   const clearedCount = state?.regions.filter((r) => r.cleared).length ?? 0;
   const allCleared = !!state && clearedCount === state.regions.length;
+  const retryTeams = round?.retried ? round.retryTeams ?? [] : null;
+
+  /** Opciones de una pregunta (el Telescopio necesita 3 o más para descartar una). */
+  const optionCount = (questionId: string) => {
+    const q = knownQuestions.get(questionId);
+    return q ? answerOf(q)?.options.length ?? 0 : 0;
+  };
+  const hasTelescopeQuestion = (r: Region) => freshQuestions(r).some((id) => optionCount(id) >= 3);
 
   const pickRegion = (regionId: string) => {
     if (!state) return;
-    let next = startRound(state, regionId);
-    // Telescopio: Jiro descarta una opción incorrecta.
+    const telescope = state.card?.id === 'telescopio';
+    let next = startRound(state, regionId, telescope ? (id) => optionCount(id) >= 3 : undefined);
+    // Telescopio: Jiro descarta una opción incorrecta (si la pregunta es V/F, la carta se guarda).
     const q = next.round ? knownQuestions.get(next.round.questionId) : null;
     const a = q ? answerOf(q) : null;
-    if (next.card?.id === 'telescopio' && a && a.options.length >= 3 && next.round) {
+    if (telescope && a && a.options.length >= 3 && next.round) {
       const wrong = a.options.map((_, i) => i).filter((i) => i !== a.index);
       next = { ...next, round: { ...next.round, hiddenOption: shuffle(wrong)[0] } };
     }
     sound.tick();
     setMarked([]);
+    setLastResult(null);
+    setCardBefore(null);
     commit(next);
     setStep('ask');
   };
 
-  /** Jiro elige: la región sin despejar con menos luz. */
+  /** Jiro elige: la región sin despejar con menos luz (con Telescopio, una que tenga preguntas de 3+ opciones). */
   const autoPick = () => {
-    if (!state) return;
+    if (!state || spotlight) return;
     const open = state.regions.filter((r) => !r.cleared);
     if (open.length === 0) return;
-    const target = [...open].sort((a, b) => regionTotal(a) / a.goal - regionTotal(b) / b.goal)[0];
-    pickRegion(target.id);
+    const telescope = state.card?.id === 'telescopio';
+    const target = [...open].sort((a, b) => (telescope ? Number(hasTelescopeQuestion(b)) - Number(hasTelescopeQuestion(a)) : 0)
+      || regionTotal(a) / a.goal - regionTotal(b) / b.goal)[0];
+    if (reduce || open.length === 1) {
+      pickRegion(target.id);
+      return;
+    }
+    // Jiro «piensa»: el foco salta entre las regiones abiertas y se posa en la elegida.
+    const hops: string[] = [];
+    let k = Math.floor(Math.random() * open.length);
+    for (let i = 0; i < 7; i += 1) {
+      hops.push(open[k].id);
+      k = (k + 1 + Math.floor(Math.random() * (open.length - 1))) % open.length;
+    }
+    if (hops[hops.length - 1] === target.id) hops.pop();
+    hops.push(target.id);
+    hops.forEach((id, i) => later(() => { setSpotlight(id); sound.tick(); }, i * 160));
+    later(() => { setSpotlight(null); pickRegion(target.id); }, hops.length * 160 + 500);
   };
 
   const reveal = () => {
@@ -198,15 +267,30 @@ export const ConquistaActivity = ({ classroom, resume, initialBankId, expedition
   };
 
   const confirm = () => {
-    if (!state) return;
-    const { state: next, cleared, gained } = scoreRound(state, marked);
+    if (!state?.round) return;
+    const current = state.round;
+    const scoring = retryTeams ? marked.filter((id) => retryTeams.includes(id)) : marked;
+    // Segunda oportunidad: los que fallaron responden otra pregunta de la misma región.
+    const failing = state.card?.id === 'segunda' && !current.retried
+      ? state.teams.map((t) => t.id).filter((id) => !scoring.includes(id))
+      : [];
+    const { state: scored, cleared, gained } = scoreRound(state, scoring);
+    const retry = failing.length > 0 ? startSecondChance(scored, current.regionId, failing) : null;
+    const pair = state.card?.id === 'alianza' ? state.card.pair : undefined;
+    const lit = pair && (scoring.includes(pair[0]) || scoring.includes(pair[1])) ? [...new Set([...scoring, ...pair])] : scoring;
     if (gained > 0) sound.star(Math.min(7, gained));
     else sound.soft();
-    if (cleared) window.setTimeout(() => sound.success(), 300);
-    setLastResult({ gained, teams: marked, cleared });
-    commit(next);
+    setLastResult({
+      gained, teams: lit, cleared, before: state, regionId: current.regionId,
+      retryTeams: retry ? failing : null, retryMissing: failing.length > 0 && !retry,
+    });
+    if (cleared) setConquests({ ids: [cleared.id], delay: reduce ? 0 : 1300 });
+    commit(retry ?? scored);
     setStep('result');
   };
+
+  /** Termina el momento de conquista en pantalla (Espacio o al acabar): pasa al siguiente si hay. */
+  const skipConquest = () => setConquests((c) => (c && c.ids.length > 1 ? { ids: c.ids.slice(1), delay: 0 } : null));
 
   const finish = async (final: ConquistaState) => {
     const board = podium(final);
@@ -228,16 +312,38 @@ export const ConquistaActivity = ({ classroom, resume, initialBankId, expedition
 
   const nextAfterResult = () => {
     if (!state) return;
+    if (state.round) {
+      // Segunda oportunidad pendiente: otra pregunta de la misma región.
+      sound.tick();
+      setMarked([]);
+      setStep('ask');
+      return;
+    }
     if (allCleared) {
-      void finish(state);
+      setStep('finale');
       return;
     }
     if (state.sinceCard >= CARD_EVERY) {
-      commit(drawCard(state));
+      const next = drawCard(state, { telescope: state.regions.some((r) => !r.cleared && hasTelescopeQuestion(r)) });
+      setCardBefore(state);
+      commit(next);
       setStep('card');
+      sound.chime();
+      if (next.card?.id === 'lluvia') starRain();
+      if (next.card?.id === 'viento') {
+        [0, 200, 420].forEach((ms) => later(() => sound.whoosh(), ms));
+        // El viento puede despejar regiones: su conquista se celebra cuando pasan las ráfagas.
+        const windCleared = next.regions.filter((r) => r.cleared && !state.regions.find((b) => b.id === r.id)?.cleared).map((r) => r.id);
+        if (windCleared.length > 0) setConquests({ ids: windCleared, delay: reduce ? 0 : 1900 });
+      }
       return;
     }
     setStep('map');
+  };
+
+  const afterCard = () => {
+    setCardBefore(null);
+    setStep(allCleared ? 'finale' : 'map');
   };
 
   const toggleMarked = (teamId: string) => setMarked((list) => (list.includes(teamId) ? list.filter((t) => t !== teamId) : [...list, teamId]));
@@ -246,25 +352,38 @@ export const ConquistaActivity = ({ classroom, resume, initialBankId, expedition
     if (phase !== 'playing' || step !== 'reveal' || !state) return false;
     const n = Number(e.key);
     if (n >= 1 && n <= state.teams.length) {
-      toggleMarked(state.teams[n - 1].id);
+      const team = state.teams[n - 1];
+      // En la Segunda oportunidad solo se marcan los equipos que tenían revancha.
+      if (!retryTeams || retryTeams.includes(team.id)) toggleMarked(team.id);
       return true;
     }
     return false;
   };
 
   // ── Jiro, acción principal y estado de la barra ──
-  const card = state?.card ? CARDS[state.card.id] : null;
+  const teamNames = (ids: string[], separator = ', ') =>
+    ids.map((id) => state?.teams.find((t) => t.id === id)).map((t) => t && `${t.emblem} ${t.name}`).filter(Boolean).join(separator);
   const letterOf = (i: number) => (question?.type === 'TRUE_FALSE' ? (i === 0 ? 'V' : 'F') : CORNERS[i]?.letter ?? '');
+  const conquestRegion = conquests ? state?.regions.find((r) => r.id === conquests.ids[0]) ?? null : null;
   const jiro: { pose: JiroPose; line: string | null } = (() => {
     if (phase === 'setup') return { pose: 'senalando', line: 'La Niebla cubre el cielo. ¡Despejémoslo entre todos!' };
     if (phase === 'bitacora') return { pose: 'celebrando', line: `¡Despejamos ${game.session?.result?.regionsCleared ?? clearedCount} regiones!` };
+    if (conquestRegion) {
+      const c = regionConstellation(regionIndex(conquestRegion));
+      return { pose: 'celebrando', line: `${c.name}: ${c.fact}` };
+    }
+    if (spotlight) return { pose: 'senalando', line: 'Mmm… ¿cuál elijo?' };
     switch (step) {
-      case 'card': return { pose: 'emocionado', line: card ? `${card.icon} ${card.title}` : null };
-      case 'ask': return { pose: 'emocionado', line: '¡Cada equipo levanta su tarjeta!' };
+      case 'card': return { pose: 'emocionado', line: state?.card ? cardLine(state.card.id, teamNames(state.card.pair ?? [], ' y ')) : null };
+      case 'ask': return retryTeams
+        ? { pose: 'emocionado', line: '¡Segunda oportunidad! Conversen y respondan.' }
+        : { pose: 'emocionado', line: '¡Cada equipo levanta su tarjeta!' };
       case 'reveal': return { pose: 'senalando', line: answer ? `¡Era ${letterOf(answer.index)}!` : null };
       case 'result':
+        if (lastResult?.retryTeams) return { pose: 'emocionado', line: '¡Segunda oportunidad para quienes fallaron!' };
         if (lastResult?.cleared) return { pose: 'celebrando', line: '¡Región despejada!' };
         return lastResult && lastResult.gained > 0 ? { pose: 'celebrando', line: '¡Más luz en el cielo!' } : { pose: 'confundido', line: 'La Niebla resiste… ¡a la próxima!' };
+      case 'finale': return { pose: 'celebrando', line: '¡Cielo despejado! Lo logramos entre todos.' };
       default: return { pose: 'senalando', line: allCleared ? '¡Cielo despejado!' : 'Elige una región. Con Espacio, elijo yo.' };
     }
   })();
@@ -274,12 +393,16 @@ export const ConquistaActivity = ({ classroom, resume, initialBankId, expedition
       return { label: 'Empezar', onClick: () => void start(), disabled: teams.length < 2 || selectedBanks.length === 0 || questionsLoading };
     }
     if (phase !== 'playing') return null;
+    if (conquests) return { label: 'Seguir', onClick: skipConquest };
     switch (step) {
-      case 'map': return allCleared ? { label: 'Ver la Bitácora', onClick: () => state && void finish(state) } : { label: 'Jiro elige', onClick: autoPick };
-      case 'card': return { label: 'Seguir', onClick: () => setStep('map') };
+      case 'map': return allCleared
+        ? { label: '¡Cielo despejado!', onClick: () => setStep('finale') }
+        : { label: 'Jiro elige', onClick: autoPick, disabled: !!spotlight };
+      case 'card': return { label: 'Seguir', onClick: afterCard };
       case 'ask': return { label: 'Revelar', onClick: reveal, disabled: !question };
       case 'reveal': return { label: `Confirmar (${marked.length})`, onClick: confirm };
-      default: return { label: allCleared ? 'Ver la Bitácora' : 'Seguir', onClick: nextAfterResult };
+      case 'finale': return { label: 'Ver la Bitácora', onClick: () => state && void finish(state) };
+      default: return { label: state?.round ? 'Segunda oportunidad' : allCleared ? '¡Cielo despejado!' : 'Seguir', onClick: nextAfterResult };
     }
   })();
 
@@ -394,31 +517,33 @@ export const ConquistaActivity = ({ classroom, resume, initialBankId, expedition
 
       {phase === 'playing' && state && (
         <div className="flex w-full max-w-6xl flex-col items-center gap-4">
-          <TeamScoreboard state={state} highlight={step === 'result' ? lastResult?.teams ?? [] : []} />
-
-          {(step === 'map' || step === 'result' || step === 'card') && (
-            <SkyMap state={state} onPick={step === 'map' && !allCleared ? pickRegion : undefined} activeRegionId={lastResult?.cleared?.id ?? null} />
+          {step !== 'finale' && (
+            <TeamScoreboard
+              state={state}
+              highlight={step === 'result' ? lastResult?.teams ?? [] : []}
+              before={step === 'result' ? lastResult?.before ?? null : step === 'card' ? cardBefore : null}
+              alliance={state.card?.id === 'alianza' && state.card.pair && (step === 'card' || step === 'ask' || step === 'reveal') ? state.card.pair : null}
+            />
           )}
 
-          {step === 'card' && card && (
-            <div className="w-full max-w-3xl rounded-3xl border-2 border-amber-300 bg-amber-300/15 p-5 text-center" role="status">
-              <p className="stage-display" aria-hidden="true">{card.icon}</p>
-              <p className="stage-title font-black text-amber-100">{card.title}</p>
-              <p className="stage-body mt-1 text-white">{card.text}</p>
-              {state.card?.pair && (
-                <p className="stage-body mt-2 font-bold text-white">
-                  {state.card.pair.map((id) => state.teams.find((t) => t.id === id)).map((t) => t && `${t.emblem} ${t.name}`).join(' + ')}
-                </p>
-              )}
-            </div>
+          {step === 'card' && state.card && <CardPanel card={state.card} state={state} />}
+
+          {(step === 'map' || step === 'result' || step === 'card') && (
+            <SkyMap
+              state={state}
+              onPick={step === 'map' && !allCleared && !spotlight ? pickRegion : undefined}
+              activeRegionId={step === 'result' ? lastResult?.cleared?.id ?? null : null}
+              before={step === 'result' ? lastResult?.before ?? null : step === 'card' ? cardBefore : null}
+              wind={step === 'card' && state.card?.id === 'viento'}
+              thickenRegionId={step === 'result' && lastResult && lastResult.gained === 0 ? lastResult.regionId : null}
+              spotlightId={spotlight}
+            />
           )}
 
           {step === 'result' && lastResult && (
             <div className="w-full max-w-4xl rounded-3xl border-2 border-amber-300/50 bg-amber-300/10 p-4 text-center" role="status">
               {lastResult.gained > 0 ? (
-                <p className="stage-body font-black text-amber-100">
-                  +{lastResult.gained} ⭐ {lastResult.teams.map((id) => state.teams.find((t) => t.id === id)).map((t) => t && `${t.emblem} ${t.name}`).join(', ')}
-                </p>
+                <p className="stage-body font-black text-amber-100">+{lastResult.gained} ⭐ {teamNames(lastResult.teams)}</p>
               ) : (
                 <p className="stage-body font-bold text-white">Nadie acertó esta vez. La Niebla espera.</p>
               )}
@@ -428,14 +553,28 @@ export const ConquistaActivity = ({ classroom, resume, initialBankId, expedition
                   {lastResult.cleared.conquerors.length > 0 && ` Conquista: ${lastResult.cleared.conquerors.map((id) => state.teams.find((t) => t.id === id)?.name).join(' y ')} (+3)`}
                 </p>
               )}
+              {lastResult.retryTeams && (
+                <p className="stage-body mt-1 font-black text-white">🔁 Segunda oportunidad para {teamNames(lastResult.retryTeams)}</p>
+              )}
+              {lastResult.retryMissing && (
+                <p className="stage-body mt-1 text-indigo-100">Esta región ya no tiene preguntas nuevas para la Segunda oportunidad.</p>
+              )}
             </div>
           )}
 
           {(step === 'ask' || step === 'reveal') && region && (
             <>
-              <p className="text-[clamp(18px,2.8vh,32px)] font-bold text-indigo-100">
-                {region.name} · {state.card ? `${CARDS[state.card.id].icon} ${CARDS[state.card.id].title}` : region.subtitle}
+              <p className="flex flex-wrap items-center justify-center gap-x-3 text-center text-[clamp(18px,2.8vh,32px)] font-bold text-indigo-100">
+                <RegionMiniSky region={region} />
+                <span>
+                  {region.name} · {retryTeams
+                    ? `🔁 Segunda oportunidad: ${teamNames(retryTeams)}`
+                    : state.card ? `${CARDS[state.card.id].icon} ${CARDS[state.card.id].title}` : region.subtitle}
+                </span>
               </p>
+              {state.card?.id === 'telescopio' && round && round.hiddenOption === undefined && (
+                <p className="text-[clamp(16px,2.4vh,26px)] text-indigo-100">🔭 Esta pregunta tiene dos opciones: el telescopio se guarda para la próxima.</p>
+              )}
               {question && answer ? (
                 <>
                   <p className={`${questionSizeClass(question.questionText)} max-w-5xl text-center font-black text-white`}>{question.questionText}</p>
@@ -443,12 +582,15 @@ export const ConquistaActivity = ({ classroom, resume, initialBankId, expedition
                     {answer.options.map((text, i) => {
                       const hidden = round?.hiddenOption === i;
                       const isAnswer = step === 'reveal' && answer.index === i;
-                      const dim = (step === 'reveal' && answer.index !== i) || hidden;
+                      const dim = step === 'reveal' && answer.index !== i;
                       return (
-                        <div key={i} className={`flex min-h-[11vh] items-center gap-4 rounded-3xl border-4 px-5 py-3 transition-opacity ${CORNERS[i].className} ${dim ? 'opacity-60' : ''} ${isAnswer ? 'ring-4 ring-amber-300' : ''}`}>
+                        <div key={i} className={`relative flex min-h-[11vh] items-center gap-4 rounded-3xl border-4 px-5 py-3 transition-opacity ${CORNERS[i].className} ${dim ? 'opacity-60' : ''} ${hidden ? 'cq-dim-late' : ''} ${isAnswer ? 'ring-4 ring-amber-300' : ''}`}>
                           <span className="stage-option font-black text-white">{letterOf(i)}</span>
-                          <span className={`stage-body font-bold text-white ${hidden ? 'line-through' : ''}`}>{text}</span>
-                          {hidden && <span className="ml-auto text-base font-bold text-indigo-100">🔭 descartada</span>}
+                          <span className="stage-body relative font-bold text-white">
+                            {text}
+                            {hidden && <span className="cq-strike pointer-events-none absolute -left-1 -right-1 top-1/2 -mt-[3px] h-[6px] rounded-full bg-white" aria-hidden="true" />}
+                          </span>
+                          {hidden && <span className="cq-lens-in absolute -top-4 right-4 rounded-full border-2 border-indigo-200/60 bg-[#0b1026] px-3 py-0.5 text-[clamp(14px,2.2vh,24px)] font-bold text-indigo-50">🔭 descartada</span>}
                         </div>
                       );
                     })}
@@ -465,23 +607,26 @@ export const ConquistaActivity = ({ classroom, resume, initialBankId, expedition
                   )}
                   <fieldset className="w-full max-w-5xl">
                     <legend className="mb-2 w-full text-center text-xl font-bold text-indigo-100">
-                      ¿Qué equipos acertaron? (teclas 1–{state.teams.length})
+                      {retryTeams ? '¿Quiénes acertaron la Segunda oportunidad?' : '¿Qué equipos acertaron?'} (teclas 1–{state.teams.length})
                     </legend>
                     <div className="flex flex-wrap justify-center gap-2">
                       {state.teams.map((team, i) => {
                         const on = marked.includes(team.id);
+                        const allowed = !retryTeams || retryTeams.includes(team.id);
                         return (
                           <button
                             key={team.id}
                             type="button"
                             onClick={() => toggleMarked(team.id)}
                             aria-pressed={on}
-                            className="inline-flex min-h-[56px] items-center gap-2 rounded-2xl border-4 px-4 text-xl font-black text-white"
+                            disabled={!allowed}
+                            className="inline-flex min-h-[56px] items-center gap-2 rounded-2xl border-4 px-4 text-xl font-black text-white disabled:cursor-not-allowed disabled:opacity-40"
                             style={{ borderColor: team.color, backgroundColor: on ? `${team.color}aa` : `${team.color}1f` }}
                           >
                             <span className="text-sm font-bold opacity-80">{i + 1}</span>
                             <span aria-hidden="true">{team.emblem}</span> {team.name}
                             {on && <Check size={22} strokeWidth={3} aria-hidden="true" />}
+                            {!allowed && <span className="text-sm font-bold">ya acertó</span>}
                           </button>
                         );
                       })}
@@ -490,6 +635,19 @@ export const ConquistaActivity = ({ classroom, resume, initialBankId, expedition
                 </>
               )}
             </>
+          )}
+
+          {step === 'finale' && <ConquistaFinale state={state} sound={sound} />}
+
+          {conquestRegion && (
+            <ConquestMoment
+              key={conquestRegion.id}
+              region={conquestRegion}
+              teams={state.teams}
+              sound={sound}
+              delay={conquests?.delay ?? 0}
+              onDone={skipConquest}
+            />
           )}
         </div>
       )}
@@ -509,7 +667,10 @@ export const ConquistaActivity = ({ classroom, resume, initialBankId, expedition
           podium={(result?.podium ?? []).map((p) => ({ key: p.teamId, name: p.name, emblem: p.emblem, color: p.color, score: p.total, unit: 'estrellas' }))}
           suggestedXp={20}
           onSessionChange={(s) => game.setSession(s as ActivitySession<ConquistaState, ConquistaResult>)}
-          onPlayAgain={() => { game.setSession(null); setState(null); setLastResult(null); setStep('map'); setPhase('setup'); }}
+          onPlayAgain={() => {
+            game.setSession(null); setState(null); setLastResult(null); setCardBefore(null); setConquests(null); setSpotlight(null);
+            setStep('map'); setPhase('setup');
+          }}
           onExit={onExit}
         />
       )}

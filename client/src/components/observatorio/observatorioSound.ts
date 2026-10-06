@@ -32,6 +32,12 @@ export interface StageSound {
   success: () => void;
   /** Dos notas descendentes, sin dramatismo (fallo o pausa). */
   soft: () => void;
+  /** Ráfaga de aire (ruido filtrado): viento, paso de escena. */
+  whoosh: () => void;
+  /** Campanilla brillante: aparece una carta. */
+  chime: () => void;
+  /** Arpegio que sube y acorde largo: una región conquistada o el cielo despejado. */
+  conquer: () => void;
   close: () => void;
 }
 
@@ -41,6 +47,7 @@ const PENTATONIC = [523.25, 587.33, 659.25, 783.99, 880, 1046.5, 1174.66, 1318.5
 export const createStageSound = (initiallyMuted: boolean): StageSound => {
   let ctx: AudioContext | null = null;
   let master: GainNode | null = null;
+  let noise: AudioBuffer | null = null;
   let muted = initiallyMuted;
 
   const audio = () => {
@@ -73,6 +80,32 @@ export const createStageSound = (initiallyMuted: boolean): StageSound => {
     osc.stop(at + dur + 0.05);
   };
 
+  // Ruido blanco filtrado (una vez por contexto): la ráfaga sube y baja de volumen.
+  const air = (delay: number, dur: number, peak: number, hz: number) => {
+    const c = audio();
+    if (!c || !master || muted) return;
+    if (!noise) {
+      noise = c.createBuffer(1, c.sampleRate, c.sampleRate);
+      const data = noise.getChannelData(0);
+      for (let i = 0; i < data.length; i += 1) data[i] = Math.random() * 2 - 1;
+    }
+    const at = c.currentTime + delay;
+    const src = c.createBufferSource();
+    src.buffer = noise;
+    const filter = c.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(hz * 0.6, at);
+    filter.frequency.exponentialRampToValueAtTime(hz * 1.4, at + dur);
+    const gain = c.createGain();
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(peak, at + dur * 0.4);
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(master);
+    src.start(at, 0, dur + 0.05);
+  };
+
   return {
     unlock: () => {
       audio();
@@ -95,9 +128,20 @@ export const createStageSound = (initiallyMuted: boolean): StageSound => {
       tone(392, 0, 0.25, 0.1, 'triangle');
       tone(329.63, 0.16, 0.35, 0.08, 'triangle');
     },
+    whoosh: () => air(0, 0.55, 0.22, 900),
+    chime: () => {
+      [1318.51, 1567.98, 2093].forEach((f, i) => tone(f, i * 0.07, 0.5, 0.07, 'triangle'));
+      tone(2637, 0.21, 0.7, 0.03);
+    },
+    conquer: () => {
+      [523.25, 659.25, 783.99, 1046.5, 1318.51].forEach((f, i) => tone(f, i * 0.08, 0.5, 0.13));
+      [523.25, 783.99, 1046.5].forEach((f) => tone(f, 0.42, 1.3, 0.09));
+      tone(261.63, 0.42, 1.3, 0.1, 'triangle');
+    },
     close: () => {
       if (ctx) void ctx.close();
       ctx = null;
+      noise = null;
     },
   };
 };

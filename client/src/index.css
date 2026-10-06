@@ -452,6 +452,44 @@
 [data-motion='full'] .exp-here { animation: exp-float 3.2s ease-in-out infinite; }
 [data-motion='full'] .exp-meta-in { animation: exp-meta 600ms cubic-bezier(0.34, 1.56, 0.64, 1) both; }
 
+/* ── Conquista del Cielo (pedido del dueño): la Niebla deriva y se retira, las estrellas se encienden, la
+   región conquistada recibe su estandarte y cada carta tiene su efecto. Solo transform y opacidad; un único
+   bucle (la deriva de la niebla). No depende de «Proyectando»: el escenario está hecho para proyectar. Con
+   «reducir movimiento» la regla global deja todo en su estado final (y aquí se quitan las esperas). ── */
+@keyframes cq-drift { from { transform: translateX(-3%); } to { transform: translateX(3%); } }
+@keyframes cq-veil { from { opacity: var(--from, 1); } to { opacity: var(--to, 1); } }
+@keyframes cq-blob-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translate(var(--dx, 60%), var(--dy, 0%)) scale(1.15); } }
+@keyframes cq-thicken { 0%, 100% { opacity: 0; } 40% { opacity: 0.45; } }
+@keyframes cq-ignite { 0% { opacity: 0; transform: scale(0.2); } 55% { opacity: 1; transform: scale(1.7); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes cq-line { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes cq-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cq-banner { 0% { opacity: 0; transform: translateY(-120%) rotate(-8deg); } 25% { opacity: 1; } 70% { transform: translateY(5%) rotate(3deg); } 100% { opacity: 1; transform: none; } }
+@keyframes cq-rise { 0% { opacity: 0; transform: translateY(18px) scale(0.85); } 35% { opacity: 1; } 100% { opacity: 1; transform: none; } }
+@keyframes cq-pop { 0%, 100% { transform: scale(1); } 40% { transform: scale(1.12); } }
+@keyframes cq-card-in { 0% { opacity: 0; transform: perspective(900px) rotateY(75deg) scale(0.9); } 60% { opacity: 1; transform: perspective(900px) rotateY(-8deg) scale(1.02); } 100% { opacity: 1; transform: none; } }
+@keyframes cq-gust { 0% { opacity: 0; transform: translateX(-120%); } 15%, 80% { opacity: 1; } 100% { opacity: 0; transform: translateX(320%); } }
+@keyframes cq-lens-in { 0% { opacity: 0; transform: translateX(-28vw) rotate(-30deg) scale(1.5); } 70% { opacity: 1; transform: translateX(6px) rotate(8deg) scale(1); } 100% { opacity: 1; transform: none; } }
+@keyframes cq-strike { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes cq-dim { to { opacity: 0.45; } }
+.cq-fog { animation: cq-drift 40s ease-in-out infinite alternate; will-change: transform; }
+.cq-veil { animation: cq-veil 900ms ease-out both; }
+.cq-blob-out { animation: cq-blob-out 1100ms cubic-bezier(0.4, 0, 0.2, 1) var(--delay, 0ms) both; }
+.cq-thicken { animation: cq-thicken 900ms ease-in-out 200ms both; }
+.cq-ignite { animation: cq-ignite 700ms cubic-bezier(0.34, 1.56, 0.64, 1) var(--delay, 0ms) both; }
+.cq-line-draw { stroke-dasharray: 1; animation: cq-line 650ms ease-out var(--delay, 0ms) both; }
+.cq-fade-in { animation: cq-fade-in 500ms ease-out var(--delay, 0ms) both; }
+.cq-banner-drop { transform-origin: top center; animation: cq-banner 750ms cubic-bezier(0.34, 1.56, 0.64, 1) var(--delay, 0ms) both; }
+.cq-rise { animation: cq-rise 600ms ease-out var(--delay, 0ms) both; }
+.cq-pop { animation: cq-pop 550ms cubic-bezier(0.34, 1.56, 0.64, 1) var(--delay, 0ms) both; }
+.cq-card-in { animation: cq-card-in 650ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.cq-gust { animation: cq-gust 1200ms cubic-bezier(0.45, 0, 0.2, 1) var(--delay, 0ms) both; }
+.cq-lens-in { animation: cq-lens-in 800ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.cq-strike { transform-origin: left center; animation: cq-strike 450ms ease-out 750ms both; }
+.cq-dim-late { animation: cq-dim 400ms ease-out 900ms both; }
+@media (prefers-reduced-motion: reduce) {
+  [class*='cq-'] { animation-delay: 0s !important; }
+}
+
 /* ── Pantallas de acceso: tema espacial (solo si no se pidió reducir el movimiento) ── */
 @keyframes auth-twinkle { 0%, 100% { opacity: var(--auth-o, 0.45); } 50% { opacity: 1; } }
 @keyframes auth-draw { to { stroke-dashoffset: 0; } }
