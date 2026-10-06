@@ -37,6 +37,24 @@ export const PARTICLE_TYPES = [
   'lava', 'hearts', 'confetti', 'rain', 'leaves', 'swords', 'math', 'computing', 'science', 'religion',
 ] as const;
 
+// Efecto animado del tema (la línea de la cabecera y su adorno). Lista cerrada: el cliente trae cada dibujo y la
+// IA o el profesor solo eligen la clave; nunca llega CSS. El cliente repite este reparto para los temas sin efecto.
+export const EFFECT_TYPES = [
+  'brillo', 'aurora', 'luces', 'escarcha', 'ola', 'enredadera', 'sol', 'luna', 'cometa', 'brasas', 'codigo', 'fiesta',
+] as const;
+export type ThemeEffect = typeof EFFECT_TYPES[number];
+
+const EFFECT_BY_PARTICLE: Partial<Record<typeof PARTICLE_TYPES[number], ThemeEffect>> = {
+  snow: 'escarcha', bubbles: 'ola', stars: 'cometa', fireflies: 'enredadera', leaves: 'enredadera', petals: 'sol',
+  embers: 'brasas', lava: 'brasas', confetti: 'fiesta', computing: 'codigo', math: 'codigo',
+};
+
+/** Efecto que va con una partícula (si la IA no eligió uno válido). Solo claves propias: «constructor» no cuenta. */
+export const effectForParticle = (particle: unknown): ThemeEffect =>
+  (typeof particle === 'string' && Object.hasOwn(EFFECT_BY_PARTICLE, particle)
+    ? EFFECT_BY_PARTICLE[particle as typeof PARTICLE_TYPES[number]]
+    : undefined) ?? 'brillo';
+
 // Colores en hex de 6 dígitos: el cliente deriva de ellos los tonos accesibles.
 export const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 const hexColor = z.string().regex(HEX_COLOR, 'Color inválido (usa #RRGGBB)');
@@ -66,6 +84,7 @@ export const themeConfigSchema = z.object({
     emoji: z.string().max(16).optional(),
     title: z.string().max(100).optional(),
   }).optional(),
+  effect: z.enum(EFFECT_TYPES).optional(),
 }).optional();
 
 type SceneLike = { type: string; triggerConfig: unknown };
@@ -157,6 +176,7 @@ export const THEME_PRESETS = {
     particles: { type: 'petals', color: '#F48FB1', speed: 'slow', density: 'low' },
     decorations: [{ type: 'corner', position: 'top-right', asset: 'sun' }],
     banner: { emoji: '🌸', title: 'Primavera' },
+    effect: 'sol',
   },
   halloween: {
     name: 'Halloween',
@@ -164,6 +184,7 @@ export const THEME_PRESETS = {
     particles: { type: 'sparkles', color: '#FF6F00', speed: 'slow', density: 'low' },
     decorations: [{ type: 'corner', position: 'top-right', asset: 'moon' }],
     banner: { emoji: '🎃', title: 'Halloween' },
+    effect: 'luna',
   },
   christmas: {
     name: 'Navidad',
@@ -171,6 +192,7 @@ export const THEME_PRESETS = {
     particles: { type: 'snow', color: '#FFFFFF', speed: 'slow', density: 'medium' },
     decorations: [{ type: 'corner', position: 'top-right', asset: 'snowflakes' }],
     banner: { emoji: '🎄', title: 'Navidad' },
+    effect: 'luces',
   },
   ocean: {
     name: 'Océano',
@@ -178,6 +200,7 @@ export const THEME_PRESETS = {
     particles: { type: 'bubbles', color: '#4FC3F7', speed: 'slow', density: 'low' },
     decorations: [{ type: 'corner', position: 'top-right', asset: 'waves' }],
     banner: { emoji: '🌊', title: 'Océano' },
+    effect: 'ola',
   },
   space: {
     name: 'Espacio',
@@ -185,6 +208,7 @@ export const THEME_PRESETS = {
     particles: { type: 'stars', color: '#FFFFFF', speed: 'slow', density: 'medium' },
     decorations: [{ type: 'corner', position: 'top-right', asset: 'moon' }],
     banner: { emoji: '🚀', title: 'Espacio' },
+    effect: 'cometa',
   },
   forest: {
     name: 'Bosque Encantado',
@@ -192,6 +216,7 @@ export const THEME_PRESETS = {
     particles: { type: 'fireflies', color: '#FFEE58', speed: 'slow', density: 'low' },
     decorations: [{ type: 'border', position: 'sidebar', asset: 'vines' }, { type: 'corner', position: 'top-right', asset: 'trees' }],
     banner: { emoji: '🌲', title: 'Bosque Encantado' },
+    effect: 'enredadera',
   },
 } as const;
 

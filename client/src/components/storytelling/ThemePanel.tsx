@@ -9,7 +9,7 @@ import { useStoryParticles } from '../../hooks/useStoryParticles';
 import { HomeModal } from '../home/HomeModal';
 import { cancelButton, inputClass, labelClass, primaryButton } from '../home/homeHelpers';
 import { ThemePreview, ThemeSwatch } from './ThemeSwatch';
-import { classroomKey, errorMessage } from './storyEditorHelpers';
+import { classroomKey, errorMessage, presetTheme } from './storyEditorHelpers';
 import { showUndoToast } from './undoToast';
 
 interface ThemePanelProps {
@@ -22,13 +22,6 @@ interface ThemePanelProps {
 type Pending = { theme: ThemeConfig | null; source: 'PRESET' | 'AI' | 'DEFAULT'; name: string; key: string };
 
 const AI_IDEAS = ['Piratas en alta mar', 'Selva tropical', 'Galaxia lejana', 'Reino medieval', 'Laboratorio secreto'];
-
-const presetTheme = (preset: ThemePreset): ThemeConfig => ({
-  colors: preset.colors,
-  particles: preset.particles,
-  decorations: preset.decorations,
-  banner: preset.banner,
-});
 
 // Tema del aula independiente de la historia: se previsualiza antes de aplicarlo y se puede deshacer.
 export const ThemePanel = ({ classroom, presets, activeStoryTitle, onClose }: ThemePanelProps) => {

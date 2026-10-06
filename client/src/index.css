@@ -209,23 +209,6 @@
   .text-gold-gradient {
     @apply bg-clip-text text-transparent bg-gradient-to-r from-amber-400 to-amber-600;
   }
-
-  /* Animated border for legendary/rare items */
-  .animate-border-spin {
-    animation: border-spin 3s linear infinite;
-  }
-
-  @keyframes border-spin {
-    0% {
-      background-position: 0% 50%;
-    }
-    50% {
-      background-position: 100% 50%;
-    }
-    100% {
-      background-position: 0% 50%;
-    }
-  }
 }
 
 /* ── Insignias: medallón animado según rareza ───────────────────────────── */
@@ -489,6 +472,32 @@
 @media (prefers-reduced-motion: reduce) {
   [class*='cq-'] { animation-delay: 0s !important; }
 }
+
+/* ── Efecto del tema en la cabecera (components/story/ThemeEffects): la línea cobra vida y el adorno tiene su
+   bucle o su entrada. Un bucle por efecto, solo transform y opacidad; el componente no pone estas clases al
+   proyectar, con «reducir movimiento» ni con los efectos apagados. ── */
+@keyframes tfx-sweep { 0% { transform: translateX(-12rem); } 35%, 100% { transform: translateX(110vw); } }
+@keyframes tfx-aurora { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
+@keyframes tfx-twinkle { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+@keyframes tfx-wave { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes tfx-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes tfx-pop { 0% { opacity: 0; transform: scale(0.2); } 70% { opacity: 1; transform: scale(1.25); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes tfx-comet { 0% { opacity: 0; transform: translateX(-8rem); } 3% { opacity: 1; } 30% { opacity: 1; transform: translateX(110vw); } 31%, 100% { opacity: 0; transform: translateX(110vw); } }
+@keyframes tfx-spin { to { transform: rotate(360deg); } }
+@keyframes tfx-breathe { 0%, 100% { opacity: 0.22; transform: scale(0.9); } 50% { opacity: 0.55; transform: scale(1.06); } }
+@keyframes tfx-flicker { 0%, 100% { transform: scale(1, 1); } 25% { transform: scale(0.96, 1.08); } 50% { transform: scale(1.03, 0.95); } 75% { transform: scale(0.98, 1.05); } }
+@keyframes tfx-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+.tfx-sweep { animation: tfx-sweep 9s ease-in-out infinite; }
+.tfx-aurora { animation: tfx-aurora 7s ease-in-out infinite; }
+.tfx-twinkle { animation: tfx-twinkle 1.8s ease-in-out infinite; }
+.tfx-wave { animation: tfx-wave 7s linear infinite; }
+.tfx-draw { stroke-dasharray: 1; animation: tfx-draw 2.4s ease-out var(--delay, 0ms) both; }
+.tfx-pop { animation: tfx-pop 500ms cubic-bezier(0.34, 1.56, 0.64, 1) var(--delay, 0ms) both; }
+.tfx-comet { animation: tfx-comet 14s ease-in infinite; }
+.tfx-spin { animation: tfx-spin 24s linear infinite; }
+.tfx-breathe { animation: tfx-breathe 5s ease-in-out infinite; }
+.tfx-flicker { animation: tfx-flicker 1.4s ease-in-out infinite; }
+.tfx-blink { animation: tfx-blink 1.1s steps(1) infinite; }
 
 /* ── Pantallas de acceso: tema espacial (solo si no se pidió reducir el movimiento) ── */
 @keyframes auth-twinkle { 0%, 100% { opacity: var(--auth-o, 0.45); } 50% { opacity: 1; } }

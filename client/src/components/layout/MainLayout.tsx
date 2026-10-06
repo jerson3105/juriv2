@@ -3,7 +3,7 @@ import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BookOpen, ChevronDown, Coins, Heart, LogOut, Menu, Moon, Plus, Settings, Users, Zap } from 'lucide-react';
+import { BookOpen, ChevronDown, Coins, Heart, LogOut, Menu, Moon, Plus, Settings, Sparkles, Users, Zap } from 'lucide-react';
 import { Hearts } from '../energy/EnergyMeter';
 import { isYoungLevel } from '../energy/energyHelpers';
 import { useAuthStore } from '../../store/authStore';
@@ -18,7 +18,8 @@ import { ThemeToggle } from '../ui/ThemeToggle';
 import { NotificationsBell, NotificationsPanel } from '../NotificationsPanel';
 import { BugReportButton } from '../BugReportButton';
 import { ParticleLayer } from '../story/ParticleLayer';
-import { deriveStoryAccent, storyAccentVars, accentGradient, mixHex } from '../../lib/storyTheme';
+import { ThemeHeaderLine, ThemeOrnament } from '../story/ThemeEffects';
+import { deriveStoryAccent, storyAccentVars, mixHex } from '../../lib/storyTheme';
 import { useStoryParticles } from '../../hooks/useStoryParticles';
 import { useStoryLive } from '../../hooks/useStoryLive';
 import { StudentEntryEffects } from '../student/StudentEntryEffects';
@@ -29,7 +30,7 @@ import { ClassSwitcher, type ClassLink } from './sidebar/ClassSwitcher';
 import type { BandSky } from './sidebar/SidebarBand';
 import { StudentDrawerFooter, TeacherHomeFooter } from './sidebar/SidebarFooters';
 import { studentClassNav, studentEmptyNav, studentRouteAvailable, teacherHomeNav } from './sidebar/navBuilders';
-import { useSidebarCollapsed } from './sidebar/useSidebarState';
+import { useMotionBudget, useSidebarCollapsed } from './sidebar/useSidebarState';
 import { contextLabel, type ClassContext } from './classContext';
 
 const NIGHT = '#0b1026';
@@ -125,7 +126,10 @@ export const MainLayout = () => {
   const themeSource = !isTeacher && isStudentClassThemeRoute ? currentProfile?.classroom?.themeConfig : null;
   const storyAccent = useMemo(() => deriveStoryAccent(themeSource), [themeSource]);
   const hasStoryTheme = !!storyAccent;
-  const [studentParticles] = useStoryParticles('student');
+  // «Efectos del tema» del alumno (partículas y la cabecera animada): los apaga en su menú o en Mi historia.
+  const [studentEffects, setStudentEffects] = useStoryParticles('student');
+  const motionBudget = useMotionBudget();
+  const themeMotion = studentEffects ? motionBudget : 'off';
   // El alumno recibe en vivo los finales que revela su profe.
   useStoryLive(!isTeacher ? currentProfile?.classroomId : null);
 
@@ -194,7 +198,7 @@ export const MainLayout = () => {
       style={storyAccentVars(storyAccent)}
     >
       {/* Partículas suaves del tema, detrás del contenido (el alumno puede apagarlas en Mi Historia) */}
-      {storyAccent?.particles && studentParticles && (
+      {storyAccent?.particles && studentEffects && (
         <ParticleLayer particles={storyAccent.particles} accentColor={storyAccent.primary} />
       )}
 
@@ -229,7 +233,7 @@ export const MainLayout = () => {
           className="sticky top-0 z-30 h-14 backdrop-blur-lg shadow-sm bg-white/80 dark:bg-gray-800/80 border-b border-white/50 dark:border-gray-700/50"
         >
           {storyAccent && (
-            <span className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5" style={{ background: accentGradient(storyAccent, 90) }} aria-hidden="true" />
+            <ThemeHeaderLine accent={storyAccent} level={themeMotion} />
           )}
           <div className="flex h-full items-center px-4">
             <div className="flex min-w-0 flex-1 items-center">
@@ -300,6 +304,7 @@ export const MainLayout = () => {
             </div>
 
             <div className="ml-auto flex items-center gap-2 md:gap-3">
+              {storyAccent && <ThemeOrnament accent={storyAccent} level={themeMotion} className="hidden h-10 w-10 md:block" />}
               {/* Notificaciones (solo para estudiantes) */}
               {!isTeacher && (
                 <NotificationsBell onClick={() => setShowNotifications(true)} classroomId={currentProfile?.classroomId} />
@@ -397,6 +402,21 @@ export const MainLayout = () => {
                           <BookOpen size={16} aria-hidden="true" />
                           Destrezas
                         </Link>
+                      )}
+                      {!isTeacher && (
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={studentEffects}
+                          onClick={() => setStudentEffects(!studentEffects)}
+                          className="flex min-h-[44px] w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                        >
+                          <Sparkles size={16} aria-hidden="true" />
+                          Efectos del tema
+                          <span className={`ml-auto rounded-full px-2 py-0.5 text-xs font-bold ${studentEffects ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200' : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200'}`}>
+                            {studentEffects ? 'Sí' : 'No'}
+                          </span>
+                        </button>
                       )}
                       {!isTeacher && (
                         <Link

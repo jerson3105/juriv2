@@ -1,4 +1,13 @@
-import type { StoryChapter, StoryRewardConfig, StoryRewardResult, StoryScene } from '../../lib/storyApi';
+import type { StoryChapter, StoryRewardConfig, StoryRewardResult, StoryScene, ThemeConfig, ThemePreset } from '../../lib/storyApi';
+
+/** Tema de un tema listo (el panel del aula y el formulario de historia lo guardan igual, con su efecto). */
+export const presetTheme = (preset: ThemePreset): ThemeConfig => ({
+  colors: preset.colors,
+  particles: preset.particles,
+  decorations: preset.decorations,
+  banner: preset.banner,
+  effect: preset.effect,
+});
 
 export const storiesKey = (classroomId: string) => ['stories', classroomId] as const;
 export const storyDetailKey = (storyId: string) => ['story-detail', storyId] as const;

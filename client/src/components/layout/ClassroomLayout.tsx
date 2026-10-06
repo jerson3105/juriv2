@@ -28,6 +28,7 @@ const ClassroomUtilities = lazy(() =>
   import('../classroom/ClassroomUtilities').then((module) => ({ default: module.ClassroomUtilities })),
 );
 import { ParticleLayer } from '../story/ParticleLayer';
+import { ThemeHeaderLine, ThemeOrnament } from '../story/ThemeEffects';
 import { deriveStoryAccent, storyAccentVars, accentGradient, mixHex } from '../../lib/storyTheme';
 import { storyApi } from '../../lib/storyApi';
 import { useStoryParticles } from '../../hooks/useStoryParticles';
@@ -38,7 +39,7 @@ import { AppSidebar } from './sidebar/AppSidebar';
 import { NewsLine } from './sidebar/SidebarFooters';
 import { TeacherClassCard } from './sidebar/TeacherClassCard';
 import { teacherClassNav } from './sidebar/navBuilders';
-import { useOpenGroups, useSidebarCollapsed } from './sidebar/useSidebarState';
+import { useMotionBudget, useOpenGroups, useSidebarCollapsed } from './sidebar/useSidebarState';
 import { contextLabel } from './classContext';
 import { ArchivedClassBanner } from '../classroom/ArchivedClassBanner';
 
@@ -152,6 +153,8 @@ export const ClassroomLayout = () => {
   const storyAccent = useMemo(() => deriveStoryAccent(classroom?.themeConfig), [classroom?.themeConfig]);
   const hasStoryTheme = !!storyAccent;
   const [teacherParticles] = useStoryParticles('teacher');
+  // Efecto del tema en la cabecera: se mueve en el aula y queda quieto proyectando (o con menos movimiento).
+  const themeMotion = useMotionBudget();
   // Revelaciones y metas alcanzadas en vivo (sala de la clase).
   useStoryLive(id);
 
@@ -294,7 +297,7 @@ export const ClassroomLayout = () => {
           className="relative h-14 backdrop-blur-lg shadow-sm flex items-center justify-between gap-2 px-2 sm:px-4 bg-white/80 dark:bg-gray-800/80 border-b border-white/50 dark:border-gray-700/50"
         >
           {storyAccent && (
-            <span className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5" style={{ background: accentGradient(storyAccent, 90) }} aria-hidden="true" />
+            <ThemeHeaderLine accent={storyAccent} level={themeMotion} />
           )}
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             {/* Botón menú móvil */}
@@ -334,6 +337,7 @@ export const ClassroomLayout = () => {
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            {storyAccent && <ThemeOrnament accent={storyAccent} level={themeMotion} className="mr-1 hidden h-10 w-10 md:block" />}
             <ClassModeMenu />
 
             {/* Herramientas de clase: disponibles en todas las páginas del aula */}

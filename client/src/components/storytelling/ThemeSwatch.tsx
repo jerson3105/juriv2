@@ -1,6 +1,9 @@
 import { Check } from 'lucide-react';
+import { useReducedMotion } from 'framer-motion';
 import type { ThemeConfig } from '../../lib/storyApi';
 import { accentGradient, deriveStoryAccent } from '../../lib/storyTheme';
+import { EFFECT_LABELS } from '../../lib/themeEffects';
+import { ThemeHeaderLine, ThemeOrnament } from '../story/ThemeEffects';
 
 interface ThemeSwatchProps {
   theme: ThemeConfig | null;
@@ -32,6 +35,8 @@ export const ThemeSwatch = ({ theme, name, selected, onSelect }: ThemeSwatchProp
             <span className="relative flex flex-1 items-center justify-center bg-slate-100 text-2xl dark:bg-gray-900">
               <span className="absolute inset-x-0 top-0 h-1" style={{ background: accentGradient(accent, 90) }} />
               {accent.emoji}
+              {/* Su adorno, quieto: siete miniaturas animadas a la vez distraerían. */}
+              <ThemeOrnament accent={accent} level="off" className="absolute bottom-0.5 right-0.5 h-6 w-6" />
             </span>
           </>
         ) : (
@@ -49,6 +54,7 @@ export const ThemeSwatch = ({ theme, name, selected, onSelect }: ThemeSwatchProp
 // Vista previa más grande: barra lateral, cabecera con el filo del acento y una tarjeta neutra con chip.
 export const ThemePreview = ({ theme, title }: { theme: ThemeConfig | null; title: string }) => {
   const accent = deriveStoryAccent(theme);
+  const reduceMotion = useReducedMotion();
   if (!accent) {
     return (
       <div className="flex h-36 items-center justify-center rounded-xl border border-dashed border-gray-300 text-sm text-gray-700 dark:border-gray-600 dark:text-gray-300">
@@ -66,8 +72,11 @@ export const ThemePreview = ({ theme, title }: { theme: ThemeConfig | null; titl
       <div className="flex flex-1 flex-col bg-slate-50 dark:bg-gray-900" style={{ ['--story-ink-light' as string]: accent.inkLight, ['--story-ink-dark' as string]: accent.inkDark, ['--story-rgb' as string]: accent.rgb }}>
         <div className="relative flex h-9 items-center gap-2 bg-white px-2 dark:bg-gray-800">
           <span className="flex h-6 w-6 items-center justify-center rounded-md text-sm" style={{ background: accentGradient(accent) }}>{accent.emoji}</span>
-          <span className="truncate text-xs font-bold text-gray-900 dark:text-white">{title}</span>
-          <span className="absolute inset-x-0 bottom-0 h-0.5" style={{ background: accentGradient(accent, 90) }} />
+          <span className="min-w-0 flex-1 truncate text-xs font-bold text-gray-900 dark:text-white">{title}</span>
+          {/* El efecto del tema tal como se verá en la cabecera (con movimiento, salvo «reducir movimiento»). */}
+          <span className="shrink-0 text-xs font-semibold text-gray-700 dark:text-gray-300">{EFFECT_LABELS[accent.effect]}</span>
+          <ThemeOrnament accent={accent} level={reduceMotion ? 'off' : 'full'} className="h-7 w-7" />
+          <ThemeHeaderLine accent={accent} level={reduceMotion ? 'off' : 'full'} />
         </div>
         <div className="m-2 flex-1 rounded-lg bg-white p-2 dark:bg-gray-800">
           <span className="story-chip inline-block rounded-full px-2 py-0.5 text-xs font-semibold">Capítulo 1</span>

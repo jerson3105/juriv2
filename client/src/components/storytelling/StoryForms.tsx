@@ -5,14 +5,7 @@ import { HomeModal } from '../home/HomeModal';
 import { cancelButton, inputClass, labelClass, primaryButton } from '../home/homeHelpers';
 import { ThemePreview, ThemeSwatch } from './ThemeSwatch';
 import { RewardFields } from './RewardFields';
-import { COMPLETION_TYPES, chapterConfig, chapterReward, type CompletionType } from './storyEditorHelpers';
-
-const presetTheme = (preset: ThemePreset): ThemeConfig => ({
-  colors: preset.colors,
-  particles: preset.particles,
-  decorations: preset.decorations,
-  banner: preset.banner,
-});
+import { COMPLETION_TYPES, chapterConfig, chapterReward, presetTheme, type CompletionType } from './storyEditorHelpers';
 
 const sameTheme = (a: ThemeConfig | null | undefined, b: ThemeConfig | null | undefined) =>
   !!a && !!b && a.colors?.primary === b.colors?.primary && a.banner?.emoji === b.banner?.emoji;

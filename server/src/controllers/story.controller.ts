@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
-import { storyService, THEME_PRESETS, PARTICLE_TYPES, HEX_COLOR, themeConfigSchema } from '../services/story.service.js';
+import {
+  storyService, THEME_PRESETS, PARTICLE_TYPES, EFFECT_TYPES, HEX_COLOR, themeConfigSchema, effectForParticle,
+} from '../services/story.service.js';
 import { storyDecisionService } from '../services/storyDecision.service.js';
 import { storyAiService } from '../services/storyAi.service.js';
 import { z } from 'zod';
@@ -179,8 +181,23 @@ Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni bloques 
   "banner": {
     "emoji": "un emoji representativo del tema",
     "title": "Título del tema"
-  }
+  },
+  "effect": "uno de los efectos válidos (ver lista abajo)"
 }
+
+EFECTOS VÁLIDOS (animación de la cabecera y su adorno; elige el más coherente con el tema):
+- "brillo" → un destello que recorre la línea (general, cuando ninguno encaja)
+- "aurora" → aurora que cambia de color (magia, noche, polo norte)
+- "luces" → guirnalda de luces (Navidad, fiestas, ferias)
+- "escarcha" → copos y escarcha (invierno, hielo, nieve)
+- "ola" → una ola que se mueve (océano, mar, agua, playa)
+- "enredadera" → una enredadera que crece (bosque, selva, plantas, naturaleza)
+- "sol" → un sol que gira (primavera, verano, campo, día)
+- "luna" → una luna que brilla (noche, Halloween, sueños, misterio)
+- "cometa" → un cometa que cruza (espacio, astronomía, viajes)
+- "brasas" → brasas encendidas (volcán, fuego, dragones, forja)
+- "codigo" → un cursor que parpadea (programación, robótica, matemáticas, tecnología)
+- "fiesta" → confeti (celebración, carnaval, aniversario)
 
 TIPOS DE PARTÍCULAS VÁLIDOS (elige el más coherente con el tema):
 - "stars" → estrellas brillantes (espacio, noche, magia)
@@ -251,6 +268,7 @@ const generateThemeFromAI = async (description: string) => {
     allowed.includes(value as T) ? (value as T) : fallback;
   const text = (value: unknown, max: number) => (typeof value === 'string' ? value.trim().slice(0, max) : undefined);
 
+  const particleType = pick(parsedData.particles?.type, PARTICLE_TYPES, 'sparkles');
   const themeConfig = themeConfigSchema.parse({
     colors: {
       primary: color(parsedData.colors?.primary, '#6366F1'),
@@ -260,7 +278,7 @@ const generateThemeFromAI = async (description: string) => {
       sidebar: color(parsedData.colors?.sidebar, '#1E1B4B'),
     },
     particles: {
-      type: pick(parsedData.particles?.type, PARTICLE_TYPES, 'sparkles'),
+      type: particleType,
       color: color(parsedData.particles?.color, '#FFFFFF'),
       speed: pick(parsedData.particles?.speed, ['slow', 'medium', 'fast'] as const, 'slow'),
       density: pick(parsedData.particles?.density, ['low', 'medium', 'high'] as const, 'low'),
@@ -270,6 +288,8 @@ const generateThemeFromAI = async (description: string) => {
       emoji: text(parsedData.banner?.emoji, 16) || '✨',
       title: text(parsedData.banner?.title, 100),
     },
+    // Solo una clave de la lista; si la IA inventa otra, el efecto que va con su partícula.
+    effect: pick(parsedData.effect, EFFECT_TYPES, effectForParticle(particleType)),
   });
 
   return {

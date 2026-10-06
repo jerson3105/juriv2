@@ -99,8 +99,7 @@ export const ParticleLayer = ({ particles, accentColor }: ParticleLayerProps) =>
 
   if (!particles?.type || !isVisible || reduceMotion || particleElements.length === 0) return null;
 
-  const glow = safeHex(particles.color, '#FFFFFF');
-
+  // Sin los dos «orbes» de brillo de antes: filter: blur con un pulso infinito se recalculaba en cada cuadro.
   return (
     <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden="true">
       <style>{`
@@ -128,43 +127,11 @@ export const ParticleLayer = ({ particles, accentColor }: ParticleLayerProps) =>
           95% { opacity: var(--p-opacity); }
           100% { transform: translateY(calc(100vh + 20px)); opacity: 0; }
         }
-        @keyframes glow-pulse {
-          0%, 100% { opacity: 0.3; transform: scale(1); }
-          50% { opacity: 0.6; transform: scale(1.05); }
-        }
         .particle {
           position: absolute;
           will-change: transform, opacity;
         }
       `}</style>
-
-      {/* Ambient glow orbs */}
-      <div
-        style={{
-          position: 'absolute',
-          top: '10%',
-          right: '5%',
-          width: '200px',
-          height: '200px',
-          borderRadius: '50%',
-          background: `radial-gradient(circle, ${glow}18, transparent 70%)`,
-          animation: 'glow-pulse 6s ease-in-out infinite',
-          filter: 'blur(40px)',
-        }}
-      />
-      <div
-        style={{
-          position: 'absolute',
-          bottom: '15%',
-          left: '10%',
-          width: '250px',
-          height: '250px',
-          borderRadius: '50%',
-          background: `radial-gradient(circle, ${glow}14, transparent 70%)`,
-          animation: 'glow-pulse 8s ease-in-out infinite 3s',
-          filter: 'blur(50px)',
-        }}
-      />
 
       {/* Main particles */}
       {particleElements.map((p) => {

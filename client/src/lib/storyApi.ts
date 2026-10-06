@@ -25,6 +25,8 @@ export interface ThemeConfig {
     emoji?: string;
     title?: string;
   };
+  /** Efecto animado de la cabecera (clave de lib/themeEffects). */
+  effect?: string;
 }
 
 export interface ThemePreset {
@@ -34,6 +36,7 @@ export interface ThemePreset {
   particles: ThemeConfig['particles'];
   decorations: ThemeConfig['decorations'];
   banner: ThemeConfig['banner'];
+  effect?: string;
 }
 
 export type SceneKind = 'INTRO' | 'DESARROLLO' | 'MILESTONE' | 'OUTRO' | 'DECISION';

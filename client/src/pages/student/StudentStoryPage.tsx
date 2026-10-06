@@ -139,7 +139,7 @@ export const StudentStoryPage = () => {
           </div>
           <label className="mt-4 inline-flex min-h-[44px] cursor-pointer items-center gap-2 rounded-xl bg-black/25 px-3 text-sm font-semibold">
             <input type="checkbox" role="switch" checked={particles} onChange={(e) => setParticles(e.target.checked)} className="h-4 w-4 accent-white" />
-            Partículas del tema
+            Efectos del tema
           </label>
         </div>
       </motion.header>

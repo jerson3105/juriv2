@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import type { ThemeConfig } from './storyApi';
+import { themeEffectOf, type ThemeEffect } from './themeEffects';
 
 // Tema de historia "solo en acentos": las superficies siguen el modo claro/oscuro de la app y el tema
 // pinta la barra lateral, la cabecera, los chips y los banners con tonos derivados que cumplen AA.
@@ -63,6 +64,8 @@ export interface StoryAccent {
   emoji: string;
   title: string | null;
   particles: ThemeConfig['particles'] | null;
+  /** Efecto animado de la cabecera (siempre uno: los temas sin efecto toman el de su partícula). */
+  effect: ThemeEffect;
 }
 
 export const parseThemeConfig = (raw: unknown): ThemeConfig | null => {
@@ -94,6 +97,7 @@ export const deriveStoryAccent = (raw: unknown): StoryAccent | null => {
     emoji: theme.banner?.emoji || '📖',
     title: theme.banner?.title || null,
     particles: theme.particles?.type ? theme.particles : null,
+    effect: themeEffectOf(theme),
   };
 };
 
