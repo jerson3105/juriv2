@@ -14,6 +14,7 @@ import {
 import { Button } from '../../components/ui/Button';
 import { useStudentOverviewData } from '../../hooks/useStudentOverviewData';
 import type { ThemeConfig } from '../../lib/storyApi';
+import { safeHex } from '../../lib/storyTheme';
 import { useCurrentStudentProfile } from '../../hooks/useCurrentStudentProfile';
 
 type StoryOutletContext = {
@@ -144,9 +145,9 @@ export const StudentClassesOverviewPage = () => {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {myClasses.map((profile, index) => {
             const themeConfig = parseThemeConfig(profile.classroom?.themeConfig);
-            const hasClassroomTheme = !!(themeConfig?.colors?.primary && themeConfig?.colors?.secondary);
-            const primary = themeConfig?.colors?.primary || '#8b5cf6';
-            const secondary = themeConfig?.colors?.secondary || '#7c3aed';
+            const hasClassroomTheme = !!(safeHex(themeConfig?.colors?.primary, null) && safeHex(themeConfig?.colors?.secondary, null));
+            const primary = safeHex(themeConfig?.colors?.primary, '#8b5cf6');
+            const secondary = safeHex(themeConfig?.colors?.secondary, '#7c3aed');
             const emoji = themeConfig?.banner?.emoji;
             const notes = [...(classroomNotes[index]?.notes ?? [])]
               .filter((note) => !note.isCompleted && isFutureDatedNote(note.dueDate))

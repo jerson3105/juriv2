@@ -136,6 +136,14 @@ export const clanVars = (color: string | null | undefined): CSSProperties => {
   return vars;
 };
 
+// Solo #RRGGBB, lo mismo que exige el servidor al guardar. Los temas guardados antes de esa validación pueden traer
+// cualquier texto, y dentro de una cadena CSS (`${color}18`, un degradado) ese texto podría añadir un url(…).
+const HEX6 = /^#[0-9a-fA-F]{6}$/;
+
+/** El color si es un hex #RRGGBB; si no, el respaldo. Pásale todo color del tema antes de meterlo en una cadena CSS. */
+export const safeHex = <T extends string | null>(color: unknown, fallback: T): string | T =>
+  typeof color === 'string' && HEX6.test(color) ? color : fallback;
+
 /** Un hex con transparencia («rgba(…)»); gris si no es válido. */
 export const withAlpha = (color: string, alpha: number) => `rgba(${(toRgb(color) ?? [107, 114, 128]).join(', ')}, ${alpha})`;
 

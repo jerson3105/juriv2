@@ -23,6 +23,7 @@ import {
 } from '../db/schema.js';
 import { eq, and, asc, desc, sql, inArray, gte, lt, isNull } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
+import { z } from 'zod';
 import { teacherOwnsClassroom } from '../utils/access.js';
 import { affectedRows, applyPointDeltasBulk } from '../utils/points.js';
 import { getIO } from '../utils/notificationEmitter.js';
@@ -35,6 +36,37 @@ export const PARTICLE_TYPES = [
   'stars', 'snow', 'petals', 'sparkles', 'bubbles', 'fireflies', 'smoke', 'embers', 'ash', 'dust',
   'lava', 'hearts', 'confetti', 'rain', 'leaves', 'swords', 'math', 'computing', 'science', 'religion',
 ] as const;
+
+// Colores en hex de 6 dígitos: el cliente deriva de ellos los tonos accesibles.
+export const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+const hexColor = z.string().regex(HEX_COLOR, 'Color inválido (usa #RRGGBB)');
+
+// Tema del aula, de una historia o de un capítulo. Valida lo que envía el profesor o la IA, y también los temas
+// guardados antes de esta validación cuando se copian a la clase (activateStory).
+export const themeConfigSchema = z.object({
+  colors: z.object({
+    primary: hexColor.optional(),
+    secondary: hexColor.optional(),
+    accent: hexColor.optional(),
+    background: hexColor.optional(),
+    sidebar: hexColor.optional(),
+  }).optional(),
+  particles: z.object({
+    type: z.enum(PARTICLE_TYPES).optional(),
+    color: hexColor.optional(),
+    speed: z.enum(['slow', 'medium', 'fast']).optional(),
+    density: z.enum(['low', 'medium', 'high']).optional(),
+  }).optional(),
+  decorations: z.array(z.object({
+    type: z.string().max(30),
+    position: z.string().max(30),
+    asset: z.string().max(30),
+  })).max(3).optional(),
+  banner: z.object({
+    emoji: z.string().max(16).optional(),
+    title: z.string().max(100).optional(),
+  }).optional(),
+}).optional();
 
 type SceneLike = { type: string; triggerConfig: unknown };
 type ChapterLike = {
@@ -248,8 +280,9 @@ class StoryService {
   }
 
   async applyPreset(classroomId: string, presetKey: string) {
+    // Solo claves propias: «constructor» o «__proto__» existen en todo objeto y guardaban un tema vacío.
+    if (!Object.hasOwn(THEME_PRESETS, presetKey)) throw new Error('Preset no encontrado');
     const preset = THEME_PRESETS[presetKey as ThemePresetKey];
-    if (!preset) throw new Error('Preset no encontrado');
 
     const { name, ...themeConfig } = preset;
     await this.updateClassroomTheme(classroomId, themeConfig, 'PRESET');
@@ -429,11 +462,13 @@ class StoryService {
         await this.startChapter(tx, current, classroomId, now);
       }
 
-      // If story has a theme, apply it to classroom
-      if (storyToActivate.themeConfig) {
+      // El tema de la historia pasa a la clase solo si es válido: los guardados antes de validar los colores pueden
+      // traer cualquier texto. Si no lo es, cuenta como historia sin tema. MariaDB devuelve el JSON como texto.
+      const theme = themeConfigSchema.safeParse(parseJson(storyToActivate.themeConfig));
+      if (theme.success && theme.data) {
         await tx.update(classrooms)
           .set({
-            themeConfig: storyToActivate.themeConfig,
+            themeConfig: theme.data,
             themeSource: 'STORY',
             updatedAt: now,
           })

@@ -1,6 +1,7 @@
 import toast from 'react-hot-toast';
 import type { Classroom, ClassroomOverview } from '../../lib/classroomApi';
 import type { MySchool } from '../../lib/schoolApi';
+import { safeHex } from '../../lib/storyTheme';
 
 // Estilos compartidos por los modales de Inicio.
 export const primaryButton = 'inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-primary-600 px-5 text-sm font-bold text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-600 dark:disabled:bg-gray-700 dark:disabled:text-gray-300';
@@ -49,8 +50,8 @@ export const classTheme = (classroom: Classroom) => {
     try { tc = JSON.parse(tc); } catch { tc = null; }
   }
   const theme = tc && typeof tc === 'object' ? tc : null;
-  const primary = theme?.colors?.primary;
-  const secondary = theme?.colors?.secondary;
+  const primary = safeHex(theme?.colors?.primary, null);
+  const secondary = safeHex(theme?.colors?.secondary, null);
   return {
     hasTheme: !!(primary && secondary),
     primary: primary ?? '#2563eb',

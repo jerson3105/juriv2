@@ -1,7 +1,7 @@
 import { useMemo, useEffect, useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import type { ThemeConfig } from '../../lib/storyApi';
-import { contrastRatio } from '../../lib/storyTheme';
+import { contrastRatio, safeHex } from '../../lib/storyTheme';
 
 interface ParticleLayerProps {
   particles: ThemeConfig['particles'];
@@ -73,9 +73,9 @@ export const ParticleLayer = ({ particles, accentColor }: ParticleLayerProps) =>
       : DENSITY_MAP[particles.density || 'low'] || 8;
 
     const duration = SPEED_MAP[particles.speed || 'slow'] || 14;
-    const own = particles.color || '#FFFFFF';
+    const own = safeHex(particles.color, '#FFFFFF');
     const surface = dark ? '#111827' : '#f1f5f9';
-    const color = accentColor && contrastRatio(own, surface) < 1.8 ? accentColor : own;
+    const color = accentColor && contrastRatio(own, surface) < 1.8 ? safeHex(accentColor, own) : own;
     const type = particles.type;
 
     const rand = seeded(hash(`${type}:${count}`));
@@ -98,6 +98,8 @@ export const ParticleLayer = ({ particles, accentColor }: ParticleLayerProps) =>
   }, [particles, isMobile, dark, accentColor]);
 
   if (!particles?.type || !isVisible || reduceMotion || particleElements.length === 0) return null;
+
+  const glow = safeHex(particles.color, '#FFFFFF');
 
   return (
     <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden="true">
@@ -145,7 +147,7 @@ export const ParticleLayer = ({ particles, accentColor }: ParticleLayerProps) =>
           width: '200px',
           height: '200px',
           borderRadius: '50%',
-          background: `radial-gradient(circle, ${particles.color}18, transparent 70%)`,
+          background: `radial-gradient(circle, ${glow}18, transparent 70%)`,
           animation: 'glow-pulse 6s ease-in-out infinite',
           filter: 'blur(40px)',
         }}
@@ -158,7 +160,7 @@ export const ParticleLayer = ({ particles, accentColor }: ParticleLayerProps) =>
           width: '250px',
           height: '250px',
           borderRadius: '50%',
-          background: `radial-gradient(circle, ${particles.color}14, transparent 70%)`,
+          background: `radial-gradient(circle, ${glow}14, transparent 70%)`,
           animation: 'glow-pulse 8s ease-in-out infinite 3s',
           filter: 'blur(50px)',
         }}

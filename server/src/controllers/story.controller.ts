@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { storyService, THEME_PRESETS, PARTICLE_TYPES } from '../services/story.service.js';
+import { storyService, THEME_PRESETS, PARTICLE_TYPES, HEX_COLOR, themeConfigSchema } from '../services/story.service.js';
 import { storyDecisionService } from '../services/storyDecision.service.js';
 import { storyAiService } from '../services/storyAi.service.js';
 import { z } from 'zod';
@@ -9,34 +9,7 @@ import { requireClassroomMember, requireClassroomTeacher } from '../utils/access
 
 // ==================== VALIDATION SCHEMAS ====================
 
-// Colores en hex de 6 dígitos: el cliente deriva de ellos los tonos accesibles.
-const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
-const hexColor = z.string().regex(HEX_COLOR, 'Color inválido (usa #RRGGBB)');
-
-const themeConfigSchema = z.object({
-  colors: z.object({
-    primary: hexColor.optional(),
-    secondary: hexColor.optional(),
-    accent: hexColor.optional(),
-    background: hexColor.optional(),
-    sidebar: hexColor.optional(),
-  }).optional(),
-  particles: z.object({
-    type: z.enum(PARTICLE_TYPES).optional(),
-    color: hexColor.optional(),
-    speed: z.enum(['slow', 'medium', 'fast']).optional(),
-    density: z.enum(['low', 'medium', 'high']).optional(),
-  }).optional(),
-  decorations: z.array(z.object({
-    type: z.string().max(30),
-    position: z.string().max(30),
-    asset: z.string().max(30),
-  })).max(3).optional(),
-  banner: z.object({
-    emoji: z.string().max(16).optional(),
-    title: z.string().max(100).optional(),
-  }).optional(),
-}).optional();
+// themeConfigSchema vive en story.service: el servicio también revalida el tema guardado al activar una historia.
 
 const voteSchema = z.object({ optionId: z.string().uuid() });
 const closeVoteSchema = z.object({ winnerOptionId: z.string().uuid().nullable().optional() });

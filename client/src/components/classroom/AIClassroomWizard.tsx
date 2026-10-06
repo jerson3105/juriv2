@@ -34,6 +34,7 @@ import { behaviorApi } from '../../lib/behaviorApi';
 import { badgeApi } from '../../lib/badgeApi';
 import { shopApi } from '../../lib/shopApi';
 import { storyApi, type ThemeConfig } from '../../lib/storyApi';
+import { safeHex } from '../../lib/storyTheme';
 import toast from 'react-hot-toast';
 
 const SUBJECT_OPTIONS = [
@@ -1560,7 +1561,7 @@ export const AIClassroomWizard = ({ isOpen, onClose, onSuccess }: Props) => {
         <div
           className="overflow-hidden rounded-3xl border border-gray-200 shadow-lg dark:border-gray-700"
           style={{
-            background: `linear-gradient(135deg, ${colors.primary || '#6d28d9'} 0%, ${colors.secondary || '#0f766e'} 100%)`,
+            background: `linear-gradient(135deg, ${safeHex(colors.primary, '#6d28d9')} 0%, ${safeHex(colors.secondary, '#0f766e')} 100%)`,
           }}
         >
           <div className="bg-black/10 p-5 text-white backdrop-blur-sm">
