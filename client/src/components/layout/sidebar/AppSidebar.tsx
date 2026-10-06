@@ -7,6 +7,7 @@ import type { NavItem, NavNode } from './navTypes';
 import { SidebarBand, type BandSky } from './SidebarBand';
 import { NavTree, RailNav } from './SidebarNav';
 import { SidebarUiContext } from './sidebarContext';
+import { ThemeAmbient, ThemeEdge } from './SidebarThemeFx';
 import { useIsDesktop, useMotionBudget } from './useSidebarState';
 
 const EXPANDED = 256;
@@ -38,6 +39,8 @@ interface AppSidebarProps {
   contentRef?: RefObject<HTMLElement>;
   /** El botón ☰: recibe el foco al cerrar el cajón. */
   menuButtonRef?: RefObject<HTMLElement>;
+  /** «Efectos del tema» del alumno (por defecto, encendidos): sin ellos, el menú con tema queda quieto. */
+  effects?: boolean;
 }
 
 /**
@@ -49,6 +52,10 @@ export const AppSidebar = (props: AppSidebarProps) => {
   const { accent, collapsed, mobileOpen, nav, footerNav, speed = 'normal' } = props;
   const isDesktop = useIsDesktop();
   const motion = useMotionBudget();
+  // Efecto del tema en el menú (banda, filo, fondo y marcador): se mueve solo con movimiento completo y efectos
+  // encendidos; proyectando o con «reducir movimiento», quieto.
+  const themeEffect = accent?.effect ?? null;
+  const themeMoving = !!themeEffect && (props.effects ?? true) && motion === 'full';
   const location = useLocation();
   const rail = isDesktop && collapsed;
   const drawer = !isDesktop;
@@ -187,8 +194,8 @@ export const AppSidebar = (props: AppSidebarProps) => {
   };
 
   const ui = useMemo(
-    () => ({ rail, drawer, motion, panelHost, closeDrawer, showTip, hideTip }),
-    [rail, drawer, motion, panelHost, closeDrawer, showTip, hideTip],
+    () => ({ rail, drawer, motion, effect: themeEffect, panelHost, closeDrawer, showTip, hideTip }),
+    [rail, drawer, motion, themeEffect, panelHost, closeDrawer, showTip, hideTip],
   );
   const visible = isDesktop || mobileOpen;
   const footerNodes: NavNode[] = (footerNav ?? []).map((item) => ({ kind: 'link', item }));
@@ -211,11 +218,15 @@ export const AppSidebar = (props: AppSidebarProps) => {
           rail ? 'lg:w-[72px]' : 'lg:w-64'
         } ${mobileOpen ? 'translate-x-0' : '-translate-x-full'} ${labelsIn ? 'sb-label-in' : ''}`}
       >
+        {themeEffect && themeMoving && <div className="pointer-events-none absolute inset-0 -z-10"><ThemeAmbient effect={themeEffect} /></div>}
+        {themeEffect && <ThemeEdge effect={themeEffect} moving={themeMoving} />}
         <SidebarBand
           sky={props.sky}
           tint={props.bandTint}
           twinkle={props.twinkle}
           motion={motion}
+          effect={themeEffect}
+          effectMoving={themeMoving}
           rail={rail}
           logoTo={props.logoTo}
           showClose={drawer}

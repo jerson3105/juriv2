@@ -204,6 +204,7 @@ export const MainLayout = () => {
 
       {!coveredByClassroom && <AppSidebar
         accent={storyAccent}
+        effects={studentEffects}
         bandTint={storyAccent ? mixHex(NIGHT, storyAccent.sidebar, 0.35) : null}
         sky={sky}
         // Hasta 5 estrellas titilan al llegar; en el Inicio no, porque su cielo ya se mueve.

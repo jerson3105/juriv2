@@ -1,4 +1,5 @@
 import { createContext, useContext, type KeyboardEvent } from 'react';
+import type { ThemeEffect } from '../../../lib/themeEffects';
 import type { MotionLevel } from './useSidebarState';
 
 interface SidebarUi {
@@ -7,6 +8,8 @@ interface SidebarUi {
   /** Cajón del celular. */
   drawer: boolean;
   motion: MotionLevel;
+  /** Efecto del tema de la clase (el marcador de la página lleva su símbolo) o null. */
+  effect: ThemeEffect | null;
   /** El propio <aside>: los paneles del cajón (p. ej. «Tus clases») se montan aquí, sobre todo el menú. */
   panelHost: HTMLElement | null;
   closeDrawer: () => void;
@@ -18,6 +21,7 @@ export const SidebarUiContext = createContext<SidebarUi>({
   rail: false,
   drawer: false,
   motion: 'full',
+  effect: null,
   panelHost: null,
   closeDrawer: () => undefined,
   showTip: () => undefined,

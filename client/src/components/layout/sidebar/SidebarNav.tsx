@@ -2,10 +2,17 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronDown } from 'lucide-react';
 import { Sparkle } from './ClassSeal';
+import { ThemeMark } from './SidebarThemeFx';
 import { groupBadge, type NavBadge, type NavGroup, type NavItem, type NavNode, type NavSection } from './navTypes';
 import { useSidebarUi } from './sidebarContext';
 import { SidebarFlyout } from './sidebarUi';
 import { useStarMarker } from '../../../hooks/useStarMarker';
+
+/** «Estás aquí»: el destello dorado o, con tema, su símbolo (sol, luna, foco, hoja…). */
+const NavStar = ({ className }: { className: string }) => {
+  const { effect } = useSidebarUi();
+  return effect ? <ThemeMark effect={effect} className={className} /> : <Sparkle className={className} />;
+};
 
 export const Badge = ({ badge }: { badge: NavBadge }) => {
   switch (badge.kind) {
@@ -76,7 +83,7 @@ export const NavList = ({ items, inGroup = false, speed, onNavigate, labelledBy,
     <div ref={listRef} className="sb-list" data-in-group={inGroup}>
       <span className="sb-guide" aria-hidden="true" />
       <span ref={markerRef} className="sb-marker" data-speed={speed} aria-hidden="true">
-        <Sparkle className="h-full w-full" />
+        <NavStar className="h-full w-full" />
       </span>
       <ul aria-labelledby={labelledBy}>
       {items.map((item, index) => (
@@ -116,7 +123,7 @@ const TopLink = ({ item, onNavigate }: { item: NavItem; onNavigate: () => void }
   >
     <span className="sb-tile relative">
       {item.icon}
-      {item.active && <Sparkle className="sb-tile-star sb-marker-pop" />}
+      {item.active && <NavStar className="sb-tile-star sb-marker-pop" />}
     </span>
     <span className="sb-label min-w-0 flex-1 line-clamp-2">{item.label}</span>
     {item.badge && <Badge badge={item.badge} />}
@@ -237,7 +244,7 @@ const RailLink = ({ item, onNavigate }: { item: NavItem; onNavigate: () => void 
     >
       <span className="sb-tile relative">
         {item.icon}
-        {item.active && <Sparkle className="sb-tile-star sb-marker-pop" />}
+        {item.active && <NavStar className="sb-tile-star sb-marker-pop" />}
         {item.badge && <RailBadge badge={item.badge} />}
       </span>
     </Link>
@@ -271,7 +278,7 @@ const RailGroup = ({ node, speed }: { node: NavGroup | NavSection; speed: 'norma
       >
         <span className="sb-tile relative">
           {node.icon}
-          {hasActive && <Sparkle className="sb-tile-star sb-marker-pop" />}
+          {hasActive && <NavStar className="sb-tile-star sb-marker-pop" />}
           {badge && <RailBadge badge={badge} />}
         </span>
       </button>

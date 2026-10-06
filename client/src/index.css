@@ -498,6 +498,26 @@
 .tfx-breathe { animation: tfx-breathe 5s ease-in-out infinite; }
 .tfx-flicker { animation: tfx-flicker 1.4s ease-in-out infinite; }
 .tfx-blink { animation: tfx-blink 1.1s steps(1) infinite; }
+/* Menú lateral (components/layout/sidebar/SidebarThemeFx): escena de la banda, filo y ambiente del fondo. Las
+   piezas que caen o suben llevan su recorrido (--to), su deriva (--x), su giro (--r) y su opacidad (--o). */
+@keyframes tfx-fall { 0% { opacity: 0; transform: translate3d(0, -12px, 0) rotate(0deg); } 10%, 85% { opacity: var(--o, 0.3); } 100% { opacity: 0; transform: translate3d(var(--x, 0px), var(--to, 105vh), 0) rotate(var(--r, 0deg)); } }
+@keyframes tfx-rise { 0% { opacity: 0; transform: translate3d(0, 0, 0); } 15%, 80% { opacity: var(--o, 0.3); } 100% { opacity: 0; transform: translate3d(var(--x, 0px), calc(var(--to, 105vh) * -1), 0); } }
+@keyframes tfx-drift { from { transform: translate3d(-8%, 0, 0); } to { transform: translate3d(8%, 4%, 0); } }
+@keyframes tfx-sway { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+@keyframes tfx-diag { 0% { opacity: 0; transform: translate3d(-40px, -30px, 0) rotate(28deg); } 3% { opacity: 1; } 20% { opacity: 1; transform: translate3d(300px, 150px, 0) rotate(28deg); } 21%, 100% { opacity: 0; transform: translate3d(300px, 150px, 0) rotate(28deg); } }
+@keyframes tfx-down { 0% { opacity: 0; transform: translateY(-8rem); } 3% { opacity: 1; } 30% { opacity: 1; transform: translateY(105vh); } 31%, 100% { opacity: 0; transform: translateY(105vh); } }
+@keyframes tfx-scroll-down { from { transform: translateY(-50%); } to { transform: translateY(0); } }
+@keyframes tfx-glow { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+@keyframes tfx-twinkle-var { 0%, 100% { opacity: var(--o, 1); } 50% { opacity: calc(var(--o, 1) * 0.2); } }
+.tfx-fall { animation: tfx-fall var(--d, 18s) linear var(--delay, 0s) infinite; }
+.tfx-rise { animation: tfx-rise var(--d, 16s) linear var(--delay, 0s) infinite; }
+.tfx-drift { animation: tfx-drift var(--d, 20s) ease-in-out var(--delay, 0s) infinite alternate; }
+.tfx-sway { animation: tfx-sway 6s ease-in-out infinite; }
+.tfx-diag { animation: tfx-diag 13s ease-in var(--delay, 0s) infinite; }
+.tfx-down { animation: tfx-down 12s ease-in infinite; }
+.tfx-scroll-down { animation: tfx-scroll-down var(--d, 6s) linear infinite; }
+.tfx-glow { animation: tfx-glow 4s ease-in-out infinite; }
+.tfx-twinkle-slow { animation: tfx-twinkle-var var(--d, 3.6s) ease-in-out var(--delay, 0s) infinite; }
 
 /* ── Pantallas de acceso: tema espacial (solo si no se pidió reducir el movimiento) ── */
 @keyframes auth-twinkle { 0%, 100% { opacity: var(--auth-o, 0.45); } 50% { opacity: 1; } }

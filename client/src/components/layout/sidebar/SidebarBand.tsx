@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type R
 import { Link } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { CONSTELLATIONS, type Constellation } from '../../observatorio/descanso/constellations';
+import type { ThemeEffect } from '../../../lib/themeEffects';
+import { ThemeBandScene } from './SidebarThemeFx';
 import type { MotionLevel } from './useSidebarState';
 
 export type BandSky =
@@ -74,6 +76,9 @@ interface SidebarBandProps {
   /** Titileo de 3 ciclos al llegar y al pasar el ratón (alumno y profe fuera de clase). */
   twinkle: boolean;
   motion: MotionLevel;
+  /** Escena del tema de la clase en la banda (o null) y si se mueve. */
+  effect: ThemeEffect | null;
+  effectMoving: boolean;
   rail: boolean;
   logoTo: string;
   showClose: boolean;
@@ -86,7 +91,7 @@ interface SidebarBandProps {
  * La banda del Observatorio: el cielo pintado (obs-sky, sin animación) con el logo, el contexto de la
  * clase y su constelación. Las estrellas aparecen una vez al entrar y nada se mueve en reposo.
  */
-export const SidebarBand = ({ sky, tint, twinkle, motion, rail, logoTo, showClose, closeRef, onClose, children }: SidebarBandProps) => {
+export const SidebarBand = ({ sky, tint, twinkle, motion, effect, effectMoving, rail, logoTo, showClose, closeRef, onClose, children }: SidebarBandProps) => {
   const [run, setRun] = useState(0);
   const lastRun = useRef(0);
   // El titileo de llegada cuenta como la primera vuelta.
@@ -108,6 +113,7 @@ export const SidebarBand = ({ sky, tint, twinkle, motion, rail, logoTo, showClos
         setRun((value) => value + 1);
       }}
     >
+      {effect && !rail && <ThemeBandScene effect={effect} moving={effectMoving} />}
       {!rail && (
         <div className={`pointer-events-none absolute top-1 w-[4.5rem] ${showClose ? 'right-14' : 'right-3'}`} aria-hidden="true">
           {sky.kind === 'class'
