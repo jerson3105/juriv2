@@ -38,6 +38,8 @@ export interface StageSound {
   chime: () => void;
   /** Arpegio que sube y acorde largo: una región conquistada o el cielo despejado. */
   conquer: () => void;
+  /** Caja de música: la primera frase de «Estrellita, ¿dónde estás?» (dominio público), para la bienvenida. */
+  lullaby: () => void;
   close: () => void;
 }
 
@@ -137,6 +139,14 @@ export const createStageSound = (initiallyMuted: boolean): StageSound => {
       [523.25, 659.25, 783.99, 1046.5, 1318.51].forEach((f, i) => tone(f, i * 0.08, 0.5, 0.13));
       [523.25, 783.99, 1046.5].forEach((f) => tone(f, 0.42, 1.3, 0.09));
       tone(261.63, 0.42, 1.3, 0.1, 'triangle');
+    },
+    lullaby: () => {
+      // Do Do Sol Sol La La Sol: campanitas (fundamental larga + octava breve).
+      [523.25, 523.25, 783.99, 783.99, 880, 880, 783.99].forEach((f, i) => {
+        const at = 0.35 + i * 0.5;
+        tone(f, at, i === 6 ? 2 : 1.3, 0.09);
+        tone(f * 2, at, 0.5, 0.025);
+      });
     },
     close: () => {
       if (ctx) void ctx.close();

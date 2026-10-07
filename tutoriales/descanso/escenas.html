@@ -1,0 +1,279 @@
+<!-- titulo: Descanso de Jiro -->
+<!-- base: comun -->
+<!--
+  Tutorial para ESTUDIANTES: «Descanso de Jiro» (cómo se juega). ~47 s, 16:9, para proyectar en clase. Jiro lo cuenta
+  en globos grandes; de fondo, una caja de música con «Estrellita, ¿dónde estás?» (melodía tradicional, dominio
+  público) que se calla cuando hay ruido y en el silencio inicial. Textos reales de la actividad: «Escucho el silencio
+  del aula», «Shh… ¡casi me despierto!», «Guardar en el Cielo de Jiro». Arma: node tutoriales/motor/build.mjs descanso
+-->
+<style>
+/* Portada para estudiantes (no «Tutorial para docentes») */
+.d-logo { position: absolute; left: 150px; top: 120px; height: 92px; }
+.d-eyebrow { position: absolute; left: 154px; top: 300px; color: #fde68a; font: 800 30px/1 'Inter', sans-serif; letter-spacing: .18em; text-transform: uppercase; }
+.d-title { position: absolute; left: 144px; top: 352px; width: 820px; color: #fff; font: 800 116px/1.02 'Poppins', sans-serif; letter-spacing: -.02em; }
+.d-sub { position: absolute; left: 154px; top: 620px; color: #c7d2fe; font: 600 42px/1.3 'Inter', sans-serif; }
+.d-chips { position: absolute; left: 154px; top: 720px; display: flex; gap: 16px; }
+.d-chips span { padding: 12px 22px; border-radius: 999px; background: rgba(255, 255, 255, .1); border: 2px solid rgba(255, 255, 255, .16); color: #e0e7ff; font: 700 26px/1 'Inter', sans-serif; }
+.d-window { position: absolute; left: 1010px; top: 200px; width: 780px; height: 585px; border-radius: 40px; overflow: hidden;
+  box-shadow: 0 0 0 4px rgba(253, 230, 138, .35), 0 0 80px rgba(129, 140, 248, .45), 0 40px 120px rgba(0, 0, 0, .5); }
+.d-window img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; }
+.zz { position: absolute; color: #e0e7ff; font: 800 52px/1 'Poppins', sans-serif; text-shadow: 0 0 18px rgba(199, 210, 254, .85); }
+
+/* Jiro que cuenta (sus poses cambian en el mismo lugar) */
+.jiro-box { position: absolute; left: 40px; top: 330px; width: 560px; height: 740px; }
+.jiro-box img { position: absolute; left: 0; bottom: 0; height: 740px; }
+
+/* Luna */
+.moon-glow { position: absolute; border-radius: 50%; background: radial-gradient(closest-side, rgba(253, 230, 138, .35), rgba(129, 140, 248, .18) 55%, transparent); }
+.moon { position: absolute; }
+
+/* Constelación (Casiopea, con las coordenadas de la actividad) */
+.c-panel { position: absolute; left: 980px; top: 330px; width: 860px; height: 602px; }
+.c-panel line { stroke: #fde68a; stroke-opacity: .7; stroke-width: .7; stroke-linecap: round; stroke-dasharray: 1; }
+.c-off { fill: #c7d2fe; opacity: .55; }
+.c-star { transform-box: fill-box; transform-origin: center; }
+.c-count { position: absolute; left: 980px; top: 352px; width: 860px; text-align: right; color: #fde68a; font: 800 46px/1 'Poppins', sans-serif; }
+.c-pause { position: absolute; left: 1250px; top: 610px; width: 320px; height: 84px; border-radius: 999px; background: rgba(15, 23, 42, .78); border: 3px solid #fda4af;
+  display: flex; align-items: center; justify-content: center; gap: 12px; color: #fff; font: 800 40px/1 'Poppins', sans-serif; }
+.meter-l { position: absolute; left: 990px; top: 958px; color: #e0e7ff; font: 800 32px/1 'Inter', sans-serif; }
+.meter { position: absolute; left: 1130px; top: 960px; width: 640px; height: 30px; border-radius: 999px; background: rgba(255, 255, 255, .12); overflow: hidden; }
+.meter i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; }
+.meter b { position: absolute; left: 50%; top: 0; bottom: 0; width: 4px; background: rgba(255, 255, 255, .7); }
+.loud { position: absolute; font-size: 64px; }
+
+/* Silencio inicial */
+.ear { position: absolute; left: 1210px; top: 360px; width: 420px; height: 420px; border-radius: 50%; background: radial-gradient(closest-side, rgba(129, 140, 248, .35), rgba(15, 23, 42, .6));
+  border: 4px solid rgba(199, 210, 254, .5); display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.ear .icon { font-size: 110px; line-height: 1; }
+.ear .num { margin-top: 8px; color: #fff; font: 800 120px/1 'Poppins', sans-serif; }
+.ring { position: absolute; left: 1210px; top: 360px; width: 420px; height: 420px; border-radius: 50%; border: 4px solid #a5b4fc; }
+.ear-l { position: absolute; left: 920px; top: 830px; width: 1000px; text-align: center; color: #fde68a; font: 800 50px/1 'Poppins', sans-serif; }
+
+/* Nombre y Cielo de Jiro */
+.card { position: absolute; left: 1000px; top: 320px; width: 820px; height: 560px; border-radius: 36px; background: rgba(255, 255, 255, .08); border: 3px solid rgba(253, 230, 138, .45); }
+.card h3 { position: absolute; left: 0; right: 0; top: 250px; margin: 0; text-align: center; color: #fde68a; font: 800 54px/1 'Poppins', sans-serif; }
+.card .mini { position: absolute; left: 0; right: 0; top: 24px; margin: 0 auto; width: 340px; height: 238px; }
+.card .mini line { stroke: #fde68a; stroke-opacity: .7; stroke-width: .7; stroke-linecap: round; }
+.card .lbl { position: absolute; left: 60px; top: 330px; color: #e0e7ff; font: 700 30px/1 'Inter', sans-serif; }
+.card .field { position: absolute; left: 60px; top: 372px; width: 700px; height: 72px; border-radius: 18px; background: rgba(255, 255, 255, .12); border: 3px solid rgba(255, 255, 255, .35);
+  display: flex; align-items: center; padding: 0 24px; color: #fff; font: 700 38px/1 'Poppins', sans-serif; }
+.card .field .ph { color: rgba(199, 210, 254, .7); }
+.card .field span[data-typing="true"]::after { content: '|'; color: #fde68a; margin-left: 2px; }
+.card .save { position: absolute; left: 0; right: 0; top: 466px; margin: 0 auto; width: 560px; height: 70px; border-radius: 18px; background: #fcd34d; color: #451a03;
+  display: flex; align-items: center; justify-content: center; font: 800 34px/1 'Poppins', sans-serif; }
+.album { position: absolute; left: 980px; top: 900px; width: 860px; height: 160px; border-radius: 28px; background: rgba(255, 255, 255, .06); border: 2px solid rgba(255, 255, 255, .14); }
+.album .t { position: absolute; left: 28px; top: 16px; color: #fde68a; font: 800 28px/1 'Poppins', sans-serif; }
+.tile { position: absolute; top: 54px; width: 250px; height: 92px; border-radius: 18px; background: rgba(255, 255, 255, .08); display: flex; align-items: center; gap: 10px; padding: 0 12px; color: #fff; font: 800 22px/1.1 'Inter', sans-serif; }
+.tile svg { width: 96px; height: 68px; flex-shrink: 0; }
+.tile.new { border: 3px solid #fcd34d; }
+#fx { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; pointer-events: none; }
+
+/* Final: respirar */
+.breath { position: absolute; left: 660px; top: 300px; width: 600px; height: 600px; border-radius: 50%; background: radial-gradient(closest-side, rgba(253, 230, 138, .32), rgba(129, 140, 248, .22) 55%, transparent); }
+.f-jiro { position: absolute; left: 773px; top: 360px; height: 560px; }
+.f-big { position: absolute; left: 0; width: 1920px; text-align: center; color: #fde68a; font: 800 120px/1 'Poppins', sans-serif; }
+.f-say { position: absolute; left: 0; width: 1920px; text-align: center; color: #fff; font: 800 64px/1 'Poppins', sans-serif; }
+</style>
+
+<script>
+(() => {
+  const G = Guion.init();
+  const LOGO = 'asset:logo.png?h=200';
+  const END = 47;
+  G.chapter(0, 'Inicio');
+  G.chapter(6, 'Jiro está cansado');
+  G.chapter(13, 'La calma');
+  G.chapter(22.5, 'El ruido');
+  G.chapter(30, 'El silencio');
+  G.chapter(35.5, 'El Cielo de Jiro');
+  G.chapter(41.5, '¡A descansar!');
+
+  G.cielo([]);
+
+  // ---------- Caja de música: «Estrellita, ¿dónde estás?» (se calla con el ruido y en el silencio) ----------
+  const NOTE = { C: 523.25, D: 587.33, E: 659.25, F: 698.46, G: 783.99, A: 880 };
+  const phrase = (t0, notes, beat = 0.75) => {
+    let t = t0;
+    for (const n of notes) { G.cue(t, `n:${NOTE[n[0]]}`); t += beat * (n.length > 1 ? Number(n.slice(1)) : 1); }
+  };
+  const P1 = ['C', 'C', 'G', 'G', 'A', 'A', 'G2'];
+  const P2 = ['F', 'F', 'E', 'E', 'D', 'D', 'C2'];
+  const P3 = ['G', 'G', 'F', 'F', 'E', 'E', 'D2'];
+  phrase(0.8, P1);
+  phrase(6.8, P2);
+  phrase(13.0, P3); // las estrellas 1, 2 y 3 se encienden en F, E y D (14.5, 16, 17.5)
+  phrase(19.0, ['G', 'G', 'F', 'F', 'E']); // …y el ruido la corta
+  phrase(35.6, P1);
+  phrase(41.6, P2, 0.7);
+
+  // =============== 1 · Portada (0–6) ===============
+  G.el('img', 'd-logo', '', G.stage, 'd-logo').src = LOGO;
+  G.el('div', 'd-eyebrow', 'Observatorio de Jiro', G.stage, 'd-eyebrow');
+  G.el('div', 'd-title', 'El Descanso de Jiro', G.stage, 'd-title');
+  G.el('div', 'd-sub', '¿Cómo se juega?', G.stage, 'd-sub');
+  G.el('div', 'd-chips', '<span>🌙 Calma</span><span>⭐ Estrellas</span><span>🤫 Silencio</span>', G.stage, 'd-chips');
+  G.el('div', 'd-window', '<img id="d-cover" src="asset:assets/jiro/actividades/descanso.webp" alt="">', G.stage, 'd-window');
+  G.show('#d-logo', 0.2, 5.8, { from: { y: -20 } });
+  G.show('#d-eyebrow', 0.5, 5.8);
+  G.key('#d-title', [[0.8, { o: 0, s: 0.9, y: 30 }], [1.4, { o: 1, s: 1, y: 0, ease: 'pop' }], [5.5, { o: 1 }], [5.9, { o: 0, y: -20, ease: 'in' }]]);
+  G.show('#d-sub', 1.5, 5.8);
+  G.show('#d-chips', 2.0, 5.8);
+  G.key('#d-window', [[0.9, { o: 0, s: 0.92, x: 120 }], [1.7, { o: 1, s: 1, x: 0, ease: 'back' }], [5.5, { o: 1, s: 1 }], [6.0, { o: 0, s: 0.96, ease: 'in' }]]);
+  G.key('#d-cover', [[0.9, { s: 1 }], [6.0, { s: 1.08, ease: 'linear' }]]);
+  ['Z', 'z', 'z'].forEach((letter, i) => {
+    const z = G.el('div', 'zz', letter, G.stage, `zz${i}`);
+    z.style.left = `${1390 + i * 46}px`;
+    z.style.top = `${420 - i * 40}px`;
+    const t = 2.0 + i * 0.6;
+    G.key(z, [[0, { o: 0 }], [t, { o: 0, y: 20, s: 0.7 }], [t + 0.5, { o: 1, y: 0, s: 1 }], [t + 2.2, { o: 0, y: -90, x: 30, s: 1.2, ease: 'out' }]]);
+  });
+  G.cue(0.3, 'whoosh');
+  G.cue(1.2, 'pop');
+
+  // =============== Jiro (6–41.3): bosteza, duerme, se sobresalta, escucha y celebra ===============
+  const box = G.el('div', 'jiro-box', '', G.stage, 'jiro');
+  // Rutas literales: build.mjs solo cambia 'asset:…' entre comillas simples por la imagen incrustada.
+  const poses = {
+    desp: 'asset:assets/jiro/despertando.webp?h=740',
+    dorm: 'asset:assets/jiro/dormido.webp?h=740',
+    sobre: 'asset:assets/jiro/sobresaltado.webp?h=740',
+    cele: 'asset:assets/jiro/celebrando.webp?h=740',
+  };
+  for (const [id, src] of Object.entries(poses)) G.el('img', '', '', box, `j-${id}`).src = src;
+  G.key('#jiro', [[0, { o: 0, x: -240 }], [6.1, { o: 0, x: -240 }], [6.8, { o: 1, x: 0, ease: 'back' }], [40.9, { o: 1, x: 0 }], [41.4, { o: 0, x: -200, ease: 'in' }]]);
+  G.cue(6.1, 'whoosh');
+  // Una sola pose a la vez: [desde, hasta] de cada una.
+  const poseAt = { desp: [[6, 13], [30, 35.5]], dorm: [[13, 22.6], [26.5, 30]], sobre: [[22.6, 26.5]], cele: [[35.5, 41.5]] };
+  for (const [id, spans] of Object.entries(poseAt)) {
+    const frames = [[0, { o: 0 }]];
+    for (const [a, b] of spans) frames.push([a, { o: 0 }], [a + 0.18, { o: 1 }], [b - 0.18, { o: 1 }], [b, { o: 0 }]);
+    G.key(`#j-${id}`, frames, 'linear');
+  }
+
+  // =============== 2 · Jiro está cansado (6–13) ===============
+  G.burbuja('b1', 6.6, 12.8, '¡Hola! Pasé toda la noche cuidando las estrellas… ¡y estoy muy cansado!');
+  G.el('div', 'moon-glow', '', G.stage, 'moon-glow').style.cssText = 'left:1180px;top:330px;width:560px;height:560px';
+  G.el('div', 'moon', `<svg viewBox="0 0 200 200" width="420" height="420"><defs><radialGradient id="mg" cx="35%" cy="35%" r="80%"><stop offset="0" stop-color="#fffbeb"/><stop offset=".6" stop-color="#fde68a"/><stop offset="1" stop-color="#f59e0b"/></radialGradient></defs><path d="M118 16 A86 86 0 1 0 184 142 A70 70 0 0 1 118 16 Z" fill="url(#mg)"/></svg>`, G.stage, 'moon').style.cssText = 'left:1250px;top:400px';
+  G.key('#moon-glow', [[0, { o: 0 }], [7.2, { o: 0, s: 0.8 }], [8.2, { o: 1, s: 1, ease: 'out' }], [12.6, { o: 1 }], [13.0, { o: 0 }]]);
+  G.key('#moon', [[0, { o: 0 }], [7.2, { o: 0, y: 40 }], [8.2, { o: 1, y: 0, ease: 'out' }], [10.2, { y: -14 }], [12.2, { y: 0 }], [12.6, { o: 1 }], [13.0, { o: 0 }]]);
+
+  // =============== 3 y 4 · La calma dibuja; el ruido pausa (13–30) ===============
+  G.burbuja('b2', 13.3, 22.4, 'Cuando el aula está en calma, me duermo… y en mis sueños dibujo una constelación.');
+  G.burbuja('b3', 22.7, 26.4, '¡Shh! Si hay ruido, casi me despierto… y el dibujo se detiene.');
+  G.burbuja('b4', 26.6, 29.9, 'Cuando vuelve la calma, sigo… ¡y nunca se pierden estrellas!');
+
+  // Casiopea (constellations.ts): estrellas y líneas en el lienzo 100 × 70 de la actividad.
+  const STARS = [{ x: 12, y: 28, r: 2 }, { x: 30, y: 50, r: 2.2 }, { x: 48, y: 34, r: 2.4 }, { x: 66, y: 54, r: 2 }, { x: 86, y: 26, r: 2 }];
+  const LINES = [[0, 1], [1, 2], [2, 3], [3, 4]];
+  const LIT = [14.5, 16.0, 17.5, 27.8, 29.0];
+  const svgStars = (lit) => `${LINES.map(([a, b], i) => `<line data-l="${i}" x1="${STARS[a].x}" y1="${STARS[a].y}" x2="${STARS[b].x}" y2="${STARS[b].y}" pathLength="1"${lit ? ' style="stroke-dashoffset:0"' : ''}/>`).join('')}
+    ${STARS.map((s, i) => `<circle class="c-off" cx="${s.x}" cy="${s.y}" r="${s.r * 0.6}"/><circle id="${lit ? '' : `halo${i}`}" cx="${s.x}" cy="${s.y}" r="${s.r}" fill="#fde68a" opacity="0"/>
+      <g class="c-star" ${lit ? '' : `id="star${i}"`}><circle cx="${s.x}" cy="${s.y}" r="${s.r * 2.4}" fill="#fde68a" opacity=".22"/><circle cx="${s.x}" cy="${s.y}" r="${s.r}" fill="#fef3c7"/></g>`).join('')}`;
+  G.el('div', 'c-panel', `<svg viewBox="0 0 100 70" width="860" height="602">${svgStars(false)}</svg>`, G.stage, 'panel');
+  G.el('div', 'c-count', '', G.stage, 'count');
+  G.el('div', 'c-pause', '⏸ Pausa', G.stage, 'pause');
+  G.el('div', 'meter-l', 'Ruido', G.stage, 'meter-l');
+  G.el('div', 'meter', '<i id="m-ok" style="background:#6ee7b7"></i><i id="m-loud" style="background:#fda4af"></i><b></b>', G.stage, 'meter');
+  ['🔊', '📢', '🔊'].forEach((e, i) => { G.el('div', 'loud', e, G.stage, `loud${i}`).style.cssText = `left:${1320 + i * 170}px;top:${790 + (i % 2) * 40}px`; });
+
+  const panelOn = [[0, { o: 0 }], [13.4, { o: 0, s: 0.95 }], [14.0, { o: 1, s: 1, ease: 'out' }], [22.8, { o: 1 }], [23.1, { o: 0.55 }], [26.5, { o: 0.55 }], [26.8, { o: 1 }], [29.8, { o: 1 }], [30.2, { o: 0 }]];
+  G.key('#panel', panelOn);
+  G.key('#count', [[0, { o: 0 }], [14.2, { o: 0 }], [14.6, { o: 1 }], [29.8, { o: 1 }], [30.2, { o: 0 }]]);
+  G.key('#pause', [[0, { o: 0 }], [23.1, { o: 0, s: 0.8 }], [23.4, { o: 1, s: 1, ease: 'back' }], [26.3, { o: 1 }], [26.6, { o: 0, s: 0.9 }]]);
+  G.key('#meter-l', [[0, { o: 0 }], [21.6, { o: 0 }], [22.0, { o: 1 }], [29.8, { o: 1 }], [30.2, { o: 0 }]]);
+  G.key('#meter', [[0, { o: 0 }], [21.6, { o: 0 }], [22.0, { o: 1 }], [29.8, { o: 1 }], [30.2, { o: 0 }]]);
+  G.key('#m-ok', [[0, { w: 12, o: 1 }], [22.9, { w: 14, o: 1 }], [23.3, { w: 88, o: 0 }], [26.3, { w: 88, o: 0 }], [26.9, { w: 16, o: 1 }], [29, { w: 10, o: 1 }]]);
+  G.key('#m-loud', [[0, { w: 12, o: 0 }], [22.9, { w: 14, o: 0 }], [23.3, { w: 88, o: 1 }], [24.4, { w: 70, o: 1 }], [25.4, { w: 92, o: 1 }], [26.3, { w: 88, o: 1 }], [26.9, { w: 16, o: 0 }]]);
+  [0, 1, 2].forEach((i) => {
+    const t = 22.9 + i * 0.15;
+    G.key(`#loud${i}`, [[0, { o: 0 }], [t, { o: 0, s: 0.6 }], [t + 0.25, { o: 1, s: 1.15, ease: 'back' }], [t + 0.7, { s: 0.95, r: i % 2 ? 8 : -8 }], [t + 1.2, { s: 1.1, r: 0 }], [26.2, { o: 1 }], [26.5, { o: 0 }]]);
+  });
+  G.cue(22.9, 'ruido'); G.cue(24.0, 'ruido'); G.cue(25.1, 'ruido');
+  G.cue(27.8, 'n:1318.51'); G.cue(29.0, 'n:1567.98');
+
+  // Estrellas: «pop» al encenderse; líneas que se trazan; la 4.ª se «carga» con la calma y se congela con el ruido.
+  LIT.forEach((t, i) => G.key(`#star${i}`, [[0, { o: 0, s: 0.2 }], [t, { o: 0, s: 0.2 }], [t + 0.35, { o: 1, s: 1.5, ease: 'out' }], [t + 0.7, { o: 1, s: 1 }]]));
+  const lines = [...G.stage.querySelectorAll('#panel line')];
+  const calm = (t) => { // segundos de calma desde que se encendió la 3.ª (el ruido no cuenta)
+    const until = (a, b) => Math.max(0, Math.min(t, b) - a);
+    return until(17.5, 22.6) + until(26.6, 27.8);
+  };
+  G.every((t) => {
+    LINES.forEach(([, b], i) => {
+      const k = Math.max(0, Math.min(1, (t - LIT[b] - 0.2) / 0.6));
+      lines[i].style.strokeDashoffset = String(1 - k);
+    });
+    const halo = G.$('#halo3');
+    const k = t >= LIT[3] ? 0 : Math.min(1, calm(t) / 6.2);
+    halo.setAttribute('r', String(STARS[3].r * (1 + k * 1.8)));
+    halo.setAttribute('opacity', String((0.08 + 0.2 * k) * (k > 0 ? 1 : 0)));
+    const lit = LIT.filter((s) => s <= t).length;
+    const paused = t >= 23.0 && t < 26.5;
+    G.$('#count').textContent = `${lit} de 5 ⭐${paused ? ' · en pausa' : ''}`;
+  });
+
+  // =============== 5 · El silencio inicial (30–35.5) ===============
+  G.burbuja('b5', 30.3, 35.3, 'Antes de empezar, escucho 10 segundos el silencio del aula. ¡Shh…!');
+  [0, 1, 2].forEach((i) => G.el('div', 'ring', '', G.stage, `ring${i}`));
+  G.el('div', 'ear', '<div class="icon">👂</div><div class="num" id="cd">10</div>', G.stage, 'ear');
+  G.el('div', 'ear-l', 'Escucho el silencio del aula…', G.stage, 'ear-l');
+  G.key('#ear', [[0, { o: 0 }], [30.4, { o: 0, s: 0.85 }], [30.9, { o: 1, s: 1, ease: 'back' }], [35.1, { o: 1 }], [35.5, { o: 0, s: 0.95 }]]);
+  G.key('#ear-l', [[0, { o: 0 }], [31.0, { o: 0 }], [31.4, { o: 1 }], [35.1, { o: 1 }], [35.5, { o: 0 }]]);
+  // Cuenta pareja (10 → 0), un número por cada 0,38 s, con su tic.
+  for (let k = 1; k <= 10; k += 1) G.cue(31.0 + (3.8 * k) / 10, 'click');
+  G.cue(34.9, 'chime');
+  G.every((t) => {
+    G.$('#cd').textContent = String(Math.max(0, Math.min(10, Math.ceil(10 - (t - 31.0) / 0.38 - 1e-6))));
+  });
+  G.every((t) => {
+    for (let i = 0; i < 3; i += 1) {
+      const ring = G.$(`#ring${i}`);
+      const on = t > 30.9 && t < 35.1;
+      const phase = (((t - 30.9) / 1.5) + i / 3) % 1;
+      ring.style.opacity = on ? String((0.6 * (1 - phase)).toFixed(3)) : '0';
+      ring.style.transform = `scale(${(0.9 + 0.7 * phase).toFixed(3)})`;
+    }
+  });
+
+  // =============== 6 · Ustedes le ponen nombre: Cielo de Jiro (35.5–41.5) ===============
+  G.burbuja('b6', 35.7, 41.3, 'Al completarla, ustedes le ponen nombre… ¡y queda para siempre en el Cielo de Jiro!');
+  G.el('div', 'card', `<svg class="mini" viewBox="0 0 100 70">${svgStars(true)}</svg><h3>¡Completamos Casiopea!</h3>
+    <div class="lbl">¿Cómo la llama la clase?</div>
+    <div class="field"><span class="ph" id="nm-ph">Casiopea</span><span id="nm" style="position:absolute;left:24px"></span></div>
+    <div class="save" id="save">✓ Guardar en el Cielo de Jiro</div>`, G.stage, 'card');
+  const mini = (stars, lines) => `<svg viewBox="0 0 100 70">${lines.map(([a, b]) => `<line x1="${stars[a].x}" y1="${stars[a].y}" x2="${stars[b].x}" y2="${stars[b].y}" stroke="#fde68a" stroke-opacity=".7" stroke-width="1.4"/>`).join('')}${stars.map((s) => `<circle cx="${s.x}" cy="${s.y}" r="${s.r * 1.3}" fill="#fef3c7"/>`).join('')}</svg>`;
+  const CRUZ = [{ x: 50, y: 8, r: 2.2 }, { x: 52, y: 62, r: 2.8 }, { x: 30, y: 32, r: 2.4 }, { x: 70, y: 28, r: 1.8 }, { x: 62, y: 44, r: 1.4 }];
+  const ORION = [{ x: 32, y: 16, r: 2.8 }, { x: 66, y: 20, r: 2.2 }, { x: 48, y: 6, r: 1.4 }, { x: 42, y: 42, r: 1.8 }, { x: 50, y: 40, r: 1.8 }, { x: 58, y: 38, r: 1.8 }, { x: 36, y: 64, r: 2 }, { x: 70, y: 62, r: 2.8 }];
+  G.el('div', 'album', `<div class="t">✨ Cielo de Jiro</div>
+    <div class="tile" style="left:24px">${mini(CRUZ, [[0, 1], [2, 3]])}<span>Cruz del Sur</span></div>
+    <div class="tile" style="left:300px">${mini(ORION, [[2, 0], [2, 1], [0, 3], [1, 5], [3, 4], [4, 5], [3, 6], [5, 7]])}<span>Los guerreros</span></div>
+    <div class="tile new" id="tile-new" style="left:576px">${mini(STARS, LINES)}<span>La W de 4.°&nbsp;B</span></div>`, G.stage, 'album');
+  G.el('div', '', '', G.stage, 'fx');
+  G.key('#card', [[0, { o: 0 }], [35.8, { o: 0, s: 0.92, y: 30 }], [36.3, { o: 1, s: 1, y: 0, ease: 'back' }], [39.2, { o: 1, s: 1, x: 0, y: 0 }], [39.9, { o: 0, s: 0.3, x: 70, y: 440, ease: 'in' }]]);
+  G.key('#album', [[0, { o: 0 }], [36.4, { o: 0, y: 30 }], [36.9, { o: 1, y: 0, ease: 'out' }], [41.0, { o: 1 }], [41.4, { o: 0 }]]);
+  G.key('#tile-new', [[0, { o: 0, s: 0.5 }], [39.8, { o: 0, s: 0.5 }], [40.2, { o: 1, s: 1, ease: 'pop' }]]);
+  G.key('#nm-ph', [[0, { o: 1 }], [37.0, { o: 1 }], [37.02, { o: 0 }]]);
+  G.typing('#nm', 37.0, 38.4, 'La W de 4.° B');
+  G.ripple(38.9, G.center('#save'));
+  G.key('#save', [[0, { s: 1 }], [38.85, { s: 1 }], [38.95, { s: 0.95 }], [39.1, { s: 1 }]]);
+  G.cue(39.0, 'chime'); G.cue(40.0, 'levelup');
+  G.confeti('#fx', 40.0, 1.6); // termina antes del momento de calma del final
+
+  // =============== 7 · ¿Listos? Respiren hondo… shhh (41.5–47) ===============
+  G.el('div', 'breath', '', G.stage, 'breath');
+  G.el('img', 'f-jiro', '', G.stage, 'f-jiro').src = 'asset:assets/jiro/dormido.webp?h=740';
+  G.el('div', 'f-big', '¿Listos?', G.stage, 'f-big').style.top = '110px';
+  G.el('div', 'f-say', 'Respiren hondo…', G.stage, 'f-a').style.top = '250px';
+  G.el('div', 'f-say', '…y shhh 🤫', G.stage, 'f-b').style.top = '250px';
+  G.key('#breath', [[0, { o: 0, s: 0.7 }], [41.6, { o: 0, s: 0.7 }], [42.2, { o: 1, s: 0.75 }], [44.2, { o: 1, s: 1.2, ease: 'inOut' }], [46.2, { o: 1, s: 0.8, ease: 'inOut' }], [46.9, { o: 0, s: 0.8 }]]);
+  G.key('#f-jiro', [[0, { o: 0, y: 30 }], [41.7, { o: 0, y: 30 }], [42.3, { o: 1, y: 0, ease: 'out' }], [46.5, { o: 1 }], [47, { o: 0 }]]);
+  G.key('#f-big', [[0, { o: 0, s: 0.8 }], [41.6, { o: 0, s: 0.8 }], [42.0, { o: 1, s: 1, ease: 'back' }], [46.5, { o: 1 }], [47, { o: 0 }]]);
+  G.key('#f-a', [[0, { o: 0 }], [42.4, { o: 0, y: 16 }], [42.8, { o: 1, y: 0 }], [44.2, { o: 1 }], [44.45, { o: 0 }]]);
+  G.key('#f-b', [[0, { o: 0 }], [44.45, { o: 0, y: 16 }], [44.8, { o: 1, y: 0 }], [46.5, { o: 1 }], [47, { o: 0 }]]);
+  G.cue(41.6, 'whoosh');
+  G.cue(44.6, 'shh');
+
+  G.capas();
+  G.arrancar(END);
+})();
+</script>

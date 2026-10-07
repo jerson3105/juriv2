@@ -4,14 +4,16 @@ import { ExternalLink } from 'lucide-react';
 import { HomeModal } from '../home/HomeModal';
 
 /**
- * Tutoriales en video para docentes: páginas estáticas en public/tutoriales (se arman con
- * tutoriales/motor/build.mjs). Apache las sirve como archivos: no pasan por la API.
+ * Tutoriales en video: páginas estáticas en public/tutoriales (se arman con tutoriales/motor/build.mjs). Apache las
+ * sirve como archivos: no pasan por la API. Los de docentes explican una página; los de estudiantes, una actividad
+ * del Observatorio (se proyectan en clase).
  */
 export const TUTORIALS = {
-  comportamientos: { title: 'Comportamientos', src: '/tutoriales/comportamientos.html', minutes: 1 },
-  insignias: { title: 'Insignias', src: '/tutoriales/insignias.html', minutes: 1 },
-  tienda: { title: 'Tienda', src: '/tutoriales/tienda.html', minutes: 1 },
-  coleccionables: { title: 'Coleccionables', src: '/tutoriales/coleccionables.html', minutes: 1 },
+  comportamientos: { title: 'Comportamientos', src: '/tutoriales/comportamientos.html', minutes: 1, audience: 'docentes' },
+  insignias: { title: 'Insignias', src: '/tutoriales/insignias.html', minutes: 1, audience: 'docentes' },
+  tienda: { title: 'Tienda', src: '/tutoriales/tienda.html', minutes: 1, audience: 'docentes' },
+  coleccionables: { title: 'Coleccionables', src: '/tutoriales/coleccionables.html', minutes: 1, audience: 'docentes' },
+  descanso: { title: 'Descanso de Jiro', src: '/tutoriales/descanso.html', minutes: 1, audience: 'estudiantes' },
 } as const;
 
 export type TutorialId = keyof typeof TUTORIALS;
@@ -37,7 +39,7 @@ export const TutorialModal = ({ id, onClose }: { id: TutorialId; onClose: () => 
     <div className="relative z-[150]">
       <HomeModal
         title={`Tutorial: ${tutorial.title}`}
-        subtitle={`${tutorial.minutes} minuto · para docentes`}
+        subtitle={`${tutorial.minutes} minuto · para ${tutorial.audience}`}
         onClose={onClose}
         size="xl"
         footer={(

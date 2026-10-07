@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { Check, Mic, MicOff, Pencil, Play } from 'lucide-react';
+import { Check, Mic, MicOff, Pencil, Play, PlayCircle } from 'lucide-react';
 import { activityApi, activityKeys, type ActivitySession } from '../../../lib/activityApi';
 import type { Classroom, Student } from '../../../lib/classroomApi';
 import { isInitialLevel } from '../../energy/energyHelpers';
+import { ActivityWelcome } from '../ActivityWelcome';
 import { Bitacora } from '../Bitacora';
+import { CATALOG } from '../catalog';
 import { EscenarioObservatorio, stageControlClass } from '../EscenarioObservatorio';
+import { StageTutorial } from '../StageTutorial';
 import { StageEndButton } from '../StageEndButton';
 import type { JiroPose } from '../jiroPoses';
 import { useStageSound } from '../observatorioSound';
@@ -49,6 +52,7 @@ const SENSITIVITY: Record<Sensitivity, { factor: number; label: string }> = {
 };
 const CALIBRATION_SECONDS = 10;
 const TICK_MS = 200;
+const COVER = CATALOG.find((entry) => entry.id === 'descanso')?.cover ?? '/assets/jiro/actividades/descanso.webp';
 
 const formatTime = (ms: number) => {
   const total = Math.floor(ms / 1000);
@@ -101,6 +105,10 @@ export const DescansoActivity = ({ classroom, resume, onExit }: DescansoActivity
   const [customName, setCustomName] = useState('');
   const [calibrationLeft, setCalibrationLeft] = useState(CALIBRATION_SECONDS);
   const [view, setView] = useState({ lit: 0, noisy: false, calmMs: saved?.calmMs ?? 0, paused: false });
+  // Bienvenida de pantalla completa al abrir (no al volver a la Bitácora de una partida terminada) y el tutorial
+  // para estudiantes, que el docente abre cuando quiere.
+  const [welcome, setWelcome] = useState(resume?.status !== 'FINISHED');
+  const [tutorial, setTutorial] = useState(false);
 
   const constellation = constellationById(chosenId) ?? suggested;
   const total = constellation.stars.length;
@@ -305,6 +313,11 @@ export const DescansoActivity = ({ classroom, resume, onExit }: DescansoActivity
       {phase === 'setup' && (
         <div className="flex w-full max-w-5xl flex-col gap-5">
           <h1 className="stage-title text-center font-black">Descanso de Jiro</h1>
+          <div className="flex justify-center">
+            <button type="button" onClick={() => setTutorial(true)} className={`${stageControlClass} border border-white/25 text-base`}>
+              <PlayCircle size={20} aria-hidden="true" /> Cómo se juega · 1 min
+            </button>
+          </div>
           {saved && (
             <p className="text-center text-xl text-indigo-100">
               Llevamos {Math.min(total, Math.floor(saved.calmMs / msPerStar))} de {total} estrellas de {constellation.name}.
@@ -478,6 +491,17 @@ export const DescansoActivity = ({ classroom, resume, onExit }: DescansoActivity
           onExit={onExit}
         />
       )}
+
+      {welcome && (
+        <ActivityWelcome
+          title="El Descanso de Jiro"
+          tagline="Calma… y las estrellas se encienden."
+          cover={COVER}
+          sound={sound}
+          onDone={() => setWelcome(false)}
+        />
+      )}
+      {tutorial && <StageTutorial id="descanso" onClose={() => setTutorial(false)} />}
     </EscenarioObservatorio>
   );
 };

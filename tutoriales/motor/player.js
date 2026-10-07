@@ -58,7 +58,7 @@
   const type = (selector, t0, t1, text) => typers.push({ el: $(selector), t0, t1, text });
   /** Número que cuenta de «from» a «to» entre t0 y t1. */
   const count = (selector, t0, t1, from, to, format = (v) => String(Math.round(v))) => counters.push({ el: $(selector), t0, t1, from, to, format });
-  /** Sonido suave en el segundo t (pop, chime, whoosh, click, coin, levelup, type). */
+  /** Sonido suave en el segundo t (pop, chime, whoosh, click, coin, levelup, type, soft, shh, ruido, o 'n:<Hz>'). */
   const cue = (t, sound) => cues.push({ t, sound });
   /** Capítulo en la barra de progreso. */
   const chapter = (t, title) => chapters.push({ t, title });
@@ -153,11 +153,23 @@
     coin: (ctx) => { tone(ctx, { freq: 987.8, length: 0.08, type: 'triangle', volume: 0.07 }); tone(ctx, { freq: 1318.5, start: 0.07, length: 0.3, type: 'triangle', volume: 0.07 }); },
     levelup: (ctx) => [523.3, 659.3, 784, 1046.5].forEach((freq, i) => tone(ctx, { freq, start: i * 0.09, length: 0.25, type: 'triangle', volume: 0.06 })),
     soft: (ctx) => tone(ctx, { freq: 392, to: 330, length: 0.25, volume: 0.06 }),
+    // «Shhh» suave (ruido agudo que se apaga) y el murmullo de un aula ruidosa.
+    shh: (ctx) => noise(ctx, { length: 1.5, from: 2600, to: 5200, volume: 0.04 }),
+    ruido: (ctx) => noise(ctx, { length: 1.1, from: 380, to: 1300, volume: 0.07 }),
   };
+  /** Nota de caja de música: fundamental larga y dos parciales que se apagan antes (como una campanita). */
+  const bell = (ctx, freq) => {
+    tone(ctx, { freq, length: 1.5, volume: 0.05 });
+    tone(ctx, { freq: freq * 2, length: 0.7, volume: 0.016 });
+    tone(ctx, { freq: freq * 3, length: 0.3, type: 'triangle', volume: 0.006 });
+  };
+  /** cue(t, 'n:659.25') toca una nota de caja de música (Hz); el resto, por nombre. */
   const play = (sound) => {
     if (muted) return;
     const ctx = ensureAudio();
-    if (ctx && SOUNDS[sound]) SOUNDS[sound](ctx);
+    if (!ctx) return;
+    if (sound.startsWith('n:')) bell(ctx, Number(sound.slice(2)));
+    else if (SOUNDS[sound]) SOUNDS[sound](ctx);
   };
 
   // ==================== Reproductor ====================
@@ -266,6 +278,12 @@
     window.tutorial = { renderAt: (s) => { renderAt(s); }, duration, seek };
     seek(0);
     requestAnimationFrame(loop);
+    // ?auto=1: la plataforma lo abre con un clic del docente y arranca solo. Si el navegador aún no deja sonar
+    // el audio, el primer toque dentro del video lo habilita.
+    if (new URLSearchParams(window.location.search).get('auto') === '1') toggle();
+    const wake = () => { if (audio && audio.state === 'suspended') void audio.resume(); };
+    window.addEventListener('pointerdown', wake);
+    window.addEventListener('keydown', wake);
   };
 
   window.Motor = { key, show, type, count, cue, chapter, every, start, renderAt };

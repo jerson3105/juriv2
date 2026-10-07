@@ -2,7 +2,9 @@ import { Suspense, lazy, useEffect, useState, type ReactNode } from 'react';
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { ClipboardCheck, Clock, Gift, Loader2, Moon, Play, Users } from 'lucide-react';
+import { AnimatePresence } from 'framer-motion';
+import { ClipboardCheck, Clock, Gift, Loader2, Moon, Play, PlayCircle, Users } from 'lucide-react';
+import { TutorialModal, type TutorialId } from '../../components/tutorials/TutorialModal';
 import { activityApi, activityKeys, type ActivitySession } from '../../lib/activityApi';
 import type { Classroom, Student } from '../../lib/classroomApi';
 import { expeditionApi, expeditionKeys } from '../../lib/expeditionApi';
@@ -30,32 +32,47 @@ const Loading = () => (
 );
 
 // Tarjeta del catálogo: blanca, con la portada 4:3 de la actividad (o la pose de Jiro sobre el cielo si aún no tiene).
-const ActivityCard = ({ entry, lastPlayedAt, badge, onOpen }: { entry: CatalogEntry; lastPlayedAt?: string | null; badge?: string | null; onOpen: () => void }) => (
-  <button
-    type="button"
-    onClick={onOpen}
-    className="group flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white text-left shadow-sm transition-shadow hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:border-gray-700 dark:bg-gray-800 dark:focus-visible:outline-indigo-300"
-  >
-    <span className="obs-sky relative flex aspect-[4/3] items-end justify-center overflow-hidden" aria-hidden="true">
-      {entry.cover ? (
-        <img src={entry.cover} alt="" loading="lazy" draggable={false} className="absolute inset-0 h-full w-full select-none object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
-      ) : (
-        <img src={JIRO_POSES[entry.pose]} alt="" loading="lazy" className="h-[85%] select-none object-contain transition-transform duration-200 group-hover:-translate-y-1" />
-      )}
-    </span>
-    <span className="flex flex-1 flex-col p-4">
-      <span className="text-lg font-bold text-gray-900 dark:text-white">{entry.name}</span>
-      <span className="mt-1 text-sm text-gray-600 dark:text-gray-300">{entry.description}</span>
-      <span className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 pt-3 text-sm text-gray-600 dark:text-gray-300">
-        <span className="inline-flex items-center gap-1"><Clock size={14} aria-hidden="true" /> {entry.duration}</span>
-        {entry.requirements.map((r) => (
-          <span key={r.label} className="inline-flex items-center gap-1"><span aria-hidden="true">{r.icon}</span> {r.label}</span>
-        ))}
-        {entry.sessionType && <span className="font-semibold text-indigo-700 dark:text-indigo-300">{lastPlayedLabel(lastPlayedAt)}</span>}
-        {badge && <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-900 dark:bg-amber-900/50 dark:text-amber-100">{badge}</span>}
+// Si la actividad tiene tutorial para estudiantes, un botón aparte sobre la portada (no dentro del botón de la tarjeta).
+const ActivityCard = ({ entry, lastPlayedAt, badge, onOpen, onTutorial }: {
+  entry: CatalogEntry; lastPlayedAt?: string | null; badge?: string | null; onOpen: () => void; onTutorial?: () => void;
+}) => (
+  <div className="relative flex">
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group flex flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white text-left shadow-sm transition-shadow hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:border-gray-700 dark:bg-gray-800 dark:focus-visible:outline-indigo-300"
+    >
+      <span className="obs-sky relative flex aspect-[4/3] items-end justify-center overflow-hidden" aria-hidden="true">
+        {entry.cover ? (
+          <img src={entry.cover} alt="" loading="lazy" draggable={false} className="absolute inset-0 h-full w-full select-none object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
+        ) : (
+          <img src={JIRO_POSES[entry.pose]} alt="" loading="lazy" className="h-[85%] select-none object-contain transition-transform duration-200 group-hover:-translate-y-1" />
+        )}
       </span>
-    </span>
-  </button>
+      <span className="flex flex-1 flex-col p-4">
+        <span className="text-lg font-bold text-gray-900 dark:text-white">{entry.name}</span>
+        <span className="mt-1 text-sm text-gray-600 dark:text-gray-300">{entry.description}</span>
+        <span className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 pt-3 text-sm text-gray-600 dark:text-gray-300">
+          <span className="inline-flex items-center gap-1"><Clock size={14} aria-hidden="true" /> {entry.duration}</span>
+          {entry.requirements.map((r) => (
+            <span key={r.label} className="inline-flex items-center gap-1"><span aria-hidden="true">{r.icon}</span> {r.label}</span>
+          ))}
+          {entry.sessionType && <span className="font-semibold text-indigo-700 dark:text-indigo-300">{lastPlayedLabel(lastPlayedAt)}</span>}
+          {badge && <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-900 dark:bg-amber-900/50 dark:text-amber-100">{badge}</span>}
+        </span>
+      </span>
+    </button>
+    {entry.tutorial && onTutorial && (
+      <button
+        type="button"
+        onClick={onTutorial}
+        aria-label={`Ver el tutorial de ${entry.name} (1 minuto)`}
+        className="absolute right-2 top-2 inline-flex min-h-[36px] items-center gap-1.5 rounded-full bg-[#0b1026]/85 px-3 text-xs font-bold text-white ring-1 ring-white/30 hover:bg-[#1e2a5a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
+      >
+        <PlayCircle size={15} aria-hidden="true" /> Tutorial · 1 min
+      </button>
+    )}
+  </div>
 );
 
 const Chip = ({ children }: { children: ReactNode }) => (
@@ -107,6 +124,8 @@ export const ObservatorioPage = () => {
   const lastByType = new Map((overview?.lastByType ?? []).map((r) => [r.activityType, r.lastPlayedAt]));
 
   const [resuming, setResuming] = useState(false);
+  // Tutorial para estudiantes abierto desde una tarjeta (vista previa del docente; se puede proyectar en grande).
+  const [tutorial, setTutorial] = useState<TutorialId | null>(null);
   const open = async (id: ObservatorioActivityId, resume?: ActivitySession | null) => {
     if (id === 'expediciones') return navigate(`/classroom/${classroom.id}/expeditions`);
     if (!resume) return setSelected({ id });
@@ -217,10 +236,14 @@ export const ObservatorioPage = () => {
               lastPlayedAt={entry.sessionType ? lastByType.get(entry.sessionType) : undefined}
               badge={entry.id === 'expediciones' && pendingReviews > 0 ? `${pendingReviews} por revisar` : null}
               onOpen={() => void open(entry.id)}
+              onTutorial={entry.tutorial ? () => setTutorial(entry.tutorial ?? null) : undefined}
             />
           ))}
         </div>
       </section>
+      <AnimatePresence>
+        {tutorial && <TutorialModal key={tutorial} id={tutorial} onClose={() => setTutorial(null)} />}
+      </AnimatePresence>
     </div>
   );
 };

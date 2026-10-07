@@ -1,4 +1,5 @@
 import type { ActivityOverview, ActivitySession, ActivityType } from '../../lib/activityApi';
+import type { TutorialId } from '../tutorials/TutorialModal';
 import type { JiroPose } from './jiroPoses';
 
 export type ObservatorioActivityId = 'descanso' | 'estrellas' | 'conquista' | 'correo' | 'error' | 'pergaminos' | 'expediciones';
@@ -17,6 +18,8 @@ export interface CatalogEntry {
   sessionType?: ActivityType;
   /** Solo se muestra si la clase tiene el mural de Pergaminos activado. */
   onlyWithScrolls?: boolean;
+  /** Tutorial para estudiantes («Cómo se juega»), si la actividad ya tiene uno. */
+  tutorial?: TutorialId;
 }
 
 // Catálogo del Observatorio. Sin etiquetas de "Popular/Nuevo": la tarjeta dice duración,
@@ -31,6 +34,7 @@ export const CATALOG: CatalogEntry[] = [
     duration: '3–10 min',
     requirements: [{ icon: '🎤', label: 'Micrófono o manual' }],
     sessionType: 'DESCANSO',
+    tutorial: 'descanso',
   },
   {
     id: 'estrellas',
