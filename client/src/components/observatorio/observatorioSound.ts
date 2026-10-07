@@ -42,6 +42,8 @@ export interface StageSound {
   lullaby: () => void;
   /** Marimba alegre con palmas (Do Mi Sol Mi La Sol Mi Sol y acorde), para la bienvenida de las actividades con movimiento. */
   marimba: () => void;
+  /** De misterio a aventura: viento y nota grave (la Niebla), redoble, arpegio de metales y acorde (Conquista). */
+  aventura: () => void;
   close: () => void;
 }
 
@@ -159,6 +161,24 @@ export const createStageSound = (initiallyMuted: boolean): StageSound => {
       [523.25, 659.25, 783.99, 659.25, 880, 783.99, 659.25, 783.99].forEach((f, i) => strike(f, 0.3 + i * 0.25));
       [0.55, 1.05, 1.55, 2.05].forEach((at) => air(at, 0.1, 0.12, 1800));
       [523.25, 659.25, 783.99, 1046.5].forEach((f) => strike(f, 2.4, 1.2));
+    },
+    aventura: () => {
+      air(0, 1.6, 0.1, 500);
+      tone(220, 0.05, 1.5, 0.06);
+      tone(330, 0.05, 1.5, 0.02, 'triangle');
+      // Tambor: golpe grave y corto con un poco de parche.
+      [1.3, 1.42, 1.54, 1.66, 1.78].forEach((at) => {
+        tone(110, at, 0.22, 0.14);
+        air(at, 0.07, 0.05, 260);
+      });
+      // Metales: triángulo con un poco de sierra para el brillo.
+      const brass = (f: number, at: number, dur: number, peak: number) => {
+        tone(f, at, dur, peak, 'triangle');
+        tone(f, at, dur * 0.8, peak * 0.12, 'sawtooth');
+      };
+      [392, 523.25, 659.25, 783.99].forEach((f, i) => brass(f, 1.95 + i * 0.15, 0.3, 0.1));
+      [523.25, 659.25, 783.99, 1046.5].forEach((f) => brass(f, 2.55, 1.8, 0.06));
+      tone(110, 2.55, 0.3, 0.16);
     },
     close: () => {
       if (ctx) void ctx.close();

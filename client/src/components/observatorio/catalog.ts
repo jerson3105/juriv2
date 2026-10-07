@@ -55,6 +55,7 @@ export const CATALOG: CatalogEntry[] = [
     cover: '/assets/jiro/actividades/conquista.webp',
     duration: '15–30 min',
     requirements: [{ icon: '🛡️', label: 'Clanes o equipos' }, { icon: '📚', label: 'Banco o IA' }],
+    tutorial: 'conquista',
     sessionType: 'CONQUISTA',
   },
   {

@@ -13,10 +13,21 @@ interface ActivityWelcomeProps {
   /** Portada 4:3 de la actividad (la del catálogo). */
   cover: string;
   sound: StageSound;
-  /** «calma»: caja de música y Z flotando (Descanso). «energia»: marimba con palmas y chispas (actividades con movimiento). */
-  mood?: 'calma' | 'energia';
+  /**
+   * «calma»: caja de música y Z flotando (Descanso). «energia»: marimba con palmas y chispas (actividades con
+   * movimiento). «aventura»: la Niebla se abre sobre la portada con viento y fanfarria (Conquista).
+   */
+  mood?: WelcomeMood;
   onDone: () => void;
 }
+
+type WelcomeMood = 'calma' | 'energia' | 'aventura';
+
+const MOODS: Record<WelcomeMood, { glow: string; play: (sound: StageSound) => void }> = {
+  calma: { glow: 'shadow-[0_0_0_4px_rgba(253,230,138,0.35),0_0_80px_rgba(129,140,248,0.45)]', play: (sound) => sound.lullaby() },
+  energia: { glow: 'shadow-[0_0_0_4px_rgba(253,230,138,0.4),0_0_80px_rgba(251,191,36,0.45)]', play: (sound) => sound.marimba() },
+  aventura: { glow: 'shadow-[0_0_0_4px_rgba(253,230,138,0.35),0_0_80px_rgba(167,139,250,0.5)]', play: (sound) => sound.aventura() },
+};
 
 const SPARKS = [
   { left: '-4%', top: '6%', delay: 900 },
@@ -27,7 +38,7 @@ const SPARKS = [
 
 /**
  * Bienvenida a una actividad del Observatorio (≈6 s, a pantalla completa, al abrirla): cielo, la portada que se
- * acerca despacio, el nombre y una frase, con su música (caja de música o marimba). Cualquier tecla, un clic o «Saltar» la terminan;
+ * acerca despacio, el nombre y una frase, con la música de su ánimo (caja de música, marimba o fanfarria). Cualquier tecla, un clic o «Saltar» la terminan;
  * mientras dura, ninguna tecla llega al escenario. Con «reducir movimiento», quieta y más corta.
  */
 export const ActivityWelcome = ({ title, tagline, cover, sound, mood = 'calma', onDone }: ActivityWelcomeProps) => {
@@ -47,8 +58,7 @@ export const ActivityWelcome = ({ title, tagline, cover, sound, mood = 'calma', 
 
   useEffect(() => {
     sound.unlock();
-    if (mood === 'energia') sound.marimba();
-    else sound.lullaby();
+    MOODS[mood].play(sound);
     const id = window.setTimeout(finish, reduce ? SHOW_MS_STILL : SHOW_MS);
     const onKey = (event: KeyboardEvent) => {
       event.preventDefault();
@@ -74,8 +84,15 @@ export const ActivityWelcome = ({ title, tagline, cover, sound, mood = 'calma', 
         Observatorio de Jiro
       </p>
       <div className="aw-rise relative" style={{ '--aw-delay': '350ms' } as CSSProperties}>
-        <div className={`relative aspect-[4/3] w-[min(90vw,72vh)] overflow-hidden rounded-[clamp(20px,3.5vh,40px)] ${mood === 'energia' ? 'shadow-[0_0_0_4px_rgba(253,230,138,0.4),0_0_80px_rgba(251,191,36,0.45)]' : 'shadow-[0_0_0_4px_rgba(253,230,138,0.35),0_0_80px_rgba(129,140,248,0.45)]'}`}>
+        <div className={`relative aspect-[4/3] w-[min(90vw,72vh)] overflow-hidden rounded-[clamp(20px,3.5vh,40px)] ${MOODS[mood].glow}`}>
           <img src={cover} alt="" draggable={false} className="aw-zoom absolute inset-0 h-full w-full select-none object-cover" />
+          {mood === 'aventura' && (
+            <>
+              <span aria-hidden="true" className="aw-veil absolute inset-0" style={{ '--aw-delay': '900ms' } as CSSProperties} />
+              <span aria-hidden="true" className="aw-cloud aw-fog-l" style={{ '--aw-delay': '900ms' } as CSSProperties} />
+              <span aria-hidden="true" className="aw-cloud aw-fog-r" style={{ '--aw-delay': '900ms' } as CSSProperties} />
+            </>
+          )}
         </div>
         {mood === 'calma' && ['Z', 'z', 'z'].map((letter, i) => (
           <span

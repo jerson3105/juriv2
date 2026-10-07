@@ -533,9 +533,18 @@
 .aw-z { opacity: 0; animation: aw-z 2.4s ease-out var(--aw-delay, 0ms) 2 both; }
 @keyframes aw-spark { 0% { opacity: 0; transform: scale(0.3) rotate(0deg); } 30% { opacity: 1; transform: scale(1.15) rotate(40deg); } 100% { opacity: 0; transform: translateY(-30px) scale(0.6) rotate(90deg); } }
 .aw-spark { opacity: 0; animation: aw-spark 1.6s ease-out var(--aw-delay, 0ms) 3 both; }
+/* Niebla que se abre hacia los lados y deja ver la portada (Conquista). */
+@keyframes aw-fog-l { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(-75%); } }
+@keyframes aw-fog-r { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(75%); } }
+@keyframes aw-clear { from { opacity: 1; } to { opacity: 0; } }
+.aw-cloud { position: absolute; top: -12%; width: 78%; height: 124%; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(226, 232, 240, 0.95), rgba(196, 181, 253, 0.82) 50%, rgba(124, 108, 196, 0.45) 78%, rgba(76, 29, 149, 0)); }
+.aw-fog-l { left: -16%; animation: aw-fog-l 2.2s cubic-bezier(0.65, 0, 0.35, 1) var(--aw-delay, 0ms) both; }
+.aw-fog-r { right: -16%; animation: aw-fog-r 2.2s cubic-bezier(0.65, 0, 0.35, 1) var(--aw-delay, 0ms) both; }
+.aw-veil { background: rgba(148, 130, 210, 0.6); animation: aw-clear 1.6s ease-in-out var(--aw-delay, 0ms) both; }
 @media (prefers-reduced-motion: reduce) {
   .aw-rise { animation-delay: 0s !important; }
-  .aw-z, .aw-spark { display: none; }
+  .aw-z, .aw-spark, .aw-cloud, .aw-veil { display: none; }
 }
 
 /* ── Pantallas de acceso: tema espacial (solo si no se pidió reducir el movimiento) ── */

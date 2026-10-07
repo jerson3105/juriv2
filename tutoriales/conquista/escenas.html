@@ -1,0 +1,367 @@
+<!-- titulo: Conquista del Cielo -->
+<!-- base: comun -->
+<!--
+  Tutorial para ESTUDIANTES: «Conquista del Cielo» (cómo se juega). ~50 s, 16:9, para proyectar en clase. Jiro lo
+  cuenta en globos grandes; la música va de misterio (notas graves y viento mientras la Niebla tapa el cielo) a una
+  marcha de aventura con tambores cuando juegan los equipos, y termina en fanfarria con el cielo despejado.
+  Textos reales: «¡Cada equipo levanta su tarjeta!», «Región de Orión», cartas de Jiro (Lluvia de estrellas, Alianza
+  estelar, Telescopio de Jiro) y el dato de Orión de constellations.ts. Arma: node tutoriales/motor/build.mjs conquista
+-->
+<style>
+/* Portada para estudiantes */
+.d-logo { position: absolute; left: 150px; top: 120px; height: 92px; }
+.d-eyebrow { position: absolute; left: 154px; top: 300px; color: #fde68a; font: 800 30px/1 'Inter', sans-serif; letter-spacing: .18em; text-transform: uppercase; }
+.d-title { position: absolute; left: 144px; top: 352px; width: 840px; color: #fff; font: 800 112px/1.02 'Poppins', sans-serif; letter-spacing: -.02em; }
+.d-sub { position: absolute; left: 154px; top: 620px; color: #c7d2fe; font: 600 42px/1.3 'Inter', sans-serif; }
+.d-chips { position: absolute; left: 154px; top: 720px; display: flex; gap: 16px; }
+.d-chips span { padding: 12px 22px; border-radius: 999px; background: rgba(255, 255, 255, .1); border: 2px solid rgba(255, 255, 255, .16); color: #e0e7ff; font: 700 26px/1 'Inter', sans-serif; }
+.d-window { position: absolute; left: 1010px; top: 200px; width: 780px; height: 585px; border-radius: 40px; overflow: hidden;
+  box-shadow: 0 0 0 4px rgba(253, 230, 138, .35), 0 0 80px rgba(167, 139, 250, .5), 0 40px 120px rgba(0, 0, 0, .5); }
+.d-window > img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; }
+
+/* Niebla: nubes violeta-grisáceas (la de afuera se abre; la de adentro deriva despacio) */
+.pf { position: absolute; }
+.pf i { position: absolute; left: 0; top: 0; right: 0; bottom: 0; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(226, 232, 240, .8), rgba(196, 181, 253, .6) 50%, rgba(124, 108, 196, .3) 78%, rgba(76, 29, 149, 0)); }
+.veil { position: absolute; left: 0; top: 0; width: 100%; height: 100%; background: linear-gradient(180deg, rgba(148, 130, 210, .5), rgba(91, 75, 160, .62)); }
+
+/* Jiro que cuenta */
+.jiro-box { position: absolute; left: 40px; top: 330px; width: 560px; height: 740px; }
+.jiro-box img { position: absolute; left: 0; bottom: 0; height: 740px; }
+
+/* Estrellas de las constelaciones (lienzo 100 × 70 de constellations.ts) */
+.off circle { fill: #c7d2fe; opacity: .5; }
+.draw line { stroke: #fde68a; stroke-opacity: .85; stroke-width: .7; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; }
+.c-star { transform-box: fill-box; transform-origin: center; }
+
+/* 2 · Mapa de regiones bajo la Niebla */
+.tile6 { position: absolute; width: 350px; height: 300px; border-radius: 26px; overflow: hidden; background: linear-gradient(160deg, #1e1b4b, #0b1026); border: 2px solid rgba(255, 255, 255, .18); }
+.tile6 svg { position: absolute; left: 25px; top: 40px; width: 300px; height: 210px; }
+.tile6 .nm { position: absolute; left: 16px; top: 14px; z-index: 2; padding: 8px 16px; border-radius: 999px; background: rgba(11, 16, 38, .78); color: #fff; font: 800 26px/1 'Poppins', sans-serif; }
+
+/* 3 · Una pregunta para todos los equipos */
+.q { position: absolute; left: 760px; top: 320px; width: 1080px; height: 290px; border-radius: 30px; background: rgba(255, 255, 255, .08); border: 3px solid rgba(255, 255, 255, .22); }
+.q small { position: absolute; left: 30px; top: 24px; color: #c7d2fe; font: 800 22px/1 'Inter', sans-serif; letter-spacing: .14em; text-transform: uppercase; }
+.q b { position: absolute; left: 30px; top: 62px; color: #fff; font: 800 48px/1.1 'Poppins', sans-serif; }
+.opt { position: absolute; width: 500px; height: 64px; border-radius: 18px; background: rgba(255, 255, 255, .1); display: flex; align-items: center; gap: 16px; padding: 0 16px; color: #fff; font: 700 32px/1 'Inter', sans-serif; }
+.opt em { width: 44px; height: 44px; border-radius: 50%; background: #fff; color: #1e1b4b; display: grid; place-items: center; font: 800 26px/1 'Poppins', sans-serif; font-style: normal; }
+.opt-ring { position: absolute; left: 1304px; top: 454px; width: 512px; height: 76px; border-radius: 22px; border: 6px solid #fde68a; }
+.rc { position: absolute; top: 650px; width: 130px; height: 220px; }
+.tcard { position: absolute; left: 0; top: 0; width: 130px; height: 140px; border-radius: 18px; background: #fff; border: 6px solid; display: grid; place-items: center; font: 800 96px/1 'Poppins', sans-serif; }
+.stick { position: absolute; left: 61px; top: 140px; width: 8px; height: 80px; border-radius: 4px; background: #a16207; }
+.grp { position: absolute; top: 835px; width: 250px; height: 120px; }
+.tname { position: absolute; top: 965px; width: 250px; height: 48px; border-radius: 999px; border: 3px solid; display: flex; align-items: center; justify-content: center; color: #fff; font: 800 26px/1 'Poppins', sans-serif; }
+.okb { position: absolute; top: 632px; width: 60px; height: 60px; border-radius: 50%; background: #34d399; color: #064e3b; display: grid; place-items: center; font: 800 36px/1 'Poppins', sans-serif; box-shadow: 0 0 0 4px #0b1026; }
+.talk { position: absolute; top: 750px; font-size: 54px; }
+.fly { position: absolute; top: 620px; width: 60px; height: 60px; }
+
+/* 4 y 5 · La región de Orión: estrellas de los equipos, Niebla que se va, conquista */
+.big { position: absolute; left: 760px; top: 330px; width: 1080px; height: 620px; border-radius: 36px; overflow: hidden; background: linear-gradient(160deg, #1e1b4b, #0b1026); border: 3px solid rgba(255, 255, 255, .2); }
+.big svg { position: absolute; left: 110px; top: -4px; width: 860px; height: 602px; }
+.big .fog { position: absolute; left: 0; top: 0; width: 1080px; height: 620px; }
+.big .tint { position: absolute; left: 0; top: 0; width: 1080px; height: 620px; background: rgba(249, 115, 22, .2); }
+.rchip, .cnt { position: absolute; top: 20px; z-index: 3; padding: 10px 20px; border-radius: 999px; background: rgba(11, 16, 38, .8); font: 800 32px/1 'Poppins', sans-serif; }
+.rchip { left: 22px; color: #fff; }
+.cnt { right: 22px; color: #fde68a; }
+.tbar { position: absolute; left: 40px; right: 40px; bottom: 22px; height: 30px; z-index: 3; border-radius: 999px; background: rgba(255, 255, 255, .14); overflow: hidden; display: flex; }
+.tbar i { height: 100%; width: 0; }
+.pennant { position: absolute; left: 1590px; top: 322px; width: 210px; height: 270px; transform-origin: 50% 0; clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 84%, 0 100%);
+  background: linear-gradient(180deg, #fb923c, #ea580c); display: flex; flex-direction: column; align-items: center; padding-top: 26px; color: #fff; }
+.pennant b { font-size: 70px; line-height: 1; }
+.pennant span { margin-top: 10px; font: 800 34px/1 'Poppins', sans-serif; }
+.pennant em { margin-top: 12px; padding: 6px 16px; border-radius: 999px; background: #fff; color: #c2410c; font: 800 30px/1 'Poppins', sans-serif; font-style: normal; }
+.fact { position: absolute; left: 760px; top: 966px; width: 1080px; padding: 14px 24px; border-radius: 22px; background: rgba(253, 230, 138, .14); border: 2px solid rgba(253, 230, 138, .5); color: #fef3c7; font: 700 31px/1.25 'Inter', sans-serif; }
+
+/* 6 · Cartas de Jiro */
+.cback, .cface { position: absolute; top: 400px; width: 320px; height: 420px; border-radius: 30px; }
+.cback { background: linear-gradient(150deg, #6d28d9, #312e81); border: 4px solid rgba(253, 230, 138, .6); display: grid; place-items: center; color: #fde68a; font: 800 140px/1 'Poppins', sans-serif; }
+.cface { background: linear-gradient(170deg, #fffbeb, #fde68a); border: 4px solid #f59e0b; display: flex; flex-direction: column; align-items: center; padding: 36px 22px 0; text-align: center; color: #451a03; }
+.cface .e { font-size: 110px; line-height: 1; }
+.cface h4 { margin: 22px 0 0; font: 800 36px/1.1 'Poppins', sans-serif; }
+.cface p { margin: 16px 0 0; color: #78350f; font: 600 27px/1.25 'Inter', sans-serif; }
+
+/* 7 · Cielo despejado */
+.mini { position: absolute; width: 330px; height: 231px; }
+.mini svg { width: 330px; height: 231px; }
+.f-big { position: absolute; left: 0; width: 1920px; text-align: center; color: #fde68a; font: 800 120px/1 'Poppins', sans-serif; }
+.f-say { position: absolute; left: 0; width: 1920px; text-align: center; color: #fff; font: 800 72px/1 'Poppins', sans-serif; }
+.f-note { position: absolute; left: 0; top: 1000px; width: 1920px; text-align: center; color: #c7d2fe; font: 700 34px/1 'Inter', sans-serif; }
+.f-jiro { position: absolute; left: 773px; top: 380px; height: 600px; }
+#fx { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; pointer-events: none; }
+</style>
+
+<script>
+(() => {
+  const G = Guion.init();
+  const LOGO = 'asset:logo.png?h=200';
+  const END = 50;
+  G.chapter(0, 'Inicio');
+  G.chapter(6, 'La Niebla');
+  G.chapter(13, 'Todos responden');
+  G.chapter(21.5, 'Estrellas del equipo');
+  G.chapter(28.5, 'Región conquistada');
+  G.chapter(35.5, 'Cartas de Jiro');
+  G.chapter(42, '¡A despejar!');
+
+  G.cielo([]);
+
+  // ---------- Música: de misterio (Niebla) a marcha de aventura y fanfarria ----------
+  [[0.2, 220], [3.4, 174.61], [6.6, 196], [9.8, 164.81]].forEach(([t, f]) => G.cue(t, `p:${f}`));
+  [0.4, 4.0, 7.6, 11.0].forEach((t) => G.cue(t, 'viento'));
+  [[1.8, 1318.51], [5.0, 1174.66], [8.2, 987.77], [11.4, 1046.5]].forEach(([t, f]) => G.cue(t, `n:${f}`));
+  [12.4, 12.55, 12.7, 12.85].forEach((t) => G.cue(t, 'tambor'));
+  const BEAT = 0.6;
+  for (let t = 13.0, k = 0; t < 41.6; t += BEAT, k += 1) {
+    if (k % 4 === 0 || k % 4 === 2) G.cue(t, 'tambor');
+    else if (k % 4 === 3) G.cue(t, 'clap');
+  }
+  const F = { G4: 392, A4: 440, B4: 493.88, C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46, G5: 783.99, C6: 1046.5 };
+  const MARCH = [['G4', 0.5], ['C5', 0.5], ['C5', 1], ['D5', 0.5], ['E5', 0.5], ['C5', 1], ['E5', 0.5], ['F5', 0.5], ['G5', 1], ['E5', 0.5], ['D5', 0.5], ['C5', 1],
+    ['A4', 0.5], ['C5', 0.5], ['D5', 1], ['G4', 0.5], ['B4', 0.5], ['D5', 1], ['C5', 1], ['E5', 1], ['C5', 2]];
+  const march = (t0) => {
+    let t = t0;
+    for (const [n, b] of MARCH) { G.cue(t, `f:${F[n]}:${(b * BEAT * 0.9).toFixed(2)}`); t += b * BEAT; }
+  };
+  march(13.0);
+  march(27.0);
+  [41.4, 41.5, 41.6, 41.7, 41.8, 41.9].forEach((t) => G.cue(t, 'tambor'));
+  ['G4', 'C5', 'E5', 'G5'].forEach((n, i) => G.cue(42.1 + i * 0.15, `f:${F[n]}:0.3`));
+  ['C5', 'E5', 'G5', 'C6'].forEach((n) => G.cue(42.7, `f:${F[n]}:1.8`));
+  G.cue(42.7, 'tambor');
+  [['E5', 0, 0.28], ['D5', 0.3, 0.28], ['E5', 0.6, 0.28], ['G5', 0.9, 1.1]].forEach(([n, d, l]) => G.cue(44.9 + d, `f:${F[n]}:${l}`));
+  ['C5', 'E5', 'G5', 'C6'].forEach((n) => G.cue(46.4, `f:${F[n]}:2.4`));
+  G.cue(46.4, 'tambor');
+
+  // ---------- Constelaciones de las regiones (constellations.ts) ----------
+  const SKY = {
+    orion: { name: 'Orión', stars: [[32, 16, 2.8], [66, 20, 2.2], [48, 6, 1.4], [42, 42, 1.8], [50, 40, 1.8], [58, 38, 1.8], [36, 64, 2], [70, 62, 2.8]],
+      lines: [[2, 0], [2, 1], [0, 3], [1, 5], [3, 4], [4, 5], [3, 6], [5, 7]] },
+    casiopea: { name: 'Casiopea', stars: [[12, 28, 2], [30, 50, 2.2], [48, 34, 2.4], [66, 54, 2], [86, 26, 2]], lines: [[0, 1], [1, 2], [2, 3], [3, 4]] },
+    lira: { name: 'Lira', stars: [[50, 8, 3], [40, 32, 1.8], [60, 34, 1.8], [38, 60, 1.8], [58, 62, 1.8]], lines: [[0, 1], [0, 2], [1, 2], [1, 3], [2, 4], [3, 4]] },
+    cisne: { name: 'Cisne', stars: [[50, 6, 2.8], [50, 34, 2.2], [18, 28, 1.8], [82, 42, 1.8], [50, 50, 1.6], [50, 66, 2]], lines: [[0, 1], [2, 1], [1, 3], [1, 4], [4, 5]] },
+    leo: { name: 'Leo', stars: [[64, 58, 2.6], [64, 44, 1.8], [70, 32, 2], [80, 26, 1.6], [76, 14, 1.6], [52, 34, 1.8], [30, 36, 1.8], [14, 48, 2.2], [32, 52, 1.6]],
+      lines: [[0, 1], [1, 2], [2, 3], [3, 4], [1, 5], [5, 6], [6, 7], [7, 8], [8, 0]] },
+    escorpio: { name: 'Escorpio', stars: [[18, 8, 1.6], [26, 16, 1.8], [20, 28, 1.6], [38, 30, 2.8], [44, 40, 1.6], [48, 52, 1.6], [56, 60, 1.6], [68, 64, 1.8], [80, 58, 1.8], [84, 46, 2]],
+      lines: [[0, 1], [2, 1], [1, 3], [3, 4], [4, 5], [5, 6], [6, 7], [7, 8], [8, 9]] },
+  };
+  const REGIONS = ['orion', 'casiopea', 'lira', 'cisne', 'leo', 'escorpio'];
+  const offStars = (c) => `<g class="off">${c.stars.map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r * 0.7}"/>`).join('')}</g>`;
+  const drawLines = (c, prefix) => `<g class="draw">${c.lines.map(([a, b], i) => `<line id="${prefix}${i}" x1="${c.stars[a][0]}" y1="${c.stars[a][1]}" x2="${c.stars[b][0]}" y2="${c.stars[b][1]}" pathLength="1"/>`).join('')}</g>`;
+  const goldStars = (c) => c.stars.map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r * 2.4}" fill="#fde68a" opacity=".22"/><circle cx="${x}" cy="${y}" r="${r}" fill="#fef3c7"/>`).join('');
+  // Nubes de Niebla: [x, y, ancho, alto] dentro de su caja.
+  const puffs = (list, prefix) => list.map(([x, y, w, h], i) => `<div class="pf" id="${prefix}${i}" style="left:${x}px;top:${y}px;width:${w}px;height:${h}px"><i></i></div>`).join('');
+  // Línea que se traza entre t0 y t0 + dur.
+  const lineAt = (selector, t0, dur = 0.35) => G.every((t) => {
+    const k = Math.max(0, Math.min(1, (t - t0) / dur));
+    G.$(selector).style.strokeDashoffset = String(1 - k);
+  });
+
+  // =============== 1 · Portada (0–6) ===============
+  G.el('img', 'd-logo', '', G.stage, 'd-logo').src = LOGO;
+  G.el('div', 'd-eyebrow', 'Observatorio de Jiro', G.stage, 'd-eyebrow');
+  G.el('div', 'd-title', 'Conquista del Cielo', G.stage, 'd-title');
+  G.el('div', 'd-sub', '¿Cómo se juega?', G.stage, 'd-sub');
+  G.el('div', 'd-chips', '<span>🛡️ Equipos</span><span>☁️ Niebla</span><span>⭐ Regiones</span>', G.stage, 'd-chips');
+  G.el('div', 'd-window', `<img id="d-cover" src="asset:assets/jiro/actividades/conquista.webp" alt="">${puffs([[-200, -80, 700, 760], [300, -100, 720, 780]], 'wf')}`, G.stage, 'd-window');
+  G.show('#d-logo', 0.2, 5.8, { from: { y: -20 } });
+  G.show('#d-eyebrow', 0.5, 5.8);
+  G.key('#d-title', [[0.8, { o: 0, s: 0.9, y: 30 }], [1.4, { o: 1, s: 1, y: 0, ease: 'pop' }], [5.5, { o: 1 }], [5.9, { o: 0, y: -20, ease: 'in' }]]);
+  G.show('#d-sub', 1.5, 5.8);
+  G.show('#d-chips', 2.0, 5.8);
+  G.key('#d-window', [[0.9, { o: 0, s: 0.92, x: 120 }], [1.7, { o: 1, s: 1, x: 0, ease: 'back' }], [5.5, { o: 1, s: 1 }], [6.0, { o: 0, s: 0.96, ease: 'in' }]]);
+  G.key('#d-cover', [[0.9, { s: 1 }], [6.0, { s: 1.08, ease: 'linear' }]]);
+  // La Niebla se abre hacia los lados y deja ver la portada.
+  G.key('#wf0', [[0, { o: 1, x: 0 }], [2.0, { o: 1, x: 0 }], [3.6, { o: 0, x: -560, ease: 'inOut' }]]);
+  G.key('#wf1', [[0, { o: 1, x: 0 }], [2.0, { o: 1, x: 0 }], [3.6, { o: 0, x: 560, ease: 'inOut' }]]);
+  G.cue(0.3, 'whoosh');
+  G.cue(1.2, 'pop');
+  G.cue(2.0, 'whoosh');
+
+  // =============== Jiro (6–41): señalando, celebrando y emocionado ===============
+  const box = G.el('div', 'jiro-box', '', G.stage, 'jiro');
+  // Rutas literales: build.mjs solo cambia 'asset:…' entre comillas simples por la imagen incrustada.
+  const poses = {
+    sena: 'asset:assets/jiro/senalando.webp?h=740',
+    cele: 'asset:assets/jiro/celebrando.webp?h=740',
+    emoc: 'asset:assets/jiro/emocionado.webp?h=740',
+  };
+  for (const [id, src] of Object.entries(poses)) G.el('img', '', '', box, `j-${id}`).src = src;
+  G.key('#jiro', [[0, { o: 0, x: -240 }], [6.1, { o: 0, x: -240 }], [6.8, { o: 1, x: 0, ease: 'back' }], [40.6, { o: 1, x: 0 }], [41.1, { o: 0, x: -200, ease: 'in' }]]);
+  G.cue(6.1, 'whoosh');
+  const poseAt = { sena: [[6, 28.5]], cele: [[28.5, 35.4]], emoc: [[35.4, 41.1]] };
+  for (const [id, spans] of Object.entries(poseAt)) {
+    const frames = [[0, { o: 0 }]];
+    for (const [a, b] of spans) frames.push([a, { o: 0 }], [a + 0.18, { o: 1 }], [b - 0.18, { o: 1 }], [b, { o: 0 }]);
+    G.key(`#j-${id}`, frames, 'linear');
+  }
+
+  // =============== 2 · La Niebla tapó el cielo (6–13) ===============
+  G.burbuja('b1', 6.6, 12.8, '¡La Niebla tapó el cielo! Hay regiones escondidas… ¡vamos a despejarlas en equipo!');
+  const TILE_FOG = [[-70, -50, 270, 230], [120, -70, 300, 250], [-50, 110, 290, 250], [150, 100, 290, 260], [60, 30, 250, 230]];
+  REGIONS.forEach((id, i) => {
+    const c = SKY[id];
+    const tile = G.el('div', 'tile6', `<svg viewBox="0 0 100 70">${offStars(c)}</svg><div class="veil"></div>${puffs(TILE_FOG, `tf${i}-`)}<div class="nm">${c.name}</div>`, G.stage, `tile${i}`);
+    tile.style.left = `${720 + (i % 3) * 380}px`;
+    tile.style.top = `${340 + Math.floor(i / 3) * 330}px`;
+    const t = 7.0 + i * 0.15;
+    G.key(tile, [[0, { o: 0, s: 0.85 }], [t, { o: 0, s: 0.85 }], [t + 0.45, { o: 1, s: 1, ease: 'back' }], [12.6, { o: 1 }], [13.0, { o: 0, s: 0.95 }]]);
+  });
+
+  // =============== 3 · Una pregunta, todos los equipos a la vez (13–21.5) ===============
+  G.burbuja('b2', 13.3, 18.2, 'Una pregunta para todos: cada equipo conversa… ¡y levanta su tarjeta!');
+  G.burbuja('b3', 18.4, 21.2, '¡Era B! Su profe marca a los equipos que acertaron.');
+  const OPTS = [['A', 'Venus'], ['B', 'Mercurio'], ['C', 'Marte'], ['D', 'Tierra']];
+  G.el('div', 'q', `<small>Región de Orión · Pregunta para todos</small><b>¿Qué planeta está más cerca del Sol?</b>
+    ${OPTS.map(([l, txt], i) => `<div class="opt" style="left:${i % 2 ? 550 : 30}px;top:${i < 2 ? 140 : 214}px"><em>${l}</em>${txt}</div>`).join('')}`, G.stage, 'q');
+  G.el('div', 'opt-ring', '', G.stage, 'opt-ring');
+  G.key('#q', [[0, { o: 0 }], [13.2, { o: 0, y: 24 }], [13.7, { o: 1, y: 0, ease: 'out' }], [21.0, { o: 1 }], [21.4, { o: 0 }]]);
+  G.key('#opt-ring', [[0, { o: 0 }], [18.5, { o: 0, s: 1.06 }], [18.8, { o: 1, s: 1, ease: 'out' }], [21.0, { o: 1 }], [21.4, { o: 0 }]]);
+  G.cue(18.5, 'chime');
+
+  const TEAMS = [
+    { name: 'Cometas', emblem: '☄️', color: '#f97316', answer: 'B' },
+    { name: 'Nebulosas', emblem: '🌌', color: '#8b5cf6', answer: 'B' },
+    { name: 'Meteoros', emblem: '🌠', color: '#0ea5e9', answer: 'C' },
+    { name: 'Auroras', emblem: '🌈', color: '#10b981', answer: 'B' },
+  ];
+  const SKINS = ['#f1c27d', '#8d5524', '#e0ac69', '#c68642', '#ffdbac', '#d4a373'];
+  const HAIR = ['#3b2414', '#1f1309', '#5b3a1a', '#2b1a0e'];
+  const group = (color, seed) => `<svg viewBox="0 0 250 120" width="250" height="120">${[45, 125, 205].map((x, k) => {
+    const skin = SKINS[(seed + k) % SKINS.length];
+    const hair = HAIR[(seed + k) % HAIR.length];
+    return `<path d="M${x - 36} 120 Q${x - 36} 84 ${x} 84 Q${x + 36} 84 ${x + 36} 120 Z" fill="${color}"/><circle cx="${x}" cy="52" r="27" fill="${skin}"/>
+      <path d="M${x - 27} 46 Q${x} 14 ${x + 27} 46 Q${x + 14} 34 ${x} 34 Q${x - 14} 34 ${x - 27} 46 Z" fill="${hair}"/>
+      <circle cx="${x - 9}" cy="55" r="3" fill="#1f2937"/><circle cx="${x + 9}" cy="55" r="3" fill="#1f2937"/>
+      <path d="M${x - 8} 64 Q${x} 70 ${x + 8} 64" stroke="#1f2937" stroke-width="3" fill="none" stroke-linecap="round"/>`;
+  }).join('')}</svg>`;
+  const STAR = 'M50 6 L62 37 L95 38 L69 58 L78 91 L50 72 L22 91 L31 58 L5 38 L38 37 Z';
+  const teamOn = [[0, { o: 0 }], [13.4, { o: 0, y: 30 }], [13.9, { o: 1, y: 0, ease: 'out' }], [21.0, { o: 1 }], [21.4, { o: 0 }]];
+  TEAMS.forEach((team, i) => {
+    const bx = 760 + i * 275;
+    const raise = G.el('div', 'rc', `<div class="stick"></div><div class="tcard" style="border-color:${team.color};color:${team.color}">${team.answer}</div>`, G.stage, `rc${i}`);
+    raise.style.left = `${bx + 60}px`;
+    const grp = G.el('div', 'grp', group(team.color, i * 2), G.stage, `grp${i}`);
+    grp.style.left = `${bx}px`;
+    const chip = G.el('div', 'tname', `${team.emblem} ${team.name}`, G.stage, `tn${i}`);
+    chip.style.cssText += `left:${bx}px;border-color:${team.color};background:${team.color}40`;
+    G.el('div', 'talk', '💬', G.stage, `talk${i}`).style.left = `${bx + 150}px`;
+    G.key(grp, teamOn);
+    G.key(chip, teamOn);
+    const tk = 14.0 + i * 0.12;
+    G.key(`#talk${i}`, [[0, { o: 0, s: 0.5 }], [tk, { o: 0, s: 0.5 }], [tk + 0.3, { o: 1, s: 1, ease: 'back' }], [tk + 0.7, { y: -8 }], [tk + 1.0, { y: 0 }], [15.0, { o: 1 }], [15.2, { o: 0 }]]);
+    // La tarjeta sube; se mece un poco; la que falló queda tenue tras revelar.
+    const t = 15.3 + i * 0.3;
+    const frames = [[0, { o: 0, y: 140 }], [t, { o: 0, y: 140 }], [t + 0.45, { o: 1, y: 0, ease: 'back' }], [t + 0.9, { r: -4 }], [t + 1.3, { r: 3 }], [t + 1.7, { r: 0 }]];
+    if (team.answer !== 'B') frames.push([18.6, { o: 1 }], [18.9, { o: 0.45 }]);
+    frames.push([21.0, {}], [21.4, { o: 0 }]);
+    G.key(raise, frames);
+    G.cue(t, 'pop');
+    if (team.answer !== 'B') return;
+    // Acierto: su profe lo marca (✓) y sale una estrella del color del equipo.
+    const tm = 19.0 + [0, 0.4, 0, 0.8][i];
+    G.ripple(tm, { x: bx + 125, y: 989 });
+    G.el('div', 'okb', '✓', G.stage, `ok${i}`).style.left = `${bx + 170}px`;
+    G.key(`#ok${i}`, [[0, { o: 0, s: 0.4 }], [tm, { o: 0, s: 0.4 }], [tm + 0.3, { o: 1, s: 1, ease: 'pop' }], [21.0, { o: 1 }], [21.4, { o: 0 }]]);
+    G.el('div', 'fly', `<svg viewBox="0 0 100 100" width="60" height="60"><path d="${STAR}" fill="${team.color}" stroke="#fde68a" stroke-width="4" stroke-linejoin="round"/></svg>`, G.stage, `fly${i}`).style.left = `${bx + 95}px`;
+    G.key(`#fly${i}`, [[0, { o: 0, s: 0.5 }], [tm + 0.3, { o: 0, s: 0.5, y: 0 }], [tm + 0.6, { o: 1, s: 1.2, y: -40, ease: 'out' }], [tm + 1.5, { o: 0, s: 0.8, y: -230, r: 120, ease: 'in' }]]);
+    G.cue(tm + 0.3, 'n:1318.51');
+  });
+
+  // =============== 4 · Cada acierto, una estrella; la Niebla se aleja (21.5–28.5) ===============
+  G.burbuja('b4', 21.7, 28.3, 'Cada acierto enciende una estrella del color de su equipo… ¡y la Niebla se aleja!');
+  const ORION = SKY.orion;
+  // Orden en que se encienden (las Tres Marías primero) y el equipo de cada estrella.
+  const LIT = [[22.6, 3, 0], [22.9, 4, 1], [23.2, 5, 3], [24.6, 0, 0], [24.9, 1, 2], [26.3, 2, 0], [26.6, 6, 1], [26.9, 7, 3]];
+  const litStars = LIT.map(([, s, team]) => {
+    const [x, y, r] = ORION.stars[s];
+    const color = TEAMS[team].color;
+    return `<g class="c-star" id="ls${s}"><circle cx="${x}" cy="${y}" r="${r * 2.6}" fill="${color}" opacity=".35"/><circle cx="${x}" cy="${y}" r="${r * 1.15}" fill="${color}"/><circle cx="${x}" cy="${y}" r="${r * 0.5}" fill="#fff"/></g>`;
+  }).join('');
+  const BIG_FOG = [[-140, -120, 520, 420], [260, -160, 560, 440], [640, -120, 560, 420], [-160, 220, 560, 460], [240, 200, 600, 480], [620, 220, 600, 460], [380, 40, 480, 400], [80, 380, 520, 360], [700, 400, 520, 340]];
+  G.el('div', 'big', `<svg viewBox="0 0 100 70">${offStars(ORION)}</svg><div class="veil" id="bigveil"></div><div class="fog" id="bigfog">${puffs(BIG_FOG, 'bf')}</div><div class="tint" id="tint"></div>
+    <svg viewBox="0 0 100 70">${drawLines(ORION, 'ol')}${litStars}</svg>
+    <div class="rchip">Región de Orión</div><div class="cnt" id="cnt"></div><div class="tbar">${TEAMS.map((t, i) => `<i id="seg${i}" style="background:${t.color}"></i>`).join('')}</div>`, G.stage, 'big');
+  G.key('#big', [[0, { o: 0, s: 0.5 }], [21.5, { o: 0, s: 0.5 }], [22.2, { o: 1, s: 1, ease: 'out' }], [35.0, { o: 1, s: 1 }], [35.4, { o: 0 }]]);
+  LIT.forEach(([t, s], k) => {
+    G.key(`#ls${s}`, [[0, { o: 0, s: 0.2 }], [t, { o: 0, s: 0.2 }], [t + 0.3, { o: 1, s: 1.6, ease: 'out' }], [t + 0.6, { o: 1, s: 1 }]]);
+    G.cue(t, `n:${[1046.5, 1174.66, 1318.51, 1567.98, 1760, 2093, 2349.32, 2637.02][k]}`);
+  });
+  const thinning = [[0, { o: 1 }], [23.3, { o: 1 }], [23.7, { o: 0.78 }], [25.0, { o: 0.78 }], [25.4, { o: 0.58 }], [27.0, { o: 0.58 }], [27.4, { o: 0.38 }]];
+  G.key('#bigfog', thinning);
+  G.key('#bigveil', [...thinning, [28.6, { o: 0.38 }], [29.4, { o: 0 }]]);
+  G.every((t) => {
+    const lit = LIT.filter(([at]) => at <= t);
+    G.$('#cnt').textContent = `${lit.length}/8 ⭐`;
+    TEAMS.forEach((_, i) => { G.$(`#seg${i}`).style.width = `${(lit.filter(([, , team]) => team === i).length / 8) * 100}%`; });
+  });
+
+  // =============== 5 · Región despejada y conquistada (28.5–35.5) ===============
+  G.burbuja('b5', 28.7, 32.2, '¡Región despejada! El equipo con más estrellas la conquista: +3.');
+  G.burbuja('b6', 32.4, 35.2, '¡Y nadie pierde estrellas! Todas ayudan a despejar el cielo.');
+  // La Niebla se abre hacia los lados.
+  BIG_FOG.forEach(([x, , w], i) => {
+    const dir = x + w / 2 < 540 ? -1 : 1;
+    G.key(`#bf${i}`, [[0, { o: 1, x: 0 }], [28.6, { o: 1, x: 0 }], [29.8, { o: 0, x: dir * 440, ease: 'inOut' }]]);
+  });
+  G.cue(28.6, 'viento');
+  G.cue(28.6, 'whoosh');
+  ORION.lines.forEach((_, i) => lineAt(`#ol${i}`, 29.2 + i * 0.15));
+  G.key('#tint', [[0, { o: 0 }], [30.2, { o: 0 }], [30.7, { o: 1 }]]);
+  G.key('#cnt', [[0, { o: 1 }], [30.0, { o: 1 }], [30.3, { o: 0 }]]);
+  G.el('div', 'pennant', '<b>☄️</b><span>Cometas</span><em>+3</em>', G.stage, 'pennant');
+  G.key('#pennant', [[0, { o: 0, y: -200 }], [30.4, { o: 0, y: -200 }], [30.9, { o: 1, y: 0, ease: 'back' }], [31.4, { r: 3 }], [31.9, { r: -2 }], [32.3, { r: 0 }], [35.0, { o: 1 }], [35.4, { o: 0 }]]);
+  G.cue(30.4, 'tambor');
+  G.cue(30.5, 'levelup');
+  G.el('div', 'fact', '⭐ Orión: las tres estrellas de su cinturón son las «Tres Marías».', G.stage, 'fact');
+  G.key('#fact', [[0, { o: 0 }], [31.3, { o: 0, y: 16 }], [31.7, { o: 1, y: 0, ease: 'out' }], [35.0, { o: 1 }], [35.4, { o: 0 }]]);
+
+  // =============== 6 · Cartas de Jiro (35.5–42) ===============
+  G.burbuja('b7', 35.7, 41.6, 'Cada 3 rondas saco una carta sorpresa… ¡y puede cambiarlo todo!');
+  const CARDS = [
+    ['🌠', 'Lluvia de estrellas', 'Cada acierto vale doble.'],
+    ['🤝', 'Alianza estelar', 'Dos equipos responden juntos.'],
+    ['🔭', 'Telescopio de Jiro', 'Jiro descarta una opción incorrecta.'],
+  ];
+  CARDS.forEach(([emoji, title, text], i) => {
+    const x = 800 + i * 360;
+    G.el('div', 'cback', '?', G.stage, `cb${i}`).style.left = `${x}px`;
+    G.el('div', 'cface', `<div class="e">${emoji}</div><h4>${title}</h4><p>${text}</p>`, G.stage, `cf${i}`).style.left = `${x}px`;
+    const tin = 36.0 + i * 0.15;
+    const tf = 37.4 + i * 1.1;
+    G.key(`#cb${i}`, [[0, { o: 0, y: 40 }], [tin, { o: 0, y: 40 }], [tin + 0.4, { o: 1, y: 0, ease: 'back' }], [tf, { o: 1, s: 1, r: 0 }], [tf + 0.25, { o: 0, s: 0.85, r: 8, ease: 'in' }]]);
+    G.key(`#cf${i}`, [[0, { o: 0, s: 0.85, r: -8 }], [tf + 0.15, { o: 0, s: 0.85, r: -8 }], [tf + 0.5, { o: 1, s: 1, r: 0, ease: 'back' }], [41.6, { o: 1 }], [42.0, { o: 0 }]]);
+    G.cue(tf, 'whoosh');
+    G.cue(tf + 0.2, 'chime');
+  });
+
+  // =============== 7 · ¿Listos, equipos? Cielo despejado (42–50) ===============
+  REGIONS.forEach((id, i) => {
+    const c = SKY[id];
+    const mini = G.el('div', 'mini', `<svg viewBox="0 0 100 70">${drawLines(c, `m${i}-`)}${goldStars(c)}</svg>`, G.stage, `mini${i}`);
+    mini.style.left = `${i < 3 ? 90 : 1500}px`;
+    mini.style.top = `${340 + (i % 3) * 240}px`;
+    const t = 42.3 + i * 0.35;
+    G.key(mini, [[0, { o: 0, s: 0.6 }], [t, { o: 0, s: 0.6 }], [t + 0.4, { o: 1, s: 1, ease: 'back' }], [49.5, { o: 1 }], [50, { o: 0 }]]);
+    c.lines.forEach((_, k) => lineAt(`#m${i}-${k}`, t + 0.3 + k * 0.08, 0.3));
+  });
+  G.el('img', 'f-jiro', '', G.stage, 'f-jiro').src = 'asset:assets/jiro/celebrando.webp?h=740';
+  G.el('div', 'f-big', '¿Listos, equipos?', G.stage, 'f-big').style.top = '110px';
+  G.el('div', 'f-say', '¡Despejemos el cielo en equipo!', G.stage, 'f-say').style.top = '250px';
+  G.el('div', 'f-note', '💾 La partida se guarda para seguir otro día', G.stage, 'f-note');
+  G.el('div', '', '', G.stage, 'fx');
+  G.key('#f-jiro', [[0, { o: 0, y: 60 }], [41.9, { o: 0, y: 60 }], [42.4, { o: 1, y: 0, ease: 'back' }], [43.0, { y: -36, ease: 'out' }], [43.5, { y: 0, ease: 'in' }], [49.5, { o: 1 }], [50, { o: 0 }]]);
+  G.key('#f-big', [[0, { o: 0, s: 0.8 }], [41.9, { o: 0, s: 0.8 }], [42.3, { o: 1, s: 1, ease: 'back' }], [49.5, { o: 1 }], [50, { o: 0 }]]);
+  G.key('#f-say', [[0, { o: 0, s: 0.8 }], [42.9, { o: 0, s: 0.8 }], [43.3, { o: 1, s: 1, ease: 'pop' }], [49.5, { o: 1 }], [50, { o: 0 }]]);
+  G.key('#f-note', [[0, { o: 0 }], [44.6, { o: 0, y: 14 }], [45.0, { o: 1, y: 0, ease: 'out' }], [49.5, { o: 1 }], [50, { o: 0 }]]);
+  G.confeti('#fx', 42.6, 3);
+
+  // La Niebla nunca está quieta: cada nube deriva despacio dentro de su lugar.
+  const drifters = [...G.stage.querySelectorAll('.pf i')];
+  G.every((t) => drifters.forEach((d, k) => {
+    d.style.transform = `translate(${(Math.sin(t * 0.45 + k * 1.7) * 16).toFixed(1)}px, ${(Math.cos(t * 0.33 + k) * 7).toFixed(1)}px)`;
+  }));
+
+  G.capas();
+  G.arrancar(END);
+})();
+</script>

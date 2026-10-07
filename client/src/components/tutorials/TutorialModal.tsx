@@ -15,6 +15,7 @@ export const TUTORIALS = {
   coleccionables: { title: 'Coleccionables', src: '/tutoriales/coleccionables.html', minutes: 1, audience: 'docentes' },
   descanso: { title: 'Descanso de Jiro', src: '/tutoriales/descanso.html', minutes: 1, audience: 'estudiantes' },
   estrellas: { title: 'Estrellas en Movimiento', src: '/tutoriales/estrellas.html', minutes: 1, audience: 'estudiantes' },
+  conquista: { title: 'Conquista del Cielo', src: '/tutoriales/conquista.html', minutes: 1, audience: 'estudiantes' },
 } as const;
 
 export type TutorialId = keyof typeof TUTORIALS;

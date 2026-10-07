@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueries } from '@tanstack/react-query';
 import { useReducedMotion } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { Check, Moon, RefreshCw, Shuffle } from 'lucide-react';
+import { Check, Moon, PlayCircle, RefreshCw, Shuffle } from 'lucide-react';
 import type { ActivitySession } from '../../../lib/activityApi';
 import type { Classroom, Student } from '../../../lib/classroomApi';
 import { CLAN_EMBLEMS } from '../../../lib/clanApi';
@@ -10,14 +10,17 @@ import { questionBankApi, type Question } from '../../../lib/questionBankApi';
 import { shuffle } from '../../classroom/utilities/helpers';
 import { useTeacherBanks } from '../../classroom/utilities/questionDraw';
 import { studentNames } from '../../students/profile/profileHelpers';
+import { ActivityWelcome } from '../ActivityWelcome';
 import { AiQuestionGenerator } from '../AiQuestionGenerator';
 import { UnreviewedNotice } from '../UnreviewedNotice';
 import { Bitacora } from '../Bitacora';
+import { CATALOG } from '../catalog';
 import { EscenarioObservatorio, stageControlClass } from '../EscenarioObservatorio';
 import type { JiroPose } from '../jiroPoses';
 import { useStageSound } from '../observatorioSound';
 import { answerOf, questionSizeClass } from '../questionHelpers';
 import { StageEndButton } from '../StageEndButton';
+import { StageTutorial } from '../StageTutorial';
 import { useActivitySession } from '../useActivitySession';
 import { useTodayPresence } from '../usePresence';
 import { RegionMiniSky, SkyMap, TeamScoreboard } from './ConquistaBoard';
@@ -65,6 +68,7 @@ interface ConquistaResult extends Record<string, unknown> {
 }
 
 const MAX_BANKS = 6;
+const COVER = CATALOG.find((entry) => entry.id === 'conquista')?.cover ?? '/assets/jiro/actividades/conquista.webp';
 const CORNERS = [
   { letter: 'A', className: 'border-rose-300 bg-rose-400/20' },
   { letter: 'B', className: 'border-sky-300 bg-sky-400/20' },
@@ -122,6 +126,10 @@ export const ConquistaActivity = ({ classroom, resume, initialBankId, expedition
   const presence = useTodayPresence(classroom.id, students);
 
   const [phase, setPhase] = useState<'setup' | 'playing' | 'bitacora'>(resume?.status === 'FINISHED' ? 'bitacora' : saved ? 'playing' : 'setup');
+  // Bienvenida de pantalla completa al abrir (no al volver a la Bitácora de una partida terminada) y el tutorial
+  // para estudiantes a demanda («Cómo se juega»).
+  const [welcome, setWelcome] = useState(resume?.status !== 'FINISHED');
+  const [tutorial, setTutorial] = useState(false);
   const [state, setState] = useState<ConquistaState | null>(saved);
   const [step, setStep] = useState<Step>(saved?.round ? saved.round.phase : 'map');
   const [marked, setMarked] = useState<string[]>([]);
@@ -422,6 +430,11 @@ export const ConquistaActivity = ({ classroom, resume, initialBankId, expedition
       {phase === 'setup' && (
         <div className="flex w-full max-w-5xl flex-col gap-5">
           <h1 className="stage-title text-center font-black">Conquista del Cielo</h1>
+          <div className="flex justify-center">
+            <button type="button" onClick={() => setTutorial(true)} className={`${stageControlClass} border border-white/25 text-base`}>
+              <PlayCircle size={20} aria-hidden="true" /> Cómo se juega · 1 min
+            </button>
+          </div>
 
           <fieldset>
             <legend className="mb-2 text-lg font-bold text-indigo-100">Equipos ({presentIds.length} presentes)</legend>
@@ -674,6 +687,17 @@ export const ConquistaActivity = ({ classroom, resume, initialBankId, expedition
           onExit={onExit}
         />
       )}
+      {welcome && (
+        <ActivityWelcome
+          title="Conquista del Cielo"
+          tagline="¡Despejemos el cielo en equipo!"
+          cover={COVER}
+          sound={sound}
+          mood="aventura"
+          onDone={() => setWelcome(false)}
+        />
+      )}
+      {tutorial && <StageTutorial id="conquista" onClose={() => setTutorial(false)} />}
     </EscenarioObservatorio>
   );
 };
