@@ -40,6 +40,8 @@ export interface StageSound {
   conquer: () => void;
   /** Caja de música: la primera frase de «Estrellita, ¿dónde estás?» (dominio público), para la bienvenida. */
   lullaby: () => void;
+  /** Marimba alegre con palmas (Do Mi Sol Mi La Sol Mi Sol y acorde), para la bienvenida de las actividades con movimiento. */
+  marimba: () => void;
   close: () => void;
 }
 
@@ -147,6 +149,16 @@ export const createStageSound = (initiallyMuted: boolean): StageSound => {
         tone(f, at, i === 6 ? 2 : 1.3, 0.09);
         tone(f * 2, at, 0.5, 0.025);
       });
+    },
+    marimba: () => {
+      // Golpe corto (fundamental) + parcial brillante (×4), como una tecla de madera; palmas en el contratiempo.
+      const strike = (f: number, at: number, dur = 0.4) => {
+        tone(f, at, dur, 0.12);
+        tone(f * 4, at, 0.07, 0.02);
+      };
+      [523.25, 659.25, 783.99, 659.25, 880, 783.99, 659.25, 783.99].forEach((f, i) => strike(f, 0.3 + i * 0.25));
+      [0.55, 1.05, 1.55, 2.05].forEach((at) => air(at, 0.1, 0.12, 1800));
+      [523.25, 659.25, 783.99, 1046.5].forEach((f) => strike(f, 2.4, 1.2));
     },
     close: () => {
       if (ctx) void ctx.close();

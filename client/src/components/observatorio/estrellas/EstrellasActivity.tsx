@@ -1,18 +1,21 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { Check, Star, Undo2, X } from 'lucide-react';
+import { Check, PlayCircle, Star, Undo2, X } from 'lucide-react';
 import type { ActivitySession } from '../../../lib/activityApi';
 import type { Classroom, Student } from '../../../lib/classroomApi';
 import { questionBankApi } from '../../../lib/questionBankApi';
 import { shuffle } from '../../classroom/utilities/helpers';
 import { useTeacherBanks } from '../../classroom/utilities/questionDraw';
+import { ActivityWelcome } from '../ActivityWelcome';
 import { AiQuestionGenerator } from '../AiQuestionGenerator';
 import { UnreviewedNotice } from '../UnreviewedNotice';
 import { Bitacora } from '../Bitacora';
+import { CATALOG } from '../catalog';
 import { EscenarioObservatorio, stageControlClass } from '../EscenarioObservatorio';
 import { answerOf, questionSizeClass } from '../questionHelpers';
 import { StageEndButton } from '../StageEndButton';
+import { StageTutorial } from '../StageTutorial';
 import { applyMark, maxStars, suggestedXpFor } from '../streak';
 import type { JiroPose } from '../jiroPoses';
 import { useStageSound } from '../observatorioSound';
@@ -68,6 +71,8 @@ interface EstrellasActivityProps {
  * agachados = falso; o a una esquina A–D). Nadie queda eliminado: el docente marca si la
  * mayoría acertó y cada acierto enciende una estrella; las rachas dan estrellas extra.
  */
+const COVER = CATALOG.find((entry) => entry.id === 'estrellas')?.cover ?? '/assets/jiro/actividades/estrellas.webp';
+
 export const EstrellasActivity = ({ classroom, resume, initialBankId, expeditionStopId, onExit }: EstrellasActivityProps) => {
   const students = useMemo(() => classroom.students ?? [], [classroom.students]);
   const soundState = useStageSound();
@@ -76,6 +81,10 @@ export const EstrellasActivity = ({ classroom, resume, initialBankId, expedition
   const saved = (resume?.status === 'ACTIVE' ? resume.state : null) as EstrellasState | null;
 
   const [phase, setPhase] = useState<'setup' | 'playing' | 'bitacora'>(resume?.status === 'FINISHED' ? 'bitacora' : saved ? 'playing' : 'setup');
+  // Bienvenida de pantalla completa al abrir (no al volver a la Bitácora de una partida terminada) y el tutorial
+  // para estudiantes a demanda («Cómo se juega»).
+  const [welcome, setWelcome] = useState(resume?.status !== 'FINISHED');
+  const [tutorial, setTutorial] = useState(false);
   const [variant, setVariant] = useState<Variant>(saved?.variant ?? 'vf');
   const [source, setSource] = useState<Source | null>(saved?.source ?? null);
   const [rounds, setRounds] = useState(saved?.rounds ?? 10);
@@ -236,6 +245,11 @@ export const EstrellasActivity = ({ classroom, resume, initialBankId, expedition
       {phase === 'setup' && (
         <div className="flex w-full max-w-5xl flex-col gap-5">
           <h1 className="stage-title text-center font-black">Estrellas en Movimiento</h1>
+          <div className="flex justify-center">
+            <button type="button" onClick={() => setTutorial(true)} className={`${stageControlClass} border border-white/25 text-base`}>
+              <PlayCircle size={20} aria-hidden="true" /> Cómo se juega · 1 min
+            </button>
+          </div>
           <div className="flex flex-wrap gap-6">
             <fieldset>
               <legend className="mb-2 text-lg font-bold text-indigo-100">Cómo se juega</legend>
@@ -392,6 +406,17 @@ export const EstrellasActivity = ({ classroom, resume, initialBankId, expedition
           onExit={onExit}
         />
       )}
+      {welcome && (
+        <ActivityWelcome
+          title="Estrellas en Movimiento"
+          tagline="¡Muévanse y enciendan estrellas!"
+          cover={COVER}
+          sound={sound}
+          mood="energia"
+          onDone={() => setWelcome(false)}
+        />
+      )}
+      {tutorial && <StageTutorial id="estrellas" onClose={() => setTutorial(false)} />}
     </EscenarioObservatorio>
   );
 };

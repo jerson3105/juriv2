@@ -58,7 +58,7 @@
   const type = (selector, t0, t1, text) => typers.push({ el: $(selector), t0, t1, text });
   /** Número que cuenta de «from» a «to» entre t0 y t1. */
   const count = (selector, t0, t1, from, to, format = (v) => String(Math.round(v))) => counters.push({ el: $(selector), t0, t1, from, to, format });
-  /** Sonido suave en el segundo t (pop, chime, whoosh, click, coin, levelup, type, soft, shh, ruido, o 'n:<Hz>'). */
+  /** Sonido suave en el segundo t (pop, chime, whoosh, click, coin, levelup, type, soft, shh, ruido, clap, 'n:<Hz>', 'm:<Hz>'). */
   const cue = (t, sound) => cues.push({ t, sound });
   /** Capítulo en la barra de progreso. */
   const chapter = (t, title) => chapters.push({ t, title });
@@ -156,6 +156,14 @@
     // «Shhh» suave (ruido agudo que se apaga) y el murmullo de un aula ruidosa.
     shh: (ctx) => noise(ctx, { length: 1.5, from: 2600, to: 5200, volume: 0.04 }),
     ruido: (ctx) => noise(ctx, { length: 1.1, from: 380, to: 1300, volume: 0.07 }),
+    // Palmas: golpe corto de ruido medio-agudo.
+    clap: (ctx) => noise(ctx, { length: 0.12, from: 1100, to: 2600, volume: 0.05 }),
+  };
+  /** Nota de marimba: ataque seco y caída rápida, con un parcial agudo muy breve (cue 'm:<Hz>'). */
+  const marimba = (ctx, freq) => {
+    tone(ctx, { freq, length: 0.42, volume: 0.06 });
+    tone(ctx, { freq: freq * 4, length: 0.07, volume: 0.012 });
+    tone(ctx, { freq: freq * 2, length: 0.16, type: 'triangle', volume: 0.01 });
   };
   /** Nota de caja de música: fundamental larga y dos parciales que se apagan antes (como una campanita). */
   const bell = (ctx, freq) => {
@@ -163,12 +171,13 @@
     tone(ctx, { freq: freq * 2, length: 0.7, volume: 0.016 });
     tone(ctx, { freq: freq * 3, length: 0.3, type: 'triangle', volume: 0.006 });
   };
-  /** cue(t, 'n:659.25') toca una nota de caja de música (Hz); el resto, por nombre. */
+  /** cue(t, 'n:659.25') toca una nota de caja de música y 'm:392' una de marimba (Hz); el resto, por nombre. */
   const play = (sound) => {
     if (muted) return;
     const ctx = ensureAudio();
     if (!ctx) return;
     if (sound.startsWith('n:')) bell(ctx, Number(sound.slice(2)));
+    else if (sound.startsWith('m:')) marimba(ctx, Number(sound.slice(2)));
     else if (SOUNDS[sound]) SOUNDS[sound](ctx);
   };
 

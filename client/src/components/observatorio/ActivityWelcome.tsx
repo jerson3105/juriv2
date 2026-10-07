@@ -13,15 +13,24 @@ interface ActivityWelcomeProps {
   /** Portada 4:3 de la actividad (la del catálogo). */
   cover: string;
   sound: StageSound;
+  /** «calma»: caja de música y Z flotando (Descanso). «energia»: marimba con palmas y chispas (actividades con movimiento). */
+  mood?: 'calma' | 'energia';
   onDone: () => void;
 }
 
+const SPARKS = [
+  { left: '-4%', top: '6%', delay: 900 },
+  { left: '94%', top: '2%', delay: 1250 },
+  { left: '-2%', top: '78%', delay: 1600 },
+  { left: '96%', top: '72%', delay: 1950 },
+];
+
 /**
  * Bienvenida a una actividad del Observatorio (≈6 s, a pantalla completa, al abrirla): cielo, la portada que se
- * acerca despacio, el nombre y una frase, con una caja de música. Cualquier tecla, un clic o «Saltar» la terminan;
+ * acerca despacio, el nombre y una frase, con su música (caja de música o marimba). Cualquier tecla, un clic o «Saltar» la terminan;
  * mientras dura, ninguna tecla llega al escenario. Con «reducir movimiento», quieta y más corta.
  */
-export const ActivityWelcome = ({ title, tagline, cover, sound, onDone }: ActivityWelcomeProps) => {
+export const ActivityWelcome = ({ title, tagline, cover, sound, mood = 'calma', onDone }: ActivityWelcomeProps) => {
   const reduce = useReducedMotion();
   const [leaving, setLeaving] = useState(false);
   const done = useRef(onDone);
@@ -38,7 +47,8 @@ export const ActivityWelcome = ({ title, tagline, cover, sound, onDone }: Activi
 
   useEffect(() => {
     sound.unlock();
-    sound.lullaby();
+    if (mood === 'energia') sound.marimba();
+    else sound.lullaby();
     const id = window.setTimeout(finish, reduce ? SHOW_MS_STILL : SHOW_MS);
     const onKey = (event: KeyboardEvent) => {
       event.preventDefault();
@@ -50,7 +60,7 @@ export const ActivityWelcome = ({ title, tagline, cover, sound, onDone }: Activi
       window.clearTimeout(id);
       window.removeEventListener('keydown', onKey, true);
     };
-  }, [finish, reduce, sound]);
+  }, [finish, mood, reduce, sound]);
 
   return createPortal(
     <div
@@ -64,10 +74,10 @@ export const ActivityWelcome = ({ title, tagline, cover, sound, onDone }: Activi
         Observatorio de Jiro
       </p>
       <div className="aw-rise relative" style={{ '--aw-delay': '350ms' } as CSSProperties}>
-        <div className="relative aspect-[4/3] w-[min(90vw,72vh)] overflow-hidden rounded-[clamp(20px,3.5vh,40px)] shadow-[0_0_0_4px_rgba(253,230,138,0.35),0_0_80px_rgba(129,140,248,0.45)]">
+        <div className={`relative aspect-[4/3] w-[min(90vw,72vh)] overflow-hidden rounded-[clamp(20px,3.5vh,40px)] ${mood === 'energia' ? 'shadow-[0_0_0_4px_rgba(253,230,138,0.4),0_0_80px_rgba(251,191,36,0.45)]' : 'shadow-[0_0_0_4px_rgba(253,230,138,0.35),0_0_80px_rgba(129,140,248,0.45)]'}`}>
           <img src={cover} alt="" draggable={false} className="aw-zoom absolute inset-0 h-full w-full select-none object-cover" />
         </div>
-        {['Z', 'z', 'z'].map((letter, i) => (
+        {mood === 'calma' && ['Z', 'z', 'z'].map((letter, i) => (
           <span
             key={i}
             aria-hidden="true"
@@ -75,6 +85,16 @@ export const ActivityWelcome = ({ title, tagline, cover, sound, onDone }: Activi
             style={{ left: `${66 + i * 6}%`, top: `${22 - i * 5}%`, fontSize: `clamp(20px,${4 - i * 0.6}vh,52px)`, '--aw-delay': `${900 + i * 500}ms` } as CSSProperties}
           >
             {letter}
+          </span>
+        ))}
+        {mood === 'energia' && SPARKS.map((spark) => (
+          <span
+            key={spark.left + spark.top}
+            aria-hidden="true"
+            className="aw-spark absolute font-black text-amber-200 [text-shadow:0_0_18px_rgba(253,230,138,0.9)]"
+            style={{ left: spark.left, top: spark.top, fontSize: 'clamp(22px,4.5vh,56px)', '--aw-delay': `${spark.delay}ms` } as CSSProperties}
+          >
+            ✦
           </span>
         ))}
       </div>

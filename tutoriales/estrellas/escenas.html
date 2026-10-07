@@ -1,0 +1,289 @@
+<!-- titulo: Estrellas en Movimiento -->
+<!-- base: comun -->
+<!--
+  Tutorial para ESTUDIANTES: «Estrellas en Movimiento» (cómo se juega). ~46 s, 16:9, para proyectar en clase. Jiro lo
+  cuenta en globos grandes con un ritmo alegre de marimba y palmas: verdadero o falso con el cuerpo (de pie /
+  agachados), las 4 esquinas (con cuidado, sin empujones), una estrella cuando la mayoría acierta (nadie queda
+  eliminado) y la racha de 3 con su estrella extra. Textos reales: «De pie», «Agachados», «4 esquinas», «Racha».
+  Arma: node tutoriales/motor/build.mjs estrellas
+-->
+<style>
+/* Portada para estudiantes */
+.d-logo { position: absolute; left: 150px; top: 120px; height: 92px; }
+.d-eyebrow { position: absolute; left: 154px; top: 300px; color: #fde68a; font: 800 30px/1 'Inter', sans-serif; letter-spacing: .18em; text-transform: uppercase; }
+.d-title { position: absolute; left: 144px; top: 352px; width: 840px; color: #fff; font: 800 112px/1.02 'Poppins', sans-serif; letter-spacing: -.02em; }
+.d-sub { position: absolute; left: 154px; top: 620px; color: #c7d2fe; font: 600 42px/1.3 'Inter', sans-serif; }
+.d-chips { position: absolute; left: 154px; top: 720px; display: flex; gap: 16px; }
+.d-chips span { padding: 12px 22px; border-radius: 999px; background: rgba(255, 255, 255, .1); border: 2px solid rgba(255, 255, 255, .16); color: #e0e7ff; font: 700 26px/1 'Inter', sans-serif; }
+.d-window { position: absolute; left: 1010px; top: 200px; width: 780px; height: 585px; border-radius: 40px; overflow: hidden;
+  box-shadow: 0 0 0 4px rgba(253, 230, 138, .35), 0 0 80px rgba(251, 191, 36, .35), 0 40px 120px rgba(0, 0, 0, .5); }
+.d-window img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; }
+.spark { position: absolute; color: #fde68a; font: 800 44px/1 'Poppins', sans-serif; text-shadow: 0 0 18px rgba(253, 230, 138, .9); }
+
+/* Jiro que cuenta */
+.jiro-box { position: absolute; left: 40px; top: 330px; width: 560px; height: 740px; }
+.jiro-box img { position: absolute; left: 0; bottom: 0; height: 740px; }
+
+/* Niños (de pie / agachados) */
+.kid { position: absolute; top: 610px; width: 190px; height: 380px; }
+.kid svg { position: absolute; left: 0; top: 0; width: 190px; height: 380px; }
+
+/* Verdadero o falso */
+.stmt { position: absolute; left: 760px; top: 330px; width: 1060px; height: 120px; border-radius: 28px; background: rgba(255, 255, 255, .1); border: 3px solid rgba(255, 255, 255, .25);
+  display: flex; flex-direction: column; justify-content: center; padding: 0 36px; }
+.stmt small { color: #c7d2fe; font: 800 22px/1 'Inter', sans-serif; letter-spacing: .14em; text-transform: uppercase; }
+.stmt b { margin-top: 8px; color: #fff; font: 800 50px/1.1 'Poppins', sans-serif; }
+.stmt-ok { position: absolute; left: 1560px; top: 356px; padding: 12px 22px; border-radius: 999px; background: #34d399; color: #064e3b; font: 800 30px/1 'Poppins', sans-serif; }
+.vf { position: absolute; top: 478px; height: 84px; padding: 0 28px; border-radius: 24px; border: 4px solid; display: flex; align-items: center; gap: 14px; color: #fff; font: 800 34px/1 'Poppins', sans-serif; }
+.vf.si { left: 760px; border-color: #6ee7b7; background: rgba(52, 211, 153, .15); }
+.vf.no { left: 1290px; border-color: #fda4af; background: rgba(251, 113, 133, .15); }
+.vf-ring { position: absolute; left: 748px; top: 466px; width: 496px; height: 108px; border-radius: 30px; border: 6px solid #fde68a; }
+
+/* 4 esquinas: el aula vista desde arriba */
+.room { position: absolute; left: 900px; top: 330px; width: 900px; height: 640px; border-radius: 40px; background: rgba(255, 255, 255, .06); border: 3px solid rgba(255, 255, 255, .2); }
+.corner { position: absolute; width: 230px; height: 140px; border-radius: 26px; border: 4px solid; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; }
+.corner b { font: 800 46px/1 'Poppins', sans-serif; }
+.corner span { margin-top: 6px; font: 700 26px/1 'Inter', sans-serif; }
+.cq { position: absolute; left: 1110px; top: 580px; width: 480px; padding: 18px 20px; border-radius: 22px; background: rgba(11, 16, 38, .85); border: 2px solid rgba(255, 255, 255, .25); text-align: center; color: #fff; font: 800 34px/1.15 'Poppins', sans-serif; }
+.dot { position: absolute; width: 48px; height: 48px; border-radius: 50%; border: 4px solid #0b1026; }
+.dot::after { content: ''; position: absolute; left: 12px; top: 16px; width: 18px; height: 8px; border-bottom: 3px solid #1f2937; border-radius: 0 0 12px 12px; }
+.c-ring { position: absolute; border-radius: 30px; border: 6px solid #fde68a; }
+.c-ok { position: absolute; left: 1200px; top: 400px; padding: 10px 20px; border-radius: 999px; background: #38bdf8; color: #082f49; font: 800 30px/1 'Poppins', sans-serif; }
+
+/* Estrellas de la clase, rondas y racha */
+.bar { position: absolute; left: 760px; top: 400px; width: 1060px; height: 130px; display: flex; gap: 14px; }
+.slot { position: relative; width: 92px; height: 92px; }
+.slot svg { position: absolute; left: 0; top: 0; width: 92px; height: 92px; }
+.marks { position: absolute; left: 760px; top: 580px; display: flex; gap: 14px; }
+.mark { position: relative; width: 92px; height: 92px; border-radius: 50%; display: grid; place-items: center; font: 800 46px/1 'Poppins', sans-serif; }
+.mark.ok { background: rgba(52, 211, 153, .2); border: 4px solid #6ee7b7; color: #6ee7b7; }
+.mark.no { background: rgba(251, 113, 133, .18); border: 4px solid #fda4af; color: #fda4af; }
+.mark .fire { position: absolute; top: -48px; left: 0; right: 0; margin: 0 auto; width: 46px; text-align: center; font-size: 42px; }
+.nope { position: absolute; left: 760px; top: 720px; width: 1060px; color: #fecdd3; font: 800 44px/1.2 'Poppins', sans-serif; }
+.streak { position: absolute; left: 760px; top: 720px; width: 1060px; color: #fde68a; font: 800 64px/1 'Poppins', sans-serif; }
+.bonus { position: absolute; left: 1160px; top: 810px; width: 200px; height: 200px; }
+.bonus svg { width: 200px; height: 200px; }
+
+/* Final */
+.f-big { position: absolute; left: 0; width: 1920px; text-align: center; color: #fde68a; font: 800 120px/1 'Poppins', sans-serif; }
+.f-say { position: absolute; left: 0; width: 1920px; text-align: center; color: #fff; font: 800 72px/1 'Poppins', sans-serif; }
+.f-jiro { position: absolute; left: 773px; top: 380px; height: 600px; }
+#fx { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; pointer-events: none; }
+</style>
+
+<script>
+(() => {
+  const G = Guion.init();
+  const LOGO = 'asset:logo.png?h=200';
+  const END = 46;
+  G.chapter(0, 'Inicio');
+  G.chapter(6, 'Con el cuerpo');
+  G.chapter(12, 'Verdadero o falso');
+  G.chapter(21, 'Las 4 esquinas');
+  G.chapter(28.5, 'Las estrellas');
+  G.chapter(35, 'La racha');
+  G.chapter(41, '¡A moverse!');
+
+  G.cielo([]);
+
+  // ---------- Marimba y palmas (120 pulsos por minuto), pentatónica de Do ----------
+  const N = { C: 261.63, D: 293.66, E: 329.63, G: 392, A: 440, c: 523.25, e: 659.25, g: 783.99 };
+  const riff = (t0, notes) => {
+    notes.forEach((n, i) => G.cue(t0 + i * 0.5, `m:${N[n]}`));
+    [0.5, 1.5, 2.5, 3.5].forEach((d) => G.cue(t0 + d, 'clap'));
+  };
+  const A = ['C', 'E', 'G', 'E', 'A', 'G', 'E', 'G'];
+  const B = ['A', 'G', 'E', 'D', 'C', 'D', 'E', 'G'];
+  [A, A, B, A, A, B, A, A, B, A].forEach((notes, i) => riff(0.6 + i * 4, notes));
+  ['C', 'E', 'G', 'c', 'e', 'g'].forEach((n, i) => G.cue(41.4 + i * 0.12, `m:${N[n]}`));
+
+  // =============== 1 · Portada (0–6) ===============
+  G.el('img', 'd-logo', '', G.stage, 'd-logo').src = LOGO;
+  G.el('div', 'd-eyebrow', 'Observatorio de Jiro', G.stage, 'd-eyebrow');
+  G.el('div', 'd-title', 'Estrellas en Movimiento', G.stage, 'd-title');
+  G.el('div', 'd-sub', '¿Cómo se juega?', G.stage, 'd-sub');
+  G.el('div', 'd-chips', '<span>🧍 De pie</span><span>🧎 Agachados</span><span>🔥 Rachas</span>', G.stage, 'd-chips');
+  G.el('div', 'd-window', '<img id="d-cover" src="asset:assets/jiro/actividades/estrellas.webp" alt="">', G.stage, 'd-window');
+  G.show('#d-logo', 0.2, 5.8, { from: { y: -20 } });
+  G.show('#d-eyebrow', 0.5, 5.8);
+  G.key('#d-title', [[0.8, { o: 0, s: 0.9, y: 30 }], [1.4, { o: 1, s: 1, y: 0, ease: 'pop' }], [5.5, { o: 1 }], [5.9, { o: 0, y: -20, ease: 'in' }]]);
+  G.show('#d-sub', 1.5, 5.8);
+  G.show('#d-chips', 2.0, 5.8);
+  G.key('#d-window', [[0.9, { o: 0, s: 0.92, x: 120 }], [1.7, { o: 1, s: 1, x: 0, ease: 'back' }], [5.5, { o: 1, s: 1 }], [6.0, { o: 0, s: 0.96, ease: 'in' }]]);
+  G.key('#d-cover', [[0.9, { s: 1 }], [6.0, { s: 1.08, ease: 'linear' }]]);
+  [[1080, 330], [1720, 300], [1180, 720], [1650, 690]].forEach(([x, y], i) => {
+    const s = G.el('div', 'spark', '✦', G.stage, `spark${i}`);
+    s.style.left = `${x}px`;
+    s.style.top = `${y}px`;
+    const t = 2.0 + i * 0.45;
+    G.key(s, [[0, { o: 0 }], [t, { o: 0, s: 0.4, r: 0 }], [t + 0.35, { o: 1, s: 1.2, r: 40 }], [t + 1.4, { o: 0, s: 0.6, r: 90, y: -40, ease: 'out' }]]);
+  });
+  G.cue(0.3, 'whoosh');
+  G.cue(1.2, 'pop');
+
+  // =============== Jiro (6–41): emocionado, señalando y celebrando ===============
+  const box = G.el('div', 'jiro-box', '', G.stage, 'jiro');
+  // Rutas literales: build.mjs solo cambia 'asset:…' entre comillas simples por la imagen incrustada.
+  const poses = {
+    emoc: 'asset:assets/jiro/emocionado.webp?h=740',
+    sena: 'asset:assets/jiro/senalando.webp?h=740',
+    cele: 'asset:assets/jiro/celebrando.webp?h=740',
+  };
+  for (const [id, src] of Object.entries(poses)) G.el('img', '', '', box, `j-${id}`).src = src;
+  G.key('#jiro', [[0, { o: 0, x: -240 }], [6.1, { o: 0, x: -240 }], [6.8, { o: 1, x: 0, ease: 'back' }], [40.6, { o: 1, x: 0 }], [41.1, { o: 0, x: -200, ease: 'in' }]]);
+  G.cue(6.1, 'whoosh');
+  const poseAt = { emoc: [[6, 12], [28.5, 35]], sena: [[12, 28.5]], cele: [[35, 41.1]] };
+  for (const [id, spans] of Object.entries(poseAt)) {
+    const frames = [[0, { o: 0 }]];
+    for (const [a, b] of spans) frames.push([a, { o: 0 }], [a + 0.18, { o: 1 }], [b - 0.18, { o: 1 }], [b, { o: 0 }]);
+    G.key(`#j-${id}`, frames, 'linear');
+  }
+
+  // =============== 2 · Se responde con el cuerpo (6–12) ===============
+  G.burbuja('b1', 6.6, 11.8, '¡En este juego se responde con el cuerpo! Escuchen bien a su profe…');
+
+  // Cinco niños dibujados: de pie (brazos arriba) o agachados (abrazando las rodillas).
+  const KIDS = [
+    { shirt: '#f472b6', skin: '#f1c27d', hair: '#3b2414' }, { shirt: '#38bdf8', skin: '#8d5524', hair: '#1f1309' },
+    { shirt: '#4ade80', skin: '#e0ac69', hair: '#5b3a1a' }, { shirt: '#fbbf24', skin: '#c68642', hair: '#2b1a0e' },
+    { shirt: '#a78bfa', skin: '#ffdbac', hair: '#7c4a1e' },
+  ];
+  const face = (cy, k) => `<circle cx="50" cy="${cy}" r="24" fill="${k.skin}"/><path d="M27 ${cy - 6} Q50 ${cy - 34} 73 ${cy - 6} Q62 ${cy - 16} 50 ${cy - 15} Q38 ${cy - 16} 27 ${cy - 6} Z" fill="${k.hair}"/>
+    <circle cx="42" cy="${cy + 2}" r="3" fill="#1f2937"/><circle cx="58" cy="${cy + 2}" r="3" fill="#1f2937"/><path d="M42 ${cy + 11} Q50 ${cy + 17} 58 ${cy + 11}" stroke="#1f2937" stroke-width="3" fill="none" stroke-linecap="round"/>`;
+  const standing = (k) => `<svg viewBox="0 0 100 200">
+    <rect x="34" y="128" width="13" height="56" rx="6" fill="#334155"/><rect x="53" y="128" width="13" height="56" rx="6" fill="#334155"/>
+    <ellipse cx="40" cy="187" rx="11" ry="6" fill="#0f172a"/><ellipse cx="60" cy="187" rx="11" ry="6" fill="#0f172a"/>
+    <line x1="32" y1="78" x2="14" y2="38" stroke="${k.shirt}" stroke-width="12" stroke-linecap="round"/><line x1="68" y1="78" x2="86" y2="38" stroke="${k.shirt}" stroke-width="12" stroke-linecap="round"/>
+    <circle cx="14" cy="34" r="7" fill="${k.skin}"/><circle cx="86" cy="34" r="7" fill="${k.skin}"/>
+    <rect x="26" y="66" width="48" height="70" rx="20" fill="${k.shirt}"/>${face(42, k)}</svg>`;
+  const crouching = (k) => `<svg viewBox="0 0 100 200">
+    <ellipse cx="36" cy="188" rx="12" ry="6" fill="#0f172a"/><ellipse cx="64" cy="188" rx="12" ry="6" fill="#0f172a"/>
+    <rect x="24" y="152" width="52" height="30" rx="14" fill="#334155"/>
+    <rect x="28" y="112" width="44" height="56" rx="20" fill="${k.shirt}"/>
+    <line x1="32" y1="122" x2="38" y2="160" stroke="${k.shirt}" stroke-width="11" stroke-linecap="round"/><line x1="68" y1="122" x2="62" y2="160" stroke="${k.shirt}" stroke-width="11" stroke-linecap="round"/>
+    <circle cx="40" cy="162" r="6" fill="${k.skin}"/><circle cx="60" cy="162" r="6" fill="${k.skin}"/>${face(88, k)}</svg>`;
+  KIDS.forEach((k, i) => {
+    const kid = G.el('div', 'kid', '', G.stage, `kid${i}`);
+    kid.style.left = `${720 + i * 220}px`;
+    G.el('div', '', standing(k), kid, `kid${i}-s`);
+    G.el('div', '', crouching(k), kid, `kid${i}-c`);
+  });
+  // De pie [desde, hasta]; el resto del tiempo, agachados. El niño 3 se equivoca (queda agachado).
+  const UP = 14.8;
+  KIDS.forEach((_, i) => {
+    const t = 7.6 + i * 0.12;
+    G.key(`#kid${i}`, [[0, { o: 0, y: 60 }], [t, { o: 0, y: 60 }], [t + 0.45, { o: 1, y: 0, ease: 'back' }], [8.6, { y: -18 }], [9.2, { y: 0 }], [9.8, { y: -18 }], [10.4, { y: 0 }],
+      [20.6, { o: 1, y: 0 }], [21.0, { o: 0, y: 40, ease: 'in' }]]);
+    const up = i === 3 ? null : UP + i * 0.12;
+    const stand = [[0, { o: 1 }], [12.4, { o: 1 }], [12.55, { o: 0 }]];
+    const crouch = [[0, { o: 0 }], [12.4, { o: 0 }], [12.55, { o: 1 }]];
+    if (up !== null) { stand.push([up, { o: 0 }], [up + 0.12, { o: 1 }]); crouch.push([up, { o: 1 }], [up + 0.12, { o: 0 }]); }
+    G.key(`#kid${i}-s`, stand, 'linear');
+    G.key(`#kid${i}-c`, crouch, 'linear');
+  });
+  G.cue(12.45, 'whoosh');
+  G.cue(UP, 'clap'); G.cue(UP + 0.25, 'clap');
+
+  // =============== 3 · Verdadero o falso (12–21) ===============
+  G.burbuja('b2', 12.3, 16.9, '¿Verdadero? ¡De pie! 🧍 ¿Falso? ¡Agachados! 🧎');
+  G.burbuja('b3', 17.1, 20.9, '¡Era verdadero! El Sol sí es una estrella.');
+  G.el('div', 'stmt', '<small>Afirmación</small><b>El Sol es una estrella</b>', G.stage, 'stmt');
+  G.el('div', 'stmt-ok', '✓ Verdadero', G.stage, 'stmt-ok');
+  G.el('div', 'vf si', '🧍 De pie = Verdadero', G.stage, 'vf-si');
+  G.el('div', 'vf no', '🧎 Agachados = Falso', G.stage, 'vf-no');
+  G.el('div', 'vf-ring', '', G.stage, 'vf-ring');
+  G.key('#stmt', [[0, { o: 0 }], [12.6, { o: 0, y: 20 }], [13.0, { o: 1, y: 0, ease: 'out' }], [20.6, { o: 1 }], [21.0, { o: 0 }]]);
+  G.key('#vf-si', [[0, { o: 0 }], [13.2, { o: 0, x: -30 }], [13.6, { o: 1, x: 0, ease: 'back' }], [20.6, { o: 1 }], [21.0, { o: 0 }]]);
+  G.key('#vf-no', [[0, { o: 0 }], [13.5, { o: 0, x: 30 }], [13.9, { o: 1, x: 0, ease: 'back' }], [20.6, { o: 1 }], [21.0, { o: 0 }]]);
+  G.key('#vf-ring', [[0, { o: 0 }], [17.2, { o: 0, s: 1.08 }], [17.5, { o: 1, s: 1, ease: 'out' }], [20.6, { o: 1 }], [21.0, { o: 0 }]]);
+  G.key('#stmt-ok', [[0, { o: 0 }], [17.2, { o: 0, s: 0.6 }], [17.6, { o: 1, s: 1, ease: 'pop' }], [20.6, { o: 1 }], [21.0, { o: 0 }]]);
+  G.cue(17.2, 'chime');
+
+  // =============== 4 · Las 4 esquinas (21–28.5) ===============
+  G.burbuja('b4', 21.3, 28.2, 'Con 4 esquinas, caminen a la esquina de su respuesta… ¡con cuidado, sin empujones!');
+  G.el('div', 'room', '', G.stage, 'room');
+  const CORNERS = [
+    { id: 'A', name: 'Marte', color: '#fda4af', bg: 'rgba(251,113,133,.2)', x: 920, y: 350 },
+    { id: 'B', name: 'Júpiter', color: '#7dd3fc', bg: 'rgba(56,189,248,.2)', x: 1550, y: 350 },
+    { id: 'C', name: 'Tierra', color: '#6ee7b7', bg: 'rgba(52,211,153,.2)', x: 920, y: 810 },
+    { id: 'D', name: 'Venus', color: '#fcd34d', bg: 'rgba(251,191,36,.2)', x: 1550, y: 810 },
+  ];
+  CORNERS.forEach((c) => {
+    const el = G.el('div', 'corner', `<b>${c.id}</b><span>${c.name}</span>`, G.stage, `corner-${c.id}`);
+    el.style.cssText += `left:${c.x}px;top:${c.y}px;border-color:${c.color};background:${c.bg}`;
+  });
+  G.el('div', 'cq', '¿Cuál es el planeta más grande?', G.stage, 'cq');
+  G.el('div', 'c-ring', '', G.stage, 'c-ring').style.cssText += 'left:1538px;top:338px;width:254px;height:164px';
+  G.el('div', 'c-ok', '¡Era B: Júpiter!', G.stage, 'c-ok');
+  const roomOn = [[0, { o: 0 }], [21.4, { o: 0, s: 0.96 }], [21.9, { o: 1, s: 1, ease: 'out' }], [28.1, { o: 1 }], [28.5, { o: 0 }]];
+  ['#room', '#cq', '#corner-A', '#corner-B', '#corner-C', '#corner-D'].forEach((s) => G.key(s, roomOn));
+  // Diez niños (cabezas) salen del centro hacia su esquina: 6 a B, 2 a A, 1 a C, 1 a D.
+  const DOT_COLORS = ['#f472b6', '#38bdf8', '#4ade80', '#fbbf24', '#a78bfa', '#fb923c', '#f472b6', '#38bdf8', '#4ade80', '#fbbf24'];
+  const target = (corner, k) => {
+    const c = CORNERS.find((x) => x.id === corner);
+    return { x: c.x + 30 + (k % 3) * 62, y: c.y + 152 + Math.floor(k / 3) * 56 - (c.y > 500 ? 220 : 0) };
+  };
+  const plan = [['B', 0], ['B', 1], ['A', 0], ['B', 2], ['C', 0], ['B', 3], ['D', 0], ['B', 4], ['A', 1], ['B', 5]];
+  plan.forEach(([corner, k], i) => {
+    const start = { x: 1180 + (i % 5) * 70, y: 720 + Math.floor(i / 5) * 64 };
+    const end = target(corner, k);
+    const d = G.el('div', 'dot', '', G.stage, `dot${i}`);
+    d.style.cssText += `left:${start.x}px;top:${start.y}px;background:${DOT_COLORS[i]}`;
+    const t = 23.3 + i * 0.12;
+    G.key(d, [[0, { o: 0 }], [22.0, { o: 0, s: 0.5 }], [22.4, { o: 1, s: 1, ease: 'back' }], [t, { x: 0, y: 0 }], [t + 1.6, { x: end.x - start.x, y: end.y - start.y, ease: 'inOut' }], [28.1, { o: 1 }], [28.5, { o: 0 }]]);
+  });
+  G.cue(23.3, 'whoosh');
+  G.key('#c-ring', [[0, { o: 0 }], [26.2, { o: 0, s: 1.08 }], [26.5, { o: 1, s: 1, ease: 'out' }], [28.1, { o: 1 }], [28.5, { o: 0 }]]);
+  G.key('#c-ok', [[0, { o: 0 }], [26.2, { o: 0, s: 0.6 }], [26.6, { o: 1, s: 1, ease: 'pop' }], [28.1, { o: 1 }], [28.5, { o: 0 }]]);
+  G.cue(26.2, 'chime');
+
+  // =============== 5 y 6 · Estrellas, rondas y racha (28.5–41) ===============
+  G.burbuja('b5', 28.7, 34.8, 'Si la mayoría acierta, se enciende una estrella. ¡Nadie queda eliminado!');
+  G.burbuja('b6', 35.2, 40.8, '¡3 aciertos seguidos son una racha! 🔥 …y ganan una estrella extra.');
+  const STAR = 'M50 6 L62 37 L95 38 L69 58 L78 91 L50 72 L22 91 L31 58 L5 38 L38 37 Z';
+  const slots = Array.from({ length: 10 }, (_, i) => `<div class="slot" id="slot${i}"><svg viewBox="0 0 100 100"><path d="${STAR}" fill="none" stroke="rgba(199,210,254,.45)" stroke-width="4" stroke-linejoin="round"/></svg>
+    <svg viewBox="0 0 100 100" id="lit${i}"><path d="${STAR}" fill="#fcd34d" stroke="#f59e0b" stroke-width="3" stroke-linejoin="round"/></svg></div>`).join('');
+  G.el('div', 'bar', slots, G.stage, 'bar');
+  for (let i = 6; i < 10; i++) G.key(`#lit${i}`, [[0, { o: 0 }]]);
+  const MARKS = [true, true, false, true, true, true];
+  G.el('div', 'marks', MARKS.map((ok, i) => `<div class="mark ${ok ? 'ok' : 'no'}" id="mark${i}">${ok ? '✓' : '✗'}${i >= 3 ? `<span class="fire" id="fire${i}">🔥</span>` : ''}</div>`).join(''), G.stage, 'marks');
+  G.el('div', 'nope', 'La mayoría falló… ¡no pasa nada, a la siguiente!', G.stage, 'nope');
+  G.el('div', 'streak', '¡Racha de 3! 🔥 +1 estrella', G.stage, 'streak');
+  G.el('div', 'bonus', `<svg viewBox="0 0 100 100"><path d="${STAR}" fill="#fde68a" stroke="#f59e0b" stroke-width="3" stroke-linejoin="round"/></svg>`, G.stage, 'bonus');
+  const barOn = [[0, { o: 0 }], [28.9, { o: 0, y: 20 }], [29.3, { o: 1, y: 0, ease: 'out' }], [40.6, { o: 1 }], [41.0, { o: 0 }]];
+  G.key('#bar', barOn);
+  G.key('#marks', barOn);
+  // Rondas: [marca, estrella que enciende (o null)]
+  const ROUNDS = [[29.3, 0], [30.4, 1], [31.8, null], [33.2, 2], [36.0, 3], [37.0, 4]];
+  ROUNDS.forEach(([t, star], i) => {
+    G.key(`#mark${i}`, [[0, { o: 0, s: 0.5 }], [t, { o: 0, s: 0.5 }], [t + 0.3, { o: 1, s: 1, ease: 'pop' }]]);
+    if (star === null) { G.cue(t, 'soft'); return; }
+    G.key(`#lit${star}`, [[0, { o: 0, s: 0.3 }], [t, { o: 0, s: 0.3 }], [t + 0.35, { o: 1, s: 1.3, ease: 'out' }], [t + 0.6, { o: 1, s: 1 }]]);
+    G.cue(t, 'n:1318.51');
+  });
+  G.key('#nope', [[0, { o: 0 }], [31.9, { o: 0, y: 14 }], [32.2, { o: 1, y: 0 }], [34.6, { o: 1 }], [34.9, { o: 0 }]]);
+  // Racha: rondas 4, 5 y 6 seguidas → llamas, aviso y la estrella extra que entra en la barra.
+  [3, 4, 5].forEach((i) => G.key(`#fire${i}`, [[0, { o: 0, s: 0.4 }], [37.3 + (i - 3) * 0.12, { o: 0, s: 0.4 }], [37.6 + (i - 3) * 0.12, { o: 1, s: 1.2, ease: 'back' }], [38.0, { s: 1 }]]));
+  G.key('#streak', [[0, { o: 0 }], [37.4, { o: 0, s: 0.7 }], [37.8, { o: 1, s: 1, ease: 'pop' }], [40.6, { o: 1 }], [41.0, { o: 0 }]]);
+  const slot5 = G.center('#slot5');
+  const bonusC = G.center('#bonus');
+  G.key('#bonus', [[0, { o: 0, s: 0.3 }], [38.0, { o: 0, s: 0.3, r: -40 }], [38.4, { o: 1, s: 1.15, r: 0, ease: 'back' }], [38.8, { s: 1, x: 0, y: 0 }],
+    [39.3, { o: 1, s: 0.46, x: slot5.x - bonusC.x, y: slot5.y - bonusC.y, r: 180, ease: 'inOut' }], [39.35, { o: 0 }]]);
+  G.key('#lit5', [[0, { o: 0, s: 0.3 }], [39.3, { o: 0, s: 0.3 }], [39.5, { o: 1, s: 1.4, ease: 'out' }], [39.8, { o: 1, s: 1 }]]);
+  G.cue(37.4, 'levelup'); G.cue(39.3, 'coin');
+
+  // =============== 7 · ¿Listos? ¡A moverse! (41–46) ===============
+  G.el('img', 'f-jiro', '', G.stage, 'f-jiro').src = 'asset:assets/jiro/emocionado.webp?h=740';
+  G.el('div', 'f-big', '¿Listos?', G.stage, 'f-big').style.top = '110px';
+  G.el('div', 'f-say', '¡A moverse! 🧍🧎', G.stage, 'f-say').style.top = '250px';
+  G.el('div', '', '', G.stage, 'fx');
+  G.key('#f-jiro', [[0, { o: 0, y: 60 }], [41.2, { o: 0, y: 60 }], [41.7, { o: 1, y: 0, ease: 'back' }], [42.3, { y: -40, ease: 'out' }], [42.8, { y: 0, ease: 'in' }], [43.3, { y: -40, ease: 'out' }], [43.8, { y: 0, ease: 'in' }], [45.5, { o: 1 }], [46, { o: 0 }]]);
+  G.key('#f-big', [[0, { o: 0, s: 0.8 }], [41.2, { o: 0, s: 0.8 }], [41.6, { o: 1, s: 1, ease: 'back' }], [45.5, { o: 1 }], [46, { o: 0 }]]);
+  G.key('#f-say', [[0, { o: 0, s: 0.8 }], [42.1, { o: 0, s: 0.8 }], [42.5, { o: 1, s: 1, ease: 'pop' }], [45.5, { o: 1 }], [46, { o: 0 }]]);
+  G.confeti('#fx', 42.3, 2.6);
+  G.cue(42.2, 'levelup');
+
+  G.capas();
+  G.arrancar(END);
+})();
+</script>
