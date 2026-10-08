@@ -125,9 +125,27 @@ Ejemplo: [{"question":"¿Cuál es la capital del Perú?","answer":"Lima","distra
   const types = kinds as BankQuestionType[];
   return `${common}
 Genera exactamente ${quantity} preguntas, repartidas entre estos tipos: ${types.join(', ')}.
-Las opciones incorrectas deben ser plausibles; la explicación es obligatoria.
+Las opciones incorrectas deben ser plausibles; la explicación es obligatoria. No uses opciones como «todas las anteriores», «ninguna de las anteriores» ni «A y B».
 Formato de cada tipo (un objeto por pregunta, todas en un mismo arreglo):
 ${types.map((t) => `- ${FORMATS[t]}`).join('\n')}`;
+};
+
+// Opciones que nombran a otras: «todas/ninguna de las anteriores» van al final; «A y B» depende de las letras.
+const PINNED_LAST = /\banteriores\b|\bambas (son|opciones|respuestas)\b/i;
+const NAMES_LETTERS = /^[a-e]\)?\s*(y|o)\s*[a-e]\)?$/i;
+
+/**
+ * La IA pone la correcta casi siempre en el mismo lugar (B; en múltiple, A-B o A-B-C): el servidor baraja las
+ * opciones antes de guardarlas. Si alguna nombra a otras por su letra, el orden se deja como vino.
+ */
+export const mixOptions = <T extends { text: string }>(options: T[], random = Math.random): T[] => {
+  if (options.some((o) => NAMES_LETTERS.test(o.text.trim()))) return options;
+  const free = options.filter((o) => !PINNED_LAST.test(o.text));
+  for (let i = free.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [free[i], free[j]] = [free[j], free[i]];
+  }
+  return [...free, ...options.filter((o) => PINNED_LAST.test(o.text))];
 };
 
 const parseArray = (raw: string): unknown[] => {
@@ -163,7 +181,7 @@ const toDraft = (kind: AiKind, item: unknown, forcedDifficulty: QuestionDifficul
     if (!r.success) return null;
     const answer = bingoAnswer(r.data.answer);
     if (!answer) return null;
-    // Distractores distintos de la respuesta y entre sí; la correcta va en un lugar al azar.
+    // Distractores distintos de la respuesta y entre sí; mixOptions pone la correcta en un lugar al azar.
     const seen = new Set([answer.key]);
     const distractors = r.data.distractors.filter((d) => {
       const key = bingoAnswer(d)?.key ?? d.trim().toLowerCase();
@@ -172,11 +190,9 @@ const toDraft = (kind: AiKind, item: unknown, forcedDifficulty: QuestionDifficul
       return true;
     });
     if (distractors.length < 2) return null;
-    const at = Math.floor(Math.random() * (distractors.length + 1));
-    const options = [...distractors.slice(0, at), answer.text, ...distractors.slice(at)];
     return {
       type: 'SINGLE_CHOICE', questionText: r.data.question, explanation: r.data.explanation, difficulty: forcedDifficulty ?? r.data.difficulty ?? null,
-      options: options.map((t, i) => ({ text: t, isCorrect: i === at })),
+      options: mixOptions([{ text: answer.text, isCorrect: true }, ...distractors.map((t) => ({ text: t, isCorrect: false }))]),
     };
   }
   const type = (item as { type?: string } | null)?.type;
@@ -190,7 +206,7 @@ const toDraft = (kind: AiKind, item: unknown, forcedDifficulty: QuestionDifficul
       if (!r.success || r.data.correctIndex >= r.data.options.length) return null;
       return {
         type, questionText: r.data.question, explanation: r.data.explanation, difficulty: forcedDifficulty ?? r.data.difficulty ?? null,
-        options: r.data.options.map((t, i) => ({ text: t, isCorrect: i === r.data.correctIndex })),
+        options: mixOptions(r.data.options.map((t, i) => ({ text: t, isCorrect: i === r.data.correctIndex }))),
       };
     }
     case 'MULTIPLE_CHOICE': {
@@ -200,7 +216,7 @@ const toDraft = (kind: AiKind, item: unknown, forcedDifficulty: QuestionDifficul
       if (correct.size === 0) return null;
       return {
         type, questionText: r.data.question, explanation: r.data.explanation, difficulty: forcedDifficulty ?? r.data.difficulty ?? null,
-        options: r.data.options.map((t, i) => ({ text: t, isCorrect: correct.has(i) })),
+        options: mixOptions(r.data.options.map((t, i) => ({ text: t, isCorrect: correct.has(i) }))),
       };
     }
     case 'MATCHING': {
