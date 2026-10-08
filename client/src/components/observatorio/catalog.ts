@@ -78,6 +78,7 @@ export const CATALOG: CatalogEntry[] = [
     duration: '15–25 min',
     requirements: [{ icon: '📚', label: 'Banco o Tablas' }, { icon: '🖨️', label: 'Impresora o cuentas' }],
     sessionType: 'BINGO',
+    tutorial: 'bingo',
   },
   {
     id: 'correo',

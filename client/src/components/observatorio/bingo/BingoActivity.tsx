@@ -2,13 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { useQuery } from '@tanstack/react-query';
 import { useReducedMotion } from 'framer-motion';
 import toast from 'react-hot-toast';
-import { Check, LayoutGrid, Printer, RotateCcw, Sparkles, Undo2, X } from 'lucide-react';
+import { Check, LayoutGrid, PlayCircle, Printer, RotateCcw, Sparkles, Undo2, X } from 'lucide-react';
 import type { ActivitySession } from '../../../lib/activityApi';
 import { bingoApi, bingoKeys, type BingoSize, type BingoSource } from '../../../lib/bingoApi';
 import type { Classroom, Student } from '../../../lib/classroomApi';
 import { hasStudentAccount } from '../../../lib/studentAccess';
 import { useTeacherBanks } from '../../classroom/utilities/questionDraw';
+import { ActivityWelcome } from '../ActivityWelcome';
 import { Bitacora } from '../Bitacora';
+import { CATALOG } from '../catalog';
 import { starBurst, starRain } from '../conquista/conquistaFx';
 import { EscenarioObservatorio, stageControlClass } from '../EscenarioObservatorio';
 import type { JiroPose } from '../jiroPoses';
@@ -16,6 +18,7 @@ import { useStageSound } from '../observatorioSound';
 import { PresenceEditor } from '../presence';
 import { questionSizeClass } from '../questionHelpers';
 import { StageEndButton } from '../StageEndButton';
+import { StageTutorial } from '../StageTutorial';
 import { UnreviewedNotice } from '../UnreviewedNotice';
 import { useActivitySession } from '../useActivitySession';
 import { useTodayPresence } from '../usePresence';
@@ -30,6 +33,7 @@ const TABLES = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 const THINK_OPTIONS = [0, 20, 30];
 const SPARE_CARDS = 3;
 const DRAW_MS = 1700;
+const COVER = CATALOG.find((entry) => entry.id === 'bingo')?.cover ?? '/assets/jiro/actividades/bingo.webp';
 
 const chip = (on: boolean) =>
   `min-h-[48px] rounded-xl border px-4 text-lg font-bold transition-colors ${on ? 'border-amber-300 bg-amber-300 text-amber-950' : 'border-white/30 text-white hover:bg-white/10'}`;
@@ -58,6 +62,10 @@ export const BingoActivity = ({ classroom, resume, onExit }: BingoActivityProps)
 
   const [state, setState] = useState<BingoState | null>(saved);
   const [finished, setFinished] = useState(resume?.status === 'FINISHED');
+  // Bienvenida de pantalla completa al abrir (no al volver a la Bitácora de una partida terminada) y el tutorial
+  // para estudiantes a demanda («Cómo se juega»).
+  const [welcome, setWelcome] = useState(resume?.status !== 'FINISHED');
+  const [tutorial, setTutorial] = useState(false);
   const [history, setHistory] = useState<BingoState[]>([]);
   // Preparación
   const [source, setSource] = useState<BingoSource>({ kind: 'tables', tables: [2, 3, 4, 5, 6, 7, 8, 9] });
@@ -406,6 +414,11 @@ export const BingoActivity = ({ classroom, resume, onExit }: BingoActivityProps)
       {phase === 'setup' && (
         <div className="flex w-full max-w-5xl flex-col gap-5">
           <h1 className="stage-title text-center font-black">Bingo Estelar</h1>
+          <div className="flex justify-center">
+            <button type="button" onClick={() => setTutorial(true)} className={`${stageControlClass} border border-white/25 text-base`}>
+              <PlayCircle size={20} aria-hidden="true" /> Cómo se juega · 1 min
+            </button>
+          </div>
           <fieldset>
             <legend className="mb-2 text-lg font-bold text-indigo-100">De dónde salen las preguntas</legend>
             <div className="flex flex-wrap gap-2">
@@ -641,6 +654,10 @@ export const BingoActivity = ({ classroom, resume, onExit }: BingoActivityProps)
           onExit={onExit}
         />
       )}
+      {welcome && (
+        <ActivityWelcome title="Bingo Estelar" tagline="Piensa, marca y canta ¡Bingo!" cover={COVER} sound={sound} mood="feria" onDone={() => setWelcome(false)} />
+      )}
+      {tutorial && <StageTutorial id="bingo" onClose={() => setTutorial(false)} />}
     </EscenarioObservatorio>
   );
 };

@@ -50,6 +50,8 @@ export interface StageSound {
   vals: () => void;
   /** Misterio de detectives: de puntillas en La menor y el «¡lo encontré!» en Do mayor (El Error de Jiro). */
   misterio: () => void;
+  /** Feria: el tic-tac de la esfera que frena y una frase de feria (bajo y acorde punteados, campanitas) (Bingo). */
+  feria: () => void;
   close: () => void;
 }
 
@@ -227,6 +229,22 @@ export const createStageSound = (initiallyMuted: boolean): StageSound => {
       [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone(f, 3.3 + i * 0.09, 0.4, 0.1, 'triangle'));
       [523.25, 659.25, 783.99].forEach((f) => tone(f, 3.75, 1.4, 0.06, 'triangle'));
       tone(1046.5, 3.75, 1.6, 0.06);
+    },
+    feria: () => {
+      [0, 0.08, 0.17, 0.28, 0.41, 0.57].forEach((at) => tone(1046.5, at, 0.05, 0.08, 'triangle'));
+      const bell = (f: number, at: number) => {
+        tone(f, at, 0.9, 0.08);
+        tone(f * 2, at, 0.4, 0.02);
+      };
+      const start = 0.8;
+      const bars: [number, number[]][] = [[130.81, [329.63, 392]], [130.81, [329.63, 392]], [174.61, [349.23, 440]], [130.81, [329.63, 392]]];
+      bars.forEach(([bass, chord], i) => {
+        tone(bass, start + i * 0.8, 0.3, 0.08, 'triangle');
+        chord.forEach((f) => tone(f, start + i * 0.8 + 0.4, 0.25, 0.04, 'triangle'));
+      });
+      [523.25, 659.25, 783.99, 659.25, 698.46, 880, 783.99].forEach((f, i) => bell(f, start + i * 0.4));
+      [261.63, 329.63, 392].forEach((f) => tone(f, start + 3.2, 1.2, 0.05, 'triangle'));
+      bell(1046.5, start + 3.2);
     },
     close: () => {
       if (ctx) void ctx.close();

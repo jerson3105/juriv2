@@ -17,13 +17,14 @@ interface ActivityWelcomeProps {
    * «calma»: caja de música y Z flotando (Descanso). «energia»: marimba con palmas y chispas (actividades con
    * movimiento). «aventura»: la Niebla se abre sobre la portada con viento y fanfarria (Conquista). «viaje»: marcha
    * de viaje y huellas que avanzan (Expediciones). «carta»: vals tierno y sobres que suben (Correo Estelar).
-   * «detective»: misterio de puntillas y una lupa que recorre la portada (El Error de Jiro).
+   * «detective»: misterio de puntillas y una lupa que recorre la portada (El Error de Jiro). «feria»: tic-tac de la
+   * esfera, música de feria y boletos que suben (Bingo Estelar).
    */
   mood?: WelcomeMood;
   onDone: () => void;
 }
 
-type WelcomeMood = 'calma' | 'energia' | 'aventura' | 'viaje' | 'carta' | 'detective';
+type WelcomeMood = 'calma' | 'energia' | 'aventura' | 'viaje' | 'carta' | 'detective' | 'feria';
 
 const MOODS: Record<WelcomeMood, { glow: string; play: (sound: StageSound) => void }> = {
   calma: { glow: 'shadow-[0_0_0_4px_rgba(253,230,138,0.35),0_0_80px_rgba(129,140,248,0.45)]', play: (sound) => sound.lullaby() },
@@ -32,6 +33,7 @@ const MOODS: Record<WelcomeMood, { glow: string; play: (sound: StageSound) => vo
   viaje: { glow: 'shadow-[0_0_0_4px_rgba(253,230,138,0.35),0_0_80px_rgba(52,211,153,0.4)]', play: (sound) => sound.viaje() },
   carta: { glow: 'shadow-[0_0_0_4px_rgba(253,230,138,0.35),0_0_80px_rgba(244,114,182,0.45)]', play: (sound) => sound.vals() },
   detective: { glow: 'shadow-[0_0_0_4px_rgba(253,230,138,0.35),0_0_80px_rgba(251,113,133,0.4)]', play: (sound) => sound.misterio() },
+  feria: { glow: 'shadow-[0_0_0_4px_rgba(253,230,138,0.45),0_0_80px_rgba(251,191,36,0.4)]', play: (sound) => sound.feria() },
 };
 
 const ENVELOPES = [
@@ -140,6 +142,16 @@ export const ActivityWelcome = ({ title, tagline, cover, sound, mood = 'calma', 
             style={{ left: spark.left, top: spark.top, fontSize: 'clamp(22px,4.5vh,56px)', '--aw-delay': `${spark.delay}ms` } as CSSProperties}
           >
             ✦
+          </span>
+        ))}
+        {mood === 'feria' && ENVELOPES.map((spot) => (
+          <span
+            key={spot.left + spot.top}
+            aria-hidden="true"
+            className="aw-z absolute"
+            style={{ left: spot.left, top: spot.top, fontSize: 'clamp(22px,4.5vh,52px)', '--aw-delay': `${spot.delay}ms` } as CSSProperties}
+          >
+            🎟️
           </span>
         ))}
         {mood === 'carta' && ENVELOPES.map((envelope) => (

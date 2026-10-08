@@ -1,0 +1,327 @@
+<!-- titulo: Bingo Estelar -->
+<!-- base: comun -->
+<!--
+  Tutorial para ESTUDIANTES: «Bingo Estelar» (cómo se juega). ~50 s, 16:9, para proyectar en clase. Jiro lo cuenta en
+  globos grandes con una música de feria alegre (bajo y acorde punteados, campanitas) y el tic-tac de la Esfera.
+  Textos reales: «Cartón Nº 7», «LIBRE», «¿La mayoría acertó?», «¡Constelación completa!», «Bingo nº 1», figuras
+  Línea → Cuatro esquinas → Cielo completo. Arma: node tutoriales/motor/build.mjs bingo
+-->
+<style>
+/* Portada para estudiantes */
+.d-logo { position: absolute; left: 150px; top: 120px; height: 92px; }
+.d-eyebrow { position: absolute; left: 154px; top: 300px; color: #fde68a; font: 800 30px/1 'Inter', sans-serif; letter-spacing: .18em; text-transform: uppercase; }
+.d-title { position: absolute; left: 144px; top: 352px; width: 840px; color: #fff; font: 800 112px/1.02 'Poppins', sans-serif; letter-spacing: -.02em; }
+.d-sub { position: absolute; left: 154px; top: 620px; color: #c7d2fe; font: 600 42px/1.3 'Inter', sans-serif; }
+.d-chips { position: absolute; left: 154px; top: 720px; display: flex; gap: 16px; }
+.d-chips span { padding: 12px 22px; border-radius: 999px; background: rgba(255, 255, 255, .1); border: 2px solid rgba(255, 255, 255, .16); color: #e0e7ff; font: 700 26px/1 'Inter', sans-serif; }
+.d-window { position: absolute; left: 1010px; top: 200px; width: 780px; height: 585px; border-radius: 40px; overflow: hidden;
+  box-shadow: 0 0 0 4px rgba(253, 230, 138, .35), 0 0 80px rgba(251, 191, 36, .35), 0 40px 120px rgba(0, 0, 0, .5); }
+.d-window img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; }
+.b-fly { position: absolute; line-height: 1; }
+
+/* Jiro que cuenta */
+.jiro-box { position: absolute; left: 40px; top: 330px; width: 560px; height: 740px; }
+.jiro-box img { position: absolute; left: 0; bottom: 0; height: 740px; }
+
+/* El cartón de papel (como la hoja impresa) */
+.b-paper { position: absolute; left: 760px; top: 330px; width: 480px; height: 600px; padding: 26px; background: #fff; border: 4px dashed #111; border-radius: 18px; color: #000; }
+.b-paper .hd { display: flex; justify-content: space-between; align-items: flex-start; }
+.b-paper .brand { font: 800 26px/1 'Poppins', sans-serif; }
+.b-paper .sub { margin-top: 6px; font: 600 18px/1 'Inter', sans-serif; }
+.b-paper .num { font: 900 46px/1 'Poppins', sans-serif; }
+.b-paper .name { margin-top: 14px; font: italic 600 24px/1 'Inter', sans-serif; }
+.b-grid { position: absolute; left: 26px; top: 150px; width: 420px; height: 420px; display: grid; grid-template-columns: repeat(3, 1fr); border: 3px solid #000; }
+.b-grid div { position: relative; border: 2px solid #000; display: grid; place-items: center; font: 800 46px/1 'Poppins', sans-serif; }
+.b-grid .free { display: flex; flex-direction: column; gap: 4px; }
+.b-grid .free img { width: 80%; }
+.b-grid .free span { font: 800 14px/1 'Inter', sans-serif; letter-spacing: .1em; }
+.b-circle { position: absolute; left: 6px; top: 6px; width: 128px; height: 128px; }
+.b-circle circle { fill: none; stroke: #1d4ed8; stroke-width: 6; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; }
+
+/* El cartón en pantalla */
+.b-phone { position: absolute; left: 1300px; top: 330px; width: 470px; height: 640px; border-radius: 52px; background: #0f172a; box-shadow: 0 0 0 3px rgba(255, 255, 255, .18), 0 30px 90px rgba(0, 0, 0, .55); }
+.b-scr { position: absolute; left: 16px; top: 16px; right: 16px; bottom: 16px; border-radius: 38px; overflow: hidden;
+  background: radial-gradient(ellipse at 50% 0%, #312e81, #0b1026 70%); color: #fff; }
+.b-scr .t { position: absolute; left: 0; right: 0; top: 34px; text-align: center; color: #fde68a; font: 800 18px/1 'Inter', sans-serif; letter-spacing: .16em; text-transform: uppercase; }
+.b-scr .n { position: absolute; left: 0; right: 0; top: 70px; text-align: center; color: #fde68a; font: 900 52px/1 'Poppins', sans-serif; }
+.b-sgrid { position: absolute; left: 26px; top: 150px; width: 386px; height: 386px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.b-sgrid > div { position: relative; border-radius: 18px; border: 3px dashed rgba(255, 255, 255, .4); display: grid; place-items: center; font: 800 40px/1 'Poppins', sans-serif; }
+.b-sgrid .free { border: 0; background: #fcd34d; color: #451a03; display: flex; flex-direction: column; font: 800 16px/1 'Inter', sans-serif; }
+.b-sgrid .free b { font-size: 40px; }
+.b-on { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border-radius: 18px; background: #fcd34d; border: 4px solid #fff; color: #451a03; display: grid; place-items: center; font: 800 40px/1 'Poppins', sans-serif; }
+.b-on i { position: absolute; right: 8px; top: 4px; font-style: normal; font-size: 22px; }
+.b-mode { position: absolute; top: 984px; padding: 10px 20px; border-radius: 999px; background: rgba(255, 255, 255, .12); border: 2px solid rgba(255, 255, 255, .25); color: #fff; font: 800 26px/1 'Poppins', sans-serif; }
+
+/* La Esfera de Jiro */
+.b-ring { position: absolute; left: 860px; top: 400px; width: 480px; height: 480px; }
+.b-ring i { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: #fcd34d; box-shadow: 0 0 12px rgba(252, 211, 77, .9); }
+.b-orbit { position: absolute; left: 900px; top: 440px; width: 400px; height: 400px; border-radius: 50%; border: 3px solid rgba(253, 230, 138, .3); }
+.b-astro { position: absolute; left: 960px; top: 500px; width: 280px; height: 280px; border-radius: 50%; display: grid; place-items: center;
+  background: radial-gradient(circle at 35% 30%, #6366f1, #312e81 60%, #1e1b4b); box-shadow: 0 0 0 8px rgba(252, 211, 77, .7), 0 0 70px rgba(129, 140, 248, .6); color: #fde68a; font: 900 150px/1 'Poppins', sans-serif; }
+.b-q { position: absolute; left: 1380px; top: 520px; width: 470px; color: #fff; }
+.b-q small { display: block; color: #fde68a; font: 800 24px/1 'Inter', sans-serif; letter-spacing: .14em; text-transform: uppercase; }
+.b-q b { display: block; margin-top: 14px; font: 800 66px/1.1 'Poppins', sans-serif; }
+.b-kids { position: absolute; left: 1380px; top: 800px; display: flex; gap: 22px; }
+.b-kids div { position: relative; width: 110px; height: 110px; }
+.b-kids span { position: absolute; right: -14px; top: -20px; font-size: 40px; }
+.b-pill { position: absolute; padding: 12px 26px; border-radius: 999px; font: 800 34px/1 'Poppins', sans-serif; white-space: nowrap; }
+
+/* La estrella de la clase */
+.b-ask { position: absolute; left: 760px; top: 370px; width: 1080px; text-align: center; color: #e0e7ff; font: 800 48px/1 'Poppins', sans-serif; }
+.b-yes, .b-no { position: absolute; top: 450px; height: 92px; padding: 0 40px; border-radius: 24px; display: flex; align-items: center; gap: 12px; font: 800 44px/1 'Poppins', sans-serif; }
+.b-yes { left: 1010px; background: #6ee7b7; color: #064e3b; }
+.b-no { left: 1350px; border: 4px solid rgba(255, 255, 255, .45); color: #fff; }
+.b-bar { position: absolute; left: 890px; top: 640px; display: flex; gap: 22px; }
+.b-slot { position: relative; width: 120px; height: 120px; }
+.b-slot svg { position: absolute; left: 0; top: 0; width: 120px; height: 120px; }
+.b-say { position: absolute; left: 760px; top: 820px; width: 1080px; text-align: center; color: #fde68a; font: 800 52px/1.1 'Poppins', sans-serif; }
+
+/* ¡Bingo! */
+.b-kid { position: absolute; left: 760px; top: 520px; width: 200px; height: 400px; }
+.b-kid svg { width: 200px; height: 400px; }
+.b-speech { position: absolute; left: 900px; top: 430px; padding: 16px 22px; border-radius: 26px; background: #fff; color: #0f172a; font: 800 34px/1 'Poppins', sans-serif; white-space: nowrap; }
+.b-const { position: absolute; left: 1260px; top: 340px; width: 480px; height: 480px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.b-const div { border-radius: 22px; border: 3px dashed rgba(255, 255, 255, .35); display: grid; place-items: center; color: #e0e7ff; font: 800 44px/1 'Poppins', sans-serif; }
+.b-const .lit { border: 0; background: #fcd34d; color: #451a03; }
+.b-colring { position: absolute; left: 1414px; top: 330px; width: 172px; height: 500px; border-radius: 28px; border: 8px solid #fff; }
+.b-ok { position: absolute; left: 960px; top: 860px; width: 900px; text-align: center; color: #fde68a; font: 800 38px/1 'Poppins', sans-serif; }
+.b-figs { position: absolute; left: 960px; top: 944px; width: 900px; display: flex; justify-content: center; gap: 14px; }
+.b-figs span { padding: 10px 20px; border-radius: 999px; background: rgba(255, 255, 255, .12); color: #fff; font: 800 26px/1 'Inter', sans-serif; }
+.b-figs .done { background: #6ee7b7; color: #064e3b; }
+
+/* Final */
+.f-big { position: absolute; left: 0; width: 1920px; text-align: center; color: #fde68a; font: 800 130px/1 'Poppins', sans-serif; }
+.f-say { position: absolute; left: 0; width: 1920px; text-align: center; color: #fff; font: 800 72px/1 'Poppins', sans-serif; }
+.f-jiro { position: absolute; left: 773px; top: 400px; height: 600px; }
+#fx { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; pointer-events: none; }
+</style>
+
+<script>
+(() => {
+  const G = Guion.init();
+  const LOGO = 'asset:logo.png?h=200';
+  const END = 50;
+  G.chapter(0, 'Inicio');
+  G.chapter(6, 'Tu cartón');
+  G.chapter(13, 'La Esfera');
+  G.chapter(20, 'Marcar');
+  G.chapter(27, 'La estrella de la clase');
+  G.chapter(33, '¡Bingo!');
+  G.chapter(41.5, '¿Listos?');
+
+  G.cielo([]);
+
+  // ---------- Música de feria (bajo y acorde punteados al paso, campanitas) y el tic-tac de la Esfera ----------
+  const BEAT = 0.4;
+  const BASS = { C: 130.81, F: 174.61, G: 196 };
+  const CHORD = { C: [329.63, 392], F: [349.23, 440], G: [293.66, 392] };
+  const HARM = ['C', 'C', 'F', 'C', 'C', 'C', 'G', 'C'];
+  const oompah = (from, to) => {
+    for (let t = from, k = 0; t < to; t += BEAT, k += 1) {
+      const chord = HARM[Math.floor(k / 2) % HARM.length];
+      if (k % 2 === 0) G.cue(t, `u:${BASS[chord]}`);
+      else CHORD[chord].forEach((f, i) => G.cue(t + i * 0.015, `u:${f}`));
+    }
+  };
+  const N = { C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46, G5: 783.99, A5: 880, C6: 1046.5 };
+  const TUNE = ['C5', 'E5', 'G5', 'E5', 'F5', 'A5', 'G5', null, 'E5', 'G5', 'C6', 'G5', 'F5', 'D5', 'C5', null];
+  const tune = (t0) => TUNE.forEach((n, i) => { if (n) G.cue(t0 + i * BEAT, `n:${N[n]}`); });
+  oompah(0.4, 13.4);
+  tune(0.4);
+  tune(6.8);
+  // La Esfera gira: tic-tac que se espacia; luego, pensar en silencio con un tic-tac suave.
+  [13.6, 13.7, 13.8, 13.92, 14.05, 14.2, 14.38, 14.58].forEach((t) => G.cue(t, 'click'));
+  G.cue(14.75, 'whoosh');
+  G.cue(15.1, 'chime');
+  for (let t = 16.9; t < 20.0; t += 0.5) G.cue(t, 'click');
+  oompah(20.4, 46.0);
+  tune(20.4);
+  tune(33.6);
+  tune(41.6);
+  [261.63, 329.63, 392].forEach((f, i) => G.cue(46.2 + i * 0.03, `u:${f}`));
+  G.cue(46.25, 'n:1046.5');
+  G.cue(46.4, 'levelup');
+
+  // ---------- Dibujos ----------
+  const face = (cy, k) => `<circle cx="50" cy="${cy}" r="24" fill="${k.skin}"/><path d="M27 ${cy - 6} Q50 ${cy - 34} 73 ${cy - 6} Q62 ${cy - 16} 50 ${cy - 15} Q38 ${cy - 16} 27 ${cy - 6} Z" fill="${k.hair}"/>
+    <circle cx="42" cy="${cy + 2}" r="3" fill="#1f2937"/><circle cx="58" cy="${cy + 2}" r="3" fill="#1f2937"/><path d="M42 ${cy + 11} Q50 ${cy + 17} 58 ${cy + 11}" stroke="#1f2937" stroke-width="3" fill="none" stroke-linecap="round"/>`;
+  const head = (k) => `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="48" fill="${k.shirt}" opacity=".35"/>${face(54, k)}</svg>`;
+  // Con la mano en alto (canta ¡Bingo!).
+  const handUp = (k) => `<svg viewBox="0 0 100 200">
+    <rect x="35" y="128" width="12" height="56" rx="6" fill="#334155"/><rect x="53" y="128" width="12" height="56" rx="6" fill="#334155"/>
+    <ellipse cx="41" cy="187" rx="10" ry="6" fill="#0f172a"/><ellipse cx="59" cy="187" rx="10" ry="6" fill="#0f172a"/>
+    <rect x="28" y="66" width="44" height="70" rx="18" fill="${k.shirt}"/>
+    <line x1="31" y1="80" x2="22" y2="122" stroke="${k.shirt}" stroke-width="11" stroke-linecap="round"/><line x1="69" y1="76" x2="84" y2="24" stroke="${k.shirt}" stroke-width="11" stroke-linecap="round"/>
+    <circle cx="22" cy="126" r="6" fill="${k.skin}"/><circle cx="85" cy="19" r="7" fill="${k.skin}"/>${face(42, k)}</svg>`;
+  const KIDS = [{ shirt: '#f472b6', skin: '#e0ac69', hair: '#5b3a1a' }, { shirt: '#38bdf8', skin: '#8d5524', hair: '#1f1309' }, { shirt: '#4ade80', skin: '#f1c27d', hair: '#3b2414' }];
+  const STAR = 'M50 6 L62 37 L95 38 L69 58 L78 91 L50 72 L22 91 L31 58 L5 38 L38 37 Z';
+  const at = (el, left, top) => { el.style.left = `${left}px`; el.style.top = `${top}px`; return el; };
+  const CELLS = ['12', '28', '45', '16', '*', '30', '9', '24', '35'];
+
+  // =============== 1 · Portada (0–6) ===============
+  G.el('img', 'd-logo', '', G.stage, 'd-logo').src = LOGO;
+  G.el('div', 'd-eyebrow', 'Observatorio de Jiro', G.stage, 'd-eyebrow');
+  G.el('div', 'd-title', 'Bingo Estelar', G.stage, 'd-title');
+  G.el('div', 'd-sub', '¿Cómo se juega?', G.stage, 'd-sub');
+  G.el('div', 'd-chips', '<span>🎟️ Tu cartón</span><span>🌟 Esfera de Jiro</span><span>🎉 ¡Bingo!</span>', G.stage, 'd-chips');
+  G.el('div', 'd-window', '<img id="d-cover" src="asset:assets/jiro/actividades/bingo.webp" alt="">', G.stage, 'd-window');
+  G.show('#d-logo', 0.2, 5.8, { from: { y: -20 } });
+  G.show('#d-eyebrow', 0.5, 5.8);
+  G.key('#d-title', [[0.8, { o: 0, s: 0.9, y: 30 }], [1.4, { o: 1, s: 1, y: 0, ease: 'pop' }], [5.5, { o: 1 }], [5.9, { o: 0, y: -20, ease: 'in' }]]);
+  G.show('#d-sub', 1.5, 5.8);
+  G.show('#d-chips', 2.0, 5.8);
+  G.key('#d-window', [[0.9, { o: 0, s: 0.92, x: 120 }], [1.7, { o: 1, s: 1, x: 0, ease: 'back' }], [5.5, { o: 1, s: 1 }], [6.0, { o: 0, s: 0.96, ease: 'in' }]]);
+  G.key('#d-cover', [[0.9, { s: 1 }], [6.0, { s: 1.08, ease: 'linear' }]]);
+  [[1060, 720, '🎟️'], [1720, 690, '⭐'], [1110, 300, '🎟️'], [1700, 280, '⭐']].forEach(([x, y, e], i) => {
+    const f = at(G.el('div', 'b-fly', e, G.stage, `pf${i}`), x, y);
+    f.style.fontSize = '52px';
+    const t = 2.0 + i * 0.5;
+    G.key(f, [[0, { o: 0 }], [t, { o: 0, y: 30, r: -10 }], [t + 0.4, { o: 1, y: 0, r: 0, ease: 'out' }], [t + 2.0, { o: 0, y: -90, r: 14, ease: 'in' }]]);
+  });
+  G.cue(0.3, 'whoosh');
+  G.cue(1.2, 'pop');
+
+  // =============== Jiro (6–41.5) ===============
+  const box = G.el('div', 'jiro-box', '', G.stage, 'jiro');
+  // Rutas literales: build.mjs solo cambia 'asset:…' entre comillas simples por la imagen incrustada.
+  const poses = {
+    emoc: 'asset:assets/jiro/emocionado.webp?h=740',
+    sena: 'asset:assets/jiro/senalando.webp?h=740',
+    cele: 'asset:assets/jiro/celebrando.webp?h=740',
+  };
+  for (const [id, src] of Object.entries(poses)) G.el('img', '', '', box, `j-${id}`).src = src;
+  G.key('#jiro', [[0, { o: 0, x: -240 }], [6.1, { o: 0, x: -240 }], [6.8, { o: 1, x: 0, ease: 'back' }], [41.0, { o: 1, x: 0 }], [41.5, { o: 0, x: -200, ease: 'in' }]]);
+  G.cue(6.1, 'whoosh');
+  const poseAt = { emoc: [[6, 13], [27, 33]], sena: [[13, 27]], cele: [[33, 41.5]] };
+  for (const [id, spans] of Object.entries(poseAt)) {
+    const frames = [[0, { o: 0 }]];
+    for (const [a, b] of spans) frames.push([a, { o: 0 }], [a + 0.18, { o: 1 }], [b - 0.18, { o: 1 }], [b, { o: 0 }]);
+    G.key(`#j-${id}`, frames, 'linear');
+  }
+
+  // =============== 2 · Tu cartón (6–13) y 4 · Marcar (20–27) ===============
+  G.burbuja('b1', 6.6, 12.8, 'Cada uno tiene su cartón: en papel o en tu pantalla. ¡Todos son distintos!');
+  G.el('div', 'b-paper', `<div class="hd"><div><div class="brand">★ Bingo Estelar</div><div class="sub">Tablas · Juego 1</div></div><div class="num">Nº 7</div></div>
+    <div class="name">Nombre: Sofía</div>
+    <div class="b-grid">${CELLS.map((c, i) => (c === '*'
+      ? '<div class="free"><img src="asset:assets/jiro/jiro-linea.png" alt=""><span>LIBRE</span></div>'
+      : `<div>${c}${c === '28' || c === '24' ? `<svg class="b-circle" id="pc${c}" viewBox="0 0 128 128"><circle cx="64" cy="64" r="54" pathLength="1"/></svg>` : ''}</div>`)).join('')}</div>`, G.stage, 'paper');
+  G.el('div', 'b-phone', `<div class="b-scr"><div class="t">Bingo Estelar · Juego 1</div><div class="n">Cartón Nº 7</div>
+    <div class="b-sgrid">${CELLS.map((c) => (c === '*'
+      ? '<div class="free"><b>★</b>JIRO</div>'
+      : `<div>${c}${c === '28' || c === '24' ? `<div class="b-on" id="so${c}">${c}<i>★</i></div>` : ''}</div>`)).join('')}</div></div>`, G.stage, 'phone');
+  at(G.el('div', 'b-mode', '🖨️ En papel', G.stage, 'm-paper'), 900, 984);
+  at(G.el('div', 'b-mode', '📱 En tu pantalla', G.stage, 'm-phone'), 1400, 984);
+  const cardsOn = (a, b) => [[a, { o: 0, y: 30 }], [a + 0.45, { o: 1, y: 0, ease: 'back' }], [b - 0.4, { o: 1 }], [b, { o: 0 }]];
+  G.key('#paper', [[0, { o: 0, y: 30, r: 0 }], ...cardsOn(7.0, 12.9).map(([t, p]) => [t, { ...p, r: -2 }]), [21.6, { o: 0, y: 30 }], [22.05, { o: 1, y: 0, ease: 'back' }], [26.6, { o: 1 }], [27.0, { o: 0 }]]);
+  G.key('#phone', [[0, { o: 0, y: 30 }], ...cardsOn(7.3, 12.9), [21.8, { o: 0, y: 30 }], [22.25, { o: 1, y: 0, ease: 'back' }], [26.6, { o: 1 }], [27.0, { o: 0 }]]);
+  G.key('#m-paper', [[0, { o: 0 }], ...cardsOn(7.6, 12.9)]);
+  G.key('#m-phone', [[0, { o: 0 }], ...cardsOn(7.8, 12.9)]);
+  // El 24 ya estaba marcado (otra bola); el 28 se marca ahora: círculo de lápiz en papel, toque en la pantalla.
+  const draw = (selector, t0, dur = 0.5) => G.every((t) => {
+    const k = Math.max(0, Math.min(1, (t - t0) / dur));
+    G.$(selector).style.strokeDashoffset = String(1 - k);
+  });
+  draw('#pc24 circle', 21.6, 0.01);
+  draw('#pc28 circle', 24.5, 0.6);
+  G.key('#so24', [[0, { o: 0 }], [21.6, { o: 0 }], [21.65, { o: 1 }]]);
+  G.key('#so28', [[0, { o: 0, s: 0.7 }], [25.3, { o: 0, s: 0.7 }], [25.6, { o: 1, s: 1, ease: 'pop' }]]);
+  G.ripple(25.25, { x: 1535, y: 559 });
+  G.cue(24.5, 'type'); G.cue(24.7, 'type'); G.cue(24.9, 'type');
+  // En el cartón: el número y la casilla libre de Jiro.
+  at(G.el('div', 'b-pill', 'Tu número', G.stage, 'hint-num'), 1040, 300).style.cssText += ';background:#fcd34d;color:#451a03;font-size:24px;padding:8px 16px';
+  G.key('#hint-num', [[0, { o: 0, y: 10 }], [9.4, { o: 0, y: 10 }], [9.7, { o: 1, y: 0, ease: 'pop' }], [12.5, { o: 1 }], [12.9, { o: 0 }]]);
+  at(G.el('div', 'b-pill', 'Jiro: casilla libre', G.stage, 'hint-free'), 900, 940).style.cssText += ';background:#fff;color:#0f172a;font-size:22px;padding:8px 16px';
+  G.key('#hint-free', [[0, { o: 0, y: 10 }], [10.6, { o: 0, y: 10 }], [10.9, { o: 1, y: 0, ease: 'pop' }], [12.5, { o: 1 }], [12.9, { o: 0 }]]);
+
+  // =============== 3 · La Esfera de Jiro (13–20) ===============
+  G.burbuja('b2', 13.3, 16.6, 'La Esfera de Jiro gira… ¡y suelta una pregunta!');
+  G.burbuja('b3', 16.8, 19.8, 'Piensa en la respuesta… ¡sin gritarla! 🤫');
+  G.el('div', 'b-orbit', '', G.stage, 'orbit');
+  const ring = G.el('div', 'b-ring', Array.from({ length: 24 }, (_, i) => {
+    const a = (i / 24) * Math.PI * 2;
+    return `<i style="left:${240 + 228 * Math.cos(a)}px;top:${240 + 228 * Math.sin(a)}px"></i>`;
+  }).join(''), G.stage, 'ring');
+  G.el('div', 'b-astro', '<span id="astro-q">?</span>', G.stage, 'astro');
+  G.el('div', 'b-astro', '28', G.stage, 'astro-a');
+  G.el('div', 'b-q', '<small>Bola 5</small><b>¿Cuánto es<br>4&nbsp;×&nbsp;7?</b>', G.stage, 'q');
+  G.el('div', 'b-kids', KIDS.map((k, i) => `<div>${head(k)}<span id="hush${i}">🤫</span></div>`).join(''), G.stage, 'kids');
+  const sphereOn = [[0, { o: 0, s: 0.9 }], [13.2, { o: 0, s: 0.9 }], [13.5, { o: 1, s: 1, ease: 'out' }], [21.1, { o: 1, s: 1 }], [21.5, { o: 0, s: 0.9 }]];
+  G.key('#orbit', sphereOn);
+  G.key('#ring', sphereOn);
+  G.every((t) => {
+    const k = Math.max(0, Math.min(1, (t - 13.6) / 1.1));
+    const eased = 1 - Math.pow(1 - k, 3);
+    ring.style.rotate = `${(eased * 900).toFixed(1)}deg`;
+  });
+  G.key('#astro', [[0, { o: 0, s: 0.2 }], [14.75, { o: 0, s: 0.2 }], [15.1, { o: 1, s: 1, ease: 'back' }], [20.2, { o: 1, s: 1 }], [20.45, { o: 0, s: 0.9 }]]);
+  G.key('#astro-a', [[0, { o: 0, s: 0.7 }], [20.3, { o: 0, s: 0.7 }], [20.7, { o: 1, s: 1, ease: 'pop' }], [21.1, { o: 1 }], [21.5, { o: 0 }]]);
+  G.cue(20.35, 'chime');
+  G.key('#q', [[0, { o: 0, y: 20 }], [15.2, { o: 0, y: 20 }], [15.6, { o: 1, y: 0, ease: 'out' }], [21.1, { o: 1 }], [21.5, { o: 0 }]]);
+  G.key('#kids', [[0, { o: 0, y: 20 }], [16.9, { o: 0, y: 20 }], [17.3, { o: 1, y: 0, ease: 'out' }], [20.3, { o: 1 }], [20.6, { o: 0 }]]);
+  [0, 1, 2].forEach((i) => G.key(`#hush${i}`, [[0, { o: 0, s: 0.4 }], [17.4 + i * 0.2, { o: 0, s: 0.4 }], [17.7 + i * 0.2, { o: 1, s: 1, ease: 'back' }]]));
+  G.cue(17.4, 'shh');
+  G.burbuja('b4', 20.3, 24.1, '¡Se revela! Si la respuesta está en tu cartón… ¡la marcas!');
+  G.burbuja('b5', 24.3, 26.8, 'Con lápiz o tocando la casilla.');
+  at(G.el('div', 'b-pill', 'Era: 28 ✓', G.stage, 'era'), 1150, 984).style.cssText += ';background:#fcd34d;color:#451a03';
+  G.key('#era', [[0, { o: 0, s: 0.6 }], [21.9, { o: 0, s: 0.6 }], [22.2, { o: 1, s: 1, ease: 'pop' }], [26.6, { o: 1 }], [27.0, { o: 0 }]]);
+
+  // =============== 5 · La estrella de la clase (27–33) ===============
+  G.burbuja('b6', 27.3, 31.0, 'Tu profe pregunta: ¿la mayoría acertó? Si sí… ¡se enciende una estrella de la clase!');
+  G.burbuja('b7', 31.2, 32.9, '¡Lo que acierta la clase es lo que suma!');
+  G.el('div', 'b-ask', '¿La mayoría acertó?', G.stage, 'ask');
+  G.el('div', 'b-yes', '✓ Sí', G.stage, 'yes');
+  G.el('div', 'b-no', '✕ No', G.stage, 'no');
+  G.el('div', 'b-bar', Array.from({ length: 6 }, (_, i) => `<div class="b-slot"><svg viewBox="0 0 100 100"><path d="${STAR}" fill="none" stroke="rgba(199,210,254,.45)" stroke-width="4" stroke-linejoin="round"/></svg>
+    <svg viewBox="0 0 100 100" id="cs${i}"><path d="${STAR}" fill="#fcd34d" stroke="#f59e0b" stroke-width="3" stroke-linejoin="round"/></svg></div>`).join(''), G.stage, 'cbar');
+  G.el('div', 'b-say', '⭐ 3 estrellas de la clase', G.stage, 'csay');
+  const s5 = (t0) => [[0, { o: 0, y: 20 }], [t0, { o: 0, y: 20 }], [t0 + 0.4, { o: 1, y: 0, ease: 'out' }], [32.7, { o: 1 }], [33.0, { o: 0 }]];
+  ['#ask', '#yes', '#no', '#cbar'].forEach((s, i) => G.key(s, s5(27.4 + i * 0.12)));
+  [0, 1].forEach((i) => G.key(`#cs${i}`, [[0, { o: 1 }]]));
+  [3, 4, 5].forEach((i) => G.key(`#cs${i}`, [[0, { o: 0 }]]));
+  G.ripple(28.9, { x: 1110, y: 496 });
+  G.key('#cs2', [[0, { o: 0, s: 0.3 }], [29.1, { o: 0, s: 0.3 }], [29.45, { o: 1, s: 1.35, ease: 'out' }], [29.7, { o: 1, s: 1 }]]);
+  G.cue(29.1, 'n:1318.51');
+  G.key('#csay', s5(29.6));
+
+  // =============== 6 · ¡Bingo! (33–41.5) ===============
+  G.burbuja('b8', 33.2, 37.0, '¿Completaste una línea? Levanta la mano y di: «¡Bingo! Cartón 7».');
+  G.burbuja('b9', 37.2, 41.2, 'Tu profe lo verifica… y siguen las figuras: Cuatro esquinas y Cielo completo.');
+  G.el('div', 'b-kid', handUp(KIDS[0]), G.stage, 'sofia');
+  G.key('#sofia', [[0, { o: 0, y: 40 }], [33.4, { o: 0, y: 40 }], [33.8, { o: 1, y: 0, ease: 'back' }], [34.3, { y: -16 }], [34.7, { y: 0 }], [40.9, { o: 1 }], [41.3, { o: 0 }]]);
+  G.el('div', 'b-speech', '¡Bingo! Cartón 7', G.stage, 'speech');
+  G.key('#speech', [[0, { o: 0, s: 0.6 }], [34.0, { o: 0, s: 0.6 }], [34.35, { o: 1, s: 1, ease: 'pop' }], [40.9, { o: 1 }], [41.3, { o: 0 }]]);
+  G.cue(34.0, 'pop');
+  G.el('div', 'b-const', CELLS.map((c, i) => `<div class="${[1, 4, 7].includes(i) ? 'lit' : ''}">${c === '*' ? '★' : c}</div>`).join(''), G.stage, 'const');
+  G.key('#const', [[0, { o: 0, s: 0.8 }], [35.2, { o: 0, s: 0.8 }], [35.6, { o: 1, s: 1, ease: 'back' }], [40.9, { o: 1 }], [41.3, { o: 0 }]]);
+  G.el('div', 'b-colring', '', G.stage, 'colring');
+  G.key('#colring', [[0, { o: 0, s: 1.1 }], [36.0, { o: 0, s: 1.1 }], [36.3, { o: 1, s: 1, ease: 'out' }], [40.9, { o: 1 }], [41.3, { o: 0 }]]);
+  G.el('div', 'b-ok', '¡Constelación completa! Cartón 7 · Bingo nº 1', G.stage, 'okb');
+  G.key('#okb', [[0, { o: 0, y: 14 }], [36.3, { o: 0, y: 14 }], [36.7, { o: 1, y: 0, ease: 'out' }], [40.9, { o: 1 }], [41.3, { o: 0 }]]);
+  G.cue(36.2, 'levelup');
+  G.el('div', 'b-figs', '<span class="done" id="fig0">Línea ✓</span><span id="fig1">→ Cuatro esquinas</span><span id="fig2">→ Cielo completo</span>', G.stage, 'figs');
+  G.key('#figs', [[0, { o: 0 }], [38.0, { o: 0, y: 14 }], [38.4, { o: 1, y: 0, ease: 'out' }], [40.9, { o: 1 }], [41.3, { o: 0 }]]);
+  [1, 2].forEach((i) => G.key(`#fig${i}`, [[0, { o: 0, x: -10 }], [38.6 + i * 0.4, { o: 0, x: -10 }], [38.9 + i * 0.4, { o: 1, x: 0, ease: 'out' }]]));
+
+  // =============== 7 · ¿Listos? (41.5–50) ===============
+  G.el('img', 'f-jiro', '', G.stage, 'f-jiro').src = 'asset:assets/jiro/celebrando.webp?h=740';
+  G.el('div', 'f-big', '¿Listos?', G.stage, 'f-big').style.top = '110px';
+  G.el('div', 'f-say', 'Piensa, marca y canta ¡Bingo!', G.stage, 'f-say').style.top = '270px';
+  G.el('div', '', '', G.stage, 'fx');
+  G.key('#f-jiro', [[0, { o: 0, y: 60 }], [41.5, { o: 0, y: 60 }], [42.0, { o: 1, y: 0, ease: 'back' }], [42.6, { y: -36, ease: 'out' }], [43.1, { y: 0, ease: 'in' }], [49.5, { o: 1 }], [50, { o: 0 }]]);
+  G.key('#f-big', [[0, { o: 0, s: 0.8 }], [41.5, { o: 0, s: 0.8 }], [41.9, { o: 1, s: 1, ease: 'back' }], [49.5, { o: 1 }], [50, { o: 0 }]]);
+  G.key('#f-say', [[0, { o: 0, s: 0.8 }], [42.3, { o: 0, s: 0.8 }], [42.7, { o: 1, s: 1, ease: 'pop' }], [49.5, { o: 1 }], [50, { o: 0 }]]);
+  [[200, '🎟️'], [420, '⭐'], [640, '🌟'], [1300, '🎟️'], [1520, '⭐'], [1740, '🌟'], [320, '⭐'], [1640, '🎟️']].forEach(([x, e], i) => {
+    const f = at(G.el('div', 'b-fly', e, G.stage, `up${i}`), x, 1100);
+    f.style.fontSize = '56px';
+    const t = 41.8 + i * 0.35;
+    G.key(f, [[0, { o: 0 }], [t, { o: 0, y: 0, r: -10 }], [t + 0.3, { o: 1 }], [t + 4.2, { o: 0, y: -1180, r: 20, ease: 'linear' }]]);
+  });
+  G.confeti('#fx', 42.0, 2.6);
+  G.cue(41.7, 'levelup');
+  G.confeti('#fx', 36.3, 1.6);
+
+  G.capas();
+  G.arrancar(END);
+})();
+</script>
