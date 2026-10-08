@@ -14,6 +14,8 @@ export const printBingoCards = (data: BingoCards, answerText: Map<string, string
   if (chosen.length === 0) return false;
   const size = data.size;
   const figures = FIGURES.map((f) => f.name).join(' → ');
+  // La ventana de impresión es about:blank: la imagen va con la dirección completa del sitio.
+  const jiro = `${window.location.origin}/assets/jiro/jiro-linea.png`;
   const card = (c: BingoCards['cards'][number]) => `
     <section class="card">
       <header>
@@ -23,7 +25,7 @@ export const printBingoCards = (data: BingoCards, answerText: Map<string, string
       <p class="name">Nombre: ______________________</p>
       <div class="grid s${size}">
         ${c.cells.map((key) => (key === FREE
-          ? '<div class="cell free"><span class="star">★</span><span class="libre">JIRO · LIBRE</span></div>'
+          ? `<div class="cell free"><img src="${jiro}" alt="Jiro"><span class="libre">LIBRE</span></div>`
           : `<div class="cell"><span>${escapeHtml(answerText.get(key) ?? '')}</span></div>`)).join('')}
       </div>
       <p class="foot">Figuras: ${escapeHtml(figures)}. Marca con lápiz o con fichas.</p>
@@ -47,7 +49,7 @@ export const printBingoCards = (data: BingoCards, answerText: Map<string, string
       .s3 .cell { font-size: 15pt; }
       .s4 .cell { font-size: 11.5pt; }
       .free { flex-direction: column; gap: 1mm; }
-      .free .star { font-size: 22pt; line-height: 1; }
+      .free img { width: 78%; max-height: 72%; object-fit: contain; }
       .free .libre { font-size: 7pt; letter-spacing: .08em; }
       .foot { margin: 0; font-size: 7.5pt; }
     </style></head><body>

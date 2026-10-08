@@ -74,6 +74,7 @@ export const CATALOG: CatalogEntry[] = [
     name: 'Bingo Estelar',
     description: 'Jiro sortea preguntas y cada uno marca su cartón: en pantalla o en una hoja impresa. Se premia lo que acierta la clase.',
     pose: 'emocionado',
+    cover: '/assets/jiro/actividades/bingo.webp',
     duration: '15–25 min',
     requirements: [{ icon: '📚', label: 'Banco o Tablas' }, { icon: '🖨️', label: 'Impresora o cuentas' }],
     sessionType: 'BINGO',
