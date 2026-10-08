@@ -12,6 +12,8 @@ import { badgeApi } from '../../../lib/badgeApi';
 import { classNoteApi } from '../../../lib/classNoteApi';
 import { clanApi } from '../../../lib/clanApi';
 import { correoApi, correoKeys } from '../../../lib/correoApi';
+import { bingoApi, bingoKeys } from '../../../lib/bingoApi';
+import { StudentBingoCard } from '../../observatorio/bingo/StudentBingoCard';
 import { expeditionApi, expeditionKeys } from '../../../lib/expeditionApi';
 import { recoveryApi } from '../../../lib/recoveryApi';
 import { shopApi } from '../../../lib/shopApi';
@@ -85,6 +87,8 @@ export const StudentHome = ({ profile, firstName, storyAccent }: StudentHomeProp
   const { data: notes = [] } = useQuery({ queryKey: ['class-notes', classroomId], queryFn: () => classNoteApi.list(classroomId) });
   const { data: energy } = useQuery({ queryKey: ['my-energy', id], queryFn: () => recoveryApi.mine(id), enabled: resting, staleTime: 30_000 });
   const { data: correo } = useQuery({ queryKey: correoKeys.mine(id), queryFn: () => correoApi.mine(id), staleTime: 30_000 });
+  // Bingo Estelar en clase: su cartón en pantalla aparece aunque abra Juried después de que el profe reparta.
+  const { data: bingo } = useQuery({ queryKey: bingoKeys.mine(id), queryFn: () => bingoApi.mine(id), staleTime: 15_000, refetchInterval: 60_000 });
   // Misma caché que el menú, el calendario y «Expediciones».
   const { data: expeditions = [] } = useQuery({ queryKey: expeditionKeys.mine(classroomId), queryFn: () => expeditionApi.mine(classroomId) });
   // La misma vista que «Mis insignias»: mismo criterio de «te falta poco» y mismo conteo.
@@ -124,6 +128,7 @@ export const StudentHome = ({ profile, firstName, storyAccent }: StudentHomeProp
     notes,
     expeditions,
     correo: correoItem,
+    bingo: bingo?.current ? { card: bingo.current.card } : null,
     role: {
       needsChoice: canChooseRole && !profile.characterClassId,
       current: roleName,
@@ -277,6 +282,7 @@ export const StudentHome = ({ profile, firstName, storyAccent }: StudentHomeProp
           <RolePickerModal classroomId={classroomId} currentId={profile.characterClassId ?? null} roles={roles} onClose={() => setModal(null)} />
         )}
         {modal === 'correo' && <CorreoModal profileId={id} onClose={() => setModal(null)} />}
+        {modal === 'bingo' && <StudentBingoCard profileId={id} onClose={() => setModal(null)} />}
         {modal === 'energy' && <EnergyModal initial={initial} onClose={() => setModal(null)} />}
         {modal === 'streak' && <StreakModal classroomId={classroomId} onClose={() => setModal(null)} />}
         {picker && myClasses && (

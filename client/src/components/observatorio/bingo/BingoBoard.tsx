@@ -38,7 +38,7 @@ export const Astro = ({ text, revealKey, delayMs }: { text: string | null; revea
       className={`${text ? 'bg-flip' : 'bg-astro-in'} flex h-full w-full items-center justify-center rounded-full p-[8%] text-center ring-4 ring-amber-300/70 shadow-[0_0_60px_rgba(129,140,248,0.55)]`}
       style={{ background: 'radial-gradient(circle at 35% 30%, #6366f1, #312e81 60%, #1e1b4b)', '--bg-delay': `${delayMs}ms` } as CSSProperties}
     >
-      <span className={`font-black leading-none text-amber-200 [overflow-wrap:anywhere] ${text ? (long ? 'text-[clamp(22px,4.2vh,52px)]' : 'text-[clamp(34px,8vh,96px)]') : 'text-[clamp(48px,12vh,140px)]'}`}>
+      <span className={`font-black leading-none text-amber-200 [hyphens:auto] [overflow-wrap:break-word] ${text ? (long ? 'text-[clamp(22px,4.2vh,52px)]' : 'text-[clamp(34px,8vh,96px)]') : 'text-[clamp(48px,12vh,140px)]'}`}>
         {text ?? '?'}
       </span>
     </div>
@@ -72,7 +72,7 @@ export const CieloDePalabras = ({ answers, revealedOrder, lastKey, compact = fal
               : 'border border-dashed border-white/25 text-indigo-100'}`}
           >
             {n && <span aria-hidden="true">★</span>}
-            <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{answer.text}</span>
+            <span className="min-w-0 flex-1 [hyphens:auto] [overflow-wrap:break-word]">{answer.text}</span>
             {n && <span className="shrink-0 text-[0.7em] font-black opacity-70">#{n}</span>}
             <span className="sr-only">{n ? `salió en el sorteo ${n}${isLast ? ', la última' : ''}` : 'aún no sale'}</span>
           </li>
@@ -98,7 +98,7 @@ export const CardConstellation = ({ cells, size, answerText, result }: {
         return (
           <div
             key={i}
-            className={`relative flex aspect-square items-center justify-center rounded-2xl p-1.5 text-center font-black leading-tight [overflow-wrap:anywhere] ${size === 3 ? 'text-[clamp(16px,3.2vh,34px)]' : 'text-[clamp(13px,2.4vh,26px)]'} ${lit
+            className={`relative flex aspect-square items-center justify-center rounded-2xl p-1.5 text-center font-black leading-tight [hyphens:auto] [overflow-wrap:break-word] ${size === 3 ? 'text-[clamp(16px,3.2vh,34px)]' : 'text-[clamp(13px,2.4vh,26px)]'} ${lit
               ? 'bg-amber-300 text-amber-950'
               : 'border-2 border-dashed border-white/30 text-indigo-100'} ${highlight ? (result.complete ? 'ring-4 ring-white' : 'ring-4 ring-amber-300/60') : ''}`}
           >

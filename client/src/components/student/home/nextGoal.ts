@@ -5,7 +5,7 @@ import { NOTE_CATEGORY, activeNotes, addDaysKey, dayLabel, localDateKey, noteDat
 /** Lo que hace un botón del inicio: ir a una página o abrir un modal del propio inicio. */
 export type HomeAction =
   | { kind: 'link'; to: string; label: string }
-  | { kind: 'correo' | 'role' | 'energy'; label: string };
+  | { kind: 'correo' | 'role' | 'energy' | 'bingo'; label: string };
 
 export type ExpeditionItem = StudentExpeditionSummary;
 
@@ -24,6 +24,8 @@ export interface HomeInput {
   expeditions: ExpeditionItem[];
   /** Carta por escribir (o por reescribir); null si no hay. */
   correo: CorreoItem | null;
+  /** Bingo Estelar en curso en su clase con su cartón en pantalla; null si no juega en pantalla. */
+  bingo: { card: number } | null;
   role: { needsChoice: boolean; current: string; others: string[] };
   /** La insignia a la que menos le falta (50–99 %), con su progreso en palabras. */
   badgeNear: { id: string; name: string; progress: string } | null;
@@ -89,6 +91,11 @@ export const expeditionStep = (e: ExpeditionItem) =>
  */
 export const nextGoal = (input: HomeInput): Goal => {
   const { today } = input;
+
+  // 0. Bingo Estelar en clase ahora mismo: su cartón primero (también si descansa: juega igual).
+  if (input.bingo) {
+    return { key: 'bingo', emoji: '🌟', title: '¡Bingo Estelar en clase!', body: `Tu cartón es el Nº ${input.bingo.card}.`, primary: { kind: 'bingo', label: 'Abrir mi cartón' } };
+  }
 
   // 1. Descansando
   if (input.resting) {
@@ -207,7 +214,10 @@ export const todoItems = (input: HomeInput, goalKey: string): TodoItem[] => {
     };
   };
 
-  // 1. Hoy
+  // 1. Hoy (el Bingo en clase, primero)
+  if (input.bingo) {
+    items.push({ key: 'bingo', chip: 'Ahora', today: true, label: 'Bingo Estelar', text: `Tu cartón Nº ${input.bingo.card}`, action: { kind: 'bingo', label: 'Abrir' } });
+  }
   expeditions.filter((e) => expeditionDueKey(e) === today).forEach((e) => items.push(expeditionItem(e)));
   notes.filter((n) => noteDateKey(n.dueDate!) === today).forEach((n) => items.push(noteItem(n)));
   // 2. Esperando en la plataforma
