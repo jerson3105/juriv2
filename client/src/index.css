@@ -545,9 +545,18 @@
 /* Huellas que aparecen una tras otra (Expediciones). */
 @keyframes aw-step { 0% { opacity: 0; transform: scale(0.6); } 25% { opacity: 1; transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0.85; } }
 .aw-step { opacity: 0; animation: aw-step 1.8s ease-out var(--aw-delay, 0ms) both; }
+/* Una lupa que recorre la portada (El Error de Jiro). */
+@keyframes aw-lupa {
+  0% { opacity: 0; transform: translate(0, 0) rotate(-10deg); }
+  15% { opacity: 1; }
+  50% { transform: translate(22vh, -18vh) rotate(6deg); }
+  85% { opacity: 1; }
+  100% { opacity: 0; transform: translate(40vh, -4vh) rotate(-4deg); }
+}
+.aw-lupa { opacity: 0; animation: aw-lupa 3s ease-in-out var(--aw-delay, 0ms) both; }
 @media (prefers-reduced-motion: reduce) {
   .aw-rise { animation-delay: 0s !important; }
-  .aw-z, .aw-spark, .aw-cloud, .aw-veil, .aw-step { display: none; }
+  .aw-z, .aw-spark, .aw-cloud, .aw-veil, .aw-step, .aw-lupa { display: none; }
 }
 
 /* ── Pantallas de acceso: tema espacial (solo si no se pidió reducir el movimiento) ── */

@@ -17,12 +17,13 @@ interface ActivityWelcomeProps {
    * «calma»: caja de música y Z flotando (Descanso). «energia»: marimba con palmas y chispas (actividades con
    * movimiento). «aventura»: la Niebla se abre sobre la portada con viento y fanfarria (Conquista). «viaje»: marcha
    * de viaje y huellas que avanzan (Expediciones). «carta»: vals tierno y sobres que suben (Correo Estelar).
+   * «detective»: misterio de puntillas y una lupa que recorre la portada (El Error de Jiro).
    */
   mood?: WelcomeMood;
   onDone: () => void;
 }
 
-type WelcomeMood = 'calma' | 'energia' | 'aventura' | 'viaje' | 'carta';
+type WelcomeMood = 'calma' | 'energia' | 'aventura' | 'viaje' | 'carta' | 'detective';
 
 const MOODS: Record<WelcomeMood, { glow: string; play: (sound: StageSound) => void }> = {
   calma: { glow: 'shadow-[0_0_0_4px_rgba(253,230,138,0.35),0_0_80px_rgba(129,140,248,0.45)]', play: (sound) => sound.lullaby() },
@@ -30,6 +31,7 @@ const MOODS: Record<WelcomeMood, { glow: string; play: (sound: StageSound) => vo
   aventura: { glow: 'shadow-[0_0_0_4px_rgba(253,230,138,0.35),0_0_80px_rgba(167,139,250,0.5)]', play: (sound) => sound.aventura() },
   viaje: { glow: 'shadow-[0_0_0_4px_rgba(253,230,138,0.35),0_0_80px_rgba(52,211,153,0.4)]', play: (sound) => sound.viaje() },
   carta: { glow: 'shadow-[0_0_0_4px_rgba(253,230,138,0.35),0_0_80px_rgba(244,114,182,0.45)]', play: (sound) => sound.vals() },
+  detective: { glow: 'shadow-[0_0_0_4px_rgba(253,230,138,0.35),0_0_80px_rgba(251,113,133,0.4)]', play: (sound) => sound.misterio() },
 };
 
 const ENVELOPES = [
@@ -109,6 +111,15 @@ export const ActivityWelcome = ({ title, tagline, cover, sound, mood = 'calma', 
               <span aria-hidden="true" className="aw-cloud aw-fog-l" style={{ '--aw-delay': '900ms' } as CSSProperties} />
               <span aria-hidden="true" className="aw-cloud aw-fog-r" style={{ '--aw-delay': '900ms' } as CSSProperties} />
             </>
+          )}
+          {mood === 'detective' && (
+            <span
+              aria-hidden="true"
+              className="aw-lupa absolute left-[6%] top-[60%] [text-shadow:0_6px_18px_rgba(0,0,0,0.5)]"
+              style={{ fontSize: 'clamp(40px,9vh,110px)', '--aw-delay': '900ms' } as CSSProperties}
+            >
+              🔍
+            </span>
           )}
         </div>
         {mood === 'calma' && ['Z', 'z', 'z'].map((letter, i) => (

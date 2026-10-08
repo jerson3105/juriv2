@@ -1,21 +1,24 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { Check, Dices, Moon, Star, Undo2, X } from 'lucide-react';
+import { Check, Dices, Moon, PlayCircle, Star, Undo2, X } from 'lucide-react';
 import type { ActivitySession } from '../../../lib/activityApi';
 import type { Classroom, Student } from '../../../lib/classroomApi';
 import { questionBankApi, type Question } from '../../../lib/questionBankApi';
 import { shuffle } from '../../classroom/utilities/helpers';
 import { useTeacherBanks } from '../../classroom/utilities/questionDraw';
 import { studentNames } from '../../students/profile/profileHelpers';
+import { ActivityWelcome } from '../ActivityWelcome';
 import { AiQuestionGenerator } from '../AiQuestionGenerator';
 import { UnreviewedNotice } from '../UnreviewedNotice';
 import { Bitacora } from '../Bitacora';
+import { CATALOG } from '../catalog';
 import { EscenarioObservatorio, stageControlClass } from '../EscenarioObservatorio';
 import type { JiroPose } from '../jiroPoses';
 import { useStageSound } from '../observatorioSound';
 import { answerOf } from '../questionHelpers';
 import { StageEndButton } from '../StageEndButton';
+import { StageTutorial } from '../StageTutorial';
 import { applyMark, maxStars, suggestedXpFor, type StreakState } from '../streak';
 import { useActivitySession } from '../useActivitySession';
 import { useTodayPresence } from '../usePresence';
@@ -23,6 +26,7 @@ import { useTodayPresence } from '../usePresence';
 // Igual que en el servidor (observatorioAi.service ERROR_PREFIX): así se reconocen en cualquier banco.
 const ERROR_PREFIX = '¿En qué paso está el error?';
 const ROUND_OPTIONS = [3, 5, 8];
+const COVER = CATALOG.find((entry) => entry.id === 'error')?.cover ?? '/assets/jiro/actividades/error.webp';
 
 interface ErrorState extends StreakState {
   bankId: string;
@@ -77,6 +81,10 @@ export const ErrorActivity = ({ classroom, resume, initialBankId, expeditionStop
   const [history, setHistory] = useState<ErrorState[]>([]);
   const [revealed, setRevealed] = useState(false);
   const [explainer, setExplainer] = useState<string | null>(null);
+  // Bienvenida de pantalla completa al abrir (no al volver a la Bitácora de una partida terminada) y el tutorial
+  // para estudiantes a demanda («Cómo se juega»).
+  const [welcome, setWelcome] = useState(resume?.status !== 'FINISHED');
+  const [tutorial, setTutorial] = useState(false);
 
   const { data: banks = [], isLoading: banksLoading } = useTeacherBanks(phase === 'setup');
   const candidateBanks = banks.filter((b) => b.countsByType.SINGLE_CHOICE > 0);
@@ -211,6 +219,11 @@ export const ErrorActivity = ({ classroom, resume, initialBankId, expeditionStop
       {phase === 'setup' && (
         <div className="flex w-full max-w-5xl flex-col gap-5">
           <h1 className="stage-title text-center font-black">El Error de Jiro</h1>
+          <div className="flex justify-center">
+            <button type="button" onClick={() => setTutorial(true)} className={`${stageControlClass} border border-white/25 text-base`}>
+              <PlayCircle size={20} aria-hidden="true" /> Cómo se juega · 1 min
+            </button>
+          </div>
           <fieldset>
             <legend className="mb-2 text-lg font-bold text-indigo-100">Errores a buscar</legend>
             <div className="flex flex-wrap gap-2">
@@ -340,6 +353,17 @@ export const ErrorActivity = ({ classroom, resume, initialBankId, expeditionStop
           onExit={onExit}
         />
       )}
+      {welcome && (
+        <ActivityWelcome
+          title="El Error de Jiro"
+          tagline="Detectives, ¿dónde está el error?"
+          cover={COVER}
+          sound={sound}
+          mood="detective"
+          onDone={() => setWelcome(false)}
+        />
+      )}
+      {tutorial && <StageTutorial id="error" onClose={() => setTutorial(false)} />}
     </EscenarioObservatorio>
   );
 };

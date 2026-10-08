@@ -67,6 +67,7 @@ export const CATALOG: CatalogEntry[] = [
     duration: '10–20 min',
     requirements: [{ icon: '📚', label: 'Banco o IA' }],
     sessionType: 'ERROR',
+    tutorial: 'error',
   },
   {
     id: 'correo',

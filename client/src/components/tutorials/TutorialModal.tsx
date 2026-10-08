@@ -18,6 +18,7 @@ export const TUTORIALS = {
   conquista: { title: 'Conquista del Cielo', src: '/tutoriales/conquista.html', minutes: 1, audience: 'estudiantes' },
   expediciones: { title: 'Expediciones', src: '/tutoriales/expediciones.html', minutes: 1, audience: 'estudiantes' },
   correo: { title: 'Correo Estelar', src: '/tutoriales/correo.html', minutes: 1, audience: 'estudiantes' },
+  error: { title: 'El Error de Jiro', src: '/tutoriales/error.html', minutes: 1, audience: 'estudiantes' },
 } as const;
 
 export type TutorialId = keyof typeof TUTORIALS;

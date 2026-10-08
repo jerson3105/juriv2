@@ -48,6 +48,8 @@ export interface StageSound {
   viaje: () => void;
   /** Vals tierno: bajo y acorde punteados a 3 tiempos con campanitas; cierra en Do (Correo Estelar). */
   vals: () => void;
+  /** Misterio de detectives: de puntillas en La menor y el «¡lo encontré!» en Do mayor (El Error de Jiro). */
+  misterio: () => void;
   close: () => void;
 }
 
@@ -214,6 +216,17 @@ export const createStageSound = (initiallyMuted: boolean): StageSound => {
       tone(130.81, 5.24, 1.2, 0.08, 'triangle');
       [261.63, 329.63, 392].forEach((f) => tone(f, 5.24, 1.2, 0.05, 'triangle'));
       bell(1046.5, 5.24, 1.6);
+    },
+    misterio: () => {
+      const tiptoe: number[][] = [[220, 261.63, 329.63, 261.63], [293.66, 349.23, 440, 349.23], [329.63, 415.3, 493.88, 415.3]];
+      tiptoe.forEach((notes, bar) => notes.forEach((f, i) => tone(f, 0.2 + bar + i * 0.25, 0.18, 0.07, 'triangle')));
+      ([[659.25, 0.2], [698.46, 1.2], [830.61, 2.2]] as const).forEach(([f, at]) => {
+        tone(f, at, 1, 0.05);
+        tone(f * 2, at, 0.4, 0.015);
+      });
+      [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone(f, 3.3 + i * 0.09, 0.4, 0.1, 'triangle'));
+      [523.25, 659.25, 783.99].forEach((f) => tone(f, 3.75, 1.4, 0.06, 'triangle'));
+      tone(1046.5, 3.75, 1.6, 0.06);
     },
     close: () => {
       if (ctx) void ctx.close();
