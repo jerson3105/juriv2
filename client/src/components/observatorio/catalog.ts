@@ -87,7 +87,6 @@ export const CATALOG: CatalogEntry[] = [
     pose: 'emocionado',
     duration: 'Toda la semana',
     requirements: [{ icon: '👤', label: 'Cuentas de alumnos' }],
-    tutorial: 'expediciones',
     onlyWithScrolls: true,
   },
   {
@@ -98,6 +97,7 @@ export const CATALOG: CatalogEntry[] = [
     cover: '/assets/jiro/actividades/expediciones.webp',
     duration: 'Varias clases',
     requirements: [{ icon: '👤', label: 'Cuentas de alumnos' }],
+    tutorial: 'expediciones',
   },
 ];
 
