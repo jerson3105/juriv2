@@ -559,6 +559,19 @@
   .aw-z, .aw-spark, .aw-cloud, .aw-veil, .aw-step, .aw-lupa { display: none; }
 }
 
+/* ── Bingo Estelar: la Esfera de Jiro gira y frena, el astro llega al centro y gira para revelar ── */
+@keyframes bg-spin { from { transform: rotate(0deg); } to { transform: rotate(900deg); } }
+@keyframes bg-astro-in { from { opacity: 0; transform: scale(0.2); } to { opacity: 1; transform: none; } }
+@keyframes bg-flip { from { opacity: 0.3; transform: rotateY(90deg); } to { opacity: 1; transform: none; } }
+@keyframes bg-lit { from { transform: scale(0.8); } to { transform: none; } }
+.bg-spin { animation: bg-spin 1.1s cubic-bezier(0.15, 0.6, 0.3, 1) both; }
+.bg-astro-in { animation: bg-astro-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) var(--bg-delay, 0ms) both; }
+.bg-flip { animation: bg-flip 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.bg-lit { animation: bg-lit 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .bg-spin, .bg-astro-in, .bg-flip, .bg-lit { animation: none !important; }
+}
+
 /* ── Pantallas de acceso: tema espacial (solo si no se pidió reducir el movimiento) ── */
 @keyframes auth-twinkle { 0%, 100% { opacity: var(--auth-o, 0.45); } 50% { opacity: 1; } }
 @keyframes auth-draw { to { stroke-dashoffset: 0; } }

@@ -2,7 +2,7 @@ import type { ActivityOverview, ActivitySession, ActivityType } from '../../lib/
 import type { TutorialId } from '../tutorials/TutorialModal';
 import type { JiroPose } from './jiroPoses';
 
-export type ObservatorioActivityId = 'descanso' | 'estrellas' | 'conquista' | 'correo' | 'error' | 'pergaminos' | 'expediciones';
+export type ObservatorioActivityId = 'descanso' | 'estrellas' | 'conquista' | 'correo' | 'error' | 'bingo' | 'pergaminos' | 'expediciones';
 
 export interface CatalogEntry {
   id: ObservatorioActivityId;
@@ -68,6 +68,15 @@ export const CATALOG: CatalogEntry[] = [
     requirements: [{ icon: '📚', label: 'Banco o IA' }],
     sessionType: 'ERROR',
     tutorial: 'error',
+  },
+  {
+    id: 'bingo',
+    name: 'Bingo Estelar',
+    description: 'Jiro sortea preguntas y cada uno marca su cartón: en pantalla o en una hoja impresa. Se premia lo que acierta la clase.',
+    pose: 'emocionado',
+    duration: '15–25 min',
+    requirements: [{ icon: '📚', label: 'Banco o Tablas' }, { icon: '🖨️', label: 'Impresora o cuentas' }],
+    sessionType: 'BINGO',
   },
   {
     id: 'correo',

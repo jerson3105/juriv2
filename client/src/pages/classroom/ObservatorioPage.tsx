@@ -20,6 +20,7 @@ const DescansoActivity = lazy(() => import('../../components/observatorio/descan
 const EstrellasActivity = lazy(() => import('../../components/observatorio/estrellas/EstrellasActivity').then((m) => ({ default: m.EstrellasActivity })));
 const ErrorActivity = lazy(() => import('../../components/observatorio/error/ErrorActivity').then((m) => ({ default: m.ErrorActivity })));
 const CorreoActivity = lazy(() => import('../../components/observatorio/correo/CorreoActivity').then((m) => ({ default: m.CorreoActivity })));
+const BingoActivity = lazy(() => import('../../components/observatorio/bingo/BingoActivity').then((m) => ({ default: m.BingoActivity })));
 
 type ClassroomWithStudents = Classroom & { students?: Student[] };
 type Selected = ObservatorioActivityId;
@@ -149,6 +150,7 @@ export const ObservatorioPage = () => {
         {selected.id === 'conquista' && <ConquistaActivity classroom={classroom} resume={selected.resume} initialBankId={selected.bankId} onExit={back} />}
         {selected.id === 'error' && <ErrorActivity classroom={classroom} resume={selected.resume} initialBankId={selected.bankId} onExit={back} />}
         {selected.id === 'correo' && <CorreoActivity classroom={classroom} resume={selected.resume} onExit={back} />}
+        {selected.id === 'bingo' && <BingoActivity classroom={classroom} resume={selected.resume} onExit={back} />}
         {selected.id === 'pergaminos' && <ScrollsActivity classroom={classroom} onBack={back} />}
       </Suspense>
     );

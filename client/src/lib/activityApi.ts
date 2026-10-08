@@ -3,7 +3,7 @@ import type { AwardedBadgeInfo, LevelUpInfo } from './behaviorApi';
 
 // Observatorio de Jiro: partidas de las actividades de clase (reanudar, Bitácora y recompensa).
 // EXPEDICION: la expedición proyectada en clase (cierra con la Bitácora).
-export type ActivityType = 'DESCANSO' | 'ESTRELLAS' | 'CONQUISTA' | 'CORREO' | 'ERROR' | 'EXPEDICION';
+export type ActivityType = 'DESCANSO' | 'ESTRELLAS' | 'CONQUISTA' | 'CORREO' | 'ERROR' | 'EXPEDICION' | 'BINGO';
 export type SelfAssessment = 'GREEN' | 'YELLOW' | 'RED';
 export type ActivityStatus = 'ACTIVE' | 'FINISHED' | 'ABANDONED';
 
