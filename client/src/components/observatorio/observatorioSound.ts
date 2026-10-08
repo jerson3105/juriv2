@@ -46,6 +46,8 @@ export interface StageSound {
   aventura: () => void;
   /** Marcha de viaje: cuerdas punteadas al paso, maraca y una melodía silbada que cierra en Do (Expediciones). */
   viaje: () => void;
+  /** Vals tierno: bajo y acorde punteados a 3 tiempos con campanitas; cierra en Do (Correo Estelar). */
+  vals: () => void;
   close: () => void;
 }
 
@@ -194,6 +196,24 @@ export const createStageSound = (initiallyMuted: boolean): StageSound => {
         .forEach(([f, at, dur]) => tone(f, at, dur, 0.08));
       strum(DO, 2.45, 1.2);
       tone(523.25, 2.45, 1.4, 0.08);
+    },
+    vals: () => {
+      const bell = (f: number, at: number, dur = 1.1) => {
+        tone(f, at, dur, 0.08);
+        tone(f * 2, at, dur * 0.45, 0.02);
+      };
+      const beat = 0.42;
+      const harmony: [number, number[]][] = [[130.81, [329.63, 392]], [110, [329.63, 440]], [174.61, [349.23, 440]], [196, [293.66, 392]]];
+      harmony.forEach(([bass, chord], bar) => {
+        const t0 = 0.2 + bar * beat * 3;
+        tone(bass, t0, 0.4, 0.08, 'triangle');
+        [1, 2].forEach((b) => chord.forEach((f) => tone(f, t0 + b * beat, 0.3, 0.04, 'triangle')));
+      });
+      ([[659.25, 0.2], [783.99, 1.04], [880, 1.46], [659.25, 2.3], [698.46, 2.72], [880, 3.14], [783.99, 3.56], [587.33, 3.98]] as const)
+        .forEach(([f, at]) => bell(f, at));
+      tone(130.81, 5.24, 1.2, 0.08, 'triangle');
+      [261.63, 329.63, 392].forEach((f) => tone(f, 5.24, 1.2, 0.05, 'triangle'));
+      bell(1046.5, 5.24, 1.6);
     },
     close: () => {
       if (ctx) void ctx.close();

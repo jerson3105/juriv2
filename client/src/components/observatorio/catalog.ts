@@ -77,6 +77,7 @@ export const CATALOG: CatalogEntry[] = [
     duration: '15 min + entrega',
     requirements: [{ icon: '📝', label: 'Papel o cuentas' }],
     sessionType: 'CORREO',
+    tutorial: 'correo',
   },
   {
     id: 'pergaminos',

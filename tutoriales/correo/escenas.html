@@ -1,0 +1,356 @@
+<!-- titulo: Correo Estelar -->
+<!-- base: comun -->
+<!--
+  Tutorial para ESTUDIANTES: «Correo Estelar» (cómo funciona). ~50 s, 16:9, para proyectarlo o verlo en su cuenta.
+  Jiro lo cuenta en globos grandes con un vals tierno (cuerdas punteadas y campanitas). Muestra los dos modos a la vez:
+  la tarjeta impresa («Tu estrella secreta es ✨…✨», «¡Es un secreto! Escríbele y entrega tu carta a tu profe.») y el
+  celular («Ver a quién le escribes», «Solo tu profe sabrá que fuiste tú.», «Enviar carta», «Tu profe la está
+  revisando», «¡Tu carta ya llegó!», «Tu profe te pide escribirla de nuevo, con un mensaje amable.»), y la entrega de
+  Jiro en clase («Para…», «De: tu estrella secreta ✨»). Arma: node tutoriales/motor/build.mjs correo
+-->
+<style>
+/* Portada para estudiantes */
+.d-logo { position: absolute; left: 150px; top: 120px; height: 92px; }
+.d-eyebrow { position: absolute; left: 154px; top: 300px; color: #fde68a; font: 800 30px/1 'Inter', sans-serif; letter-spacing: .18em; text-transform: uppercase; }
+.d-title { position: absolute; left: 144px; top: 352px; width: 840px; color: #fff; font: 800 112px/1.02 'Poppins', sans-serif; letter-spacing: -.02em; }
+.d-sub { position: absolute; left: 154px; top: 620px; color: #c7d2fe; font: 600 42px/1.3 'Inter', sans-serif; }
+.d-chips { position: absolute; left: 154px; top: 720px; display: flex; gap: 16px; }
+.d-chips span { padding: 12px 22px; border-radius: 999px; background: rgba(255, 255, 255, .1); border: 2px solid rgba(255, 255, 255, .16); color: #e0e7ff; font: 700 26px/1 'Inter', sans-serif; }
+.d-window { position: absolute; left: 1010px; top: 200px; width: 780px; height: 585px; border-radius: 40px; overflow: hidden;
+  box-shadow: 0 0 0 4px rgba(253, 230, 138, .35), 0 0 80px rgba(244, 114, 182, .4), 0 40px 120px rgba(0, 0, 0, .5); }
+.d-window img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; }
+.fly { position: absolute; font-size: 54px; line-height: 1; }
+
+/* Jiro que cuenta */
+.jiro-box { position: absolute; left: 40px; top: 330px; width: 560px; height: 740px; }
+.jiro-box img { position: absolute; left: 0; bottom: 0; height: 740px; }
+
+/* 2 · La ronda de estrellas secretas */
+.c-face { position: absolute; width: 130px; height: 130px; margin: -65px 0 0 -65px; }
+.c-face svg { width: 130px; height: 130px; }
+.c-center { position: absolute; left: 1230px; top: 570px; width: 140px; height: 140px; border-radius: 50%; background: rgba(253, 230, 138, .14); border: 4px dashed rgba(253, 230, 138, .6);
+  display: grid; place-items: center; color: #fde68a; font: 800 80px/1 'Poppins', sans-serif; }
+
+/* Etiquetas de modo */
+.c-mode { position: absolute; padding: 10px 20px; border-radius: 999px; background: rgba(255, 255, 255, .12); border: 2px solid rgba(255, 255, 255, .25); color: #fff; font: 800 28px/1 'Poppins', sans-serif; white-space: nowrap; }
+
+/* 3 · La tarjeta impresa */
+.c-slip { position: absolute; left: 740px; top: 390px; width: 440px; height: 430px; border-radius: 24px; background: #fff; border: 4px dashed #6b7280; padding: 30px 30px 0; color: #111827; }
+.c-slip .who { font: 800 34px/1 'Poppins', sans-serif; }
+.c-slip .lbl { margin-top: 22px; color: #374151; font: 600 24px/1 'Inter', sans-serif; }
+.c-slip .sname { margin-top: 10px; font: 800 46px/1.1 'Poppins', sans-serif; }
+.c-slip .pr { margin-top: 18px; font: italic 600 24px/1.3 'Inter', sans-serif; }
+.c-slip .sec { margin-top: 16px; color: #374151; font: 600 20px/1.3 'Inter', sans-serif; }
+.c-shh { position: absolute; left: 1182px; top: 560px; font-size: 80px; line-height: 1; }
+
+/* El celular del alumno */
+.c-phone { position: absolute; width: 500px; border-radius: 52px; background: #0f172a; box-shadow: 0 0 0 3px rgba(255, 255, 255, .18), 0 30px 90px rgba(0, 0, 0, .55); }
+.c-scr { position: absolute; left: 16px; top: 16px; right: 16px; bottom: 16px; border-radius: 38px; background: #fff; overflow: hidden; color: #111827; }
+.c-scr > div { position: absolute; left: 30px; width: 408px; }
+.c-h { top: 30px; font: 800 28px/1 'Poppins', sans-serif; }
+.c-sub { top: 72px; color: #374151; font: 600 20px/1.3 'Inter', sans-serif; }
+.c-btn { height: 66px; border-radius: 18px; display: grid; place-items: center; font: 800 26px/1 'Poppins', sans-serif; }
+.c-see { background: #eef2ff; color: #3730a3; }
+.c-send { background: #4f46e5; color: #fff; }
+.c-txt { color: #1f2937; font: 600 24px/1.35 'Inter', sans-serif; }
+.c-txt b { color: #3730a3; }
+.c-box { border-radius: 18px; border: 3px solid #cbd5e1; padding: 14px 16px; color: #111827; font: 500 24px/1.4 'Inter', sans-serif; }
+.c-box span[data-typing="true"]::after { content: '|'; color: #4f46e5; margin-left: 2px; }
+.c-note { color: #374151; font: 600 18px/1.3 'Inter', sans-serif; }
+.c-status { border-radius: 16px; padding: 14px 16px; font: 700 24px/1.3 'Inter', sans-serif; }
+.c-wait { background: #eef2ff; color: #312e81; }
+.c-ok { background: #fef3c7; color: #78350f; }
+.c-toast { position: absolute; left: 1330px; top: 690px; width: 420px; padding: 14px 18px; border-radius: 16px; background: #111827; color: #fff; font: 700 22px/1.3 'Inter', sans-serif; text-align: center; box-shadow: 0 10px 30px rgba(0, 0, 0, .4); }
+
+/* 4 · La consigna y la carta en papel */
+.c-prompt { position: absolute; left: 760px; top: 320px; width: 1080px; padding: 18px 26px; border-radius: 22px; background: rgba(253, 230, 138, .14); border: 3px solid rgba(253, 230, 138, .6); color: #fde68a; font: italic 800 34px/1.2 'Poppins', sans-serif; }
+.c-paper { position: absolute; left: 760px; top: 490px; width: 460px; height: 470px; border-radius: 16px; padding: 30px 32px;
+  background: repeating-linear-gradient(180deg, #fffdf5 0 46px, #bfdbfe 46px 48px); box-shadow: 0 20px 50px rgba(0, 0, 0, .4); color: #1e3a8a; font: italic 600 30px/48px 'Inter', sans-serif; }
+.c-pencil { position: absolute; left: 1150px; top: 900px; font-size: 64px; }
+
+/* 5 · Tu profe la revisa */
+.c-teach { position: absolute; left: 760px; top: 360px; width: 500px; height: 390px; border-radius: 26px; background: #fff; color: #111827; box-shadow: 0 20px 50px rgba(0, 0, 0, .4); }
+.c-teach > div { position: absolute; left: 26px; width: 448px; }
+.c-teach .hd { top: 24px; font: 800 26px/1 'Poppins', sans-serif; }
+.c-teach .who { top: 74px; color: #374151; font: 700 21px/1.3 'Inter', sans-serif; }
+.c-teach .msg { top: 120px; font: 500 22px/1.4 'Inter', sans-serif; }
+.c-teach .acts { top: 300px; display: flex; gap: 14px; }
+.c-teach .acts span { height: 56px; padding: 0 22px; border-radius: 14px; display: grid; place-items: center; font: 800 22px/1 'Poppins', sans-serif; }
+.sw { display: inline-grid; vertical-align: top; }
+.sw > span { grid-area: 1 / 1; }
+.st-p { color: #92400e; }
+.st-a { color: #047857; }
+.c-chip { position: absolute; padding: 14px 20px; border-radius: 18px; font: 700 23px/1.3 'Inter', sans-serif; }
+
+/* 6 · Jiro entrega en clase */
+.c-env { position: absolute; left: 1210px; top: 520px; font-size: 180px; line-height: 1; }
+.c-deliv { position: absolute; left: 800px; top: 330px; width: 840px; height: 560px; border-radius: 36px; background: #fdf6e3; border: 6px solid #fde68a; color: #0f172a; text-align: center; box-shadow: 0 30px 80px rgba(0, 0, 0, .5); }
+.c-deliv > div { position: absolute; left: 40px; width: 760px; }
+.c-deliv .p1 { top: 40px; color: #334155; font: 700 30px/1 'Inter', sans-serif; }
+.c-deliv .p2 { top: 86px; font: 800 96px/1 'Poppins', sans-serif; }
+.c-deliv .p3 { top: 220px; font: italic 500 34px/1.35 'Inter', sans-serif; }
+.c-deliv .p4 { top: 420px; color: #334155; font: 700 30px/1 'Inter', sans-serif; }
+.c-deliv .p5 { top: 480px; color: #475569; font: 700 22px/1 'Inter', sans-serif; }
+.c-kid { position: absolute; left: 1680px; top: 600px; width: 140px; height: 280px; }
+.c-kid svg { width: 140px; height: 280px; }
+.heart { position: absolute; font-size: 46px; line-height: 1; }
+
+/* 7 · Final */
+.f-big { position: absolute; left: 0; width: 1920px; text-align: center; color: #fde68a; font: 800 130px/1 'Poppins', sans-serif; }
+.f-say { position: absolute; left: 0; width: 1920px; text-align: center; color: #fff; font: 800 70px/1 'Poppins', sans-serif; }
+.f-jiro { position: absolute; left: 773px; top: 400px; height: 600px; }
+#fx { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; pointer-events: none; }
+</style>
+
+<script>
+(() => {
+  const G = Guion.init();
+  const LOGO = 'asset:logo.png?h=200';
+  const END = 50;
+  G.chapter(0, 'Inicio');
+  G.chapter(6, 'El Correo');
+  G.chapter(13, 'Tu estrella secreta');
+  G.chapter(21, 'Tu carta');
+  G.chapter(28.5, 'Tu profe la revisa');
+  G.chapter(35, 'Jiro entrega');
+  G.chapter(42, '¿Listos?');
+
+  G.cielo([]);
+
+  // ---------- Vals tierno: bajo y acorde punteados a 3 tiempos, campanitas en la melodía ----------
+  const BEAT = 0.42;
+  const BAR = BEAT * 3;
+  const HARM = [[130.81, [329.63, 392]], [110, [329.63, 440]], [174.61, [349.23, 440]], [196, [293.66, 392]]]; // Do, Lam, Fa, Sol
+  for (let bar = 0; bar < 36; bar += 1) {
+    const t0 = 0.4 + bar * BAR;
+    const [bass, chord] = HARM[bar % 4];
+    G.cue(t0, `u:${bass}`);
+    [1, 2].forEach((b) => chord.forEach((f, i) => G.cue(t0 + b * BEAT + i * 0.015, `u:${f}`)));
+  }
+  const N = { D5: 587.33, E5: 659.25, F5: 698.46, G5: 783.99, A5: 880, C6: 1046.5 };
+  const MELODY = [[['E5', 2], ['G5', 1]], [['A5', 2], ['E5', 1]], [['F5', 1], ['A5', 1], ['G5', 1]], [['D5', 3]],
+    [['E5', 2], ['G5', 1]], [['A5', 2], ['C6', 1]], [['A5', 1], ['G5', 1], ['F5', 1]], [['D5', 3]]];
+  const melody = (t0) => MELODY.forEach((bar, b) => {
+    let t = t0 + b * BAR;
+    for (const [n, beats] of bar) { G.cue(t, `n:${N[n]}`); t += beats * BEAT; }
+  });
+  melody(0.4);
+  melody(0.4 + 16 * BAR);
+  melody(0.4 + 28 * BAR);
+  // Final: Do con campanitas.
+  G.cue(46.2, 'u:130.81');
+  [261.63, 329.63, 392].forEach((f, i) => G.cue(46.2 + i * 0.03, `u:${f}`));
+  G.cue(46.25, 'n:1046.5');
+  G.cue(46.25, 'n:659.25');
+  G.cue(46.5, 'chime');
+
+  // ---------- Dibujos ----------
+  const face = (cy, k) => `<circle cx="50" cy="${cy}" r="24" fill="${k.skin}"/><path d="M27 ${cy - 6} Q50 ${cy - 34} 73 ${cy - 6} Q62 ${cy - 16} 50 ${cy - 15} Q38 ${cy - 16} 27 ${cy - 6} Z" fill="${k.hair}"/>
+    <circle cx="42" cy="${cy + 2}" r="3" fill="#1f2937"/><circle cx="58" cy="${cy + 2}" r="3" fill="#1f2937"/><path d="M42 ${cy + 11} Q50 ${cy + 17} 58 ${cy + 11}" stroke="#1f2937" stroke-width="3" fill="none" stroke-linecap="round"/>`;
+  const KIDS = [
+    { shirt: '#38bdf8', skin: '#e0ac69', hair: '#3b2414' }, { shirt: '#f472b6', skin: '#f1c27d', hair: '#5b3a1a' }, { shirt: '#4ade80', skin: '#8d5524', hair: '#1f1309' },
+    { shirt: '#fbbf24', skin: '#c68642', hair: '#2b1a0e' }, { shirt: '#a78bfa', skin: '#ffdbac', hair: '#7c4a1e' }, { shirt: '#fb923c', skin: '#d4a373', hair: '#3b2414' },
+  ];
+  const SOFIA = KIDS[1];
+  const head = (k) => `<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="48" fill="${k.shirt}" opacity=".35"/>${face(54, k)}</svg>`;
+  const kidFull = (k) => `<svg viewBox="0 0 100 200">
+    <rect x="35" y="128" width="12" height="56" rx="6" fill="#334155"/><rect x="53" y="128" width="12" height="56" rx="6" fill="#334155"/>
+    <ellipse cx="41" cy="187" rx="10" ry="6" fill="#0f172a"/><ellipse cx="59" cy="187" rx="10" ry="6" fill="#0f172a"/>
+    <rect x="28" y="66" width="44" height="70" rx="18" fill="${k.shirt}"/>
+    <line x1="31" y1="78" x2="16" y2="50" stroke="${k.shirt}" stroke-width="11" stroke-linecap="round"/><line x1="69" y1="78" x2="84" y2="50" stroke="${k.shirt}" stroke-width="11" stroke-linecap="round"/>
+    <circle cx="16" cy="46" r="6" fill="${k.skin}"/><circle cx="84" cy="46" r="6" fill="${k.skin}"/>${face(42, k)}</svg>`;
+  const at = (el, left, top) => { el.style.left = `${left}px`; el.style.top = `${top}px`; return el; };
+  const phone = (id, left, top, height, html) => {
+    const p = G.el('div', 'c-phone', `<div class="c-scr">${html}</div>`, G.stage, id);
+    p.style.cssText += `left:${left}px;top:${top}px;height:${height}px`;
+    return p;
+  };
+  const LETTER = 'Sofía: admiro lo paciente que eres cuando me explicas matemática. ¡Gracias!';
+  const PROMPT = 'Escríbele algo que admiras de esa persona.';
+
+  // =============== 1 · Portada (0–6) ===============
+  G.el('img', 'd-logo', '', G.stage, 'd-logo').src = LOGO;
+  G.el('div', 'd-eyebrow', 'Observatorio de Jiro', G.stage, 'd-eyebrow');
+  G.el('div', 'd-title', 'Correo Estelar', G.stage, 'd-title');
+  G.el('div', 'd-sub', '¿Cómo funciona?', G.stage, 'd-sub');
+  G.el('div', 'd-chips', '<span>💌 Cartas</span><span>✨ Estrella secreta</span><span>🤫 Secreto</span>', G.stage, 'd-chips');
+  G.el('div', 'd-window', '<img id="d-cover" src="asset:assets/jiro/actividades/correo.webp" alt="">', G.stage, 'd-window');
+  G.show('#d-logo', 0.2, 5.8, { from: { y: -20 } });
+  G.show('#d-eyebrow', 0.5, 5.8);
+  G.key('#d-title', [[0.8, { o: 0, s: 0.9, y: 30 }], [1.4, { o: 1, s: 1, y: 0, ease: 'pop' }], [5.5, { o: 1 }], [5.9, { o: 0, y: -20, ease: 'in' }]]);
+  G.show('#d-sub', 1.5, 5.8);
+  G.show('#d-chips', 2.0, 5.8);
+  G.key('#d-window', [[0.9, { o: 0, s: 0.92, x: 120 }], [1.7, { o: 1, s: 1, x: 0, ease: 'back' }], [5.5, { o: 1, s: 1 }], [6.0, { o: 0, s: 0.96, ease: 'in' }]]);
+  G.key('#d-cover', [[0.9, { s: 1 }], [6.0, { s: 1.08, ease: 'linear' }]]);
+  // Sobres que suben junto a la ventana.
+  [[1040, 720, '💌'], [1720, 680, '✉️'], [1110, 300, '✨'], [1700, 280, '💌']].forEach(([x, y, e], i) => {
+    const f = at(G.el('div', 'fly', e, G.stage, `pf${i}`), x, y);
+    const t = 2.0 + i * 0.5;
+    G.key(f, [[0, { o: 0 }], [t, { o: 0, y: 30, r: -10 }], [t + 0.4, { o: 1, y: 0, r: 0, ease: 'out' }], [t + 2.0, { o: 0, y: -90, r: 12, ease: 'in' }]]);
+  });
+  G.cue(0.3, 'whoosh');
+  G.cue(1.2, 'pop');
+
+  // =============== Jiro (6–42) ===============
+  const box = G.el('div', 'jiro-box', '', G.stage, 'jiro');
+  // Rutas literales: build.mjs solo cambia 'asset:…' entre comillas simples por la imagen incrustada.
+  const poses = {
+    emoc: 'asset:assets/jiro/emocionado.webp?h=740',
+    sena: 'asset:assets/jiro/senalando.webp?h=740',
+    cele: 'asset:assets/jiro/celebrando.webp?h=740',
+  };
+  for (const [id, src] of Object.entries(poses)) G.el('img', '', '', box, `j-${id}`).src = src;
+  G.key('#jiro', [[0, { o: 0, x: -240 }], [6.1, { o: 0, x: -240 }], [6.8, { o: 1, x: 0, ease: 'back' }], [41.5, { o: 1, x: 0 }], [42.0, { o: 0, x: -200, ease: 'in' }]]);
+  G.cue(6.1, 'whoosh');
+  const poseAt = { emoc: [[6, 13], [28.5, 35]], sena: [[13, 28.5]], cele: [[35, 42.0]] };
+  for (const [id, spans] of Object.entries(poseAt)) {
+    const frames = [[0, { o: 0 }]];
+    for (const [a, b] of spans) frames.push([a, { o: 0 }], [a + 0.18, { o: 1 }], [b - 0.18, { o: 1 }], [b, { o: 0 }]);
+    G.key(`#j-${id}`, frames, 'linear');
+  }
+
+  // =============== 2 · ¡Llegó el Correo Estelar! (6–13) ===============
+  G.burbuja('b1', 6.6, 12.8, '¡Llegó el Correo Estelar! Cada uno le escribirá una carta amable a una estrella secreta.');
+  const RING = KIDS.map((_, i) => {
+    const a = (-90 + i * 60) * Math.PI / 180;
+    return { x: 1300 + Math.cos(a) * 250, y: 640 + Math.sin(a) * 250 };
+  });
+  const ringOn = (t) => [[0, { o: 0, s: 0.5 }], [t, { o: 0, s: 0.5 }], [t + 0.4, { o: 1, s: 1, ease: 'back' }], [12.6, { o: 1 }], [13.0, { o: 0 }]];
+  KIDS.forEach((k, i) => {
+    at(G.el('div', 'c-face', head(k), G.stage, `rf${i}`), RING[i].x, RING[i].y);
+    G.key(`#rf${i}`, ringOn(7.0 + i * 0.12));
+  });
+  G.el('div', 'c-center', '?', G.stage, 'ring-q');
+  G.key('#ring-q', [[0, { o: 0, s: 0.5 }], [7.8, { o: 0, s: 0.5 }], [8.2, { o: 1, s: 1, ease: 'back' }], [11.5, { o: 1, s: 1 }], [11.7, { o: 0, s: 0.6 }]]);
+  G.el('div', 'c-center', '🤫', G.stage, 'ring-shh');
+  G.key('#ring-shh', [[0, { o: 0, s: 0.5 }], [11.6, { o: 0, s: 0.5 }], [12.0, { o: 1, s: 1.1, ease: 'back' }], [12.6, { o: 1 }], [13.0, { o: 0 }]]);
+  G.cue(11.7, 'shh');
+  // Cada uno escribe a otro: los sobres cruzan la ronda con un arco.
+  [[0, 3], [1, 4], [2, 5], [3, 1], [4, 0], [5, 2]].forEach(([from, to], k) => {
+    const a = RING[from];
+    const b = RING[to];
+    const env = at(G.el('div', 'fly', '💌', G.stage, `env${k}`), a.x - 27, a.y - 27);
+    const t = 8.4 + k * 0.45;
+    const mid = { x: (b.x - a.x) / 2 + (b.y - a.y) * 0.2, y: (b.y - a.y) / 2 - (b.x - a.x) * 0.2 };
+    G.key(env, [[0, { o: 0, s: 0.5 }], [t, { o: 0, s: 0.5, x: 0, y: 0 }], [t + 0.15, { o: 1, s: 1 }], [t + 0.6, { x: mid.x, y: mid.y, ease: 'out' }],
+      [t + 1.1, { x: b.x - a.x, y: b.y - a.y, s: 0.8, ease: 'in' }], [t + 1.25, { o: 0 }]]);
+    G.cue(t, 'whoosh');
+  });
+
+  // =============== 3 · Tu estrella secreta (13–21) ===============
+  G.burbuja('b2', 13.3, 17.4, 'Cada uno recibe el nombre de su estrella secreta…');
+  G.burbuja('b3', 17.6, 20.8, '¡Shhh! 🤫 Es un secreto: nadie más debe saberlo.');
+  at(G.el('div', 'c-mode', '📝 En papel', G.stage, 'm1'), 740, 320);
+  at(G.el('div', 'c-mode', '📱 Desde tu cuenta', G.stage, 'm2'), 1290, 320);
+  G.el('div', 'c-slip', `<div class="who">Mateo</div><div class="lbl">Tu estrella secreta es</div><div class="sname">✨ Sofía ✨</div>
+    <div class="pr">${PROMPT}</div><div class="sec">¡Es un secreto! Escríbele y entrega tu carta a tu profe.</div>`, G.stage, 'slip');
+  phone('ph1', 1290, 390, 600, `<div class="c-h">💌 Correo Estelar</div><div class="c-sub">Una carta amable para un compañero de tu clase</div>
+    <div class="c-btn c-see" id="see" style="top:160px">Ver a quién le escribes</div>
+    <div class="c-txt" id="who" style="top:160px">Tu estrella secreta es <b>Sofía</b>. ¡Es un secreto!</div>
+    <div class="c-txt" style="top:268px;font-weight:800">«${PROMPT}»</div>`);
+  const s3 = (t0) => [[0, { o: 0, y: 30 }], [t0, { o: 0, y: 30 }], [t0 + 0.45, { o: 1, y: 0, ease: 'back' }], [20.6, { o: 1 }], [21.0, { o: 0 }]];
+  G.key('#m1', s3(13.5));
+  G.key('#m2', s3(13.7));
+  G.key('#slip', [[0, { o: 0, s: 0.6, r: -8 }], [13.9, { o: 0, s: 0.6, r: -8 }], [14.4, { o: 1, s: 1, r: -2, ease: 'back' }], [20.6, { o: 1 }], [21.0, { o: 0 }]]);
+  G.key('#ph1', s3(14.3));
+  G.ripple(15.8, { x: 1540, y: 599 });
+  G.key('#see', [[0, { o: 1 }], [15.9, { o: 1 }], [16.1, { o: 0 }]]);
+  G.key('#who', [[0, { o: 0 }], [16.0, { o: 0 }], [16.3, { o: 1 }]]);
+  G.cue(16.1, 'chime');
+  G.el('div', 'c-shh', '🤫', G.stage, 'shh3');
+  G.key('#shh3', [[0, { o: 0, s: 0.4 }], [17.8, { o: 0, s: 0.4 }], [18.2, { o: 1, s: 1.15, ease: 'back' }], [18.6, { s: 1 }], [20.6, { o: 1 }], [21.0, { o: 0 }]]);
+  G.cue(17.9, 'shh');
+
+  // =============== 4 · La consigna y la carta (21–28.5) ===============
+  G.burbuja('b4', 21.3, 25.0, 'Tu profe da una consigna… y escribes tu carta, en papel o en tu cuenta.');
+  G.burbuja('b5', 25.2, 28.3, 'Escribe algo amable y verdadero. 💛');
+  G.el('div', 'c-prompt', `📣 ${PROMPT}`, G.stage, 'prompt');
+  at(G.el('div', 'c-mode', '📝 En papel', G.stage, 'm3'), 760, 422);
+  at(G.el('div', 'c-mode', '📱 Desde tu cuenta', G.stage, 'm4'), 1290, 422);
+  G.el('div', 'c-paper', '<span id="paper-t"></span>', G.stage, 'paper');
+  G.el('div', 'c-pencil', '✏️', G.stage, 'pencil');
+  phone('ph2', 1290, 490, 560, `<div class="c-h">💌 Correo Estelar</div><div class="c-txt" style="top:78px;font-weight:800">Tu carta</div>
+    <div class="c-box" style="top:116px;height:230px"><span id="ph2-t"></span></div>
+    <div class="c-note" style="top:362px">Solo tu profe sabrá que fuiste tú.</div>
+    <div class="c-btn c-send" style="top:410px">➤ Enviar carta</div>`);
+  const s4 = (t0) => [[0, { o: 0, y: 30 }], [t0, { o: 0, y: 30 }], [t0 + 0.45, { o: 1, y: 0, ease: 'out' }], [28.1, { o: 1 }], [28.5, { o: 0 }]];
+  G.key('#prompt', s4(21.3));
+  G.key('#m3', s4(21.6));
+  G.key('#m4', s4(21.7));
+  G.key('#paper', [[0, { o: 0, y: 30, r: 0 }], [21.8, { o: 0, y: 30, r: 0 }], [22.2, { o: 1, y: 0, r: -2, ease: 'out' }], [28.1, { o: 1 }], [28.5, { o: 0 }]]);
+  G.key('#ph2', s4(21.9));
+  G.type('#paper-t', 22.4, 26.0, LETTER);
+  G.typing('#ph2-t', 22.4, 26.0, LETTER);
+  G.key('#pencil', [[0, { o: 0 }], [22.3, { o: 0, x: -300, y: -330 }], [22.5, { o: 1 }], [23.4, { x: -40, y: -330 }], [23.6, { x: -340, y: -282 }], [24.5, { x: -20, y: -282 }],
+    [24.7, { x: -340, y: -234 }], [25.6, { x: -60, y: -234 }], [26.0, { x: 0, y: 0 }], [28.1, { o: 1 }], [28.5, { o: 0 }]], 'linear');
+  G.ripple(27.2, { x: 1540, y: 949 });
+  G.el('div', 'c-toast', '¡Carta enviada! Tu profe la revisará.', G.stage, 'toast');
+  G.key('#toast', [[0, { o: 0, y: -20 }], [27.4, { o: 0, y: -20 }], [27.7, { o: 1, y: 0, ease: 'out' }], [28.1, { o: 1 }], [28.5, { o: 0 }]]);
+  G.cue(27.4, 'whoosh');
+
+  // =============== 5 · Tu profe la revisa (28.5–35) ===============
+  G.burbuja('b6', 28.7, 32.4, 'Tu profe lee cada carta antes de que llegue. Solo tu profe sabrá que fuiste tú.');
+  G.burbuja('b7', 32.6, 34.8, 'Si no es amable, te pide escribirla de nuevo.');
+  G.el('div', 'c-teach', `<div class="hd">👩‍🏫 Cartas · panel de tu profe</div>
+    <div class="who">De Mateo para Sofía · <span class="sw"><span class="st-p" id="st-p">Por revisar</span><span class="st-a" id="st-a">Aprobada</span></span></div>
+    <div class="msg">«${LETTER}»</div>
+    <div class="acts"><span style="background:#4f46e5;color:#fff">✓ Aprobar</span><span style="border:2px solid #cbd5e1">✕ Rechazar</span></div>`, G.stage, 'teach');
+  phone('ph3', 1340, 360, 480, `<div class="c-h">💌 Correo Estelar</div><div class="c-txt" style="top:84px">Tu estrella secreta es <b>Sofía</b>. ¡Es un secreto!</div>
+    <div class="c-txt" style="top:170px;font-weight:800">«${PROMPT}»</div>
+    <div class="c-status c-wait" id="wait5" style="top:270px">✉️ Enviaste tu carta. Tu profe la está revisando.</div>
+    <div class="c-status c-ok" id="ok5" style="top:270px">✨ ¡Tu carta ya llegó!</div>`);
+  const s5 = (t0) => [[0, { o: 0, y: 30 }], [t0, { o: 0, y: 30 }], [t0 + 0.45, { o: 1, y: 0, ease: 'out' }], [34.6, { o: 1 }], [35.0, { o: 0 }]];
+  G.key('#teach', s5(28.8));
+  G.key('#ph3', s5(29.0));
+  G.ripple(30.6, { x: 860, y: 688 });
+  G.key('#st-p', [[0, { o: 1 }], [30.7, { o: 1 }], [30.8, { o: 0 }]]);
+  G.key('#st-a', [[0, { o: 0 }], [30.7, { o: 0 }], [30.9, { o: 1 }]]);
+  G.key('#wait5', [[0, { o: 1 }], [31.1, { o: 1 }], [31.3, { o: 0 }]]);
+  G.key('#ok5', [[0, { o: 0, s: 0.8 }], [31.2, { o: 0, s: 0.8 }], [31.5, { o: 1, s: 1, ease: 'pop' }]]);
+  G.cue(31.3, 'chime');
+  at(G.el('div', 'c-chip', '📝 En papel, se la entregas a tu profe en mano.', G.stage, 'paper5'), 760, 780).style.cssText += ';width:500px;background:rgba(255,255,255,.12);color:#fff;border:2px solid rgba(255,255,255,.25)';
+  G.key('#paper5', s5(31.8));
+  at(G.el('div', 'c-chip', 'Si no es amable: «Tu profe te pide escribirla de nuevo, con un mensaje amable.»', G.stage, 'redo5'), 1340, 862).style.cssText += ';width:500px;background:#fef3c7;color:#78350f';
+  G.key('#redo5', s5(32.8));
+
+  // =============== 6 · Jiro entrega en clase (35–42) ===============
+  G.burbuja('b8', 35.2, 38.4, '¡Y en clase, yo entrego algunas cartas! ¡Correo estelar!');
+  G.burbuja('b9', 38.6, 41.8, '¿Quién habrá sido? ¡Es un secreto! ✨');
+  G.el('div', 'c-env', '💌', G.stage, 'env6');
+  G.key('#env6', [[0, { o: 0, x: -520, y: 120, s: 0.5, r: -20 }], [35.2, { o: 0, x: -520, y: 120, s: 0.5, r: -20 }], [35.4, { o: 1 }], [35.9, { x: 0, y: 0, s: 1, r: 0, ease: 'out' }],
+    [36.05, { r: -8 }], [36.2, { r: 8 }], [36.3, { r: 0 }], [36.6, { o: 0, s: 1.6 }]]);
+  G.cue(35.4, 'whoosh');
+  G.el('div', 'c-deliv', `<div class="p1">Para</div><div class="p2">Sofía</div><div class="p3">«${LETTER}»</div>
+    <div class="p4">De: tu estrella secreta ✨</div><div class="p5">1 de 5</div>`, G.stage, 'deliv');
+  G.key('#deliv', [[0, { o: 0, s: 0.7 }], [36.4, { o: 0, s: 0.7 }], [36.9, { o: 1, s: 1, ease: 'back' }], [41.6, { o: 1 }], [42.0, { o: 0 }]]);
+  G.cue(36.5, 'levelup');
+  G.el('div', 'c-kid', kidFull(SOFIA), G.stage, 'sofia');
+  G.key('#sofia', [[0, { o: 0, x: 60 }], [38.6, { o: 0, x: 60 }], [39.0, { o: 1, x: 0, ease: 'back' }], [39.4, { y: -24, ease: 'out' }], [39.8, { y: 0, ease: 'in' }], [41.6, { o: 1 }], [42.0, { o: 0 }]]);
+  G.cue(39.0, 'n:1567.98');
+  [0, 1, 2].forEach((i) => {
+    const h = at(G.el('div', 'heart', '💛', G.stage, `heart${i}`), 1700 + i * 40, 530);
+    const t = 39.3 + i * 0.35;
+    G.key(h, [[0, { o: 0 }], [t, { o: 0, y: 0, s: 0.5 }], [t + 0.3, { o: 1, s: 1, ease: 'out' }], [t + 1.6, { o: 0, y: -160, ease: 'in' }]]);
+  });
+
+  // =============== 7 · ¿Listos? (42–50) ===============
+  G.el('img', 'f-jiro', '', G.stage, 'f-jiro').src = 'asset:assets/jiro/celebrando.webp?h=740';
+  G.el('div', 'f-big', '¿Listos?', G.stage, 'f-big').style.top = '110px';
+  G.el('div', 'f-say', 'Las palabras amables también brillan.', G.stage, 'f-say').style.top = '270px';
+  G.el('div', '', '', G.stage, 'fx');
+  G.key('#f-jiro', [[0, { o: 0, y: 60 }], [42.0, { o: 0, y: 60 }], [42.5, { o: 1, y: 0, ease: 'back' }], [43.1, { y: -36, ease: 'out' }], [43.6, { y: 0, ease: 'in' }], [49.5, { o: 1 }], [50, { o: 0 }]]);
+  G.key('#f-big', [[0, { o: 0, s: 0.8 }], [42.0, { o: 0, s: 0.8 }], [42.4, { o: 1, s: 1, ease: 'back' }], [49.5, { o: 1 }], [50, { o: 0 }]]);
+  G.key('#f-say', [[0, { o: 0, s: 0.8 }], [42.8, { o: 0, s: 0.8 }], [43.2, { o: 1, s: 1, ease: 'pop' }], [49.5, { o: 1 }], [50, { o: 0 }]]);
+  // Sobres y estrellas que suben por todo el cielo.
+  [[180, '💌'], [420, '✨'], [640, '✉️'], [1300, '💌'], [1520, '✨'], [1740, '✉️'], [300, '✨'], [1640, '💌'], [520, '💌'], [1420, '✨']].forEach(([x, e], i) => {
+    const f = at(G.el('div', 'fly', e, G.stage, `up${i}`), x, 1100);
+    const t = 42.4 + i * 0.32;
+    G.key(f, [[0, { o: 0 }], [t, { o: 0, y: 0, r: -10 }], [t + 0.3, { o: 1 }], [t + 4.2, { o: 0, y: -1180, r: 20, ease: 'linear' }]]);
+  });
+  G.confeti('#fx', 42.6, 2.6);
+  G.cue(42.3, 'levelup');
+
+  G.capas();
+  G.arrancar(END);
+})();
+</script>

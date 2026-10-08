@@ -16,20 +16,28 @@ interface ActivityWelcomeProps {
   /**
    * «calma»: caja de música y Z flotando (Descanso). «energia»: marimba con palmas y chispas (actividades con
    * movimiento). «aventura»: la Niebla se abre sobre la portada con viento y fanfarria (Conquista). «viaje»: marcha
-   * de viaje y huellas que avanzan (Expediciones).
+   * de viaje y huellas que avanzan (Expediciones). «carta»: vals tierno y sobres que suben (Correo Estelar).
    */
   mood?: WelcomeMood;
   onDone: () => void;
 }
 
-type WelcomeMood = 'calma' | 'energia' | 'aventura' | 'viaje';
+type WelcomeMood = 'calma' | 'energia' | 'aventura' | 'viaje' | 'carta';
 
 const MOODS: Record<WelcomeMood, { glow: string; play: (sound: StageSound) => void }> = {
   calma: { glow: 'shadow-[0_0_0_4px_rgba(253,230,138,0.35),0_0_80px_rgba(129,140,248,0.45)]', play: (sound) => sound.lullaby() },
   energia: { glow: 'shadow-[0_0_0_4px_rgba(253,230,138,0.4),0_0_80px_rgba(251,191,36,0.45)]', play: (sound) => sound.marimba() },
   aventura: { glow: 'shadow-[0_0_0_4px_rgba(253,230,138,0.35),0_0_80px_rgba(167,139,250,0.5)]', play: (sound) => sound.aventura() },
   viaje: { glow: 'shadow-[0_0_0_4px_rgba(253,230,138,0.35),0_0_80px_rgba(52,211,153,0.4)]', play: (sound) => sound.viaje() },
+  carta: { glow: 'shadow-[0_0_0_4px_rgba(253,230,138,0.35),0_0_80px_rgba(244,114,182,0.45)]', play: (sound) => sound.vals() },
 };
+
+const ENVELOPES = [
+  { left: '-7%', top: '22%', delay: 900 },
+  { left: '95%', top: '14%', delay: 1400 },
+  { left: '-5%', top: '66%', delay: 1900 },
+  { left: '93%', top: '60%', delay: 2400 },
+];
 
 const STEPS = [
   { left: '2%', top: '84%', rotate: '-18deg', delay: 900 },
@@ -121,6 +129,16 @@ export const ActivityWelcome = ({ title, tagline, cover, sound, mood = 'calma', 
             style={{ left: spark.left, top: spark.top, fontSize: 'clamp(22px,4.5vh,56px)', '--aw-delay': `${spark.delay}ms` } as CSSProperties}
           >
             ✦
+          </span>
+        ))}
+        {mood === 'carta' && ENVELOPES.map((envelope) => (
+          <span
+            key={envelope.left + envelope.top}
+            aria-hidden="true"
+            className="aw-z absolute"
+            style={{ left: envelope.left, top: envelope.top, fontSize: 'clamp(22px,4.5vh,52px)', '--aw-delay': `${envelope.delay}ms` } as CSSProperties}
+          >
+            💌
           </span>
         ))}
         {mood === 'viaje' && STEPS.map((step) => (

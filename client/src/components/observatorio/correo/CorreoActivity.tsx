@@ -1,16 +1,20 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Check, EyeOff, Loader2, Mail, Moon, Printer, Projector, Send, Undo2, X } from 'lucide-react';
+import { ArrowLeft, Check, EyeOff, Loader2, Mail, Moon, PlayCircle, Printer, Projector, Send, Undo2, X } from 'lucide-react';
 import type { ActivitySession } from '../../../lib/activityApi';
 import type { Classroom, Student } from '../../../lib/classroomApi';
 import { correoApi, correoKeys, type CorreoLetter, type CorreoMode, type CorreoState } from '../../../lib/correoApi';
 import { shuffle } from '../../classroom/utilities/helpers';
 import { studentNames } from '../../students/profile/profileHelpers';
+import { TutorialButton } from '../../tutorials/TutorialButton';
+import { ActivityWelcome } from '../ActivityWelcome';
 import { Bitacora } from '../Bitacora';
-import { EscenarioObservatorio } from '../EscenarioObservatorio';
+import { CATALOG } from '../catalog';
+import { EscenarioObservatorio, stageControlClass } from '../EscenarioObservatorio';
 import { useStageSound } from '../observatorioSound';
 import { PresenceEditor } from '../presence';
+import { StageTutorial } from '../StageTutorial';
 import { useActivitySession } from '../useActivitySession';
 import { useTodayPresence } from '../usePresence';
 import { printSecretStars } from './printSecretStars';
@@ -32,6 +36,7 @@ const PROMPTS = [
   'Agradécele algo concreto que hizo por la clase.',
 ];
 const MAX_ON_STAGE = 5;
+const COVER = CATALOG.find((entry) => entry.id === 'correo')?.cover ?? '/assets/jiro/actividades/correo.webp';
 
 const errorMessage = (error: unknown, fallback: string) =>
   (error as { response?: { data?: { message?: string } } })?.response?.data?.message || fallback;
@@ -75,6 +80,10 @@ export const CorreoActivity = ({ classroom, resume, onExit }: CorreoActivityProp
   const [customPrompt, setCustomPrompt] = useState('');
   const [mode, setMode] = useState<CorreoMode>('papel');
   const [editingPresence, setEditingPresence] = useState(false);
+  // Bienvenida de pantalla completa la primera vez que se proyecta la consigna (el panel es privado y no se
+  // proyecta) y el tutorial para estudiantes a demanda («Cómo se juega», en la consigna proyectada).
+  const [welcomed, setWelcomed] = useState(false);
+  const [tutorial, setTutorial] = useState(false);
 
   // Con cuenta propia (correo, Google o PIN): puede escribir desde su dispositivo.
   const withAccount = (id: string) => { const s = byId.get(id); return !!s && hasStudentAccount(s); };
@@ -183,6 +192,9 @@ export const CorreoActivity = ({ classroom, resume, onExit }: CorreoActivityProp
                 ? 'Lee en tu tarjeta quién es tu estrella secreta, escríbele y entrégale la carta a tu profe. ¡Es un secreto!'
                 : 'Entra a Juried: en tu inicio verás a quién escribirle. ¡Es un secreto!'}
             </p>
+            <button type="button" onClick={() => setTutorial(true)} className={`${stageControlClass} border border-white/25 text-base`}>
+              <PlayCircle size={20} aria-hidden="true" /> Cómo se juega · 1 min
+            </button>
           </div>
         )}
 
@@ -227,6 +239,17 @@ export const CorreoActivity = ({ classroom, resume, onExit }: CorreoActivityProp
             onExit={onExit}
           />
         )}
+        {stage === 'announce' && !welcomed && (
+          <ActivityWelcome
+            title="Correo Estelar"
+            tagline="Las palabras amables también brillan."
+            cover={COVER}
+            sound={soundState.sound}
+            mood="carta"
+            onDone={() => setWelcomed(true)}
+          />
+        )}
+        {tutorial && <StageTutorial id="correo" onClose={() => setTutorial(false)} />}
       </EscenarioObservatorio>
     );
   }
@@ -239,6 +262,7 @@ export const CorreoActivity = ({ classroom, resume, onExit }: CorreoActivityProp
           <ArrowLeft size={18} aria-hidden="true" /> Observatorio
         </button>
         <h1 className="text-2xl font-black text-gray-900 dark:text-white">💌 Correo Estelar</h1>
+        <TutorialButton id="correo" />
       </div>
 
       {!session || session.status !== 'ACTIVE' || !state ? (

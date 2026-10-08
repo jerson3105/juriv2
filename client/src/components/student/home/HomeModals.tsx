@@ -4,6 +4,7 @@ import { HomeModal } from '../../home/HomeModal';
 import { cancelButton } from '../../home/homeHelpers';
 import { characterClassApi } from '../../../lib/characterClassApi';
 import { StudentCorreoCard } from '../../observatorio/correo/StudentCorreoCard';
+import { TutorialButton } from '../../tutorials/TutorialButton';
 import { LoginStreakWidget } from '../LoginStreakWidget';
 
 const closeFooter = (onClose: () => void, label = 'Cerrar') => (
@@ -50,7 +51,12 @@ export const RolePickerModal = ({ classroomId, currentId, roles, onClose }: { cl
 };
 
 export const CorreoModal = ({ profileId, onClose }: { profileId: string; onClose: () => void }) => (
-  <HomeModal title="💌 Correo Estelar" subtitle="Una carta amable para un compañero de tu clase" onClose={onClose} footer={closeFooter(onClose)}>
+  <HomeModal
+    title="💌 Correo Estelar"
+    subtitle="Una carta amable para un compañero de tu clase"
+    onClose={onClose}
+    footer={<><div className="mr-auto"><TutorialButton id="correo" label="¿Cómo funciona?" /></div>{closeFooter(onClose)}</>}
+  >
     <StudentCorreoCard profileId={profileId} embedded />
   </HomeModal>
 );

@@ -17,6 +17,7 @@ export const TUTORIALS = {
   estrellas: { title: 'Estrellas en Movimiento', src: '/tutoriales/estrellas.html', minutes: 1, audience: 'estudiantes' },
   conquista: { title: 'Conquista del Cielo', src: '/tutoriales/conquista.html', minutes: 1, audience: 'estudiantes' },
   expediciones: { title: 'Expediciones', src: '/tutoriales/expediciones.html', minutes: 1, audience: 'estudiantes' },
+  correo: { title: 'Correo Estelar', src: '/tutoriales/correo.html', minutes: 1, audience: 'estudiantes' },
 } as const;
 
 export type TutorialId = keyof typeof TUTORIALS;
@@ -34,6 +35,19 @@ export const TutorialModal = ({ id, onClose }: { id: TutorialId; onClose: () => 
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
+  }, [onClose]);
+
+  // Encima de otro modal (p. ej. el Correo del alumno), Esc cierra solo el tutorial: se atiende en captura,
+  // antes que los modales de abajo, que escuchan en la fase de burbuja.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [onClose]);
 
   // En body y sobre el layout de la clase (z-[100]): dentro del contenido (z-10) la barra lateral taparía el borde
