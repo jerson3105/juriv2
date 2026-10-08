@@ -16,7 +16,7 @@ import { historyService } from './history.service.js';
 import { storyService } from './story.service.js';
 
 // EXPEDICION: la expedición proyectada en clase (sus paradas pagan solas; la Bitácora cierra la clase).
-export const ACTIVITY_TYPES = ['DESCANSO', 'ESTRELLAS', 'CONQUISTA', 'CORREO', 'ERROR', 'EXPEDICION'] as const;
+export const ACTIVITY_TYPES = ['DESCANSO', 'ESTRELLAS', 'CONQUISTA', 'CORREO', 'ERROR', 'EXPEDICION', 'BINGO'] as const;
 export type ActivityType = typeof ACTIVITY_TYPES[number];
 export const SELF_ASSESSMENTS = ['GREEN', 'YELLOW', 'RED'] as const;
 export type SelfAssessment = typeof SELF_ASSESSMENTS[number];
@@ -42,6 +42,7 @@ const ACTIVITY_NAMES: Record<ActivityType, string> = {
   CORREO: 'Correo Estelar',
   ERROR: 'El Error de Jiro',
   EXPEDICION: 'Expedición',
+  BINGO: 'Bingo Estelar',
 };
 
 // MariaDB devuelve las columnas JSON como texto.

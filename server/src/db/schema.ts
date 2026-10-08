@@ -636,7 +636,7 @@ export const levelUpLogs = mysqlTable('level_up_logs', {
 export const activitySessions = mysqlTable('activity_sessions', {
   id: varchar('id', { length: 36 }).primaryKey(),
   classroomId: varchar('classroom_id', { length: 36 }).notNull(),
-  activityType: varchar('activity_type', { length: 20 }).notNull(), // DESCANSO | ESTRELLAS | CONQUISTA | CORREO | ERROR
+  activityType: varchar('activity_type', { length: 20 }).notNull(), // DESCANSO | ESTRELLAS | CONQUISTA | CORREO | ERROR | EXPEDICION | BINGO
   status: varchar('status', { length: 12 }).notNull().default('ACTIVE'), // ACTIVE | FINISHED | ABANDONED
   title: varchar('title', { length: 120 }),
   // Partida jugada desde una parada «en clase»: su recompensa marca la parada (sin pagarla dos veces).
