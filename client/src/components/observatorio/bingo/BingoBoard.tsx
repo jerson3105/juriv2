@@ -49,6 +49,9 @@ export const Astro = ({ text, revealKey, delayMs }: { text: string | null; revea
  * «Cielo de palabras»: todas las respuestas posibles; las ya reveladas, encendidas con ★ y su número de salida, y la
  * última con anillo. Tres señales a la vez (no solo color).
  */
+// Palabras largas (MicroPython, Pin.OUT) con letra algo más chica: en casillas angostas se partían por la mitad.
+const wordSizeClass = (text: string) => (text.length > 10 ? 'text-[0.72em]' : text.length > 7 ? 'text-[0.85em]' : '');
+
 export const CieloDePalabras = ({ answers, revealedOrder, lastKey, compact = false }: {
   answers: BingoAnswer[];
   /** Respuestas reveladas, sin repetir, en el orden en que se encendieron (su número de salida). */
@@ -67,13 +70,14 @@ export const CieloDePalabras = ({ answers, revealedOrder, lastKey, compact = fal
         return (
           <li
             key={answer.key}
-            className={`relative flex min-h-[2.6em] items-center gap-1.5 rounded-xl px-2.5 py-1 text-[clamp(15px,2.2vh,26px)] font-bold leading-tight ${n
+            className={`relative flex min-h-[2.6em] items-center justify-center rounded-xl px-1.5 pb-1 pt-[0.85em] text-center text-[clamp(15px,2.2vh,26px)] font-bold leading-tight ${n
               ? `bg-amber-300 text-amber-950 ${isLast ? 'bg-lit ring-4 ring-white' : ''}`
               : 'border border-dashed border-white/25 text-indigo-100'}`}
           >
-            {n && <span aria-hidden="true">★</span>}
-            <span className="min-w-0 flex-1 [hyphens:auto] [overflow-wrap:break-word]">{answer.text}</span>
-            {n && <span className="shrink-0 text-[0.7em] font-black opacity-70">#{n}</span>}
+            {/* La estrella y el número de salida van en las esquinas: al lado de la palabra le quitaban ancho y la partían. */}
+            {n && <span className="absolute left-1.5 top-0.5 text-[0.65em]" aria-hidden="true">★</span>}
+            <span className={`min-w-0 [hyphens:auto] [overflow-wrap:break-word] ${wordSizeClass(answer.text)}`}>{answer.text}</span>
+            {n && <span className="absolute right-1.5 top-0.5 text-[0.6em] font-black opacity-70">#{n}</span>}
             <span className="sr-only">{n ? `salió en el sorteo ${n}${isLast ? ', la última' : ''}` : 'aún no sale'}</span>
           </li>
         );

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useReducedMotion } from 'framer-motion';
 import toast from 'react-hot-toast';
@@ -16,7 +16,6 @@ import { EscenarioObservatorio, stageControlClass } from '../EscenarioObservator
 import type { JiroPose } from '../jiroPoses';
 import { useStageSound } from '../observatorioSound';
 import { PresenceEditor } from '../presence';
-import { questionSizeClass } from '../questionHelpers';
 import { StageEndButton } from '../StageEndButton';
 import { StageTutorial } from '../StageTutorial';
 import { UnreviewedNotice } from '../UnreviewedNotice';
@@ -33,6 +32,32 @@ const TABLES = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
 const THINK_OPTIONS = [0, 20, 30];
 const SPARE_CARDS = 3;
 const DRAW_MS = 1700;
+// La pregunta ocupa todo el ancho y la explicación va junto a la esfera. La letra parte según el largo y, si aun así
+// no entra en la pantalla, baja un escalón más (fit, hasta MAX_FIT) en vez de hacer scroll.
+const PROMPT_SIZES = ['stage-title', 'stage-option', 'stage-body', 'stage-balloon', 'text-[clamp(18px,3vh,34px)] leading-snug'];
+const EXPLAIN_SIZES = ['stage-balloon', 'text-[clamp(18px,3vh,34px)] leading-snug', 'text-[clamp(16px,2.6vh,30px)] leading-snug', 'text-[clamp(15px,2.3vh,26px)] leading-snug'];
+const MAX_FIT = 3;
+const promptSizeClass = (text: string, fit: number) =>
+  PROMPT_SIZES[Math.min(PROMPT_SIZES.length - 1, (text.length > 140 ? 2 : text.length > 70 ? 1 : 0) + fit)];
+const explainSizeClass = (text: string, fit: number) => EXPLAIN_SIZES[Math.min(EXPLAIN_SIZES.length - 1, (text.length > 120 ? 1 : 0) + fit)];
+/**
+ * ¿El contenido del escenario (EscenarioObservatorio) es más alto que su ventana? Se mide el alto de layout
+ * (offsetHeight no cuenta las animaciones con transform) de lo que hay dentro de cada hijo del contenedor con scroll:
+ * el hijo se estira a la altura del escenario y su contenido se le sale por abajo.
+ */
+const stageOverflows = (el: HTMLElement | null) => {
+  for (let node = el?.parentElement ?? null; node; node = node.parentElement) {
+    if (!/(auto|scroll)/.test(getComputedStyle(node).overflowY)) continue;
+    return [...node.children].some((child) => {
+      const style = getComputedStyle(child);
+      const inFlow = [...child.children].filter((c) => !/absolute|fixed/.test(getComputedStyle(c).position)) as HTMLElement[];
+      const gaps = (parseFloat(style.rowGap) || 0) * Math.max(0, inFlow.length - 1);
+      const content = inFlow.reduce((sum, c) => sum + c.offsetHeight, 0) + gaps + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+      return content > node.clientHeight + 1;
+    });
+  }
+  return false;
+};
 const COVER = CATALOG.find((entry) => entry.id === 'bingo')?.cover ?? '/assets/jiro/actividades/bingo.webp';
 
 const chip = (on: boolean) =>
@@ -150,6 +175,24 @@ export const BingoActivity = ({ classroom, resume, initialBankId, onExit }: Bing
   const current = revancha ? ballsById.get(revancha.ids[revancha.index]) : drawn > 0 ? ballsById.get(order[drawn - 1]) : undefined;
   const revealed = revancha ? revancha.revealed : !!state?.revealed;
   const pendingMark = revancha ? revancha.revealed : drawn > 0 && !!state?.revealed && marks[drawn - 1] == null;
+
+  // La explicación y «¿La mayoría acertó?» guardan su lugar (invisibles) desde que sale la bola: el escalón de letra se
+  // calcula una vez por bola (y al cambiar la ventana) y al revelar no salta nada.
+  const ballKey = revancha ? `r${revancha.index}` : String(drawn);
+  const reserveMark = !!current && !drawing && (!!revancha || marks[drawn - 1] == null);
+  const fitRef = useRef<HTMLDivElement>(null);
+  const [viewport, setViewport] = useState(() => `${window.innerWidth}x${window.innerHeight}`);
+  const fitKey = `${ballKey}-${drawing ? 1 : 0}-${viewport}`;
+  const [fitState, setFitState] = useState({ key: '', step: 0 });
+  const fit = fitState.key === fitKey ? fitState.step : 0;
+  useEffect(() => {
+    const onResize = () => setViewport(`${window.innerWidth}x${window.innerHeight}`);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  useLayoutEffect(() => {
+    if (fit < MAX_FIT && stageOverflows(fitRef.current)) setFitState({ key: fitKey, step: fit + 1 });
+  }, [fitKey, fit]);
   const lastFigureWon = state?.figureWonAt != null && figureIndex >= FIGURES.length - 1;
   const outOfBalls = drawn >= order.length && !pendingMark && (drawn === 0 || !!state?.revealed);
   const gameOver = phase === 'playing' && !revancha && (lastFigureWon || outOfBalls);
@@ -540,7 +583,7 @@ export const BingoActivity = ({ classroom, resume, initialBankId, onExit }: Bing
       )}
 
       {playing && state && (
-        <div className="flex w-full max-w-[110rem] items-start gap-6">
+        <div ref={fitRef} className="flex w-full max-w-[110rem] items-start gap-6">
           <div className="flex min-w-0 flex-1 flex-col items-center gap-4">
             {!revancha ? (
               <p className="rounded-full bg-white/10 px-5 py-2 text-[clamp(16px,2.4vh,28px)] font-bold text-indigo-50">
@@ -549,7 +592,19 @@ export const BingoActivity = ({ classroom, resume, initialBankId, onExit }: Bing
             ) : (
               <p className="rounded-full bg-amber-300/15 px-5 py-2 text-[clamp(16px,2.4vh,28px)] font-black text-amber-100">🔁 Revancha: las que la clase falló</p>
             )}
-            <div className="flex w-full flex-col items-center gap-6 lg:flex-row lg:justify-center">
+            {/* La pregunta va arriba, a todo el ancho: en la columna junto a la esfera una pregunta larga bajaba de la pantalla. */}
+            <div className="w-full max-w-6xl text-center lg:text-left" aria-live="polite">
+              {current && !drawing ? (
+                <div key={`${revancha ? `r${revancha.index}` : drawn}`} className="aw-rise flex flex-col gap-2" style={{ '--aw-delay': '0ms' } as CSSProperties}>
+                  <p className="text-lg font-bold uppercase tracking-wide text-amber-200">{revancha ? `Revancha ${revancha.index + 1}` : `Bola ${drawn}`}</p>
+                  {current.context && <p className="stage-balloon text-indigo-100">{current.context}</p>}
+                  <p className={`${promptSizeClass(current.prompt, fit)} font-black text-white`}>{current.prompt}</p>
+                </div>
+              ) : !current && !drawing ? (
+                <p className="stage-option font-black text-white">{drawn === 0 ? '¿Listos con su cartón?' : ''}</p>
+              ) : null}
+            </div>
+            <div className="flex w-full max-w-6xl flex-col items-center gap-6 lg:flex-row">
               <EsferaJiro remaining={Math.max(0, order.length - drawn)} spin={revancha ? 0 : spin}>
                 <Astro
                   text={current && revealed ? answerText.get(current.key) ?? '' : null}
@@ -557,22 +612,17 @@ export const BingoActivity = ({ classroom, resume, initialBankId, onExit }: Bing
                   delayMs={drawing && !reduce ? 1100 : 0}
                 />
               </EsferaJiro>
-              <div className="flex min-w-0 max-w-3xl flex-1 flex-col items-center gap-3 text-center lg:items-start lg:text-left" aria-live="polite">
-                {current && !drawing ? (
-                  <div key={`${revancha ? `r${revancha.index}` : drawn}`} className="aw-rise flex flex-col gap-3" style={{ '--aw-delay': '0ms' } as CSSProperties}>
-                    <p className="text-lg font-bold uppercase tracking-wide text-amber-200">{revancha ? `Revancha ${revancha.index + 1}` : `Bola ${drawn}`}</p>
-                    {current.context && <p className="stage-body text-indigo-100">{current.context}</p>}
-                    <p className={`${questionSizeClass(current.prompt)} font-black text-white`}>{current.prompt}</p>
-                    {secondsLeft > 0 && <p className="text-[clamp(20px,3vh,36px)] font-black text-amber-200" aria-label={`Quedan ${secondsLeft} segundos`}>⏳ {secondsLeft}</p>}
-                    {revealed && current.explanation && (
-                      <p className="stage-body rounded-2xl border border-amber-300/40 bg-amber-300/10 px-4 py-2 text-white">{current.explanation}</p>
-                    )}
-                  </div>
-                ) : !current && !drawing ? (
-                  <p className="stage-option font-black text-white">{drawn === 0 ? '¿Listos con su cartón?' : ''}</p>
-                ) : null}
-                {pendingMark && (
-                  <div className="flex flex-wrap items-center gap-3">
+              <div className="flex min-w-0 flex-1 flex-col items-center gap-3 text-center lg:items-start lg:text-left" aria-live="polite">
+                {current && !drawing && secondsLeft > 0 && (
+                  <p className="text-[clamp(20px,3vh,36px)] font-black text-amber-200" aria-label={`Quedan ${secondsLeft} segundos`}>⏳ {secondsLeft}</p>
+                )}
+                {current && !drawing && current.explanation && (
+                  <p key={`e-${ballKey}`} className={`${revealed ? 'aw-rise' : 'invisible'} ${explainSizeClass(current.explanation, fit)} rounded-2xl border border-amber-300/40 bg-amber-300/10 px-4 py-2 text-white`} style={{ '--aw-delay': '0ms' } as CSSProperties}>
+                    {current.explanation}
+                  </p>
+                )}
+                {(pendingMark || reserveMark) && (
+                  <div className={`flex flex-wrap items-center gap-3 ${pendingMark ? '' : 'invisible'}`}>
                     <span className="text-xl font-bold text-indigo-100">¿La mayoría acertó?</span>
                     <button type="button" onClick={() => mark(true)} className="inline-flex min-h-[56px] items-center gap-2 rounded-2xl bg-emerald-300 px-6 text-xl font-black text-emerald-950 hover:bg-emerald-200">
                       <Check size={24} aria-hidden="true" /> Sí <span className="text-sm font-bold opacity-70">(S)</span>
