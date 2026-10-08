@@ -135,7 +135,7 @@
 .phone .notch { position: absolute; left: 0; right: 0; top: 10px; margin: 0 auto; width: 140px; height: 30px; border-radius: 999px; background: #0f172a; z-index: 3; }
 
 /* ---------- Cursor, clics, resaltados ---------- */
-#cursor { left: 0; top: 0; width: 44px; height: 54px; z-index: 30; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .35)); }
+#cursor { left: 0; top: 0; width: 44px; height: 54px; z-index: 30; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .35)); opacity: 0; } /* oculto si el guion no lo anima */
 .ripple { position: absolute; width: 70px; height: 70px; margin: -35px 0 0 -35px; border-radius: 50%; border: 4px solid #fbbf24; z-index: 29; }
 .glow { position: absolute; border-radius: 16px; box-shadow: 0 0 0 4px #fbbf24, 0 0 40px 10px rgba(251, 191, 36, .45); z-index: 3; pointer-events: none; }
 

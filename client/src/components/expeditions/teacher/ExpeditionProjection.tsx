@@ -1,19 +1,23 @@
 import { Suspense, lazy, useMemo, useState, type ComponentProps, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Check, ExternalLink, Eye, EyeOff, Map as MapIcon, X } from 'lucide-react';
+import { ArrowLeft, Check, ExternalLink, Eye, EyeOff, Map as MapIcon, PlayCircle, X } from 'lucide-react';
 import { activityApi, type ActivitySession } from '../../../lib/activityApi';
 import type { Classroom, Student } from '../../../lib/classroomApi';
 import { assetUrl, expeditionApi, expeditionKeys, type StopKind, type TeacherExpedition, type TeacherStop } from '../../../lib/expeditionApi';
 import { GENIALLY_SANDBOX, isGeniallyEmbed } from '../../../lib/geniallyEmbed';
 import { questionBankApi } from '../../../lib/questionBankApi';
 import { errorMessage } from '../../auth/authHelpers';
+import { ActivityWelcome } from '../../observatorio/ActivityWelcome';
 import { Bitacora, type BitacoraAchievement } from '../../observatorio/Bitacora';
+import { CATALOG } from '../../observatorio/catalog';
 import { EscenarioObservatorio, stageControlClass } from '../../observatorio/EscenarioObservatorio';
 import type { JiroPose } from '../../observatorio/jiroPoses';
 import { PresenceEditor } from '../../observatorio/presence';
 import { answerOf, questionSizeClass } from '../../observatorio/questionHelpers';
+import { useStageSound } from '../../observatorio/observatorioSound';
 import { StageEndButton } from '../../observatorio/StageEndButton';
+import { StageTutorial } from '../../observatorio/StageTutorial';
 import { useTodayPresence } from '../../observatorio/usePresence';
 import { ExpeditionStage } from '../ExpeditionStage';
 import { ClanCards, ClassGoalBar } from '../ClanAndGoal';
@@ -86,6 +90,8 @@ const StopHeading = ({ stop, index }: { stop: TeacherStop; index: number }) => (
  * - «Marcar a los presentes» deja la parada lograda, también para quienes no tienen cuenta.
  * - «Terminar la clase» abre la Bitácora: logros del día, «¿Cómo nos fue?» y una recompensa opcional.
  */
+const EXPEDITION_COVER = CATALOG.find((entry) => entry.id === 'expediciones')?.cover ?? '/assets/jiro/actividades/expediciones.webp';
+
 export const ExpeditionProjection = ({ classroom, expedition, onExit }: {
   classroom: ClassroomWithStudents;
   expedition: TeacherExpedition;
@@ -96,6 +102,10 @@ export const ExpeditionProjection = ({ classroom, expedition, onExit }: {
   const presence = useTodayPresence(classroom.id, students);
   const stops = expedition.stops;
   const [view, setView] = useState<View>({ kind: 'map' });
+  // Bienvenida de pantalla completa al proyectar y el tutorial para estudiantes a demanda («Cómo se juega»).
+  const { sound } = useStageSound();
+  const [welcome, setWelcome] = useState(true);
+  const [tutorial, setTutorial] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [showCounts, setShowCounts] = useState(true);
   const [quiz, setQuiz] = useState<Quiz | null>(null);
@@ -424,6 +434,11 @@ export const ExpeditionProjection = ({ classroom, expedition, onExit }: {
       <div className="grid w-full max-w-7xl items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)]">
         <div className="w-full space-y-4">
           <h2 className="stage-option text-center font-black text-white">{expedition.name}</h2>
+          <div className="flex justify-center">
+            <button type="button" onClick={() => setTutorial(true)} className={`${stageControlClass} border border-white/25 text-base`}>
+              <PlayCircle size={20} aria-hidden="true" /> Cómo se juega · 1 min
+            </button>
+          </div>
           {goal && <ClassGoalBar goal={goal} tone="stage" />}
           <div className="mx-auto w-full" style={{ maxWidth: `max(20rem, calc((100vh - ${reserve}rem) / 0.7))` }}>
             <ExpeditionStage
@@ -460,6 +475,10 @@ export const ExpeditionProjection = ({ classroom, expedition, onExit }: {
           ))}
         </ol>
       </div>
+      {welcome && (
+        <ActivityWelcome title={expedition.name} tagline="¡Paso a paso hasta la meta!" cover={EXPEDITION_COVER} sound={sound} mood="viaje" onDone={() => setWelcome(false)} />
+      )}
+      {tutorial && <StageTutorial id="expediciones" onClose={() => setTutorial(false)} />}
     </EscenarioObservatorio>
   );
 };

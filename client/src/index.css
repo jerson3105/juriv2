@@ -542,9 +542,12 @@
 .aw-fog-l { left: -16%; animation: aw-fog-l 2.2s cubic-bezier(0.65, 0, 0.35, 1) var(--aw-delay, 0ms) both; }
 .aw-fog-r { right: -16%; animation: aw-fog-r 2.2s cubic-bezier(0.65, 0, 0.35, 1) var(--aw-delay, 0ms) both; }
 .aw-veil { background: rgba(148, 130, 210, 0.6); animation: aw-clear 1.6s ease-in-out var(--aw-delay, 0ms) both; }
+/* Huellas que aparecen una tras otra (Expediciones). */
+@keyframes aw-step { 0% { opacity: 0; transform: scale(0.6); } 25% { opacity: 1; transform: scale(1); } 80% { opacity: 1; } 100% { opacity: 0.85; } }
+.aw-step { opacity: 0; animation: aw-step 1.8s ease-out var(--aw-delay, 0ms) both; }
 @media (prefers-reduced-motion: reduce) {
   .aw-rise { animation-delay: 0s !important; }
-  .aw-z, .aw-spark, .aw-cloud, .aw-veil { display: none; }
+  .aw-z, .aw-spark, .aw-cloud, .aw-veil, .aw-step { display: none; }
 }
 
 /* ── Pantallas de acceso: tema espacial (solo si no se pidió reducir el movimiento) ── */

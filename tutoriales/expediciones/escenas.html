@@ -1,0 +1,399 @@
+<!-- titulo: Expediciones -->
+<!-- base: comun -->
+<!--
+  Tutorial para ESTUDIANTES: «Expediciones» (cómo funcionan). ~50 s, 16:9, para verlo en su dispositivo o proyectarlo.
+  Jiro lo cuenta en globos grandes con una marcha de viaje alegre (cuerdas punteadas, silbido y maraca). Textos reales
+  de la vista del alumno: «Tu próxima parada», «Esperando a tu profe», «Tu profe te pide mejorar», «Lograda»,
+  «¡Reto superado con estrella!», «¡Llegaste a la meta!», «Premio de la meta», «¿Cómo me fue?» (Lo logré, Casi,
+  Me costó), «Tu clan», «Meta de la clase». Estrella dorada: 80 % o más al primer intento (GOLD_STAR_SCORE).
+  Arma: node tutoriales/motor/build.mjs expediciones
+-->
+<style>
+/* Portada para estudiantes */
+.d-logo { position: absolute; left: 150px; top: 120px; height: 92px; }
+.d-eyebrow { position: absolute; left: 154px; top: 300px; color: #fde68a; font: 800 30px/1 'Inter', sans-serif; letter-spacing: .18em; text-transform: uppercase; }
+.d-title { position: absolute; left: 144px; top: 380px; width: 840px; color: #fff; font: 800 120px/1.02 'Poppins', sans-serif; letter-spacing: -.02em; }
+.d-sub { position: absolute; left: 154px; top: 540px; color: #c7d2fe; font: 600 42px/1.3 'Inter', sans-serif; }
+.d-chips { position: absolute; left: 154px; top: 640px; display: flex; gap: 16px; }
+.d-chips span { padding: 12px 22px; border-radius: 999px; background: rgba(255, 255, 255, .1); border: 2px solid rgba(255, 255, 255, .16); color: #e0e7ff; font: 700 26px/1 'Inter', sans-serif; }
+.d-window { position: absolute; left: 1010px; top: 200px; width: 780px; height: 585px; border-radius: 40px; overflow: hidden;
+  box-shadow: 0 0 0 4px rgba(253, 230, 138, .35), 0 0 80px rgba(52, 211, 153, .35), 0 40px 120px rgba(0, 0, 0, .5); }
+.d-window img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; }
+.spark { position: absolute; color: #fde68a; font: 800 44px/1 'Poppins', sans-serif; text-shadow: 0 0 18px rgba(253, 230, 138, .9); }
+
+/* Jiro que cuenta */
+.jiro-box { position: absolute; left: 40px; top: 330px; width: 560px; height: 740px; }
+.jiro-box img { position: absolute; left: 0; bottom: 0; height: 740px; }
+
+/* Tu personaje (con mochila) */
+.x-kid { position: absolute; }
+.x-kid svg { width: 100%; height: 100%; }
+
+/* 2 · El mapa de paradas */
+.x-map { position: absolute; left: 760px; top: 320px; width: 1080px; height: 640px; border-radius: 36px; background: linear-gradient(160deg, #1e1b4b, #0b1026); border: 3px solid rgba(255, 255, 255, .2); }
+.x-path { position: absolute; left: 760px; top: 320px; width: 1080px; height: 640px; }
+.x-path polyline { fill: none; stroke: rgba(253, 230, 138, .55); stroke-width: 6; stroke-dasharray: 10 16; stroke-linecap: round; }
+.x-stop { position: absolute; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%; display: grid; place-items: center; font: 800 32px/1 'Poppins', sans-serif; }
+.x-stop.done { background: #fcd34d; color: #451a03; box-shadow: 0 0 30px rgba(252, 211, 77, .7); }
+.x-stop.now { background: #fff; color: #1e1b4b; border: 6px solid #fcd34d; }
+.x-stop.lock { background: rgba(255, 255, 255, .12); color: rgba(224, 231, 255, .6); border: 3px solid rgba(255, 255, 255, .25); }
+.x-stop i { position: absolute; right: -14px; top: -14px; font-size: 28px; font-style: normal; }
+.x-ring { position: absolute; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%; border: 5px solid #fde68a; }
+.x-flag { position: absolute; font-size: 64px; line-height: 1; }
+.x-here { position: absolute; padding: 8px 18px; border-radius: 999px; background: #fcd34d; color: #451a03; font: 800 26px/1 'Poppins', sans-serif; white-space: nowrap; }
+.x-next { position: absolute; left: 790px; top: 878px; width: 1020px; height: 64px; border-radius: 18px; background: #2563eb; color: #fff; display: flex; align-items: center; gap: 16px; padding: 0 22px; font: 800 30px/1 'Poppins', sans-serif; }
+.x-next small { color: #bfdbfe; font: 700 22px/1 'Inter', sans-serif; text-transform: uppercase; letter-spacing: .08em; }
+
+/* 3 · Los 4 tipos de parada */
+.x-kind { position: absolute; top: 360px; width: 250px; height: 390px; border-radius: 30px; border: 4px solid; display: flex; flex-direction: column; align-items: center; padding: 34px 18px 0; text-align: center; color: #fff; }
+.x-kind .e { font-size: 96px; line-height: 1; }
+.x-kind b { margin-top: 22px; font: 800 38px/1.05 'Poppins', sans-serif; }
+.x-kind span { margin-top: 14px; color: #e0e7ff; font: 600 25px/1.25 'Inter', sans-serif; }
+
+/* 4 y 5 · El celular del alumno */
+.x-phone { position: absolute; left: 1240px; top: 300px; width: 540px; height: 720px; border-radius: 56px; background: #0f172a; box-shadow: 0 0 0 3px rgba(255, 255, 255, .18), 0 30px 90px rgba(0, 0, 0, .55); }
+.x-scr { position: absolute; left: 16px; top: 16px; width: 508px; height: 688px; border-radius: 42px; background: #f8fafc; overflow: hidden; color: #0f172a; }
+.x-scr > div { position: absolute; }
+.x-h { left: 34px; top: 34px; font: 800 30px/1 'Poppins', sans-serif; }
+.x-sm { left: 34px; color: #64748b; font: 700 22px/1 'Inter', sans-serif; text-transform: uppercase; letter-spacing: .06em; }
+.x-bar { left: 34px; top: 118px; width: 440px; height: 12px; border-radius: 999px; background: #e2e8f0; overflow: hidden; }
+.x-bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 60%; background: #7c3aed; border-radius: 999px; }
+.x-q { left: 34px; top: 156px; width: 440px; font: 800 36px/1.2 'Poppins', sans-serif; }
+.x-opt { left: 34px; width: 440px; height: 74px; border-radius: 18px; border: 3px solid #cbd5e1; background: #fff; display: flex; align-items: center; gap: 16px; padding: 0 18px; font: 800 34px/1 'Poppins', sans-serif; }
+.x-opt em { width: 44px; height: 44px; border-radius: 50%; background: #ede9fe; color: #5b21b6; display: grid; place-items: center; font: 800 24px/1 'Poppins', sans-serif; font-style: normal; }
+.x-opt.ok { border-color: #10b981; background: #d1fae5; }
+.x-exp { left: 34px; top: 566px; width: 440px; padding: 14px 18px; border-radius: 18px; background: #ecfdf5; border: 2px solid #6ee7b7; color: #065f46; font: 700 26px/1.25 'Inter', sans-serif; }
+.x-done { left: 0; top: 0; width: 508px; height: 688px; background: #f8fafc; display: flex; flex-direction: column; align-items: center; padding-top: 80px; text-align: center; }
+.x-done svg { width: 200px; height: 200px; }
+.x-done b { margin-top: 18px; font: 800 36px/1.15 'Poppins', sans-serif; }
+.x-done span { margin-top: 12px; color: #475569; font: 700 28px/1 'Inter', sans-serif; }
+.x-done em { margin-top: 18px; padding: 10px 18px; border-radius: 999px; background: #ede9fe; color: #5b21b6; font: 700 24px/1 'Inter', sans-serif; font-style: normal; }
+.x-done strong { margin-top: 18px; color: #047857; font: 800 32px/1 'Poppins', sans-serif; }
+.x-up { left: 34px; top: 200px; width: 440px; height: 172px; border-radius: 24px; border: 3px dashed #94a3b8; display: grid; place-items: center; color: #475569; font: 700 28px/1.2 'Inter', sans-serif; text-align: center; }
+.x-photo { left: 34px; top: 200px; width: 440px; height: 172px; border-radius: 24px; overflow: hidden; border: 3px solid #cbd5e1; }
+.x-photo svg { width: 440px; height: 172px; }
+.x-send { left: 34px; top: 392px; width: 440px; height: 70px; border-radius: 18px; background: #2563eb; color: #fff; display: grid; place-items: center; font: 800 32px/1 'Poppins', sans-serif; }
+.x-chip { left: 34px; width: 440px; height: 54px; border-radius: 999px; display: flex; align-items: center; justify-content: center; font: 800 26px/1 'Inter', sans-serif; }
+.x-wait { top: 480px; background: #fef3c7; color: #92400e; }
+.x-ok { top: 552px; background: #d1fae5; color: #065f46; }
+.x-fix { top: 614px; background: #ffedd5; color: #9a3412; }
+.x-big { position: absolute; left: 790px; top: 400px; width: 320px; text-align: center; }
+.x-big svg { width: 260px; height: 260px; }
+.x-big b { display: block; margin-top: 10px; color: #fde68a; font: 800 54px/1 'Poppins', sans-serif; }
+.x-big span { display: block; margin-top: 10px; color: #e0e7ff; font: 700 28px/1.2 'Inter', sans-serif; }
+.x-mini line { stroke: rgba(253, 230, 138, .55); stroke-width: 6; stroke-dasharray: 10 16; stroke-linecap: round; }
+.x-go { position: absolute; left: 820px; top: 726px; width: 300px; padding: 10px 0; border-radius: 999px; background: #34d399; color: #064e3b; text-align: center; font: 800 28px/1 'Poppins', sans-serif; }
+
+/* 6 · Tu clan y la meta de la clase */
+.x-card { position: absolute; left: 760px; width: 1080px; border-radius: 30px; background: rgba(255, 255, 255, .08); border: 4px solid; }
+.x-card h4 { position: absolute; left: 34px; top: 26px; margin: 0; color: #fff; font: 800 38px/1 'Poppins', sans-serif; }
+.x-face { position: absolute; top: 96px; width: 96px; height: 96px; }
+.x-tick { position: absolute; width: 44px; height: 44px; border-radius: 50%; background: #34d399; color: #064e3b; display: grid; place-items: center; font: 800 28px/1 'Poppins', sans-serif; box-shadow: 0 0 0 4px #1e1b4b; }
+.x-segs { position: absolute; left: 34px; top: 226px; display: flex; gap: 12px; }
+.x-segs i { position: relative; width: 100px; height: 28px; border-radius: 999px; background: rgba(255, 255, 255, .14); overflow: hidden; }
+.x-segs i b { position: absolute; left: 0; top: 0; width: 100%; height: 100%; background: #818cf8; }
+.x-pill { position: absolute; padding: 10px 20px; border-radius: 999px; font: 800 28px/1 'Poppins', sans-serif; white-space: nowrap; }
+.x-goal-t { position: absolute; left: 34px; top: 30px; color: #fff; font: 800 36px/1 'Poppins', sans-serif; }
+.x-track { position: absolute; left: 34px; top: 120px; width: 1006px; height: 44px; border-radius: 999px; background: rgba(255, 255, 255, .14); overflow: hidden; }
+.x-track i { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #34d399, #10b981); border-radius: 999px; }
+.x-mark { position: absolute; left: 839px; top: 100px; width: 6px; height: 84px; border-radius: 3px; background: #fde68a; }
+.x-mark-l { position: absolute; left: 760px; top: 186px; width: 170px; text-align: center; color: #fde68a; font: 800 24px/1 'Inter', sans-serif; }
+
+/* 7 · ¡Llegaste a la meta! */
+.x-fin { position: absolute; left: 560px; top: 270px; width: 800px; height: 580px; border-radius: 36px; background: linear-gradient(170deg, #fffbeb, #fde68a); border: 4px solid #f59e0b; color: #451a03; text-align: center; }
+.x-fin .flag, .x-fin .t, .x-fin .p, .x-fin .q { position: absolute; left: 0; width: 800px; }
+.x-fin .flag { top: 26px; font-size: 90px; line-height: 1; }
+.x-fin .t { top: 138px; font: 800 58px/1 'Poppins', sans-serif; }
+.x-fin .p { top: 222px; }
+.x-fin .p span { display: inline-block; margin: 0 6px; padding: 10px 20px; border-radius: 999px; background: rgba(255, 255, 255, .75); font: 700 28px/1 'Inter', sans-serif; }
+.x-fin .q { top: 330px; font: 800 36px/1 'Poppins', sans-serif; }
+.x-refl { position: absolute; top: 400px; width: 220px; height: 84px; border-radius: 22px; background: #fff; border: 3px solid #fcd34d; display: grid; place-items: center; font: 800 30px/1 'Poppins', sans-serif; }
+.x-sel { position: absolute; left: 44px; top: 394px; width: 232px; height: 96px; border-radius: 26px; border: 6px solid #059669; }
+.f-big { position: absolute; left: 0; width: 1920px; text-align: center; color: #fde68a; font: 800 130px/1 'Poppins', sans-serif; }
+.f-say { position: absolute; left: 0; width: 1920px; text-align: center; color: #fff; font: 800 72px/1 'Poppins', sans-serif; }
+.f-jiro { position: absolute; left: 773px; top: 400px; height: 600px; }
+#fx { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; pointer-events: none; }
+</style>
+
+<script>
+(() => {
+  const G = Guion.init();
+  const LOGO = 'asset:logo.png?h=200';
+  const END = 50;
+  G.chapter(0, 'Inicio');
+  G.chapter(6, 'El mapa');
+  G.chapter(13, 'Tipos de parada');
+  G.chapter(20.5, 'Retos');
+  G.chapter(28.5, 'Evidencias');
+  G.chapter(35.5, 'Tu clan y la meta');
+  G.chapter(42, '¡A explorar!');
+
+  G.cielo([]);
+
+  // ---------- Marcha de viaje: cuerdas punteadas al paso, maraca y una melodía silbada ----------
+  const BEAT = 0.55;
+  const BAR = BEAT * 4;
+  const CHORDS = [[261.63, 329.63, 392], [246.94, 293.66, 392], [220, 261.63, 329.63], [220, 261.63, 349.23]]; // Do, Sol, Lam, Fa
+  const strum = (t, chord) => chord.forEach((f, i) => G.cue(t + i * 0.022, `u:${f}`));
+  for (let bar = 0; bar < 20; bar += 1) {
+    const t0 = 0.4 + bar * BAR;
+    for (let beat = 0; beat < 4; beat += 1) {
+      strum(t0 + beat * BEAT, CHORDS[bar % 4]);
+      G.cue(t0 + beat * BEAT + BEAT / 2, 'maraca');
+    }
+  }
+  const W = { B4: 493.88, C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46, G5: 783.99, A5: 880 };
+  const TUNE = [
+    [['E5', 1], ['G5', 0.5], ['E5', 0.5], ['D5', 1], ['C5', 1]],
+    [['D5', 1], ['G5', 0.5], ['D5', 0.5], ['B4', 2]],
+    [['C5', 1], ['E5', 0.5], ['A5', 0.5], ['G5', 1], ['E5', 1]],
+    [['F5', 0.5], ['E5', 0.5], ['D5', 0.5], ['C5', 0.5], ['D5', 2]],
+  ];
+  const tune = (t0) => TUNE.forEach((bar, b) => {
+    let t = t0 + b * BAR;
+    for (const [n, beats] of bar) { G.cue(t, `w:${W[n]}:${(beats * BEAT * 0.92).toFixed(2)}`); t += beats * BEAT; }
+  });
+  tune(0.4);
+  tune(0.4 + 8 * BAR);
+  tune(0.4 + 16 * BAR);
+  // Final: acorde de Do y el silbido que se queda.
+  strum(46.2, CHORDS[0]);
+  G.cue(46.2, 'w:523.25:1.6');
+  G.cue(46.3, 'levelup');
+
+  // ---------- Dibujos ----------
+  const ME = { shirt: '#38bdf8', skin: '#e0ac69', hair: '#3b2414' };
+  const face = (cy, k) => `<circle cx="50" cy="${cy}" r="24" fill="${k.skin}"/><path d="M27 ${cy - 6} Q50 ${cy - 34} 73 ${cy - 6} Q62 ${cy - 16} 50 ${cy - 15} Q38 ${cy - 16} 27 ${cy - 6} Z" fill="${k.hair}"/>
+    <circle cx="42" cy="${cy + 2}" r="3" fill="#1f2937"/><circle cx="58" cy="${cy + 2}" r="3" fill="#1f2937"/><path d="M42 ${cy + 11} Q50 ${cy + 17} 58 ${cy + 11}" stroke="#1f2937" stroke-width="3" fill="none" stroke-linecap="round"/>`;
+  // Tu personaje: de pie, con su mochila.
+  const kid = (k) => `<svg viewBox="0 0 100 200">
+    <rect x="14" y="74" width="26" height="50" rx="10" fill="#b45309"/>
+    <rect x="35" y="128" width="12" height="56" rx="6" fill="#334155"/><rect x="53" y="128" width="12" height="56" rx="6" fill="#334155"/>
+    <ellipse cx="41" cy="187" rx="10" ry="6" fill="#0f172a"/><ellipse cx="59" cy="187" rx="10" ry="6" fill="#0f172a"/>
+    <rect x="28" y="66" width="44" height="70" rx="18" fill="${k.shirt}"/>
+    <line x1="31" y1="78" x2="23" y2="120" stroke="${k.shirt}" stroke-width="11" stroke-linecap="round"/><line x1="69" y1="78" x2="77" y2="120" stroke="${k.shirt}" stroke-width="11" stroke-linecap="round"/>
+    <circle cx="23" cy="124" r="6" fill="${k.skin}"/><circle cx="77" cy="124" r="6" fill="${k.skin}"/>
+    <path d="M36 70 L42 112" stroke="#92400e" stroke-width="5" stroke-linecap="round"/>${face(42, k)}</svg>`;
+  const STAR = 'M50 6 L62 37 L95 38 L69 58 L78 91 L50 72 L22 91 L31 58 L5 38 L38 37 Z';
+  const starSvg = (fill = '#fcd34d', stroke = '#f59e0b') => `<svg viewBox="0 0 100 100"><path d="${STAR}" fill="${fill}" stroke="${stroke}" stroke-width="3" stroke-linejoin="round"/></svg>`;
+  const at = (selector, left, top) => { const e = G.$(selector); e.style.left = `${left}px`; e.style.top = `${top}px`; return e; };
+
+  // =============== 1 · Portada (0–6) ===============
+  G.el('img', 'd-logo', '', G.stage, 'd-logo').src = LOGO;
+  G.el('div', 'd-eyebrow', 'Observatorio de Jiro', G.stage, 'd-eyebrow');
+  G.el('div', 'd-title', 'Expediciones', G.stage, 'd-title');
+  G.el('div', 'd-sub', '¿Cómo funcionan?', G.stage, 'd-sub');
+  G.el('div', 'd-chips', '<span>🗺️ Paradas</span><span>⭐ Estrellas doradas</span><span>🏁 Meta</span>', G.stage, 'd-chips');
+  G.el('div', 'd-window', '<img id="d-cover" src="asset:assets/jiro/actividades/expediciones.webp" alt="">', G.stage, 'd-window');
+  G.show('#d-logo', 0.2, 5.8, { from: { y: -20 } });
+  G.show('#d-eyebrow', 0.5, 5.8);
+  G.key('#d-title', [[0.8, { o: 0, s: 0.9, y: 30 }], [1.4, { o: 1, s: 1, y: 0, ease: 'pop' }], [5.5, { o: 1 }], [5.9, { o: 0, y: -20, ease: 'in' }]]);
+  G.show('#d-sub', 1.5, 5.8);
+  G.show('#d-chips', 2.0, 5.8);
+  G.key('#d-window', [[0.9, { o: 0, s: 0.92, x: 120 }], [1.7, { o: 1, s: 1, x: 0, ease: 'back' }], [5.5, { o: 1, s: 1 }], [6.0, { o: 0, s: 0.96, ease: 'in' }]]);
+  G.key('#d-cover', [[0.9, { s: 1 }], [6.0, { s: 1.08, ease: 'linear' }]]);
+  [[1080, 330], [1720, 300], [1180, 720], [1650, 690]].forEach(([x, y], i) => {
+    const s = G.el('div', 'spark', '✦', G.stage, `spark${i}`);
+    s.style.left = `${x}px`;
+    s.style.top = `${y}px`;
+    const t = 2.0 + i * 0.45;
+    G.key(s, [[0, { o: 0 }], [t, { o: 0, s: 0.4, r: 0 }], [t + 0.35, { o: 1, s: 1.2, r: 40 }], [t + 1.4, { o: 0, s: 0.6, r: 90, y: -40, ease: 'out' }]]);
+  });
+  G.cue(0.3, 'whoosh');
+  G.cue(1.2, 'pop');
+
+  // =============== Jiro (6–42): señalando, emocionado y celebrando ===============
+  const box = G.el('div', 'jiro-box', '', G.stage, 'jiro');
+  // Rutas literales: build.mjs solo cambia 'asset:…' entre comillas simples por la imagen incrustada.
+  const poses = {
+    sena: 'asset:assets/jiro/senalando.webp?h=740',
+    emoc: 'asset:assets/jiro/emocionado.webp?h=740',
+    cele: 'asset:assets/jiro/celebrando.webp?h=740',
+  };
+  for (const [id, src] of Object.entries(poses)) G.el('img', '', '', box, `j-${id}`).src = src;
+  G.key('#jiro', [[0, { o: 0, x: -240 }], [6.1, { o: 0, x: -240 }], [6.8, { o: 1, x: 0, ease: 'back' }], [41.5, { o: 1, x: 0 }], [42.0, { o: 0, x: -200, ease: 'in' }]]);
+  G.cue(6.1, 'whoosh');
+  const poseAt = { sena: [[6, 20.5]], emoc: [[20.5, 35.5]], cele: [[35.5, 42.0]] };
+  for (const [id, spans] of Object.entries(poseAt)) {
+    const frames = [[0, { o: 0 }]];
+    for (const [a, b] of spans) frames.push([a, { o: 0 }], [a + 0.18, { o: 1 }], [b - 0.18, { o: 1 }], [b, { o: 0 }]);
+    G.key(`#j-${id}`, frames, 'linear');
+  }
+
+  // =============== 2 · El mapa: paradas y «Estás aquí» (6–13) ===============
+  G.burbuja('b1', 6.6, 12.8, '¡Nos vamos de expedición! Es un viaje por paradas… y tu personaje marca dónde estás.');
+  const STOPS = [[110, 470], [290, 330], [470, 420], [650, 250], [830, 360], [960, 170]];
+  const S = STOPS.map(([x, y]) => ({ x: 760 + x, y: 320 + y }));
+  const mapOn = [[0, { o: 0 }], [6.8, { o: 0, s: 0.96 }], [7.3, { o: 1, s: 1, ease: 'out' }], [12.6, { o: 1 }], [13.0, { o: 0 }]];
+  G.el('div', 'x-map', '', G.stage, 'x-map');
+  G.el('div', 'x-path', `<svg viewBox="0 0 1080 640" width="1080" height="640"><polyline points="${STOPS.map(([x, y]) => `${x},${y}`).join(' ')}"/></svg>`, G.stage, 'x-path');
+  G.key('#x-map', mapOn);
+  G.key('#x-path', mapOn);
+  S.forEach((p, i) => {
+    const kind = i < 2 ? 'done' : i === 2 ? 'now' : 'lock';
+    const badge = i < 2 ? '<i>✓</i>' : i > 2 ? '<i>🔒</i>' : '';
+    at(G.el('div', `x-stop ${kind}`, `${i + 1}${badge}`, G.stage, `st${i}`), p.x, p.y);
+    const t = 7.2 + i * 0.18;
+    G.key(`#st${i}`, [[0, { o: 0, s: 0.3 }], [t, { o: 0, s: 0.3 }], [t + 0.35, { o: 1, s: 1, ease: 'back' }], [12.6, { o: 1 }], [13.0, { o: 0 }]]);
+    G.cue(t, i < 2 ? 'n:1318.51' : 'pop');
+  });
+  at(G.el('div', 'x-flag', '🏁', G.stage, 'x-flag'), S[5].x + 30, S[5].y - 110);
+  G.key('#x-flag', [[0, { o: 0, y: 20 }], [8.4, { o: 0, y: 20 }], [8.8, { o: 1, y: 0, ease: 'back' }], [12.6, { o: 1 }], [13.0, { o: 0 }]]);
+  // La parada actual late; el personaje camina de la parada 2 a la 3.
+  at(G.el('div', 'x-ring', '', G.stage, 'x-ring'), S[2].x, S[2].y);
+  G.every((t) => {
+    const ring = G.$('#x-ring');
+    const on = t > 10.2 && t < 12.6;
+    const k = ((t - 10.2) / 1.2) % 1;
+    ring.style.opacity = on ? (0.9 * (1 - k)).toFixed(3) : '0';
+    ring.style.transform = `scale(${(1 + k * 0.9).toFixed(3)})`;
+  });
+  const me = G.el('div', 'x-kid', kid(ME), G.stage, 'me');
+  me.style.cssText += `width:90px;height:180px;left:${S[1].x - 45}px;top:${S[1].y - 36 - 180}px`;
+  G.key('#me', [[0, { o: 0, y: 30 }], [7.8, { o: 0, y: 30 }], [8.2, { o: 1, y: 0, ease: 'back' }], [9.0, { x: 0, y: 0 }],
+    [9.25, { x: 45, y: 12 }], [9.5, { x: 90, y: 34 }], [9.75, { x: 135, y: 62 }], [10.0, { x: S[2].x - S[1].x, y: S[2].y - S[1].y, ease: 'out' }], [12.6, { o: 1 }], [13.0, { o: 0 }]]);
+  G.cue(9.0, 'click'); G.cue(9.25, 'click'); G.cue(9.5, 'click'); G.cue(9.75, 'click');
+  at(G.el('div', 'x-here', 'Estás aquí', G.stage, 'x-here'), S[2].x - 82, S[2].y - 36 - 180 - 56);
+  G.key('#x-here', [[0, { o: 0, s: 0.6 }], [10.1, { o: 0, s: 0.6 }], [10.4, { o: 1, s: 1, ease: 'pop' }], [12.6, { o: 1 }], [13.0, { o: 0 }]]);
+  G.el('div', 'x-next', '<small>Tu próxima parada</small> 3 · ❓ Reto: Los planetas', G.stage, 'x-next');
+  G.key('#x-next', [[0, { o: 0, y: 30 }], [10.8, { o: 0, y: 30 }], [11.2, { o: 1, y: 0, ease: 'out' }], [12.6, { o: 1 }], [13.0, { o: 0 }]]);
+
+  // =============== 3 · Los 4 tipos de parada (13–20.5) ===============
+  G.burbuja('b2', 13.3, 20.3, 'Hay 4 tipos de parada… ¡y cada una es distinta!');
+  const KINDS = [
+    ['📖', 'Relato', 'Lees lo que cuenta Jiro y sigues.', '#7dd3fc', 'rgba(56,189,248,.16)'],
+    ['❓', 'Reto', 'Preguntas con la respuesta al instante.', '#c4b5fd', 'rgba(139,92,246,.18)'],
+    ['📤', 'Evidencia', 'Entregas una foto, un archivo o un texto.', '#6ee7b7', 'rgba(52,211,153,.16)'],
+    ['🏫', 'En clase', 'Lo hacen juntos con tu profe.', '#fcd34d', 'rgba(251,191,36,.16)'],
+  ];
+  KINDS.forEach(([emoji, name, text, color, bg], i) => {
+    const card = G.el('div', 'x-kind', `<div class="e">${emoji}</div><b>${name}</b><span>${text}</span>`, G.stage, `kind${i}`);
+    card.style.cssText += `left:${760 + i * 277}px;border-color:${color};background:${bg}`;
+    const t = 14.2 + i * 0.6;
+    G.key(card, [[0, { o: 0, s: 0.7, y: 40 }], [t, { o: 0, s: 0.7, y: 40 }], [t + 0.45, { o: 1, s: 1, y: 0, ease: 'back' }], [t + 0.9, { y: -10 }], [t + 1.3, { y: 0 }], [20.1, { o: 1 }], [20.5, { o: 0 }]]);
+    G.cue(t, 'pop');
+  });
+
+  // =============== 4 · Reto: respuesta al instante y estrella dorada (20.5–28.5) ===============
+  G.burbuja('b3', 20.7, 24.6, 'En un reto ves al instante si acertaste… y repasas las que fallaste.');
+  G.burbuja('b4', 24.8, 28.3, 'Con 80 % o más al primer intento… ¡ganas una estrella dorada! ⭐');
+  const phone = (id, html) => G.el('div', 'x-phone', `<div class="x-scr">${html}</div>`, G.stage, id);
+  phone('ph1', `<div class="x-h" style="color:#5b21b6">❓ Reto · Parada 3</div><div class="x-sm" style="top:80px">Pregunta 3 de 5</div><div class="x-bar"><i></i></div>
+    <div class="x-q">¿Cuántos planetas tiene el sistema solar?</div>
+    <div class="x-opt" style="top:290px"><em>A</em>7</div><div class="x-opt" id="opt8" style="top:380px"><em>B</em>8</div><div class="x-opt" style="top:470px"><em>C</em>9</div>
+    <div class="x-opt ok" id="opt8ok" style="top:380px"><em>✓</em>8</div>
+    <div class="x-exp" id="exp">✓ ¡Correcto! Son 8: de Mercurio a Neptuno.</div>
+    <div class="x-done" id="rdone">${starSvg()}<b>¡Reto superado con estrella!</b><span>90 % al primer intento</span><em>🔁 Repasaste la que fallaste</em><strong>+20 XP · +10 de oro</strong></div>`);
+  G.key('#ph1', [[0, { o: 0, y: 60 }], [20.6, { o: 0, y: 60 }], [21.1, { o: 1, y: 0, ease: 'back' }], [28.1, { o: 1 }], [28.5, { o: 0 }]]);
+  G.ripple(22.4, { x: 1510, y: 733 });
+  G.key('#opt8ok', [[0, { o: 0 }], [22.5, { o: 0 }], [22.7, { o: 1 }]]);
+  G.key('#exp', [[0, { o: 0, y: 16 }], [23.0, { o: 0, y: 16 }], [23.4, { o: 1, y: 0, ease: 'out' }]]);
+  G.cue(22.6, 'chime');
+  G.key('#rdone', [[0, { o: 0 }], [25.0, { o: 0 }], [25.4, { o: 1 }]]);
+  G.cue(25.1, 'levelup');
+  G.cue(25.9, 'coin');
+  G.el('div', 'x-big', `${starSvg()}<b>80 %</b><span>o más al primer intento</span>`, G.stage, 'bigstar');
+  G.key('#bigstar', [[0, { o: 0, s: 0.4, r: -30 }], [25.2, { o: 0, s: 0.4, r: -30 }], [25.7, { o: 1, s: 1.08, r: 0, ease: 'back' }], [26.1, { s: 1 }], [28.1, { o: 1 }], [28.5, { o: 0 }]]);
+
+  // =============== 5 · Evidencia: tu profe la revisa y sigues avanzando (28.5–35.5) ===============
+  G.burbuja('b5', 28.7, 32.3, 'En una evidencia entregas tu trabajo… y tu profe lo revisa.');
+  G.burbuja('b6', 32.5, 35.3, 'Mientras tanto, ¡sigues avanzando!');
+  const drawing = `<svg viewBox="0 0 440 190" preserveAspectRatio="xMidYMid slice"><rect width="440" height="190" fill="#fffbeb"/><circle cx="220" cy="98" r="54" fill="#fb923c"/>
+    <path d="M190 80 Q220 70 250 84 M178 104 Q220 96 262 110" stroke="#c2410c" stroke-width="6" fill="none" stroke-linecap="round"/>
+    <ellipse cx="220" cy="100" rx="104" ry="24" fill="none" stroke="#7c3aed" stroke-width="8" transform="rotate(-12 220 100)"/>
+    <text x="70" y="52" font-size="34" fill="#f59e0b">✦</text><text x="350" y="160" font-size="28" fill="#f59e0b">✦</text><text x="360" y="58" font-size="22" fill="#38bdf8">✦</text></svg>`;
+  phone('ph2', `<div class="x-h" style="color:#065f46">📤 Evidencia · Parada 4</div><div class="x-sm" style="top:88px">Tu misión</div>
+    <div class="x-q" style="top:118px;font-size:30px">Dibuja tu planeta favorito.</div>
+    <div class="x-up">📷<br>Sube una foto o un archivo</div><div class="x-photo" id="photo">${drawing}</div>
+    <div class="x-send">Entregar</div>
+    <div class="x-chip x-wait" id="wait">⏳ Esperando a tu profe</div>
+    <div class="x-chip x-ok" id="okc">✓ Lograda</div>
+    <div class="x-chip x-fix" id="fix">o… ✏️ Tu profe te pide mejorar</div>`);
+  G.key('#ph2', [[0, { o: 0, y: 60 }], [28.6, { o: 0, y: 60 }], [29.1, { o: 1, y: 0, ease: 'back' }], [35.1, { o: 1 }], [35.5, { o: 0 }]]);
+  G.ripple(29.8, { x: 1510, y: 602 });
+  G.key('#photo', [[0, { o: 0, s: 0.9 }], [30.1, { o: 0, s: 0.9 }], [30.4, { o: 1, s: 1, ease: 'back' }]]);
+  G.cue(30.1, 'whoosh');
+  G.ripple(30.9, { x: 1510, y: 743 });
+  G.key('#wait', [[0, { o: 0, s: 0.8 }], [31.1, { o: 0, s: 0.8 }], [31.4, { o: 1, s: 1, ease: 'pop' }]]);
+  G.key('#okc', [[0, { o: 0, y: 14 }], [32.6, { o: 0, y: 14 }], [32.9, { o: 1, y: 0, ease: 'out' }]]);
+  G.key('#fix', [[0, { o: 0, y: 14 }], [33.2, { o: 0, y: 14 }], [33.5, { o: 1, y: 0, ease: 'out' }]]);
+  G.cue(32.6, 'chime');
+  // Mini mapa: la parada 4 espera a tu profe y tu personaje ya camina a la 5.
+  const M = [[980, 470], [980, 660], [980, 850]];
+  const miniOn = [[0, { o: 0 }], [29.0, { o: 0 }], [29.4, { o: 1 }], [35.1, { o: 1 }], [35.5, { o: 0 }]];
+  G.el('div', 'x-mini', `<svg width="1920" height="1080" viewBox="0 0 1920 1080"><line x1="980" y1="470" x2="980" y2="850"/></svg>`, G.stage, 'mini').style.cssText = 'position:absolute;left:0;top:0';
+  G.key('#mini', miniOn);
+  M.forEach(([x, y], i) => {
+    const kind = i === 0 ? 'now' : i === 1 ? 'lock' : 'lock';
+    at(G.el('div', `x-stop ${kind}`, `${4 + i}`, G.stage, `ms${i}`), x, y);
+    G.key(`#ms${i}`, miniOn);
+  });
+  at(G.el('div', 'x-stop now', '5', G.stage, 'ms1on'), M[1][0], M[1][1]);
+  G.key('#ms1on', [[0, { o: 0, s: 0.6 }], [33.8, { o: 0, s: 0.6 }], [34.1, { o: 1, s: 1, ease: 'back' }], [35.1, { o: 1 }], [35.5, { o: 0 }]]);
+  at(G.el('div', 'x-pill', '⏳', G.stage, 'ms0wait'), M[0][0] - 102, M[0][1] - 22).style.cssText += ';background:#fef3c7;padding:6px 10px;font-size:30px';
+  G.key('#ms0wait', [[0, { o: 0, s: 0.5 }], [31.1, { o: 0, s: 0.5 }], [31.4, { o: 1, s: 1, ease: 'pop' }], [35.1, { o: 1 }], [35.5, { o: 0 }]]);
+  const me2 = G.el('div', 'x-kid', kid(ME), G.stage, 'me2');
+  me2.style.cssText += `width:70px;height:140px;left:${M[0][0] - 35}px;top:${M[0][1] - 34 - 140}px`;
+  G.key('#me2', [[0, { o: 0 }], [29.0, { o: 0 }], [29.4, { o: 1 }], [33.0, { x: 0, y: 0 }], [33.8, { x: 0, y: M[1][1] - M[0][1], ease: 'inOut' }], [35.1, { o: 1 }], [35.5, { o: 0 }]]);
+  G.cue(33.0, 'click'); G.cue(33.3, 'click'); G.cue(33.6, 'click');
+  G.el('div', 'x-go', '¡Sigues avanzando!', G.stage, 'x-go');
+  G.key('#x-go', [[0, { o: 0, s: 0.7 }], [34.0, { o: 0, s: 0.7 }], [34.3, { o: 1, s: 1, ease: 'pop' }], [35.1, { o: 1 }], [35.5, { o: 0 }]]);
+
+  // =============== 6 · Tu clan y la meta de la clase (35.5–42) ===============
+  G.burbuja('b7', 35.7, 38.9, 'Una parada cuenta para tu clan cuando la logra más de la mitad.');
+  G.burbuja('b8', 39.1, 41.8, 'Y con la meta de la clase, ¡llegamos juntos! Nadie espera a nadie.');
+  const MATES = [ME, { shirt: '#f472b6', skin: '#8d5524', hair: '#1f1309' }, { shirt: '#4ade80', skin: '#f1c27d', hair: '#5b3a1a' },
+    { shirt: '#fbbf24', skin: '#c68642', hair: '#2b1a0e' }, { shirt: '#a78bfa', skin: '#ffdbac', hair: '#7c4a1e' }];
+  const faces = MATES.map((k, i) => `<div class="x-face" style="left:${34 + i * 118}px"><svg viewBox="0 0 100 100" width="96" height="96"><circle cx="50" cy="50" r="46" fill="${k.shirt}" opacity=".35"/>${face(54, k)}</svg></div>`).join('');
+  const segs = Array.from({ length: 6 }, (_, i) => `<i>${i < 4 ? `<b id="seg${i}"></b>` : ''}</i>`).join('');
+  G.el('div', 'x-card', `<h4>Tu clan · 🐺 Lobos</h4>${faces}<div class="x-segs">${segs}</div>`, G.stage, 'clan').style.cssText += 'top:320px;height:290px;border-color:#818cf8';
+  const cardOn = (t0) => [[0, { o: 0, y: 30 }], [t0, { o: 0, y: 30 }], [t0 + 0.45, { o: 1, y: 0, ease: 'out' }], [41.6, { o: 1 }], [42.0, { o: 0 }]];
+  G.key('#clan', cardOn(35.8));
+  [0, 1, 2].forEach((i) => G.key(`#seg${i}`, [[0, { o: 1 }]]));
+  G.key('#seg3', [[0, { o: 0, s: 0.4 }], [37.9, { o: 0, s: 0.4 }], [38.3, { o: 1, s: 1, ease: 'out' }]]);
+  [0, 2, 3].forEach((m, k) => {
+    const t = 36.5 + k * 0.4;
+    at(G.el('div', 'x-tick', '✓', G.stage, `tick${m}`), 760 + 34 + m * 118 + 64, 320 + 96 - 6);
+    G.key(`#tick${m}`, [[0, { o: 0, s: 0.4 }], [t, { o: 0, s: 0.4 }], [t + 0.3, { o: 1, s: 1, ease: 'pop' }], [41.6, { o: 1 }], [42.0, { o: 0 }]]);
+    G.cue(t, 'pop');
+  });
+  at(G.el('div', 'x-pill', '3 de 5: ¡más de la mitad!', G.stage, 'half'), 1420, 440).style.cssText += ';background:#e0e7ff;color:#3730a3';
+  G.key('#half', [[0, { o: 0, s: 0.7 }], [37.5, { o: 0, s: 0.7 }], [37.8, { o: 1, s: 1, ease: 'pop' }], [41.6, { o: 1 }], [42.0, { o: 0 }]]);
+  at(G.el('div', 'x-pill', '✓ ¡Cuenta para tu clan!', G.stage, 'counts'), 1480, 532).style.cssText += ';background:#d1fae5;color:#065f46;font-size:24px';
+  G.key('#counts', [[0, { o: 0, y: 10 }], [38.3, { o: 0, y: 10 }], [38.6, { o: 1, y: 0, ease: 'out' }], [41.6, { o: 1 }], [42.0, { o: 0 }]]);
+  G.cue(38.0, 'chime');
+  G.el('div', 'x-card', '<div class="x-goal-t" id="goal-t"></div><div class="x-track"><i id="goal-f"></i></div><div class="x-mark"></div><div class="x-mark-l">Meta: 80 %</div>', G.stage, 'goal').style.cssText += 'top:650px;height:240px;border-color:#34d399';
+  G.key('#goal', cardOn(39.0));
+  G.every((t) => {
+    const k = Math.max(0, Math.min(1, (t - 39.6) / 1.4));
+    const n = Math.round(12 + 6 * k);
+    G.$('#goal-t').textContent = `🎯 Meta de la clase: ${n} de 30 en la meta`;
+    G.$('#goal-f').style.width = `${((n / 30) * 100).toFixed(1)}%`;
+  });
+
+  // =============== 7 · ¡Llegaste a la meta! ¡A explorar! (42–50) ===============
+  G.el('div', 'x-fin', `<div class="flag">🏁</div><div class="t">¡Llegaste a la meta!</div>
+    <div class="p"><span>Premio de la meta: +50 XP · +20 de oro</span></div>
+    <div class="q" id="fin-q">¿Cómo me fue?</div>
+    <div class="x-refl" style="left:50px">🟢 Lo logré</div><div class="x-refl" style="left:290px">🟡 Casi</div><div class="x-refl" style="left:530px">🔴 Me costó</div>
+    <div class="x-sel" id="sel"></div>`, G.stage, 'fin');
+  G.key('#fin', [[0, { o: 0, s: 0.85 }], [42.0, { o: 0, s: 0.85 }], [42.5, { o: 1, s: 1, ease: 'back' }], [45.8, { o: 1 }], [46.2, { o: 0, s: 0.95 }]]);
+  G.cue(42.1, 'levelup');
+  G.ripple(44.0, { x: 720, y: 712 });
+  G.key('#sel', [[0, { o: 0 }], [44.1, { o: 0, s: 1.1 }], [44.3, { o: 1, s: 1, ease: 'out' }]]);
+  const me3 = G.el('div', 'x-kid', kid(ME), G.stage, 'me3');
+  me3.style.cssText += 'width:120px;height:240px;left:1420px;top:580px';
+  G.key('#me3', [[0, { o: 0, x: 80 }], [42.4, { o: 0, x: 80 }], [42.9, { o: 1, x: 0, ease: 'back' }], [43.4, { y: -30, ease: 'out' }], [43.8, { y: 0, ease: 'in' }], [45.8, { o: 1 }], [46.2, { o: 0 }]]);
+  G.el('img', 'f-jiro', '', G.stage, 'f-jiro').src = 'asset:assets/jiro/celebrando.webp?h=740';
+  G.el('div', 'f-big', '¡A explorar!', G.stage, 'f-big').style.top = '110px';
+  G.el('div', 'f-say', '¡Paso a paso hasta la meta!', G.stage, 'f-say').style.top = '270px';
+  G.el('div', '', '', G.stage, 'fx');
+  G.key('#f-jiro', [[0, { o: 0, y: 60 }], [46.1, { o: 0, y: 60 }], [46.6, { o: 1, y: 0, ease: 'back' }], [47.2, { y: -36, ease: 'out' }], [47.7, { y: 0, ease: 'in' }], [49.5, { o: 1 }], [50, { o: 0 }]]);
+  G.key('#f-big', [[0, { o: 0, s: 0.8 }], [46.1, { o: 0, s: 0.8 }], [46.5, { o: 1, s: 1, ease: 'back' }], [49.5, { o: 1 }], [50, { o: 0 }]]);
+  G.key('#f-say', [[0, { o: 0, s: 0.8 }], [46.8, { o: 0, s: 0.8 }], [47.2, { o: 1, s: 1, ease: 'pop' }], [49.5, { o: 1 }], [50, { o: 0 }]]);
+  G.confeti('#fx', 46.4, 2.8);
+
+  G.capas();
+  G.arrancar(END);
+})();
+</script>

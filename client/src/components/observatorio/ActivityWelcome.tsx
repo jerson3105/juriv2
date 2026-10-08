@@ -15,19 +15,28 @@ interface ActivityWelcomeProps {
   sound: StageSound;
   /**
    * «calma»: caja de música y Z flotando (Descanso). «energia»: marimba con palmas y chispas (actividades con
-   * movimiento). «aventura»: la Niebla se abre sobre la portada con viento y fanfarria (Conquista).
+   * movimiento). «aventura»: la Niebla se abre sobre la portada con viento y fanfarria (Conquista). «viaje»: marcha
+   * de viaje y huellas que avanzan (Expediciones).
    */
   mood?: WelcomeMood;
   onDone: () => void;
 }
 
-type WelcomeMood = 'calma' | 'energia' | 'aventura';
+type WelcomeMood = 'calma' | 'energia' | 'aventura' | 'viaje';
 
 const MOODS: Record<WelcomeMood, { glow: string; play: (sound: StageSound) => void }> = {
   calma: { glow: 'shadow-[0_0_0_4px_rgba(253,230,138,0.35),0_0_80px_rgba(129,140,248,0.45)]', play: (sound) => sound.lullaby() },
   energia: { glow: 'shadow-[0_0_0_4px_rgba(253,230,138,0.4),0_0_80px_rgba(251,191,36,0.45)]', play: (sound) => sound.marimba() },
   aventura: { glow: 'shadow-[0_0_0_4px_rgba(253,230,138,0.35),0_0_80px_rgba(167,139,250,0.5)]', play: (sound) => sound.aventura() },
+  viaje: { glow: 'shadow-[0_0_0_4px_rgba(253,230,138,0.35),0_0_80px_rgba(52,211,153,0.4)]', play: (sound) => sound.viaje() },
 };
+
+const STEPS = [
+  { left: '2%', top: '84%', rotate: '-18deg', delay: 900 },
+  { left: '26%', top: '76%', rotate: '-8deg', delay: 1300 },
+  { left: '50%', top: '84%', rotate: '6deg', delay: 1700 },
+  { left: '74%', top: '76%', rotate: '14deg', delay: 2100 },
+];
 
 const SPARKS = [
   { left: '-4%', top: '6%', delay: 900 },
@@ -112,6 +121,16 @@ export const ActivityWelcome = ({ title, tagline, cover, sound, mood = 'calma', 
             style={{ left: spark.left, top: spark.top, fontSize: 'clamp(22px,4.5vh,56px)', '--aw-delay': `${spark.delay}ms` } as CSSProperties}
           >
             ✦
+          </span>
+        ))}
+        {mood === 'viaje' && STEPS.map((step) => (
+          <span
+            key={step.left}
+            aria-hidden="true"
+            className="aw-step absolute [text-shadow:0_0_14px_rgba(0,0,0,0.6)]"
+            style={{ left: step.left, top: step.top, rotate: step.rotate, fontSize: 'clamp(22px,4.5vh,52px)', '--aw-delay': `${step.delay}ms` } as CSSProperties}
+          >
+            👣
           </span>
         ))}
       </div>

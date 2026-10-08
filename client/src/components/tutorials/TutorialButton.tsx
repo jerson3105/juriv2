@@ -6,8 +6,9 @@ import { TutorialModal, TUTORIALS, type TutorialId } from './TutorialModal';
 /**
  * Acceso a un tutorial en video. «pill»: junto al título de la página, siempre a mano y sin competir con sus
  * acciones. «link»: en el estado vacío («¿Primera vez?…»), el momento en que más ayuda. Abre el TutorialModal.
+ * `label` cambia el texto de la píldora (los alumnos ven «¿Cómo funciona?»).
  */
-export const TutorialButton = ({ id, variant = 'pill' }: { id: TutorialId; variant?: 'pill' | 'link' }) => {
+export const TutorialButton = ({ id, variant = 'pill', label = 'Ver tutorial' }: { id: TutorialId; variant?: 'pill' | 'link'; label?: string }) => {
   const [open, setOpen] = useState(false);
   const { minutes } = TUTORIALS[id];
   return (
@@ -19,7 +20,7 @@ export const TutorialButton = ({ id, variant = 'pill' }: { id: TutorialId; varia
           className="inline-flex min-h-[32px] items-center gap-1.5 rounded-full bg-primary-50 px-3 text-xs font-bold text-primary-700 ring-1 ring-primary-200 hover:bg-primary-100 dark:bg-primary-900/40 dark:text-primary-200 dark:ring-primary-800 dark:hover:bg-primary-900/60"
         >
           <PlayCircle size={15} aria-hidden="true" />
-          Ver tutorial · {minutes} min
+          {label} · {minutes} min
         </button>
       ) : (
         <button

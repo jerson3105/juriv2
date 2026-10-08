@@ -58,7 +58,7 @@
   const type = (selector, t0, t1, text) => typers.push({ el: $(selector), t0, t1, text });
   /** Número que cuenta de «from» a «to» entre t0 y t1. */
   const count = (selector, t0, t1, from, to, format = (v) => String(Math.round(v))) => counters.push({ el: $(selector), t0, t1, from, to, format });
-  /** Sonido suave en el segundo t (pop, chime, whoosh, click, coin, levelup, type, soft, shh, ruido, clap, viento, tambor, 'n:<Hz>', 'm:<Hz>', 'p:<Hz>', 'f:<Hz>[:s]'). */
+  /** Sonido suave en el segundo t (pop, chime, whoosh, click, coin, levelup, type, soft, shh, ruido, clap, viento, tambor, maraca, 'n:<Hz>', 'm:<Hz>', 'p:<Hz>', 'f:<Hz>[:s]', 'u:<Hz>', 'w:<Hz>[:s]'). */
   const cue = (t, sound) => cues.push({ t, sound });
   /** Capítulo en la barra de progreso. */
   const chapter = (t, title) => chapters.push({ t, title });
@@ -161,6 +161,36 @@
     // Viento grave y largo (la Niebla) y un tambor: golpe grave que cae de tono, con un poco de parche.
     viento: (ctx) => noise(ctx, { length: 2.6, from: 260, to: 820, volume: 0.03 }),
     tambor: (ctx) => { tone(ctx, { freq: 150, to: 55, length: 0.28, volume: 0.14 }); noise(ctx, { length: 0.07, from: 120, to: 300, volume: 0.03 }); },
+    // Maraca: un roce agudo y cortito.
+    maraca: (ctx) => noise(ctx, { length: 0.08, from: 4000, to: 7000, volume: 0.022 }),
+  };
+  /** Cuerda punteada (como un ukelele): triángulo que se apaga rápido con un poco de sierra: cue 'u:<Hz>'. */
+  const pluck = (ctx, freq) => {
+    tone(ctx, { freq, length: 0.34, type: 'triangle', volume: 0.045 });
+    tone(ctx, { freq, length: 0.12, type: 'sawtooth', volume: 0.005 });
+    tone(ctx, { freq: freq * 2, length: 0.1, volume: 0.008 });
+  };
+  /** Silbido con vibrato (melodía de la marcha de viaje): cue 'w:<Hz>' o 'w:<Hz>:<segundos>'. */
+  const whistle = (ctx, freq, length = 0.4) => {
+    const osc = ctx.createOscillator();
+    const lfo = ctx.createOscillator();
+    const depth = ctx.createGain();
+    const gain = ctx.createGain();
+    const t0 = ctx.currentTime;
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, t0);
+    lfo.frequency.setValueAtTime(5.5, t0);
+    depth.gain.setValueAtTime(freq * 0.012, t0);
+    lfo.connect(depth).connect(osc.frequency);
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(0.045, t0 + 0.04);
+    gain.gain.setValueAtTime(0.045, t0 + Math.max(0.05, length - 0.08));
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + length);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(t0);
+    lfo.start(t0);
+    osc.stop(t0 + length + 0.02);
+    lfo.stop(t0 + length + 0.02);
   };
   /** Nota grave sostenida que entra despacio, con su quinta y su octava (misterio): cue 'p:<Hz>'. */
   const pad = (ctx, freq, length = 3.6) => {
@@ -196,7 +226,7 @@
     tone(ctx, { freq: freq * 2, length: 0.7, volume: 0.016 });
     tone(ctx, { freq: freq * 3, length: 0.3, type: 'triangle', volume: 0.006 });
   };
-  /** cue(t, 'n:659.25') caja de música, 'm:392' marimba, 'p:220' nota grave de misterio, 'f:523.25[:1.2]' metales (Hz); el resto, por nombre. */
+  /** cue(t, 'n:659.25') caja de música, 'm:392' marimba, 'p:220' nota grave de misterio, 'f:523.25[:1.2]' metales, 'u:392' cuerda punteada, 'w:659.25[:0.5]' silbido (Hz); el resto, por nombre. */
   const play = (sound) => {
     if (muted) return;
     const ctx = ensureAudio();
@@ -204,6 +234,11 @@
     if (sound.startsWith('n:')) bell(ctx, Number(sound.slice(2)));
     else if (sound.startsWith('m:')) marimba(ctx, Number(sound.slice(2)));
     else if (sound.startsWith('p:')) pad(ctx, Number(sound.slice(2)));
+    else if (sound.startsWith('u:')) pluck(ctx, Number(sound.slice(2)));
+    else if (sound.startsWith('w:')) {
+      const [, freq, length] = sound.split(':');
+      whistle(ctx, Number(freq), length ? Number(length) : undefined);
+    }
     else if (sound.startsWith('f:')) {
       const [, freq, length] = sound.split(':');
       brass(ctx, Number(freq), length ? Number(length) : undefined);

@@ -85,6 +85,7 @@ export const CATALOG: CatalogEntry[] = [
     pose: 'emocionado',
     duration: 'Toda la semana',
     requirements: [{ icon: '👤', label: 'Cuentas de alumnos' }],
+    tutorial: 'expediciones',
     onlyWithScrolls: true,
   },
   {

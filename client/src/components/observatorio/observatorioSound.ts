@@ -44,6 +44,8 @@ export interface StageSound {
   marimba: () => void;
   /** De misterio a aventura: viento y nota grave (la Niebla), redoble, arpegio de metales y acorde (Conquista). */
   aventura: () => void;
+  /** Marcha de viaje: cuerdas punteadas al paso, maraca y una melodía silbada que cierra en Do (Expediciones). */
+  viaje: () => void;
   close: () => void;
 }
 
@@ -179,6 +181,19 @@ export const createStageSound = (initiallyMuted: boolean): StageSound => {
       [392, 523.25, 659.25, 783.99].forEach((f, i) => brass(f, 1.95 + i * 0.15, 0.3, 0.1));
       [523.25, 659.25, 783.99, 1046.5].forEach((f) => brass(f, 2.55, 1.8, 0.06));
       tone(110, 2.55, 0.3, 0.16);
+    },
+    viaje: () => {
+      const strum = (chord: number[], at: number, dur = 0.34) => chord.forEach((f, i) => tone(f, at + i * 0.022, dur, 0.07, 'triangle'));
+      const DO = [261.63, 329.63, 392];
+      const SOL = [246.94, 293.66, 392];
+      [0.2, 0.75, 1.3, 1.85].forEach((at, i) => {
+        strum(i < 2 ? DO : SOL, at);
+        air(at + 0.275, 0.08, 0.05, 5000);
+      });
+      ([[659.25, 0.2, 0.5], [783.99, 0.75, 0.25], [659.25, 1.02, 0.25], [587.33, 1.3, 0.5], [493.88, 1.85, 0.5]] as const)
+        .forEach(([f, at, dur]) => tone(f, at, dur, 0.08));
+      strum(DO, 2.45, 1.2);
+      tone(523.25, 2.45, 1.4, 0.08);
     },
     close: () => {
       if (ctx) void ctx.close();

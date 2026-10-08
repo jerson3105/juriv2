@@ -7,6 +7,7 @@ import { ExpeditionThumb } from '../../components/expeditions/ExpeditionStage';
 import { KIND_INFO, dueLabel, isOverdue, plural } from '../../components/expeditions/expeditionHelpers';
 import { useExpeditionLive } from '../../components/expeditions/useExpeditionLive';
 import { primaryButton } from '../../components/home/homeHelpers';
+import { TutorialButton } from '../../components/tutorials/TutorialButton';
 
 /** Qué le toca al alumno, en una línea y sin promesas falsas. */
 const statusLine = (expedition: StudentExpeditionSummary) => {
@@ -71,7 +72,10 @@ export const StudentExpeditionsPage = () => {
           <Compass size={22} />
         </span>
         <div>
-          <h1 className="text-lg font-bold pg-fg">Expediciones</h1>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h1 className="text-lg font-bold pg-fg">Expediciones</h1>
+            <TutorialButton id="expediciones" label="¿Cómo funciona?" />
+          </div>
           <p className="text-sm pg-fg2">Viajes por paradas con Jiro: cada parada lograda enciende una estrella</p>
         </div>
       </div>

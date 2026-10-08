@@ -221,7 +221,7 @@ html, body { margin: 0; height: 100%; background: #05081a; color: #e2e8f0; font-
 .phone .notch { position: absolute; left: 0; right: 0; top: 10px; margin: 0 auto; width: 140px; height: 30px; border-radius: 999px; background: #0f172a; z-index: 3; }
 
 /* ---------- Cursor, clics, resaltados ---------- */
-#cursor { left: 0; top: 0; width: 44px; height: 54px; z-index: 30; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .35)); }
+#cursor { left: 0; top: 0; width: 44px; height: 54px; z-index: 30; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .35)); opacity: 0; } /* oculto si el guion no lo anima */
 .ripple { position: absolute; width: 70px; height: 70px; margin: -35px 0 0 -35px; border-radius: 50%; border: 4px solid #fbbf24; z-index: 29; }
 .glow { position: absolute; border-radius: 16px; box-shadow: 0 0 0 4px #fbbf24, 0 0 40px 10px rgba(251, 191, 36, .45); z-index: 3; pointer-events: none; }
 
@@ -404,7 +404,7 @@ for (const img of document.querySelectorAll('img[data-asset]')) img.src = ASSETS
   const type = (selector, t0, t1, text) => typers.push({ el: $(selector), t0, t1, text });
   /** Número que cuenta de «from» a «to» entre t0 y t1. */
   const count = (selector, t0, t1, from, to, format = (v) => String(Math.round(v))) => counters.push({ el: $(selector), t0, t1, from, to, format });
-  /** Sonido suave en el segundo t (pop, chime, whoosh, click, coin, levelup, type, soft, shh, ruido, clap, 'n:<Hz>', 'm:<Hz>'). */
+  /** Sonido suave en el segundo t (pop, chime, whoosh, click, coin, levelup, type, soft, shh, ruido, clap, viento, tambor, maraca, 'n:<Hz>', 'm:<Hz>', 'p:<Hz>', 'f:<Hz>[:s]', 'u:<Hz>', 'w:<Hz>[:s]'). */
   const cue = (t, sound) => cues.push({ t, sound });
   /** Capítulo en la barra de progreso. */
   const chapter = (t, title) => chapters.push({ t, title });
@@ -504,6 +504,61 @@ for (const img of document.querySelectorAll('img[data-asset]')) img.src = ASSETS
     ruido: (ctx) => noise(ctx, { length: 1.1, from: 380, to: 1300, volume: 0.07 }),
     // Palmas: golpe corto de ruido medio-agudo.
     clap: (ctx) => noise(ctx, { length: 0.12, from: 1100, to: 2600, volume: 0.05 }),
+    // Viento grave y largo (la Niebla) y un tambor: golpe grave que cae de tono, con un poco de parche.
+    viento: (ctx) => noise(ctx, { length: 2.6, from: 260, to: 820, volume: 0.03 }),
+    tambor: (ctx) => { tone(ctx, { freq: 150, to: 55, length: 0.28, volume: 0.14 }); noise(ctx, { length: 0.07, from: 120, to: 300, volume: 0.03 }); },
+    // Maraca: un roce agudo y cortito.
+    maraca: (ctx) => noise(ctx, { length: 0.08, from: 4000, to: 7000, volume: 0.022 }),
+  };
+  /** Cuerda punteada (como un ukelele): triángulo que se apaga rápido con un poco de sierra: cue 'u:<Hz>'. */
+  const pluck = (ctx, freq) => {
+    tone(ctx, { freq, length: 0.34, type: 'triangle', volume: 0.045 });
+    tone(ctx, { freq, length: 0.12, type: 'sawtooth', volume: 0.005 });
+    tone(ctx, { freq: freq * 2, length: 0.1, volume: 0.008 });
+  };
+  /** Silbido con vibrato (melodía de la marcha de viaje): cue 'w:<Hz>' o 'w:<Hz>:<segundos>'. */
+  const whistle = (ctx, freq, length = 0.4) => {
+    const osc = ctx.createOscillator();
+    const lfo = ctx.createOscillator();
+    const depth = ctx.createGain();
+    const gain = ctx.createGain();
+    const t0 = ctx.currentTime;
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, t0);
+    lfo.frequency.setValueAtTime(5.5, t0);
+    depth.gain.setValueAtTime(freq * 0.012, t0);
+    lfo.connect(depth).connect(osc.frequency);
+    gain.gain.setValueAtTime(0.0001, t0);
+    gain.gain.exponentialRampToValueAtTime(0.045, t0 + 0.04);
+    gain.gain.setValueAtTime(0.045, t0 + Math.max(0.05, length - 0.08));
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0 + length);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(t0);
+    lfo.start(t0);
+    osc.stop(t0 + length + 0.02);
+    lfo.stop(t0 + length + 0.02);
+  };
+  /** Nota grave sostenida que entra despacio, con su quinta y su octava (misterio): cue 'p:<Hz>'. */
+  const pad = (ctx, freq, length = 3.6) => {
+    for (const [f, type, volume] of [[freq, 'sine', 0.05], [freq * 1.5, 'triangle', 0.012], [freq * 2.003, 'sine', 0.014]]) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const t0 = ctx.currentTime;
+      osc.type = type;
+      osc.frequency.setValueAtTime(f, t0);
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(volume, t0 + 0.7);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + length);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(t0);
+      osc.stop(t0 + length + 0.02);
+    }
+  };
+  /** Nota de metales (fanfarria): triángulo con un poco de sierra para el brillo: cue 'f:<Hz>' o 'f:<Hz>:<segundos>'. */
+  const brass = (ctx, freq, length = 0.5) => {
+    tone(ctx, { freq, length, type: 'triangle', volume: 0.05 });
+    tone(ctx, { freq, length: length * 0.8, type: 'sawtooth', volume: 0.006 });
+    tone(ctx, { freq: freq * 2, length: length * 0.5, volume: 0.01 });
   };
   /** Nota de marimba: ataque seco y caída rápida, con un parcial agudo muy breve (cue 'm:<Hz>'). */
   const marimba = (ctx, freq) => {
@@ -517,13 +572,23 @@ for (const img of document.querySelectorAll('img[data-asset]')) img.src = ASSETS
     tone(ctx, { freq: freq * 2, length: 0.7, volume: 0.016 });
     tone(ctx, { freq: freq * 3, length: 0.3, type: 'triangle', volume: 0.006 });
   };
-  /** cue(t, 'n:659.25') toca una nota de caja de música y 'm:392' una de marimba (Hz); el resto, por nombre. */
+  /** cue(t, 'n:659.25') caja de música, 'm:392' marimba, 'p:220' nota grave de misterio, 'f:523.25[:1.2]' metales, 'u:392' cuerda punteada, 'w:659.25[:0.5]' silbido (Hz); el resto, por nombre. */
   const play = (sound) => {
     if (muted) return;
     const ctx = ensureAudio();
     if (!ctx) return;
     if (sound.startsWith('n:')) bell(ctx, Number(sound.slice(2)));
     else if (sound.startsWith('m:')) marimba(ctx, Number(sound.slice(2)));
+    else if (sound.startsWith('p:')) pad(ctx, Number(sound.slice(2)));
+    else if (sound.startsWith('u:')) pluck(ctx, Number(sound.slice(2)));
+    else if (sound.startsWith('w:')) {
+      const [, freq, length] = sound.split(':');
+      whistle(ctx, Number(freq), length ? Number(length) : undefined);
+    }
+    else if (sound.startsWith('f:')) {
+      const [, freq, length] = sound.split(':');
+      brass(ctx, Number(freq), length ? Number(length) : undefined);
+    }
     else if (SOUNDS[sound]) SOUNDS[sound](ctx);
   };
 
