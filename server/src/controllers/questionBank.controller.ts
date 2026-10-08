@@ -83,7 +83,7 @@ const generateIntoBankSchema = z.object({
 });
 
 // IA con vista previa: borradores que el docente revisa antes de guardar.
-const aiKindSchema = z.enum(['TRUE_FALSE', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'MATCHING', 'ERROR_STEPS']);
+const aiKindSchema = z.enum(['TRUE_FALSE', 'SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'MATCHING', 'ERROR_STEPS', 'BINGO']);
 const aiDraftsSchema = z.object({
   topic: z.string().trim().min(2, 'Escribe el tema').max(300),
   quantity: z.coerce.number().int().min(1).max(20),

@@ -3,6 +3,7 @@ import { classrooms, questionBanks, questions, type BankQuestionType, type Quest
 import { eq, and, desc, inArray, sql } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
 import { teacherOwnsClassroom, assertClassroomWritable } from '../utils/access.js';
+import { bingoKeysOf } from '../utils/bingo.js';
 
 // Interfaces
 interface CreateBankData {
@@ -308,7 +309,7 @@ class QuestionBankService {
     const rows = await db
       .select({
         bankId: questions.bankId, type: questions.type, difficulty: questions.difficulty, questionText: questions.questionText,
-        options: questions.options, correctAnswer: questions.correctAnswer, explanation: questions.explanation, aiGenerated: questions.aiGenerated, reviewedAt: questions.reviewedAt,
+        options: questions.options, pairs: questions.pairs, correctAnswer: questions.correctAnswer, explanation: questions.explanation, aiGenerated: questions.aiGenerated, reviewedAt: questions.reviewedAt,
       })
       .from(questions)
       .where(and(inArray(questions.bankId, banks.map((b) => b.id)), eq(questions.isActive, true)));
@@ -321,6 +322,8 @@ class QuestionBankService {
       let errorExercises = 0;
       let unreviewed = 0;
       let withExplanation = 0;
+      // Respuestas distintas que caben en un cartón del Bingo (la misma regla que su mazo).
+      const bingoKeys = new Set<string>();
       for (const row of rows) {
         if (row.bankId !== bank.id) continue;
         byType[row.type as BankQuestionType] += 1;
@@ -332,6 +335,9 @@ class QuestionBankService {
           if (row.type === 'TRUE_FALSE') trueFalse += 1;
           if (row.questionText.startsWith(ERROR_PREFIX)) errorExercises += 1;
         }
+        const options = this.parseJsonValue<{ text?: unknown; isCorrect?: unknown }[]>(row.options);
+        const pairs = this.parseJsonValue<{ left?: unknown; right?: unknown }[]>(row.pairs);
+        for (const key of bingoKeysOf({ type: row.type, questionText: row.questionText, options, pairs })) bingoKeys.add(key);
       }
       const total = Object.values(byType).reduce((a, b) => a + b, 0);
       return {
@@ -339,7 +345,7 @@ class QuestionBankService {
         classroomArchived: Number(bank.classroomArchived) === 1,
         questionCount: total,
         countsByType: byType,
-        stats: { projectable, trueFalse, errorExercises, unreviewed, withExplanation, byDifficulty },
+        stats: { projectable, trueFalse, errorExercises, bingoAnswers: bingoKeys.size, unreviewed, withExplanation, byDifficulty },
       };
     });
   }

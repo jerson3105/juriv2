@@ -13,30 +13,67 @@ export const isErrorQuestion = (q: Pick<Question, 'questionText'>) => q.question
 export const bankRoute = (classroomId: string, bankId?: string) =>
   `/classroom/${classroomId}/question-banks${bankId ? `/${bankId}` : ''}`;
 
-export type ActivityKey = 'estrellas' | 'conquista' | 'error';
+export type ActivityKey = 'estrellas' | 'conquista' | 'error' | 'bingo';
 export const ACTIVITY_NAMES: Record<ActivityKey, string> = {
   estrellas: 'Estrellas en Movimiento',
   conquista: 'Conquista del Cielo',
   error: 'El Error de Jiro',
+  bingo: 'Bingo Estelar',
 };
 /** Abre la actividad del Observatorio con el banco ya elegido. */
 export const activityRoute = (classroomId: string, activity: ActivityKey, bankId: string) =>
   `/classroom/${classroomId}/activities?actividad=${activity}&banco=${bankId}`;
 
-/** Dónde se puede usar una pregunta y, si no se proyecta, por qué. */
+// ==================== Bingo Estelar (igual que server/src/utils/bingo.ts) ====================
+
+/** Una respuesta más larga no cabe en la casilla impresa (MAX_ANSWER_CHARS). */
+export const BINGO_MAX_CHARS = 18;
+/** Respuestas distintas para jugar: cartón 3×3 y 4×4 (minAnswersFor). */
+export const BINGO_MIN_ANSWERS = { 3: 12, 4: 20 } as const;
+
+const cleanText = (text: string) => text.replace(/\s+/g, ' ').trim();
+/** «Lima», «lima» y «Lima.» son la misma casilla (sin tildes, mayúsculas ni punto final). */
+const bingoKey = (answer: unknown) => {
+  if (typeof answer !== 'string') return null;
+  const text = cleanText(answer);
+  const key = cleanText(text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()).replace(/[.\s]+$/, '');
+  return key && text.length <= BINGO_MAX_CHARS ? key : null;
+};
+
+/** Casillas que aporta una pregunta al Bingo: opción única → su correcta; unir pares → cada derecha. */
+export const bingoKeysOf = (question: Question): string[] => {
+  const parsed = parseQuestionData(question);
+  if (question.type === 'SINGLE_CHOICE') {
+    if (isErrorQuestion(question)) return [];
+    const correct = (parsed.options ?? []).filter((o) => o.isCorrect);
+    const key = correct.length === 1 && question.questionText.trim() ? bingoKey(correct[0].text) : null;
+    return key ? [key] : [];
+  }
+  if (question.type === 'MATCHING') {
+    return (parsed.pairs ?? []).flatMap((p) => (p.left?.trim() ? bingoKey(p.right) ?? [] : []));
+  }
+  return [];
+};
+
+/** Dónde se puede usar una pregunta y, si no entra en ninguna actividad proyectada, por qué. */
 export const usesOf = (question: Question): { uses: string[]; blocker: string | null } => {
   const answer = answerOf(question);
   if (answer && isErrorQuestion(question)) return { uses: ['El Error de Jiro', 'Sorteo'], blocker: null };
-  if (answer) return { uses: ['Estrellas', 'Conquista', 'Sorteo'], blocker: null };
+  const bingo = bingoKeysOf(question).length > 0 ? ['Bingo'] : [];
+  if (answer) return { uses: ['Estrellas', 'Conquista', ...bingo, 'Sorteo'], blocker: null };
   const parsed = parseQuestionData(question);
   switch (question.type) {
     case 'MATCHING':
-      return { uses: [], blocker: 'Unir pares no se proyecta en las actividades' };
+      return bingo.length
+        ? { uses: bingo, blocker: null }
+        : { uses: [], blocker: `Unir pares solo entra en Bingo, con respuestas de hasta ${BINGO_MAX_CHARS} letras` };
     case 'MULTIPLE_CHOICE':
-      return { uses: ['Sorteo'], blocker: 'Varias correctas: no entra en Estrellas ni Conquista' };
+      return { uses: ['Sorteo'], blocker: 'Varias correctas: no entra en Estrellas, Conquista ni Bingo' };
     case 'SINGLE_CHOICE': {
       const options = parsed.options ?? [];
-      if (options.length > 4) return { uses: ['Sorteo'], blocker: 'Más de 4 opciones: no entra en Estrellas ni Conquista' };
+      if (options.length > 4) {
+        return bingo.length ? { uses: [...bingo, 'Sorteo'], blocker: null } : { uses: ['Sorteo'], blocker: 'Más de 4 opciones: no entra en Estrellas ni Conquista' };
+      }
       return { uses: ['Sorteo'], blocker: 'Marca exactamente 1 opción correcta' };
     }
     default:
@@ -70,6 +107,8 @@ export const bankActivities = (bank: Pick<TeacherBank, 'stats'>) => {
   const list: { key: ActivityKey; count: number }[] = [];
   if (general > 0) list.push({ key: 'estrellas', count: general }, { key: 'conquista', count: general });
   if (bank.stats.errorExercises > 0) list.push({ key: 'error', count: bank.stats.errorExercises });
+  // Bingo cuenta respuestas distintas y necesita las de un cartón 3×3.
+  if (bank.stats.bingoAnswers >= BINGO_MIN_ANSWERS[3]) list.push({ key: 'bingo', count: bank.stats.bingoAnswers });
   return list;
 };
 

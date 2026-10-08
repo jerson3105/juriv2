@@ -30,7 +30,10 @@ const KIND_OPTIONS: { value: AiKind; label: string }[] = [
   { value: 'MULTIPLE_CHOICE', label: 'Selección múltiple' },
   { value: 'MATCHING', label: 'Unir pares' },
   { value: 'ERROR_STEPS', label: 'Con error (El Error de Jiro)' },
+  { value: 'BINGO', label: 'Respuesta corta (Bingo Estelar)' },
 ];
+/** Tipos con formato propio: van solos. */
+const SOLO_KINDS: AiKind[] = ['ERROR_STEPS', 'BINGO'];
 
 const choice = (on: boolean) =>
   `flex min-h-[48px] cursor-pointer items-center gap-2 rounded-xl border-2 px-3 text-sm font-semibold has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary-500 ${on
@@ -106,11 +109,15 @@ export const CreateQuestionsDialog = ({ classroomId, bankId: initialBankId, onCl
   const isNewBank = bankChoice === NEW_BANK;
   const bankName = isNewBank ? (newBankName.trim() || topic.trim() || 'Nuevo banco') : classBanks.find((b) => b.id === bankChoice)?.name ?? 'el banco';
   const errorOnly = kinds.includes('ERROR_STEPS');
+  const bingoOnly = kinds.includes('BINGO');
+  // Bingo pide lo que necesita un cartón: 12 respuestas (3×3) o 20 (4×4).
+  const quantities = bingoOnly ? [12, 20] : [5, 10, 15];
+  const amount = quantities.includes(quantity) ? quantity : (bingoOnly ? 12 : 10);
 
   const toggleKind = (kind: AiKind) => setKinds((current) => {
-    // "Con error" va solo: son ejercicios de otro formato.
-    if (kind === 'ERROR_STEPS') return current.includes(kind) ? ['TRUE_FALSE', 'SINGLE_CHOICE'] : ['ERROR_STEPS'];
-    const base = current.filter((k) => k !== 'ERROR_STEPS');
+    // "Con error" y "Bingo" van solos: son preguntas de otro formato.
+    if (SOLO_KINDS.includes(kind)) return current.includes(kind) ? ['TRUE_FALSE', 'SINGLE_CHOICE'] : [kind];
+    const base = current.filter((k) => !SOLO_KINDS.includes(k));
     return base.includes(kind) ? base.filter((k) => k !== kind) : [...base, kind];
   });
 
@@ -125,7 +132,7 @@ export const CreateQuestionsDialog = ({ classroomId, bankId: initialBankId, onCl
 
   const generate = useMutation({
     mutationFn: (): Promise<DraftQuestion[]> => {
-      const input = { quantity, kinds, difficulty, level: classLevel ? null : level.trim() || null };
+      const input = { quantity: amount, kinds, difficulty, level: classLevel ? null : level.trim() || null };
       return mode === 'pdf' && pdf
         ? questionBankApi.aiDraftsFromPdf(classroomId, pdf, input)
         : questionBankApi.aiDrafts(classroomId, { ...input, topic: topic.trim() });
@@ -215,7 +222,7 @@ export const CreateQuestionsDialog = ({ classroomId, bankId: initialBankId, onCl
         <div className="flex flex-col items-center gap-4 py-6 text-center" role="status">
           <Jiro pose="emocionado" variant="card" sizeClassName="h-40" line={null} />
           <p className="text-lg font-bold text-gray-900 dark:text-white">
-            Jiro está escribiendo {quantity} {errorOnly ? 'ejercicios con error' : 'preguntas'}{mode === 'topic' ? ` sobre «${topic.trim()}»` : ' con tu PDF'}…
+            Jiro está escribiendo {amount} {errorOnly ? 'ejercicios con error' : bingoOnly ? 'preguntas de respuesta corta' : 'preguntas'}{mode === 'topic' ? ` sobre «${topic.trim()}»` : ' con tu PDF'}…
           </p>
           <p className="text-sm text-gray-700 dark:text-gray-300">Suele tardar entre 10 y 30 segundos. Luego las revisas antes de guardar.</p>
           <Loader2 size={24} className="animate-spin text-primary-700 dark:text-primary-300" aria-hidden="true" />
@@ -315,7 +322,7 @@ export const CreateQuestionsDialog = ({ classroomId, bankId: initialBankId, onCl
           <button type="button" onClick={close} className={cancelButton}>Cancelar</button>
           <button type="button" onClick={submitSetup} disabled={busy} className={primaryButton}>
             {busy ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : mode === 'write' ? <PenLine size={16} aria-hidden="true" /> : <Sparkles size={16} aria-hidden="true" />}
-            {mode === 'write' ? 'Empezar a escribir' : `Generar ${quantity}`}
+            {mode === 'write' ? 'Empezar a escribir' : `Generar ${amount}`}
           </button>
         </>
       )}
@@ -383,9 +390,9 @@ export const CreateQuestionsDialog = ({ classroomId, bankId: initialBankId, onCl
           <fieldset>
             <legend className={labelClass}>Cantidad</legend>
             <div className="mt-2 flex gap-2">
-              {[5, 10, 15].map((n) => (
-                <label key={n} className={`${choice(quantity === n)} justify-center px-5`}>
-                  <input type="radio" name={`${ids}-qty`} checked={quantity === n} onChange={() => setQuantity(n)} className="sr-only" /> {n}
+              {quantities.map((n) => (
+                <label key={n} className={`${choice(amount === n)} justify-center px-5`}>
+                  <input type="radio" name={`${ids}-qty`} checked={amount === n} onChange={() => setQuantity(n)} className="sr-only" /> {n}
                 </label>
               ))}
             </div>
@@ -402,7 +409,11 @@ export const CreateQuestionsDialog = ({ classroomId, bankId: initialBankId, onCl
               ))}
             </div>
             <p className="mt-1 text-xs text-gray-700 dark:text-gray-300">
-              {errorOnly ? 'Los ejercicios con error van solos: Jiro resuelve paso a paso y se equivoca en uno. Elige un cálculo o procedimiento.' : 'Verdadero o falso y Selección única se proyectan en Estrellas y Conquista.'}
+              {errorOnly
+                ? 'Los ejercicios con error van solos: Jiro resuelve paso a paso y se equivoca en uno. Elige un cálculo o procedimiento.'
+                : bingoOnly
+                  ? 'Las de Bingo van solas: opción única con una respuesta corta (hasta 18 letras) y distinta en cada pregunta. También sirven en Estrellas y Conquista. Para jugar: 12 respuestas (cartón 3×3) o 20 (4×4).'
+                  : 'Verdadero o falso y Selección única se proyectan en Estrellas y Conquista; las de respuesta corta, también en Bingo.'}
             </p>
           </fieldset>
 

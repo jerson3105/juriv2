@@ -4,7 +4,8 @@ import api from './api';
 export type BankQuestionType = 'TRUE_FALSE' | 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE' | 'MATCHING';
 export type QuestionDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
 /** Tipos que la IA puede generar (ERROR_STEPS = "El Error de Jiro", se guarda como opción única). */
-export type AiKind = BankQuestionType | 'ERROR_STEPS';
+/** «Con error» y «Bingo» van solos (su propio formato). */
+export type AiKind = BankQuestionType | 'ERROR_STEPS' | 'BINGO';
 
 export interface QuestionOption {
   text: string;
@@ -36,6 +37,8 @@ export interface BankStats {
   trueFalse: number;
   /** Ejercicios de "El Error de Jiro". */
   errorExercises: number;
+  /** Respuestas distintas que caben en un cartón del Bingo Estelar. */
+  bingoAnswers: number;
   /** Generadas con IA y aún sin aprobar. */
   unreviewed: number;
   withExplanation: number;

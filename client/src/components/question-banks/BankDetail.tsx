@@ -10,7 +10,7 @@ import { card, secondaryButton } from '../gradebook/gradebookHelpers';
 import { ActionMenu } from '../home/ActionMenu';
 import { showUndoToast } from '../storytelling/undoToast';
 import {
-  ACTIVITY_NAMES, activityRoute, bankRoute, errorMessage, isErrorQuestion, usesOf, type ActivityKey, type EditorKind,
+  ACTIVITY_NAMES, BINGO_MIN_ANSWERS, activityRoute, bankRoute, bingoKeysOf, errorMessage, isErrorQuestion, usesOf, type ActivityKey, type EditorKind,
 } from './bankHelpers';
 import { BankFormDialog } from './BankFormDialog';
 import { CreateQuestionsDialog } from './CreateQuestionsDialog';
@@ -45,7 +45,8 @@ const toggleChip = (on: boolean) =>
     : 'border-gray-300 text-gray-800 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-100 dark:hover:bg-gray-700'}`;
 
 /** "Usar en clase": abre la actividad del Observatorio con este banco ya elegido. */
-const UseInClassMenu = ({ items }: { items: { key: ActivityKey; count: number; to: string }[] }) => {
+type UseInClassItem = { key: ActivityKey; count: number; to: string; detail?: string };
+const UseInClassMenu = ({ items }: { items: UseInClassItem[] }) => {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -72,7 +73,7 @@ const UseInClassMenu = ({ items }: { items: { key: ActivityKey; count: number; t
             <li key={item.key} role="none">
               <Link to={item.to} role="menuitem" className="flex min-h-[48px] flex-col justify-center px-4 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700">
                 <span className="font-semibold text-gray-900 dark:text-white">{ACTIVITY_NAMES[item.key]}</span>
-                <span className="text-xs text-gray-700 dark:text-gray-300">{item.count} {item.count === 1 ? 'pregunta sirve' : 'preguntas sirven'}</span>
+                <span className="text-xs text-gray-700 dark:text-gray-300">{item.detail ?? `${item.count} ${item.count === 1 ? 'pregunta sirve' : 'preguntas sirven'}`}</span>
               </Link>
             </li>
           ))}
@@ -121,16 +122,20 @@ export const BankDetail = ({ classroom, bankId }: { classroom: Classroom; bankId
   };
 
   const summary = useMemo(() => {
-    const result = { pending: 0, blocked: 0, explained: 0, general: 0, errors: 0, byDifficulty: { EASY: 0, MEDIUM: 0, HARD: 0, NONE: 0 } };
+    const result = { pending: 0, blocked: 0, explained: 0, general: 0, errors: 0, bingo: 0, byDifficulty: { EASY: 0, MEDIUM: 0, HARD: 0, NONE: 0 } };
+    // Bingo cuenta respuestas distintas (una casilla por respuesta), no preguntas.
+    const bingoKeys = new Set<string>();
     for (const q of questions) {
-      const { blocker } = usesOf(q);
+      const { uses, blocker } = usesOf(q);
       if (isPending(q)) result.pending += 1;
       if (blocker) result.blocked += 1;
-      else if (isErrorQuestion(q)) result.errors += 1;
-      else result.general += 1;
+      if (uses.includes('Estrellas')) result.general += 1;
+      if (uses.includes('El Error de Jiro')) result.errors += 1;
+      bingoKeysOf(q).forEach((key) => bingoKeys.add(key));
       if (q.explanation) result.explained += 1;
       result.byDifficulty[q.difficulty ?? 'NONE'] += 1;
     }
+    result.bingo = bingoKeys.size;
     return result;
   }, [questions]);
 
@@ -204,12 +209,18 @@ export const BankDetail = ({ classroom, bankId }: { classroom: Classroom; bankId
     );
   }
 
-  const activities: { key: ActivityKey; count: number; to: string }[] = [];
+  const activities: UseInClassItem[] = [];
   if (summary.general > 0) {
     activities.push({ key: 'estrellas', count: summary.general, to: activityRoute(classroom.id, 'estrellas', bank.id) });
     activities.push({ key: 'conquista', count: summary.general, to: activityRoute(classroom.id, 'conquista', bank.id) });
   }
   if (summary.errors > 0) activities.push({ key: 'error', count: summary.errors, to: activityRoute(classroom.id, 'error', bank.id) });
+  if (summary.bingo >= BINGO_MIN_ANSWERS[3]) {
+    activities.push({
+      key: 'bingo', count: summary.bingo, to: activityRoute(classroom.id, 'bingo', bank.id),
+      detail: `${summary.bingo} respuestas distintas · cartón ${summary.bingo >= BINGO_MIN_ANSWERS[4] ? '3×3 o 4×4' : '3×3'}`,
+    });
+  }
   const otherClass = bank.classroomId !== classroom.id;
   const total = questions.length;
 
@@ -294,9 +305,14 @@ export const BankDetail = ({ classroom, bankId }: { classroom: Classroom; bankId
             <p className="col-span-2 flex items-start gap-2 text-amber-900 dark:text-amber-100 sm:col-span-4">
               <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
               <span>
-                {summary.blocked} no {summary.blocked === 1 ? 'entra' : 'entran'} en Estrellas ni Conquista (solo Sorteo y Expediciones).{' '}
+                {summary.blocked} no {summary.blocked === 1 ? 'entra' : 'entran'} en Estrellas, Conquista ni Bingo (solo Sorteo y Expediciones).{' '}
                 {!onlyBlocked && <button type="button" onClick={() => setOnlyBlocked(true)} className="inline-block py-1.5 font-bold underline">Ver cuáles</button>}
               </span>
+            </p>
+          )}
+          {summary.bingo > 0 && summary.bingo < BINGO_MIN_ANSWERS[3] && (
+            <p className="col-span-2 text-gray-800 dark:text-gray-100 sm:col-span-4">
+              Bingo Estelar: {summary.bingo} {summary.bingo === 1 ? 'respuesta corta' : 'respuestas cortas distintas'}; faltan {BINGO_MIN_ANSWERS[3] - summary.bingo} para un cartón 3×3.
             </p>
           )}
         </div>

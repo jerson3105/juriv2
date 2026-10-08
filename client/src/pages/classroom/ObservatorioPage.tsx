@@ -80,7 +80,7 @@ const Chip = ({ children }: { children: ReactNode }) => (
   <span className="inline-flex min-h-[32px] items-center gap-1.5 rounded-full bg-white/10 px-3 text-sm font-semibold text-indigo-50">{children}</span>
 );
 
-const BANK_ACTIVITIES = ['estrellas', 'conquista', 'error'];
+const BANK_ACTIVITIES = ['estrellas', 'conquista', 'error', 'bingo'];
 
 export const ObservatorioPage = () => {
   const { classroom } = useOutletContext<{ classroom: ClassroomWithStudents }>();
@@ -150,7 +150,7 @@ export const ObservatorioPage = () => {
         {selected.id === 'conquista' && <ConquistaActivity classroom={classroom} resume={selected.resume} initialBankId={selected.bankId} onExit={back} />}
         {selected.id === 'error' && <ErrorActivity classroom={classroom} resume={selected.resume} initialBankId={selected.bankId} onExit={back} />}
         {selected.id === 'correo' && <CorreoActivity classroom={classroom} resume={selected.resume} onExit={back} />}
-        {selected.id === 'bingo' && <BingoActivity classroom={classroom} resume={selected.resume} onExit={back} />}
+        {selected.id === 'bingo' && <BingoActivity classroom={classroom} resume={selected.resume} initialBankId={selected.bankId} onExit={back} />}
         {selected.id === 'pergaminos' && <ScrollsActivity classroom={classroom} onBack={back} />}
       </Suspense>
     );

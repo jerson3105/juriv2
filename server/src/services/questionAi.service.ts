@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { BankQuestionType, QuestionDifficulty } from '../db/schema.js';
 import { createGenAI, generateContentWithRetry } from '../utils/aiClient.js';
+import { MAX_ANSWER_CHARS, bingoAnswer } from '../utils/bingo.js';
 import { InternalServerError, ValidationError } from '../utils/errors.js';
 
 // Generación de preguntas con IA (banco de preguntas y Observatorio): JSON validado ítem por ítem,
@@ -10,7 +11,8 @@ const MODEL = 'gemini-2.5-flash-lite';
 // Inventar un error claro (y no una forma equivalente) le cuesta al modelo ligero.
 const ERROR_MODEL = 'gemini-2.5-flash';
 
-export type AiKind = BankQuestionType | 'ERROR_STEPS';
+/** «Con error» (El Error de Jiro) y «Bingo» van solos: tienen su propio formato. */
+export type AiKind = BankQuestionType | 'ERROR_STEPS' | 'BINGO';
 
 /** El Error de Jiro se guarda como opción única con este enunciado: así se reconoce en cualquier banco. */
 export const ERROR_PREFIX = '¿En qué paso está el error?';
@@ -77,6 +79,14 @@ const itemSchemas = {
     correction: text(500),
     difficulty: difficultySchema,
   }),
+  // Bingo Estelar: la respuesta va en la casilla del cartón; el servidor la valida corta y la mezcla con los distractores.
+  BINGO: z.object({
+    question: text(300),
+    answer: text(60),
+    distractors: z.array(text(60)).min(2).max(3),
+    explanation: text(500),
+    difficulty: difficultySchema,
+  }),
 };
 
 const FORMATS: Record<BankQuestionType, string> = {
@@ -101,6 +111,16 @@ Genera exactamente ${quantity} ejercicios. Para cada uno:
 - "correction": una o dos frases: qué está mal en ese paso y cómo es lo correcto.
 - "difficulty": tu sugerencia.
 Ejemplo: [{"problem":"Calcula 1/2 + 1/3","steps":["El común denominador de 2 y 3 es 6.","1/2 = 3/6 y 1/3 = 2/6.","3/6 + 2/6 = 5/6."],"wrongIndex":2,"wrongStep":"3/6 + 2/6 = 5/12.","correction":"Con igual denominador se suman solo los numeradores: 3/6 + 2/6 = 5/6.","difficulty":"MEDIUM"}]`;
+  }
+  if (kinds.includes('BINGO')) {
+    return `${common}
+Genera exactamente ${quantity} preguntas para un bingo de clase: la respuesta de cada una va escrita en una casilla del cartón. Para cada una:
+- "question": la pregunta, clara y breve, con UNA sola respuesta posible.
+- "answer": la respuesta correcta, MUY corta: un número, una palabra o dos (máximo ${MAX_ANSWER_CHARS} caracteres). Todas las respuestas deben ser DISTINTAS entre sí.
+- "distractors": 3 respuestas incorrectas pero plausibles, igual de cortas.
+- "explanation": una o dos frases que expliquen la respuesta.
+- "difficulty": tu sugerencia.
+Ejemplo: [{"question":"¿Cuál es la capital del Perú?","answer":"Lima","distractors":["Cusco","Arequipa","Trujillo"],"explanation":"Lima es la capital del Perú desde 1535.","difficulty":"EASY"}]`;
   }
   const types = kinds as BankQuestionType[];
   return `${common}
@@ -136,6 +156,27 @@ const toDraft = (kind: AiKind, item: unknown, forcedDifficulty: QuestionDifficul
       options: steps.map((s, i) => ({ text: `Paso ${i + 1}: ${s}`, isCorrect: i === e.wrongIndex })),
       explanation: e.correction,
       difficulty: forcedDifficulty ?? e.difficulty ?? null,
+    };
+  }
+  if (kind === 'BINGO') {
+    const r = itemSchemas.BINGO.safeParse(item);
+    if (!r.success) return null;
+    const answer = bingoAnswer(r.data.answer);
+    if (!answer) return null;
+    // Distractores distintos de la respuesta y entre sí; la correcta va en un lugar al azar.
+    const seen = new Set([answer.key]);
+    const distractors = r.data.distractors.filter((d) => {
+      const key = bingoAnswer(d)?.key ?? d.trim().toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    if (distractors.length < 2) return null;
+    const at = Math.floor(Math.random() * (distractors.length + 1));
+    const options = [...distractors.slice(0, at), answer.text, ...distractors.slice(at)];
+    return {
+      type: 'SINGLE_CHOICE', questionText: r.data.question, explanation: r.data.explanation, difficulty: forcedDifficulty ?? r.data.difficulty ?? null,
+      options: options.map((t, i) => ({ text: t, isCorrect: i === at })),
     };
   }
   const type = (item as { type?: string } | null)?.type;
@@ -188,32 +229,45 @@ export const generateDrafts = async (input: {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new InternalServerError('La generación con IA no está configurada');
   if (!input.topic && !input.pdf) throw new ValidationError('Indica un tema o sube un PDF');
-  const kinds: AiKind[] = input.kinds.includes('ERROR_STEPS') ? ['ERROR_STEPS'] : input.kinds;
+  const special = input.kinds.includes('ERROR_STEPS') ? 'ERROR_STEPS' : input.kinds.includes('BINGO') ? 'BINGO' : null;
+  const kinds: AiKind[] = special ? [special] : input.kinds;
   if (kinds.length === 0) throw new ValidationError('Elige al menos un tipo de pregunta');
 
   const level = input.levelOverride?.trim() || levelLabel(input.gradeLevel) || 'primaria';
-  const prompt = promptFor(kinds, input.quantity, level, input.topic ?? null, input.difficulty ?? null);
+  // En Bingo se piden unas de más: las respuestas largas o repetidas se descartan.
+  const asked = special === 'BINGO' ? Math.min(input.quantity + 5, 25) : input.quantity;
+  const prompt = promptFor(kinds, asked, level, input.topic ?? null, input.difficulty ?? null);
   const ai = createGenAI(apiKey);
   const contents = input.pdf
     ? [{ role: 'user', parts: [{ inlineData: { mimeType: 'application/pdf', data: input.pdf.toString('base64') } }, { text: prompt }] }]
     : prompt;
   const response = await generateContentWithRetry(() => ai.models.generateContent({
-    model: kinds.includes('ERROR_STEPS') ? ERROR_MODEL : MODEL,
+    model: special === 'ERROR_STEPS' ? ERROR_MODEL : MODEL,
     contents,
     config: { responseMimeType: 'application/json' },
   }));
 
   const list = parseArray(response.text || '');
-  const kind = kinds.includes('ERROR_STEPS') ? 'ERROR_STEPS' : 'MIXED';
+  // Bingo: una casilla por respuesta, así que no se repiten.
+  const bingoSeen = new Set<string>();
+  const distinctAnswer = (d: DraftQuestion) => {
+    if (special !== 'BINGO') return true;
+    const key = bingoAnswer(d.options?.find((o) => o.isCorrect)?.text)?.key;
+    if (!key || bingoSeen.has(key)) return false;
+    bingoSeen.add(key);
+    return true;
+  };
   const drafts = list
-    .map((item) => toDraft(kind === 'ERROR_STEPS' ? 'ERROR_STEPS' : ((item as { type?: AiKind } | null)?.type ?? 'TRUE_FALSE'), item, input.difficulty ?? null))
-    .filter((d): d is DraftQuestion => !!d && (kind === 'ERROR_STEPS' || kinds.includes(d.type)))
+    .map((item) => toDraft(special ?? ((item as { type?: AiKind } | null)?.type ?? 'TRUE_FALSE'), item, input.difficulty ?? null))
+    .filter((d): d is DraftQuestion => !!d && (!!special || kinds.includes(d.type)) && distinctAnswer(d))
     .slice(0, input.quantity);
   if (drafts.length === 0) {
     console.warn('[questionAi] La IA no devolvió ítems válidos:', JSON.stringify(list).slice(0, 600));
-    throw new ValidationError(kind === 'ERROR_STEPS'
+    throw new ValidationError(special === 'ERROR_STEPS'
       ? 'Jiro no encontró pasos en ese tema. Los ejercicios con error necesitan un cálculo o procedimiento (ej.: suma de fracciones).'
-      : 'La IA no devolvió preguntas válidas. Intenta de nuevo.');
+      : special === 'BINGO'
+        ? 'La IA no devolvió respuestas cortas. Prueba con un tema más concreto (ej.: capitales de América, partes de la planta).'
+        : 'La IA no devolvió preguntas válidas. Intenta de nuevo.');
   }
   return drafts;
 };

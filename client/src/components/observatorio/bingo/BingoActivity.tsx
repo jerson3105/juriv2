@@ -41,6 +41,8 @@ const chip = (on: boolean) =>
 interface BingoActivityProps {
   classroom: Classroom & { students?: Student[] };
   resume?: ActivitySession<unknown, unknown> | null;
+  /** «Usar en clase» desde el Banco de preguntas: el banco ya elegido. */
+  initialBankId?: string | null;
   onExit: () => void;
 }
 
@@ -51,7 +53,7 @@ type Verified = { card: number; result: ReturnType<typeof checkCard>; bingoNumbe
  * impresa si no). Los bingos se verifican por número de cartón y se celebran sin nombres; lo que se premia es la
  * precisión de la clase (el docente marca si la mayoría acertó cada bola) y la revancha de las falladas.
  */
-export const BingoActivity = ({ classroom, resume, onExit }: BingoActivityProps) => {
+export const BingoActivity = ({ classroom, resume, initialBankId, onExit }: BingoActivityProps) => {
   const students = useMemo(() => classroom.students ?? [], [classroom.students]);
   const presence = useTodayPresence(classroom.id, students);
   const soundState = useStageSound();
@@ -68,7 +70,7 @@ export const BingoActivity = ({ classroom, resume, onExit }: BingoActivityProps)
   const [tutorial, setTutorial] = useState(false);
   const [history, setHistory] = useState<BingoState[]>([]);
   // Preparación
-  const [source, setSource] = useState<BingoSource>({ kind: 'tables', tables: [2, 3, 4, 5, 6, 7, 8, 9] });
+  const [source, setSource] = useState<BingoSource>(() => (initialBankId ? { kind: 'bank', bankId: initialBankId } : { kind: 'tables', tables: [2, 3, 4, 5, 6, 7, 8, 9] }));
   const [size, setSize] = useState<BingoSize>(4);
   const [think, setThink] = useState(0);
   const [paperOverride, setPaperOverride] = useState<number | null>(null);
@@ -89,7 +91,8 @@ export const BingoActivity = ({ classroom, resume, onExit }: BingoActivityProps)
 
   // ── Preparación ──
   const { data: banks = [], isLoading: banksLoading } = useTeacherBanks(phase === 'setup');
-  const usableBanks = banks.filter((b) => b.countsByType.SINGLE_CHOICE + b.countsByType.MATCHING > 0);
+  // Bancos con respuestas cortas (la misma regla que el mazo del servidor); el elegido desde el banco, siempre.
+  const usableBanks = banks.filter((b) => b.stats.bingoAnswers > 0 || (source.kind === 'bank' && source.bankId === b.id));
   const sourceReady = source.kind === 'bank' || source.tables.length > 0;
   const { data: preview, isFetching: previewLoading } = useQuery({
     queryKey: bingoKeys.preview(classroom.id, source),

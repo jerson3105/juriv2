@@ -63,6 +63,41 @@ const finishDeck = (balls: BingoBall[], skipped: number, unreviewed: number, tex
   return { answers: [...keys].map((key) => ({ key, text: texts.get(key) ?? key })), balls: kept, skipped, unreviewed };
 };
 
+/** Una respuesta que cabe en una casilla (texto limpio y su clave), o null. */
+export const bingoAnswer = (answer: unknown): BingoAnswer | null => {
+  if (typeof answer !== 'string') return null;
+  const text = clean(answer);
+  const key = normalizeAnswer(text);
+  return key && text.length <= MAX_ANSWER_CHARS ? { key, text } : null;
+};
+
+// Igual que ERROR_PREFIX (questionAi.service): los ejercicios de El Error de Jiro no son bolas.
+const ERROR_PREFIX = '¿En qué paso está el error?';
+
+interface Candidate { id: string; prompt: unknown; context: string | null; answer: unknown; explanation: string | null }
+
+/**
+ * Lo que una pregunta aporta al Bingo: opción única → su correcta (sin una sola correcta, una bola inválida); unir
+ * pares → cada par (izquierda = bola, derecha = casilla). V/F, opción múltiple y «Con error» no participan (null).
+ */
+const candidatesOf = (q: Pick<SourceQuestion, 'id' | 'type' | 'questionText' | 'options' | 'pairs' | 'explanation'>): Candidate[] | null => {
+  if (q.type === 'SINGLE_CHOICE') {
+    if (q.questionText.startsWith(ERROR_PREFIX)) return null;
+    const correct = (Array.isArray(q.options) ? q.options : []).filter((o) => o?.isCorrect === true);
+    return [{ id: q.id, prompt: q.questionText, context: null, answer: correct.length === 1 ? correct[0].text : null, explanation: q.explanation }];
+  }
+  if (q.type === 'MATCHING') {
+    return (Array.isArray(q.pairs) ? q.pairs : []).map((pair, i) => ({ id: `${q.id}:${i}`, prompt: pair?.left, context: q.questionText, answer: pair?.right, explanation: null }));
+  }
+  return null;
+};
+
+const usable = (c: Candidate) => (typeof c.prompt === 'string' && clean(c.prompt) ? bingoAnswer(c.answer) : null);
+
+/** Claves de las casillas que aporta una pregunta (estadísticas del banco: la misma regla que el mazo). */
+export const bingoKeysOf = (q: Pick<SourceQuestion, 'type' | 'questionText' | 'options' | 'pairs'>): string[] =>
+  (candidatesOf({ ...q, id: '', explanation: null }) ?? []).flatMap((c) => usable(c)?.key ?? []);
+
 /**
  * Mazo desde un banco: opción única (la opción correcta es la casilla) y unir pares (izquierda = bola, derecha =
  * casilla). V/F y opción múltiple no sirven (dos respuestas o una casilla ambigua). Respuestas cortas, sin repetirse.
@@ -72,23 +107,18 @@ export const deckFromQuestions = (questions: SourceQuestion[], random = Math.ran
   const texts = new Map<string, string>();
   let skipped = 0;
   let unreviewed = 0;
-  const add = (id: string, prompt: unknown, context: string | null, answer: unknown, explanation: string | null) => {
-    if (typeof prompt !== 'string' || typeof answer !== 'string') { skipped += 1; return; }
-    const text = clean(answer);
-    const key = normalizeAnswer(text);
-    if (!key || text.length > MAX_ANSWER_CHARS || !clean(prompt)) { skipped += 1; return; }
-    if (!texts.has(key)) texts.set(key, text);
-    balls.push({ id, prompt: clip(clean(prompt), 200), context: context ? clip(clean(context), 160) : null, key, explanation: explanation ? clip(clean(explanation), 200) : null });
-  };
   for (const q of questions) {
-    if (q.type !== 'SINGLE_CHOICE' && q.type !== 'MATCHING') continue;
+    const candidates = candidatesOf(q);
+    if (!candidates) continue;
     if (q.aiGenerated && !q.reviewedAt) unreviewed += 1;
-    if (q.type === 'SINGLE_CHOICE') {
-      const correct = (q.options ?? []).filter((o) => o?.isCorrect === true);
-      if (correct.length === 1) add(q.id, q.questionText, null, correct[0].text, q.explanation);
-      else skipped += 1;
-    } else {
-      (q.pairs ?? []).forEach((pair, i) => add(`${q.id}:${i}`, pair?.left, q.questionText, pair?.right, null));
+    for (const c of candidates) {
+      const answer = usable(c);
+      if (!answer) { skipped += 1; continue; }
+      if (!texts.has(answer.key)) texts.set(answer.key, answer.text);
+      balls.push({
+        id: c.id, prompt: clip(clean(c.prompt as string), 200), context: c.context ? clip(clean(c.context), 160) : null,
+        key: answer.key, explanation: c.explanation ? clip(clean(c.explanation), 200) : null,
+      });
     }
   }
   return finishDeck(balls, skipped, unreviewed, texts, random);
